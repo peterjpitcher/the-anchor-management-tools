@@ -12,6 +12,7 @@ import {
   Button,
   Input,
   ConfirmDialog,
+  CustomerLink,
   toast,
   Spinner,
 } from '@/ds'
@@ -996,7 +997,14 @@ function AttendeesTab({
 
                     return (
                       <TableRow key={booking.id} className={isCancelled ? 'opacity-50' : ''}>
-                        <TableCell>{customerName}</TableCell>
+                        <TableCell>
+                          <CustomerLink
+                            customerId={booking.customer?.id ?? null}
+                            name={customerName}
+                            fallback="-"
+                            className="text-blue-600 hover:text-blue-700"
+                          />
+                        </TableCell>
                         <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>
                           {isEditing ? (

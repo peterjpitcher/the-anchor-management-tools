@@ -4,11 +4,12 @@ import { useState, useRef, useEffect } from 'react'
 import { sendSmsReply } from '@/app/actions/messageActions'
 import toast from 'react-hot-toast'
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
+import { Badge } from '@/ds'
 
-import { Message } from '@/types/database'
+import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 interface MessageThreadProps {
-  messages: Message[]
+  messages: CustomerCommunication[]
   customerId: string
   customerName: string
   canReply: boolean
@@ -90,7 +91,7 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
     }
     groups[date].push(message)
     return groups
-  }, {} as Record<string, Message[]>)
+  }, {} as Record<string, CustomerCommunication[]>)
 
   const getMessageTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString('en-US', { 
@@ -115,6 +116,14 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
     }
   }
 
+  const getChannelLabel = (channel: CommunicationChannel) => {
+    if (channel === 'sms') return 'SMS'
+    if (channel === 'whatsapp') return 'WhatsApp'
+    if (channel === 'email') return 'Email'
+    if (channel === 'feedback') return 'Feedback'
+    return channel
+  }
+
   return (
     <div className="flex flex-col h-[400px] sm:h-[500px] md:h-[600px] bg-white rounded-lg border border-gray-200">
       {/* Messages area */}
@@ -136,14 +145,20 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
             {/* Messages for this date */}
             {dateMessages.map((message, index) => {
               const isInbound = message.direction === 'inbound'
-              const showStatus = !isInbound && 
-                index === dateMessages.length - 1 || 
+              const showStatus = !isInbound && (
+                index === dateMessages.length - 1 ||
                 (index < dateMessages.length - 1 && dateMessages[index + 1].direction === 'inbound')
-              
+              )
+              const messageText = message.body_text || message.subject || (message.has_attachments ? 'Attachment' : '')
+	              
               return (
                 <div key={message.id}>
                   <div className={`flex ${isInbound ? 'justify-start' : 'justify-end'} mb-2`}>
                     <div className={`max-w-[85%] sm:max-w-[70%] ${isInbound ? 'order-1' : 'order-2'}`}>
+                      <div className={`mb-1 flex items-center gap-1 ${isInbound ? 'justify-start' : 'justify-end'}`}>
+                        <Badge tone="neutral">{getChannelLabel(message.channel)}</Badge>
+                        {message.has_attachments && <Badge tone="info">Attachment</Badge>}
+                      </div>
                       <div
                         className={`px-4 py-2 rounded-2xl ${
                           isInbound
@@ -151,15 +166,18 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                             : 'bg-blue-500 text-white rounded-tr-sm'
                         }`}
                       >
-                        <p className="text-sm sm:text-base whitespace-pre-wrap break-words">{message.body}</p>
+                        {message.subject && (
+                          <p className="mb-1 text-xs font-semibold sm:text-sm">{message.subject}</p>
+                        )}
+                        <p className="text-sm sm:text-base whitespace-pre-wrap break-words">{messageText}</p>
                       </div>
                       <div className={`flex items-center mt-1 ${isInbound ? 'justify-start' : 'justify-end'}`}>
                         <span className="text-xs sm:text-sm text-gray-500">
                           {getMessageTime(message.created_at)}
                         </span>
-                        {showStatus && message.twilio_status && (
+                        {showStatus && message.status && (
                           <span className="ml-2 text-xs sm:text-sm text-gray-500">
-                            • {getStatusText(message.twilio_status)}
+                            • {getStatusText(message.status) || message.status}
                           </span>
                         )}
                       </div>

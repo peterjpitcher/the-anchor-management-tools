@@ -10,7 +10,6 @@ const CustomerImport = dynamic(
   () => import('@/components/features/customers/CustomerImport').then(mod => mod.CustomerImport),
   { ssr: false }
 )
-import { CustomerName } from '@/components/features/customers/CustomerName'
 import { CustomerLabelDisplay } from '@/components/features/customers/CustomerLabelDisplay'
 import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import type { CustomerCategoryStats, CustomerListResult } from '@/app/actions/customers'
@@ -21,7 +20,6 @@ import {
   importCustomers as importCustomersAction,
   getCustomerList,
 } from '@/app/actions/customers'
-import Link from 'next/link'
 import {
   ChatBubbleLeftIcon,
   XCircleIcon,
@@ -44,6 +42,7 @@ import { EmptyState } from '@/ds'
 import type { HeaderNavItem } from '@/ds'
 import { LinkButton } from '@/ds'
 import { ConfirmDialog } from '@/ds'
+import { CustomerLink } from '@/ds'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -428,24 +427,25 @@ export default function CustomersClient({
         key: 'name',
         header: 'Name',
         sortable: true,
-        cell: (customer: Customer) => (
-          <div className="space-y-2">
-            <div className="flex items-center">
-              <div className="font-medium text-gray-900">
-                <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:text-blue-700">
-                  <CustomerName customer={customer} />
-                </Link>
+        cell: (customer: Customer) => {
+          const customerName = [customer.first_name, customer.last_name].filter(Boolean).join(' ') || customer.mobile_number || 'Unknown customer'
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center">
+                <div className="font-medium text-gray-900">
+                  <CustomerLink customerId={customer.id} name={customerName} className="text-blue-600 hover:text-blue-700" />
                 {unreadCounts[customer.id] > 0 && (
                   <Badge variant="primary" size="sm" className="ml-2">
                     <ChatBubbleLeftIcon className="h-3 w-3 mr-1" />
                     {unreadCounts[customer.id]}
                   </Badge>
                 )}
+                </div>
               </div>
+              <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
             </div>
-            <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
-          </div>
-        ),
+          )
+        },
       },
       {
         key: 'mobile',
@@ -723,14 +723,13 @@ export default function CustomersClient({
                   className="px-4 py-4 sm:px-6 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <Link
-                      href={`/customers/${customer.id}`}
-                      className="block hover:bg-gray-50 flex-1 min-w-0"
-                    >
+                    <div className="block flex-1 min-w-0">
                       <div className="flex items-center">
-                        <p className="text-base sm:text-sm font-medium text-blue-600 truncate">
-                          <CustomerName customer={customer} />
-                        </p>
+                        <CustomerLink
+                          customerId={customer.id}
+                          name={[customer.first_name, customer.last_name].filter(Boolean).join(' ') || customer.mobile_number || 'Unknown customer'}
+                          className="truncate text-base sm:text-sm"
+                        />
                         {unreadCounts[customer.id] > 0 && (
                           <Badge variant="primary" size="sm" className="ml-2">
                             <ChatBubbleLeftIcon className="h-3 w-3 mr-1" />
@@ -738,7 +737,7 @@ export default function CustomersClient({
                           </Badge>
                         )}
                       </div>
-                    </Link>
+                    </div>
                     {canManageCustomers && (
                       <div className="ml-2 flex-shrink-0 flex space-x-2">
                         <IconButton

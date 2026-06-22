@@ -8,7 +8,7 @@ import {
   PageHeader,
   Card,
   CardBody,
-  CardHeader,
+  CustomerLink,
   SectionNav,
 } from '@/ds'
 import {
@@ -35,11 +35,11 @@ import {
   type ConversationSummary,
 } from '@/app/actions/messagesActions'
 import { sendSmsReply } from '@/app/actions/messageActions'
-import type { Message } from '@/types/database'
+import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 const REFRESH_INTERVAL = 15000
 
-type ConversationFilter = 'all' | 'unread'
+type ConversationFilter = 'all' | 'unread' | 'email' | 'sms' | 'whatsapp'
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -58,8 +58,10 @@ function formatCustomerName(customer: ConversationSummary['customer']): string {
 
 function getPreviewText(conversation: ConversationSummary): string {
   const body = conversation.lastMessage.body?.trim()
+  const subject = conversation.lastMessage.subject?.trim()
+  if (subject) return subject.length > 90 ? `${subject.slice(0, 90)}...` : subject
   if (body) return body.length > 90 ? `${body.slice(0, 90)}...` : body
-  return conversation.lastMessage.direction === 'inbound' ? 'Inbound message' : 'Outbound message'
+  return conversation.lastMessage.has_attachments ? 'Attachment' : 'Communication'
 }
 
 function getMessageTime(timestamp: string): string {
@@ -85,6 +87,21 @@ function getStatusText(status?: string): string {
   }
 }
 
+function channelLabel(channel: CommunicationChannel): string {
+  switch (channel) {
+    case 'sms':
+      return 'SMS'
+    case 'whatsapp':
+      return 'WhatsApp'
+    case 'email':
+      return 'Email'
+    case 'feedback':
+      return 'Feedback'
+    default:
+      return channel
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  MessagesClient                                                     */
 /* ------------------------------------------------------------------ */
@@ -101,12 +118,13 @@ export function MessagesClient() {
   const [listLoading, setListLoading] = useState(true)
   const [totalUnreadCount, setTotalUnreadCount] = useState(0)
   const [hasMoreUnread, setHasMoreUnread] = useState(false)
+  const [unmatchedCount, setUnmatchedCount] = useState(0)
   const [filter, setFilter] = useState<ConversationFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [markingAll, setMarkingAll] = useState(false)
 
   // Thread state
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<CustomerCommunication[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<ConversationSummary['customer'] | null>(null)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
@@ -134,6 +152,7 @@ export function MessagesClient() {
       setConversations(response.conversations)
       setTotalUnreadCount(response.totalUnread)
       setHasMoreUnread(response.hasMoreUnread)
+      setUnmatchedCount(response.unmatchedCount)
     } catch {
       toast.error('Failed to load conversations')
     } finally {
@@ -256,6 +275,8 @@ export function MessagesClient() {
       } else {
         filtered = unread
       }
+    } else if (filter === 'email' || filter === 'sms' || filter === 'whatsapp') {
+      filtered = filtered.filter((c) => c.channels.includes(filter))
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
@@ -364,7 +385,7 @@ export function MessagesClient() {
   const canReply = canSendMessages && selectedCustomer?.sms_opt_in !== false
 
   // Group messages by date
-  const groupedMessages = messages.reduce<Record<string, Message[]>>((groups, message) => {
+  const groupedMessages = messages.reduce<Record<string, CustomerCommunication[]>>((groups, message) => {
     const date = new Date(message.created_at).toLocaleDateString()
     if (!groups[date]) groups[date] = []
     groups[date].push(message)
@@ -376,6 +397,9 @@ export function MessagesClient() {
   const filterItems = [
     { id: 'all', label: 'All', count: conversations.length },
     { id: 'unread', label: 'Unread', count: totalUnreadCount },
+    { id: 'email', label: 'Email', count: conversations.filter((c) => c.channels.includes('email')).length },
+    { id: 'sms', label: 'SMS', count: conversations.filter((c) => c.channels.includes('sms')).length },
+    { id: 'whatsapp', label: 'WhatsApp', count: conversations.filter((c) => c.channels.includes('whatsapp')).length },
   ]
 
   /* ---- Loading skeleton ---- */
@@ -435,6 +459,11 @@ export function MessagesClient() {
                 loading={markingAll}
               >
                 Mark all read
+              </Button>
+            )}
+            {unmatchedCount > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => router.push('/messages/holding')}>
+                Holding queue ({unmatchedCount})
               </Button>
             )}
             {canManageTemplates && (
@@ -513,9 +542,9 @@ export function MessagesClient() {
                                 {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
                               </span>
                             </div>
-                            <p className="text-xs text-text-muted truncate mt-0.5">
-                              {getPreviewText(conversation)}
-                            </p>
+	                            <p className="text-xs text-text-muted truncate mt-0.5">
+	                              {channelLabel(conversation.lastMessage.channel)} · {getPreviewText(conversation)}
+	                            </p>
                             {unread && (
                               <Badge tone="info" className="mt-1">
                                 {conversation.unreadCount} unread
@@ -547,7 +576,7 @@ export function MessagesClient() {
                   <div className="flex items-center gap-3 min-w-0">
                     <Avatar name={customerName} size="sm" />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-text-strong truncate">{customerName}</p>
+	                      <CustomerLink customerId={selectedCustomerId} name={customerName} className="block truncate text-sm font-semibold" />
                       <p className="text-xs text-text-muted">
                         {selectedConversation?.unreadCount
                           ? `${selectedConversation.unreadCount} unread`
@@ -591,34 +620,42 @@ export function MessagesClient() {
                           </span>
                         </div>
 
-                        {dateMessages.map((message, index) => {
-                          const isOutbound = message.direction !== 'inbound'
-                          const showStatus =
-                            isOutbound &&
-                            (index === dateMessages.length - 1 ||
-                              (index < dateMessages.length - 1 && dateMessages[index + 1].direction === 'inbound'))
+	                        {dateMessages.map((message, index) => {
+	                          const isOutbound = message.direction !== 'inbound'
+	                          const showStatus =
+	                            isOutbound &&
+	                            (index === dateMessages.length - 1 ||
+	                              (index < dateMessages.length - 1 && dateMessages[index + 1].direction === 'inbound'))
+                            const messageText = message.body_text || message.subject || (message.has_attachments ? 'Attachment' : '')
 
-                          return (
-                            <div key={message.id} className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} mb-2`}>
-                              <div className="max-w-[70%]">
-                                <div
-                                  className={
-                                    isOutbound
+	                          return (
+	                            <div key={message.id} className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} mb-2`}>
+	                              <div className="max-w-[70%]">
+                                  <div className={`mb-1 flex items-center gap-1.5 ${isOutbound ? 'justify-end' : 'justify-start'}`}>
+                                    <Badge tone="neutral">{channelLabel(message.channel)}</Badge>
+                                    {message.has_attachments && <Badge tone="info">Attachment</Badge>}
+                                  </div>
+	                                <div
+	                                  className={
+	                                    isOutbound
                                       ? 'ml-auto bg-primary text-primary-fg rounded-2xl rounded-br-sm px-4 py-2'
                                       : 'mr-auto bg-surface-hover text-text rounded-2xl rounded-bl-sm px-4 py-2'
                                   }
                                 >
-                                  <p className="text-[13px] whitespace-pre-wrap break-words">{message.body}</p>
-                                </div>
+                                    {message.subject && (
+                                      <p className="mb-1 text-[12px] font-semibold">{message.subject}</p>
+                                    )}
+	                                  <p className="text-[13px] whitespace-pre-wrap break-words">{messageText}</p>
+	                                </div>
                                 <div className={`flex items-center gap-1.5 mt-0.5 ${isOutbound ? 'justify-end' : 'justify-start'}`}>
                                   <span className="text-[11px] text-text-muted">
                                     {getMessageTime(message.created_at)}
                                   </span>
-                                  {showStatus && message.twilio_status && (
-                                    <span className="text-[11px] text-text-muted">
-                                      {getStatusText(message.twilio_status)}
-                                    </span>
-                                  )}
+	                                  {showStatus && message.status && (
+	                                    <span className="text-[11px] text-text-muted">
+	                                      {getStatusText(message.status) || message.status}
+	                                    </span>
+	                                  )}
                                 </div>
                               </div>
                             </div>
@@ -679,15 +716,23 @@ export function MessagesClient() {
                   <div>
                     <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Phone</p>
                     <p className="text-[13px] text-text mt-0.5">
-                      {selectedCustomer.mobile_number ?? 'Not on file'}
+	                      {selectedCustomer.mobile_number ?? 'Not on file'}
                     </p>
                   </div>
                   <div>
                     <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Email</p>
                     <p className="text-[13px] text-text mt-0.5">
-                      {(selectedCustomer as Record<string, unknown>).email
-                        ? String((selectedCustomer as Record<string, unknown>).email)
-                        : 'Not on file'}
+	                      {selectedCustomer.email ?? 'Not on file'}
+                    </p>
+	                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">WhatsApp</p>
+                    <p className="text-[13px] text-text mt-0.5">
+                      {selectedCustomer.whatsapp_opt_in ? (
+                        <Badge tone="success">{selectedCustomer.whatsapp_status ?? 'Active'}</Badge>
+                      ) : (
+                        <Badge tone="warning">Not opted in</Badge>
+                      )}
                     </p>
                   </div>
                   <div>

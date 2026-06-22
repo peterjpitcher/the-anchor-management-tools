@@ -16,25 +16,39 @@ export class MessageService {
       return {};
     }
 
-    let query = supabase
+    let messageQuery = supabase
       .from('messages')
       .select('customer_id')
       .eq('direction', 'inbound')
       .is('read_at', null);
 
     if (uniqueCustomerIds) {
-      query = query.in('customer_id', uniqueCustomerIds);
+      messageQuery = messageQuery.in('customer_id', uniqueCustomerIds);
     }
 
-    const { data, error } = await query;
+    let emailQuery = (supabase.from('email_messages') as any)
+      .select('customer_id')
+      .eq('direction', 'inbound')
+      .is('staff_read_at', null);
+
+    if (uniqueCustomerIds) {
+      emailQuery = emailQuery.in('customer_id', uniqueCustomerIds);
+    }
+
+    const [messageResult, emailResult] = await Promise.all([messageQuery, emailQuery]);
+    const { data, error } = messageResult;
+    const { data: emailData, error: emailError } = emailResult;
     
-    if (error) {
+    if (error || emailError) {
       throw new Error('Failed to fetch unread counts');
     }
     
-    // Count unread messages per customer
     const counts: Record<string, number> = {};
     data?.forEach(message => {
+      counts[message.customer_id] = (counts[message.customer_id] || 0) + 1;
+    });
+    emailData?.forEach((message: { customer_id: string | null }) => {
+      if (!message.customer_id) return;
       counts[message.customer_id] = (counts[message.customer_id] || 0) + 1;
     });
     
@@ -44,30 +58,44 @@ export class MessageService {
   static async getTotalUnreadCount() {
     const supabase = createAdminClient();
     
-    const { count, error } = await supabase
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('direction', 'inbound')
-      .is('read_at', null);
+    const [messageResult, emailResult] = await Promise.all([
+      supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('direction', 'inbound')
+        .is('read_at', null),
+      (supabase.from('email_messages') as any)
+        .select('id', { count: 'exact', head: true })
+        .eq('direction', 'inbound')
+        .is('staff_read_at', null),
+    ]);
     
-    if (error) {
+    if (messageResult.error || emailResult.error) {
       throw new Error('Failed to fetch total unread count');
     }
     
-    return count || 0;
+    return (messageResult.count || 0) + (emailResult.count || 0);
   }
 
   static async markMessagesAsRead(customerId: string) {
     const supabase = createAdminClient();
     
-    const { error } = await supabase
-      .from('messages')
-      .update({ read_at: new Date().toISOString() })
-      .eq('customer_id', customerId)
-      .eq('direction', 'inbound')
-      .is('read_at', null);
+    const nowIso = new Date().toISOString();
+    const [messageResult, emailResult] = await Promise.all([
+      supabase
+        .from('messages')
+        .update({ read_at: nowIso })
+        .eq('customer_id', customerId)
+        .eq('direction', 'inbound')
+        .is('read_at', null),
+      (supabase.from('email_messages') as any)
+        .update({ staff_read_at: nowIso, status: 'read', updated_at: nowIso })
+        .eq('customer_id', customerId)
+        .eq('direction', 'inbound')
+        .is('staff_read_at', null),
+    ]);
     
-    if (error) {
+    if (messageResult.error || emailResult.error) {
       throw new Error('Failed to mark messages as read');
     }
   }
@@ -213,8 +241,7 @@ export class MessageService {
   static async getCustomerMessages(customerId: string) {
     const supabase = createAdminClient();
 
-    const { data: messages, error } = await supabase
-      .from('messages')
+    const { data: messages, error } = await (supabase.from('customer_communications') as any)
       .select('*')
       .eq('customer_id', customerId)
       .order('created_at', { ascending: true });

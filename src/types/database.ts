@@ -465,6 +465,17 @@ export interface Customer {
   last_successful_sms_at?: string | null;
   sms_deactivated_at?: string | null;
   sms_deactivation_reason?: string | null;
+  whatsapp_opt_in?: boolean | null;
+  marketing_whatsapp_opt_in?: boolean | null;
+  whatsapp_status?: string | null;
+  whatsapp_opt_in_at?: string | null;
+  whatsapp_opted_out_at?: string | null;
+  whatsapp_delivery_failures?: number | null;
+  last_whatsapp_failure_reason?: string | null;
+  last_successful_whatsapp_at?: string | null;
+  whatsapp_deactivated_at?: string | null;
+  whatsapp_deactivation_reason?: string | null;
+  last_whatsapp_inbound_at?: string | null;
   messaging_status?: string | null;
   last_successful_delivery?: string | null;
   consecutive_failures?: number | null;

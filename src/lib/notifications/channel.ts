@@ -1,10 +1,11 @@
-export type NotificationChannel = 'email' | 'sms'
+export type NotificationChannel = 'email' | 'whatsapp' | 'sms'
 export type NotificationPolicy = 'email_first' | 'email_only' | 'sms_only' | 'both'
 export type NotificationUrgency = 'standard' | 'time_critical'
 export type NotificationCategory = 'transactional' | 'marketing'
 
 export type ChannelEligibility = {
   email: boolean
+  whatsapp: boolean
   sms: boolean
 }
 
@@ -13,6 +14,7 @@ export type SelectChannelInput = {
   urgency: NotificationUrgency
   category?: NotificationCategory
   eligibility: ChannelEligibility
+  orderedChannels?: NotificationChannel[]
 }
 
 export type SelectChannelResult =
@@ -30,23 +32,7 @@ export function selectChannel(input: SelectChannelInput): SelectChannelResult {
     return { channels: [], reason: 'invalid_time_critical_email_first' }
   }
 
-  let candidates: NotificationChannel[]
-  switch (policy) {
-    case 'email_first':
-      candidates = ['email', 'sms']
-      break
-    case 'email_only':
-      candidates = ['email']
-      break
-    case 'sms_only':
-      candidates = ['sms']
-      break
-    case 'both':
-      candidates = ['email', 'sms']
-      break
-    default:
-      candidates = ['sms']
-  }
+  const candidates = input.orderedChannels ?? legacyPolicyChannels(policy)
 
   const channels = candidates.filter(channel => eligibility[channel])
 
@@ -55,6 +41,21 @@ export function selectChannel(input: SelectChannelInput): SelectChannelResult {
   }
 
   return { channels }
+}
+
+export function legacyPolicyChannels(policy: NotificationPolicy): NotificationChannel[] {
+  switch (policy) {
+    case 'email_first':
+      return ['email', 'whatsapp', 'sms']
+    case 'email_only':
+      return ['email']
+    case 'sms_only':
+      return ['sms']
+    case 'both':
+      return ['email', 'whatsapp', 'sms']
+    default:
+      return ['sms']
+  }
 }
 
 export function isValidEmailAddress(value: string | null | undefined): value is string {

@@ -38,6 +38,19 @@ function row(label: string, value: string): string {
     </tr>`;
 }
 
+function privateBookingEmailLog(
+  booking: { id: string; customer_id?: string | null },
+  commType: string
+) {
+  return {
+    requireLog: true,
+    customerId: booking.customer_id ?? null,
+    privateBookingId: booking.id,
+    commType,
+    metadata: { template_key: `${commType}_email` },
+  }
+}
+
 /**
  * Send a provisional booking hold email when a booking status changes to 'confirmed'
  * but deposit has not yet been paid.
@@ -45,6 +58,7 @@ function row(label: string, value: string): string {
  */
 export async function sendBookingConfirmationEmail(booking: {
   id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_last_name?: string | null;
@@ -101,7 +115,12 @@ export async function sendBookingConfirmationEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_provisional_hold'),
+    });
     if (!result.success) {
       logger.error('Private booking provisional hold email send failed', {
         error: new Error(result.error || 'Unknown email error'),
@@ -121,6 +140,8 @@ export async function sendBookingConfirmationEmail(booking: {
  * Fire-and-forget — never throws; errors are logged only.
  */
 export async function sendDepositReceivedEmail(booking: {
+  id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_name?: string | null;
@@ -191,7 +212,12 @@ export async function sendDepositReceivedEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_deposit_received'),
+    });
     if (!result.success) {
       logger.error('Private booking confirmed email send failed', {
         error: new Error(result.error || 'Unknown email error'),
@@ -209,6 +235,8 @@ export async function sendDepositReceivedEmail(booking: {
  * Fire-and-forget — never throws; errors are logged only.
  */
 export async function sendBalancePaidEmail(booking: {
+  id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_name?: string | null;
@@ -247,7 +275,12 @@ export async function sendBalancePaidEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_balance_paid'),
+    });
     if (!result.success) {
       logger.error('Private booking balance paid email send failed', {
         error: new Error(result.error || 'Unknown email error'),
@@ -266,6 +299,7 @@ export async function sendBalancePaidEmail(booking: {
  */
 export async function sendBookingCalendarInvite(booking: {
   id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_last_name?: string | null;
@@ -313,6 +347,7 @@ export async function sendBookingCalendarInvite(booking: {
           contentType: 'text/calendar; charset=utf-8; method=REQUEST',
         },
       ],
+      ...privateBookingEmailLog(booking, 'private_booking_calendar_invite'),
     });
 
     if (!result.success) {
@@ -335,6 +370,7 @@ export async function sendBookingCalendarInvite(booking: {
  */
 export async function sendDepositPaymentLinkEmail(booking: {
   id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_name?: string | null;
@@ -385,7 +421,12 @@ export async function sendDepositPaymentLinkEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_deposit_payment_link'),
+    });
     if (!result.success) {
       logger.error('Deposit payment link email send failed', {
         error: new Error(result.error || 'Unknown email error'),
@@ -406,6 +447,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
  */
 export async function sendBalanceReminderEmail(booking: {
   id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_name?: string | null;
@@ -447,7 +489,12 @@ export async function sendBalanceReminderEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_balance_reminder'),
+    });
     if (!result.success) {
       logger.error('Balance reminder email send failed', {
         error: new Error(result.error || 'Unknown email error'),
@@ -468,6 +515,7 @@ export async function sendBalanceReminderEmail(booking: {
  */
 export async function sendDepositRefundEmail(booking: {
   id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_name?: string | null;
@@ -503,7 +551,12 @@ export async function sendDepositRefundEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_deposit_refund'),
+    });
     if (!result.success) {
       logger.error('Deposit refund email send failed', {
         error: new Error(result.error || 'Unknown email error'),
@@ -524,6 +577,7 @@ export async function sendDepositRefundEmail(booking: {
  */
 export async function sendDepositRefundWithDeductionsEmail(booking: {
   id: string;
+  customer_id?: string | null;
   contact_email?: string | null;
   customer_first_name?: string | null;
   customer_name?: string | null;
@@ -566,7 +620,12 @@ export async function sendDepositRefundWithDeductionsEmail(booking: {
   <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
 </div>`;
 
-    const result = await sendEmail({ to: booking.contact_email, subject, html });
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_deposit_refund_deductions'),
+    });
     if (!result.success) {
       logger.error('Deposit refund with deductions email send failed', {
         error: new Error(result.error || 'Unknown email error'),

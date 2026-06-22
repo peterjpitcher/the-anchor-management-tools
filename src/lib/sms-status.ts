@@ -26,6 +26,7 @@ export type AppStatus =
   | 'delivered'
   | 'failed'
   | 'received'
+  | 'read'
   | 'delivery_unknown';
 
 // Map Twilio status to our simplified status
@@ -41,7 +42,7 @@ export const STATUS_MAP: Record<TwilioStatus, AppStatus> = {
   scheduled: 'queued',
   receiving: 'received',
   received: 'received',
-  read: 'received',
+  read: 'read',
 };
 
 // Status progression order (higher number = more final)

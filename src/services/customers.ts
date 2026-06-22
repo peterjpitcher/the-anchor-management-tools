@@ -544,4 +544,80 @@ export class CustomerService {
       }
     };
   }
+
+  static async toggleWhatsAppOptIn(customerId: string, optIn: boolean) {
+    const supabase = createAdminClient();
+
+    const { data: customer, error: fetchError } = await supabase
+      .from('customers')
+      .select('id, whatsapp_opt_in, marketing_whatsapp_opt_in, whatsapp_status, whatsapp_delivery_failures, whatsapp_opt_in_at, whatsapp_opted_out_at, whatsapp_deactivated_at, whatsapp_deactivation_reason')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (fetchError || !customer) {
+      throw new Error('Customer not found');
+    }
+
+    const nowIso = new Date().toISOString();
+    const updateData: Record<string, unknown> = {
+      whatsapp_opt_in: optIn,
+    };
+
+    if (optIn) {
+      updateData.whatsapp_status = 'active';
+      updateData.whatsapp_delivery_failures = 0;
+      updateData.last_whatsapp_failure_reason = null;
+      updateData.whatsapp_deactivated_at = null;
+      updateData.whatsapp_deactivation_reason = null;
+      updateData.whatsapp_opt_in_at = nowIso;
+      updateData.whatsapp_opted_out_at = null;
+    } else {
+      updateData.whatsapp_status = 'opted_out';
+      updateData.marketing_whatsapp_opt_in = false;
+      updateData.whatsapp_opted_out_at = nowIso;
+      updateData.whatsapp_deactivated_at = null;
+      updateData.whatsapp_deactivation_reason = null;
+    }
+
+    const { data: updatedCustomer, error: updateError } = await supabase
+      .from('customers')
+      .update(updateData)
+      .eq('id', customerId)
+      .select('id')
+      .maybeSingle();
+
+    if (updateError) {
+      throw new Error('Failed to update customer WhatsApp preferences');
+    }
+    if (!updatedCustomer) {
+      throw new Error('Customer not found');
+    }
+
+    return {
+      oldValues: {
+        whatsapp_opt_in: (customer as any).whatsapp_opt_in ?? null,
+        marketing_whatsapp_opt_in: (customer as any).marketing_whatsapp_opt_in ?? null,
+        whatsapp_status: (customer as any).whatsapp_status ?? null,
+        whatsapp_delivery_failures: (customer as any).whatsapp_delivery_failures ?? null,
+        whatsapp_opt_in_at: (customer as any).whatsapp_opt_in_at ?? null,
+        whatsapp_opted_out_at: (customer as any).whatsapp_opted_out_at ?? null,
+        whatsapp_deactivated_at: (customer as any).whatsapp_deactivated_at ?? null,
+        whatsapp_deactivation_reason: (customer as any).whatsapp_deactivation_reason ?? null,
+      },
+      newValues: {
+        whatsapp_opt_in: optIn,
+        marketing_whatsapp_opt_in: (updateData.marketing_whatsapp_opt_in as boolean | undefined) ?? (customer as any).marketing_whatsapp_opt_in ?? null,
+        whatsapp_status: updateData.whatsapp_status as string,
+        whatsapp_delivery_failures: updateData.whatsapp_delivery_failures ?? (customer as any).whatsapp_delivery_failures ?? null,
+        whatsapp_opt_in_at: Object.prototype.hasOwnProperty.call(updateData, 'whatsapp_opt_in_at')
+          ? updateData.whatsapp_opt_in_at
+          : (customer as any).whatsapp_opt_in_at ?? null,
+        whatsapp_opted_out_at: Object.prototype.hasOwnProperty.call(updateData, 'whatsapp_opted_out_at')
+          ? updateData.whatsapp_opted_out_at
+          : (customer as any).whatsapp_opted_out_at ?? null,
+        whatsapp_deactivated_at: updateData.whatsapp_deactivated_at,
+        whatsapp_deactivation_reason: updateData.whatsapp_deactivation_reason,
+      }
+    };
+  }
 }

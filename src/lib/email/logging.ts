@@ -12,6 +12,8 @@ export type EmailMessageStatus =
   | 'suppressed'
   | 'opened'
   | 'clicked'
+  | 'received'
+  | 'read'
 
 export type RecordEmailMessageParams = {
   customerId?: string | null
@@ -23,10 +25,17 @@ export type RecordEmailMessageParams = {
   status: EmailMessageStatus
   error?: string | null
   metadata?: Record<string, unknown> | null
+  bodyText?: string | null
+  bodyHtml?: string | null
+  attachments?: Array<Record<string, unknown>> | null
   tableBookingId?: string | null
   eventBookingId?: string | null
   privateBookingId?: string | null
   parkingBookingId?: string | null
+  invoiceId?: string | null
+  quoteId?: string | null
+  direction?: 'inbound' | 'outbound'
+  receivedAt?: string | null
 }
 
 function normalizeEmail(value: string): string {
@@ -79,10 +88,18 @@ export async function recordEmailMessage(params: RecordEmailMessageParams): Prom
       status: params.status,
       error: params.error ?? null,
       metadata: params.metadata ?? {},
+      direction: params.direction ?? 'outbound',
+      body_text: params.bodyText ?? null,
+      body_html: params.bodyHtml ?? null,
+      has_attachments: Boolean(params.attachments?.length),
+      attachments: params.attachments ?? null,
       table_booking_id: params.tableBookingId ?? null,
       event_booking_id: params.eventBookingId ?? null,
       private_booking_id: params.privateBookingId ?? null,
       parking_booking_id: params.parkingBookingId ?? null,
+      invoice_id: params.invoiceId ?? null,
+      quote_id: params.quoteId ?? null,
+      received_at: params.receivedAt ?? null,
       updated_at: nowIso,
     }
 

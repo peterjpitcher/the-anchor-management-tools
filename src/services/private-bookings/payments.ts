@@ -169,6 +169,8 @@ async function sendDepositReceivedSideEffects(input: {
   if (booking.contact_email) {
     const depositEmailDate = isBookingDateTbd(booking) ? 'Date to be confirmed' : booking.event_date;
     sendDepositReceivedEmail({
+      id: booking.id,
+      customer_id: booking.customer_id,
       contact_email: booking.contact_email,
       customer_first_name: booking.customer_first_name,
       customer_name: booking.customer_name,
@@ -671,6 +673,8 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
   if (booking.contact_email) {
     const balanceEmailDate = isBookingDateTbd(booking) ? 'Date to be confirmed' : booking.event_date;
     sendBalancePaidEmail({
+      id: booking.id,
+      customer_id: booking.customer_id,
       contact_email: booking.contact_email,
       customer_first_name: booking.customer_first_name,
       customer_name: booking.customer_name,

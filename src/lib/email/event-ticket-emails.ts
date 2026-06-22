@@ -218,6 +218,7 @@ export async function sendEventPaymentLinkEmail(
 </div>`
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject,
     text,
@@ -281,6 +282,7 @@ export async function sendEventPaymentConfirmationEmail(
 </div>`
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject,
     text,
@@ -325,6 +327,7 @@ export async function sendEventPaymentManualReviewEmail(
   ]
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject: `Payment received: ${context.eventName}`,
     text: [...body, '', 'The Anchor'].join('\n'),
@@ -369,6 +372,7 @@ export async function sendEventPaymentExpiredEmail(
   ]
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject: `Payment hold released: ${context.eventName}`,
     text: [
@@ -448,6 +452,7 @@ export async function sendEventBookingCancelledEmail(
   ].filter(Boolean) as string[]
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject: `Booking cancelled: ${context.eventName}`,
     text: [...body, '', 'The Anchor'].join('\n'),
@@ -500,6 +505,7 @@ export async function sendEventTicketTransferredEmail(
   ].filter(Boolean) as string[]
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject: `Tickets transferred: ${input.toEventName}`,
     text: [
@@ -567,6 +573,7 @@ export async function sendEventRescheduledEmail(
   ]
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject: `Event rescheduled: ${input.eventName || context.eventName}`,
     text: [
@@ -616,6 +623,7 @@ export async function sendEventPostponedEmail(
   ]
 
   return sendEmail({
+    requireLog: true,
     to: context.email,
     subject: `Event postponed: ${eventName}`,
     text: [...body, '', 'The Anchor'].join('\n'),

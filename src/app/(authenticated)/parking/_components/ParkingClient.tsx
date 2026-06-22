@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition, type MouseEvent } from 'react'
 import { formatDateTime } from '@/lib/dateUtils'
 import { toast } from '@/ds'
 import {
   PageHeader, Card, CardHeader, CardBody, SectionNav,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  CustomerLink,
 } from '@/ds'
 import {
   Button, Badge, SearchInput, Select, Stat, Spinner, Alert,
@@ -434,7 +435,16 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                           }}
                         >
                           <TableCell className="font-medium">{booking.reference}</TableCell>
-                          <TableCell>{booking.customer_first_name} {booking.customer_last_name ?? ''}</TableCell>
+                          <TableCell>
+                            <div onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}>
+                              <CustomerLink
+                                customerId={booking.customer_id ?? null}
+                                name={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim()}
+                                fallback="Unknown Customer"
+                                className="text-blue-600 hover:text-blue-700"
+                              />
+                            </div>
+                          </TableCell>
                           <TableCell>{formatDateTime(booking.start_at)}</TableCell>
                           <TableCell>{formatDateTime(booking.end_at)}</TableCell>
                           <TableCell><Badge tone={statusBadgeTone[booking.status]}>{booking.status.replace('_', ' ')}</Badge></TableCell>
@@ -458,7 +468,17 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                   <CardHeader title="Booking Details" action={<Button variant="ghost" size="sm" onClick={() => setSelectedBooking(null)}>Close</Button>} />
                   <CardBody className="space-y-3">
                     <DetailRow label="Reference" value={selectedBooking.reference} />
-                    <DetailRow label="Customer" value={`${selectedBooking.customer_first_name} ${selectedBooking.customer_last_name ?? ''}`} />
+                    <DetailRow
+                      label="Customer"
+                      value={
+                        <CustomerLink
+                          customerId={selectedBooking.customer_id ?? null}
+                          name={`${selectedBooking.customer_first_name} ${selectedBooking.customer_last_name ?? ''}`.trim()}
+                          fallback="Unknown Customer"
+                          className="text-blue-600 hover:text-blue-700"
+                        />
+                      }
+                    />
                     <DetailRow label="Mobile" value={selectedBooking.customer_mobile} />
                     <DetailRow label="Email" value={selectedBooking.customer_email ?? '—'} />
                     <DetailRow label="Vehicle" value={`${selectedBooking.vehicle_registration}${selectedBooking.vehicle_make ? ` - ${selectedBooking.vehicle_make}` : ''}${selectedBooking.vehicle_model ? ` ${selectedBooking.vehicle_model}` : ''}`} />

@@ -1967,7 +1967,7 @@ export async function resendCalendarInvite(
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
     .select(
-      'id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status'
+      'id, customer_id, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, event_type, guest_count, status'
     )
     .eq('id', bookingId)
     .single()
@@ -2059,7 +2059,7 @@ export async function sendDepositPaymentLink(
   const admin = createAdminClient()
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
-    .select('id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email')
+    .select('id, customer_id, deposit_amount, deposit_paid_date, status, event_date, event_type, customer_first_name, customer_name, contact_email')
     .eq('id', bookingId)
     .maybeSingle()
 

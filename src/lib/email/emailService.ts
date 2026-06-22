@@ -19,11 +19,14 @@ export interface EmailOptions {
   replyTo?: string;
   commType?: string;
   customerId?: string | null;
+  requireLog?: boolean;
   metadata?: Record<string, unknown>;
   tableBookingId?: string | null;
   eventBookingId?: string | null;
   privateBookingId?: string | null;
   parkingBookingId?: string | null;
+  invoiceId?: string | null;
+  quoteId?: string | null;
 }
 
 export interface EmailAttachment {
@@ -68,12 +71,21 @@ async function recordEmailOutcome(
     error?: string | null
   }
 ) {
-  await recordEmailMessage({
+  const attachments = options.attachments?.map(att => ({
+    filename: att.name,
+    content_type: att.contentType,
+    size: typeof att.content === 'string' ? Buffer.byteLength(att.content) : att.content.byteLength,
+  })) ?? null
+
+  const rowId = await recordEmailMessage({
     customerId: options.customerId ?? null,
     toAddress: options.to,
     fromAddress: input.fromAddress ?? null,
     commType: options.commType ?? null,
     subject: options.subject,
+    bodyText: options.text ?? null,
+    bodyHtml: options.html ?? null,
+    attachments,
     resendMessageId: input.messageId ?? null,
     status: input.status,
     error: input.error ?? null,
@@ -82,7 +94,15 @@ async function recordEmailOutcome(
     eventBookingId: options.eventBookingId ?? null,
     privateBookingId: options.privateBookingId ?? null,
     parkingBookingId: options.parkingBookingId ?? null,
+    invoiceId: options.invoiceId ?? null,
+    quoteId: options.quoteId ?? null,
   });
+
+  if (options.requireLog === true && !rowId) {
+    throw new Error('Email sent state could not be logged')
+  }
+
+  return rowId
 }
 
 /**
@@ -91,11 +111,18 @@ async function recordEmailOutcome(
 export async function sendEmail(options: EmailOptions): Promise<EmailSendResult> {
   if (await isEmailSuppressed(options.to)) {
     const error = 'Recipient email address is suppressed';
-    await recordEmailOutcome(options, {
-      status: 'suppressed',
-      fromAddress: options.from ?? process.env.EMAIL_FROM_ADDRESS ?? process.env.MICROSOFT_USER_EMAIL ?? null,
-      error,
-    });
+    try {
+      await recordEmailOutcome(options, {
+        status: 'suppressed',
+        fromAddress: options.from ?? process.env.EMAIL_FROM_ADDRESS ?? process.env.MICROSOFT_USER_EMAIL ?? null,
+        error,
+      });
+    } catch (logError) {
+      return {
+        success: false,
+        error: logError instanceof Error ? logError.message : error,
+      }
+    }
     return { success: false, error };
   }
 
@@ -113,11 +140,18 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
 
   if (!client || !fromAddress) {
     const error = 'Email service is not configured';
-    await recordEmailOutcome(options, {
-      status: 'failed',
-      fromAddress: fromAddress ?? null,
-      error,
-    });
+    try {
+      await recordEmailOutcome(options, {
+        status: 'failed',
+        fromAddress: fromAddress ?? null,
+        error,
+      });
+    } catch (logError) {
+      return {
+        success: false,
+        error: logError instanceof Error ? logError.message : error,
+      }
+    }
     return { success: false, error };
   }
 
@@ -151,22 +185,37 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     const { data, error } = await client.emails.send(resendPayload as any);
 
     if (error) {
-      await recordEmailOutcome(options, {
-        status: 'failed',
-        fromAddress,
-        error: error.message,
-      });
+      try {
+        await recordEmailOutcome(options, {
+          status: 'failed',
+          fromAddress,
+          error: error.message,
+        });
+      } catch (logError) {
+        return {
+          success: false,
+          error: logError instanceof Error ? logError.message : error.message,
+        }
+      }
       return {
         success: false,
         error: error.message,
       };
     }
 
-    await recordEmailOutcome(options, {
-      status: 'sent',
-      fromAddress,
-      messageId: data?.id ?? null,
-    });
+    try {
+      await recordEmailOutcome(options, {
+        status: 'sent',
+        fromAddress,
+        messageId: data?.id ?? null,
+      });
+    } catch (logError) {
+      return {
+        success: false,
+        error: logError instanceof Error ? logError.message : 'Email logging failed',
+        messageId: data?.id,
+      }
+    }
 
     return {
       success: true,
@@ -175,11 +224,18 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
   } catch (error: unknown) {
     console.error('Error sending email:', error);
     const message = getErrorMessage(error);
-    await recordEmailOutcome(options, {
-      status: 'failed',
-      fromAddress,
-      error: message,
-    });
+    try {
+      await recordEmailOutcome(options, {
+        status: 'failed',
+        fromAddress,
+        error: message,
+      });
+    } catch (logError) {
+      return {
+        success: false,
+        error: logError instanceof Error ? logError.message : message,
+      }
+    }
     return {
       success: false,
       error: message
@@ -193,11 +249,18 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
   try {
     if (!isGraphConfigured()) {
       const error = 'Email service is not configured';
-      await recordEmailOutcome(options, {
-        status: 'failed',
-        fromAddress: senderEmail || null,
-        error,
-      });
+      try {
+        await recordEmailOutcome(options, {
+          status: 'failed',
+          fromAddress: senderEmail || null,
+          error,
+        });
+      } catch (logError) {
+        return {
+          success: false,
+          error: logError instanceof Error ? logError.message : error,
+        }
+      }
       return {
         success: false,
         error
@@ -256,11 +319,19 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
         saveToSentItems: true
       });
 
-    await recordEmailOutcome(options, {
-      status: 'sent',
-      fromAddress: senderEmail,
-      messageId: response?.id ?? null,
-    });
+    try {
+      await recordEmailOutcome(options, {
+        status: 'sent',
+        fromAddress: senderEmail,
+        messageId: response?.id ?? null,
+      });
+    } catch (logError) {
+      return {
+        success: false,
+        error: logError instanceof Error ? logError.message : 'Email logging failed',
+        messageId: response?.id,
+      }
+    }
 
     return {
       success: true,
@@ -269,11 +340,18 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
   } catch (error: unknown) {
     console.error('Error sending email:', error);
     const message = getErrorMessage(error);
-    await recordEmailOutcome(options, {
-      status: 'failed',
-      fromAddress: senderEmail || null,
-      error: message,
-    });
+    try {
+      await recordEmailOutcome(options, {
+        status: 'failed',
+        fromAddress: senderEmail || null,
+        error: message,
+      });
+    } catch (logError) {
+      return {
+        success: false,
+        error: logError instanceof Error ? logError.message : message,
+      }
+    }
     return {
       success: false,
       error: message

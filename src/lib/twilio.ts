@@ -4,7 +4,7 @@ import { retry, RetryConfigs } from './retry';
 import { logger } from './logger';
 import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './env';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
-import { recordOutboundSmsMessage } from '@/lib/sms/logging';
+import { recordOutboundMessage, recordOutboundSmsMessage } from '@/lib/sms/logging';
 import { resolveSmsSuspensionReason } from '@/lib/sms/suspension';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
@@ -22,6 +22,8 @@ const accountSid = env.TWILIO_ACCOUNT_SID;
 const authToken = env.TWILIO_AUTH_TOKEN;
 const fromNumber = env.TWILIO_PHONE_NUMBER;
 const messagingServiceSid = env.TWILIO_MESSAGING_SERVICE_SID;
+const whatsappFromNumber = env.TWILIO_WHATSAPP_FROM;
+const whatsappMessagingServiceSid = env.TWILIO_WHATSAPP_MESSAGING_SERVICE_SID;
 
 let cachedTwilioClient: ReturnType<typeof twilio> | null = null;
 
@@ -52,6 +54,10 @@ export type SendSMSOptions = {
     email?: string;
   };
 };
+
+export type SendWhatsAppOptions = Omit<SendSMSOptions, 'skipQuietHours' | 'allowTransactionalOverride'> & {
+  templateKey?: string
+}
 
 const TWILIO_SCHEDULE_MIN_DELAY_MS = 15 * 60 * 1000;
 
@@ -185,6 +191,50 @@ export async function isCustomerSmsSendAllowed(
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { customerId }
     })
+    return { allowed: false, reason: 'customer_lookup_failed' };
+  }
+}
+
+export async function isCustomerWhatsAppSendAllowed(
+  customerId: string,
+  to: string,
+  options?: { marketing?: boolean }
+): Promise<SmsSendEligibility> {
+  try {
+    const supabase = createAdminClient();
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .select('whatsapp_status, whatsapp_opt_in, marketing_whatsapp_opt_in, mobile_e164, mobile_number')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (error || !customer) {
+      return { allowed: false, reason: 'customer_lookup_failed' };
+    }
+
+    const rawPhones = [
+      (customer as any)?.mobile_e164,
+      (customer as any)?.mobile_number
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+    if (rawPhones.length === 0 || !doesCustomerPhoneMatchTo({ customerPhones: rawPhones, to })) {
+      return { allowed: false, reason: 'customer_phone_mismatch' };
+    }
+
+    if ((customer as any).whatsapp_status === 'opted_out' || (customer as any).whatsapp_status === 'whatsapp_deactivated') {
+      return { allowed: false, reason: 'sms_status_blocked' };
+    }
+
+    if (options?.marketing === true && (customer as any).marketing_whatsapp_opt_in !== true) {
+      return { allowed: false, reason: 'sms_opt_in_blocked' };
+    }
+
+    if ((customer as any).whatsapp_opt_in !== true) {
+      return { allowed: false, reason: 'sms_opt_in_blocked' };
+    }
+
+    return { allowed: true };
+  } catch {
     return { allowed: false, reason: 'customer_lookup_failed' };
   }
 }
@@ -703,3 +753,161 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
     }
   }
 };
+
+function withWhatsAppPrefix(value: string): string {
+  const trimmed = value.trim()
+  return trimmed.startsWith('whatsapp:') ? trimmed : `whatsapp:${trimmed}`
+}
+
+function stripWhatsAppPrefix(value: string): string {
+  return value.trim().replace(/^whatsapp:/i, '')
+}
+
+export const sendWhatsApp = async (to: string, body: string, options: SendWhatsAppOptions = {}) => {
+  const suspensionActive = process.env.SUSPEND_ALL_COMMS === 'true' || process.env.SUSPEND_ALL_SMS === 'true'
+  if (suspensionActive) {
+    return {
+      success: false,
+      error: 'Customer messaging is currently suspended',
+      code: 'comms_suspended'
+    }
+  }
+
+  const customerId = options.customerId
+  if (!customerId) {
+    return {
+      success: false,
+      error: 'WhatsApp sends require a customer id',
+      code: 'customer_lookup_failed'
+    }
+  }
+
+  const normalizedTo = stripWhatsAppPrefix(to)
+  const eligibility = await isCustomerWhatsAppSendAllowed(customerId, normalizedTo, {
+    marketing: options.metadata?.marketing === true
+  })
+
+  if (!eligibility.allowed) {
+    return {
+      success: false,
+      error: 'This number is not eligible to receive WhatsApp messages',
+      code: eligibility.reason
+    }
+  }
+
+  const from = whatsappFromNumber ? withWhatsAppPrefix(whatsappFromNumber) : null
+  if (!from && !whatsappMessagingServiceSid) {
+    return {
+      success: false,
+      error: 'WhatsApp sender is not configured',
+      code: 'whatsapp_not_configured'
+    }
+  }
+
+  try {
+    const client = getTwilioClient()
+    const messageParams: any = {
+      body,
+      to: withWhatsAppPrefix(normalizedTo),
+      statusCallback: TWILIO_STATUS_CALLBACK,
+      statusCallbackMethod: TWILIO_STATUS_CALLBACK_METHOD,
+    }
+
+    if (whatsappMessagingServiceSid) {
+      messageParams.messagingServiceSid = whatsappMessagingServiceSid
+    } else {
+      messageParams.from = from
+    }
+
+    const message = await retry(
+      async () => client.messages.create(messageParams),
+      {
+        ...RetryConfigs.sms,
+        onRetry: (error, attempt) => {
+          logger.warn(`WhatsApp send retry attempt ${attempt}`, {
+            error,
+            metadata: { to: normalizedTo, bodyLength: body.length }
+          })
+        }
+      }
+    )
+
+    const messageId = options.skipMessageLogging === true
+      ? null
+      : await recordOutboundMessage({
+          customerId,
+          to: normalizedTo,
+          body,
+          sid: message.sid,
+          fromNumber: stripWhatsAppPrefix(String(message.from ?? whatsappFromNumber ?? '')),
+          channel: 'whatsapp',
+          status: message.status ?? 'queued',
+          twilioStatus: message.status ?? 'queued',
+          metadata: {
+            ...(options.metadata ?? {}),
+            template_key: options.templateKey ?? options.metadata?.template_key ?? null
+          },
+          segments: 1,
+          costUsd: 0
+        })
+
+    if (options.skipMessageLogging !== true && !messageId) {
+      logger.error('WhatsApp sent but failed to persist outbound message log', {
+        metadata: { to: normalizedTo, sid: message.sid, customerId }
+      })
+      return {
+        success: false,
+        error: 'WhatsApp message sent but logging failed',
+        code: 'logging_failed',
+        sid: message.sid,
+        messageId: null,
+        logFailure: true
+      }
+    }
+
+    return {
+      success: true,
+      sid: message.sid,
+      fromNumber: stripWhatsAppPrefix(String(message.from ?? whatsappFromNumber ?? '')),
+      status: message.status ?? 'queued',
+      messageId,
+      customerId
+    }
+  } catch (error: unknown) {
+    const errCode = getErrorCode(error)
+    logger.error('Failed to send WhatsApp after retries', {
+      error: error instanceof Error ? error : new Error(getErrorMessage(error)),
+      metadata: { to: normalizedTo, errorCode: errCode }
+    })
+
+    if (options.skipMessageLogging !== true) {
+      try {
+        await recordOutboundMessage({
+          to: normalizedTo,
+          body,
+          sid: `local-fail-wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          customerId,
+          channel: 'whatsapp',
+          status: 'failed',
+          twilioStatus: String(errCode ?? 'failed'),
+          metadata: {
+            ...(options.metadata ?? {}),
+            error_code: errCode !== undefined ? String(errCode) : 'failed',
+            error_message: getErrorMessage(error)
+          }
+        })
+      } catch (logError: unknown) {
+        logger.error('Failed to log outbound WhatsApp failure', {
+          error: logError instanceof Error ? logError : new Error(String(logError)),
+          metadata: { to: normalizedTo, customerId }
+        })
+      }
+    }
+
+    return {
+      success: false,
+      error: 'Failed to send WhatsApp message',
+      code: errCode !== undefined ? String(errCode) : undefined
+    }
+  }
+}

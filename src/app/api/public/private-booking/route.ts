@@ -16,6 +16,7 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications';
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile';
+import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry';
 
 const BookingItemSchema = z.object({
     item_type: z.enum(['space', 'catering', 'vendor', 'other']),
@@ -216,6 +217,11 @@ export async function POST(request: NextRequest) {
 
             const booking = await PrivateBookingService.createBooking(bookingPayload);
             createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
+
+            await recordPrivateBookingWebEnquiryCommunication({
+                booking: booking as any,
+                endpoint: '/api/public/private-booking'
+            });
 
             try {
                 const managerEmailResult = await sendManagerPrivateBookingCreatedEmail({
