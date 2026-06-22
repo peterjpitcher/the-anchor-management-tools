@@ -3,6 +3,7 @@
 -- and a linked-only unified communications view.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+SET search_path = public, extensions;
 
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('communication-attachments', 'communication-attachments', false)
