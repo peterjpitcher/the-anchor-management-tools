@@ -92,6 +92,8 @@ type SmsSafetyMeta =
   }
   | null
 
+export type TableBookingNotificationChannel = 'email' | 'whatsapp' | 'sms' | null
+
 type TableBookingNotificationRow = {
   id: string
   customer_id: string | null
@@ -793,7 +795,12 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     bookingResult: TableBookingRpcResult
     nextStepUrl?: string | null
   }
-): Promise<{ scheduledFor?: string; sms: SmsSafetyMeta; email?: { success: boolean; error?: string | null } | null }> {
+): Promise<{
+  notificationChannel?: TableBookingNotificationChannel
+  scheduledFor?: string
+  sms: SmsSafetyMeta
+  email?: { success: boolean; error?: string | null } | null
+}> {
   const { data: customer, error } = await supabase
     .from('customers')
     .select('id, first_name, last_name, mobile_e164, mobile_number, email, sms_status, sms_opt_in, marketing_sms_opt_in, email_status, email_deactivated_at, marketing_email_opt_in')
@@ -971,6 +978,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   })
 
   return {
+    notificationChannel: notificationResult.selectedChannels[0] ?? null,
     scheduledFor: smsDeliveredOrUnknown ? smsAttempt?.scheduledFor : undefined,
     sms: smsAttempt
       ? {
