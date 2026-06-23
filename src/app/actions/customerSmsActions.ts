@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { revalidatePath } from 'next/cache'
-import { CustomerService } from '@/services/customers'
 import { MessageService } from '@/services/messages'
+import { ConsentService } from '@/services/consent'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
@@ -21,10 +21,7 @@ export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
     return { error: 'Not authenticated' }
   }
 
-  // Verify permissions manually as per original logic or use checkUserPermission
-  // Original used rpc 'user_has_permission'. We can use our helper if it does the same.
-  // Sticking to the pattern of other actions:
-  const hasPermission = await checkUserPermission('customers', 'edit', user.id);
+  const hasPermission = await checkUserPermission('customers', 'manage_contact_preferences', user.id);
 
   const auditBase = {
     user_id: user.id,
@@ -44,7 +41,7 @@ export async function toggleCustomerSmsOptIn(customerId: string, optIn: boolean)
   }
 
   try {
-    const result = await CustomerService.toggleSmsOptIn(customerId, optIn);
+    const result = await ConsentService.toggleSmsServiceOptIn(customerId, optIn, user.id);
 
     await logAuditEvent({
       ...auditBase,
@@ -80,7 +77,7 @@ export async function toggleCustomerWhatsAppOptIn(customerId: string, optIn: boo
     return { error: 'Not authenticated' }
   }
 
-  const hasPermission = await checkUserPermission('customers', 'edit', user.id)
+  const hasPermission = await checkUserPermission('customers', 'manage_whatsapp_opt_in', user.id)
 
   const auditBase = {
     user_id: user.id,
@@ -100,7 +97,7 @@ export async function toggleCustomerWhatsAppOptIn(customerId: string, optIn: boo
   }
 
   try {
-    const result = await CustomerService.toggleWhatsAppOptIn(customerId, optIn)
+    const result = await ConsentService.toggleWhatsAppServiceOptIn(customerId, optIn, user.id)
 
     await logAuditEvent({
       ...auditBase,
@@ -149,6 +146,60 @@ export async function getCustomerMessages(customerId: string) {
     return await MessageService.getCustomerMessages(customerId);
   } catch (error: unknown) {
     return { error: getErrorMessage(error, 'Failed to load customer messages') };
+  }
+}
+
+function csvValue(value: unknown): string {
+  if (value == null) return ''
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+export async function getCustomerConsentAudit(customerId: string) {
+  const hasPermission = await checkUserPermission('messages', 'view_consent_audit')
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  try {
+    return { data: await ConsentService.listCustomerConsents(customerId) }
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to load customer consent audit') }
+  }
+}
+
+export async function exportCustomerConsentAudit(customerId: string) {
+  const hasPermission = await checkUserPermission('messages', 'export_consent_audit')
+  if (!hasPermission) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  try {
+    const rows = await ConsentService.listCustomerConsents(customerId)
+    const headers = [
+      'captured_at',
+      'channel',
+      'purpose',
+      'status',
+      'legal_basis',
+      'source',
+      'capture_method',
+      'consent_text_version',
+      'related_entity_type',
+      'related_entity_id',
+      'metadata',
+    ]
+    const csv = [
+      headers.join(','),
+      ...rows.map((row: any) => headers.map((header) => csvValue(row?.[header])).join(',')),
+    ].join('\n')
+
+    return {
+      data: csv,
+      fileName: `customer-consent-audit-${customerId}.csv`,
+    }
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to export customer consent audit') }
   }
 }
 

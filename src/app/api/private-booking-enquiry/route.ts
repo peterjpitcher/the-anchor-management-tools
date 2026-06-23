@@ -17,6 +17,8 @@ import { logger } from '@/lib/logger'
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry'
+import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
+import { ConsentService } from '@/services/consent'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -32,7 +34,8 @@ const EnquirySchema = z.object({
       return undefined
     }, z.number().int().min(1).max(50))
     .optional(),
-  notes: z.string().max(2000).optional()
+  notes: z.string().max(2000).optional(),
+  communication_consent: OptionalCommunicationConsentSchema
 })
 
 const privateBookingEnquiryLimiter = createRateLimiter({
@@ -168,7 +171,8 @@ export async function POST(request: NextRequest) {
       date: eventDate || null,
       time: startTime || null,
       group_size: parsed.data.group_size || null,
-      notes: parsed.data.notes || null
+      notes: parsed.data.notes || null,
+      communication_consent: consentHashPayload(parsed.data.communication_consent)
     })
     const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
@@ -211,6 +215,22 @@ export async function POST(request: NextRequest) {
         source: 'website'
       })
       mutationCommitted = true
+
+      if (booking?.customer_id && booking?.id) {
+        await ConsentService.applyBookingContactConsent(
+          booking.customer_id,
+          parsed.data.communication_consent,
+          {
+            source: 'public_private_booking',
+            captureMethod: 'checkbox',
+            sourceUrl: request.headers.get('referer'),
+            userAgent: request.headers.get('user-agent'),
+            relatedEntityType: 'private_booking',
+            relatedEntityId: booking.id,
+            metadata: { idempotency_key: idempotencyKey }
+          }
+        )
+      }
 
       await recordPrivateBookingWebEnquiryCommunication({
         booking: booking as any,

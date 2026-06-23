@@ -17,6 +17,8 @@ import { logger } from '@/lib/logger';
 import { sendManagerPrivateBookingCreatedEmail } from '@/lib/private-bookings/manager-notifications';
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile';
 import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry';
+import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation';
+import { ConsentService } from '@/services/consent';
 
 const BookingItemSchema = z.object({
     item_type: z.enum(['space', 'catering', 'vendor', 'other']),
@@ -56,6 +58,7 @@ const PublicBookingSchema = z.object({
     accessibility_needs: z.string().max(2000).optional(),
     date_tbd: z.boolean().optional(),
     items: z.array(BookingItemSchema).max(50).optional(),
+    communication_consent: OptionalCommunicationConsentSchema,
 });
 
 const DEPRECATION_HEADERS = {
@@ -156,7 +159,8 @@ export async function POST(request: NextRequest) {
 
         const requestHash = computeIdempotencyRequestHash({
             ...body,
-            contact_phone: normalizedPhone || body.contact_phone || null
+            contact_phone: normalizedPhone || body.contact_phone || null,
+            communication_consent: consentHashPayload(body.communication_consent)
         });
         const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash);
 
@@ -217,6 +221,22 @@ export async function POST(request: NextRequest) {
 
             const booking = await PrivateBookingService.createBooking(bookingPayload);
             createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
+
+            if (booking?.customer_id && createdBookingId) {
+                await ConsentService.applyBookingContactConsent(
+                    booking.customer_id,
+                    body.communication_consent,
+                    {
+                        source: 'public_private_booking',
+                        captureMethod: 'checkbox',
+                        sourceUrl: request.headers.get('referer'),
+                        userAgent: request.headers.get('user-agent'),
+                        relatedEntityType: 'private_booking',
+                        relatedEntityId: createdBookingId,
+                        metadata: { idempotency_key: idempotencyKey }
+                    }
+                );
+            }
 
             await recordPrivateBookingWebEnquiryCommunication({
                 booking: booking as any,

@@ -208,7 +208,6 @@ export default function CustomersClient({
         formData.append('mobile_number', customerData.mobile_number ?? '')
         formData.append('default_country_code', '44')
         if (customerData.email) formData.append('email', customerData.email)
-        formData.append('sms_opt_in', 'on')
         const result = await createCustomerAction(formData)
         if ('error' in result && result.error) {
           toast.error(typeof result.error === 'string' ? result.error : 'Failed to create customer'); return
@@ -230,7 +229,6 @@ export default function CustomersClient({
         formData.append('mobile_number', customerData.mobile_number ?? '')
         formData.append('default_country_code', '44')
         if (customerData.email) formData.append('email', customerData.email)
-        formData.append('sms_opt_in', editingCustomer.sms_opt_in !== false ? 'on' : 'off')
         const result = await updateCustomerAction(editingCustomer.id, formData)
         if ('error' in result && result.error) {
           toast.error(typeof result.error === 'string' ? result.error : 'Failed to update customer'); return

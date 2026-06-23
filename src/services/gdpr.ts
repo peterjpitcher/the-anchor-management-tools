@@ -17,6 +17,7 @@ interface ExportData {
   parkingBookings: any[]
   messages: any[]
   emailMessages: any[]
+  customerConsents: any[]
   unmatchedCommunications: any[]
   webhookLogs: any[]
   storageAttachmentRefs: string[]
@@ -280,6 +281,7 @@ export class GdprService {
       parkingBookings: [],
       messages: [],
       emailMessages: [],
+      customerConsents: [],
       unmatchedCommunications: [],
       webhookLogs: [],
       storageAttachmentRefs: [],
@@ -315,6 +317,7 @@ export class GdprService {
         parkingBookings,
         messages,
         emailMessages,
+        customerConsents,
         unmatchedCommunications,
       ] = await Promise.all([
         adminClient
@@ -337,6 +340,9 @@ export class GdprService {
         (adminClient.from('email_messages') as any)
           .select('*')
           .in('customer_id', customerIds),
+        (adminClient.from('customer_consents') as any)
+          .select('*')
+          .in('customer_id', customerIds),
         fetchUnmatchedCommunicationRows(adminClient, identity),
       ])
 
@@ -346,6 +352,7 @@ export class GdprService {
       exportData.parkingBookings = parkingBookings.data || []
       exportData.messages = messages.data || []
       exportData.emailMessages = emailMessages.data || []
+      exportData.customerConsents = customerConsents.data || []
       exportData.unmatchedCommunications = unmatchedCommunications || []
     }
 
@@ -439,6 +446,7 @@ export class GdprService {
       customers: 0,
       messages: 0,
       emailMessages: 0,
+      customerConsents: 0,
       unmatchedCommunications: 0,
       webhookLogs: 0,
       storageObjects: storagePaths.length,
@@ -457,6 +465,15 @@ export class GdprService {
         body_html: null,
         attachments: null,
         has_attachments: false,
+        updated_at: anonymizedAt,
+      }, 'customer_id', customerIds)
+
+      counts.customerConsents = await updateRows('customer_consents', {
+        source_url: null,
+        ip_hash: null,
+        user_agent: null,
+        captured_by_user_id: null,
+        metadata: { erased: true, reason: 'gdpr_erasure', erased_at: anonymizedAt },
         updated_at: anonymizedAt,
       }, 'customer_id', customerIds)
 
@@ -518,7 +535,7 @@ export class GdprService {
     await removeCommunicationStorageObjects(storagePaths)
 
     return {
-      message: `User communication data anonymized. Customers: ${counts.customers}, messages: ${counts.messages}, emails: ${counts.emailMessages}, unmatched: ${counts.unmatchedCommunications}, webhook logs: ${counts.webhookLogs}, media objects requested for removal: ${counts.storageObjects}.`,
+      message: `User communication data anonymized. Customers: ${counts.customers}, messages: ${counts.messages}, emails: ${counts.emailMessages}, consent rows: ${counts.customerConsents}, unmatched: ${counts.unmatchedCommunications}, webhook logs: ${counts.webhookLogs}, media objects requested for removal: ${counts.storageObjects}.`,
     }
   }
 
@@ -527,7 +544,7 @@ export class GdprService {
     const cutoffIso = addMonths(referenceDate, -COMMUNICATION_RETENTION_MONTHS).toISOString()
     const anonymizedText = '[removed after communications retention period]'
 
-    const [messageRows, emailRows, unmatchedRows, webhookRows] = await Promise.all([
+    const [messageRows, emailRows, unmatchedRows, webhookRows, consentRows] = await Promise.all([
       fetchAllRows<any>(() =>
         adminClient
           .from('messages')
@@ -555,6 +572,13 @@ export class GdprService {
           .lt('processed_at', cutoffIso)
           .or('body.not.is.null,message_body.not.is.null,headers.not.is.null,params.not.is.null,from_number.not.is.null,to_number.not.is.null,customer_id.not.is.null')
           .order('processed_at', { ascending: true })
+      ),
+      fetchAllRows<any>(() =>
+        (adminClient.from('customer_consents') as any)
+          .select('id')
+          .lt('captured_at', cutoffIso)
+          .or('source_url.not.is.null,ip_hash.not.is.null,user_agent.not.is.null')
+          .order('captured_at', { ascending: true })
       ),
     ])
 
@@ -609,6 +633,16 @@ export class GdprService {
       }, 'id', webhookRows.map((row: any) => row.id))
     }
 
+    if (consentRows.length) {
+      await updateRows('customer_consents', {
+        source_url: null,
+        ip_hash: null,
+        user_agent: null,
+        metadata: { retained: true, reason: 'communications_retention', cleaned_at: cleanedAt },
+        updated_at: cleanedAt,
+      }, 'id', consentRows.map((row: any) => row.id))
+    }
+
     await removeCommunicationStorageObjects(storagePaths)
 
     return {
@@ -617,6 +651,7 @@ export class GdprService {
       emailMessages: emailRows.length,
       unmatchedCommunications: unmatchedRows.length,
       webhookLogs: webhookRows.length,
+      customerConsents: consentRows.length,
       storageObjects: storagePaths.length,
     }
   }

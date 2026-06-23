@@ -71,16 +71,16 @@ describe('fetchBulkRecipients', () => {
     expect(mockRpc).not.toHaveBeenCalled()
   })
 
-  it('should return error when user lacks messages:send permission', async () => {
+  it('should return error when user lacks messages:send_marketing permission', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(false)
     const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
     expect(result).toEqual({ error: 'Insufficient permissions' })
     expect(mockRpc).not.toHaveBeenCalled()
   })
 
-  it('should check permission with messages:send (not create or view)', async () => {
+  it('should check permission with messages:send_marketing (not create or view)', async () => {
     await fetchBulkRecipients({ smsOptIn: 'opted_in' })
-    expect(checkUserPermission).toHaveBeenCalledWith('messages', 'send', MOCK_USER.id)
+    expect(checkUserPermission).toHaveBeenCalledWith('messages', 'send_marketing', MOCK_USER.id)
   })
 
   it('should return recipients on success with default filters', async () => {
@@ -187,15 +187,15 @@ describe('sendBulkMessages', () => {
     expect(result).toEqual({ success: false, error: 'Unauthorized' })
   })
 
-  it('should return error when user lacks messages:send permission', async () => {
+  it('should return error when user lacks messages:send_marketing permission', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(false)
     const result = await sendBulkMessages(['cust-1'], 'Hello!')
     expect(result).toEqual({ success: false, error: 'Insufficient permissions' })
   })
 
-  it('should check permission with messages:send', async () => {
+  it('should check permission with messages:send_marketing', async () => {
     await sendBulkMessages(['cust-1'], 'Hello!')
-    expect(checkUserPermission).toHaveBeenCalledWith('messages', 'send', MOCK_USER.id)
+    expect(checkUserPermission).toHaveBeenCalledWith('messages', 'send_marketing', MOCK_USER.id)
   })
 
   it('should return error when no recipients are provided', async () => {

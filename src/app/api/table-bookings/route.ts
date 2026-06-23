@@ -29,6 +29,8 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { createRateLimiter } from '@/lib/rate-limit'
+import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
+import { ConsentService } from '@/services/consent'
 
 const tableBookingIpLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -57,7 +59,8 @@ const CreateTableBookingSchema = z.object({
   dietary_requirements: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   allergies: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
-  skip_customer_sms: z.boolean().optional()
+  skip_customer_sms: z.boolean().optional(),
+  communication_consent: OptionalCommunicationConsentSchema
 })
 
 type TableBookingResponseData = {
@@ -186,7 +189,8 @@ export async function POST(request: NextRequest) {
       purpose: payload.purpose,
       notes: payload.notes || null,
       dietary_requirements: payload.dietary_requirements ?? null,
-      allergies: payload.allergies ?? null
+      allergies: payload.allergies ?? null,
+      communication_consent: consentHashPayload(payload.communication_consent)
     })
 
     const supabase = createAdminClient()
@@ -267,6 +271,22 @@ export async function POST(request: NextRequest) {
         bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
       }
       mutationCommitted = Boolean(bookingResult.table_booking_id)
+
+      if (customerResolution.customerId && bookingResult.table_booking_id) {
+        await ConsentService.applyBookingContactConsent(
+          customerResolution.customerId,
+          payload.communication_consent,
+          {
+            source: 'public_table_booking',
+            captureMethod: 'checkbox',
+            sourceUrl: req.headers.get('referer'),
+            userAgent: req.headers.get('user-agent'),
+            relatedEntityType: 'table_booking',
+            relatedEntityId: bookingResult.table_booking_id,
+            metadata: { idempotency_key: idempotencyKey }
+          }
+        )
+      }
 
       // Persist structured dietary/allergy arrays directly on the booking row.
       // The RPC doesn't accept these so we write them post-insert. Best-effort:

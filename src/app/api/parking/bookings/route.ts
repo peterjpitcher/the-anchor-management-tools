@@ -13,6 +13,8 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
+import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
+import { ConsentService } from '@/services/consent'
 
 const CreateBookingSchema = z.object({
   customer: z.object({
@@ -31,7 +33,8 @@ const CreateBookingSchema = z.object({
   start_at: z.string().datetime({ offset: true }),
   end_at: z.string().datetime({ offset: true }),
   notes: z.string().optional(),
-  source: z.enum(['website', 'staff']).optional().default('staff')
+  source: z.enum(['website', 'staff']).optional().default('staff'),
+  communication_consent: OptionalCommunicationConsentSchema
 })
 
 function sanitizeRegistration(reg: string): string {
@@ -107,7 +110,8 @@ export async function POST(request: NextRequest) {
         start_at: payload.start_at,
         end_at: payload.end_at,
         mobile_number: payload.customer.mobile_number,
-        registration: sanitizeRegistration(payload.vehicle.registration)
+        registration: sanitizeRegistration(payload.vehicle.registration),
+        communication_consent: consentHashPayload(payload.communication_consent)
       }
       const requestHash = computeIdempotencyRequestHash(requestHashPayload)
       let claimHeld = false
@@ -167,6 +171,21 @@ export async function POST(request: NextRequest) {
             { client: supabase }
           )
           booking = result.booking
+          if (booking.customer_id) {
+            await ConsentService.applyBookingContactConsent(
+              booking.customer_id,
+              payload.communication_consent,
+              {
+                source: payload.source === 'website' ? 'public_parking_booking' : 'staff_parking_booking',
+                captureMethod: payload.source === 'website' ? 'checkbox' : 'staff_verbal',
+                sourceUrl: req.headers.get('referer'),
+                userAgent: req.headers.get('user-agent'),
+                relatedEntityType: 'parking_booking',
+                relatedEntityId: booking.id,
+                metadata: { idempotency_key: idempotencyKey ?? null }
+              }
+            )
+          }
         } catch (serviceError) {
           const message = serviceError instanceof Error ? serviceError.message : 'Failed to create parking booking'
           const mappedError = mapParkingCreateError(message)

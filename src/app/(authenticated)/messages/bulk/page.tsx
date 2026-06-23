@@ -16,7 +16,7 @@ interface EventOption {
 }
 
 export default async function BulkMessagesPage() {
-  const canSendMessages = await checkUserPermission('messages', 'send')
+  const canSendMessages = await checkUserPermission('messages', 'send_marketing')
   if (!canSendMessages) {
     redirect('/unauthorized')
   }

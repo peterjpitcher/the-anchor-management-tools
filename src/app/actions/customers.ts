@@ -14,6 +14,7 @@ import { getBulkCustomerLabels } from './customer-labels-bulk'
 import { getUnreadMessageCounts } from './messageActions'
 import type { CustomerLabelAssignment } from './customer-labels'
 import { sendBulkSms } from '@/lib/sms/bulk'
+import { ConsentService } from '@/services/consent'
 
 // ---------------------------------------------------------------------------
 // Customer list query types
@@ -48,7 +49,7 @@ export interface CustomerListResult {
 }
 
 const CUSTOMER_LIST_SELECT =
-  'id, first_name, last_name, mobile_number, email, sms_opt_in, created_at'
+  'id, first_name, last_name, mobile_number, email, sms_opt_in, sms_status, created_at'
 
 /**
  * Server-side customer list fetch with enrichment data (preferences, labels,
@@ -78,11 +79,11 @@ export async function getCustomerList(params: {
 
   // Apply SMS filter
   if (showDeactivated) {
-    countQuery = countQuery.eq('sms_opt_in', false)
-    dataQuery = dataQuery.eq('sms_opt_in', false)
+    countQuery = countQuery.eq('sms_status', 'opted_out')
+    dataQuery = dataQuery.eq('sms_status', 'opted_out')
   } else {
-    countQuery = countQuery.or('sms_opt_in.is.null,sms_opt_in.eq.true')
-    dataQuery = dataQuery.or('sms_opt_in.is.null,sms_opt_in.eq.true')
+    countQuery = countQuery.neq('sms_status', 'opted_out')
+    dataQuery = dataQuery.neq('sms_status', 'opted_out')
   }
 
   // Apply search filter across name, phone, and email
@@ -211,12 +212,13 @@ export async function createCustomer(formData: FormData) {
     const defaultCountryCode =
       (formData.get('default_country_code') as string | null)?.trim() || undefined
 
+    const serviceSmsOptIn = formData.get('sms_opt_in') === 'on'
     const rawData = {
       first_name: (formData.get('first_name') as string | null)?.trim() || undefined,
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
       mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
       email: (formData.get('email') as string | null)?.trim() || undefined,
-      sms_opt_in: formData.get('sms_opt_in') === 'on'
+      sms_opt_in: false
     }
 
     const validationResult = customerSchema.safeParse(rawData)
@@ -224,11 +226,25 @@ export async function createCustomer(formData: FormData) {
       return { error: validationResult.error.errors[0].message }
     }
 
+    if (serviceSmsOptIn) {
+      const canRecordServiceContact =
+        await checkUserPermission('customers', 'record_service_contact', user.id) ||
+        await checkUserPermission('customers', 'manage_contact_preferences', user.id)
+      if (!canRecordServiceContact) {
+        return { error: 'Insufficient permissions to record service contact consent' }
+      }
+    }
+
     const customer = await CustomerService.createCustomer({
       ...validationResult.data,
+      sms_opt_in: false,
       mobile_number: validationResult.data.mobile_number!, // Schema ensures this if valid
       default_country_code: defaultCountryCode
     })
+
+    if (serviceSmsOptIn) {
+      await ConsentService.toggleSmsServiceOptIn(customer.id, true, user.id)
+    }
 
     await logAuditEvent({
       user_id: user.id,
@@ -261,12 +277,13 @@ export async function updateCustomer(id: string, formData: FormData) {
     const defaultCountryCode =
       (formData.get('default_country_code') as string | null)?.trim() || undefined
 
+    const serviceSmsPreference = formData.get('sms_opt_in')
     const rawData = {
       first_name: (formData.get('first_name') as string | null)?.trim() || undefined,
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
       mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
       email: (formData.get('email') as string | null)?.trim() || undefined,
-      sms_opt_in: formData.get('sms_opt_in') === 'on'
+      sms_opt_in: false
     }
 
     const validationResult = customerSchema.safeParse(rawData)
@@ -274,11 +291,23 @@ export async function updateCustomer(id: string, formData: FormData) {
       return { error: validationResult.error.errors[0].message }
     }
 
+    if (serviceSmsPreference === 'on' || serviceSmsPreference === 'off') {
+      const canManageContactPreferences = await checkUserPermission('customers', 'manage_contact_preferences', user.id)
+      if (!canManageContactPreferences) {
+        return { error: 'Insufficient permissions to update contact preferences' }
+      }
+    }
+
     const customer = await CustomerService.updateCustomer(id, {
       ...validationResult.data,
+      sms_opt_in: undefined,
       mobile_number: validationResult.data.mobile_number!,
       default_country_code: defaultCountryCode
     })
+
+    if (serviceSmsPreference === 'on' || serviceSmsPreference === 'off') {
+      await ConsentService.toggleSmsServiceOptIn(id, serviceSmsPreference === 'on', user.id)
+    }
 
     await logAuditEvent({
       user_id: user.id,
@@ -354,7 +383,7 @@ export async function importCustomers(entries: ImportCustomerInput[]) {
       last_name: e.last_name,
       mobile_number: e.mobile_number,
       email: e.email,
-      sms_opt_in: true
+      sms_opt_in: false
     }))
 
     const result = await CustomerService.importCustomers(serviceInput)

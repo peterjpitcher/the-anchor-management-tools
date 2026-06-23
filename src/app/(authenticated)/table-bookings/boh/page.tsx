@@ -17,7 +17,7 @@ export default async function TableBookingsBohPage() {
     checkUserPermission('table_bookings', 'manage'),
     checkUserPermission('reports', 'view'),
     checkUserPermission('settings', 'manage'),
-    checkUserPermission('messages', 'send'),
+    checkUserPermission('messages', 'send_transactional'),
     getUserPermissions()
   ])
 

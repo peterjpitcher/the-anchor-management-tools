@@ -16,6 +16,8 @@ import {
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
+import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
+import { ConsentService } from '@/services/consent'
 import {
   isSundayLunchOnlyEvent,
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
@@ -52,6 +54,7 @@ const CreateEventBookingSchema = z.object({
   event_price: z.number().min(0).optional(),
   event_value: z.number().min(0).optional(),
   food_intent: z.string().trim().min(1).max(80).optional(),
+  communication_consent: OptionalCommunicationConsentSchema,
 })
 
 const ATTRIBUTION_KEYS = [
@@ -129,6 +132,7 @@ export async function POST(request: NextRequest) {
       seats: parsed.data.seats,
       seating_preference: parsed.data.seating_preference || 'seated',
       expected_event_date: parsed.data.expected_event_date || null,
+      communication_consent: consentHashPayload(parsed.data.communication_consent),
     })
     const attribution = buildBookingAttribution(parsed.data)
 
@@ -224,6 +228,19 @@ export async function POST(request: NextRequest) {
       if (!customerResolution.customerId) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
+
+      await ConsentService.applyBookingContactConsent(
+        customerResolution.customerId,
+        parsed.data.communication_consent,
+        {
+          source: 'public_event_booking',
+          captureMethod: 'checkbox',
+          sourceUrl: parsed.data.source_url || req.headers.get('referer'),
+          userAgent: req.headers.get('user-agent'),
+          relatedEntityType: 'event_booking',
+          metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
+        }
+      )
 
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
       const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)

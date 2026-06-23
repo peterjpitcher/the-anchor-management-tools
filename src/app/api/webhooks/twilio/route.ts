@@ -19,6 +19,7 @@ import {
   recordUnmatchedCommunication,
 } from '@/lib/communications/unmatched';
 import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture';
+import { ConsentService } from '@/services/consent';
 
 // Create public Supabase client for logging (no auth required)
 function getPublicSupabaseClient() {
@@ -751,6 +752,32 @@ async function handleInboundSMS(
       if (!optedOutCustomer) {
         // Fail closed: we should never ACK an opt-out keyword if we cannot confirm the preference write.
         throw new Error('Inbound opt-out update affected no customer rows')
+      }
+
+      try {
+        await ConsentService.recordOptOut(
+          customer.id,
+          isWhatsApp ? 'whatsapp' : 'sms',
+          isWhatsApp ? 'twilio_inbound_whatsapp' : 'twilio_inbound_sms',
+          {
+            captureMethod: 'inbound_keyword',
+            relatedEntityType: 'message',
+            metadata: {
+              keyword: messageUpper.split(' ')[0],
+              twilio_message_sid: messageSid,
+              channel,
+            },
+          }
+        )
+      } catch (consentError) {
+        logger.error('Failed to write inbound opt-out consent audit row', {
+          error: consentError instanceof Error ? consentError : new Error(String(consentError)),
+          metadata: {
+            customerId: customer.id,
+            channel,
+            messageSid,
+          },
+        })
       }
 
       {

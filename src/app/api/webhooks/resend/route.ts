@@ -11,6 +11,7 @@ import {
   recordUnmatchedCommunication,
 } from '@/lib/communications/unmatched'
 import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture'
+import { ConsentService } from '@/services/consent'
 
 export const runtime = 'nodejs'
 
@@ -373,6 +374,25 @@ async function updateCustomerEmailHealth(adminClient: any, event: ResendEmailEve
       logger.warn('Failed to update customer email failure state', {
         metadata: { customerId: customer.id, email: normalizedEmail, error: error.message },
       })
+    } else if (status && (event.type === 'email.bounced' || event.type === 'email.complained' || event.type === 'email.suppressed')) {
+      try {
+        await ConsentService.recordOptOut(customer.id, 'email', 'direct_message', {
+          captureMethod: 'provider_event',
+          metadata: {
+            resend_event_type: event.type,
+            reason: errorFromEvent(event) ?? event.type,
+            email: normalizedEmail,
+          },
+        })
+      } catch (consentError) {
+        logger.warn('Failed to record email opt-out consent audit from Resend event', {
+          metadata: {
+            customerId: customer.id,
+            email: normalizedEmail,
+            error: consentError instanceof Error ? consentError.message : String(consentError),
+          },
+        })
+      }
     }
   }
 }
