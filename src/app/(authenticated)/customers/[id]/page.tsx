@@ -11,6 +11,8 @@ import type { CustomerCommunication } from '@/types/communications'
 import {
   toggleCustomerSmsOptIn,
   toggleCustomerWhatsAppOptIn,
+  getCustomerConsentAudit,
+  exportCustomerConsentAudit,
   getCustomerMessages,
   getCustomerSmsStats
 } from '@/app/actions/customerSmsActions'
@@ -125,6 +127,18 @@ type CustomerCategoryPreference = {
   last_attended_date: string | null
 }
 
+type ConsentAuditRow = {
+  id: string
+  captured_at: string | null
+  channel: string | null
+  purpose: string | null
+  status: string | null
+  legal_basis: string | null
+  source: string | null
+  capture_method: string | null
+  consent_text_version: string | null
+}
+
 type UnifiedCustomerBookingRow = {
   key: string
   id: string
@@ -230,6 +244,10 @@ export default function CustomerViewPage() {
 
   const canViewMessages = hasPermission('messages', 'view')
   const canManageCustomers = hasPermission('customers', 'manage')
+  const canManageContactPreferences = hasPermission('customers', 'manage_contact_preferences')
+  const canManageWhatsAppOptIn = hasPermission('customers', 'manage_whatsapp_opt_in')
+  const canViewConsentAudit = hasPermission('messages', 'view_consent_audit')
+  const canExportConsentAudit = hasPermission('messages', 'export_consent_audit')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
@@ -242,6 +260,7 @@ export default function CustomerViewPage() {
   const [privateBookings, setPrivateBookings] = useState<CustomerPrivateBooking[]>([])
   const [parkingBookings, setParkingBookings] = useState<CustomerParkingBooking[]>([])
   const [categoryPreferences, setCategoryPreferences] = useState<CustomerCategoryPreference[]>([])
+  const [consentAudit, setConsentAudit] = useState<ConsentAuditRow[]>([])
   const [smsStats, setSmsStats] = useState<{
     customer: {
       sms_opt_in: boolean
@@ -319,6 +338,7 @@ export default function CustomerViewPage() {
         smsStatsResult,
         customerLabelsResult,
         customerAssignmentsResult,
+        consentAuditResult,
       ] = await Promise.all([
         (supabase as any)
           .from('customers')
@@ -384,6 +404,7 @@ export default function CustomerViewPage() {
         getCustomerSmsStats(customerId),
         getCustomerLabels(),
         getCustomerLabelAssignments(customerId),
+        canViewConsentAudit ? getCustomerConsentAudit(customerId) : Promise.resolve({ data: [] }),
       ])
 
       if (customerError) {
@@ -535,6 +556,13 @@ export default function CustomerViewPage() {
         setCustomerLabelAssignments([])
       }
 
+      if ('error' in consentAuditResult) {
+        console.error('Failed to load customer consent audit:', consentAuditResult.error)
+        setConsentAudit([])
+      } else {
+        setConsentAudit((consentAuditResult.data || []) as ConsentAuditRow[])
+      }
+
       await loadMessages()
     } catch (error) {
       console.error('Error loading customer details:', error)
@@ -542,7 +570,7 @@ export default function CustomerViewPage() {
     } finally {
       setLoading(false)
     }
-  }, [customerId, loadMessages, supabase])
+  }, [canViewConsentAudit, customerId, loadMessages, supabase])
 
   useEffect(() => {
     void loadData()
@@ -605,7 +633,6 @@ export default function CustomerViewPage() {
       if (data.email) formData.append('email', data.email)
       if (data.mobile_number) formData.append('mobile_number', data.mobile_number)
       formData.append('default_country_code', '44')
-      if (customer.sms_opt_in) formData.append('sms_opt_in', 'on')
 
       const result = await updateCustomerAction(customer.id, formData)
 
@@ -621,6 +648,25 @@ export default function CustomerViewPage() {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
     }
+  }
+
+  const handleExportConsentAudit = async () => {
+    if (!customer) return
+    const result = await exportCustomerConsentAudit(customer.id)
+    if ('error' in result) {
+      toast.error(result.error || 'Failed to export customer consent audit')
+      return
+    }
+
+    const blob = new Blob([result.data], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = result.fileName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   }
 
   const handleSaveNotes = async () => {
@@ -1217,18 +1263,20 @@ export default function CustomerViewPage() {
                       Control whether this customer receives SMS notifications and replies.
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={handleToggleSms}
-                    disabled={togglingSmsSetting}
-                    variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
-                    size="sm"
-                  >
-                    {togglingSmsSetting
-                      ? 'Updating...'
-                      : customer.sms_opt_in !== false
-                        ? 'Deactivate SMS'
-                        : 'Activate SMS'}
-                  </Button>
+                  {canManageContactPreferences && (
+                    <Button
+                      onClick={handleToggleSms}
+                      disabled={togglingSmsSetting}
+                      variant={customer.sms_opt_in !== false ? 'secondary' : 'primary'}
+                      size="sm"
+                    >
+                      {togglingSmsSetting
+                        ? 'Updating...'
+                        : customer.sms_opt_in !== false
+                          ? 'Deactivate SMS'
+                          : 'Activate SMS'}
+                    </Button>
+                  )}
                 </div>
               }
             >
@@ -1274,18 +1322,20 @@ export default function CustomerViewPage() {
                       Control whether this customer receives transactional WhatsApp messages.
                     </CardDescription>
                   </div>
-                  <Button
-                    onClick={handleToggleWhatsApp}
-                    disabled={togglingWhatsAppSetting || !canManageCustomers}
-                    variant={customer.whatsapp_opt_in === true ? 'secondary' : 'primary'}
-                    size="sm"
-                  >
-                    {togglingWhatsAppSetting
-                      ? 'Updating...'
-                      : customer.whatsapp_opt_in === true
-                        ? 'Deactivate'
-                        : 'Activate'}
-                  </Button>
+                  {canManageWhatsAppOptIn && (
+                    <Button
+                      onClick={handleToggleWhatsApp}
+                      disabled={togglingWhatsAppSetting}
+                      variant={customer.whatsapp_opt_in === true ? 'secondary' : 'primary'}
+                      size="sm"
+                    >
+                      {togglingWhatsAppSetting
+                        ? 'Updating...'
+                        : customer.whatsapp_opt_in === true
+                          ? 'Deactivate'
+                          : 'Activate'}
+                    </Button>
+                  )}
                 </div>
               }
             >
@@ -1317,6 +1367,49 @@ export default function CustomerViewPage() {
                 </p>
               )}
             </Card>
+
+            {canViewConsentAudit && (
+              <Card
+                header={
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>Consent Audit</CardTitle>
+                      <CardDescription>Recent contact preference evidence for this customer.</CardDescription>
+                    </div>
+                    {canExportConsentAudit && (
+                      <Button size="sm" variant="secondary" onClick={handleExportConsentAudit}>
+                        Export
+                      </Button>
+                    )}
+                  </div>
+                }
+              >
+                {consentAudit.length === 0 ? (
+                  <p className="text-sm text-gray-500">No consent audit rows yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {consentAudit.slice(0, 8).map((row) => (
+                      <div key={row.id} className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-gray-900">
+                            {formatLabel(row.channel)} {formatLabel(row.purpose)}
+                          </span>
+                          <span className="rounded-md bg-white px-2 py-1 text-xs text-gray-700">
+                            {formatLabel(row.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-600">
+                          {row.captured_at ? formatLondonDateTime(row.captured_at) : 'Unknown time'} by {formatLabel(row.source)}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {formatLabel(row.capture_method)} - {row.consent_text_version || 'no version'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
         </div>
 

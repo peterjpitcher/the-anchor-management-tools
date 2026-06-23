@@ -20,6 +20,8 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
+import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
+import { ConsentService } from '@/services/consent'
 
 const CreateEventWaitlistSchema = z.object({
   event_id: z.string().uuid(),
@@ -31,7 +33,8 @@ const CreateEventWaitlistSchema = z.object({
   requested_seats: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
-  )
+  ),
+  communication_consent: OptionalCommunicationConsentSchema
 })
 
 type EventWaitlistResult = {
@@ -201,7 +204,8 @@ export async function POST(request: NextRequest) {
       first_name: parsed.data.first_name || null,
       last_name: parsed.data.last_name || null,
       email: parsed.data.email || null,
-      requested_seats: parsed.data.requested_seats
+      requested_seats: parsed.data.requested_seats,
+      communication_consent: consentHashPayload(parsed.data.communication_consent)
     })
 
     const supabase = createAdminClient()
@@ -243,6 +247,19 @@ export async function POST(request: NextRequest) {
       if (!customerResolution.customerId) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
+
+      await ConsentService.applyBookingContactConsent(
+        customerResolution.customerId,
+        parsed.data.communication_consent,
+        {
+          source: 'public_event_waitlist',
+          captureMethod: 'checkbox',
+          sourceUrl: req.headers.get('referer'),
+          userAgent: req.headers.get('user-agent'),
+          relatedEntityType: 'event_waitlist',
+          metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
+        }
+      )
 
       const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_event_waitlist_entry_v05', {
         p_event_id: parsed.data.event_id,

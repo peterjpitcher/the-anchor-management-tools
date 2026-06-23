@@ -20,7 +20,7 @@ export async function fetchBulkRecipients(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  const hasPermission = await checkUserPermission('messages', 'send', user.id)
+  const hasPermission = await checkUserPermission('messages', 'send_marketing', user.id)
   if (!hasPermission) return { error: 'Insufficient permissions' }
 
   // Escape search wildcards to prevent unintended ILIKE expansion
@@ -56,7 +56,7 @@ export async function sendBulkMessages(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
 
-  const hasPermission = await checkUserPermission('messages', 'send', user.id)
+  const hasPermission = await checkUserPermission('messages', 'send_marketing', user.id)
   if (!hasPermission) return { success: false, error: 'Insufficient permissions' }
 
   if (customerIds.length === 0) {

@@ -172,7 +172,8 @@ export async function resolveCustomerByPhone(
       mobile_number: standardizedPhone,
       mobile_e164: standardizedPhone,
       email: emailLower ?? null,
-      sms_opt_in: true
+      sms_opt_in: false,
+      sms_status: 'unknown'
     })
     .select()
     .single()

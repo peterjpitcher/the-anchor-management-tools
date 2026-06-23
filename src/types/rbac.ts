@@ -94,7 +94,15 @@ export type ActionType =
   | 'unlock'
   | 'publish'
   | 'request'
-  | 'clock';
+  | 'clock'
+  | 'view_contact_preferences'
+  | 'manage_contact_preferences'
+  | 'manage_whatsapp_opt_in'
+  | 'record_service_contact'
+  | 'send_transactional'
+  | 'send_marketing'
+  | 'view_consent_audit'
+  | 'export_consent_audit';
 
 export type UserPermission = {
   module_name: ModuleName;

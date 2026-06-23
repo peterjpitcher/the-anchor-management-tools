@@ -154,7 +154,7 @@ async function requirePermission(): Promise<{ userId: string } | { error: string
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
-  const allowed = await checkUserPermission('messages', 'send', user.id)
+  const allowed = await checkUserPermission('messages', 'send_transactional', user.id)
   if (!allowed) return { error: 'Insufficient permissions' }
   return { userId: user.id }
 }

@@ -67,7 +67,7 @@ export async function markMessagesAsRead(customerId: string) {
 export async function sendSmsReply(customerId: string, message: string) {
   try {
     const [canSend, canManage] = await Promise.all([
-      checkUserPermission('messages', 'send'),
+      checkUserPermission('messages', 'send_transactional'),
       checkUserPermission('messages', 'manage'),
     ])
     const hasSendPermission = canSend || canManage

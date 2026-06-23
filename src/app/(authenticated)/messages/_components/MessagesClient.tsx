@@ -110,7 +110,7 @@ export function MessagesClient() {
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canSendMessages =
-    hasPermission('messages', 'send') || hasPermission('messages', 'manage')
+    hasPermission('messages', 'send_transactional') || hasPermission('messages', 'manage')
   const canManageTemplates = hasPermission('messages', 'manage_templates')
 
   // Conversation list state

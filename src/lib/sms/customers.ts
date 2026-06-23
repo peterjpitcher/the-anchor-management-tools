@@ -256,8 +256,8 @@ export async function ensureCustomerForPhone(
       mobile_number: standardizedPhone,
       mobile_e164: standardizedPhone,
       email: sanitizedEmail,
-      sms_opt_in: true,
-      sms_status: 'active'
+      sms_opt_in: false,
+      sms_status: 'unknown'
     }
 
     const { data: inserted, error: insertError } = await client

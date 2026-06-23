@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
-import { ensureCustomerForPhone } from '@/lib/sms/customers'
 
 const CustomerLookupQuerySchema = z.object({
   phone: z.string().trim().min(5).max(32),
@@ -190,16 +189,7 @@ export async function GET(request: NextRequest) {
       return createApiResponse(toLookupPayload(null, normalizedPhone))
     }
 
-    let resolvedCustomerId = privateBooking.customer_id || null
-
-    if (!resolvedCustomerId) {
-      const ensuredCustomer = await ensureCustomerForPhone(supabase, normalizedPhone, {
-        firstName: fallbackFirstName,
-        lastName: fallbackLastName,
-        email: fallbackEmail
-      })
-      resolvedCustomerId = ensuredCustomer.customerId
-    }
+    const resolvedCustomerId = privateBooking.customer_id || null
 
     if (resolvedCustomerId) {
       const { data: resolvedData, error: resolvedError } = await supabase.from('customers')

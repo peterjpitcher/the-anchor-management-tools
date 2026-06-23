@@ -256,7 +256,6 @@ export default function CustomersClient({
         if (customerData.email) {
           formData.append('email', customerData.email)
         }
-        formData.append('sms_opt_in', 'on')
 
         const result = await createCustomerAction(formData)
 
@@ -292,7 +291,6 @@ export default function CustomersClient({
         if (customerData.email) {
           formData.append('email', customerData.email)
         }
-        formData.append('sms_opt_in', editingCustomer.sms_opt_in !== false ? 'on' : 'off')
 
         const result = await updateCustomerAction(editingCustomer.id, formData)
 

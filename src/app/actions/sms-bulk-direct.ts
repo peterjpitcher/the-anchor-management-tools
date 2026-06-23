@@ -40,7 +40,7 @@ function extractBulkSafetyAbortCode(errorMessage: string): string | null {
 // This is the corrected bulk SMS function that sends directly for small batches
 export async function sendBulkSMSDirect(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
   try {
-    const hasPermission = await checkUserPermission('messages', 'send')
+    const hasPermission = await checkUserPermission('messages', 'send_marketing')
     if (!hasPermission) {
       return { error: 'Insufficient permissions to send messages' }
     }

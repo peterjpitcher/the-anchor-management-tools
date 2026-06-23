@@ -247,7 +247,9 @@ export async function sendOTPMessage(params: { phoneNumber: string; message: str
 
 export async function sendSms(params: SendSmsParams) {
   try {
-    const hasPermission = await checkUserPermission('messages', 'send')
+    const requestedMetadata = buildSendSmsMetadata(params) ?? {}
+    const isMarketing = requestedMetadata.marketing === true
+    const hasPermission = await checkUserPermission('messages', isMarketing ? 'send_marketing' : 'send_transactional')
     if (!hasPermission) {
       return { error: 'Insufficient permissions to send messages' }
     }
@@ -284,9 +286,7 @@ export async function sendSms(params: SendSmsParams) {
 
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const messageBody = ensureReplyInstruction(params.body, supportPhone)
-    const metadata = {
-      ...(buildSendSmsMetadata(params) ?? {})
-    } as Record<string, unknown>
+    const metadata = { ...requestedMetadata } as Record<string, unknown>
 
     if (metadata.template_key === undefined) {
       metadata.template_key = 'manual_sms'
@@ -368,7 +368,7 @@ export async function sendSms(params: SendSmsParams) {
 
 export async function sendBulkSMSAsync(customerIds: string[], message: string) {
   try {
-    const hasPermission = await checkUserPermission('messages', 'send')
+    const hasPermission = await checkUserPermission('messages', 'send_marketing')
     if (!hasPermission) {
       return { error: 'Insufficient permissions to send messages' }
     }
