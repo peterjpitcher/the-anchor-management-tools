@@ -22,6 +22,7 @@ import {
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
+  type TableBookingNotificationChannel,
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
@@ -39,6 +40,7 @@ const tableBookingIpLimiter = createRateLimiter({
 })
 
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
+type NotificationChannelMeta = TableBookingNotificationChannel
 
 const CreateTableBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32),
@@ -84,6 +86,7 @@ type TableBookingResponseData = {
   booking_id: string | null
   deposit_amount: number | null
   fallback_payment_url: string | null
+  notification_channel: NotificationChannelMeta
 }
 
 function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
@@ -323,6 +326,7 @@ export async function POST(request: NextRequest) {
       let nextStepUrl: string | null = null
       let holdExpiresAt = bookingResult.hold_expires_at || null
       let smsMeta: SmsSafetyMeta = null
+      let notificationChannel: NotificationChannelMeta = null
 
       if (
         bookingResult.state === 'pending_payment' &&
@@ -384,6 +388,7 @@ export async function POST(request: NextRequest) {
         if (smsOutcome.status === 'fulfilled') {
           smsSendResult = smsOutcome.value
           smsMeta = smsSendResult.sms
+          notificationChannel = smsSendResult.notificationChannel ?? null
         } else {
           logger.warn('Table booking created SMS task rejected unexpectedly', {
             metadata: {
@@ -547,6 +552,7 @@ export async function POST(request: NextRequest) {
           booking_id: responseState === 'pending_payment' ? (bookingResult.table_booking_id || null) : null,
           deposit_amount: canonicalDeposit,
           fallback_payment_url: fallbackPaymentUrl,
+          notification_channel: notificationChannel,
         } satisfies TableBookingResponseData,
         meta: {
           status_code: responseStatus,

@@ -86,6 +86,7 @@ describe('table bookings route SMS safety meta', () => {
     })
 
     ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+      notificationChannel: 'sms',
       sms: {
         success: true,
         code: 'logging_failed',
@@ -134,6 +135,9 @@ describe('table bookings route SMS safety meta', () => {
     expect(response.status).toBe(201)
     expect(payload).toMatchObject({
       success: true,
+      data: {
+        notification_channel: 'sms',
+      },
       meta: {
         sms: {
           success: true,
@@ -194,6 +198,9 @@ describe('table bookings route SMS safety meta', () => {
     expect(response.status).toBe(201)
     expect(payload).toMatchObject({
       success: true,
+      data: {
+        notification_channel: null,
+      },
       meta: {
         sms: {
           success: false,
@@ -219,6 +226,7 @@ describe('table bookings route SMS safety meta', () => {
     })
 
     ;(sendTableBookingCreatedSmsIfAllowed as unknown as vi.Mock).mockResolvedValue({
+      notificationChannel: 'sms',
       sms: {
         success: true,
         sid: 'SM1',
@@ -271,6 +279,7 @@ describe('table bookings route SMS safety meta', () => {
       data: expect.objectContaining({
         state: 'confirmed',
         table_booking_id: 'table-booking-1',
+        notification_channel: 'sms',
       }),
     })
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
