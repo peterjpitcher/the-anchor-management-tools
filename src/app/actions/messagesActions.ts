@@ -54,7 +54,7 @@ export async function getConversationMessages(customerId: string): Promise<Conve
 }
 
 export async function markMessageAsRead(messageId: string) {
-  const hasPermission = await checkUserPermission('messages', 'view')
+  const hasPermission = await canWriteMessageReadState()
   if (!hasPermission) {
     throw new Error('Insufficient permissions')
   }
@@ -81,6 +81,11 @@ export async function markMessageAsRead(messageId: string) {
 }
 
 export async function markAllMessagesAsRead() {
+  const hasPermission = await canWriteMessageReadState()
+  if (!hasPermission) {
+    throw new Error('Insufficient permissions')
+  }
+
   await CommunicationsService.markAllRead()
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
@@ -88,6 +93,11 @@ export async function markAllMessagesAsRead() {
 }
 
 export async function markConversationAsRead(customerId: string) {
+  const hasPermission = await canWriteMessageReadState()
+  if (!hasPermission) {
+    throw new Error('Insufficient permissions')
+  }
+
   await CommunicationsService.markConversationRead(customerId)
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
@@ -96,10 +106,23 @@ export async function markConversationAsRead(customerId: string) {
 }
 
 export async function markConversationAsUnread(customerId: string) {
+  const hasPermission = await canWriteMessageReadState()
+  if (!hasPermission) {
+    throw new Error('Insufficient permissions')
+  }
+
   await CommunicationsService.markConversationUnread(customerId)
   revalidatePath('/messages')
   revalidatePath('/', 'layout')
   revalidatePath(`/customers/${customerId}`)
   revalidateTag('dashboard')
   return { success: true }
+}
+
+async function canWriteMessageReadState() {
+  const [canManage, canSendTransactional] = await Promise.all([
+    checkUserPermission('messages', 'manage'),
+    checkUserPermission('messages', 'send_transactional'),
+  ])
+  return canManage || canSendTransactional
 }

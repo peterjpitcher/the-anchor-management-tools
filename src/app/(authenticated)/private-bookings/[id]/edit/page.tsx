@@ -350,7 +350,7 @@ export default function EditPrivateBookingPage({
                   id="date_tbd"
                   name="date_tbd_toggle"
                   checked={dateTbd}
-                  onChange={(e) => handleToggleDateTbd(e.target.checked)}
+                  onChange={(event) => handleToggleDateTbd(event.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span>Event date/time to be confirmed</span>

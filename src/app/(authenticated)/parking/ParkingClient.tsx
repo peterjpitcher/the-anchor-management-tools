@@ -898,7 +898,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               <div className="sm:col-span-2 flex items-center gap-3">
                 <Toggle
                   checked={createForm.capacity_override}
-                  onChange={(event) => handleInputChange('capacity_override', event.target.checked)}
+                  onChange={(checked) => handleInputChange('capacity_override', checked)}
                   label="Bypass capacity check"
                 />
                 <span className="text-xs text-slate-500">Only enable when you are sure there is physical capacity available.</span>
@@ -925,7 +925,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             <div className="flex items-center gap-3">
               <Toggle
                 checked={createForm.send_payment_link}
-                onChange={(event) => handleInputChange('send_payment_link', event.target.checked)}
+                onChange={(checked) => handleInputChange('send_payment_link', checked)}
                 label="Send payment link now"
               />
               <span className="text-xs text-slate-500">If disabled, you can trigger the payment later from the booking details.</span>

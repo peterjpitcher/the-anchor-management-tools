@@ -213,7 +213,7 @@ export async function POST(
 
       return NextResponse.json({ orderId: paypalOrder.orderId });
     },
-    ['read:events'],
+    ['payments:capture'],
     request,
   );
 }

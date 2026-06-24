@@ -3,6 +3,7 @@ import type { Mock } from 'vitest'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
 }))
 
 vi.mock('@/app/actions/rbac', () => ({
@@ -49,6 +50,13 @@ describe('Message action mutation row-effect guards', () => {
     })
 
     await expect(markMessageAsRead('message-1')).rejects.toThrow('Message not found')
+  })
+
+  it('blocks markMessageAsRead without message write permission', async () => {
+    mockedPermission.mockResolvedValue(false)
+
+    await expect(markMessageAsRead('message-1')).rejects.toThrow('Insufficient permissions')
+    expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 
   it('throws not-found when markConversationAsUnread latest-message update affects no rows', async () => {

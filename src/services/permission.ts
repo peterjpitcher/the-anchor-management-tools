@@ -79,6 +79,12 @@ function isUserSummary(record: UserSummary | null): record is UserSummary {
   return record !== null;
 }
 
+function revalidateUserPermissionTags(userIds: Array<string | null | undefined>) {
+  for (const userId of new Set(userIds.filter((id): id is string => Boolean(id)))) {
+    revalidateTag(`permissions-${userId}`);
+  }
+}
+
 // Cache all permissions for a user for 60 seconds.
 // A single call to get_user_permissions is reused across all checkUserPermission calls
 // within the same cache window, reducing N DB round-trips to 1.
@@ -247,6 +253,16 @@ export class PermissionService {
       throw new Error('System roles cannot be deleted');
     }
 
+    const { data: assignedUsers, error: assignedUsersError } = await admin
+      .from('user_roles')
+      .select('user_id')
+      .eq('role_id', roleId);
+
+    if (assignedUsersError) {
+      console.error('Error loading assigned users before role delete:', assignedUsersError);
+      throw new Error('Failed to load assigned users');
+    }
+
     const { data: deletedRole, error } = await admin
       .from('roles')
       .delete()
@@ -261,6 +277,7 @@ export class PermissionService {
     if (!deletedRole) {
       throw new Error('Role not found');
     }
+    revalidateUserPermissionTags((assignedUsers || []).map((row: any) => row.user_id));
     return existing;
   }
 
@@ -297,6 +314,16 @@ export class PermissionService {
     const existingPermissionIds = Array.from(
       new Set((existing || []).map((item: any) => item.permission_id).filter(Boolean))
     );
+
+    const { data: assignedUsers, error: assignedUsersError } = await admin
+      .from('user_roles')
+      .select('user_id')
+      .eq('role_id', roleId);
+
+    if (assignedUsersError) {
+      console.error('Error loading assigned users before role permission update:', assignedUsersError);
+      throw new Error('Failed to load assigned users');
+    }
 
     const { error: deleteError } = await admin
       .from('role_permissions')
@@ -335,6 +362,7 @@ export class PermissionService {
         throw new Error('Failed to assign permissions');
       }
     }
+    revalidateUserPermissionTags((assignedUsers || []).map((row: any) => row.user_id));
     return { oldPermissions: existing || [], newPermissions: dedupedPermissionIds };
   }
 

@@ -138,13 +138,13 @@ export function DishMenusTab({
               <div className="flex flex-wrap gap-4">
                 <Checkbox
                   checked={assignment.is_special}
-                  onChange={(e) => updateAssignment(index, { is_special: e.target.checked })}
+                  onChange={(checked) => updateAssignment(index, { is_special: checked })}
                 >
                   Mark as special
                 </Checkbox>
                 <Checkbox
                   checked={assignment.is_default_side}
-                  onChange={(e) => updateAssignment(index, { is_default_side: e.target.checked })}
+                  onChange={(checked) => updateAssignment(index, { is_default_side: checked })}
                 >
                   Default side (included)
                 </Checkbox>

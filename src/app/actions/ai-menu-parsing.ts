@@ -3,6 +3,7 @@
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { MENU_PURCHASE_DEPARTMENTS, type MenuPurchaseDepartment } from '@/lib/menu/purchase-departments'
 import { retry, RetryConfigs } from '@/lib/retry'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 const MODEL_PRICING_PER_1K_TOKENS: Record<string, { prompt: number; completion: number }> = {
   'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
@@ -86,6 +87,11 @@ function validateIngredientLocally(ing: AiParsedIngredient): string[] {
 
 export async function parseIngredientWithAI(rawData: string): Promise<AiParsingResult> {
   try {
+    const canManageMenu = await checkUserPermission('menu_management', 'manage')
+    if (!canManageMenu) {
+      return { success: false, error: 'Permission denied' }
+    }
+
     const { apiKey, baseUrl } = await getOpenAIConfig()
 
     if (!apiKey) {
@@ -260,6 +266,11 @@ export type ReviewResult = {
 
 export async function reviewIngredientWithAI(ingredient: AiParsedIngredient): Promise<ReviewResult> {
   try {
+    const canManageMenu = await checkUserPermission('menu_management', 'manage')
+    if (!canManageMenu) {
+      return { valid: false, issues: ['Permission denied'], suggestions: [] }
+    }
+
     const { apiKey, baseUrl } = await getOpenAIConfig()
 
     if (!apiKey) {

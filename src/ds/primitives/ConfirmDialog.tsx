@@ -1,12 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { Modal } from './Modal'
 import { Button } from './Button'
 
 export interface ConfirmDialogProps {
   open: boolean
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: () => unknown | Promise<unknown>
   title: string
   message?: React.ReactNode
   confirmLabel?: string
@@ -47,41 +48,69 @@ export function ConfirmDialog({
   tone,
   type,
   confirmVariant,
-  description: _description,
+  description,
   destructive: _destructive,
-  closeOnConfirm: _closeOnConfirm,
-  loading: _loading,
+  closeOnConfirm = true,
+  loading: externalLoading,
   variant: _variant,
-  loadingText: _loadingText,
+  loadingText,
 }: ConfirmDialogProps) {
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const resolvedConfirmLabel = confirmLabel ?? confirmText ?? 'Confirm'
   const resolvedCancelLabel = cancelLabel ?? cancelText ?? 'Cancel'
   const resolvedTone: 'danger' | 'warning' | 'info' = tone ?? (type === 'warning' || confirmVariant === 'warning' ? 'warning' : type === 'info' ? 'info' : 'danger')
+  const isLoading = pending || Boolean(externalLoading)
+  const handleClose = () => {
+    if (!isLoading) {
+      setError(null)
+      onClose()
+    }
+  }
+  const handleConfirm = async () => {
+    setError(null)
+    setPending(true)
+    try {
+      await onConfirm()
+      if (closeOnConfirm) {
+        onClose()
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Something went wrong.')
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={title}
       width="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={handleClose} disabled={isLoading}>
             {resolvedCancelLabel}
           </Button>
           <Button
             variant={resolvedTone === 'danger' ? 'danger' : 'primary'}
-            loading={_loading}
-            onClick={() => {
-              onConfirm()
-              onClose()
-            }}
+            loading={isLoading}
+            onClick={handleConfirm}
           >
-            {resolvedConfirmLabel}
+            {isLoading && loadingText ? loadingText : resolvedConfirmLabel}
           </Button>
         </>
       }
     >
-      {message && <p className="text-sm text-text-muted">{message}</p>}
+      {(message || description) && (
+        <p className="text-sm text-text-muted">{message ?? description}</p>
+      )}
+      {error && (
+        <p className="mt-3 text-sm text-danger" role="alert">
+          {error}
+        </p>
+      )}
     </Modal>
   )
 }

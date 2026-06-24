@@ -41,6 +41,12 @@ export type EmployeePaySettings = {
 export async function getPayAgeBands(): Promise<
   { success: true; data: PayAgeBand[] } | { success: false; error: string }
 > {
+  const [canViewPayroll, canManageSettings] = await Promise.all([
+    checkUserPermission('payroll', 'view'),
+    checkUserPermission('settings', 'manage'),
+  ]);
+  if (!canViewPayroll && !canManageSettings) return { success: false, error: 'Permission denied' };
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('pay_age_bands')
@@ -92,6 +98,12 @@ export async function createPayAgeBand(input: z.infer<typeof AgeBandSchema>): Pr
 export async function getPayBandRates(bandId: string): Promise<
   { success: true; data: PayBandRate[] } | { success: false; error: string }
 > {
+  const [canViewPayroll, canManageSettings] = await Promise.all([
+    checkUserPermission('payroll', 'view'),
+    checkUserPermission('settings', 'manage'),
+  ]);
+  if (!canViewPayroll && !canManageSettings) return { success: false, error: 'Permission denied' };
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('pay_band_rates')
@@ -144,6 +156,10 @@ export async function addPayBandRate(input: z.infer<typeof AddRateSchema>): Prom
 export async function getEmployeePaySettings(employeeId: string): Promise<
   { success: true; data: EmployeePaySettings | null } | { success: false; error: string }
 > {
+  const canViewEmployees = await checkUserPermission('employees', 'view');
+  const canViewPayroll = await checkUserPermission('payroll', 'view');
+  if (!canViewEmployees && !canViewPayroll) return { success: false, error: 'Permission denied' };
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('employee_pay_settings')
@@ -201,6 +217,10 @@ export type EmployeeRateOverride = {
 export async function getEmployeeRateOverrides(employeeId: string): Promise<
   { success: true; data: EmployeeRateOverride[] } | { success: false; error: string }
 > {
+  const canViewEmployees = await checkUserPermission('employees', 'view');
+  const canViewPayroll = await checkUserPermission('payroll', 'view');
+  if (!canViewEmployees && !canViewPayroll) return { success: false, error: 'Permission denied' };
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('employee_rate_overrides')

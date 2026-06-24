@@ -1053,7 +1053,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             <input
               type="checkbox"
               checked={partySizeEditSendSms}
-              onChange={(e) => setPartySizeEditSendSms(e.target.checked)}
+              onChange={(event) => setPartySizeEditSendSms(event.target.checked)}
               className="rounded border-gray-300 text-green-600 focus:ring-green-500"
             />
             Notify guest by SMS

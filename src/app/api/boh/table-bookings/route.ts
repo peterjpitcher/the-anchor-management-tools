@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
-import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { getLondonDateIso, requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { getTableBookingVisualState } from '@/lib/table-bookings/ui'
 
@@ -260,7 +260,7 @@ async function loadTablesRows(
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireFohPermission('view')
+  const auth = await requireBohTableBookingPermission('view')
   if (!auth.ok) {
     return auth.response
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
   mapSeatUpdateBlockedReason,
@@ -22,7 +22,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireFohPermission('edit')
+  const auth = await requireBohTableBookingPermission('edit')
   if (!auth.ok) {
     return auth.response
   }

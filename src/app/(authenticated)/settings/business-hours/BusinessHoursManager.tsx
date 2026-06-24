@@ -177,7 +177,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
           { key: 'closed', header: 'Closed', cell: (h: any) => (
             <Checkbox
               checked={h.is_closed}
-              onChange={(e) => handleTimeChange(h.day_of_week, 'is_closed', e.target.checked)}
+              onChange={(checked) => handleTimeChange(h.day_of_week, 'is_closed', checked)}
               disabled={!canManage}
             />
           ) },
@@ -185,7 +185,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
             h.day_of_week !== 0 && (
             <Checkbox
               checked={h.is_kitchen_closed || h.is_closed}
-              onChange={(e) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', e.target.checked)}
+              onChange={(checked) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', checked)}
               disabled={!canManage}
             />
             )
@@ -258,7 +258,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               <Checkbox
                 label="Closed"
                 checked={h.is_closed}
-                onChange={(e) => handleTimeChange(h.day_of_week, 'is_closed', e.target.checked)}
+                onChange={(checked) => handleTimeChange(h.day_of_week, 'is_closed', checked)}
                 disabled={!canManage}
               />
             </div>
@@ -266,7 +266,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               <Checkbox
                 label="Kitchen closed"
                 checked={h.is_kitchen_closed || h.is_closed}
-                onChange={(e) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', e.target.checked)}
+                onChange={(checked) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', checked)}
                 disabled={!canManage}
               />
             </div>

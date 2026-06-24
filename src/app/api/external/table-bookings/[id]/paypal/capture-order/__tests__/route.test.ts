@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import { withApiAuth } from '@/lib/api/auth';
 
 // --- Module mocks ---
 
@@ -9,7 +10,7 @@ vi.mock('@/lib/api/auth', () => ({
       handler: (req: Request, apiKey: unknown) => Promise<Response>,
       _permissions: string[],
       request: Request,
-    ) => handler(request, { id: 'test-key-id', name: 'Test Key', permissions: ['read:events'], rate_limit: 100, is_active: true }),
+    ) => handler(request, { id: 'test-key-id', name: 'Test Key', permissions: ['payments:capture'], rate_limit: 100, is_active: true }),
   ),
 }));
 
@@ -114,6 +115,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
+    expect(withApiAuth).toHaveBeenCalledWith(expect.any(Function), ['payments:capture'], expect.any(Request));
     expect(mockCapturePayPalPayment).toHaveBeenCalledOnce();
     expect(mockCapturePayPalPayment).toHaveBeenCalledWith('ORDER-123');
   });

@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
-import { NAV_GROUPS } from './SidebarNav'
+import { filterNavGroupsForPermissions, NAV_GROUPS } from './SidebarNav'
 import { Topbar } from './Topbar'
 import { FohClockBand } from './FohClockBand'
 import { MobileBottomNav, MobileDrawer, MobileTopbar } from './MobileChrome'
 import { cn } from '@/lib/utils'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface AppShellProps {
   children: ReactNode
@@ -30,6 +31,11 @@ export function AppShell({
   isSigningOut,
 }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { hasPermission } = usePermissions()
+  const navGroups = useMemo(
+    () => filterNavGroupsForPermissions(NAV_GROUPS, hasPermission),
+    [hasPermission],
+  )
 
   const openMobile = useCallback(() => setMobileOpen(true), [])
   const closeMobile = useCallback(() => setMobileOpen(false), [])
@@ -39,7 +45,7 @@ export function AppShell({
       {/* Desktop sidebar */}
       {showSidebar && (
         <Sidebar
-          navGroups={NAV_GROUPS}
+          navGroups={navGroups}
           userName={userName}
           userRole={userRole}
           onSignOut={onSignOut}
@@ -52,7 +58,7 @@ export function AppShell({
         <MobileDrawer
           open={mobileOpen}
           onClose={closeMobile}
-          navGroups={NAV_GROUPS}
+          navGroups={navGroups}
           userName={userName}
           userRole={userRole}
           onSignOut={onSignOut}
@@ -88,7 +94,7 @@ export function AppShell({
         </main>
       </div>
 
-      {showSidebar && !fohMode && <MobileBottomNav onMore={openMobile} />}
+      {showSidebar && !fohMode && <MobileBottomNav navGroups={navGroups} onMore={openMobile} />}
     </div>
   )
 }

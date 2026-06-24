@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Icon } from '@/ds/icons'
 import type { IconName } from '@/ds/icons'
+import type { ActionType, ModuleName } from '@/types/rbac'
 
 export interface NavItem {
   id: string
@@ -11,6 +12,10 @@ export interface NavItem {
   icon: string
   href: string
   badge?: number
+  permission?: {
+    module: ModuleName
+    action: ActionType
+  }
 }
 
 export interface NavGroup {
@@ -22,49 +27,68 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: null,
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: 'home', href: '/' },
-      { id: 'events', label: 'Events', icon: 'calendar', href: '/events' },
-      { id: 'customers', label: 'Customers', icon: 'users', href: '/customers' },
-      { id: 'messages', label: 'Messages', icon: 'message', href: '/messages' },
+      { id: 'dashboard', label: 'Dashboard', icon: 'home', href: '/', permission: { module: 'dashboard', action: 'view' } },
+      { id: 'events', label: 'Events', icon: 'calendar', href: '/events', permission: { module: 'events', action: 'view' } },
+      { id: 'customers', label: 'Customers', icon: 'users', href: '/customers', permission: { module: 'customers', action: 'view' } },
+      { id: 'messages', label: 'Messages', icon: 'message', href: '/messages', permission: { module: 'messages', action: 'view' } },
     ],
   },
   {
     label: null,
     items: [
-      { id: 'menu', label: 'Menu Management', icon: 'grid', href: '/menu-management' },
-      { id: 'tables', label: 'Table Bookings', icon: 'table', href: '/table-bookings' },
-      { id: 'private-bookings', label: 'Private Bookings', icon: 'building', href: '/private-bookings' },
-      { id: 'parking', label: 'Parking', icon: 'truck', href: '/parking' },
+      { id: 'menu', label: 'Menu Management', icon: 'grid', href: '/menu-management', permission: { module: 'menu_management', action: 'view' } },
+      { id: 'tables', label: 'Table Bookings', icon: 'table', href: '/table-bookings', permission: { module: 'table_bookings', action: 'view' } },
+      { id: 'private-bookings', label: 'Private Bookings', icon: 'building', href: '/private-bookings', permission: { module: 'private_bookings', action: 'view' } },
+      { id: 'parking', label: 'Parking', icon: 'truck', href: '/parking', permission: { module: 'parking', action: 'view' } },
     ],
   },
   {
     label: null,
     items: [
-      { id: 'employees', label: 'Employees', icon: 'user', href: '/employees' },
-      { id: 'recruitment', label: 'Recruitment', icon: 'briefcase', href: '/recruitment' },
-      { id: 'rota', label: 'Rota', icon: 'clock', href: '/rota' },
+      { id: 'employees', label: 'Employees', icon: 'user', href: '/employees', permission: { module: 'employees', action: 'view' } },
+      { id: 'recruitment', label: 'Recruitment', icon: 'briefcase', href: '/recruitment', permission: { module: 'recruitment', action: 'view' } },
+      { id: 'rota', label: 'Rota', icon: 'clock', href: '/rota', permission: { module: 'rota', action: 'view' } },
     ],
   },
   {
     label: null,
     items: [
-      { id: 'cashing-up', label: 'Cashing Up', icon: 'cash', href: '/cashing-up/dashboard' },
-      { id: 'invoices', label: 'Invoices', icon: 'file', href: '/invoices' },
-      { id: 'projects', label: 'OJ Projects', icon: 'briefcase', href: '/oj-projects' },
-      { id: 'receipts', label: 'Receipts', icon: 'receipt', href: '/receipts' },
-      { id: 'mileage', label: 'Mileage', icon: 'map', href: '/mileage' },
-      { id: 'expenses', label: 'Expenses', icon: 'pound', href: '/expenses' },
-      { id: 'mgd', label: 'MGD', icon: 'trendUp', href: '/mgd' },
-      { id: 'short-links', label: 'Short Links', icon: 'link', href: '/short-links' },
+      { id: 'cashing-up', label: 'Cashing Up', icon: 'cash', href: '/cashing-up/dashboard', permission: { module: 'cashing_up', action: 'view' } },
+      { id: 'invoices', label: 'Invoices', icon: 'file', href: '/invoices', permission: { module: 'invoices', action: 'view' } },
+      { id: 'quotes', label: 'Quotes', icon: 'file', href: '/quotes', permission: { module: 'quotes', action: 'view' } },
+      { id: 'projects', label: 'OJ Projects', icon: 'briefcase', href: '/oj-projects', permission: { module: 'oj_projects', action: 'view' } },
+      { id: 'receipts', label: 'Receipts', icon: 'receipt', href: '/receipts', permission: { module: 'receipts', action: 'view' } },
+      { id: 'mileage', label: 'Mileage', icon: 'map', href: '/mileage', permission: { module: 'mileage', action: 'view' } },
+      { id: 'expenses', label: 'Expenses', icon: 'pound', href: '/expenses', permission: { module: 'expenses', action: 'view' } },
+      { id: 'mgd', label: 'MGD', icon: 'trendUp', href: '/mgd', permission: { module: 'mgd', action: 'view' } },
+      { id: 'short-links', label: 'Short Links', icon: 'link', href: '/short-links', permission: { module: 'short_links', action: 'view' } },
     ],
   },
   {
     label: null,
     items: [
-      { id: 'settings', label: 'Settings', icon: 'cog', href: '/settings' },
+      { id: 'settings', label: 'Settings', icon: 'cog', href: '/settings', permission: { module: 'settings', action: 'view' } },
+      { id: 'users', label: 'Users', icon: 'users', href: '/users', permission: { module: 'users', action: 'view' } },
+      { id: 'roles', label: 'Roles', icon: 'cog', href: '/roles', permission: { module: 'roles', action: 'view' } },
+      { id: 'profile', label: 'My Profile', icon: 'user', href: '/profile' },
     ],
   },
 ]
+
+export function filterNavGroupsForPermissions(
+  groups: NavGroup[],
+  hasPermission: (module: ModuleName, action: ActionType) => boolean,
+): NavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (!item.permission) return true
+        return hasPermission(item.permission.module, item.permission.action)
+      }),
+    }))
+    .filter((group) => group.items.length > 0)
+}
 
 interface SidebarNavProps {
   items: NavGroup[]

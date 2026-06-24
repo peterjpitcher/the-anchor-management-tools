@@ -179,7 +179,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                 <Checkbox
                   label="Email on upload"
                   checked={newCategoryEmailOnUpload}
-                  onChange={(event) => setNewCategoryEmailOnUpload(event.target.checked)}
+                  onChange={(checked) => setNewCategoryEmailOnUpload(checked)}
                   disabled={!canManage || isMutating}
                 />
                 <Button
@@ -221,7 +221,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                         <Checkbox
                           label="Email on upload"
                           checked={editingEmailOnUpload}
-                          onChange={(event) => setEditingEmailOnUpload(event.target.checked)}
+                          onChange={(checked) => setEditingEmailOnUpload(checked)}
                           disabled={isMutating}
                         />
                         <div className="flex gap-2">
@@ -265,7 +265,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                             <Checkbox
                               label="Email on upload"
                               checked={category.email_on_upload}
-                              onChange={(event) => handleToggleEmailOnUpload(category.category_id, event.target.checked, category.category_name)}
+                              onChange={(checked) => handleToggleEmailOnUpload(category.category_id, checked, category.category_name)}
                               disabled={isMutating}
                             />
                             <Button

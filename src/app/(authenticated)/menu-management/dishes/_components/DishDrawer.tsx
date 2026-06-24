@@ -558,13 +558,13 @@ export function DishDrawer({
           <div className="ml-auto flex items-center gap-3">
             <Checkbox
               checked={formState.is_active}
-              onChange={(e) => update({ is_active: e.target.checked })}
+              onChange={(checked) => update({ is_active: checked })}
             >
               <span className="text-sm">Active</span>
             </Checkbox>
             <Checkbox
               checked={formState.is_sunday_lunch}
-              onChange={(e) => update({ is_sunday_lunch: e.target.checked })}
+              onChange={(checked) => update({ is_sunday_lunch: checked })}
             >
               <span className="text-sm">Sunday lunch</span>
             </Checkbox>
