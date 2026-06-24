@@ -63,8 +63,7 @@ export async function GET(request: Request) {
     if (fetchError) {
       console.error('[Cron] Error fetching recurring invoices:', fetchError)
       return NextResponse.json({ 
-        error: 'Failed to fetch recurring invoices',
-        details: fetchError 
+        error: 'Failed to fetch recurring invoices'
       }, { status: 500 })
     }
 
@@ -523,8 +522,7 @@ export async function GET(request: Request) {
     console.error('[Cron] Fatal error in recurring invoices cron:', error)
     await reportCronFailure('recurring-invoices', error)
     return NextResponse.json({
-      error: 'Failed to process recurring invoices',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Failed to process recurring invoices'
     }, { status: 500 })
   }
 }

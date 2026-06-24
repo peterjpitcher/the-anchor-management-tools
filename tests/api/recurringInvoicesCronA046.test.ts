@@ -60,6 +60,7 @@ import { InvoiceService } from '@/services/invoices'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { claimIdempotencyKey, persistIdempotencyResponse } from '@/lib/api/idempotency'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import { GET } from '@/app/api/cron/recurring-invoices/route'
 
 const recurringInvoice = {
@@ -141,6 +142,28 @@ function makeSupabase() {
   return { supabase, invoiceUpdate, emailLogInsert }
 }
 
+function makeFetchErrorSupabase() {
+  const dueOrder = vi.fn().mockResolvedValue({
+    data: null,
+    error: {
+      message: 'permission denied for table recurring_invoices',
+      details: 'service-role details',
+    },
+  })
+  const dueLte = vi.fn(() => ({ order: dueOrder }))
+  const dueEq = vi.fn(() => ({ lte: dueLte }))
+  const dueSelect = vi.fn(() => ({ eq: dueEq }))
+
+  return {
+    from: vi.fn((table: string) => {
+      if (table === 'recurring_invoices') {
+        return { select: dueSelect }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    }),
+  }
+}
+
 describe('recurring invoices cron A-046', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -188,6 +211,35 @@ describe('recurring invoices cron A-046', () => {
         reason: 'email_send_failed',
       }),
       24 * 90,
+    )
+  })
+
+  it('does not leak raw database errors when loading due recurring invoices fails', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(makeFetchErrorSupabase() as any)
+
+    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload).toEqual({ error: 'Failed to fetch recurring invoices' })
+    expect(JSON.stringify(payload)).not.toContain('permission denied')
+    expect(JSON.stringify(payload)).not.toContain('service-role details')
+  })
+
+  it('does not leak raw fatal errors in the cron response', async () => {
+    vi.mocked(createAdminClient).mockImplementation(() => {
+      throw new Error('database password leaked in stack')
+    })
+
+    const response = await GET(new Request('http://localhost/api/cron/recurring-invoices'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload).toEqual({ error: 'Failed to process recurring invoices' })
+    expect(JSON.stringify(payload)).not.toContain('database password')
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'recurring-invoices',
+      expect.any(Error),
     )
   })
 })
