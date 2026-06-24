@@ -210,6 +210,48 @@ describe('employee invite status transitions', () => {
     expect(deleteUser).not.toHaveBeenCalled()
   })
 
+  it('cleans up the auth user when invite account linking fails', async () => {
+    const createUser = vi.fn().mockResolvedValue({ data: { user: { id: 'auth-user-1' } }, error: null })
+    const deleteUser = vi.fn().mockResolvedValue({ error: null })
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'Invite changed' } })
+
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'employee_invite_tokens') {
+          return mockMaybeSingle({
+            id: 'token-1',
+            employee_id: 'employee-1',
+            email: 'employee@example.com',
+            invite_type: 'onboarding',
+            expires_at: '2099-01-01T00:00:00.000Z',
+            completed_at: null,
+          })
+        }
+        if (table === 'employees') {
+          return mockMaybeSingle({
+            auth_user_id: null,
+            email_address: 'employee@example.com',
+            status: 'Onboarding',
+            first_name: 'Alex',
+            last_name: 'Rowe',
+          })
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+      rpc,
+      auth: { admin: { createUser, deleteUser } },
+    })
+
+    const result = await createEmployeeAccount('token-value', 'password123')
+
+    expect(result).toEqual({ success: false, error: 'Invite changed' })
+    expect(rpc).toHaveBeenCalledWith('link_employee_invite_account', {
+      p_token: 'token-value',
+      p_auth_user_id: 'auth-user-1',
+    })
+    expect(deleteUser).toHaveBeenCalledWith('auth-user-1')
+  })
+
   it('does not leave a blank onboarding employee when the first invite email fails', async () => {
     mockedSendWelcomeEmail.mockRejectedValue(new Error('mail down'))
 
