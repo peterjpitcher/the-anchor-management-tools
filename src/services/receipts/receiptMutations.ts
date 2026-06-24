@@ -1210,9 +1210,27 @@ export async function performCreateReceiptUploadUrl(
     return { error: signedUploadError?.message || 'Failed to prepare receipt upload.' }
   }
 
+  const issuedPath = data.path ?? storagePath
+  const { error: intentError } = await (supabase as any)
+    .from('receipt_upload_intents')
+    .insert({
+      transaction_id: transactionId,
+      storage_path: issuedPath,
+      issued_to: userId,
+      original_file_name: validation.data.fileName,
+      file_type: validation.data.fileType,
+      file_size_bytes: validation.data.fileSize,
+    })
+
+  if (intentError) {
+    console.error('Failed to record receipt upload intent:', intentError)
+    await supabase.storage.from(RECEIPT_BUCKET).remove([issuedPath])
+    return { error: 'Failed to prepare receipt upload.' }
+  }
+
   return {
     success: true,
-    path: data.path ?? storagePath,
+    path: issuedPath,
     token: data.token,
     friendlyName,
   }
@@ -1241,6 +1259,20 @@ export async function performCompleteReceiptUpload(
     return { error: error ?? 'Transaction not found' }
   }
 
+  const { data: uploadIntent, error: uploadIntentError } = await (supabase as any)
+    .from('receipt_upload_intents')
+    .select('id, transaction_id, storage_path, issued_to, completed_at')
+    .eq('transaction_id', input.transactionId)
+    .eq('storage_path', validation.data.storagePath)
+    .eq('issued_to', userId)
+    .is('completed_at', null)
+    .maybeSingle()
+
+  if (uploadIntentError || !uploadIntent) {
+    await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
+    return { error: 'Uploaded receipt path was not issued for this transaction' }
+  }
+
   const expectedYearPrefix = `${transaction.transaction_date.substring(0, 4)}/`
   if (!validation.data.storagePath.startsWith(expectedYearPrefix)) {
     await supabase.storage.from(RECEIPT_BUCKET).remove([validation.data.storagePath])
@@ -1257,7 +1289,7 @@ export async function performCompleteReceiptUpload(
       .digest('hex')
   }
 
-  return recordUploadedReceiptForTransaction({
+  const result = await recordUploadedReceiptForTransaction({
     supabase,
     userId,
     userEmail,
@@ -1270,6 +1302,22 @@ export async function performCompleteReceiptUpload(
     fileSize: validation.data.fileSize,
     contentHash,
   })
+
+  if (result.success) {
+    const { error: completeIntentError } = await (supabase as any)
+      .from('receipt_upload_intents')
+      .update({
+        completed_at: new Date().toISOString(),
+        receipt_file_id: result.receipt?.id ?? null,
+      })
+      .eq('id', uploadIntent.id)
+
+    if (completeIntentError) {
+      console.error('Failed to mark receipt upload intent completed:', completeIntentError)
+    }
+  }
+
+  return result
 }
 
 export async function performUploadReceiptForTransaction(

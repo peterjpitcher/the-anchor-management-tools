@@ -544,6 +544,7 @@ describe('uploadReceiptForTransaction', () => {
       data: { path: '2026/Coffee_4.50.pdf_1770000000000', token: 'signed-token' },
       error: null,
     })
+    const intentInsert = vi.fn().mockResolvedValue({ error: null })
 
     mockedCreateAdminClient.mockReturnValue(
       buildMockClient(
@@ -553,6 +554,9 @@ describe('uploadReceiptForTransaction', () => {
           },
           profiles: {
             select: vi.fn().mockReturnValue({ eq: profileEq }),
+          },
+          receipt_upload_intents: {
+            insert: intentInsert,
           },
         },
         {
@@ -574,6 +578,11 @@ describe('uploadReceiptForTransaction', () => {
       token: 'signed-token',
     })
     expect(createSignedUploadUrl).toHaveBeenCalledWith(expect.stringMatching(/^2026\//), { upsert: false })
+    expect(intentInsert).toHaveBeenCalledWith(expect.objectContaining({
+      transaction_id: 'tx-1',
+      storage_path: '2026/Coffee_4.50.pdf_1770000000000',
+      issued_to: TEST_USER.user_id,
+    }))
   })
 
   it('should reject receipt upload URLs over the app receipt file limit', async () => {
@@ -613,6 +622,18 @@ describe('uploadReceiptForTransaction', () => {
     const receiptInsertSelect = vi.fn().mockReturnValue({ single: receiptInsertSingle })
     const receiptInsert = vi.fn().mockReturnValue({ select: receiptInsertSelect })
 
+    const intentMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'intent-1', storage_path: '2026/Coffee_4.50.pdf_1770000000000' },
+      error: null,
+    })
+    const intentIs = vi.fn().mockReturnValue({ maybeSingle: intentMaybeSingle })
+    const intentEqIssuedTo = vi.fn().mockReturnValue({ is: intentIs })
+    const intentEqStoragePath = vi.fn().mockReturnValue({ eq: intentEqIssuedTo })
+    const intentEqTransaction = vi.fn().mockReturnValue({ eq: intentEqStoragePath })
+    const intentSelect = vi.fn().mockReturnValue({ eq: intentEqTransaction })
+    const intentUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const intentUpdate = vi.fn().mockReturnValue({ eq: intentUpdateEq })
+
     const logInsert = vi.fn().mockResolvedValue({ error: null })
     const storageRemove = vi.fn().mockResolvedValue({ error: null })
 
@@ -628,6 +649,10 @@ describe('uploadReceiptForTransaction', () => {
           },
           receipt_files: {
             insert: receiptInsert,
+          },
+          receipt_upload_intents: {
+            select: intentSelect,
+            update: intentUpdate,
           },
           receipt_transaction_logs: {
             insert: logInsert,
@@ -648,6 +673,13 @@ describe('uploadReceiptForTransaction', () => {
     })
 
     expect(result).toMatchObject({ success: true, receipt: receiptRecord })
+    expect(intentEqTransaction).toHaveBeenCalledWith('transaction_id', 'tx-1')
+    expect(intentEqStoragePath).toHaveBeenCalledWith('storage_path', '2026/Coffee_4.50.pdf_1770000000000')
+    expect(intentEqIssuedTo).toHaveBeenCalledWith('issued_to', TEST_USER.user_id)
+    expect(intentIs).toHaveBeenCalledWith('completed_at', null)
+    expect(intentUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      receipt_file_id: 'file-1',
+    }))
     expect(receiptInsert).toHaveBeenCalledWith(expect.objectContaining({
       transaction_id: 'tx-1',
       storage_path: '2026/Coffee_4.50.pdf_1770000000000',
@@ -664,6 +696,63 @@ describe('uploadReceiptForTransaction', () => {
         operation_status: 'success',
       })
     )
+  })
+
+  it('should reject a completed receipt upload when the path was not issued for that transaction', async () => {
+    const transaction = {
+      id: 'tx-1',
+      transaction_date: '2026-03-15',
+      details: 'Coffee',
+      amount_in: null,
+      amount_out: 4.5,
+      status: 'pending',
+    }
+
+    const txSelectSingle = vi.fn().mockResolvedValue({ data: transaction, error: null })
+    const txSelectEq = vi.fn().mockReturnValue({ single: txSelectSingle })
+    const profileSingle = vi.fn().mockResolvedValue({ data: { full_name: 'Test User' }, error: null })
+    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
+    const intentMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const intentIs = vi.fn().mockReturnValue({ maybeSingle: intentMaybeSingle })
+    const intentEqIssuedTo = vi.fn().mockReturnValue({ is: intentIs })
+    const intentEqStoragePath = vi.fn().mockReturnValue({ eq: intentEqIssuedTo })
+    const intentEqTransaction = vi.fn().mockReturnValue({ eq: intentEqStoragePath })
+    const receiptInsert = vi.fn()
+    const storageRemove = vi.fn().mockResolvedValue({ error: null })
+
+    mockedCreateAdminClient.mockReturnValue(
+      buildMockClient(
+        {
+          receipt_transactions: {
+            select: vi.fn().mockReturnValue({ eq: txSelectEq }),
+          },
+          profiles: {
+            select: vi.fn().mockReturnValue({ eq: profileEq }),
+          },
+          receipt_upload_intents: {
+            select: vi.fn().mockReturnValue({ eq: intentEqTransaction }),
+          },
+          receipt_files: {
+            insert: receiptInsert,
+          },
+        },
+        {
+          remove: storageRemove,
+        }
+      )
+    )
+
+    const result = await completeReceiptUpload({
+      transactionId: 'tx-1',
+      storagePath: '2026/other_transaction_1770000000000',
+      fileName: 'receipt.pdf',
+      fileType: 'application/pdf',
+      fileSize: 8 * 1024 * 1024,
+    })
+
+    expect(result).toEqual({ error: 'Uploaded receipt path was not issued for this transaction' })
+    expect(storageRemove).toHaveBeenCalledWith(['2026/other_transaction_1770000000000'])
+    expect(receiptInsert).not.toHaveBeenCalled()
   })
 
   it('should return error when user lacks permission', async () => {
