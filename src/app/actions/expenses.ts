@@ -388,23 +388,21 @@ export async function deleteExpense(
 
     const supabase = createAdminClient()
 
-    // Fetch file paths before deleting so we can clean up storage
-    const { data: files } = await supabase
-      .from('expense_files')
-      .select('storage_path')
-      .eq('expense_id', id)
-
-    // Delete the expense (cascade deletes expense_files rows)
-    const { error } = await supabase.from('expenses').delete().eq('id', id)
+    const { data: filePaths, error } = await supabase.rpc('delete_expense_atomic', {
+      p_expense_id: id,
+    })
 
     if (error) {
       logger.error('Failed to delete expense', { error: error as unknown as Error })
+      if (error.message?.includes('Expense not found')) {
+        return { error: 'Expense not found' }
+      }
       return { error: 'Failed to delete expense' }
     }
 
     // Clean up storage objects
-    if (files && files.length > 0) {
-      const paths = files.map((f) => f.storage_path)
+    const paths = Array.isArray(filePaths) ? filePaths : []
+    if (paths.length > 0) {
       const { error: storageError } = await supabase.storage
         .from(EXPENSE_RECEIPTS_BUCKET)
         .remove(paths)
