@@ -1,11 +1,8 @@
 import { redirect } from 'next/navigation'
-import { PageHeader, Card, CardBody, Badge, Button, Input } from '@/ds'
+import { PageHeader, Card, CardBody, Badge } from '@/ds'
 import { CommunicationsService } from '@/services/communications'
 import { checkUserPermission } from '@/app/actions/rbac'
-import {
-  ignoreUnmatchedCommunicationAction,
-  linkUnmatchedCommunicationAction,
-} from '@/app/actions/communications'
+import { HoldingQueueActions } from './_components/HoldingQueueActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,16 +28,6 @@ export default async function HoldingQueuePage() {
 
   let rows: any[] = []
   let error: string | null = null
-
-  async function linkAction(formData: FormData): Promise<void> {
-    'use server'
-    await linkUnmatchedCommunicationAction(formData)
-  }
-
-  async function ignoreAction(formData: FormData): Promise<void> {
-    'use server'
-    await ignoreUnmatchedCommunicationAction(formData)
-  }
 
   try {
     rows = await CommunicationsService.getUnmatchedCommunications()
@@ -83,22 +70,10 @@ export default async function HoldingQueuePage() {
                     <p><span className="font-medium">To:</span> {row.to_address ?? 'Unknown'}</p>
                   </div>
                   <p className="mt-2 whitespace-pre-wrap text-sm text-text">{previewText(row)}</p>
-                  {Array.isArray(row.candidate_customer_ids) && row.candidate_customer_ids.length > 0 && (
-                    <p className="mt-2 text-xs text-text-muted">
-                      Candidate customers: {row.candidate_customer_ids.join(', ')}
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-end gap-2">
-                    <form action={linkAction} className="flex flex-wrap items-end gap-2">
-                      <input type="hidden" name="unmatchedId" value={row.id} />
-                      <Input name="customerId" label="Customer ID" placeholder="Paste customer ID" required />
-                      <Button type="submit" size="sm">Link</Button>
-                    </form>
-                    <form action={ignoreAction}>
-                      <input type="hidden" name="unmatchedId" value={row.id} />
-                      <Button type="submit" variant="ghost" size="sm">Ignore</Button>
-                    </form>
-                  </div>
+                  <HoldingQueueActions
+                    unmatchedId={row.id}
+                    candidateCustomerIds={Array.isArray(row.candidate_customer_ids) ? row.candidate_customer_ids : []}
+                  />
                 </div>
               ))}
             </div>
