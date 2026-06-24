@@ -71,4 +71,5 @@ Status values:
 | PR-39 / A-042 | done | Onboarding financial and health saves now write audit events with employee identity and section metadata only; action tests assert raw NI, bank, and health values are not logged. |
 | PR-40 / A-043 | done | BOH table-booking soft-cancel and hard-delete branches now write audit events with actor, old values, result metadata, and action labels; API tests cover both paths. |
 | PR-68 / A-044 | done | Staff portal employees can cancel their own pending holiday requests, cancel/load failures show inline, and the portal layout now has a sign-out control; action and UI tests added. |
+| PR-69 / A-045 | done | Leave manager rows now confirm approve/decline, expose edit-date and delete actions behind `leave:edit`, and update/remove rows inline; component tests cover confirm/edit/delete paths. |
 | A-117 | todo | Included by owner request. |

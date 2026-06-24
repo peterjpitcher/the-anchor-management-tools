@@ -2,17 +2,19 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/ds';
 import { Badge } from '@/ds';
 import { Input } from '@/ds';
-import { reviewLeaveRequest } from '@/app/actions/leave';
+import { ConfirmDialog } from '@/ds';
+import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
 
 interface LeaveManagerClientProps {
   initialRequests: LeaveRequest[];
   employeeMap: Record<string, string>; // employee_id -> display name
   canApprove: boolean;
+  canEdit: boolean;
   usageMap: Record<string, { count: number; allowance: number }>; // `${emp_id}:${year}` -> usage
 }
 
@@ -37,29 +39,63 @@ function LeaveRequestRow({
   request,
   empName,
   canApprove,
+  canEdit,
   onUpdated,
+  onDeleted,
   usage,
 }: {
   request: LeaveRequest;
   empName: string;
   canApprove: boolean;
+  canEdit: boolean;
   onUpdated: (updated: LeaveRequest) => void;
+  onDeleted: (requestId: string) => void;
   usage?: { count: number; allowance: number };
 }) {
   const [expanded, setExpanded] = useState(false);
   const [managerNote, setManagerNote] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editStartDate, setEditStartDate] = useState(request.start_date);
+  const [editEndDate, setEditEndDate] = useState(request.end_date);
+  const [editError, setEditError] = useState('');
+  const [confirmDecision, setConfirmDecision] = useState<'approved' | 'declined' | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const days = daysBetween(request.start_date, request.end_date);
 
-  const handleReview = (decision: 'approved' | 'declined') => {
+  const runReview = async (decision: 'approved' | 'declined') => {
+    const result = await reviewLeaveRequest(request.id, decision, managerNote || undefined);
+    if (!result.success) throw new Error((result as { success: false; error: string }).error);
+    toast.success(decision === 'approved' ? 'Request approved' : 'Request declined');
+    onUpdated({ ...request, status: decision, manager_note: managerNote || null });
+    setExpanded(false);
+  };
+
+  const handleSaveDates = () => {
+    setEditError('');
+    if (new Date(editEndDate) < new Date(editStartDate)) {
+      setEditError('End date must be on or after start date');
+      return;
+    }
+
     startTransition(async () => {
-      const result = await reviewLeaveRequest(request.id, decision, managerNote || undefined);
-      if (!result.success) { toast.error((result as { success: false; error: string }).error); return; }
-      toast.success(decision === 'approved' ? 'Request approved' : 'Request declined');
-      onUpdated({ ...request, status: decision, manager_note: managerNote || null });
-      setExpanded(false);
+      const result = await updateLeaveRequestDates(request.id, editStartDate, editEndDate);
+      if (!result.success) {
+        setEditError(result.error);
+        return;
+      }
+      toast.success('Request dates updated');
+      onUpdated({ ...request, start_date: editStartDate, end_date: editEndDate });
+      setIsEditing(false);
     });
+  };
+
+  const runDelete = async () => {
+    const result = await deleteLeaveRequest(request.id);
+    if (!result.success) throw new Error(result.error);
+    toast.success('Request deleted');
+    onDeleted(request.id);
   };
 
   return (
@@ -84,21 +120,45 @@ function LeaveRequestRow({
             <>
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); handleReview('approved'); }}
+                onClick={e => { e.stopPropagation(); setConfirmDecision('approved'); }}
                 disabled={isPending}
                 className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded"
                 title="Approve"
+                aria-label={`Approve ${empName} holiday request`}
               >
                 <CheckIcon className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); handleReview('declined'); }}
+                onClick={e => { e.stopPropagation(); setConfirmDecision('declined'); }}
                 disabled={isPending}
                 className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
                 title="Decline"
+                aria-label={`Decline ${empName} holiday request`}
               >
                 <XMarkIcon className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          {canEdit && (
+            <>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setExpanded(true); setIsEditing(true); }}
+                className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+                title="Edit dates"
+                aria-label={`Edit ${empName} holiday request`}
+              >
+                <PencilIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+                className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+                title="Delete request"
+                aria-label={`Delete ${empName} holiday request`}
+              >
+                <TrashIcon className="h-4 w-4" />
               </button>
             </>
           )}
@@ -166,7 +226,7 @@ function LeaveRequestRow({
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => handleReview('approved')}
+                  onClick={() => setConfirmDecision('approved')}
                   disabled={isPending}
                 >
                   {isPending ? 'Saving…' : 'Approve'}
@@ -175,7 +235,7 @@ function LeaveRequestRow({
                   type="button"
                   size="sm"
                   variant="secondary"
-                  onClick={() => handleReview('declined')}
+                  onClick={() => setConfirmDecision('declined')}
                   disabled={isPending}
                   className="!text-red-700 !border-red-200 hover:!bg-red-50"
                 >
@@ -184,8 +244,94 @@ function LeaveRequestRow({
               </div>
             </div>
           )}
+
+          {canEdit && (
+            <div className="rounded-lg border border-gray-200 bg-white p-3">
+              {!isEditing ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
+                    Edit dates
+                  </Button>
+                  <Button type="button" size="sm" variant="danger" onClick={() => setConfirmDelete(true)}>
+                    Delete request
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1 text-xs font-medium text-gray-600">
+                      Start date
+                      <Input
+                        type="date"
+                        value={editStartDate}
+                        onChange={e => setEditStartDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs font-medium text-gray-600">
+                      End date
+                      <Input
+                        type="date"
+                        value={editEndDate}
+                        onChange={e => setEditEndDate(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  {editError && <p role="alert" className="text-xs text-red-600">{editError}</p>}
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={handleSaveDates} disabled={isPending}>
+                      {isPending ? 'Saving…' : 'Save dates'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setEditStartDate(request.start_date);
+                        setEditEndDate(request.end_date);
+                        setEditError('');
+                        setIsEditing(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDecision !== null}
+        onClose={() => setConfirmDecision(null)}
+        onConfirm={async () => {
+          if (!confirmDecision) return;
+          await runReview(confirmDecision);
+          setConfirmDecision(null);
+        }}
+        title={confirmDecision === 'approved' ? 'Approve holiday request?' : 'Decline holiday request?'}
+        message={
+          confirmDecision === 'approved'
+            ? `Approve ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}?`
+            : `Decline ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}? This will remove pending holiday days from the rota.`
+        }
+        confirmLabel={confirmDecision === 'approved' ? 'Approve' : 'Decline'}
+        tone={confirmDecision === 'approved' ? 'warning' : 'danger'}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={async () => {
+          await runDelete();
+          setConfirmDelete(false);
+        }}
+        title="Delete holiday request?"
+        message={`Delete ${empName}'s holiday request for ${formatDate(request.start_date)} to ${formatDate(request.end_date)}?`}
+        confirmLabel="Delete"
+        tone="danger"
+      />
     </div>
   );
 }
@@ -194,6 +340,7 @@ export default function LeaveManagerClient({
   initialRequests,
   employeeMap,
   canApprove,
+  canEdit,
   usageMap,
 }: LeaveManagerClientProps) {
   const [requests, setRequests] = useState(initialRequests);
@@ -201,6 +348,9 @@ export default function LeaveManagerClient({
 
   const handleUpdated = (updated: LeaveRequest) => {
     setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
+  };
+  const handleDeleted = (requestId: string) => {
+    setRequests(prev => prev.filter(r => r.id !== requestId));
   };
 
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
@@ -243,7 +393,9 @@ export default function LeaveManagerClient({
               request={req}
               empName={employeeMap[req.employee_id] ?? 'Unknown employee'}
               canApprove={canApprove}
+              canEdit={canEdit}
               onUpdated={handleUpdated}
+              onDeleted={handleDeleted}
               usage={usageMap[`${req.employee_id}:${req.holiday_year}`]}
             />
           ))}
