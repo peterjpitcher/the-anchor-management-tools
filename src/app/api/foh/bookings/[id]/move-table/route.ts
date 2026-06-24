@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { logger } from '@/lib/logger'
+import { logAuditEvent } from '@/app/actions/audit'
 import {
   getMoveTableAvailability,
   moveBookingAssignmentToTable,
@@ -158,6 +159,25 @@ export async function POST(
   if (!mutation.ok) {
     return NextResponse.json({ error: mutation.error }, { status: mutation.status })
   }
+
+  await logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'move_table',
+    resource_type: 'table_booking',
+    resource_id: booking.id,
+    operation_status: 'success',
+    old_values: {
+      table_ids: availability.assignedTableIds,
+    },
+    new_values: {
+      table_id: targetTable.id,
+      start_datetime: availability.startIso,
+      end_datetime: availability.endIso,
+    },
+    additional_info: {
+      surface: 'foh',
+    },
+  })
 
   return NextResponse.json({
     success: true,

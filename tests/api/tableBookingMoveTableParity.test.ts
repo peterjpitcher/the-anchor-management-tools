@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  requireBohTableBookingPermission: vi.fn(),
 }))
 
 vi.mock('@/lib/foh/bookings', () => ({
@@ -17,8 +18,13 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
-import { requireFohPermission } from '@/lib/foh/api-auth'
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn(),
+}))
+
+import { requireBohTableBookingPermission, requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
+import { logAuditEvent } from '@/app/actions/audit'
 import { GET as getFohMoveTable, POST as postFohMoveTable } from '@/app/api/foh/bookings/[id]/move-table/route'
 import { GET as getBohMoveTable, POST as postBohMoveTable } from '@/app/api/boh/table-bookings/[id]/move-table/route'
 
@@ -122,7 +128,7 @@ describe('FOH/BOH move-table parity', () => {
     const fohPayload = await fohResponse.json()
 
     const bohSupabase = buildMoveTableSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValueOnce({
       ok: true,
       userId: 'user-1',
       supabase: bohSupabase,
@@ -155,7 +161,7 @@ describe('FOH/BOH move-table parity', () => {
     const fohPayload = await fohResponse.json()
 
     const bohSupabase = buildMoveTableSupabase()
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValueOnce({
+    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValueOnce({
       ok: true,
       userId: 'user-1',
       supabase: bohSupabase,
@@ -173,5 +179,25 @@ describe('FOH/BOH move-table parity', () => {
     expect(fohResponse.status).toBe(200)
     expect(bohResponse.status).toBe(200)
     expect(bohPayload).toEqual(fohPayload)
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'user-1',
+      operation_type: 'move_table',
+      resource_type: 'table_booking',
+      resource_id: BOOKING_ID,
+      operation_status: 'success',
+      old_values: { table_ids: [CURRENT_TABLE_ID] },
+      new_values: expect.objectContaining({ table_id: TARGET_TABLE_ID }),
+      additional_info: { surface: 'foh' },
+    }))
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'user-1',
+      operation_type: 'move_table',
+      resource_type: 'table_booking',
+      resource_id: BOOKING_ID,
+      operation_status: 'success',
+      old_values: { table_ids: [CURRENT_TABLE_ID] },
+      new_values: expect.objectContaining({ table_id: TARGET_TABLE_ID }),
+      additional_info: { surface: 'boh' },
+    }))
   })
 })
