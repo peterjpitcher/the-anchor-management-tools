@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Checkbox, ConfirmDialog, Radio } from '@/ds/primitives'
 import { DataTable } from '@/ds/composites/DataTable'
+import { SectionNav } from '@/ds/composites/SectionNav'
 import { Tabs } from '@/ds/composites/Tabs'
 
 describe('DS primitives', () => {
@@ -79,6 +80,27 @@ describe('DS primitives', () => {
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Details' }), { key: 'ArrowRight' })
 
     expect(onChange).toHaveBeenCalledWith('pay')
+  })
+
+  it('section nav exposes tab semantics and arrow-key selection for in-page tabs', () => {
+    const onSelect = vi.fn()
+
+    render(
+      <SectionNav
+        activeId="details"
+        onSelect={onSelect}
+        items={[
+          { id: 'details', label: 'Details' },
+          { id: 'pay', label: 'Pay' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('tablist', { name: 'Section navigation' })).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Details' }), { key: 'ArrowRight' })
+
+    expect(onSelect).toHaveBeenCalledWith('pay')
+    expect(screen.getByRole('tab', { name: 'Pay' })).toHaveFocus()
   })
 
   it('sortable table headers expose aria-sort and sort from a button', () => {

@@ -82,4 +82,5 @@ Status values:
 | PR-14a-c / A-053 | done | Exported customer-label, site-settings, missing-cashup, menu-target, and payroll-period actions now re-check RBAC before data/service access; payroll cron/staff portal use internal helpers after their own auth; denied-path tests, typecheck, and lint pass. |
 | PR-77 / A-054 | done-before-start | `ConfirmDialog` already awaits async `onConfirm`, keeps controls disabled while pending, preserves the dialog on errors, and surfaces the error; `tests/components/ds-primitives.test.tsx` passes. |
 | PR-78 / A-055 | done | DS `Radio` now uses a real labelled radio input instead of a button role shim; checkbox/radio label tests, typecheck, and lint pass. |
+| PR-79 / A-056 | done | DS `Tabs` already had tablist semantics and arrow-key coverage; `SectionNav` now exposes tablist/tab semantics with roving arrow-key focus/selection; DS tests, typecheck, and lint pass. |
 | A-117 | todo | Included by owner request. |
