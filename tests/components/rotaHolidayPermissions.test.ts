@@ -10,6 +10,14 @@ function readRepoFile(path: string) {
 }
 
 describe('holiday permission wiring', () => {
+  it('includes a keyboard sensor for rota drag and drop', () => {
+    const rotaGrid = readRepoFile('src/app/(authenticated)/rota/RotaGrid.tsx')
+
+    expect(rotaGrid).toContain('KeyboardSensor')
+    expect(rotaGrid).toContain('sortableKeyboardCoordinates')
+    expect(rotaGrid).toContain('useSensor(KeyboardSensor')
+  })
+
   it('uses leave permissions for rota holiday controls', () => {
     const rotaPage = readRepoFile('src/app/(authenticated)/rota/page.tsx')
     const rotaGrid = readRepoFile('src/app/(authenticated)/rota/RotaGrid.tsx')
