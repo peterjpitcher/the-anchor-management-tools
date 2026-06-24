@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/foh/api-auth', () => ({
-  requireFohPermission: vi.fn(),
+  requireBohTableBookingPermission: vi.fn(),
+}))
+
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/lib/table-bookings/refunds', () => ({
@@ -17,7 +21,8 @@ vi.mock('@/lib/payments/stripe', () => ({
   isStripeConfigured: vi.fn(() => false),
 }))
 
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
+import { logAuditEvent } from '@/app/actions/audit'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
 import { DELETE as deleteBohTableBooking } from '@/app/api/boh/table-bookings/[id]/route'
@@ -65,11 +70,12 @@ describe('BOH table-booking DELETE behavior', () => {
       delete: hardDelete,
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn().mockReturnValue(tableBookings),
       },
+      userId: 'user-1',
     })
 
     const response = await deleteBohTableBooking({} as any, {
@@ -87,6 +93,14 @@ describe('BOH table-booking DELETE behavior', () => {
     )
     expect(hardDelete).not.toHaveBeenCalled()
     expect(hardDeleteEq).not.toHaveBeenCalled()
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'user-1',
+      operation_type: 'update',
+      resource_type: 'table_booking',
+      resource_id: '00000000-0000-4000-8000-000000000001',
+      operation_status: 'success',
+      additional_info: { action: 'boh_table_booking_soft_cancel' },
+    }))
     expect(payload).toMatchObject({
       success: true,
       data: {
@@ -135,11 +149,12 @@ describe('BOH table-booking DELETE behavior', () => {
       delete: hardDelete,
     }
 
-    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
       ok: true,
       supabase: {
         from: vi.fn().mockReturnValue(tableBookings),
       },
+      userId: 'user-1',
     })
 
     const response = await deleteBohTableBooking({} as any, {
@@ -153,6 +168,14 @@ describe('BOH table-booking DELETE behavior', () => {
     expect(hardDeleteEq).toHaveBeenCalledWith('id', '00000000-0000-4000-8000-000000000001')
     expect(refundTableBookingDeposit).not.toHaveBeenCalled()
     expect(sendTableBookingCancelledSmsIfAllowed).not.toHaveBeenCalled()
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'user-1',
+      operation_type: 'delete',
+      resource_type: 'table_booking',
+      resource_id: '00000000-0000-4000-8000-000000000001',
+      operation_status: 'success',
+      additional_info: { action: 'boh_table_booking_hard_delete' },
+    }))
     expect(payload).toMatchObject({
       success: true,
       data: {
