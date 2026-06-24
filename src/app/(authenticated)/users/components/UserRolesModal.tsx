@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { Role } from '@/types/rbac';
+import type { Role, UserSummaryWithRoles } from '@/types/rbac';
 import { getUserRoles, assignRolesToUser } from '@/app/actions/rbac';
 import { useRouter } from 'next/navigation';
 import { Modal, ModalActions } from '@/ds';
@@ -13,7 +12,7 @@ import { Spinner } from '@/ds';
 import { Alert } from '@/ds';
 import toast from 'react-hot-toast';
 
-type UserSummary = Pick<SupabaseUser, 'id' | 'email'>;
+type UserSummary = Pick<UserSummaryWithRoles, 'id' | 'email'>;
 
 interface UserRolesModalProps {
   isOpen: boolean;
@@ -101,7 +100,7 @@ export default function UserRolesModal({
       open={isOpen}
       onClose={onClose}
       title="Manage User Roles"
-      description={user.email}
+      description={user.email ?? undefined}
       size="md"
       footer={
         <ModalActions>

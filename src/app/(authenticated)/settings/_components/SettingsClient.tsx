@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
-import type { Role } from '@/types/rbac'
+import type { Role, UserSummaryWithRoles } from '@/types/rbac'
 import type { SiteSettings } from '@/app/actions/site-settings'
 import { updateSiteSettings, updateSiteToggle } from '@/app/actions/site-settings'
 
@@ -28,12 +27,10 @@ import { UsersContent } from '@/app/(authenticated)/users/_components/UsersConte
 import { RolesContent } from '@/app/(authenticated)/users/_components/RolesContent'
 import { ProfileClient } from '@/app/(authenticated)/profile/_components/ProfileClient'
 
-type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>
-
 type ActiveSection = 'general' | 'users' | 'roles' | 'profile'
 
 interface SettingsClientProps {
-  users: UserSummary[]
+  users: UserSummaryWithRoles[]
   roles: Role[]
   canManageRoles: boolean
   canManageSettings: boolean

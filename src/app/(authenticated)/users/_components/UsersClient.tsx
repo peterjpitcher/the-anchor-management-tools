@@ -1,17 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
-import type { Role } from '@/types/rbac'
+import type { Role, UserSummaryWithRoles } from '@/types/rbac'
 
 import { PageHeader, SectionNav } from '@/ds'
 import { UsersContent } from './UsersContent'
 import { RolesContent } from './RolesContent'
 
-type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>
-
 interface UsersClientProps {
-  users: UserSummary[]
+  users: UserSummaryWithRoles[]
   roles: Role[]
   canManageRoles: boolean
 }

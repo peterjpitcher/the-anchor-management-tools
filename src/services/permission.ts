@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import type { Role, Permission, UserPermission, ModuleName, ActionType } from '@/types/rbac';
+import type { Role, Permission, UserPermission, ModuleName, ActionType, UserSummaryWithRoles } from '@/types/rbac';
 import { logAuditEvent } from '@/app/actions/audit'; // Audit logging will be in action, but helper types needed
 
 // Role validation schemas
@@ -17,7 +17,7 @@ export const roleSchema = z.object({
     .optional()
 });
 
-type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>;
+type BaseUserSummary = Omit<UserSummaryWithRoles, 'roles'>;
 
 function normalizeRequiredTimestamp(value: unknown): string {
   if (typeof value === 'string' && value) {
@@ -52,7 +52,7 @@ function normalizeOptionalTimestamp(value: unknown): string | null {
   return null;
 }
 
-function normalizeUserRecord(record: unknown): UserSummary | null {
+function normalizeUserRecord(record: unknown): BaseUserSummary | null {
   if (!record || typeof record !== 'object') {
     return null;
   }
@@ -75,8 +75,62 @@ function normalizeUserRecord(record: unknown): UserSummary | null {
   };
 }
 
-function isUserSummary(record: UserSummary | null): record is UserSummary {
+function isUserSummary(record: BaseUserSummary | null): record is BaseUserSummary {
   return record !== null;
+}
+
+function normalizeJoinedRole(record: unknown): Role | null {
+  const candidate = record as { roles?: Role | Role[] | null } | null;
+  const role = Array.isArray(candidate?.roles) ? candidate?.roles[0] : candidate?.roles;
+
+  if (!role?.id || !role.name) {
+    return null;
+  }
+
+  return {
+    id: String(role.id),
+    name: String(role.name),
+    description: role.description ?? null,
+    is_system: Boolean(role.is_system),
+    created_at: normalizeRequiredTimestamp(role.created_at),
+    updated_at: normalizeRequiredTimestamp(role.updated_at),
+  };
+}
+
+async function attachRolesToUsers(
+  admin: ReturnType<typeof createAdminClient>,
+  users: BaseUserSummary[]
+): Promise<UserSummaryWithRoles[]> {
+  if (users.length === 0) {
+    return [];
+  }
+
+  const userIds = users.map((user) => user.id);
+  const { data, error } = await admin
+    .from('user_roles')
+    .select('user_id, roles(id, name, description, is_system, created_at, updated_at)')
+    .in('user_id', userIds);
+
+  if (error) {
+    console.error('Error fetching roles for users:', error);
+    throw new Error('Failed to fetch user roles');
+  }
+
+  const rolesByUser = new Map<string, Role[]>();
+  for (const row of data || []) {
+    const userId = typeof row.user_id === 'string' ? row.user_id : null;
+    const role = normalizeJoinedRole(row);
+    if (!userId || !role) continue;
+
+    const roles = rolesByUser.get(userId) ?? [];
+    roles.push(role);
+    rolesByUser.set(userId, roles);
+  }
+
+  return users.map((user) => ({
+    ...user,
+    roles: rolesByUser.get(user.id) ?? [],
+  }));
 }
 
 function revalidateUserPermissionTags(userIds: Array<string | null | undefined>) {
@@ -426,7 +480,7 @@ export class PermissionService {
     return { oldRoles: existing || [], newRoles: dedupedRoleIds };
   }
 
-  static async getAllUsers(actingUser: SupabaseUser) {
+  static async getAllUsers(actingUser: SupabaseUser): Promise<UserSummaryWithRoles[]> {
     const admin = createAdminClient();
 
     try {
@@ -438,7 +492,7 @@ export class PermissionService {
       if (Array.isArray(rpcData)) {
         const normalizedRpc = rpcData.map(normalizeUserRecord).filter(isUserSummary);
         if (normalizedRpc.length > 0) {
-          return normalizedRpc;
+          return attachRolesToUsers(admin, normalizedRpc);
         }
       }
 
@@ -452,7 +506,7 @@ export class PermissionService {
       } else if (Array.isArray(viewData)) {
         const normalizedView = viewData.map(normalizeUserRecord).filter(isUserSummary);
         if (normalizedView.length > 0) {
-          return normalizedView;
+          return attachRolesToUsers(admin, normalizedView);
         }
       }
 
@@ -461,7 +515,7 @@ export class PermissionService {
         console.error('Auth admin listUsers failed:', authError);
         const fallbackUser = normalizeUserRecord(actingUser);
         if (fallbackUser) {
-          return [fallbackUser];
+          return attachRolesToUsers(admin, [fallbackUser]);
         }
         throw new Error('Unable to fetch users. Please run the user access migration.');
       }
@@ -470,7 +524,7 @@ export class PermissionService {
         console.error('Auth admin listUsers returned no data.');
         const fallbackUser = normalizeUserRecord(actingUser);
         if (fallbackUser) {
-          return [fallbackUser];
+          return attachRolesToUsers(admin, [fallbackUser]);
         }
         throw new Error('Failed to fetch users');
       }
@@ -479,7 +533,7 @@ export class PermissionService {
 
       normalizedAuth.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
-      return normalizedAuth;
+      return attachRolesToUsers(admin, normalizedAuth);
     } catch (error) {
       console.error('Error fetching users:', error);
       throw new Error('Failed to fetch users');

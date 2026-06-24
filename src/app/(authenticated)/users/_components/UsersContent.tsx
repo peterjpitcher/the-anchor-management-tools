@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
-import type { Role } from '@/types/rbac'
+import { useMemo, useState } from 'react'
+import type { Role, UserSummaryWithRoles } from '@/types/rbac'
 import { format } from 'date-fns'
 
 import {
@@ -27,26 +26,39 @@ import {
 import { Icon } from '@/ds/icons'
 import UserRolesModal from '../components/UserRolesModal'
 
-type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>
-
 interface UsersContentProps {
-  users: UserSummary[]
+  users: UserSummaryWithRoles[]
   roles: Role[]
   canManageRoles: boolean
 }
 
-const ROLE_OPTIONS = [
-  { value: 'all', label: 'All roles' },
-  { value: 'super_admin', label: 'Super Admin' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'staff', label: 'Staff' },
-]
+function buildRoleOptions(users: UserSummaryWithRoles[], roles: Role[]) {
+  const rolesById = new Map<string, string>()
+
+  for (const role of roles) {
+    rolesById.set(role.id, role.name)
+  }
+
+  for (const user of users) {
+    for (const role of user.roles ?? []) {
+      rolesById.set(role.id, role.name)
+    }
+  }
+
+  return [
+    { value: 'all', label: 'All roles' },
+    ...Array.from(rolesById.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label })),
+  ]
+}
 
 export function UsersContent({ users, roles, canManageRoles }: UsersContentProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
-  const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null)
+  const [selectedUser, setSelectedUser] = useState<UserSummaryWithRoles | null>(null)
   const [isRolesModalOpen, setIsRolesModalOpen] = useState(false)
+  const roleOptions = useMemo(() => buildRoleOptions(users, roles), [users, roles])
 
   const filteredUsers = users.filter((user) => {
     if (searchQuery.trim()) {
@@ -55,10 +67,15 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
       const idMatch = user.id.toLowerCase().includes(q)
       if (!emailMatch && !idMatch) return false
     }
+
+    if (roleFilter !== 'all' && !(user.roles ?? []).some((role) => role.id === roleFilter)) {
+      return false
+    }
+
     return true
   })
 
-  const handleManageRoles = (user: UserSummary) => {
+  const handleManageRoles = (user: UserSummaryWithRoles) => {
     setSelectedUser(user)
     setIsRolesModalOpen(true)
   }
@@ -74,7 +91,8 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
           className="w-64"
         />
         <Select
-          options={ROLE_OPTIONS}
+          aria-label="Filter by role"
+          options={roleOptions}
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
           className="w-40"
@@ -118,7 +136,17 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge tone="neutral">User</Badge>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(user.roles ?? []).length > 0 ? (
+                        user.roles.map((role) => (
+                          <Badge key={role.id} tone={role.is_system ? 'primary' : 'neutral'}>
+                            {role.name}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge tone="neutral">No roles</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <span className="text-[13px] text-text-muted">
