@@ -1805,144 +1805,9 @@ export async function performApplyReceiptGroupClassification(
     return { error: 'Expense category is not recognised' }
   }
 
-  const selection = supabase
-    .from('receipt_transactions')
-    .select('id, status, amount_in, amount_out, vendor_id, vendor_name, vendor_source, vendor_rule_id, vendor_updated_at, expense_category')
-    .eq('details', parsed.data.details)
-    .in('status', statuses)
-
-  const { data: matches, error: selectError } = await selection
-
-  if (selectError) {
-    console.error('Failed to load transactions for bulk classification', selectError)
-    return { error: 'Failed to load matching transactions' }
-  }
-
-  const matchRows = (matches ?? []) as Array<Pick<ReceiptTransaction, 'id' | 'status' | 'amount_in' | 'amount_out'> & {
-    vendor_id: string | null
-    vendor_name: string | null
-    vendor_source: string | null
-    vendor_rule_id: string | null
-    vendor_updated_at: string | null
-    expense_category: ReceiptExpenseCategory | null
-  }>
-
-  if (!matchRows.length) {
-    return { success: true, updated: 0, skippedIncomingCount: 0 }
-  }
-
-  const now = new Date().toISOString()
-  const allIds = matchRows.map((row) => row.id)
-  const incomingOnlyIds = new Set(
-    matchRows
-      .filter((row) => isIncomingOnlyTransaction(row))
-      .map((row) => row.id)
-  )
-  const skippedIncomingCount = expenseProvided
-    ? Array.from(incomingOnlyIds).length
-    : 0
-
-  const updatedIdSet = new Set<string>()
-
-  // Capture previous vendor values so rollback can restore originals (not null them).
-  const previousVendorValues = new Map<string, {
-    vendor_id: string | null
-    vendor_name: string | null
-    vendor_source: string | null
-    vendor_rule_id: string | null
-    vendor_updated_at: string | null
-  }>()
-  for (const row of matchRows) {
-    previousVendorValues.set(row.id, {
-      vendor_id: row.vendor_id,
-      vendor_name: row.vendor_name,
-      vendor_source: row.vendor_source,
-      vendor_rule_id: row.vendor_rule_id,
-      vendor_updated_at: row.vendor_updated_at,
-    })
-  }
-
-  // NOTE: Vendor applies to allIds; expense applies to expenseEligibleIds (excludes incoming-only rows).
-  // Because the row sets differ, these cannot be merged into a single UPDATE call.
-  // True atomicity would require a DB-level transaction (RPC) — tracked as tech debt (DEF-007).
-
   let bulkVendorId: string | null = null
   if (vendorProvided) {
     bulkVendorId = normalizedVendor ? await resolveReceiptVendorId(supabase, normalizedVendor) : null
-    const vendorPayload: Record<string, unknown> = {
-      updated_at: now,
-      vendor_id: bulkVendorId,
-      vendor_name: normalizedVendor,
-      vendor_source: normalizedVendor ? 'manual' : null,
-      vendor_rule_id: null,
-      vendor_updated_at: now,
-    }
-
-    const { error: vendorUpdateError } = await supabase
-      .from('receipt_transactions')
-      .update(vendorPayload)
-      .in('id', allIds)
-
-    if (vendorUpdateError) {
-      console.error('Failed to apply vendor bulk classification', vendorUpdateError)
-      return { error: 'Failed to apply changes' }
-    }
-
-    allIds.forEach((id) => updatedIdSet.add(id))
-  }
-
-  if (expenseProvided) {
-    const expenseEligibleIds = matchRows
-      .filter((row) => !incomingOnlyIds.has(row.id))
-      .map((row) => row.id)
-
-    if (expenseEligibleIds.length > 0) {
-      const expensePayload: Record<string, unknown> = {
-        updated_at: now,
-        expense_category: normalizedExpense ?? null,
-        expense_category_source: normalizedExpense ? 'manual' : null,
-        expense_rule_id: null,
-        expense_updated_at: now,
-      }
-
-      const { error: expenseUpdateError } = await supabase
-        .from('receipt_transactions')
-        .update(expensePayload)
-        .in('id', expenseEligibleIds)
-
-      if (expenseUpdateError) {
-        console.error('Failed to apply expense bulk classification', expenseUpdateError)
-
-        // Compensating revert: if vendor was already committed, attempt to roll it back
-        if (vendorProvided && allIds.length > 0) {
-          const revertErrors: string[] = []
-          for (const id of allIds) {
-            const prev = previousVendorValues.get(id)
-            const { error: revertError } = await supabase
-              .from('receipt_transactions')
-              .update({
-                vendor_id: prev?.vendor_id ?? null,
-                vendor_name: prev?.vendor_name ?? null,
-                vendor_source: prev?.vendor_source ?? null,
-                vendor_rule_id: prev?.vendor_rule_id ?? null,
-                vendor_updated_at: prev?.vendor_updated_at ?? now,
-                updated_at: now,
-              })
-              .eq('id', id)
-            if (revertError) {
-              revertErrors.push(`${id}: ${revertError.message}`)
-            }
-          }
-          if (revertErrors.length > 0) {
-            console.error('Failed to revert vendor update after expense failure — transactions may be in partial state', revertErrors)
-          }
-        }
-
-        return { error: 'Failed to apply changes' }
-      }
-
-      expenseEligibleIds.forEach((id) => updatedIdSet.add(id))
-    }
   }
 
   const summaryParts: string[] = []
@@ -1951,61 +1816,35 @@ export async function performApplyReceiptGroupClassification(
   }
   if (expenseProvided) {
     summaryParts.push(normalizedExpense ? `Expense → ${normalizedExpense}` : 'Expense cleared')
-    if (skippedIncomingCount > 0) {
-      summaryParts.push(`Skipped incoming-only rows: ${skippedIncomingCount}`)
-    }
   }
 
   const note = `Bulk classification: ${summaryParts.join(' | ')}`
-  const statusMap = new Map(matchRows.map((row) => [row.id, row.status]))
-  const updatedIds = Array.from(updatedIdSet)
 
-  const logs = updatedIds.map((id) => ({
-    transaction_id: id,
-    previous_status: statusMap.get(id) ?? 'pending',
-    new_status: statusMap.get(id) ?? 'pending',
-    action_type: 'bulk_classification' as const,
-    note,
-    performed_by: userId,
-    rule_id: null,
-    performed_at: now,
-  }))
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('apply_receipt_group_classification_atomic', {
+    p_details: parsed.data.details,
+    p_statuses: statuses,
+    p_vendor_provided: vendorProvided,
+    p_vendor_id: bulkVendorId,
+    p_vendor_name: normalizedVendor ?? null,
+    p_expense_provided: expenseProvided,
+    p_expense_category: normalizedExpense ?? null,
+    p_user_id: userId,
+    p_note: note,
+  })
 
-  if (logs.length) {
-    const { error: logError } = await supabase.from('receipt_transaction_logs').insert(logs)
-    if (logError) {
-      console.error('Failed to record bulk classification logs', logError)
-    }
+  if (rpcError) {
+    console.error('Failed to apply bulk classification atomically', rpcError)
+    return { error: 'Failed to apply changes' }
   }
 
-  await recordReceiptClassificationSignals(
-    supabase,
-    updatedIds.map((id) => {
-      const row = matchRows.find((match) => match.id === id)
-      return {
-        transaction_id: id,
-        source: 'human',
-        signal_type: 'bulk_classification',
-        prior_vendor_id: row?.vendor_id ?? null,
-        new_vendor_id: vendorProvided ? bulkVendorId : row?.vendor_id ?? null,
-        prior_vendor_name: row?.vendor_name ?? null,
-        new_vendor_name: vendorProvided ? normalizedVendor ?? null : row?.vendor_name ?? null,
-        prior_expense_category: row?.expense_category ?? null,
-        new_expense_category: expenseProvided ? normalizedExpense ?? null : row?.expense_category ?? null,
-        prior_status: row?.status ?? null,
-        new_status: row?.status ?? null,
-        rule_id: null,
-        ai_confidence: null,
-        performed_by: userId,
-        performed_at: now,
-        payload: { note },
-      }
-    })
-  )
+  const updated = Number((rpcResult as any)?.updated ?? 0)
+  const skippedIncomingCount = Number((rpcResult as any)?.skippedIncomingCount ?? 0)
 
-  await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
+  if (updated > 0) {
+    await enqueueReceiptSystemJob('suggest_receipt_rules', new Date().toISOString().slice(0, 10))
+  }
 
-  return { success: true, updated: updatedIds.length, skippedIncomingCount }
+  return { success: true, updated, skippedIncomingCount }
 }
 
 // ---------------------------------------------------------------------------
