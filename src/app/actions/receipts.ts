@@ -929,7 +929,24 @@ export async function requeueUnclassifiedTransactions(): Promise<{ success: bool
   if (!canManage) {
     return { success: false, error: 'Insufficient permissions' }
   }
-  return performRequeueUnclassifiedTransactions()
+
+  const userInfo = await getCurrentUser()
+  const result = await performRequeueUnclassifiedTransactions()
+
+  await logAuditEvent({
+    user_id: userInfo.user_id ?? undefined,
+    user_email: userInfo.user_email ?? undefined,
+    operation_type: 'requeue',
+    resource_type: 'receipt_transactions',
+    operation_status: result.success ? 'success' : 'failure',
+    error_message: result.error,
+    additional_info: {
+      action: 'requeue_unclassified_transactions',
+      queued: result.queued ?? 0,
+    },
+  })
+
+  return result
 }
 
 // ---------------------------------------------------------------------------

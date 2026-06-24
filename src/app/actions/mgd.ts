@@ -568,8 +568,18 @@ export async function updateReturnStatus(formData: {
     resource_type: 'mgd_return',
     resource_id: id,
     operation_status: 'success',
-    old_values: { status: currentStatus },
-    new_values: { status: newStatus, date_paid },
+    old_values: {
+      status: currentStatus,
+      submitted_at: existing.submitted_at,
+      submitted_by: existing.submitted_by,
+      date_paid: existing.date_paid,
+    },
+    new_values: {
+      status: updated.status,
+      submitted_at: updated.submitted_at,
+      submitted_by: updated.submitted_by,
+      date_paid: updated.date_paid,
+    },
   })
 
   revalidatePath('/mgd')

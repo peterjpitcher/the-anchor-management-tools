@@ -70,6 +70,7 @@ import {
   uploadReceiptForTransaction,
   deleteReceiptFile,
   createReceiptRule,
+  requeueUnclassifiedTransactions,
 } from '@/app/actions/receipts'
 
 // ---------- Typed mock aliases ----------
@@ -333,6 +334,64 @@ describe('markReceiptTransaction', () => {
 
     expect(result).toEqual({ error: 'Failed to update the transaction.' })
     expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe('requeueUnclassifiedTransactions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+    mockedGetCurrentUser.mockResolvedValue(TEST_USER)
+  })
+
+  it('logs the requeue result without transaction details', async () => {
+    const vendorLimit = vi.fn().mockResolvedValue({
+      data: [{ id: 'tx-1', batch_id: 'batch-1' }],
+      error: null,
+    })
+    const vendorSecondIs = vi.fn().mockReturnValue({ limit: vendorLimit })
+    const vendorFirstIs = vi.fn().mockReturnValue({ is: vendorSecondIs })
+
+    const expenseLimit = vi.fn().mockResolvedValue({
+      data: [
+        { id: 'tx-1', batch_id: 'batch-1' },
+        { id: 'tx-2', batch_id: 'batch-1' },
+      ],
+      error: null,
+    })
+    const expenseGt = vi.fn().mockReturnValue({ limit: expenseLimit })
+    const expenseNot = vi.fn().mockReturnValue({ gt: expenseGt })
+    const expenseSecondIs = vi.fn().mockReturnValue({ not: expenseNot })
+    const expenseFirstIs = vi.fn().mockReturnValue({ is: expenseSecondIs })
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ is: vendorFirstIs })
+      .mockReturnValueOnce({ is: expenseFirstIs })
+
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'receipt_transactions') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+        return { select }
+      }),
+    })
+
+    const result = await requeueUnclassifiedTransactions()
+
+    expect(result).toEqual({ success: true, queued: 1 })
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'user-1',
+      user_email: 'test@example.com',
+      operation_type: 'requeue',
+      resource_type: 'receipt_transactions',
+      operation_status: 'success',
+      additional_info: {
+        action: 'requeue_unclassified_transactions',
+        queued: 1,
+      },
+    }))
+    expect(mockedLogAuditEvent.mock.calls[0][0].additional_info.transaction_ids).toBeUndefined()
   })
 })
 
