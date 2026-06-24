@@ -396,7 +396,7 @@ function SortableHeader({
   const isActive = activeKey === sortKey
 
   return (
-    <th className={`px-2 py-2 ${align === 'right' ? 'text-right' : 'text-left'}`} aria-sort={isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <th scope="col" className={`px-2 py-2 ${align === 'right' ? 'text-right' : 'text-left'}`} aria-sort={isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button
         type="button"
         className={`inline-flex items-center gap-1 font-semibold uppercase tracking-wide hover:text-gray-800 ${align === 'right' ? 'justify-end' : 'justify-start'}`}
@@ -541,7 +541,7 @@ function VendorMovementPanel({ onViewDetails }: { onViewDetails: (vendorLabel: s
                 <SortableHeader label="Change" sortKey="change" activeKey={sort.key} direction={sort.direction} align="right" onSort={handleSort} />
                 <SortableHeader label="Txns" sortKey="transactions" activeKey={sort.key} direction={sort.direction} align="right" onSort={handleSort} />
                 <SortableHeader label="Signal" sortKey="signal" activeKey={sort.key} direction={sort.direction} onSort={handleSort} />
-                <th className="px-2 py-2 text-right"> </th>
+                <th scope="col" className="px-2 py-2 text-right"> </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-700">
@@ -961,13 +961,13 @@ function MonthlyMovementTable({ months }: { months: ReceiptVendorDetail['movemen
       <table className="min-w-full divide-y divide-gray-200 text-xs">
         <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
           <tr>
-            <th className="px-2 py-2">Month</th>
-            <th className="px-2 py-2 text-right">Spend</th>
-            <th className="px-2 py-2 text-right">Txns</th>
-            <th className="px-2 py-2 text-right">MoM</th>
-            <th className="px-2 py-2 text-right">MoM %</th>
-            <th className="px-2 py-2 text-right">YoY</th>
-            <th className="px-2 py-2 text-right">YoY %</th>
+            <th scope="col" className="px-2 py-2">Month</th>
+            <th scope="col" className="px-2 py-2 text-right">Spend</th>
+            <th scope="col" className="px-2 py-2 text-right">Txns</th>
+            <th scope="col" className="px-2 py-2 text-right">MoM</th>
+            <th scope="col" className="px-2 py-2 text-right">MoM %</th>
+            <th scope="col" className="px-2 py-2 text-right">YoY</th>
+            <th scope="col" className="px-2 py-2 text-right">YoY %</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 text-gray-700">
@@ -1012,12 +1012,12 @@ function TransactionTable({
       <table className="min-w-full divide-y divide-gray-200 text-xs">
         <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
           <tr>
-            <th className="px-2 py-2">Date</th>
-            <th className="px-2 py-2">Details</th>
-            <th className="px-2 py-2">Type</th>
-            <th className="px-2 py-2 text-right">Out</th>
-            <th className="px-2 py-2 text-right">In</th>
-            <th className="px-2 py-2">Status</th>
+            <th scope="col" className="px-2 py-2">Date</th>
+            <th scope="col" className="px-2 py-2">Details</th>
+            <th scope="col" className="px-2 py-2">Type</th>
+            <th scope="col" className="px-2 py-2 text-right">Out</th>
+            <th scope="col" className="px-2 py-2 text-right">In</th>
+            <th scope="col" className="px-2 py-2">Status</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 text-gray-700">

@@ -201,15 +201,15 @@ export function DataTable<T = unknown>({
               <thead className="bg-gray-50">
                 <tr>
                   {selectable && (
-                    <th className={cn('text-left', sizeClasses[size].header)}>
+                    <th scope="col" className={cn('text-left', sizeClasses[size].header)}>
                       <Skeleton className="h-4 w-4" />
                     </th>
                   )}
                   {expandable && renderExpandedContent && (
-                    <th className={cn(sizeClasses[size].header)} />
+                    <th scope="col" className={cn(sizeClasses[size].header)} />
                   )}
                   {columns.map((column) => (
-                    <th key={column.key} className={cn('text-left', sizeClasses[size].header)}>
+                    <th scope="col" key={column.key} className={cn('text-left', sizeClasses[size].header)}>
                       <Skeleton className="h-4 w-24" />
                     </th>
                   ))}

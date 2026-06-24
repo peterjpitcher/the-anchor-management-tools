@@ -842,43 +842,43 @@ export function BohBookingsClient({
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('datetime')}>
                       Date/Time <span className="text-gray-400">{sortIndicator('datetime')}</span>
                     </button>
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('guest')}>
                       Guest <span className="text-gray-400">{sortIndicator('guest')}</span>
                     </button>
                   </th>
-                  <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
+                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('reference')}>
                       Ref <span className="text-gray-400">{sortIndicator('reference')}</span>
                     </button>
                   </th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-700">
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('party_size')}>
                       Party <span className="text-gray-400">{sortIndicator('party_size')}</span>
                     </button>
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('tables')}>
                       Tables <span className="text-gray-400">{sortIndicator('tables')}</span>
                     </button>
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('status')}>
                       Status <span className="text-gray-400">{sortIndicator('status')}</span>
                     </button>
                   </th>
-                  <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
+                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">
                     <button type="button" className="inline-flex items-center gap-1 rounded focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => handleSort('phone')}>
                       Phone <span className="text-gray-400">{sortIndicator('phone')}</span>
                     </button>
                   </th>
-                  <th className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">Deposit</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-700">Action</th>
+                  <th scope="col" className="hidden px-3 py-2 text-left font-semibold text-gray-700 lg:table-cell">Deposit</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">

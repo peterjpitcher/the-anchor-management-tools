@@ -894,10 +894,10 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-border">
-                            <th className="text-left py-1">Date</th>
-                            <th className="text-left py-1">Description</th>
-                            <th className="text-right py-1">Debit</th>
-                            <th className="text-right py-1">Credit</th>
+                            <th scope="col" className="text-left py-1">Date</th>
+                            <th scope="col" className="text-left py-1">Description</th>
+                            <th scope="col" className="text-right py-1">Debit</th>
+                            <th scope="col" className="text-right py-1">Credit</th>
                           </tr>
                         </thead>
                         <tbody>

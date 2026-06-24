@@ -364,10 +364,10 @@ export default function EmployeePayTab({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-gray-400 border-b border-gray-100">
-                  <th className="text-left pb-1.5 font-medium">Rate</th>
-                  <th className="text-left pb-1.5 font-medium">Effective from</th>
-                  <th className="text-left pb-1.5 font-medium">Status</th>
-                  {canEdit && <th className="text-right pb-1.5 font-medium">Actions</th>}
+                  <th scope="col" className="text-left pb-1.5 font-medium">Rate</th>
+                  <th scope="col" className="text-left pb-1.5 font-medium">Effective from</th>
+                  <th scope="col" className="text-left pb-1.5 font-medium">Status</th>
+                  {canEdit && <th scope="col" className="text-right pb-1.5 font-medium">Actions</th>}
                 </tr>
               </thead>
               <tbody>

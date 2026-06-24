@@ -115,7 +115,7 @@ export function TableHead({
 
   if (sortable) {
     return (
-      <th
+      <th scope="col"
         className={cn(
           'px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider select-none cursor-pointer hover:text-text transition-colors',
           alignClass,
@@ -136,7 +136,7 @@ export function TableHead({
   }
 
   return (
-    <th
+    <th scope="col"
       className={cn(
         'px-4 py-2 text-xs font-medium text-text-muted uppercase tracking-wider',
         alignClass,

@@ -408,13 +408,13 @@ export default function PayrollClient({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-8" />
-                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date / Employee</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Planned</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Worked</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Diff</th>
-                  <th className="px-3 py-2 text-xs font-medium text-gray-500">Flags</th>
-                  <th className="px-3 py-2 w-16" />
+                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-8" />
+                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date / Employee</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Planned</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Worked</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Diff</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium text-gray-500">Flags</th>
+                  <th scope="col" className="px-3 py-2 w-16" />
                 </tr>
               </thead>
               <tbody>

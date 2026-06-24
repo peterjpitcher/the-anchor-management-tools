@@ -281,13 +281,13 @@ export default function TimeclockManager({
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Employee</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Clock In</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Clock Out</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Hours</th>
-                <th className="px-3 py-2 text-xs font-medium text-gray-500">Flags</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Notes</th>
-                <th className="px-3 py-2" />
+                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500">Employee</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500">Clock In</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500">Clock Out</th>
+                <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Hours</th>
+                <th scope="col" className="px-3 py-2 text-xs font-medium text-gray-500">Flags</th>
+                <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500">Notes</th>
+                <th scope="col" className="px-3 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">

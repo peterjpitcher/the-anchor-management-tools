@@ -244,19 +244,19 @@ export default async function RotaPrintPage({ searchParams }: PrintPageProps) {
         <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', fontSize: 11 }}>
           <thead>
             <tr style={{ backgroundColor: '#f9fafb' }}>
-              <th style={{ width: 100, padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: 10 }}>
+              <th scope="col" style={{ width: 100, padding: '4px 6px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: 10 }}>
                 Employee
               </th>
               {days.map(d => {
                 const { weekday, date } = formatDayHeader(d);
                 return (
-                  <th key={d} style={{ padding: '4px 4px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: 600, color: '#374151', fontSize: 10 }}>
+                  <th scope="col" key={d} style={{ padding: '4px 4px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: 600, color: '#374151', fontSize: 10 }}>
                     <div>{weekday}</div>
                     <div style={{ fontWeight: 400, color: '#6b7280', fontSize: 9 }}>{date}</div>
                   </th>
                 );
               })}
-              <th style={{ width: 44, padding: '4px 4px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: 600, color: '#374151', fontSize: 10 }}>
+              <th scope="col" style={{ width: 44, padding: '4px 4px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: 600, color: '#374151', fontSize: 10 }}>
                 Hrs
               </th>
             </tr>

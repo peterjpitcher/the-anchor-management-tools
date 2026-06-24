@@ -339,11 +339,11 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium text-gray-600">Customer</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">Score</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">90d</th>
-                        <th className="px-3 py-2 text-right font-medium text-gray-600">365d</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-600">Last booking</th>
+                        <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Customer</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">Score</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">90d</th>
+                        <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">365d</th>
+                        <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Last booking</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">

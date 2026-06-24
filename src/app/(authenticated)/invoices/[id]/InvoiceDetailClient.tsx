@@ -121,14 +121,14 @@ function EntryPreviewTable({
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
-            <th className="px-3 py-2 text-left font-semibold">Date</th>
-            <th className="px-3 py-2 text-left font-semibold">Project</th>
-            <th className="px-3 py-2 text-left font-semibold">Description</th>
-            <th className="px-3 py-2 text-left font-semibold">Type</th>
-            <th className="px-3 py-2 text-right font-semibold">Qty</th>
-            <th className="px-3 py-2 text-right font-semibold">Amount</th>
-            <th className="px-3 py-2 text-left font-semibold">Status</th>
-            {showReason && <th className="px-3 py-2 text-left font-semibold">Reason</th>}
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Date</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Project</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Type</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">Qty</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">Amount</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Status</th>
+            {showReason && <th scope="col" className="px-3 py-2 text-left font-semibold">Reason</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 bg-white">
@@ -172,12 +172,12 @@ function RecurringPreviewTable({
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
-            <th className="px-3 py-2 text-left font-semibold">Description</th>
-            <th className="px-3 py-2 text-left font-semibold">Period</th>
-            <th className="px-3 py-2 text-right font-semibold">Amount</th>
-            <th className="px-3 py-2 text-right font-semibold">VAT</th>
-            <th className="px-3 py-2 text-left font-semibold">Status</th>
-            {showReason && <th className="px-3 py-2 text-left font-semibold">Reason</th>}
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Period</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">Amount</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">VAT</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Status</th>
+            {showReason && <th scope="col" className="px-3 py-2 text-left font-semibold">Reason</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 bg-white">
@@ -209,10 +209,10 @@ function LineItemsPreviewTable({ lineItems }: { lineItems: InvoiceLineItemInput[
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
-            <th className="px-3 py-2 text-left font-semibold">Description</th>
-            <th className="px-3 py-2 text-right font-semibold">Qty</th>
-            <th className="px-3 py-2 text-right font-semibold">Unit price</th>
-            <th className="px-3 py-2 text-right font-semibold">VAT</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold">Description</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">Qty</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">Unit price</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">VAT</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 bg-white">

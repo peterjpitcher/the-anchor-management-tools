@@ -84,4 +84,5 @@ Status values:
 | PR-78 / A-055 | done | DS `Radio` now uses a real labelled radio input instead of a button role shim; checkbox/radio label tests, typecheck, and lint pass. |
 | PR-79 / A-056 | done | DS `Tabs` already had tablist semantics and arrow-key coverage; `SectionNav` now exposes tablist/tab semantics with roving arrow-key focus/selection; DS tests, typecheck, and lint pass. |
 | PR-80 / A-057 | done | DS `Field` now keeps hint and error text rendered together and wires both into `aria-describedby` with `aria-invalid`; DS tests, typecheck, and lint pass. |
+| PR-81 / A-058 | done | Added `scope="col"` to remaining JSX raw table headers across app/components/DS tables and verified no TSX `<th>` remains without scope; inspected raw checkboxes for visible labels/aria labels; typecheck and lint pass. |
 | A-117 | todo | Included by owner request. |
