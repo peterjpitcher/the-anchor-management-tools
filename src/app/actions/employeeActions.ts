@@ -11,6 +11,7 @@ import { getCurrentUser } from '@/lib/audit-helpers';
 import { checkUserPermission } from './rbac';
 import { sendEmail } from '@/lib/email/emailService';
 import { formatDateInLondon } from '@/lib/dateUtils';
+import { hashTimeclockPin, isValidTimeclockPin } from '@/lib/timeclock/pin';
 // Import services and schemas
 import {
   EmployeeService,
@@ -369,9 +370,19 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     }
 
     const employeeId = formData.get('employee_id') as string;
+    const timeclockPin = String(formData.get('timeclock_pin') ?? '').trim();
 
     const cleanedData = cleanFormDataForEmployee(formData);
+    delete (cleanedData as Record<string, unknown>).timeclock_pin;
     const { employee_id, ...dataToValidate } = cleanedData;
+
+    if (timeclockPin && !isValidTimeclockPin(timeclockPin)) {
+        return {
+            type: 'error',
+            message: 'Invalid data provided. Please check your input and try again.',
+            errors: { timeclock_pin: ['Timeclock PIN must be exactly 4 digits.'] }
+        };
+    }
 
     const result = employeeSchema.safeParse(dataToValidate);
 
@@ -384,6 +395,21 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 
     try {
       const { updatedEmployee, oldEmployee } = await EmployeeService.updateEmployee(employeeId, result.data);
+
+      if (timeclockPin) {
+          const adminClient = createAdminClient();
+          const { error: pinError } = await adminClient
+              .from('employees')
+              .update({
+                  timeclock_pin_hash: hashTimeclockPin(timeclockPin),
+                  timeclock_pin_updated_at: new Date().toISOString(),
+              } as any)
+              .eq('employee_id', employeeId);
+
+          if (pinError) {
+              throw pinError;
+          }
+      }
 
       const changedFields: string[] = [];
       if (oldEmployee) {
@@ -404,9 +430,21 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
           old_values: sanitiseEmployeeForAudit(oldEmployee as Record<string, unknown>),
           new_values: sanitiseEmployeeForAudit(updatedEmployee as Record<string, unknown>),
           additional_info: {
-              fields_changed: changedFields
+              fields_changed: timeclockPin ? [...changedFields, 'timeclock_pin'] : changedFields
           }
       });
+
+      if (timeclockPin) {
+          await logAuditEvent({
+              ...(userInfo.user_id && { user_id: userInfo.user_id }),
+              ...(userInfo.user_email && { user_email: userInfo.user_email }),
+              operation_type: 'update_timeclock_pin',
+              resource_type: 'employee',
+              resource_id: employeeId,
+              operation_status: 'success',
+              additional_info: { pin_set: true }
+          });
+      }
 
       revalidatePath(`/employees`);
       revalidatePath(`/employees/${employeeId}`);
