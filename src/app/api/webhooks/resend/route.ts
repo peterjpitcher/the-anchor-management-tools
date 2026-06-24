@@ -49,6 +49,20 @@ type ReceivedEmailBody = {
   created_at?: string | null
 }
 
+const EMAIL_STATUS_RANK: Record<string, number> = {
+  queued: 0,
+  sent: 10,
+  delivery_delayed: 15,
+  delivered: 20,
+  opened: 30,
+  clicked: 35,
+  bounced: 100,
+  complained: 100,
+  failed: 100,
+  suppressed: 100,
+  received: 100,
+}
+
 function requireHeader(request: Request, name: string): string {
   const value = request.headers.get(name)
   if (!value) {
@@ -306,6 +320,108 @@ function suppressionReason(type: string): 'bounce' | 'complaint' | 'suppression'
   return null
 }
 
+function isEmailStatusProgression(currentStatus: string | null | undefined, nextStatus: string): boolean {
+  if (!currentStatus || currentStatus === nextStatus) {
+    return true
+  }
+
+  const currentRank = EMAIL_STATUS_RANK[currentStatus] ?? 0
+  const nextRank = EMAIL_STATUS_RANK[nextStatus] ?? 0
+  return nextRank >= currentRank
+}
+
+function isUniqueViolation(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '23505'
+}
+
+async function claimResendWebhook(adminClient: any, svixId: string, event: ResendEmailEvent) {
+  const params = {
+    svix_id: svixId,
+    event_type: event.type,
+    email_id: event.data?.email_id ?? null,
+  }
+
+  const { error: insertError } = await (adminClient.from('webhook_logs') as any)
+    .insert({
+      webhook_type: 'resend',
+      status: 'processing',
+      params,
+      processed_at: new Date().toISOString(),
+    })
+
+  if (!insertError) {
+    return { claimed: true, duplicate: false }
+  }
+
+  if (!isUniqueViolation(insertError)) {
+    throw new Error(`Failed to claim Resend webhook: ${insertError.message}`)
+  }
+
+  const { data: existing, error: existingError } = await (adminClient.from('webhook_logs') as any)
+    .select('id, status')
+    .eq('webhook_type', 'resend')
+    .contains('params', { svix_id: svixId })
+    .maybeSingle()
+
+  if (existingError) {
+    throw new Error(`Failed to load Resend webhook claim: ${existingError.message}`)
+  }
+
+  if (existing?.status === 'failed') {
+    const { error: retryError } = await (adminClient.from('webhook_logs') as any)
+      .update({
+        status: 'processing',
+        error_message: null,
+        error_details: null,
+        processed_at: new Date().toISOString(),
+      })
+      .eq('webhook_type', 'resend')
+      .contains('params', { svix_id: svixId })
+      .eq('status', 'failed')
+
+    if (retryError) {
+      throw new Error(`Failed to retry Resend webhook claim: ${retryError.message}`)
+    }
+
+    return { claimed: true, duplicate: false }
+  }
+
+  return { claimed: false, duplicate: true }
+}
+
+async function finishResendWebhookClaim(
+  adminClient: any,
+  svixId: string,
+  status: 'processed' | 'failed',
+  error?: unknown,
+) {
+  const updatePayload: Record<string, unknown> = {
+    status,
+    processed_at: new Date().toISOString(),
+  }
+
+  if (status === 'failed') {
+    updatePayload.error_message = getErrorMessage(error)
+    updatePayload.error_details = {
+      message: error instanceof Error ? error.message : String(error),
+    }
+  } else {
+    updatePayload.error_message = null
+    updatePayload.error_details = null
+  }
+
+  const { error: updateError } = await (adminClient.from('webhook_logs') as any)
+    .update(updatePayload)
+    .eq('webhook_type', 'resend')
+    .contains('params', { svix_id: svixId })
+
+  if (updateError) {
+    logger.warn('Failed to update Resend webhook claim', {
+      metadata: { svixId, status, error: updateError.message },
+    })
+  }
+}
+
 async function updateCustomerEmailHealth(adminClient: any, event: ResendEmailEvent, recipient: string | null) {
   if (!recipient) {
     return
@@ -398,6 +514,9 @@ async function updateCustomerEmailHealth(adminClient: any, event: ResendEmailEve
 }
 
 export async function POST(request: Request) {
+  let adminClient: ReturnType<typeof createAdminClient> | null = null
+  let claimedSvixId: string | null = null
+
   try {
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET
     if (!webhookSecret) {
@@ -407,24 +526,35 @@ export async function POST(request: Request) {
 
     const payload = await request.text()
     const resend = new Resend(process.env.RESEND_API_KEY)
+    const svixId = requireHeader(request, 'svix-id')
+    const svixTimestamp = requireHeader(request, 'svix-timestamp')
+    const svixSignature = requireHeader(request, 'svix-signature')
     const event = resend.webhooks.verify({
       payload,
       headers: {
-        id: requireHeader(request, 'svix-id'),
-        timestamp: requireHeader(request, 'svix-timestamp'),
-        signature: requireHeader(request, 'svix-signature'),
+        id: svixId,
+        timestamp: svixTimestamp,
+        signature: svixSignature,
       },
       webhookSecret,
     }) as unknown as ResendEmailEvent
 
-    const adminClient = createAdminClient()
+    adminClient = createAdminClient()
+    const claim = await claimResendWebhook(adminClient, svixId, event)
+    if (claim.duplicate) {
+      return NextResponse.json({ success: true, duplicate: true })
+    }
+    claimedSvixId = svixId
+
     if (event.type === 'email.received') {
       const result = await handleReceivedEmailEvent(adminClient, resend, event)
+      await finishResendWebhookClaim(adminClient, svixId, 'processed')
       return NextResponse.json(result)
     }
 
     const status = mapStatus(event.type)
     if (!status) {
+      await finishResendWebhookClaim(adminClient, svixId, 'processed')
       return NextResponse.json({ success: true, ignored: true })
     }
 
@@ -433,6 +563,7 @@ export async function POST(request: Request) {
       logger.warn('Resend webhook missing email_id', {
         metadata: { type: event.type },
       })
+      await finishResendWebhookClaim(adminClient, svixId, 'processed')
       return NextResponse.json({ success: true, note: 'Missing email_id' })
     }
 
@@ -470,15 +601,33 @@ export async function POST(request: Request) {
       updatePayload.error = errorFromEvent(event)
     }
 
-    const { error: updateError } = await (adminClient.from('email_messages') as any)
-      .update(updatePayload)
+    const { data: existingMessage, error: loadMessageError } = await (adminClient.from('email_messages') as any)
+      .select('id, status')
       .eq('resend_message_id', emailId)
+      .maybeSingle()
+
+    if (loadMessageError) {
+      logger.warn('Failed to load email message for Resend webhook', {
+        metadata: { emailId, type: event.type, error: loadMessageError.message },
+      })
+      throw new Error('Failed to load email message for Resend webhook')
+    }
+
+    const shouldPromoteStatus = isEmailStatusProgression(existingMessage?.status, status)
+    if (!shouldPromoteStatus) {
+      delete updatePayload.status
+    }
+
+    const updateQuery = (adminClient.from('email_messages') as any).update(updatePayload)
+    const { error: updateError } = existingMessage?.id
+      ? await updateQuery.eq('id', existingMessage.id)
+      : await updateQuery.eq('resend_message_id', emailId)
 
     if (updateError) {
       logger.warn('Failed to update email message from Resend webhook', {
         metadata: { emailId, type: event.type, error: updateError.message },
       })
-      return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
+      throw new Error('Failed to update email message from Resend webhook')
     }
 
     const recipient = event.data?.to?.[0]?.trim().toLowerCase() || null
@@ -496,14 +645,19 @@ export async function POST(request: Request) {
         logger.warn('Failed to upsert email suppression from Resend webhook', {
           metadata: { email: recipient, reason, emailId, error: suppressionError.message },
         })
-        return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
+        throw new Error('Failed to upsert email suppression from Resend webhook')
       }
     }
 
     await updateCustomerEmailHealth(adminClient, event, recipient)
 
+    await finishResendWebhookClaim(adminClient, svixId, 'processed')
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (adminClient && claimedSvixId) {
+      await finishResendWebhookClaim(adminClient, claimedSvixId, 'failed', error)
+    }
+
     logger.warn('Resend webhook rejected or failed', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
