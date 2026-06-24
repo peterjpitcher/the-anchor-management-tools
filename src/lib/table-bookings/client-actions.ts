@@ -8,7 +8,7 @@ export class TableBookingActionError extends Error {
 }
 
 type TableBookingActionOptions = {
-  method?: 'GET' | 'POST' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: Record<string, unknown>;
   headers?: HeadersInit;
 };

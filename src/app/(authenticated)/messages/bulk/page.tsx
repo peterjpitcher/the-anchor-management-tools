@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
+import { parseBulkMessageCustomerIds } from '@/lib/bulk-messages/customer-selection'
 import { EventCategory } from '@/types/event-categories'
 import BulkMessagesClient from './BulkMessagesClient'
 
@@ -15,11 +16,20 @@ interface EventOption {
   date: string
 }
 
-export default async function BulkMessagesPage() {
+interface BulkMessagesPageProps {
+  searchParams?: Promise<{
+    customerIds?: string | string[]
+  }>
+}
+
+export default async function BulkMessagesPage({ searchParams }: BulkMessagesPageProps) {
   const canSendMessages = await checkUserPermission('messages', 'send_marketing')
   if (!canSendMessages) {
     redirect('/unauthorized')
   }
+
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const initialCustomerIds = parseBulkMessageCustomerIds(resolvedSearchParams.customerIds)
 
   const supabase = await createClient()
 
@@ -45,6 +55,7 @@ export default async function BulkMessagesPage() {
     <BulkMessagesClient
       events={events}
       categories={categories}
+      initialCustomerIds={initialCustomerIds}
     />
   )
 }

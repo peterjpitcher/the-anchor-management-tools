@@ -63,6 +63,20 @@ export default async function BookingDetailPage({ params }: Props) {
   }
   if (!booking) notFound()
 
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('table_booking_items')
+    .select(`
+      id, custom_item_name, quantity, item_type, price_at_booking, special_requests,
+      guest_name, menu_dish_id,
+      menu_dish:menu_dishes!table_booking_items_menu_dish_id_fkey(id, name)
+    `)
+    .eq('booking_id', id)
+    .order('created_at', { ascending: true })
+
+  if (itemsError) {
+    console.error('Error loading booking items:', itemsError)
+  }
+
   const rawBooking = booking as any
 
   // Supabase infers nested joins as arrays; normalise to scalar before passing to the client component
@@ -81,10 +95,17 @@ export default async function BookingDetailPage({ params }: Props) {
         new Date(b.created_at ?? '').getTime() - new Date(a.created_at ?? '').getTime()
       )
     : []
+  const tableBookingItems = Array.isArray(itemRows)
+    ? itemRows.map((item: any) => ({
+        ...item,
+        menu_dish: Array.isArray(item.menu_dish) ? (item.menu_dish[0] ?? null) : (item.menu_dish ?? null),
+      }))
+    : []
   const normalizedBooking: Booking = {
     ...rawBooking,
     customer: customer ?? null,
     table_booking_tables: tableAssignments,
+    table_booking_items: tableBookingItems,
     audit_trail: auditTrail,
   } as unknown as Booking
 
