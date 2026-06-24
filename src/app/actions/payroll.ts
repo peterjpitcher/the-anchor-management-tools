@@ -739,6 +739,9 @@ export async function deletePayrollRow(
 ): Promise<{ success: true } | { success: false; error: string }> {
   const canApprove = await checkUserPermission('payroll', 'approve');
   if (!canApprove) return { success: false, error: 'Permission denied' };
+  const sessionClient = await createClient();
+  const { data: { user } } = await sessionClient.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   if (sessionId) {
     const result = await deleteTimeclockSession(sessionId, { allowPayrollApprove: true });
@@ -756,6 +759,20 @@ export async function deletePayrollRow(
 
   const supabase = createAdminClient();
   await invalidatePayrollApproval(supabase, year, month);
+
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'delete',
+    resource_type: sessionId ? 'timeclock_session' : 'rota_shift',
+    resource_id: sessionId ?? shiftId ?? undefined,
+    operation_status: 'success',
+    additional_info: {
+      source: 'payroll_row_delete',
+      payroll_year: year,
+      payroll_month: month,
+    },
+  }).catch(() => {});
 
   revalidatePath('/rota/payroll');
   return { success: true };

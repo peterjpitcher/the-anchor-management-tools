@@ -1,8 +1,10 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
+import { logAuditEvent } from '@/app/actions/audit';
 
 export type RotaSettings = {
   holidayYearStartMonth: number; // 1–12
@@ -62,6 +64,9 @@ export async function updateRotaSettings(
 ): Promise<{ success: true } | { success: false; error: string }> {
   const canManage = await checkUserPermission('settings', 'manage');
   if (!canManage) return { success: false, error: 'Permission denied' };
+  const sessionClient = await createClient();
+  const { data: { user } } = await sessionClient.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   const supabase = createAdminClient();
 
@@ -91,6 +96,19 @@ export async function updateRotaSettings(
       .from('system_settings')
       .upsert({ key: row.key, value: row.value }, { onConflict: 'key' });
     if (error) return { success: false, error: error.message };
+  }
+
+  if (upserts.length > 0) {
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'rota_settings',
+      operation_status: 'success',
+      new_values: {
+        changed_keys: upserts.map(row => row.key),
+      },
+    }).catch(() => {});
   }
 
   revalidatePath('/settings/rota');
