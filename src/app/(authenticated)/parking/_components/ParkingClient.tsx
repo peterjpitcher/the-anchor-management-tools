@@ -10,7 +10,7 @@ import {
 } from '@/ds'
 import {
   Button, Badge, SearchInput, Select, Stat, Spinner, Alert,
-  Modal, Input, Textarea, Switch, Dropdown, DropdownItem, Empty,
+  Modal, Input, Textarea, Switch, Dropdown, DropdownItem, Empty, ConfirmDialog,
 } from '@/ds'
 import { RefundDialog } from './RefundDialog'
 import { RefundHistoryTable } from './RefundHistoryTable'
@@ -27,11 +27,15 @@ import {
   generateParkingPaymentLink,
   markParkingBookingPaid,
   updateParkingBookingStatus,
+  updateParkingBookingDetails,
   listParkingBookings,
   getParkingBookingNotifications,
-  getParkingRateConfig
+  getParkingRateConfig,
+  getParkingRateSettings,
+  saveParkingRateConfig
 } from '@/app/actions/parking'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
+import type { ParkingRate } from '@/types/parking'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -142,7 +146,19 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [createForm, setCreateForm] = useState(initialFormState)
+  const [editForm, setEditForm] = useState(initialFormState)
+  const [cancelTarget, setCancelTarget] = useState<ParkingBooking | null>(null)
+  const [activeRateRecord, setActiveRateRecord] = useState<ParkingRate | null>(null)
+  const [rateForm, setRateForm] = useState({
+    hourly_rate: '',
+    daily_rate: '',
+    weekly_rate: '',
+    monthly_rate: '',
+    capacity_override: '',
+    notes: '',
+  })
   const [isPending, startTransition] = useTransition()
   const [isMutating, startMutation] = useTransition()
   const pageError = initialError ?? null
@@ -159,6 +175,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const sections = [
     { id: 'bookings', label: 'Bookings' },
     { id: 'notifications', label: 'Notifications' },
+    ...(permissions.canManage ? [{ id: 'rates', label: 'Rates' }] : []),
   ]
 
   /* ---------- Data loading ---------- */
@@ -197,6 +214,18 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         return
       }
       setActiveRates(result.data)
+      const settings = await getParkingRateSettings()
+      if ('success' in settings) {
+        setActiveRateRecord(settings.data)
+        setRateForm({
+          hourly_rate: String(settings.data.hourly_rate),
+          daily_rate: String(settings.data.daily_rate),
+          weekly_rate: String(settings.data.weekly_rate),
+          monthly_rate: String(settings.data.monthly_rate),
+          capacity_override: settings.data.capacity_override == null ? '' : String(settings.data.capacity_override),
+          notes: settings.data.notes ?? '',
+        })
+      }
     }
     void loadRates()
   }, [permissions.canManage])
@@ -223,9 +252,36 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   /* ---------- Mutation handlers ---------- */
 
   const resetForm = () => setCreateForm(initialFormState)
+  const resetEditForm = () => setEditForm(initialFormState)
 
   const handleInputChange = (field: keyof typeof initialFormState, value: string | boolean) => {
     setCreateForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleEditInputChange = (field: keyof typeof initialFormState, value: string | boolean) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const openEditBooking = (booking: ParkingBooking) => {
+    setEditForm({
+      customer_first_name: booking.customer_first_name,
+      customer_last_name: booking.customer_last_name ?? '',
+      customer_mobile: booking.customer_mobile,
+      customer_email: booking.customer_email ?? '',
+      vehicle_registration: booking.vehicle_registration,
+      vehicle_make: booking.vehicle_make ?? '',
+      vehicle_model: booking.vehicle_model ?? '',
+      vehicle_colour: booking.vehicle_colour ?? '',
+      start_at: booking.start_at.slice(0, 16),
+      end_at: booking.end_at.slice(0, 16),
+      notes: booking.notes ?? '',
+      override_price: booking.override_price == null ? '' : String(booking.override_price),
+      override_reason: booking.override_reason ?? '',
+      capacity_override: booking.capacity_override ?? false,
+      capacity_override_reason: booking.capacity_override_reason ?? '',
+      send_payment_link: false,
+    })
+    setShowEditModal(true)
   }
 
   const openRefundForBooking = async (booking: ParkingBooking) => {
@@ -288,6 +344,87 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       const latest = await fetchBookings()
       const created = latest.find((b) => b.id === (result?.booking as ParkingBooking | undefined)?.id)
       if (created) setSelectedBooking(created)
+    })
+  }
+
+  const handleEditBooking = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!selectedBooking) return
+
+    const start = editForm.start_at ? new Date(editForm.start_at) : null
+    const end = editForm.end_at ? new Date(editForm.end_at) : null
+    if (!start || !end) { toast.error('Start and end times are required'); return }
+
+    const formData = new FormData()
+    formData.append('customer_first_name', editForm.customer_first_name)
+    if (editForm.customer_last_name) formData.append('customer_last_name', editForm.customer_last_name)
+    formData.append('customer_mobile', editForm.customer_mobile)
+    formData.append('default_country_code', '44')
+    if (editForm.customer_email) formData.append('customer_email', editForm.customer_email)
+    formData.append('vehicle_registration', editForm.vehicle_registration)
+    if (editForm.vehicle_make) formData.append('vehicle_make', editForm.vehicle_make)
+    if (editForm.vehicle_model) formData.append('vehicle_model', editForm.vehicle_model)
+    if (editForm.vehicle_colour) formData.append('vehicle_colour', editForm.vehicle_colour)
+    formData.append('start_at', start.toISOString())
+    formData.append('end_at', end.toISOString())
+    if (editForm.notes) formData.append('notes', editForm.notes)
+    if (editForm.override_price) formData.append('override_price', editForm.override_price)
+    if (editForm.override_reason) formData.append('override_reason', editForm.override_reason)
+    if (editForm.capacity_override) {
+      formData.append('capacity_override', 'true')
+      if (editForm.capacity_override_reason) formData.append('capacity_override_reason', editForm.capacity_override_reason)
+    }
+
+    startMutation(async () => {
+      const result = await updateParkingBookingDetails(selectedBooking.id, formData)
+      if (result?.error) { toast.error(result.error); return }
+      toast.success('Parking booking updated')
+      setShowEditModal(false)
+      resetEditForm()
+      const latest = await fetchBookings()
+      const updated = latest.find((b) => b.id === selectedBooking.id)
+      if (updated) { setSelectedBooking(updated); void loadNotifications(updated.id) }
+    })
+  }
+
+  const handleConfirmCancelBooking = () => {
+    if (!cancelTarget) return
+    const target = cancelTarget
+    setCancelTarget(null)
+    handleStatusUpdate(target.id, 'cancelled')
+  }
+
+  const handleSaveRates = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData()
+    formData.append('hourly_rate', rateForm.hourly_rate)
+    formData.append('daily_rate', rateForm.daily_rate)
+    formData.append('weekly_rate', rateForm.weekly_rate)
+    formData.append('monthly_rate', rateForm.monthly_rate)
+    if (rateForm.capacity_override) formData.append('capacity_override', rateForm.capacity_override)
+    if (rateForm.notes) formData.append('notes', rateForm.notes)
+
+    startMutation(async () => {
+      const result = await saveParkingRateConfig(formData)
+      if (result?.error) { toast.error(result.error); return }
+      if (!result?.success) { toast.error('Failed to save parking rates'); return }
+      const savedRate = result.data
+      toast.success('Parking rates updated')
+      setActiveRateRecord(savedRate)
+      setActiveRates({
+        hourlyRate: Number(savedRate.hourly_rate),
+        dailyRate: Number(savedRate.daily_rate),
+        weeklyRate: Number(savedRate.weekly_rate),
+        monthlyRate: Number(savedRate.monthly_rate),
+      })
+      setRateForm({
+        hourly_rate: String(savedRate.hourly_rate),
+        daily_rate: String(savedRate.daily_rate),
+        weekly_rate: String(savedRate.weekly_rate),
+        monthly_rate: String(savedRate.monthly_rate),
+        capacity_override: savedRate.capacity_override == null ? '' : String(savedRate.capacity_override),
+        notes: savedRate.notes ?? '',
+      })
     })
   }
 
@@ -497,6 +634,9 @@ export default function ParkingClient({ permissions, initialError }: Props) {
 
                     {permissions.canManage && (
                       <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                        <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => openEditBooking(selectedBooking)}>
+                          Edit
+                        </Button>
                         {selectedBooking.payment_status === 'pending' && (
                           <>
                             <Button size="sm" disabled={isMutating} onClick={() => handleGeneratePaymentLink(selectedBooking.id)}>
@@ -508,7 +648,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                           </>
                         )}
                         {selectedBooking.status !== 'cancelled' && selectedBooking.status !== 'completed' && (
-                          <Button variant="ghost" size="sm" disabled={isMutating} onClick={() => handleStatusUpdate(selectedBooking.id, 'cancelled')}>
+                          <Button variant="ghost" size="sm" disabled={isMutating} onClick={() => setCancelTarget(selectedBooking)}>
                             Cancel
                           </Button>
                         )}
@@ -585,6 +725,78 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         </Card>
       )}
 
+      {activeSection === 'rates' && permissions.canManage && (
+        <Card>
+          <CardHeader
+            title="Parking Rates"
+            subtitle={activeRateRecord ? `Active from ${formatDateTime(activeRateRecord.effective_from)}` : undefined}
+          />
+          <CardBody>
+            <form onSubmit={handleSaveRates} className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Input
+                  label="Hourly rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={rateForm.hourly_rate}
+                  onChange={(event) => setRateForm((prev) => ({ ...prev, hourly_rate: event.target.value }))}
+                />
+                <Input
+                  label="Daily rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={rateForm.daily_rate}
+                  onChange={(event) => setRateForm((prev) => ({ ...prev, daily_rate: event.target.value }))}
+                />
+                <Input
+                  label="Weekly rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={rateForm.weekly_rate}
+                  onChange={(event) => setRateForm((prev) => ({ ...prev, weekly_rate: event.target.value }))}
+                />
+                <Input
+                  label="Monthly rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={rateForm.monthly_rate}
+                  onChange={(event) => setRateForm((prev) => ({ ...prev, monthly_rate: event.target.value }))}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
+                <Input
+                  label="Capacity override"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={rateForm.capacity_override}
+                  onChange={(event) => setRateForm((prev) => ({ ...prev, capacity_override: event.target.value }))}
+                />
+                <Textarea
+                  label="Notes"
+                  value={rateForm.notes}
+                  onChange={(event) => setRateForm((prev) => ({ ...prev, notes: event.target.value }))}
+                  rows={2}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={isMutating}>
+                  {isMutating ? 'Saving...' : 'Save Rates'}
+                </Button>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Create Booking Modal */}
       <Modal open={showCreateModal} onClose={() => { if (!isPending) { setShowCreateModal(false); resetForm() } }} title="Create Parking Booking">
         <form onSubmit={handleCreateBooking} className="flex flex-col gap-5 p-4">
@@ -653,6 +865,67 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           </div>
         </form>
       </Modal>
+
+      <Modal open={showEditModal} onClose={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }} title="Edit Parking Booking">
+        <form onSubmit={handleEditBooking} className="flex flex-col gap-5 p-4">
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-semibold text-text-strong">Customer</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input label="First name" required value={editForm.customer_first_name} onChange={(e) => handleEditInputChange('customer_first_name', e.target.value)} />
+              <Input label="Last name" value={editForm.customer_last_name} onChange={(e) => handleEditInputChange('customer_last_name', e.target.value)} />
+              <Input label="Mobile" required placeholder="+447700900123" value={editForm.customer_mobile} onChange={(e) => handleEditInputChange('customer_mobile', e.target.value)} />
+              <Input label="Email" type="email" value={editForm.customer_email} onChange={(e) => handleEditInputChange('customer_email', e.target.value)} />
+            </div>
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-semibold text-text-strong">Schedule</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input label="Start" type="datetime-local" required value={editForm.start_at} onChange={(e) => handleEditInputChange('start_at', e.target.value)} />
+              <Input label="End" type="datetime-local" required value={editForm.end_at} onChange={(e) => handleEditInputChange('end_at', e.target.value)} />
+            </div>
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-semibold text-text-strong">Vehicle</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input label="Registration" required placeholder="AB12CDE" value={editForm.vehicle_registration} onChange={(e) => handleEditInputChange('vehicle_registration', e.target.value.toUpperCase())} />
+              <Input label="Make" value={editForm.vehicle_make} onChange={(e) => handleEditInputChange('vehicle_make', e.target.value)} />
+              <Input label="Model" value={editForm.vehicle_model} onChange={(e) => handleEditInputChange('vehicle_model', e.target.value)} />
+              <Input label="Colour" value={editForm.vehicle_colour} onChange={(e) => handleEditInputChange('vehicle_colour', e.target.value)} />
+            </div>
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-semibold text-text-strong">Pricing</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input label="Override price" type="number" min="0" step="0.01" value={editForm.override_price} onChange={(e) => handleEditInputChange('override_price', e.target.value)} />
+              <Input label="Override reason" value={editForm.override_reason} onChange={(e) => handleEditInputChange('override_reason', e.target.value)} />
+            </div>
+            <Switch label="Bypass capacity check" checked={editForm.capacity_override} onChange={(v) => handleEditInputChange('capacity_override', v)} />
+            {editForm.capacity_override && (
+              <Textarea label="Capacity override reason" required value={editForm.capacity_override_reason} onChange={(e) => handleEditInputChange('capacity_override_reason', e.target.value)} />
+            )}
+            <Textarea label="Internal notes" value={editForm.notes} onChange={(e) => handleEditInputChange('notes', e.target.value)} />
+          </fieldset>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button type="button" variant="secondary" onClick={() => { if (!isMutating) { setShowEditModal(false); resetEditForm() } }}>Cancel</Button>
+            <Button type="submit" disabled={isMutating}>{isMutating ? 'Saving...' : 'Save Booking'}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(cancelTarget)}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={handleConfirmCancelBooking}
+        type="warning"
+        title="Cancel parking booking?"
+        message={cancelTarget ? `Cancel booking ${cancelTarget.reference}?` : 'Cancel this parking booking?'}
+        confirmText="Cancel Booking"
+        confirmVariant="danger"
+      />
 
       {/* Refund Dialog */}
       {permissions.canRefund && refundPaymentId && (

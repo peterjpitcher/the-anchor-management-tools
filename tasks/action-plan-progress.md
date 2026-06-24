@@ -50,4 +50,5 @@ Status values:
 | PR-50 / A-023 | done | Customer selections now open bulk SMS with eligible recipients preselected; dead Email action removed; parser test added. |
 | PR-51 / A-024 | done | New-employee status dropdown now uses schema-valid `Onboarding`; create failures surface server field errors in the toast. |
 | PR-52 / A-025 | done | Table-booking detail now has validated admin edit for date/time/customer/notes/dietary/allergies, loads saved preorder items, and allows legacy preorder item edits before cutoff; focused API tests added. |
+| PR-53 / A-026 | done | Parking bookings now have edit flow, cancel confirmation, and rates management UI backed by validated/audited actions; action tests added. |
 | A-117 | todo | Included by owner request. |
