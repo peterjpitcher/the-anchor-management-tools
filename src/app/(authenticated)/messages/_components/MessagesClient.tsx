@@ -128,6 +128,7 @@ export function MessagesClient() {
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<ConversationSummary['customer'] | null>(null)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [showMobileThread, setShowMobileThread] = useState(false)
   const [markingUnread, setMarkingUnread] = useState(false)
 
   // Composer state
@@ -231,6 +232,7 @@ export function MessagesClient() {
   useEffect(() => {
     if (conversations.length === 0) {
       setSelectedCustomerId(null)
+      setShowMobileThread(false)
       setMessages([])
       setSelectedCustomer(null)
       return
@@ -485,12 +487,12 @@ export function MessagesClient() {
         </Alert>
       )}
 
-      {/* 3-panel layout: 320px conversation list + 1fr thread + 280px contact sidebar */}
-      <Card className="h-[calc(100vh-14rem)] min-h-[400px] overflow-hidden">
+      {/* 3-panel layout on desktop; single-column list/thread on mobile. */}
+      <Card className="h-[calc(100vh-12rem)] min-h-[420px] overflow-hidden lg:h-[calc(100vh-14rem)]">
         <CardBody className="p-0 h-full">
-        <div className="grid grid-cols-[320px_1fr_280px] h-full">
+        <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_1fr_280px]">
           {/* ============ LEFT PANEL: Conversation List ============ */}
-          <div className="flex flex-col border-r border-border h-full min-h-0">
+          <div className={`${showMobileThread ? 'hidden lg:flex' : 'flex'} flex-col border-r border-border h-full min-h-0`}>
             {/* Filter + Search */}
             <div className="p-3 border-b border-border space-y-2">
               <SectionNav items={filterItems} activeId={filter} onSelect={(id) => setFilter(id as ConversationFilter)} />
@@ -524,7 +526,10 @@ export function MessagesClient() {
                       <li key={conversation.customer.id}>
                         <button
                           type="button"
-                          onClick={() => setSelectedCustomerId(conversation.customer.id)}
+                          onClick={() => {
+                            setSelectedCustomerId(conversation.customer.id)
+                            setShowMobileThread(true)
+                          }}
                           className={`flex w-full items-start gap-3 px-3 py-3 text-left transition-colors ${
                             isSelected ? 'bg-primary-soft' : 'hover:bg-surface-hover'
                           }`}
@@ -561,7 +566,7 @@ export function MessagesClient() {
           </div>
 
           {/* ============ MIDDLE PANEL: Message Thread ============ */}
-          <div className="flex flex-col h-full min-h-0">
+          <div className={`${showMobileThread ? 'flex' : 'hidden lg:flex'} flex-col h-full min-h-0`}>
             {!selectedCustomerId || !selectedCustomer ? (
               <div className="flex h-full items-center justify-center p-6">
                 <Empty
@@ -574,6 +579,16 @@ export function MessagesClient() {
                 {/* Thread header */}
                 <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
                   <div className="flex items-center gap-3 min-w-0">
+                    {showMobileThread && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="lg:hidden"
+                        onClick={() => setShowMobileThread(false)}
+                      >
+                        Back
+                      </Button>
+                    )}
                     <Avatar name={customerName} size="sm" />
                     <div className="min-w-0">
 	                      <CustomerLink customerId={selectedCustomerId} name={customerName} className="block truncate text-sm font-semibold" />
@@ -584,7 +599,7 @@ export function MessagesClient() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5 flex-shrink-0">
                     <Button variant="ghost" size="sm" onClick={() => void handleMarkRead()}>
                       Mark read
                     </Button>
@@ -630,7 +645,7 @@ export function MessagesClient() {
 
 	                          return (
 	                            <div key={message.id} className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} mb-2`}>
-	                              <div className="max-w-[70%]">
+	                              <div className="max-w-[85%] lg:max-w-[70%]">
                                   <div className={`mb-1 flex items-center gap-1.5 ${isOutbound ? 'justify-end' : 'justify-start'}`}>
                                     <Badge tone="neutral">{channelLabel(message.channel)}</Badge>
                                     {message.has_attachments && <Badge tone="info">Attachment</Badge>}
@@ -701,7 +716,7 @@ export function MessagesClient() {
           </div>
 
           {/* ============ RIGHT PANEL: Contact Sidebar ============ */}
-          <div className="flex flex-col border-l border-border h-full overflow-y-auto">
+          <div className="hidden flex-col border-l border-border h-full overflow-y-auto lg:flex">
             {selectedCustomer ? (
               <div className="p-4 space-y-5">
                 {/* Avatar + name */}
