@@ -9,7 +9,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import {
   getTaxYearBounds,
-  getStandardRate,
   THRESHOLD_MILES,
   type TaxYearStats,
 } from '@/lib/mileage/hmrcRates'
@@ -172,10 +171,6 @@ function roundMiles(miles: number): number {
   return Math.round(miles * 10) / 10
 }
 
-function roundCurrency(amount: number): number {
-  return Math.round(amount * 100) / 100
-}
-
 function validateManualTripLegs(
   legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }>,
   homeBaseId: string
@@ -235,6 +230,16 @@ function validateManualTripLegs(
   }
 
   return { legs: typedLegs, totalMiles }
+}
+
+function toMileageTripLegRpcPayload(
+  legs: Array<{ fromDestinationId: string; toDestinationId: string; miles: number }>
+) {
+  return legs.map((leg) => ({
+    from_destination_id: leg.fromDestinationId,
+    to_destination_id: leg.toDestinationId,
+    miles: leg.miles,
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -877,48 +882,22 @@ export async function createTrip(input: {
     // for future prefill and cache write failures do not leave a partial trip.
     await cacheDistances(db, legs)
 
-    // Insert trip with default rates; the shared recalculation below will
-    // apply the correct cumulative HMRC threshold split for the whole tax year.
-    const { data: newTrip, error: tripError } = await db
-      .from('mileage_trips')
-      .insert({
-        trip_date: tripDate,
-        description: description?.trim() || null,
-        total_miles: totalMiles,
-        miles_at_standard_rate: totalMiles,
-        miles_at_reduced_rate: 0,
-        amount_due: roundCurrency(totalMiles * getStandardRate(tripDate)),
-        source: 'manual',
-        created_by: userId,
-      })
-      .select('id')
-      .single()
+    const { data: newTripId, error: tripError } = await (db.rpc as any)('create_manual_mileage_trip_v01', {
+      p_trip_date: tripDate,
+      p_description: description?.trim() || null,
+      p_total_miles: totalMiles,
+      p_created_by: userId,
+      p_legs: toMileageTripLegRpcPayload(legs),
+    })
 
     if (tripError) throw tripError
-
-    // Insert legs
-    const legInserts = legs.map((leg, index) => ({
-      trip_id: newTrip.id,
-      leg_order: index + 1,
-      from_destination_id: leg.fromDestinationId,
-      to_destination_id: leg.toDestinationId,
-      miles: leg.miles,
-    }))
-
-    const { error: legsError } = await db
-      .from('mileage_trip_legs')
-      .insert(legInserts)
-
-    if (legsError) throw legsError
-
-    // Recalculate HMRC rate splits for all trips in the affected tax year
-    await recalculateTaxYearMileage(tripDate)
+    if (!newTripId) throw new Error('Failed to create trip')
 
     await logAuditEvent({
       user_id: userId,
       operation_type: 'create',
       resource_type: 'mileage_trip',
-      resource_id: newTrip.id,
+      resource_id: newTripId,
       operation_status: 'success',
       new_values: {
         trip_date: tripDate,
@@ -928,7 +907,7 @@ export async function createTrip(input: {
     })
 
     revalidateMileagePaths()
-    return { success: true, data: { id: newTrip.id } }
+    return { success: true, data: { id: newTripId } }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create trip'
     return { error: message }
@@ -986,61 +965,19 @@ export async function updateTrip(input: {
     const legs = validated.legs
     const totalMiles = validated.totalMiles
 
-    // Save the old trip date before updating, so we can recalculate BOTH tax years
-    // if the date moved across the 6 April boundary.
-    const oldTripDate = existing.trip_date
-
     // Cache leg distances before replacing the trip rows. If this fails, the
     // existing trip is left untouched and the user can retry.
     await cacheDistances(db, legs)
 
-    // Update trip with default rates; the shared recalculation below will
-    // apply the correct cumulative HMRC threshold split for the whole tax year.
-    const { error: updateError } = await db
-      .from('mileage_trips')
-      .update({
-        trip_date: tripDate,
-        description: description?.trim() || null,
-        total_miles: totalMiles,
-        miles_at_standard_rate: totalMiles,
-        miles_at_reduced_rate: 0,
-        amount_due: roundCurrency(totalMiles * getStandardRate(tripDate)),
-      })
-      .eq('id', input.id)
+    const { error: updateError } = await (db.rpc as any)('update_manual_mileage_trip_v01', {
+      p_trip_id: input.id,
+      p_trip_date: tripDate,
+      p_description: description?.trim() || null,
+      p_total_miles: totalMiles,
+      p_legs: toMileageTripLegRpcPayload(legs),
+    })
 
     if (updateError) throw updateError
-
-    // Replace legs: delete existing, insert new
-    const { error: deleteLegsError } = await db
-      .from('mileage_trip_legs')
-      .delete()
-      .eq('trip_id', input.id)
-
-    if (deleteLegsError) throw deleteLegsError
-
-    const legInserts = legs.map((leg, index) => ({
-      trip_id: input.id,
-      leg_order: index + 1,
-      from_destination_id: leg.fromDestinationId,
-      to_destination_id: leg.toDestinationId,
-      miles: leg.miles,
-    }))
-
-    const { error: insertLegsError } = await db
-      .from('mileage_trip_legs')
-      .insert(legInserts)
-
-    if (insertLegsError) throw insertLegsError
-
-    // Recalculate HMRC rate splits for the new tax year
-    await recalculateTaxYearMileage(tripDate)
-
-    // If the date changed across a tax year boundary, also recalculate the old tax year
-    const oldTaxYear = getTaxYearBounds(oldTripDate)
-    const newTaxYear = getTaxYearBounds(tripDate)
-    if (oldTaxYear.start !== newTaxYear.start) {
-      await recalculateTaxYearMileage(oldTripDate)
-    }
 
     await logAuditEvent({
       user_id: userId,

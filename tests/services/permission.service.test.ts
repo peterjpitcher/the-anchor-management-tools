@@ -114,7 +114,8 @@ describe('PermissionService deleteRole race safety', () => {
       data: [{ user_id: 'user-1' }, { user_id: 'user-2' }],
       error: null,
     })
-    const deleteEq = vi.fn().mockResolvedValue({ error: null })
+    const deleteIn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEq = vi.fn().mockReturnValue({ in: deleteIn })
     const insert = vi.fn().mockResolvedValue({ error: null })
 
     const adminClient = {
@@ -144,5 +145,87 @@ describe('PermissionService deleteRole race safety', () => {
     })
     expect(mockedRevalidateTag).toHaveBeenCalledWith('permissions-user-1')
     expect(mockedRevalidateTag).toHaveBeenCalledWith('permissions-user-2')
+    expect(insert).toHaveBeenCalledWith([{ role_id: 'role-1', permission_id: 'permission-new' }])
+    expect(deleteIn).toHaveBeenCalledWith('permission_id', ['permission-old'])
+  })
+
+  it('keeps existing role permissions when adding new permissions fails', async () => {
+    const roleMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'role-1', is_system: false },
+      error: null,
+    })
+    const roleEq = vi.fn().mockReturnValue({ maybeSingle: roleMaybeSingle })
+
+    const existingPermissionsEq = vi.fn().mockResolvedValue({
+      data: [{ permission_id: 'permission-old' }],
+      error: null,
+    })
+    const assignedUsersEq = vi.fn().mockResolvedValue({
+      data: [{ user_id: 'user-1' }],
+      error: null,
+    })
+    const deleteIn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEq = vi.fn().mockReturnValue({ in: deleteIn })
+    const insert = vi.fn().mockResolvedValue({ error: { message: 'insert failed' } })
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === 'roles') {
+          return { select: vi.fn().mockReturnValue({ eq: roleEq }) }
+        }
+        if (table === 'role_permissions') {
+          return {
+            select: vi.fn().mockReturnValue({ eq: existingPermissionsEq }),
+            delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+            insert,
+          }
+        }
+        if (table === 'user_roles') {
+          return { select: vi.fn().mockReturnValue({ eq: assignedUsersEq }) }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    mockedCreateAdminClient.mockReturnValue(adminClient)
+
+    await expect(PermissionService.assignPermissionsToRole('role-1', ['permission-new'])).rejects.toThrow(
+      'Failed to assign permissions'
+    )
+    expect(insert).toHaveBeenCalledWith([{ role_id: 'role-1', permission_id: 'permission-new' }])
+    expect(deleteIn).not.toHaveBeenCalled()
+    expect(mockedRevalidateTag).not.toHaveBeenCalled()
+  })
+
+  it('keeps existing user roles when adding replacement roles fails', async () => {
+    const existingRolesEq = vi.fn().mockResolvedValue({
+      data: [{ role_id: 'role-old' }],
+      error: null,
+    })
+    const deleteIn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEq = vi.fn().mockReturnValue({ in: deleteIn })
+    const insert = vi.fn().mockResolvedValue({ error: { message: 'insert failed' } })
+
+    const adminClient = {
+      from: vi.fn((table: string) => {
+        if (table === 'user_roles') {
+          return {
+            select: vi.fn().mockReturnValue({ eq: existingRolesEq }),
+            delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+            insert,
+          }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    mockedCreateAdminClient.mockReturnValue(adminClient)
+
+    await expect(PermissionService.assignRolesToUser('user-1', ['role-new'], 'manager-1')).rejects.toThrow(
+      'Failed to assign roles'
+    )
+    expect(insert).toHaveBeenCalledWith([{ user_id: 'user-1', role_id: 'role-new', assigned_by: 'manager-1' }])
+    expect(deleteIn).not.toHaveBeenCalled()
+    expect(mockedRevalidateTag).not.toHaveBeenCalled()
   })
 })

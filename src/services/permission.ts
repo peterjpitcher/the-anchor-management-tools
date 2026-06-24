@@ -325,18 +325,15 @@ export class PermissionService {
       throw new Error('Failed to load assigned users');
     }
 
-    const { error: deleteError } = await admin
-      .from('role_permissions')
-      .delete()
-      .eq('role_id', roleId);
+    const permissionIdsToAdd = dedupedPermissionIds.filter(
+      (permissionId) => !existingPermissionIds.includes(permissionId)
+    );
+    const permissionIdsToRemove = existingPermissionIds.filter(
+      (permissionId) => !dedupedPermissionIds.includes(permissionId)
+    );
 
-    if (deleteError) {
-      console.error('Error removing permissions:', deleteError);
-      throw new Error('Failed to update permissions');
-    }
-    
-    if (dedupedPermissionIds.length > 0) {
-      const rolePermissions = dedupedPermissionIds.map(permissionId => ({
+    if (permissionIdsToAdd.length > 0) {
+      const rolePermissions = permissionIdsToAdd.map(permissionId => ({
         role_id: roleId,
         permission_id: permissionId
       }));
@@ -347,21 +344,23 @@ export class PermissionService {
       
       if (insertError) {
         console.error('Error assigning permissions:', insertError);
-        if (existingPermissionIds.length > 0) {
-          const rollbackRows = existingPermissionIds.map((permissionId) => ({
-            role_id: roleId,
-            permission_id: permissionId
-          }));
-          const { error: rollbackError } = await admin
-            .from('role_permissions')
-            .insert(rollbackRows);
-          if (rollbackError) {
-            console.error('Failed to restore role permissions after insert failure:', rollbackError);
-          }
-        }
         throw new Error('Failed to assign permissions');
       }
     }
+
+    if (permissionIdsToRemove.length > 0) {
+      const { error: deleteError } = await admin
+        .from('role_permissions')
+        .delete()
+        .eq('role_id', roleId)
+        .in('permission_id', permissionIdsToRemove);
+
+      if (deleteError) {
+        console.error('Error removing permissions:', deleteError);
+        throw new Error('Failed to update permissions');
+      }
+    }
+
     revalidateUserPermissionTags((assignedUsers || []).map((row: any) => row.user_id));
     return { oldPermissions: existing || [], newPermissions: dedupedPermissionIds };
   }
@@ -384,18 +383,15 @@ export class PermissionService {
       new Set((existing || []).map((item: any) => item.role_id).filter(Boolean))
     );
 
-    const { error: deleteError } = await admin
-      .from('user_roles')
-      .delete()
-      .eq('user_id', userId);
+    const roleIdsToAdd = dedupedRoleIds.filter(
+      (roleId) => !existingRoleIds.includes(roleId)
+    );
+    const roleIdsToRemove = existingRoleIds.filter(
+      (roleId) => !dedupedRoleIds.includes(roleId)
+    );
 
-    if (deleteError) {
-      console.error('Error removing user roles:', deleteError);
-      throw new Error('Failed to update user roles');
-    }
-    
-    if (dedupedRoleIds.length > 0) {
-      const userRoles = dedupedRoleIds.map(roleId => ({
+    if (roleIdsToAdd.length > 0) {
+      const userRoles = roleIdsToAdd.map(roleId => ({
         user_id: userId,
         role_id: roleId,
         assigned_by: assignedByUserId
@@ -407,22 +403,23 @@ export class PermissionService {
       
       if (insertError) {
         console.error('Error assigning roles:', insertError);
-        if (existingRoleIds.length > 0) {
-          const rollbackRows = existingRoleIds.map((roleId) => ({
-            user_id: userId,
-            role_id: roleId,
-            assigned_by: assignedByUserId
-          }));
-          const { error: rollbackError } = await admin
-            .from('user_roles')
-            .insert(rollbackRows);
-          if (rollbackError) {
-            console.error('Failed to restore user roles after insert failure:', rollbackError);
-          }
-        }
         throw new Error('Failed to assign roles');
       }
     }
+
+    if (roleIdsToRemove.length > 0) {
+      const { error: deleteError } = await admin
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId)
+        .in('role_id', roleIdsToRemove);
+
+      if (deleteError) {
+        console.error('Error removing user roles:', deleteError);
+        throw new Error('Failed to update user roles');
+      }
+    }
+
     // Bust the cached permissions for the affected user so the next check
     // reflects the new role assignment immediately.
     revalidateTag(`permissions-${userId}`);

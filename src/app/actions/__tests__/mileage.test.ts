@@ -26,6 +26,7 @@ const mileageRows: MileageTripRow[] = [
 ]
 
 const queryRanges: Array<{ gte?: string; lte?: string }> = []
+const mockRpc = vi.fn()
 
 function createMileageTripsQuery(): Record<string, unknown> {
   const range: { gte?: string; lte?: string } = {}
@@ -59,6 +60,7 @@ const mockFrom = vi.fn(() => createMileageTripsQuery())
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
     from: mockFrom,
+    rpc: mockRpc,
   })),
 }))
 
@@ -85,11 +87,23 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
-import { getTripStats } from '../mileage'
+import { createTrip, getTripStats, updateTrip } from '../mileage'
+
+const HOME_ID = '00000000-0000-4000-8000-000000000001'
+const DEST_ID = '00000000-0000-4000-8000-000000000002'
+
+function createSingleBuilder(data: unknown, error: unknown = null) {
+  const single = vi.fn().mockResolvedValue({ data, error })
+  const eq = vi.fn(() => ({ single }))
+  const select = vi.fn(() => ({ eq }))
+  return { select, eq, single }
+}
 
 describe('getTripStats', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockFrom.mockImplementation(() => createMileageTripsQuery())
+    mockRpc.mockReset()
     queryRanges.length = 0
   })
 
@@ -111,5 +125,94 @@ describe('getTripStats', () => {
       { gte: '2026-04-06', lte: '2027-04-05' },
       { gte: '2026-01-01', lte: '2026-12-31' },
     ])
+  })
+})
+
+describe('manual mileage trip mutations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFrom.mockImplementation(() => createMileageTripsQuery())
+    mockRpc.mockReset()
+  })
+
+  it('creates manual trips through the atomic mileage RPC', async () => {
+    const upsertDistance = vi.fn().mockResolvedValue({ error: null })
+    mockRpc.mockResolvedValue({ data: 'trip-1', error: null })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') {
+        return createSingleBuilder({ id: HOME_ID })
+      }
+      if (table === 'mileage_destination_distances') {
+        return { upsert: upsertDistance }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await createTrip({
+      tripDate: '2026-07-24',
+      description: 'Supplier run',
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 10 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 10 },
+      ],
+    })
+
+    expect(result).toEqual({ success: true, data: { id: 'trip-1' } })
+    expect(mockRpc).toHaveBeenCalledWith('create_manual_mileage_trip_v01', {
+      p_trip_date: '2026-07-24',
+      p_description: 'Supplier run',
+      p_total_miles: 20,
+      p_created_by: 'test-user-id',
+      p_legs: [
+        { from_destination_id: HOME_ID, to_destination_id: DEST_ID, miles: 10 },
+        { from_destination_id: DEST_ID, to_destination_id: HOME_ID, miles: 10 },
+      ],
+    })
+    expect(mockFrom).not.toHaveBeenCalledWith('mileage_trip_legs')
+  })
+
+  it('updates manual trips through the atomic mileage RPC without deleting legs in the app', async () => {
+    const upsertDistance = vi.fn().mockResolvedValue({ error: null })
+    mockRpc.mockResolvedValue({ data: { id: 'trip-1' }, error: null })
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trips') {
+        return createSingleBuilder({
+          id: 'trip-1',
+          source: 'manual',
+          trip_date: '2026-07-20',
+          total_miles: 12,
+        })
+      }
+      if (table === 'mileage_destinations') {
+        return createSingleBuilder({ id: HOME_ID })
+      }
+      if (table === 'mileage_destination_distances') {
+        return { upsert: upsertDistance }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await updateTrip({
+      id: 'trip-1',
+      tripDate: '2026-07-24',
+      description: 'Updated run',
+      legs: [
+        { fromDestinationId: HOME_ID, toDestinationId: DEST_ID, miles: 8 },
+        { fromDestinationId: DEST_ID, toDestinationId: HOME_ID, miles: 8 },
+      ],
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(mockRpc).toHaveBeenCalledWith('update_manual_mileage_trip_v01', {
+      p_trip_id: 'trip-1',
+      p_trip_date: '2026-07-24',
+      p_description: 'Updated run',
+      p_total_miles: 16,
+      p_legs: [
+        { from_destination_id: HOME_ID, to_destination_id: DEST_ID, miles: 8 },
+        { from_destination_id: DEST_ID, to_destination_id: HOME_ID, miles: 8 },
+      ],
+    })
+    expect(mockFrom).not.toHaveBeenCalledWith('mileage_trip_legs')
   })
 })

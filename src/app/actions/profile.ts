@@ -15,6 +15,56 @@ type ProfileRecord = {
   email_notifications: boolean
 }
 
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024
+const AVATAR_TYPES = {
+  'image/jpeg': {
+    ext: 'jpg',
+    matches: (bytes: Uint8Array) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+  },
+  'image/png': {
+    ext: 'png',
+    matches: (bytes: Uint8Array) =>
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47 &&
+      bytes[4] === 0x0d &&
+      bytes[5] === 0x0a &&
+      bytes[6] === 0x1a &&
+      bytes[7] === 0x0a,
+  },
+  'image/webp': {
+    ext: 'webp',
+    matches: (bytes: Uint8Array) =>
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50,
+  },
+} as const
+
+async function validateAvatarFile(file: File): Promise<{ ext: string } | { error: string }> {
+  if (file.size > MAX_AVATAR_BYTES) {
+    return { error: 'Avatar must be 5 MB or smaller' }
+  }
+
+  const avatarType = AVATAR_TYPES[file.type.toLowerCase() as keyof typeof AVATAR_TYPES]
+  if (!avatarType) {
+    return { error: 'Avatar must be a JPG, PNG, or WebP image' }
+  }
+
+  const header = new Uint8Array(await file.arrayBuffer()).slice(0, 12)
+  if (!avatarType.matches(header)) {
+    return { error: 'Avatar file content does not match the selected image type' }
+  }
+
+  return { ext: avatarType.ext }
+}
+
 export async function loadProfile() {
   const supabase = await createClient()
   const {
@@ -219,8 +269,12 @@ export async function uploadAvatar(formData: FormData) {
     return { error: 'No file uploaded' }
   }
 
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${user.id}.${fileExt || 'png'}`
+  const validation = await validateAvatarFile(file)
+  if ('error' in validation) {
+    return validation
+  }
+
+  const fileName = `${user.id}.${validation.ext}`
   const filePath = `avatars/${fileName}`
 
   const { error: uploadError } = await supabase.storage
