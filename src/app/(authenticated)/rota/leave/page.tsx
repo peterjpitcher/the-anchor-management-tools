@@ -11,9 +11,10 @@ import { rotaNavItems } from '../nav';
 export const dynamic = 'force-dynamic';
 
 export default async function LeaveManagementPage() {
-  const [canView, canApprove] = await Promise.all([
+  const [canView, canApprove, canEdit] = await Promise.all([
     checkUserPermission('leave', 'view'),
     checkUserPermission('leave', 'approve'),
+    checkUserPermission('leave', 'edit'),
   ]);
   if (!canView) redirect('/');
 
@@ -74,6 +75,7 @@ export default async function LeaveManagementPage() {
               initialRequests={requests}
               employeeMap={employeeMap}
               canApprove={canApprove}
+              canEdit={canEdit}
               usageMap={usageMap}
             />
           )}
