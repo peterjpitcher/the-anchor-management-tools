@@ -77,4 +77,5 @@ Status values:
 | PR-72 / A-048 | done | The top invoice action now routes to Record Payment instead of calling the rejected `paid` status transition; component test asserts `Mark as Paid` is gone. |
 | PR-73 / A-049 | done | Receipt signed uploads now persist issued upload intents and completion rejects paths not issued to that transaction/user; migration, rollback, and action regressions added. |
 | PR-74 / A-050 | done | Employee CSV exports now prefix formula-triggering cell values before CSV escaping; service test covers `=`, `+`, `-`, `@`, tab, and carriage-return prefixes. |
+| PR-75 / A-051 | done | Dish cost helpers now track unpriced ingredients/recipes and GP analysis/composition surfaces cost-incomplete warnings instead of silently inflating GP%; helper and component tests added. |
 | A-117 | todo | Included by owner request. |

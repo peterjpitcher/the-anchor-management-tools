@@ -34,6 +34,8 @@ export interface CostBreakdown {
     cost: number;
     price: number;
   }>;
+  missingCostItems: string[];
+  costDataComplete: boolean;
   baseTotal: number;
   upgradeTotal: number;
 }
@@ -47,6 +49,7 @@ export function computeIngredientCost(
   const choiceGroups = new Map<string, { maxCost: number; minCost: number; items: Array<{ name: string; cost: number }> }>();
   const upgradeGroups = new Map<string, { maxCost: number; maxPrice: number; items: Array<{ name: string; cost: number; price: number }> }>();
   const ungroupedUpgrades: Array<{ name: string; cost: number; price: number }> = [];
+  const missingCostItems: string[] = [];
 
   for (const row of rows) {
     if (!row.ingredient_id) continue;
@@ -59,7 +62,10 @@ export function computeIngredientCost(
       costOverride !== undefined && !Number.isNaN(costOverride)
         ? costOverride
         : Number(base.latest_unit_cost ?? 0);
-    if (!unitCost) continue;
+    if (!unitCost) {
+      missingCostItems.push(base.name);
+      continue;
+    }
     const yieldPct = parseFloat(row.yield_pct || '100');
     const wastagePct = parseFloat(row.wastage_pct || '0');
     const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
@@ -112,7 +118,17 @@ export function computeIngredientCost(
     upgradeTotal += u.cost;
   }
 
-  return { includedTotal, removableTotal, choiceGroups, upgradeGroups, ungroupedUpgrades, baseTotal, upgradeTotal };
+  return {
+    includedTotal,
+    removableTotal,
+    choiceGroups,
+    upgradeGroups,
+    ungroupedUpgrades,
+    missingCostItems,
+    costDataComplete: missingCostItems.length === 0,
+    baseTotal,
+    upgradeTotal,
+  };
 }
 
 export function computeRecipeCost(
@@ -124,6 +140,7 @@ export function computeRecipeCost(
   const choiceGroups = new Map<string, { maxCost: number; minCost: number; items: Array<{ name: string; cost: number }> }>();
   const upgradeGroups = new Map<string, { maxCost: number; maxPrice: number; items: Array<{ name: string; cost: number; price: number }> }>();
   const ungroupedUpgrades: Array<{ name: string; cost: number; price: number }> = [];
+  const missingCostItems: string[] = [];
 
   for (const row of rows) {
     if (!row.recipe_id) continue;
@@ -136,7 +153,10 @@ export function computeRecipeCost(
       costOverride !== undefined && !Number.isNaN(costOverride)
         ? costOverride
         : Number(recipe.portion_cost ?? 0);
-    if (!unitCost) continue;
+    if (!unitCost) {
+      missingCostItems.push(recipe.name);
+      continue;
+    }
     const yieldPct = parseFloat(row.yield_pct || '100');
     const wastagePct = parseFloat(row.wastage_pct || '0');
     const yieldFactor = yieldPct > 0 ? yieldPct / 100 : 1;
@@ -189,7 +209,17 @@ export function computeRecipeCost(
     upgradeTotal += u.cost;
   }
 
-  return { includedTotal, removableTotal, choiceGroups, upgradeGroups, ungroupedUpgrades, baseTotal, upgradeTotal };
+  return {
+    includedTotal,
+    removableTotal,
+    choiceGroups,
+    upgradeGroups,
+    ungroupedUpgrades,
+    missingCostItems,
+    costDataComplete: missingCostItems.length === 0,
+    baseTotal,
+    upgradeTotal,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +537,10 @@ function CostBreakdownFooter({
     ...ingredientsResult.ungroupedUpgrades,
     ...recipesResult.ungroupedUpgrades,
   ];
+  const missingCostItems = Array.from(new Set([
+    ...ingredientsResult.missingCostItems,
+    ...recipesResult.missingCostItems,
+  ]));
 
   const baseGp = sellingPrice > 0
     ? (sellingPrice - totalPortionCost) / sellingPrice
@@ -529,6 +563,11 @@ function CostBreakdownFooter({
 
   return (
     <div className="space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+      {missingCostItems.length > 0 && (
+        <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Cost data incomplete. Missing costs: {missingCostItems.join(', ')}. GP figures are unreliable until these are priced.
+        </div>
+      )}
       {hasBreakdown ? (
         <>
           <Row label="Core ingredients" value={coreIncluded} />

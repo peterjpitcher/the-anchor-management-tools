@@ -87,6 +87,10 @@ export function DishGpAnalysisTab({
     // 1. Compute line costs via the shared helpers
     const ingResult = computeIngredientCost(formIngredients, ingredientMap);
     const recResult = computeRecipeCost(formRecipes, recipeMap);
+    const missingCostItems = Array.from(new Set([
+      ...ingResult.missingCostItems,
+      ...recResult.missingCostItems,
+    ]));
 
     // 2. Fixed cost = included + removable from both sources
     const fixedCost = ingResult.includedTotal + ingResult.removableTotal
@@ -106,7 +110,11 @@ export function DishGpAnalysisTab({
     }
 
     if (mergedGroups.size === 0) {
-      return { hasGroups: false as const };
+      return {
+        hasGroups: false as const,
+        missingCostItems,
+        costDataComplete: missingCostItems.length === 0,
+      };
     }
 
     // 4. Build arrays for cartesian product
@@ -163,6 +171,8 @@ export function DishGpAnalysisTab({
       results,
       fixedCost,
       groupNames,
+      missingCostItems,
+      costDataComplete: missingCostItems.length === 0,
     };
   }, [formIngredients, formRecipes, ingredientMap, recipeMap, sellingPrice, targetGpPct]);
 
@@ -173,6 +183,10 @@ export function DishGpAnalysisTab({
   const upgradeAnalysis = useMemo(() => {
     const ingResult = computeIngredientCost(formIngredients, ingredientMap);
     const recResult = computeRecipeCost(formRecipes, recipeMap);
+    const missingCostItems = Array.from(new Set([
+      ...ingResult.missingCostItems,
+      ...recResult.missingCostItems,
+    ]));
 
     // Base cost = included + removable + worst-case choice group costs
     const baseCost = ingResult.baseTotal + recResult.baseTotal;
@@ -254,6 +268,8 @@ export function DishGpAnalysisTab({
       baseGpPct,
       upgradeRows,
       allUpgradeGpPct,
+      missingCostItems,
+      costDataComplete: missingCostItems.length === 0,
     };
   }, [formIngredients, formRecipes, ingredientMap, recipeMap, sellingPrice]);
 
@@ -399,9 +415,20 @@ export function DishGpAnalysisTab({
 
   // ---- No groups: simple info message for combinations section ----
   const hasCombinations = analysis.hasGroups;
+  const missingCostItems = Array.from(new Set([
+    ...analysis.missingCostItems,
+    ...upgradeAnalysis.missingCostItems,
+  ]));
 
   return (
     <div className="space-y-6">
+      {missingCostItems.length > 0 && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Cost data incomplete.</span>{' '}
+          Missing costs: {missingCostItems.join(', ')}. GP percentages and target prices are unreliable until these items are priced.
+        </div>
+      )}
+
       {/* Section 1: Combinations */}
       {!hasCombinations ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
@@ -570,6 +597,8 @@ function CombinationsSection({
     results: CombinationResult[];
     fixedCost: number;
     groupNames: string[];
+    missingCostItems: string[];
+    costDataComplete: boolean;
   };
   targetGpPct: number;
 }): React.ReactElement {
