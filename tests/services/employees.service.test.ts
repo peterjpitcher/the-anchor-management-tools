@@ -7,6 +7,29 @@ vi.mock('@/lib/supabase/admin', () => ({
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EmployeeService } from '@/services/employees'
 
+describe('EmployeeService CSV export', () => {
+  it('prefixes spreadsheet formula trigger characters in exported cells', () => {
+    const csv = EmployeeService.generateCSV([
+      {
+        employee_id: 'employee-1',
+        first_name: '=cmd',
+        last_name: '+SUM(A1:A2)',
+        email_address: '@risk.test',
+        job_title: '-Danger',
+        address: '\tTabbed',
+        post_code: '\rCarriage',
+      } as any,
+    ], ['first_name', 'last_name', 'email_address', 'job_title', 'address', 'post_code'])
+
+    expect(csv).toContain("'=cmd")
+    expect(csv).toContain("'+SUM(A1:A2)")
+    expect(csv).toContain("'@risk.test")
+    expect(csv).toContain("'-Danger")
+    expect(csv).toContain("'\tTabbed")
+    expect(csv).toContain("'\rCarriage")
+  })
+})
+
 describe('EmployeeService delete safeguards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
