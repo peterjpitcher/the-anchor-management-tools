@@ -1,13 +1,13 @@
 'use client';
 
 import { Role } from '@/types/rbac'
-import { TrashIcon, ShieldCheckIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, TrashIcon, ShieldCheckIcon } from '@heroicons/react/24/outline'
 import { deleteRole } from '@/app/actions/rbac'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/ds'
-import { Button, IconButton } from '@/ds'
+import { Button, IconButton, LinkButton } from '@/ds'
 import { Badge } from '@/ds'
 
 interface RoleCardProps {
@@ -73,6 +73,16 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
         </Button>
 
         <div className="flex space-x-2">
+          {canManage && !role.is_system && (
+            <LinkButton
+              href={`/roles/${role.id}/edit`}
+              variant="secondary"
+              size="sm"
+              icon={<PencilIcon className="h-4 w-4" />}
+            >
+              Edit
+            </LinkButton>
+          )}
           {!role.is_system && (
             <IconButton
               onClick={handleDelete}
