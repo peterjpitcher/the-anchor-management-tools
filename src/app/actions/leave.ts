@@ -472,6 +472,11 @@ export async function getLeaveRequests(filters?: {
 export async function getHolidayUsage(employeeId: string, holidayYear: number): Promise<
   { success: true; count: number; pendingCount: number; allowance: number; overThreshold: boolean } | { success: false; error: string }
 > {
+  const canView = await checkUserPermission('leave', 'view');
+  if (!canView && !(await isOwnEmployeeRecord(employeeId))) {
+    return { success: false, error: 'Permission denied' };
+  }
+
   const supabase = await createClient();
 
   // Parallelise four independent fetches

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 
 const RETIRED_PREORDER_PAYLOAD = {
   success: false,
@@ -11,7 +11,7 @@ export async function GET(
   _req: NextRequest,
   _context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireFohPermission('view')
+  const auth = await requireBohTableBookingPermission('view')
   if (!auth.ok) return auth.response
 
   return NextResponse.json(RETIRED_PREORDER_PAYLOAD, { status: 410 })
@@ -21,7 +21,7 @@ export async function POST(
   _req: NextRequest,
   _context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireFohPermission('manage')
+  const auth = await requireBohTableBookingPermission('manage')
   if (!auth.ok) return auth.response
 
   return NextResponse.json(RETIRED_PREORDER_PAYLOAD, { status: 410 })

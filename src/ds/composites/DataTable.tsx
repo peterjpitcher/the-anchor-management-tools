@@ -385,52 +385,74 @@ export function DataTable<T = unknown>({
                 {expandable && renderExpandedContent && (
                   <th scope="col" className={cn(sizeClasses[size].header, 'w-10')} />
                 )}
-                {columns.map((column) => (
-                  <th
-                    key={column.key}
-                    scope="col"
-                    className={cn(
-                      'font-semibold text-gray-900',
-                      sizeClasses[size].header,
-                      column.align === 'center' && 'text-center',
-                      column.align === 'right' && 'text-right',
-                      column.sortable && 'cursor-pointer select-none hover:bg-gray-100',
-                      column.className,
-                    )}
-                    style={{ width: column.width }}
-                    onClick={() => handleSort(column)}
-                  >
-                    <div
+                {columns.map((column) => {
+                  const isSorted = sortColumn === column.key
+                  const ariaSort = column.sortable
+                    ? isSorted
+                      ? sortDirection === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                    : undefined
+
+                  return (
+                    <th
+                      key={column.key}
+                      scope="col"
+                      aria-sort={ariaSort}
                       className={cn(
-                        'flex items-center gap-1',
-                        column.align === 'center' && 'justify-center',
-                        column.align === 'right' && 'justify-end',
+                        'font-semibold text-gray-900',
+                        sizeClasses[size].header,
+                        column.align === 'center' && 'text-center',
+                        column.align === 'right' && 'text-right',
+                        column.className,
                       )}
+                      style={{ width: column.width }}
                     >
-                      {column.header}
-                      {column.sortable && (
-                        <div className="flex flex-col">
-                          <ChevronUpIcon
-                            className={cn(
-                              'h-3 w-3 -mb-1',
-                              sortColumn === column.key && sortDirection === 'asc'
-                                ? 'text-gray-900'
-                                : 'text-gray-400',
-                            )}
-                          />
-                          <ChevronDownIcon
-                            className={cn(
-                              'h-3 w-3 -mt-1',
-                              sortColumn === column.key && sortDirection === 'desc'
-                                ? 'text-gray-900'
-                                : 'text-gray-400',
-                            )}
-                          />
+                      {column.sortable ? (
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex w-full items-center gap-1 select-none rounded-sm hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500',
+                            column.align === 'center' && 'justify-center',
+                            column.align === 'right' && 'justify-end',
+                          )}
+                          onClick={() => handleSort(column)}
+                        >
+                          {column.header}
+                          <span className="flex flex-col" aria-hidden="true">
+                            <ChevronUpIcon
+                              className={cn(
+                                'h-3 w-3 -mb-1',
+                                isSorted && sortDirection === 'asc'
+                                  ? 'text-gray-900'
+                                  : 'text-gray-400',
+                              )}
+                            />
+                            <ChevronDownIcon
+                              className={cn(
+                                'h-3 w-3 -mt-1',
+                                isSorted && sortDirection === 'desc'
+                                  ? 'text-gray-900'
+                                  : 'text-gray-400',
+                              )}
+                            />
+                          </span>
+                        </button>
+                      ) : (
+                        <div
+                          className={cn(
+                            'flex items-center gap-1',
+                            column.align === 'center' && 'justify-center',
+                            column.align === 'right' && 'justify-end',
+                          )}
+                        >
+                          {column.header}
                         </div>
                       )}
-                    </div>
-                  </th>
-                ))}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody

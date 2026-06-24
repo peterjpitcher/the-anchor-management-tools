@@ -272,9 +272,9 @@ export function SpecialHoursModal({
           <Checkbox
             label="Venue Closed"
             checked={isClosed}
-            onChange={(e) => {
-              setIsClosed(e.target.checked)
-              if (e.target.checked) {
+            onChange={(checked) => {
+              setIsClosed(checked)
+              if (checked) {
                 setIsKitchenClosed(true)
                 setIsLunchClosed(true)
               }
@@ -284,14 +284,14 @@ export function SpecialHoursModal({
           <Checkbox
             label="Kitchen Closed"
             checked={isKitchenClosed}
-            onChange={(e) => setIsKitchenClosed(e.target.checked)}
+            onChange={(checked) => setIsKitchenClosed(checked)}
             disabled={!canManage || isClosed}
           />
           {isSunday && (
              <Checkbox
                label="Sunday Lunch Closed"
                checked={isLunchClosed}
-               onChange={(e) => setIsLunchClosed(e.target.checked)}
+               onChange={(checked) => setIsLunchClosed(checked)}
                disabled={!canManage || isClosed}
              />
           )}

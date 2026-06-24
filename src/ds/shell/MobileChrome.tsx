@@ -21,36 +21,12 @@ const MOBILE_TABS = [
 ] satisfies Array<Pick<NavItem, 'id' | 'label' | 'icon' | 'href'>>
 
 function mobileNavGroups(navGroups: NavGroup[]): NavGroup[] {
-  const groups = navGroups.map((group) => ({
+  return navGroups.map((group) => ({
     ...group,
     items: group.items.map((item) =>
       item.id === 'dashboard' ? { ...item, href: '/dashboard' } : item
     ),
   }))
-
-  const finance = groups[3]
-  if (finance && !finance.items.some((item) => item.id === 'quotes')) {
-    const invoiceIndex = finance.items.findIndex((item) => item.id === 'invoices')
-    const quoteItem: NavItem = { id: 'quotes', label: 'Quotes', icon: 'file', href: '/quotes' }
-    finance.items.splice(invoiceIndex >= 0 ? invoiceIndex + 1 : finance.items.length, 0, quoteItem)
-  }
-
-  const admin = groups[4]
-  if (admin) {
-    const additions: NavItem[] = [
-      { id: 'users', label: 'Users', icon: 'users', href: '/users' },
-      { id: 'roles', label: 'Roles', icon: 'cog', href: '/roles' },
-      { id: 'profile', label: 'My Profile', icon: 'user', href: '/profile' },
-      { id: 'design-system', label: 'Design System', icon: 'palette', href: '/settings/design-system' },
-    ]
-    for (const item of additions) {
-      if (!admin.items.some((existing) => existing.id === item.id)) {
-        admin.items.push(item)
-      }
-    }
-  }
-
-  return groups
 }
 
 function isActivePath(pathname: string, href: string): boolean {
@@ -120,18 +96,21 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
   )
 }
 
-export function MobileBottomNav({ onMore }: { onMore: () => void }) {
+export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; onMore: () => void }) {
   const pathname = usePathname() ?? '/'
   const unreadCount = useUnreadMessageCount()
   const { counts } = useOutstandingCounts()
-  const primaryActive = MOBILE_TABS.some((tab) => isActivePath(pathname, tab.href))
+  const availableIds = new Set(navGroups.flatMap((group) => group.items.map((item) => item.id)))
+  const tabs = MOBILE_TABS.filter((tab) => availableIds.has(tab.id))
+  const primaryActive = tabs.some((tab) => isActivePath(pathname, tab.href))
 
   return (
     <nav
-      className="md:hidden grid shrink-0 grid-cols-5 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_var(--color-border),0_-8px_24px_-16px_rgba(0,0,0,0.18)]"
+      className="md:hidden grid shrink-0 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_var(--color-border),0_-8px_24px_-16px_rgba(0,0,0,0.18)]"
+      style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}
       aria-label="Mobile navigation"
     >
-      {MOBILE_TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = isActivePath(pathname, tab.href)
         const count = navCount(tab, unreadCount, counts)
 

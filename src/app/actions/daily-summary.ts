@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EventService } from '@/services/events';
 import { PrivateBookingService } from '@/services/private-bookings';
+import { checkUserPermission } from '@/app/actions/rbac';
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
 
@@ -13,6 +14,16 @@ export async function getDailySummaryAction(date: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return { success: false, error: 'Not authenticated' };
+  }
+
+  const [canViewEvents, canViewPrivateBookings, canViewTableBookings] = await Promise.all([
+    checkUserPermission('events', 'view', user.id),
+    checkUserPermission('private_bookings', 'view', user.id),
+    checkUserPermission('table_bookings', 'view', user.id),
+  ]);
+
+  if (!canViewEvents || !canViewPrivateBookings || !canViewTableBookings) {
+    return { success: false, error: 'Permission denied' };
   }
 
   const parsed = dateSchema.safeParse(date);

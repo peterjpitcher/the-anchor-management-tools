@@ -44,6 +44,7 @@ export interface TabsProps {
 }
 
 export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange, onChange, variant: _variant, bordered: _bordered, padded: _padded, destroyInactive: _destroyInactive, className }: TabsProps) {
+  const tabsId = React.useId()
   // Resolve legacy items -> tabs
   const tabs: Tab[] = tabsProp ?? (items ? items.map((it) => ({ id: it.key, label: it.label, content: it.content })) : [])
   const controlledActiveTab = activeTab ?? activeKey
@@ -62,26 +63,50 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
     }
     resolvedOnTabChange?.(id)
   }
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const lastIndex = tabs.length - 1
+    const nextIndex =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? lastIndex
+          : event.key === 'ArrowLeft'
+            ? (index === 0 ? lastIndex : index - 1)
+            : (index === lastIndex ? 0 : index + 1)
+    const nextTab = tabs[nextIndex]
+    if (!nextTab) return
+    handleTabChange(nextTab.id)
+    document.getElementById(`${tabsId}-tab-${nextTab.id}`)?.focus()
+  }
 
   // Find the active tab's content (for legacy items pattern)
   const activeContent = tabs.find((t) => t.id === resolvedActiveTab)?.content
   return (
     <div>
-      <div className={cn('flex items-center overflow-x-auto border-b border-border scrollbar-hide', className)}>
-        {tabs.map((tab) => {
+      <div
+        role="tablist"
+        className={cn('flex items-center overflow-x-auto border-b border-border scrollbar-hide', className)}
+      >
+        {tabs.map((tab, index) => {
           const isActive = tab.id === resolvedActiveTab
 
           return (
             <button
               key={tab.id}
+              id={`${tabsId}-tab-${tab.id}`}
               type="button"
               role="tab"
               aria-selected={isActive}
+              aria-controls={`${tabsId}-panel-${tab.id}`}
+              tabIndex={isActive ? 0 : -1}
               className={cn(
                 'px-4 py-2.5 text-[13px] font-medium whitespace-nowrap relative transition-colors',
                 isActive ? 'text-primary' : 'text-text-muted hover:text-text',
               )}
               onClick={() => handleTabChange(tab.id)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
             >
               {tab.label}
 
@@ -107,7 +132,16 @@ export function Tabs({ tabs: tabsProp, items, activeTab, activeKey, onTabChange,
           )
         })}
       </div>
-      {activeContent && <div className="pt-4">{activeContent}</div>}
+      {activeContent && (
+        <div
+          id={`${tabsId}-panel-${resolvedActiveTab}`}
+          role="tabpanel"
+          aria-labelledby={`${tabsId}-tab-${resolvedActiveTab}`}
+          className="pt-4"
+        >
+          {activeContent}
+        </div>
+      )}
     </div>
   )
 }

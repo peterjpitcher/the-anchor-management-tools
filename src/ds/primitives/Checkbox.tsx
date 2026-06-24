@@ -1,6 +1,6 @@
 'use client'
 
-import { useId } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 interface CheckboxProps {
@@ -8,13 +8,9 @@ interface CheckboxProps {
   'aria-label'?: string
   description?: string
   checked?: boolean
-  /** @deprecated Accepted for backward compatibility */
   defaultChecked?: boolean
-  /** @deprecated Accepted for backward compatibility */
   indeterminate?: boolean
-  // Accepts both (checked: boolean) and (event: ChangeEvent) handlers
-
-  onChange?: (checkedOrEvent: any) => void
+  onChange?: (checked: boolean) => void
   disabled?: boolean
   id?: string
   name?: string
@@ -29,14 +25,14 @@ export function Checkbox({
   label,
   'aria-label': ariaLabel,
   description,
-  checked = false,
+  checked,
   defaultChecked,
-  indeterminate: _indeterminate,
+  indeterminate,
   onChange,
   disabled = false,
   id: idProp,
-  name: _name,
-  value: _value,
+  name,
+  value,
   error: _error,
   className,
   children,
@@ -44,38 +40,54 @@ export function Checkbox({
   const displayLabel = label ?? (typeof children === 'string' ? children : undefined)
   const autoId = useId()
   const id = idProp ?? autoId
+  const inputRef = useRef<HTMLInputElement>(null)
+  const isControlled = checked !== undefined
+  const [uncontrolledChecked, setUncontrolledChecked] = useState(defaultChecked ?? false)
+  const resolvedChecked = isControlled ? checked : uncontrolledChecked
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.indeterminate = Boolean(indeterminate)
+    }
+  }, [indeterminate])
 
   return (
     <div className={cn('flex gap-3 items-start', className)}>
-      <button
-        id={id}
-        type="button"
-        role="checkbox"
-        aria-checked={checked}
-        aria-label={!displayLabel ? (ariaLabel ?? label) : undefined}
-        disabled={disabled}
-        onClick={() => {
-          if (onChange) {
-            // Support both (checked: boolean) and (e: ChangeEvent) signatures
-            try {
-              (onChange as (checked: boolean) => void)(!checked)
-            } catch {
-              // fallback
+      <div className="relative mt-0.5 h-4 w-4 shrink-0">
+        <input
+          ref={inputRef}
+          id={id}
+          type="checkbox"
+          name={name}
+          value={value}
+          checked={isControlled ? resolvedChecked : undefined}
+          defaultChecked={!isControlled ? defaultChecked : undefined}
+          aria-checked={indeterminate ? 'mixed' : resolvedChecked}
+          aria-label={!displayLabel ? (ariaLabel ?? label) : undefined}
+          disabled={disabled}
+          onChange={(event) => {
+            const nextChecked = event.target.checked
+            if (!isControlled) {
+              setUncontrolledChecked(nextChecked)
             }
-          }
-        }}
-        className={cn(
-          'w-4 h-4 mt-0.5 shrink-0 rounded-sm border transition-[background,border-color,box-shadow] duration-[120ms]',
-          'focus-visible:outline-none focus-visible:shadow-ring',
-          checked
-            ? 'bg-primary border-primary'
-            : 'bg-surface border-border-strong',
-          disabled && 'opacity-50 cursor-not-allowed'
-        )}
-      >
-        {checked && (
+            onChange?.(nextChecked)
+          }}
+          className="peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        />
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute inset-0 rounded-sm border transition-[background,border-color,box-shadow] duration-[120ms]',
+            'peer-focus-visible:shadow-ring',
+            resolvedChecked || indeterminate
+              ? 'bg-primary border-primary'
+              : 'bg-surface border-border-strong',
+            disabled && 'opacity-50'
+          )}
+        />
+        {(resolvedChecked || indeterminate) && (
           <svg
-            className="w-4 h-4 text-primary-fg"
+            className="pointer-events-none absolute inset-0 h-4 w-4 text-primary-fg"
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -84,10 +96,10 @@ export function Checkbox({
             strokeLinejoin="round"
             aria-hidden="true"
           >
-            <path d="M4 8l3 3 5-6" />
+            {indeterminate ? <path d="M4 8h8" /> : <path d="M4 8l3 3 5-6" />}
           </svg>
         )}
-      </button>
+      </div>
 
       {(displayLabel || description) && (
         <div className="flex flex-col">

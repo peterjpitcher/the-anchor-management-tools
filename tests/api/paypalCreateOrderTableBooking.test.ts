@@ -19,7 +19,7 @@ import { NextRequest } from 'next/server'
 vi.mock('@/lib/api/auth', () => ({
   withApiAuth: vi.fn(
     (handler: any, _permissions: string[], request: Request) =>
-      handler(request, { id: 'k', name: 'k', permissions: ['read:events'], rate_limit: 100, is_active: true })
+      handler(request, { id: 'k', name: 'k', permissions: ['payments:capture'], rate_limit: 100, is_active: true })
   ),
 }))
 

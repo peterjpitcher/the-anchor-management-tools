@@ -28,6 +28,7 @@ const PERMISSION_OPTIONS = [
   { value: 'read:business', label: 'Read Business Info' },
   { value: 'read:table_bookings', label: 'Read Table Bookings' },
   { value: 'write:table_bookings', label: 'Write Table Bookings' },
+  { value: 'payments:capture', label: 'Capture Payments' },
   { value: 'create:bookings', label: 'Create Bookings' },
   { value: 'read:customers', label: 'Read Customers' },
   { value: 'write:customers', label: 'Write Customers' },

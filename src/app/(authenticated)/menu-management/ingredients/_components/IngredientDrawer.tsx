@@ -890,7 +890,7 @@ export function IngredientDrawer({
             </p>
             <Checkbox
               checked={formState.is_active}
-              onChange={(e) => update({ is_active: e.target.checked })}
+              onChange={(checked) => update({ is_active: checked })}
             >
               Ingredient is active
             </Checkbox>

@@ -313,8 +313,26 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
     }
 
     const { user } = permission;
+    const dedupedPermissionIds = Array.from(new Set(permissionIds));
+    const [actingPermissions, allPermissions] = await Promise.all([
+      PermissionService.getUserPermissions(user.id),
+      PermissionService.getAllPermissions(),
+    ]);
+    const actingPermissionKeys = new Set(
+      actingPermissions.map((item) => `${item.module_name}:${item.action}`)
+    );
+    const permissionRowsById = new Map(allPermissions.map((item) => [item.id, item]));
+    const unauthorizedPermission = dedupedPermissionIds.find((permissionId) => {
+      const row = permissionRowsById.get(permissionId);
+      if (!row) return true;
+      return !actingPermissionKeys.has(`${row.module_name}:${row.action}`);
+    });
 
-    const { oldPermissions, newPermissions } = await PermissionService.assignPermissionsToRole(roleId, permissionIds);
+    if (unauthorizedPermission) {
+      return { error: 'You cannot grant permissions that you do not already hold' };
+    }
+
+    const { oldPermissions, newPermissions } = await PermissionService.assignPermissionsToRole(roleId, dedupedPermissionIds);
 
     await logAuditEvent({
       user_id: user.id,

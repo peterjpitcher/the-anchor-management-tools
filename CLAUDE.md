@@ -103,7 +103,7 @@ npx supabase db push   # Apply pending migrations
 - `api/cron/` — Vercel cron endpoints (require `Authorization: Bearer CRON_SECRET`)
 - `api/webhooks/` — Twilio, Stripe, PayPal webhooks
 
-**Auth**: Supabase Auth with JWT + HTTP-only cookies. `src/middleware.ts` is currently **disabled** (renamed `.disabled` after a Vercel incident); auth is enforced in `(authenticated)/layout.tsx` via `supabase.auth.getUser()`. Public path prefixes: `/timeclock`, `/parking/guest`, `/table-booking`, `/g/`, `/m/`, `/r/`.
+**Auth**: Supabase Auth with JWT + HTTP-only cookies. `src/middleware.ts` is active and protects non-public routes; auth is also enforced in `(authenticated)/layout.tsx` via `supabase.auth.getUser()`. Public path prefixes: `/timeclock`, `/parking/guest`, `/table-booking`, `/g/`, `/m/`, `/r/`.
 
 ## Supabase Clients
 
@@ -336,7 +336,7 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - Server Components as default; `'use client'` only for interactivity, forms, and browser APIs
 - All mutations go through `'use server'` actions in `src/app/actions/`; direct DB access from pages is server-only and read-focused
 - Business logic lives in `src/services/` (domain services) and `src/lib/` (cross-cutting utilities), not in route handlers or components
-- Auth enforced at layout level (middleware disabled); RBAC enforced server-side in every action
+- Auth enforced by middleware and authenticated layout; RBAC enforced server-side in every action
 - Comprehensive audit logging via `logAuditEvent()` on every mutation
 ## Layers
 - Purpose: Render UI, handle user events, call server actions

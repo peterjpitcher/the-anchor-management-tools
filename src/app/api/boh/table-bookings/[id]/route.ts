@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
@@ -10,7 +10,7 @@ export async function DELETE(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireFohPermission('manage')
+  const auth = await requireBohTableBookingPermission('manage')
   if (!auth.ok) {
     return auth.response
   }

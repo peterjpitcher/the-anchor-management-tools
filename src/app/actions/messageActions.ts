@@ -40,8 +40,11 @@ export async function getTotalUnreadCount() {
 
 export async function markMessagesAsRead(customerId: string) {
   try {
-    const canView = await checkUserPermission('messages', 'view')
-    if (!canView) {
+    const [canManage, canSendTransactional] = await Promise.all([
+      checkUserPermission('messages', 'manage'),
+      checkUserPermission('messages', 'send_transactional'),
+    ])
+    if (!canManage && !canSendTransactional) {
       return { error: 'Insufficient permissions' }
     }
 

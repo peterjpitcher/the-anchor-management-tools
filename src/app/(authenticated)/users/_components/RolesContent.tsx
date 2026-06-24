@@ -242,12 +242,13 @@ export function RolesContent() {
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left py-2 pr-4 font-medium text-text-muted uppercase text-[11px] tracking-wider">
+                <th scope="col" className="text-left py-2 pr-4 font-medium text-text-muted uppercase text-[11px] tracking-wider">
                   Module
                 </th>
                 {ACTION_COLUMNS.map((action) => (
                   <th
                     key={action}
+                    scope="col"
                     className="text-center py-2 px-2 font-medium text-text-muted uppercase text-[11px] tracking-wider w-20"
                   >
                     {action}
@@ -272,7 +273,7 @@ export function RolesContent() {
                         {exists ? (
                           <div className="flex justify-center">
                             <Checkbox
-                              label=""
+                              aria-label={`${MODULE_DISPLAY[module] || module} ${action} permission`}
                               checked={checked}
                               onChange={() => togglePermission(module, action)}
                             />

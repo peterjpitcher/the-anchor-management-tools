@@ -112,7 +112,7 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
       <input
         type="checkbox"
         checked={data[id] as boolean}
-        onChange={(e) => setData({ ...data, [id]: e.target.checked })}
+        onChange={(checked) => setData({ ...data, [id]: checked })}
         className="mt-0.5 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
       />
       <span className="text-sm text-gray-700">{label}</span>

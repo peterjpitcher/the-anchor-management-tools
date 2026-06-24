@@ -1,7 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
-import { checkUserPermission } from '@/app/actions/rbac'
+import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { PageLayout } from '@/ds'
+import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import BookingDetailClient, { type Booking } from './BookingDetailClient'
 
 interface Props {
@@ -11,14 +12,18 @@ interface Props {
 export default async function BookingDetailPage({ params }: Props) {
   const { id } = await params
 
-  const [canView, canEdit, canManage, canRefund] = await Promise.all([
+  const [canView, canEdit, canManage, canRefund, permissionsResult] = await Promise.all([
     checkUserPermission('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('table_bookings', 'manage'),
     checkUserPermission('table_bookings', 'refund'),
+    getUserPermissions(),
   ])
 
   if (!canView) redirect('/unauthorized')
+  if (permissionsResult.success && permissionsResult.data && isFohOnlyUser(permissionsResult.data)) {
+    redirect('/table-bookings/foh')
+  }
 
   const supabase = await createClient()
   const { data: booking, error } = await supabase

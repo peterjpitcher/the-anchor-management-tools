@@ -576,7 +576,7 @@ export default function NewEmployeeOnboardingClient() {
             <FormGroup label="Keyholder Status" help="Mark if keys have been issued.">
               <Checkbox
                 checked={state.employee.keyholder_status}
-                onChange={(e) => updateEmployee('keyholder_status', e.target.checked)}
+                onChange={(checked) => updateEmployee('keyholder_status', checked)}
                 label="Employee is a keyholder"
               />
             </FormGroup>
@@ -747,12 +747,12 @@ export default function NewEmployeeOnboardingClient() {
             <div className="space-y-3 pt-2">
               <Checkbox
                 checked={state.health.had_absence_over_2_weeks_last_3_years}
-                onChange={(e) => updateHealth('had_absence_over_2_weeks_last_3_years', e.target.checked)}
+                onChange={(checked) => updateHealth('had_absence_over_2_weeks_last_3_years', checked)}
                 label="In the past 3 years, been off work for 2+ weeks due to illness/accident?"
               />
               <Checkbox
                 checked={state.health.had_outpatient_treatment_over_3_months_last_3_years}
-                onChange={(e) => updateHealth('had_outpatient_treatment_over_3_months_last_3_years', e.target.checked)}
+                onChange={(checked) => updateHealth('had_outpatient_treatment_over_3_months_last_3_years', checked)}
                 label="In the past 3 years, attended outpatient treatment for 3+ months?"
               />
             </div>
@@ -771,12 +771,12 @@ export default function NewEmployeeOnboardingClient() {
           <div className="space-y-4">
             <h3 className="text-base font-medium text-gray-900">Medical Conditions (tick if applicable)</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Checkbox checked={state.health.has_diabetes} onChange={(e) => updateHealth('has_diabetes', e.target.checked)} label="Diabetes" />
-              <Checkbox checked={state.health.has_epilepsy} onChange={(e) => updateHealth('has_epilepsy', e.target.checked)} label="Epilepsy / Fits / Blackouts" />
-              <Checkbox checked={state.health.has_skin_condition} onChange={(e) => updateHealth('has_skin_condition', e.target.checked)} label="Eczema / Dermatitis / Skin Disease" />
-              <Checkbox checked={state.health.has_depressive_illness} onChange={(e) => updateHealth('has_depressive_illness', e.target.checked)} label="Depressive Illness" />
-              <Checkbox checked={state.health.has_bowel_problems} onChange={(e) => updateHealth('has_bowel_problems', e.target.checked)} label="Bowel Problems" />
-              <Checkbox checked={state.health.has_ear_problems} onChange={(e) => updateHealth('has_ear_problems', e.target.checked)} label="Ear Problems" />
+              <Checkbox checked={state.health.has_diabetes} onChange={(checked) => updateHealth('has_diabetes', checked)} label="Diabetes" />
+              <Checkbox checked={state.health.has_epilepsy} onChange={(checked) => updateHealth('has_epilepsy', checked)} label="Epilepsy / Fits / Blackouts" />
+              <Checkbox checked={state.health.has_skin_condition} onChange={(checked) => updateHealth('has_skin_condition', checked)} label="Eczema / Dermatitis / Skin Disease" />
+              <Checkbox checked={state.health.has_depressive_illness} onChange={(checked) => updateHealth('has_depressive_illness', checked)} label="Depressive Illness" />
+              <Checkbox checked={state.health.has_bowel_problems} onChange={(checked) => updateHealth('has_bowel_problems', checked)} label="Bowel Problems" />
+              <Checkbox checked={state.health.has_ear_problems} onChange={(checked) => updateHealth('has_ear_problems', checked)} label="Ear Problems" />
             </div>
           </div>
 
@@ -784,7 +784,7 @@ export default function NewEmployeeOnboardingClient() {
             <h3 className="text-base font-medium text-gray-900">Disability</h3>
             <Checkbox
               checked={state.health.is_registered_disabled}
-              onChange={(e) => updateHealth('is_registered_disabled', e.target.checked)}
+              onChange={(checked) => updateHealth('is_registered_disabled', checked)}
               label="Registered disabled?"
             />
 
@@ -820,7 +820,7 @@ export default function NewEmployeeOnboardingClient() {
 
           <Checkbox
             checked={state.right_to_work.enabled}
-            onChange={(e) => updateRightToWork('enabled', e.target.checked)}
+            onChange={(checked) => updateRightToWork('enabled', checked)}
             label="Right to Work check completed now"
           />
 
@@ -967,7 +967,7 @@ export default function NewEmployeeOnboardingClient() {
             <h3 className="text-base font-medium text-gray-900">Employee Agreement</h3>
             <Checkbox
               checked={state.onboarding.employee_agreement_accepted}
-              onChange={(e) => updateOnboarding('employee_agreement_accepted', e.target.checked)}
+              onChange={(checked) => updateOnboarding('employee_agreement_accepted', checked)}
               label="Employee has read, understood, and agreed to the staff handbook and rules"
             />
           </div>
@@ -977,32 +977,32 @@ export default function NewEmployeeOnboardingClient() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Checkbox
                 checked={state.onboarding.wheniwork_invite_sent}
-                onChange={(e) => updateOnboarding('wheniwork_invite_sent', e.target.checked)}
+                onChange={(checked) => updateOnboarding('wheniwork_invite_sent', checked)}
                 label="WhenIWork invite sent"
               />
               <Checkbox
                 checked={state.onboarding.private_whatsapp_added}
-                onChange={(e) => updateOnboarding('private_whatsapp_added', e.target.checked)}
+                onChange={(checked) => updateOnboarding('private_whatsapp_added', checked)}
                 label="Added to private WhatsApp"
               />
               <Checkbox
                 checked={state.onboarding.team_whatsapp_added}
-                onChange={(e) => updateOnboarding('team_whatsapp_added', e.target.checked)}
+                onChange={(checked) => updateOnboarding('team_whatsapp_added', checked)}
                 label="Added to team WhatsApp"
               />
               <Checkbox
                 checked={state.onboarding.till_system_setup}
-                onChange={(e) => updateOnboarding('till_system_setup', e.target.checked)}
+                onChange={(checked) => updateOnboarding('till_system_setup', checked)}
                 label="Setup on till system"
               />
               <Checkbox
                 checked={state.onboarding.training_flow_setup}
-                onChange={(e) => updateOnboarding('training_flow_setup', e.target.checked)}
+                onChange={(checked) => updateOnboarding('training_flow_setup', checked)}
                 label="Training setup in Flow"
               />
               <Checkbox
                 checked={state.onboarding.employment_agreement_drafted}
-                onChange={(e) => updateOnboarding('employment_agreement_drafted', e.target.checked)}
+                onChange={(checked) => updateOnboarding('employment_agreement_drafted', checked)}
                 label="Employment agreement drafted"
               />
             </div>

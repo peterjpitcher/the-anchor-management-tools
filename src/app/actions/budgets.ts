@@ -23,6 +23,12 @@ export type DepartmentBudget = {
 export async function getDepartmentBudgets(year?: number): Promise<
   { success: true; data: DepartmentBudget[] } | { success: false; error: string }
 > {
+  const [canViewPayroll, canManageSettings] = await Promise.all([
+    checkUserPermission('payroll', 'view'),
+    checkUserPermission('settings', 'manage'),
+  ]);
+  if (!canViewPayroll && !canManageSettings) return { success: false, error: 'Permission denied' };
+
   const supabase = await createClient();
   let query = supabase
     .from('department_budgets')

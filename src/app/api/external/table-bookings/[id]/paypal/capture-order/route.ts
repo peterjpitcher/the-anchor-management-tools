@@ -273,7 +273,7 @@ export async function POST(
 
       return NextResponse.json({ success: true });
     },
-    ['read:events'],
+    ['payments:capture'],
     request,
   );
 }

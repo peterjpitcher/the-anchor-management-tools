@@ -474,7 +474,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       <label className="text-sm font-medium text-gray-700">Vendor</label>
                       <div className="flex items-center gap-3">
                         <Checkbox
-                          label=""
+                          aria-label={`Apply vendor suggestion for ${group.details}`}
                           checked={applyVendor[group.details] ?? false}
                           onChange={(checked) => setApplyVendor((prev) => ({ ...prev, [group.details]: checked }))}
                           disabled={!canManageReceipts}
@@ -494,7 +494,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                       <label className="text-sm font-medium text-gray-700">Expense category</label>
                       <div className="flex items-center gap-3">
                         <Checkbox
-                          label=""
+                          aria-label={`Apply expense category suggestion for ${group.details}`}
                           checked={applyExpense[group.details] ?? false}
                           onChange={(checked) => setApplyExpense((prev) => ({ ...prev, [group.details]: checked }))}
                           disabled={!canManageReceipts}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createGuestToken } from '@/lib/guest/tokens'
 
@@ -9,7 +9,7 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireFohPermission('edit')
+  const auth = await requireBohTableBookingPermission('edit')
   if (!auth.ok) return auth.response
 
   const { id } = await context.params

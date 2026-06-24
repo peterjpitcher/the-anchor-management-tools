@@ -432,7 +432,7 @@ export function RecipeDrawer({
           <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
             <Checkbox
               checked={formState.is_active}
-              onChange={(e) => update({ is_active: e.target.checked })}
+              onChange={(checked) => update({ is_active: checked })}
             >
               Recipe is active
             </Checkbox>

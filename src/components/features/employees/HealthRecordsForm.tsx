@@ -57,7 +57,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
     rows?: number;
     helpText?: string;
     options?: Array<{ value: string; label: string }>;
-    onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onChange?: (checked: boolean) => void;
   }
   
   const renderField = (field: FieldConfig) => {
@@ -112,21 +112,21 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
         label: 'Do you have any allergies?', 
         type: 'checkbox' as const, 
         defaultChecked: hasAllergies, 
-        onChange: (e: any) => setHasAllergies(e.target.checked) 
+        onChange: (checked: boolean) => setHasAllergies(checked)
       },
       { 
         name: 'had_absence_over_2_weeks_last_3_years', 
         label: 'In the past 3 years, been off work for 2+ weeks due to illness/accident?', 
         type: 'checkbox' as const, 
         defaultChecked: hadAbsence, 
-        onChange: (e: any) => setHadAbsence(e.target.checked) 
+        onChange: (checked: boolean) => setHadAbsence(checked)
       },
       { 
         name: 'had_outpatient_treatment_over_3_months_last_3_years', 
         label: 'In the past 3 years, attended outpatient treatment for 3+ months?', 
         type: 'checkbox' as const, 
         defaultChecked: hadOutpatient, 
-        onChange: (e: any) => setHadOutpatient(e.target.checked) 
+        onChange: (checked: boolean) => setHadOutpatient(checked)
       },
   ]
   
@@ -187,7 +187,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord }: HealthRe
                 label: 'Is Registered Disabled?', 
                 type: 'checkbox', 
                 defaultChecked: isRegisteredDisabled, 
-                onChange: (e:any) => setIsRegisteredDisabled(e.target.checked) 
+                onChange: (checked: boolean) => setIsRegisteredDisabled(checked)
             })}
 
             {isRegisteredDisabled && (

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { logger } from '@/lib/logger'
 import {
@@ -19,7 +19,7 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireFohPermission('edit')
+  const auth = await requireBohTableBookingPermission('edit')
   if (!auth.ok) {
     return auth.response
   }
@@ -79,7 +79,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireFohPermission('edit')
+  const auth = await requireBohTableBookingPermission('edit')
   if (!auth.ok) {
     return auth.response
   }
