@@ -59,4 +59,7 @@ Status values:
 | PR-59 / A-032 | done | Roles now have `/roles/[id]/edit`, custom role cards expose an Edit button, and the existing audited `updateRole` action backs the form; component test added. |
 | PR-60 / A-033 | done | Users are now enriched with real joined roles, the role column renders actual badges, and the role filter uses those role ids; service and component tests added. |
 | PR-61 / A-034 | done | Paid invoice detail now exposes an Issue Credit Note flow backed by `createCreditNote`, with amount/reason validation, VAT estimate, refresh, and component coverage. |
+| PR-62a / A-035 clients | done | OJ clients now have create/edit/delete UI backed by OJ-scoped validation, RBAC, audit logs, revalidation, and action tests. |
+| PR-62b / A-035 billing settings | done | Client drawer now exposes vendor billing settings editor backed by audited/revalidated `upsertVendorBillingSettings`; action tests cover audit/revalidation. |
+| PR-62c / A-035 entries pagination | done | OJ entries now load counted 50-row pages with `TablePagination`; action tests cover `range()` and total count. |
 | A-117 | todo | Included by owner request. |

@@ -2,7 +2,23 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
+import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+
+export type OJVendorBillingSettings = {
+  vendor_id: string
+  client_code: string | null
+  billing_mode: string
+  monthly_cap_inc_vat: number | null
+  hourly_rate_ex_vat: number
+  vat_rate: number
+  mileage_rate: number
+  retainer_included_hours_per_month: number | null
+  statement_mode: boolean
+  created_at?: string
+  updated_at?: string
+}
 
 const BillingSettingsSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -28,7 +44,7 @@ export async function getVendorBillingSettings(vendorId: string) {
     .maybeSingle()
 
   if (error) return { error: error.message }
-  return { settings: data || null }
+  return { settings: (data || null) as OJVendorBillingSettings | null }
 }
 
 export async function upsertVendorBillingSettings(formData: FormData) {
@@ -60,6 +76,13 @@ export async function upsertVendorBillingSettings(formData: FormData) {
   const normalizedClientCode = clientCode ? clientCode.toUpperCase().replace(/[^A-Z0-9]/g, '') : null
 
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: before } = await supabase
+    .from('oj_vendor_billing_settings')
+    .select('*')
+    .eq('vendor_id', parsed.data.vendor_id)
+    .maybeSingle()
+
   const { data, error } = await supabase
     .from('oj_vendor_billing_settings')
     .upsert(
@@ -81,5 +104,22 @@ export async function upsertVendorBillingSettings(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
-  return { settings: data, success: true as const }
+
+  await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
+    operation_type: before ? 'update' : 'create',
+    resource_type: 'oj_vendor_billing_settings',
+    resource_id: parsed.data.vendor_id,
+    operation_status: 'success',
+    old_values: before ?? undefined,
+    new_values: data,
+  })
+
+  revalidatePath('/oj-projects')
+  revalidatePath('/oj-projects/clients')
+  revalidatePath('/oj-projects/entries')
+  revalidatePath('/oj-projects/projects')
+
+  return { settings: data as OJVendorBillingSettings, success: true as const }
 }
