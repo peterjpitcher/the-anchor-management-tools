@@ -94,6 +94,20 @@ describe('calculateInvoiceTotals', () => {
       expect(result.vatAmount).toBeCloseTo(30, 10)
     })
 
+    it('rounds VAT per line before summing invoice VAT', () => {
+      const lines: InvoiceLineInput[] = [
+        { quantity: 1, unit_price: 0.03, discount_percentage: 0, vat_rate: 20 },
+        { quantity: 1, unit_price: 0.03, discount_percentage: 0, vat_rate: 20 },
+        { quantity: 1, unit_price: 0.03, discount_percentage: 0, vat_rate: 20 },
+      ]
+
+      const result = calculateInvoiceTotals(lines, 0)
+
+      expect(result.lineBreakdown.map((line) => line.vat)).toEqual([0.01, 0.01, 0.01])
+      expect(result.vatAmount).toBe(0.03)
+      expect(result.totalAmount).toBe(0.12)
+    })
+
     it('should apply VAT after invoice-level discount', () => {
       const lines: InvoiceLineInput[] = [
         { quantity: 1, unit_price: 100, discount_percentage: 0, vat_rate: 20 },

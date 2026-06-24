@@ -484,7 +484,14 @@ export default function InvoiceDetailClient({
     }
   }
 
-  const { totals: invoiceTotals, lineTotals } = invoiceMath
+  const { totals: calculatedInvoiceTotals, lineTotals } = invoiceMath
+  const invoiceTotals = useMemo(() => ({
+    ...calculatedInvoiceTotals,
+    subtotalBeforeInvoiceDiscount: Number(invoice.subtotal_amount ?? calculatedInvoiceTotals.subtotalBeforeInvoiceDiscount),
+    invoiceDiscountAmount: Number(invoice.discount_amount ?? calculatedInvoiceTotals.invoiceDiscountAmount),
+    vatAmount: Number(invoice.vat_amount ?? calculatedInvoiceTotals.vatAmount),
+    totalAmount: Number(invoice.total_amount ?? calculatedInvoiceTotals.totalAmount),
+  }), [calculatedInvoiceTotals, invoice])
   const showOjReissueAction = canEdit && canAttemptOjReissue(invoice)
   const invoiceVatRate = Number(invoice.subtotal_amount || 0) > 0
     ? Math.round((Number(invoice.vat_amount || 0) / Number(invoice.subtotal_amount || 0)) * 100 * 100) / 100

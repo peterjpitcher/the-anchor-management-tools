@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import InvoiceDetailClient from '@/app/(authenticated)/invoices/[id]/InvoiceDetailClient'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
@@ -130,5 +130,31 @@ describe('InvoiceDetailClient credit note UI', () => {
       )
     })
     expect(mockGetInvoice).toHaveBeenCalledWith('invoice-1')
+  })
+
+  it('uses persisted invoice totals rather than recomputing detail totals from lines', () => {
+    const invoiceWithStoredTotals: InvoiceWithDetails = {
+      ...paidInvoice,
+      status: 'sent',
+      paid_amount: 0,
+      subtotal_amount: 10,
+      vat_amount: 1.23,
+      total_amount: 11.23,
+      line_items: [{
+        ...paidInvoice.line_items[0],
+        quantity: 1,
+        unit_price: 100,
+        vat_rate: 20,
+      }],
+      payments: [],
+    }
+
+    render(<InvoiceDetailClient initialInvoice={invoiceWithStoredTotals} emailConfigured={false} />)
+
+    const lineItemsCard = screen.getByRole('heading', { name: 'Line Items' }).parentElement as HTMLElement
+
+    expect(within(lineItemsCard).getByText('£10.00')).toBeInTheDocument()
+    expect(within(lineItemsCard).getByText('£1.23')).toBeInTheDocument()
+    expect(within(lineItemsCard).getByText('£11.23')).toBeInTheDocument()
   })
 })
