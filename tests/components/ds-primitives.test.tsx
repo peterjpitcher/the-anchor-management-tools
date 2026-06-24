@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { Checkbox, ConfirmDialog } from '@/ds/primitives'
+import { Checkbox, ConfirmDialog, Radio } from '@/ds/primitives'
 import { DataTable } from '@/ds/composites/DataTable'
 import { Tabs } from '@/ds/composites/Tabs'
 
@@ -15,6 +15,18 @@ describe('DS primitives', () => {
 
     expect(checkbox).toBeChecked()
     expect(onChange).toHaveBeenCalledWith(true)
+  })
+
+  it('radio uses a real labelled input and emits selected value', () => {
+    const onChange = vi.fn()
+
+    render(<Radio label="Hourly" name="pay-type" value="hourly" onChange={onChange} />)
+
+    const radio = screen.getByRole('radio', { name: 'Hourly' })
+    fireEvent.click(screen.getByText('Hourly'))
+
+    expect(radio).toBeInTheDocument()
+    expect(onChange).toHaveBeenCalledWith('hourly')
   })
 
   it('confirm dialog waits for async confirmation before closing', async () => {

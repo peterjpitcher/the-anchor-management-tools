@@ -81,4 +81,5 @@ Status values:
 | PR-76 / A-052 | done | Holiday allowance counts now ignore Saturdays, Sundays, and employee-specific non-working weekdays from pay settings; migration/rollback, action, helper, typecheck, lint, and Supabase dry-run all pass. |
 | PR-14a-c / A-053 | done | Exported customer-label, site-settings, missing-cashup, menu-target, and payroll-period actions now re-check RBAC before data/service access; payroll cron/staff portal use internal helpers after their own auth; denied-path tests, typecheck, and lint pass. |
 | PR-77 / A-054 | done-before-start | `ConfirmDialog` already awaits async `onConfirm`, keeps controls disabled while pending, preserves the dialog on errors, and surfaces the error; `tests/components/ds-primitives.test.tsx` passes. |
+| PR-78 / A-055 | done | DS `Radio` now uses a real labelled radio input instead of a button role shim; checkbox/radio label tests, typecheck, and lint pass. |
 | A-117 | todo | Included by owner request. |

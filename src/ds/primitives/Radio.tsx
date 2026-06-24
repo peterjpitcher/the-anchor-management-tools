@@ -28,31 +28,40 @@ export function Radio({
 }: RadioProps) {
   const autoId = useId()
   const id = idProp ?? autoId
+  const descriptionId = description ? `${id}-description` : undefined
 
   return (
     <div className={cn('flex gap-3 items-start', className)}>
-      <button
-        id={id}
-        type="button"
-        role="radio"
-        aria-checked={checked}
-        disabled={disabled}
-        data-name={name}
-        onClick={() => onChange?.(value)}
-        className={cn(
-          'w-4 h-4 mt-0.5 shrink-0 rounded-full border-2 transition-[background,border-color,box-shadow] duration-[120ms]',
-          'focus-visible:outline-none focus-visible:shadow-ring',
-          'flex items-center justify-center',
-          checked
-            ? 'border-primary'
-            : 'border-border-strong bg-surface',
-          disabled && 'opacity-50 cursor-not-allowed'
-        )}
-      >
+      <div className="relative mt-0.5 h-4 w-4 shrink-0">
+        <input
+          id={id}
+          type="radio"
+          name={name}
+          value={value}
+          checked={checked}
+          disabled={disabled}
+          aria-describedby={descriptionId}
+          onChange={(event) => {
+            if (event.target.checked) onChange?.(value)
+          }}
+          className="peer absolute inset-0 z-10 h-4 w-4 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        />
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute inset-0 rounded-full border-2 transition-[background,border-color,box-shadow] duration-[120ms]',
+            'peer-focus-visible:shadow-ring',
+            checked ? 'border-primary' : 'border-border-strong bg-surface',
+            disabled && 'opacity-50'
+          )}
+        />
         {checked && (
-          <span className="w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true" />
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+            aria-hidden="true"
+          />
         )}
-      </button>
+      </div>
 
       <div className="flex flex-col">
         <label
@@ -65,7 +74,7 @@ export function Radio({
           {label}
         </label>
         {description && (
-          <span className="text-xs text-text-muted mt-0.5">{description}</span>
+          <span id={descriptionId} className="text-xs text-text-muted mt-0.5">{description}</span>
         )}
       </div>
     </div>
