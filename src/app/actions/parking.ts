@@ -573,7 +573,15 @@ export async function updateParkingBookingStatus(
   updates: Partial<Pick<ParkingBooking, 'status' | 'payment_status' | 'notes' | 'cancelled_at'>>
 ) {
   try {
-    const hasPermission = await checkUserPermission('parking', 'manage')
+    const supabase = await createClient()
+    const [{ data: { user } }, hasPermission] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
+    if (!user) {
+      return { error: 'Unauthorized' }
+    }
+
     if (!hasPermission) {
       return { error: 'You do not have permission to update parking bookings' }
     }
@@ -664,6 +672,8 @@ export async function updateParkingBookingStatus(
     const booking = await updateParkingBooking(bookingId, updatesToApply, adminClient)
 
     await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
       operation_type: 'update',
       resource_type: 'parking_booking',
       resource_id: bookingId,
