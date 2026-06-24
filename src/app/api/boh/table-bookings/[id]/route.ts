@@ -213,6 +213,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
     }
 
+    await logAuditEvent({
+      user_id: auth.userId,
+      operation_type: 'delete',
+      resource_type: 'table_booking',
+      resource_id: id,
+      operation_status: 'success',
+      old_values: existing,
+      new_values: {
+        ...deletedBooking,
+        hard_deleted: true,
+      },
+      additional_info: { action: 'boh_table_booking_hard_delete' },
+    }).catch(() => {})
+
     return NextResponse.json({
       success: true,
       data: {
@@ -284,6 +298,20 @@ export async function DELETE(
   if (!cancelledBooking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
+
+  await logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'update',
+    resource_type: 'table_booking',
+    resource_id: id,
+    operation_status: 'success',
+    old_values: existing,
+    new_values: {
+      ...cancelledBooking,
+      soft_deleted: true,
+    },
+    additional_info: { action: 'boh_table_booking_soft_cancel' },
+  }).catch(() => {})
 
   // Tiered deposit refund + cancellation SMS (never fail the delete)
   try {
