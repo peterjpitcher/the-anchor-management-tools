@@ -10,7 +10,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
-import { updateProfile, uploadAvatar } from '@/app/actions/profile'
+import { exportProfileData, updateProfile, uploadAvatar } from '@/app/actions/profile'
 
 const mockedCreateClient = createClient as unknown as Mock
 const validPngBytes = new Uint8Array([
@@ -199,5 +199,126 @@ describe('Profile action mutation guards', () => {
 
     expect(result).toEqual({ error: 'Avatar must be 5 MB or smaller' })
     expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('exports messages by linked customer id, not auth user id', async () => {
+    const profileSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'user-1',
+        email: 'guest@example.com',
+        full_name: 'Guest User',
+      },
+      error: null,
+    })
+    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
+
+    const customersIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'customer-1' }],
+      error: null,
+    })
+    const messagesIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'message-1', customer_id: 'customer-1', body: 'Hello' }],
+      error: null,
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-1',
+              email: 'guest@example.com',
+            },
+          },
+          error: null,
+        }),
+      },
+      from: vi.fn((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: vi.fn().mockReturnValue({ eq: profileEq }),
+          }
+        }
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnValue({ in: customersIn }),
+          }
+        }
+        if (table === 'messages') {
+          return {
+            select: vi.fn().mockReturnValue({ in: messagesIn }),
+          }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const result = await exportProfileData()
+
+    expect(result).toMatchObject({ success: true })
+    if (!('content' in result)) throw new Error('Expected export content')
+    const payload = JSON.parse(result.content)
+    expect(payload.customerIds).toEqual(['customer-1'])
+    expect(payload.messages).toEqual([{ id: 'message-1', customer_id: 'customer-1', body: 'Hello' }])
+    expect(messagesIn).toHaveBeenCalledWith('customer_id', ['customer-1'])
+    expect(messagesIn).not.toHaveBeenCalledWith('customer_id', ['user-1'])
+  })
+
+  it('fails the profile export when the messages query errors', async () => {
+    const profileSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'user-1',
+        email: 'guest@example.com',
+      },
+      error: null,
+    })
+    const profileEq = vi.fn().mockReturnValue({ single: profileSingle })
+
+    const customersIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'customer-1' }],
+      error: null,
+    })
+    const messagesIn = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'messages unavailable' },
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-1',
+              email: 'guest@example.com',
+            },
+          },
+          error: null,
+        }),
+      },
+      from: vi.fn((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: vi.fn().mockReturnValue({ eq: profileEq }),
+          }
+        }
+        if (table === 'customers') {
+          return {
+            select: vi.fn().mockReturnValue({ in: customersIn }),
+          }
+        }
+        if (table === 'messages') {
+          return {
+            select: vi.fn().mockReturnValue({ in: messagesIn }),
+          }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const result = await exportProfileData()
+
+    expect(result).toEqual({ error: 'Failed to export messages' })
   })
 })

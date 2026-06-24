@@ -15,6 +15,15 @@ type ProfileRecord = {
   email_notifications: boolean
 }
 
+function normalizeExportEmail(value: string | null | undefined): string | null {
+  const trimmed = value?.trim().toLowerCase()
+  return trimmed || null
+}
+
+function uniqueExportEmails(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map(normalizeExportEmail).filter((value): value is string => Boolean(value))))
+}
+
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const AVATAR_TYPES = {
   'image/jpeg': {
@@ -209,14 +218,43 @@ export async function exportProfileData() {
     return { error: 'Failed to export data' }
   }
 
-  const { data: messages } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('customer_id', user.id)
+  const emails = uniqueExportEmails([profile.email, user.email])
+  let customerIds: string[] = []
+
+  if (emails.length > 0) {
+    const { data: customers, error: customersError } = await supabase
+      .from('customers')
+      .select('id')
+      .in('email', emails)
+
+    if (customersError) {
+      console.error('Error resolving customers for profile export', customersError)
+      return { error: 'Failed to export customer data' }
+    }
+
+    customerIds = Array.from(new Set((customers || []).map((customer) => customer.id).filter(Boolean)))
+  }
+
+  let messages: unknown[] = []
+
+  if (customerIds.length > 0) {
+    const { data: messageRows, error: messagesError } = await supabase
+      .from('messages')
+      .select('*')
+      .in('customer_id', customerIds)
+
+    if (messagesError) {
+      console.error('Error exporting profile messages', messagesError)
+      return { error: 'Failed to export messages' }
+    }
+
+    messages = messageRows || []
+  }
 
   const exportPayload = {
     profile,
-    messages: messages || [],
+    customerIds,
+    messages,
     exportDate: new Date().toISOString(),
   }
 
