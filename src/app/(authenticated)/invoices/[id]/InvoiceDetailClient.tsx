@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
+import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
 import {
   getOjInvoiceReissuePreview,
   reissueOjInvoice,
@@ -17,7 +17,9 @@ import { DataTable } from '@/ds'
 import { toast } from '@/ds'
 import { ConfirmDialog } from '@/ds'
 import { Modal } from '@/ds'
-import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react'
+import { Input } from '@/ds'
+import { Textarea } from '@/ds'
+import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw, FileMinus } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -238,6 +240,7 @@ export default function InvoiceDetailClient({
   // We use client-side permissions for UI elements, but server validated the page access
   const canEdit = hasPermission('invoices', 'edit')
   const canDelete = hasPermission('invoices', 'delete')
+  const canCreateCreditNote = hasPermission('invoices', 'create')
   
   const [invoice, setInvoice] = useState<InvoiceWithDetails>(initialInvoice)
   const [actionLoading, setActionLoading] = useState(false)
@@ -251,6 +254,10 @@ export default function InvoiceDetailClient({
   const [reissuePreview, setReissuePreview] = useState<OjInvoiceReissuePreview | null>(null)
   const [reissueLoading, setReissueLoading] = useState(false)
   const [reissueSubmitting, setReissueSubmitting] = useState(false)
+  const [showCreditNoteModal, setShowCreditNoteModal] = useState(false)
+  const [creditNoteAmount, setCreditNoteAmount] = useState('')
+  const [creditNoteReason, setCreditNoteReason] = useState('')
+  const [creditNoteSubmitting, setCreditNoteSubmitting] = useState(false)
   
   const readOnly = !permissionsLoading && !canEdit && !canDelete
 
@@ -479,6 +486,68 @@ export default function InvoiceDetailClient({
 
   const { totals: invoiceTotals, lineTotals } = invoiceMath
   const showOjReissueAction = canEdit && canAttemptOjReissue(invoice)
+  const invoiceVatRate = Number(invoice.subtotal_amount || 0) > 0
+    ? Math.round((Number(invoice.vat_amount || 0) / Number(invoice.subtotal_amount || 0)) * 100 * 100) / 100
+    : 20
+  const maxCreditNoteExVat = Number(invoice.total_amount || 0) > 0
+    ? Math.max(0, Math.min(
+      Number(invoice.subtotal_amount || 0),
+      Number(invoice.paid_amount || 0) / (1 + invoiceVatRate / 100)
+    ))
+    : 0
+  const parsedCreditNoteAmount = Number.parseFloat(creditNoteAmount)
+  const creditNoteAmountValid =
+    Number.isFinite(parsedCreditNoteAmount) &&
+    parsedCreditNoteAmount > 0 &&
+    parsedCreditNoteAmount <= maxCreditNoteExVat
+  const estimatedCreditNoteIncVat = creditNoteAmountValid
+    ? Math.round(parsedCreditNoteAmount * (1 + invoiceVatRate / 100) * 100) / 100
+    : 0
+  const canSubmitCreditNote =
+    creditNoteAmountValid &&
+    creditNoteReason.trim().length > 0 &&
+    !creditNoteSubmitting
+  const canShowCreditNoteAction =
+    canCreateCreditNote &&
+    maxCreditNoteExVat > 0 &&
+    (invoice.status === 'paid' || invoice.status === 'partially_paid' || Number(invoice.paid_amount || 0) > 0) &&
+    invoice.status !== 'void' &&
+    invoice.status !== 'written_off'
+
+  function openCreditNoteModal() {
+    setCreditNoteAmount(maxCreditNoteExVat.toFixed(2))
+    setCreditNoteReason('')
+    setShowCreditNoteModal(true)
+  }
+
+  async function handleCreateCreditNote() {
+    if (!invoice || !canSubmitCreditNote) return
+
+    setCreditNoteSubmitting(true)
+    try {
+      const result = await createCreditNote(invoice.id, parsedCreditNoteAmount, creditNoteReason.trim())
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      toast.success(
+        result.creditNote
+          ? `Credit note ${result.creditNote.credit_note_number} issued for ${formatMoney(result.creditNote.amount_inc_vat)}`
+          : 'Credit note issued'
+      )
+      setShowCreditNoteModal(false)
+
+      const refreshResult = await getInvoice(invoice.id)
+      if (refreshResult.invoice) {
+        setInvoice(refreshResult.invoice)
+      }
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to issue credit note')
+    } finally {
+      setCreditNoteSubmitting(false)
+    }
+  }
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-2">
@@ -492,6 +561,18 @@ export default function InvoiceDetailClient({
           leftIcon={<RefreshCw className="h-4 w-4" />}
         >
           Reissue OJ Invoice
+        </Button>
+      )}
+
+      {canShowCreditNoteAction && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={openCreditNoteModal}
+          disabled={actionLoading || creditNoteSubmitting}
+          leftIcon={<FileMinus className="h-4 w-4" />}
+        >
+          Issue Credit Note
         </Button>
       )}
 
@@ -845,6 +926,18 @@ export default function InvoiceDetailClient({
                   Reissue OJ Invoice
                 </Button>
               )}
+
+              {canShowCreditNoteAction && (
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  onClick={openCreditNoteModal}
+                  disabled={actionLoading || creditNoteSubmitting}
+                  leftIcon={<FileMinus className="h-4 w-4" />}
+                >
+                  Issue Credit Note
+                </Button>
+              )}
               
               {invoice.status !== 'void' && invoice.status !== 'written_off' && canEdit && (
                 <Button
@@ -998,6 +1091,95 @@ export default function InvoiceDetailClient({
             </PreviewSection>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={showCreditNoteModal}
+        onClose={() => {
+          if (!creditNoteSubmitting) {
+            setShowCreditNoteModal(false)
+          }
+        }}
+        title="Issue Credit Note"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setShowCreditNoteModal(false)}
+              disabled={creditNoteSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleCreateCreditNote()}
+              loading={creditNoteSubmitting}
+              disabled={!canSubmitCreditNote}
+            >
+              Issue Credit Note
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <Alert
+            variant="info"
+            description="Use a credit note to record a refund or adjustment against a paid invoice."
+          />
+
+          <div className="rounded-lg border border-border bg-surface-2 p-4 text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-text-muted">Paid amount</span>
+              <span className="font-medium text-text-strong">{formatMoney(invoice.paid_amount)}</span>
+            </div>
+            <div className="mt-2 flex justify-between gap-4">
+              <span className="text-text-muted">Maximum credit ex VAT</span>
+              <span className="font-medium text-text-strong">{formatMoney(maxCreditNoteExVat)}</span>
+            </div>
+            <div className="mt-2 flex justify-between gap-4">
+              <span className="text-text-muted">Invoice VAT rate</span>
+              <span className="font-medium text-text-strong">{invoiceVatRate}%</span>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="credit-note-amount" className="mb-1 block text-sm font-medium text-text">
+              Amount ex VAT
+            </label>
+            <Input
+              id="credit-note-amount"
+              type="number"
+              min="0.01"
+              max={maxCreditNoteExVat.toFixed(2)}
+              step="0.01"
+              value={creditNoteAmount}
+              onChange={(event) => setCreditNoteAmount(event.target.value)}
+            />
+            {creditNoteAmount && !creditNoteAmountValid && (
+              <p className="mt-1 text-xs text-danger">
+                Enter an amount between £0.01 and {formatMoney(maxCreditNoteExVat)}.
+              </p>
+            )}
+            {creditNoteAmountValid && (
+              <p className="mt-1 text-xs text-text-muted">
+                Estimated credit including VAT: {formatMoney(estimatedCreditNoteIncVat)}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="credit-note-reason" className="mb-1 block text-sm font-medium text-text">
+              Reason
+            </label>
+            <Textarea
+              id="credit-note-reason"
+              value={creditNoteReason}
+              onChange={(event) => setCreditNoteReason(event.target.value)}
+              placeholder="Refund, discount, service adjustment..."
+              rows={3}
+            />
+          </div>
+        </div>
       </Modal>
 
       {invoice && canEdit && (
