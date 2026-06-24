@@ -169,6 +169,12 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
         </div>
       </div>
 
+      <div className="space-y-3 md:hidden">
+        <ReceiptUpload lastImport={summary.lastImport} />
+        <ReceiptExport canExport={canExport} />
+        <ReceiptReclassify />
+      </div>
+
       <Card>
         <CardBody>
           <ReceiptFilters

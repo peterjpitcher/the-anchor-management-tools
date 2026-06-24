@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
 import { toast } from 'react-hot-toast'
-import { Button, Input, Select, Spinner } from '@/ds'
+import { Button, ConfirmDialog, Input, Select, Spinner } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -50,6 +50,7 @@ export function ReceiptMobileCard({
   const [editingField, setEditingField] = useState<'vendor' | 'expense' | null>(null)
   const [classificationDraft, setClassificationDraft] = useState('')
   const [isCustomVendor, setIsCustomVendor] = useState(false)
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null)
   
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
@@ -128,6 +129,7 @@ export function ReceiptMobileCard({
             status: newStatus,
             files: remaining
         }, transaction.status)
+        setDeleteFileId(null)
         toast.success('Receipt removed')
     })
   }
@@ -329,7 +331,7 @@ export function ReceiptMobileCard({
              {transaction.files.map(f => (
                  <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 bg-white text-[11px]">
                      <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
-                     <button type="button" onClick={() => handleReceiptDelete(f.id)} className="text-red-500 ml-1">×</button>
+                     <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-red-500 ml-1">×</button>
                  </div>
              ))}
 
@@ -340,6 +342,15 @@ export function ReceiptMobileCard({
                  {transaction.status !== 'pending' && <Button variant="ghost" size="sm" onClick={() => handleStatusUpdate('pending')} disabled={isPending || !canManageReceipts}>Reopen</Button>}
              </div>
         </div>
+        <ConfirmDialog
+          open={Boolean(deleteFileId)}
+          onClose={() => setDeleteFileId(null)}
+          onConfirm={() => deleteFileId ? handleReceiptDelete(deleteFileId) : undefined}
+          title="Delete receipt file"
+          message="Remove this receipt file from the transaction?"
+          confirmLabel="Delete"
+          tone="danger"
+        />
     </div>
   )
 }
