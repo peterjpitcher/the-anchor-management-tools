@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim
+} from '@/lib/api/idempotency'
 
 // This top-level handler receives PayPal webhook events that are not routed to a
 // resource-specific sub-handler (e.g. /api/webhooks/paypal/parking).
@@ -9,6 +15,8 @@ import { logger } from '@/lib/logger'
 // and returns 200 for unhandled event types so PayPal does not retry them.
 
 export const dynamic = 'force-dynamic'
+
+const IDEMPOTENCY_TTL_HOURS = 24 * 30
 
 function truncate(value: string | null | undefined, maxLength: number): string | null {
   if (!value) return null
@@ -83,6 +91,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
   const webhookId = process.env.PAYPAL_WEBHOOK_ID?.trim()
+  let idempotencyKey: string | null = null
+  let requestHash: string | null = null
+  let claimHeld = false
+  let parsedEventId: string | undefined
+  let parsedEventType: string | undefined
 
   try {
     if (!webhookId) {
@@ -129,6 +142,69 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const eventId = typeof event?.id === 'string' ? event.id.trim() : ''
     const eventType = typeof event?.event_type === 'string' ? (event.event_type as string) : 'unknown'
     const resource = event?.resource as Record<string, unknown> | undefined
+    parsedEventId = eventId
+    parsedEventType = eventType
+
+    if (!eventId) {
+      await logPayPalWebhookEvent(supabase, {
+        status: 'invalid_payload',
+        headers,
+        body,
+        eventType,
+        errorMessage: 'Missing event id',
+      })
+      return NextResponse.json({ error: 'Missing event id' }, { status: 400 })
+    }
+
+    idempotencyKey = `webhook:paypal:general:${eventId}`
+    requestHash = computeIdempotencyRequestHash(event)
+
+    const claim = await claimIdempotencyKey(
+      supabase,
+      idempotencyKey,
+      requestHash,
+      IDEMPOTENCY_TTL_HOURS
+    )
+
+    if (claim.state === 'conflict') {
+      await logPayPalWebhookEvent(supabase, {
+        status: 'idempotency_conflict',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: 'Event id reused with a different payload',
+      })
+      return NextResponse.json({ error: 'Conflict' }, { status: 409 })
+    }
+
+    if (claim.state === 'in_progress') {
+      await logPayPalWebhookEvent(supabase, {
+        status: 'in_progress',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: 'Event is currently being processed',
+      })
+      return NextResponse.json(
+        { error: 'Event is currently being processed' },
+        { status: 409 }
+      )
+    }
+
+    if (claim.state === 'replay') {
+      await logPayPalWebhookEvent(supabase, {
+        status: 'duplicate',
+        headers,
+        body,
+        eventId,
+        eventType,
+      })
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+
+    claimHeld = true
 
     await logPayPalWebhookEvent(supabase, {
       status: 'received',
@@ -196,6 +272,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         break
     }
 
+    try {
+      await persistIdempotencyResponse(
+        supabase,
+        idempotencyKey,
+        requestHash,
+        {
+          state: 'processed',
+          event_id: eventId,
+          event_type: eventType,
+          processed_at: new Date().toISOString(),
+        },
+        IDEMPOTENCY_TTL_HOURS
+      )
+      claimHeld = false
+    } catch (persistError) {
+      logger.error('PayPal general webhook processed but failed to persist idempotency response', {
+        error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+        metadata: {
+          eventId,
+          eventType,
+        },
+      })
+
+      await logPayPalWebhookEvent(supabase, {
+        status: 'idempotency_persist_failed',
+        headers,
+        body,
+        eventId,
+        eventType,
+        errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
+      })
+
+      return NextResponse.json({ received: true, idempotency_persist_failed: true })
+    }
+
     await logPayPalWebhookEvent(supabase, {
       status: 'success',
       headers,
@@ -206,6 +317,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ received: true })
   } catch (error) {
+    if (claimHeld && idempotencyKey && requestHash) {
+      try {
+        await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash)
+      } catch (releaseError) {
+        logger.error('Failed to release PayPal general webhook idempotency claim', {
+          error: releaseError instanceof Error ? releaseError : new Error(String(releaseError)),
+          metadata: {
+            idempotencyKey,
+            eventId: parsedEventId,
+            eventType: parsedEventType,
+          },
+        })
+      }
+    }
+
     logger.error('PayPal general webhook error', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
@@ -213,6 +339,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       status: 'error',
       headers,
       body,
+      eventId: parsedEventId,
+      eventType: parsedEventType,
       errorMessage:
         error instanceof Error ? error.message : 'Webhook processing failed',
     })
