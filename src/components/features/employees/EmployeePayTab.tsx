@@ -12,6 +12,7 @@ import { Badge } from '@/ds';
 import {
   upsertEmployeePaySettings,
   addEmployeeRateOverride,
+  updateEmployeeRateOverride,
   type EmployeePaySettings,
   type EmployeeRateOverride,
 } from '@/app/actions/pay-bands';
@@ -53,8 +54,12 @@ export default function EmployeePayTab({
 
   // Override state
   const [showOverrideForm, setShowOverrideForm] = useState(false);
+  const [overrides, setOverrides] = useState(initialOverrides);
   const [overrideRate, setOverrideRate] = useState('');
   const [overrideEffectiveFrom, setOverrideEffectiveFrom] = useState('');
+  const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
+  const [editOverrideRate, setEditOverrideRate] = useState('');
+  const [editOverrideEffectiveFrom, setEditOverrideEffectiveFrom] = useState('');
   const [overrideError, setOverrideError] = useState('');
   const [overrideIsPending, startOverrideTransition] = useTransition();
 
@@ -98,9 +103,44 @@ export default function EmployeePayTab({
         return;
       }
       toast.success('Rate override added');
+      setOverrides(prev => [result.data, ...prev].sort((a, b) => b.effective_from.localeCompare(a.effective_from)));
       setOverrideRate('');
       setOverrideEffectiveFrom('');
       setShowOverrideForm(false);
+    });
+  };
+
+  const startEditOverride = (override: EmployeeRateOverride) => {
+    setEditingOverrideId(override.id);
+    setEditOverrideRate(String(override.hourly_rate));
+    setEditOverrideEffectiveFrom(override.effective_from);
+    setOverrideError('');
+  };
+
+  const handleUpdateOverride = () => {
+    if (!editingOverrideId) return;
+    const rate = parseFloat(editOverrideRate);
+    if (!rate || rate <= 0) { setOverrideError('Enter a valid hourly rate'); return; }
+    if (!editOverrideEffectiveFrom) { setOverrideError('Choose an effective-from date'); return; }
+    setOverrideError('');
+
+    startOverrideTransition(async () => {
+      const result = await updateEmployeeRateOverride({
+        id: editingOverrideId,
+        hourlyRate: rate,
+        effectiveFrom: editOverrideEffectiveFrom,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success('Rate override updated');
+      setOverrides(prev =>
+        prev
+          .map(override => override.id === result.data.id ? result.data : override)
+          .sort((a, b) => b.effective_from.localeCompare(a.effective_from))
+      );
+      setEditingOverrideId(null);
     });
   };
 
@@ -269,7 +309,7 @@ export default function EmployeePayTab({
             </div>
           )}
 
-          {initialOverrides.length === 0 ? (
+          {overrides.length === 0 ? (
             <p className="text-sm text-gray-400 italic">No individual overrides set. Rate is calculated from age band.</p>
           ) : (
             <table className="w-full text-sm">
@@ -278,17 +318,36 @@ export default function EmployeePayTab({
                   <th className="text-left pb-1.5 font-medium">Rate</th>
                   <th className="text-left pb-1.5 font-medium">Effective from</th>
                   <th className="text-left pb-1.5 font-medium">Status</th>
+                  {canEdit && <th className="text-right pb-1.5 font-medium">Actions</th>}
                 </tr>
               </thead>
               <tbody>
-                {initialOverrides.map((ov) => {
+                {overrides.map((ov) => {
                   const today = new Date().toISOString().slice(0, 10);
                   const isUpcoming = ov.effective_from > today;
-                  const isCurrent = !isUpcoming && initialOverrides.find(o => o.effective_from <= today)?.id === ov.id;
+                  const isCurrent = !isUpcoming && overrides.find(o => o.effective_from <= today)?.id === ov.id;
                   return (
                     <tr key={ov.id} className="border-b border-gray-50">
-                      <td className="py-2 font-medium text-gray-900">{formatRate(ov.hourly_rate)}</td>
-                      <td className="py-2 text-gray-600">{formatDate(ov.effective_from)}</td>
+                      <td className="py-2 font-medium text-gray-900">
+                        {editingOverrideId === ov.id ? (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editOverrideRate}
+                            onChange={e => setEditOverrideRate(e.target.value)}
+                          />
+                        ) : formatRate(ov.hourly_rate)}
+                      </td>
+                      <td className="py-2 text-gray-600">
+                        {editingOverrideId === ov.id ? (
+                          <Input
+                            type="date"
+                            value={editOverrideEffectiveFrom}
+                            onChange={e => setEditOverrideEffectiveFrom(e.target.value)}
+                          />
+                        ) : formatDate(ov.effective_from)}
+                      </td>
                       <td className="py-2">
                         {isUpcoming
                           ? <Badge variant="warning" size="sm">Upcoming</Badge>
@@ -297,6 +356,24 @@ export default function EmployeePayTab({
                           : <span className="text-gray-400 text-xs">Historical</span>
                         }
                       </td>
+                      {canEdit && (
+                        <td className="py-2 text-right">
+                          {editingOverrideId === ov.id ? (
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" size="sm" onClick={handleUpdateOverride} disabled={overrideIsPending}>
+                                Save
+                              </Button>
+                              <Button type="button" size="sm" variant="ghost" onClick={() => setEditingOverrideId(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : isUpcoming ? (
+                            <Button type="button" size="sm" variant="ghost" onClick={() => startEditOverride(ov)}>
+                              Edit
+                            </Button>
+                          ) : null}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

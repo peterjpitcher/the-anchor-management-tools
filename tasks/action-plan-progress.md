@@ -52,4 +52,5 @@ Status values:
 | PR-52 / A-025 | done | Table-booking detail now has validated admin edit for date/time/customer/notes/dietary/allergies, loads saved preorder items, and allows legacy preorder item edits before cutoff; focused API tests added. |
 | PR-53 / A-026 | done | Parking bookings now have edit flow, cancel confirmation, and rates management UI backed by validated/audited actions; action tests added. |
 | PR-54 / A-027 | done | Rota drag-and-drop now registers `KeyboardSensor` with `sortableKeyboardCoordinates`; source regression test added. |
+| PR-55 / A-028 | done | Pay age bands can be edited/reactivated/deactivated; future pay-band rates and employee overrides can be edited while historical/current rates stay protected; tests added. |
 | A-117 | todo | Included by owner request. |
