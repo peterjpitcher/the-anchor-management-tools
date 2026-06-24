@@ -67,6 +67,8 @@ interface RotaGridProps {
   canEditSalesTargets: boolean;
   openShiftRequests?: OpenShiftRequestSummary[];
   shiftAuditTrail?: ShiftAuditTrailEntry[];
+  auditValueLabels?: Record<string, string>;
+  selectedShiftId?: string;
   rejectedShifts?: RejectedShiftRecord[];
 }
 
@@ -585,6 +587,8 @@ export default function RotaGrid({
   canEditSalesTargets,
   openShiftRequests = [],
   shiftAuditTrail = [],
+  auditValueLabels = {},
+  selectedShiftId,
   rejectedShifts = [],
 }: RotaGridProps) {
   const router = useRouter();
@@ -604,6 +608,12 @@ export default function RotaGrid({
   useEffect(() => {
     setShifts(initialShifts);
   }, [initialShifts]);
+
+  useEffect(() => {
+    if (!selectedShiftId) return;
+    const shift = shifts.find(item => item.id === selectedShiftId);
+    if (shift) setSelectedShift(shift);
+  }, [selectedShiftId, shifts]);
 
   useEffect(() => {
     setActiveLeaveDays(leaveDays);
@@ -1406,6 +1416,7 @@ export default function RotaGrid({
           departments={departments}
           openShiftRequests={openShiftRequests.filter(request => request.shift_id === selectedShift.id)}
           auditTrail={shiftAuditTrail.filter(entry => entry.shift_id === selectedShift.id)}
+          auditValueLabels={auditValueLabels}
           rejectionHistory={rejectedShifts.filter(rejection => rejection.shift_id === selectedShift.id)}
           rejectedEmployeeNames={employeeNameRecord}
           onClose={() => setSelectedShift(null)}

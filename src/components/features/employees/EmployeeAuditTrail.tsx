@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { formatDateTime } from '@/lib/dateUtils'
-import { ClockIcon, UserIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import { Button, toast } from '@/ds'
+import { ClockIcon, UserIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
 import type { AuditLogEntry, EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 
 interface EmployeeAuditTrailProps {
@@ -19,6 +20,8 @@ export function EmployeeAuditTrail({
   notes,
   canViewAudit
 }: EmployeeAuditTrailProps) {
+  const [copied, setCopied] = useState(false)
+
   const timelineEntries = useMemo(() => {
     const auditEntries =
       auditLogs?.map((log) => ({
@@ -245,14 +248,53 @@ export function EmployeeAuditTrail({
     return details.length > 0 ? details.join(' • ') : null
   }
 
+  const copyText = timelineEntries.map((entry) => {
+    if (entry.type === 'note') {
+      return [
+        `${entry.note.author_name} added a note`,
+        formatDateTime(entry.note.created_at),
+        entry.note.note_text
+      ].filter(Boolean).join('\n')
+    }
+
+    const details = formatDetails(entry.log)
+    return [
+      `${entry.log.user_email ?? 'System'} ${getActionLabel(entry.log)}`,
+      formatDateTime(entry.log.created_at),
+      details
+    ].filter(Boolean).join('\n')
+  }).join('\n\n')
+
+  const handleCopyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText)
+      setCopied(true)
+      toast.success('Audit trail copied')
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Copy failed')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900 flex items-center">
-            <ClockIcon className="h-5 w-5 mr-2" />
-            Audit Trail
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center text-lg font-medium leading-6 text-gray-900">
+              <ClockIcon className="mr-2 h-5 w-5" />
+              Audit Trail
+            </h3>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              icon={<ClipboardDocumentIcon className="h-4 w-4" />}
+              onClick={handleCopyAll}
+            >
+              {copied ? 'Copied' : 'Copy all'}
+            </Button>
+          </div>
 
           <div className="mt-4 flow-root">
             <ul className="-mb-8">

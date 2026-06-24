@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { deleteEmployee } from '@/app/actions/employeeActions';
+import { Button } from '@/ds';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 
@@ -36,14 +37,15 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
 
   return (
     <>
-      <button
+      <Button
         onClick={() => setIsOpen(true)}
         type="button"
-        className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-red-600 ring-1 ring-inset ring-red-300 bg-white hover:bg-red-50 transition-colors"
+        size="sm"
+        variant="danger"
+        icon={<TrashIcon className="h-4 w-4" aria-hidden="true" />}
       >
-        <TrashIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
         Delete Employee
-      </button>
+      </Button>
 
       {isOpen && (
         <div className="relative z-10" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -90,4 +92,4 @@ export default function DeleteEmployeeButton({ employeeId, employeeName }: Delet
       )}
     </>
   );
-} 
+}

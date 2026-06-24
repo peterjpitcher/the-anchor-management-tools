@@ -28,6 +28,8 @@ import type { PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 
 export const dynamic = 'force-dynamic';
 
+const AUDIT_EMPLOYEE_REFERENCE_FIELDS = new Set(['employee_id', 'acceptance_decided_by']);
+
 function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
   const day = d.getUTCDay(); // 0=Sun — use UTC to avoid BST midnight-shift
@@ -45,8 +47,27 @@ function formatWeekRange(start: string, end: string): string {
   return `${startStr} – ${endStr}`;
 }
 
+function employeeDisplayName(employee: { first_name: string | null; last_name: string | null }): string {
+  return [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown staff member';
+}
+
+function collectAuditEmployeeIds(row: {
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+}): string[] {
+  const ids: string[] = [];
+  [row.old_values, row.new_values].forEach(values => {
+    if (!values) return;
+    AUDIT_EMPLOYEE_REFERENCE_FIELDS.forEach(field => {
+      const value = values[field];
+      if (typeof value === 'string' && value.length > 0) ids.push(value);
+    });
+  });
+  return ids;
+}
+
 interface RotaPageProps {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; shift?: string }>;
 }
 
 export default async function RotaPage({ searchParams }: RotaPageProps) {
@@ -75,6 +96,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
 
   const resolvedParams = await Promise.resolve(searchParams ?? {});
   const weekParam = (resolvedParams as { week?: string })?.week;
+  const selectedShiftId = (resolvedParams as { shift?: string })?.shift;
 
   // Resolve weekStart to a Monday
   const weekStart = (() => {
@@ -210,14 +232,45 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     additional_info: Record<string, unknown> | null;
   };
 
-  const shiftAuditTrail: ShiftAuditTrailEntry[] = ((auditRows ?? []) as AuditRow[])
-    .filter(row => Boolean(row.resource_id))
+  const auditRowsList = ((auditRows ?? []) as AuditRow[]).filter(row => Boolean(row.resource_id));
+  const auditEmployeeNames: Record<string, string> = Object.fromEntries(
+    employees.map(employee => [employee.employee_id, employeeDisplayName(employee)]),
+  );
+  const auditEmployeeIds = new Set(auditRowsList.flatMap(collectAuditEmployeeIds));
+  const missingAuditEmployeeIds = [...auditEmployeeIds].filter(employeeId => !auditEmployeeNames[employeeId]);
+  if (missingAuditEmployeeIds.length > 0) {
+    const { data: missingEmployees } = await admin
+      .from('employees')
+      .select('employee_id, first_name, last_name')
+      .in('employee_id', missingAuditEmployeeIds);
+
+    (missingEmployees ?? []).forEach(employee => {
+      auditEmployeeNames[employee.employee_id] = employeeDisplayName(employee);
+    });
+  }
+
+  const auditUserIds = [...new Set(auditRowsList.map(row => row.user_id).filter((id): id is string => Boolean(id)))];
+  const auditUserNames: Record<string, string> = {};
+  if (auditUserIds.length > 0) {
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, full_name, email')
+      .in('id', auditUserIds);
+
+    (profiles ?? []).forEach(profile => {
+      const displayName = profile.full_name || profile.email;
+      if (displayName) auditUserNames[profile.id] = displayName;
+    });
+  }
+
+  const shiftAuditTrail: ShiftAuditTrailEntry[] = auditRowsList
     .map(row => ({
       id: row.id,
       shift_id: row.resource_id!,
       created_at: row.created_at,
       user_email: row.user_email,
       user_id: row.user_id,
+      user_name: row.user_id ? (auditUserNames[row.user_id] ?? null) : null,
       operation_type: row.operation_type,
       old_values: row.old_values,
       new_values: row.new_values,
@@ -274,6 +327,8 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         canEditSalesTargets={canEditSalesTargets}
         openShiftRequests={openShiftRequests}
         shiftAuditTrail={shiftAuditTrail}
+        auditValueLabels={auditEmployeeNames}
+        selectedShiftId={selectedShiftId}
         rejectedShifts={rejectedShifts}
       />
     </PageLayout>

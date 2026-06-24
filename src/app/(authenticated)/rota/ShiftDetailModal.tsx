@@ -23,6 +23,7 @@ interface ShiftDetailModalProps {
   departments: Department[];
   openShiftRequests?: OpenShiftRequestSummary[];
   auditTrail?: ShiftAuditTrailEntry[];
+  auditValueLabels?: Record<string, string>;
   rejectionHistory?: RejectedShiftRecord[];
   rejectedEmployeeNames?: Record<string, string>;
   onClose: () => void;
@@ -99,15 +100,16 @@ function operationLabel(operation: string): string {
     .join(' ');
 }
 
-function valueLabel(value: unknown): string {
+function valueLabel(value: unknown, valueLabels: Record<string, string>): string {
   if (value === null || value === undefined || value === '') return 'blank';
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
-  if (Array.isArray(value)) return value.map(valueLabel).join(', ');
+  if (Array.isArray(value)) return value.map(item => valueLabel(item, valueLabels)).join(', ');
   if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
+  const stringValue = String(value);
+  return valueLabels[stringValue] ?? stringValue;
 }
 
-function auditLines(entry: ShiftAuditTrailEntry): string[] {
+function auditLines(entry: ShiftAuditTrailEntry, valueLabels: Record<string, string>): string[] {
   const oldValues = entry.old_values ?? {};
   const newValues = entry.new_values ?? {};
   const keys = [...new Set([...Object.keys(oldValues), ...Object.keys(newValues)])]
@@ -117,9 +119,9 @@ function auditLines(entry: ShiftAuditTrailEntry): string[] {
     const label = FIELD_LABELS[key] ?? key;
     const hasOld = Object.prototype.hasOwnProperty.call(oldValues, key);
     const hasNew = Object.prototype.hasOwnProperty.call(newValues, key);
-    if (hasOld && hasNew) return `${label}: ${valueLabel(oldValues[key])} -> ${valueLabel(newValues[key])}`;
-    if (hasNew) return `${label}: ${valueLabel(newValues[key])}`;
-    return `${label}: was ${valueLabel(oldValues[key])}`;
+    if (hasOld && hasNew) return `${label}: ${valueLabel(oldValues[key], valueLabels)} -> ${valueLabel(newValues[key], valueLabels)}`;
+    if (hasNew) return `${label}: ${valueLabel(newValues[key], valueLabels)}`;
+    return `${label}: was ${valueLabel(oldValues[key], valueLabels)}`;
   });
 }
 
@@ -138,6 +140,7 @@ export default function ShiftDetailModal({
   departments,
   openShiftRequests = [],
   auditTrail = [],
+  auditValueLabels = {},
   rejectionHistory = [],
   rejectedEmployeeNames = {},
   onClose,
@@ -330,14 +333,14 @@ export default function ShiftDetailModal({
                 ) : (
                   <div className="mt-2 space-y-3">
                     {auditTrail.map(entry => {
-                      const lines = auditLines(entry);
+                      const lines = auditLines(entry, auditValueLabels);
                       return (
                         <div key={entry.id} className="border-l-2 border-gray-300 pl-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs font-semibold text-gray-900">{operationLabel(entry.operation_type)}</p>
                             <p className="text-xs text-gray-500">{formatDateTime(entry.created_at)}</p>
                           </div>
-                          <p className="mt-0.5 text-xs text-gray-500">By {entry.user_email || 'System'}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">By {entry.user_name || entry.user_email || 'System'}</p>
                           {lines.length > 0 && (
                             <ul className="mt-1 space-y-0.5 text-xs text-gray-700">
                               {lines.map(line => <li key={line}>{line}</li>)}

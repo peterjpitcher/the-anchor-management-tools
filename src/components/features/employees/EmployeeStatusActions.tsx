@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { beginSeparation, revokeEmployeeAccess, resendInvite } from '@/app/actions/employeeInvite';
-import { toast } from '@/ds';
+import { Button, toast } from '@/ds';
 
 interface EmployeeStatusActionsProps {
   employeeId: string;
@@ -79,36 +79,39 @@ export default function EmployeeStatusActions({ employeeId, status, canEdit }: E
   return (
     <>
       {status === 'Onboarding' && (
-        <button
+        <Button
           type="button"
           onClick={handleResendInvite}
-          disabled={loading}
-          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-blue-600 ring-1 ring-inset ring-blue-300 bg-white hover:bg-blue-50 transition-colors disabled:opacity-50"
+          loading={loading}
+          size="sm"
+          variant="secondary"
         >
           {loading ? 'Sending...' : 'Resend Invite'}
-        </button>
+        </Button>
       )}
 
       {status === 'Active' && (
-        <button
+        <Button
           type="button"
           onClick={() => setShowConfirm('separation')}
           disabled={loading}
-          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-yellow-700 ring-1 ring-inset ring-yellow-300 bg-white hover:bg-yellow-50 transition-colors disabled:opacity-50"
+          size="sm"
+          variant="secondary"
         >
           Begin Separation
-        </button>
+        </Button>
       )}
 
       {status === 'Started Separation' && (
-        <button
+        <Button
           type="button"
           onClick={() => setShowConfirm('revoke')}
-          disabled={loading}
-          className="inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold text-red-600 ring-1 ring-inset ring-red-300 bg-white hover:bg-red-50 transition-colors disabled:opacity-50"
+          loading={loading}
+          size="sm"
+          variant="danger"
         >
           {loading ? 'Processing...' : 'Mark as Former'}
-        </button>
+        </Button>
       )}
 
       {/* Confirmation modals */}
