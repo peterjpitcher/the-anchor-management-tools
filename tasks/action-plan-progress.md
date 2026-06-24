@@ -56,4 +56,5 @@ Status values:
 | PR-56 / A-029 | done | API key table now exposes edit, revoke, and delete actions with confirmations; `deleteApiKey` action and tests added. |
 | PR-57 / A-030 | done | Parking guest payment failures now show explicit error states, pending/failed bookings show a retry/pay button, and the retry route only redirects active payable bookings to PayPal; focused tests added. |
 | PR-58 / A-031 | done | Profile GDPR self-export now resolves linked customer ids by email before exporting messages and fails visibly on customer/message query errors; action tests added. |
+| PR-59 / A-032 | done | Roles now have `/roles/[id]/edit`, custom role cards expose an Edit button, and the existing audited `updateRole` action backs the form; component test added. |
 | A-117 | todo | Included by owner request. |
