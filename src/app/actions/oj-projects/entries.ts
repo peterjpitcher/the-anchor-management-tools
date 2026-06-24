@@ -716,10 +716,14 @@ export async function getEntries(options?: {
   startDate?: string
   endDate?: string
   limit?: number
+  page?: number
+  pageSize?: number
 }) {
   const hasPermission = await checkUserPermission('oj_projects', 'view')
   if (!hasPermission) return { error: 'You do not have permission to view entries' }
 
+  const pageSize = options?.pageSize ? Math.max(1, Math.min(500, options.pageSize)) : null
+  const page = options?.page ? Math.max(1, options.page) : 1
   const supabase = await createClient()
   let query = supabase
     .from('oj_entries')
@@ -746,7 +750,7 @@ export async function getEntries(options?: {
         id,
         name
       )
-    `)
+    `, { count: 'exact' })
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
 
@@ -756,11 +760,21 @@ export async function getEntries(options?: {
   if (options?.entryType && options.entryType !== 'all') query = query.eq('entry_type', options.entryType)
   if (options?.startDate) query = query.gte('entry_date', options.startDate)
   if (options?.endDate) query = query.lte('entry_date', options.endDate)
-  if (options?.limit) query = query.limit(options.limit)
+  if (pageSize) {
+    const from = (page - 1) * pageSize
+    query = query.range(from, from + pageSize - 1)
+  } else if (options?.limit) {
+    query = query.limit(options.limit)
+  }
 
-  const { data, error } = await query
+  const { data, error, count } = await query
   if (error) return { error: error.message }
-  return { entries: data || [] }
+  return {
+    entries: data || [],
+    total: count ?? data?.length ?? 0,
+    page,
+    pageSize: pageSize ?? options?.limit ?? data?.length ?? 0,
+  }
 }
 
 export async function createTimeEntry(formData: FormData) {

@@ -11,6 +11,7 @@ import {
   TableRow,
   TableHead,
   TableCell,
+  TablePagination,
   Badge,
   Button,
   SearchInput,
@@ -59,6 +60,9 @@ interface EntriesClientProps {
   projects: any[]
   workTypes: any[]
   clients: OJClientSummary[]
+  initialTotal: number
+  initialPage: number
+  pageSize: number
 }
 
 function createBlankEntryForm(vendorId = '') {
@@ -81,6 +85,9 @@ export function EntriesClient({
   projects,
   workTypes,
   clients,
+  initialTotal,
+  initialPage,
+  pageSize,
 }: EntriesClientProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
@@ -89,6 +96,9 @@ export function EntriesClient({
   const canDelete = hasPermission('oj_projects', 'delete')
 
   const [entries, setEntries] = useState(initialEntries)
+  const [entryPage, setEntryPage] = useState(initialPage)
+  const [entriesTotal, setEntriesTotal] = useState(initialTotal)
+  const [loadingPage, setLoadingPage] = useState(false)
   const [search, setSearch] = useState('')
   const [clientFilter, setClientFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
@@ -167,10 +177,21 @@ export function EntriesClient({
     return list
   }, [billingFilter, clientFilter, entries, invoiceFilter, projectFilter, search, statusFilter, typeFilter])
 
-  const reload = useCallback(async () => {
-    const res = await getEntries({ limit: 200 })
-    if (res.entries) setEntries(res.entries)
-  }, [])
+  const reload = useCallback(async (page = entryPage) => {
+    setLoadingPage(true)
+    try {
+      const res = await getEntries({ page, pageSize })
+      if (res.entries) setEntries(res.entries)
+      if (typeof res.total === 'number') setEntriesTotal(res.total)
+      if (typeof res.page === 'number') setEntryPage(res.page)
+    } finally {
+      setLoadingPage(false)
+    }
+  }, [entryPage, pageSize])
+
+  async function goToEntriesPage(page: number): Promise<void> {
+    await reload(page)
+  }
 
   function openEdit(entry: any): void {
     if (!isEntryEditable(entry)) {
@@ -229,7 +250,7 @@ export function EntriesClient({
           : 'Entry updated'
       )
       setEditOpen(false)
-      await reload()
+      await reload(entryPage)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update entry')
@@ -254,7 +275,7 @@ export function EntriesClient({
           : 'Entry deleted'
       )
       setDeleteId(null)
-      await reload()
+      await reload(entryPage)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete entry')
@@ -350,7 +371,7 @@ export function EntriesClient({
       setLastCreateVendorId(submittedVendorId)
       setCreateForm(createBlankEntryForm(submittedVendorId))
       setCreateOpen(false)
-      await reload()
+      await reload(1)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create entry')
@@ -420,6 +441,7 @@ export function EntriesClient({
     projectMatchesEntryContext(p, editForm.vendor_id, editForm.entry_date),
   )
   const deleteEntryTarget = deleteId ? entries.find((entry) => entry.id === deleteId) : null
+  const totalPages = Math.max(1, Math.ceil(entriesTotal / pageSize))
 
   return (
     <div className="flex flex-col gap-4">
@@ -499,98 +521,113 @@ export function EntriesClient({
         {filtered.length === 0 ? (
           <Empty title="No entries" description="No entries match your filters." />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Duration/Qty</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Billing</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-20">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((entry) => {
-                const billable = isEntryBillable(entry)
-
-                return (
-                  <TableRow key={entry.id}>
-                    <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
-                    <TableCell>{entry.vendor?.name || 'Unknown'}</TableCell>
-                    <TableCell>
-                      <div>
-                        <span className="font-medium">{entry.project?.project_name || 'Unknown'}</span>
-                        {entry.project?.project_code && (
-                          <span className="block text-xs text-text-muted">{entry.project.project_code}</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[320px] whitespace-normal break-words text-text-muted">
-                      {entry.description || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {entry.entry_type === 'time'
-                        ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
-                        : entry.entry_type === 'mileage'
-                          ? `${entry.miles} mi`
-                          : '-'}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatCurrency(entryAmount(entry))}
-                    </TableCell>
-                    <TableCell>
-                      <Badge tone={billable ? 'success' : 'neutral'}>
-                        {billable ? 'Billable' : 'Non-billable'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
-                        {entry.invoice?.invoice_number && (
-                          <Link
-                            href={`/invoices/${entry.invoice.id}`}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            {entry.invoice.invoice_number}
-                          </Link>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {isEntryEditable(entry) && (
-                        <div className="flex gap-1">
-                          {canEdit && (
-                            <IconButton
-                              icon={<Icon name="edit" size={16} />}
-                              size="sm"
-                              label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
-                              onClick={() => openEdit(entry)}
-                            />
-                          )}
-                          {canDelete && (
-                            <IconButton
-                              icon={<Icon name="trash" size={16} />}
-                              size="sm"
-                              label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
-                              onClick={() => setDeleteId(entry.id)}
-                            />
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
+          <>
+            <div className={loadingPage ? 'opacity-60' : undefined}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Duration/Qty</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Billing</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-20">Actions</TableHead>
                   </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((entry) => {
+                    const billable = isEntryBillable(entry)
+
+                    return (
+                      <TableRow key={entry.id}>
+                        <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
+                        <TableCell>{entry.vendor?.name || 'Unknown'}</TableCell>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{entry.project?.project_name || 'Unknown'}</span>
+                            {entry.project?.project_code && (
+                              <span className="block text-xs text-text-muted">{entry.project.project_code}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[320px] whitespace-normal break-words text-text-muted">
+                          {entry.description || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {entry.entry_type === 'time'
+                            ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
+                            : entry.entry_type === 'mileage'
+                              ? `${entry.miles} mi`
+                              : '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {formatCurrency(entryAmount(entry))}
+                        </TableCell>
+                        <TableCell>
+                          <Badge tone={billable ? 'success' : 'neutral'}>
+                            {billable ? 'Billable' : 'Non-billable'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                            {entry.invoice?.invoice_number && (
+                              <Link
+                                href={`/invoices/${entry.invoice.id}`}
+                                className="text-xs text-primary hover:underline"
+                              >
+                                {entry.invoice.invoice_number}
+                              </Link>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {isEntryEditable(entry) && (
+                            <div className="flex gap-1">
+                              {canEdit && (
+                                <IconButton
+                                  icon={<Icon name="edit" size={16} />}
+                                  size="sm"
+                                  label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
+                                  onClick={() => openEdit(entry)}
+                                />
+                              )}
+                              {canDelete && (
+                                <IconButton
+                                  icon={<Icon name="trash" size={16} />}
+                                  size="sm"
+                                  label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
+                                  onClick={() => setDeleteId(entry.id)}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {entriesTotal > pageSize && (
+              <TablePagination
+                page={entryPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={entriesTotal}
+                onPageChange={(page) => {
+                  void goToEntriesPage(page)
+                }}
+              />
+            )}
+          </>
         )}
       </Card>
 

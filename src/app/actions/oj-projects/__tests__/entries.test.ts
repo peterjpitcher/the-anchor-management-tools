@@ -10,7 +10,7 @@ vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn(),
 }))
 
-import { createTimeEntry, updateEntry } from '../entries'
+import { createTimeEntry, getEntries, updateEntry } from '../entries'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -335,5 +335,46 @@ describe('updateEntry (time entry)', () => {
     const result = await updateEntry(fd)
     expect(result.error).toBeUndefined()
     expect(result.success).toBe(true)
+  })
+})
+
+describe('getEntries pagination', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockCheckUserPermission.mockResolvedValue(true)
+  })
+
+  it('uses a counted range for paged entry lists', async () => {
+    const range = vi.fn().mockResolvedValue({
+      data: [{ id: 'entry-51' }],
+      error: null,
+      count: 125,
+    })
+    const order = vi.fn().mockReturnThis()
+    const select = vi.fn().mockReturnValue({
+      order,
+      range,
+    })
+    order.mockReturnValue({ order, range })
+
+    mockCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'oj_entries') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+        return { select }
+      }),
+    } as any)
+
+    const result = await getEntries({ page: 2, pageSize: 50 })
+
+    expect(select).toHaveBeenCalledWith(expect.any(String), { count: 'exact' })
+    expect(range).toHaveBeenCalledWith(50, 99)
+    expect(result).toMatchObject({
+      entries: [{ id: 'entry-51' }],
+      total: 125,
+      page: 2,
+      pageSize: 50,
+    })
   })
 })
