@@ -282,3 +282,62 @@ export async function revokeApiKey(
     return { error: 'Failed to revoke API key' }
   }
 }
+
+export async function deleteApiKey(
+  keyId: string,
+): Promise<{ success: true } | { error: string }> {
+  const permission = await requireSettingsPermission('manage')
+  if ('error' in permission) {
+    return { error: permission.error }
+  }
+
+  const { admin, user } = permission
+
+  try {
+    const { data: existing, error: fetchError } = await admin
+      .from('api_keys')
+      .select('*')
+      .eq('id', keyId)
+      .maybeSingle()
+
+    if (fetchError) throw fetchError
+    if (!existing) return { error: 'API key not found' }
+
+    const { error: deleteError } = await admin
+      .from('api_keys')
+      .delete()
+      .eq('id', keyId)
+
+    if (deleteError) throw deleteError
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'delete',
+      resource_type: 'api_key',
+      resource_id: keyId,
+      operation_status: 'success',
+      old_values: {
+        name: existing.name,
+        description: existing.description,
+        permissions: existing.permissions,
+        rate_limit: existing.rate_limit,
+        is_active: existing.is_active,
+      },
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting API key:', error)
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'delete',
+      resource_type: 'api_key',
+      resource_id: keyId,
+      operation_status: 'failure',
+      error_message: 'Failed to delete API key',
+    })
+    return { error: 'Failed to delete API key' }
+  }
+}

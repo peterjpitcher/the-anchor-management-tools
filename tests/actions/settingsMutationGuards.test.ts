@@ -26,7 +26,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { updateAttachmentCategory } from '@/app/actions/attachmentCategories'
 import { updateCustomerLabel } from '@/app/actions/customer-labels'
-import { revokeApiKey } from '@/app/(authenticated)/settings/api-keys/actions'
+import { deleteApiKey, revokeApiKey } from '@/app/(authenticated)/settings/api-keys/actions'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
@@ -148,5 +148,50 @@ describe('Settings and label mutation guards', () => {
     const result = await revokeApiKey('key-1')
 
     expect(result).toEqual({ error: 'API key not found' })
+  })
+
+  it('deletes an API key after permission and prefetch checks', async () => {
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'user-1', email: 'owner@example.com' } },
+        }),
+      },
+    })
+
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'key-1',
+        name: 'Website',
+        description: null,
+        permissions: ['read:events'],
+        rate_limit: 1000,
+        is_active: false,
+      },
+      error: null,
+    })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
+    const deleteEq = vi.fn().mockResolvedValue({ error: null })
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEq })
+
+    mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+      from: vi.fn((table: string) => {
+        if (table !== 'api_keys') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          delete: deleteFn,
+        }
+      }),
+    })
+
+    const result = await deleteApiKey('key-1')
+
+    expect(result).toEqual({ success: true })
+    expect(deleteFn).toHaveBeenCalled()
+    expect(deleteEq).toHaveBeenCalledWith('id', 'key-1')
   })
 })
