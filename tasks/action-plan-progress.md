@@ -58,4 +58,5 @@ Status values:
 | PR-58 / A-031 | done | Profile GDPR self-export now resolves linked customer ids by email before exporting messages and fails visibly on customer/message query errors; action tests added. |
 | PR-59 / A-032 | done | Roles now have `/roles/[id]/edit`, custom role cards expose an Edit button, and the existing audited `updateRole` action backs the form; component test added. |
 | PR-60 / A-033 | done | Users are now enriched with real joined roles, the role column renders actual badges, and the role filter uses those role ids; service and component tests added. |
+| PR-61 / A-034 | done | Paid invoice detail now exposes an Issue Credit Note flow backed by `createCreditNote`, with amount/reason validation, VAT estimate, refresh, and component coverage. |
 | A-117 | todo | Included by owner request. |
