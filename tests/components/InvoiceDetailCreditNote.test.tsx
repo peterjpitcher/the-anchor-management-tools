@@ -157,4 +157,21 @@ describe('InvoiceDetailClient credit note UI', () => {
     expect(within(lineItemsCard).getByText('£1.23')).toBeInTheDocument()
     expect(within(lineItemsCard).getByText('£11.23')).toBeInTheDocument()
   })
+
+  it('routes the top payment action to record payment instead of marking paid directly', () => {
+    const sentInvoice: InvoiceWithDetails = {
+      ...paidInvoice,
+      status: 'sent',
+      paid_amount: 0,
+      payments: [],
+    }
+
+    render(<InvoiceDetailClient initialInvoice={sentInvoice} emailConfigured={false} />)
+
+    expect(screen.queryByRole('button', { name: /mark as paid/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: /record payment/i })[0])
+
+    expect(routerPush).toHaveBeenCalledWith('/invoices/invoice-1/payment')
+  })
 })
