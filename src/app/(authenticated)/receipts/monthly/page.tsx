@@ -267,13 +267,13 @@ export default async function ReceiptsMonthlyPage() {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="px-4 py-3">Month</th>
-                  <th className="px-4 py-3 text-right">Income</th>
-                  <th className="px-4 py-3 text-right">Outgoings</th>
-                  <th className="px-4 py-3 text-right">Net cash</th>
-                  <th className="px-4 py-3 text-right">Automation</th>
-                  <th className="px-4 py-3">Top income sources</th>
-                  <th className="px-4 py-3">Top outgoing vendors</th>
+                  <th scope="col" className="px-4 py-3">Month</th>
+                  <th scope="col" className="px-4 py-3 text-right">Income</th>
+                  <th scope="col" className="px-4 py-3 text-right">Outgoings</th>
+                  <th scope="col" className="px-4 py-3 text-right">Net cash</th>
+                  <th scope="col" className="px-4 py-3 text-right">Automation</th>
+                  <th scope="col" className="px-4 py-3">Top income sources</th>
+                  <th scope="col" className="px-4 py-3">Top outgoing vendors</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm text-gray-700">

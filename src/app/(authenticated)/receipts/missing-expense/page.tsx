@@ -49,12 +49,12 @@ export default async function ReceiptsMissingExpensePage() {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="px-4 py-3">Vendor</th>
-                  <th className="px-4 py-3 text-right">Transactions</th>
-                  <th className="px-4 py-3 text-right">Total out</th>
-                  <th className="px-4 py-3 text-right">Total in</th>
-                  <th className="px-4 py-3">Latest activity</th>
-                  <th className="px-4 py-3" />
+                  <th scope="col" className="px-4 py-3">Vendor</th>
+                  <th scope="col" className="px-4 py-3 text-right">Transactions</th>
+                  <th scope="col" className="px-4 py-3 text-right">Total out</th>
+                  <th scope="col" className="px-4 py-3 text-right">Total in</th>
+                  <th scope="col" className="px-4 py-3">Latest activity</th>
+                  <th scope="col" className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-gray-700">

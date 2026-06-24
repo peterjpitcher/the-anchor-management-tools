@@ -460,11 +460,11 @@ export function DishGpAnalysisTab({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    <th className="px-3 py-2">Upgrade</th>
-                    <th className="px-3 py-2">Group</th>
-                    <th className="px-3 py-2 text-right">Extra Charge</th>
-                    <th className="px-3 py-2 text-right">Ingredient Cost</th>
-                    <th className="px-3 py-2 text-right">GP%</th>
+                    <th scope="col" className="px-3 py-2">Upgrade</th>
+                    <th scope="col" className="px-3 py-2">Group</th>
+                    <th scope="col" className="px-3 py-2 text-right">Extra Charge</th>
+                    <th scope="col" className="px-3 py-2 text-right">Ingredient Cost</th>
+                    <th scope="col" className="px-3 py-2 text-right">GP%</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -545,9 +545,9 @@ export function DishGpAnalysisTab({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    <th className="px-3 py-2">Allergen</th>
-                    <th className="px-3 py-2">Components</th>
-                    <th className="px-3 py-2">Removable?</th>
+                    <th scope="col" className="px-3 py-2">Allergen</th>
+                    <th scope="col" className="px-3 py-2">Components</th>
+                    <th scope="col" className="px-3 py-2">Removable?</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -645,11 +645,11 @@ function CombinationsSection({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-              <th className="px-3 py-2">Combination</th>
-              <th className="px-3 py-2 text-right">Portion Cost</th>
-              <th className="px-3 py-2 text-right">GP%</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Target Price</th>
+              <th scope="col" className="px-3 py-2">Combination</th>
+              <th scope="col" className="px-3 py-2 text-right">Portion Cost</th>
+              <th scope="col" className="px-3 py-2 text-right">GP%</th>
+              <th scope="col" className="px-3 py-2">Status</th>
+              <th scope="col" className="px-3 py-2 text-right">Target Price</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">

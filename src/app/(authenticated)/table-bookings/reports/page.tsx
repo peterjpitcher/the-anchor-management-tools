@@ -248,9 +248,9 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-gray-600">Guest</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-600">Score</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-600">30d</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Guest</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">Score</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">30d</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -280,8 +280,8 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-gray-600">Event Type</th>
-                    <th className="px-3 py-2 text-right font-medium text-gray-600">Guests</th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Event Type</th>
+                    <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">Guests</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">

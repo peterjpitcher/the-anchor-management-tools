@@ -137,24 +137,24 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
           <table className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-text-muted">
               <tr>
-                <th className="px-4 py-3">Rank</th>
-                <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">Rank</th>
+                <th scope="col" className="px-4 py-3">Employee</th>
+                <th scope="col" className="px-4 py-3">
                   <SortLink sort="score" active={sortBy} includeFormer={includeFormer}>Score</SortLink>
                 </th>
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <SortLink sort="manual_accept_rate" active={sortBy} includeFormer={includeFormer}>Manual accept</SortLink>
                 </th>
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <SortLink sort="rejection_rate" active={sortBy} includeFormer={includeFormer}>Reject rate</SortLink>
                 </th>
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <SortLink sort="couldnt_work" active={sortBy} includeFormer={includeFormer}>Couldn&apos;t Work</SortLink>
                 </th>
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <SortLink sort="late_holidays" active={sortBy} includeFormer={includeFormer}>Late holidays</SortLink>
                 </th>
-                <th className="px-4 py-3">Sample</th>
+                <th scope="col" className="px-4 py-3">Sample</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

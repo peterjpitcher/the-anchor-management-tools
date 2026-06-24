@@ -130,10 +130,10 @@ function RateHistory({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-xs text-gray-400 border-b border-gray-100">
-              <th className="text-left pb-1 font-medium">Rate</th>
-              <th className="text-left pb-1 font-medium">Effective from</th>
-              <th className="text-left pb-1 font-medium">Status</th>
-              {canManage && <th className="text-right pb-1 font-medium">Actions</th>}
+              <th scope="col" className="text-left pb-1 font-medium">Rate</th>
+              <th scope="col" className="text-left pb-1 font-medium">Effective from</th>
+              <th scope="col" className="text-left pb-1 font-medium">Status</th>
+              {canManage && <th scope="col" className="text-right pb-1 font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody>

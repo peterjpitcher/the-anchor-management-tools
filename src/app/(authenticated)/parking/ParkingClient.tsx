@@ -531,10 +531,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Channel</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Event</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Status</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Sent at</th>
+                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Channel</th>
+                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Event</th>
+                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Status</th>
+                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">Sent at</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
@@ -639,14 +639,14 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Reference</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Customer</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Start</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">End</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Payment</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Amount</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Due</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Reference</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Customer</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Start</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">End</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Status</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Payment</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Amount</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Due</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -708,10 +708,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Channel</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Event</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Status</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Sent at</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Channel</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Event</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Status</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-500">Sent at</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">

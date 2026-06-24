@@ -205,24 +205,24 @@ export function ReceiptList({
             <table className="min-w-full divide-y divide-border">
               <thead className="bg-surface-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                 <tr>
-                  <th className="px-4 py-2">
+                  <th scope="col" className="px-4 py-2">
                     <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'transaction_date' ? 'text-primary' : ''}`} onClick={() => onSort('transaction_date')}>
                       Date {currentSortBy === 'transaction_date' && (currentSortDirection === 'asc' ? '↑' : '↓')}
                     </button>
                   </th>
-                  <th className="px-4 py-2">
+                  <th scope="col" className="px-4 py-2">
                     <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'details' ? 'text-primary' : ''}`} onClick={() => onSort('details')}>
                       Details {currentSortBy === 'details' && (currentSortDirection === 'asc' ? '↑' : '↓')}
                     </button>
                   </th>
-                  <th className="px-4 py-2">Vendor</th>
-                  <th className="px-4 py-2">Expense type</th>
-                  <th className="px-4 py-2 text-right">In</th>
-                  <th className="px-4 py-2 text-right">Out</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2">Receipts</th>
-                  <th className="px-4 py-2">Notes</th>
-                  <th className="px-4 py-2">Actions</th>
+                  <th scope="col" className="px-4 py-2">Vendor</th>
+                  <th scope="col" className="px-4 py-2">Expense type</th>
+                  <th scope="col" className="px-4 py-2 text-right">In</th>
+                  <th scope="col" className="px-4 py-2 text-right">Out</th>
+                  <th scope="col" className="px-4 py-2">Status</th>
+                  <th scope="col" className="px-4 py-2">Receipts</th>
+                  <th scope="col" className="px-4 py-2">Notes</th>
+                  <th scope="col" className="px-4 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-sm text-text">

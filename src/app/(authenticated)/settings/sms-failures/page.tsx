@@ -204,12 +204,12 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                 <table className="min-w-full divide-y divide-border text-sm">
                   <thead className="bg-surface-2 text-left text-xs font-semibold text-text-muted">
                     <tr>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Customer</th>
-                      <th className="px-4 py-3">Source</th>
-                      <th className="px-4 py-3">Error</th>
-                      <th className="px-4 py-3">To</th>
-                      <th className="px-4 py-3">Message</th>
+                      <th scope="col" className="px-4 py-3">Time</th>
+                      <th scope="col" className="px-4 py-3">Customer</th>
+                      <th scope="col" className="px-4 py-3">Source</th>
+                      <th scope="col" className="px-4 py-3">Error</th>
+                      <th scope="col" className="px-4 py-3">To</th>
+                      <th scope="col" className="px-4 py-3">Message</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
