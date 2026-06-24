@@ -106,7 +106,12 @@ export async function clockIn(employeeId: string): Promise<
     .select('*')
     .single();
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    if (error.code === '23505') {
+      return { success: false, error: 'Already clocked in. Please clock out first.' };
+    }
+    return { success: false, error: error.message };
+  }
 
   // Attempt to link to a scheduled shift (same work_date, department not required, within 2hr window)
   await linkSessionToShift(data.id, employeeId, workDate, nowUtc);

@@ -46,6 +46,7 @@ export async function POST(
   const { data: noShowRow, error: updateError } = await auth.supabase.from('table_bookings')
     .update(transition.plan.update)
     .eq('id', id)
+    .eq('status', booking.status)
     .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
     .maybeSingle()
 
@@ -53,7 +54,14 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to mark no-show' }, { status: 500 })
   }
   if (!noShowRow) {
-    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
+      .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
+      .eq('id', id)
+      .maybeSingle()
+    return NextResponse.json(
+      { error: 'Booking changed before this update could be applied', booking: currentBooking ?? null },
+      { status: currentBooking ? 409 : 404 }
+    )
   }
 
   return NextResponse.json({
