@@ -472,6 +472,7 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
 async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient>, event: any) {
   const resource = event.resource
   const bookingId = resource.custom_id
+  const reason = resource.status_details?.reason || 'DENIED'
 
   if (!bookingId) {
     throw new Error('Parking payment denied webhook missing booking ID')
@@ -483,7 +484,7 @@ async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient
       status: 'failed',
       metadata: {
         webhook_event_id: event.id,
-        failure_reason: resource.status_details?.reason || 'DENIED'
+        failure_reason: reason
       }
     })
     .eq('booking_id', bookingId)
@@ -512,11 +513,15 @@ async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient
       throw new Error(`No parking payment found for denied webhook booking ${bookingId}`)
     }
 
-    if (existingPayment.status === 'failed' || existingPayment.status === 'paid' || existingPayment.status === 'refunded') {
+    if (existingPayment.status === 'failed') {
+      await markParkingBookingPaymentFailed(supabase, bookingId, event.id)
+    } else if (existingPayment.status === 'paid' || existingPayment.status === 'refunded' || existingPayment.status === 'expired') {
       return
+    } else {
+      throw new Error(`Unsupported parking payment status for denied webhook: ${existingPayment.status}`)
     }
-
-    throw new Error(`Unsupported parking payment status for denied webhook: ${existingPayment.status}`)
+  } else {
+    await markParkingBookingPaymentFailed(supabase, bookingId, event.id)
   }
 
   const { error: auditError } = await supabase
@@ -528,11 +533,64 @@ async function handlePaymentDenied(supabase: ReturnType<typeof createAdminClient
       operation_status: 'failure',
       additional_info: {
         event_id: event.id,
-        reason: resource.status_details?.reason
+        reason
       }
     })
 
   if (auditError) {
     throw new Error(`Failed to write denied parking payment audit log: ${auditError.message}`)
   }
+}
+
+async function markParkingBookingPaymentFailed(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  eventId: string
+) {
+  const { data: updatedBooking, error: bookingUpdateError } = await supabase
+    .from('parking_bookings')
+    .update({ payment_status: 'failed' })
+    .eq('id', bookingId)
+    .eq('payment_status', 'pending')
+    .select('id')
+    .maybeSingle()
+
+  if (bookingUpdateError) {
+    throw new Error(`Failed to mark parking booking payment failed: ${bookingUpdateError.message}`)
+  }
+
+  if (updatedBooking) {
+    return
+  }
+
+  const { data: booking, error: bookingLookupError } = await supabase
+    .from('parking_bookings')
+    .select('id, payment_status')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (bookingLookupError) {
+    throw new Error(`Failed to verify parking booking payment state: ${bookingLookupError.message}`)
+  }
+
+  if (!booking) {
+    throw new Error(`Parking booking not found for denied payment webhook: ${bookingId}`)
+  }
+
+  if (booking.payment_status === 'failed') {
+    return
+  }
+
+  if (booking.payment_status === 'paid' || booking.payment_status === 'refunded' || booking.payment_status === 'expired') {
+    logger.warn('Ignoring stale PayPal capture denial for terminal parking booking', {
+      metadata: {
+        bookingId,
+        eventId,
+        paymentStatus: booking.payment_status
+      }
+    })
+    return
+  }
+
+  throw new Error(`Unsupported parking booking payment status for denied webhook: ${booking.payment_status}`)
 }
