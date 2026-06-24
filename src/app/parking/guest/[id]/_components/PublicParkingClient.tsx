@@ -1,13 +1,15 @@
 import { Icon } from '@/ds'
 import type { ParkingBooking } from '@/types/parking'
 import { formatDateTime } from '@/lib/dateUtils'
+import type { ParkingPaymentNotice, ParkingPaymentNoticeTone } from '../paymentNotice'
 function formatCurrency(amount: number, currency = 'GBP', locale = 'en-GB'): string {
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
 }
 
 interface PublicParkingClientProps {
   booking: ParkingBooking
-  paymentMessage: string | null
+  paymentNotice: ParkingPaymentNotice | null
+  canRetryPayment: boolean
   customerFirstName: string | null
 }
 
@@ -21,10 +23,24 @@ function formatGuestGreeting(name: string | null, suffix: string): string {
   return suffix.charAt(0).toUpperCase() + suffix.slice(1)
 }
 
-export default function PublicParkingClient({ booking, paymentMessage, customerFirstName }: PublicParkingClientProps) {
+function noticeClasses(tone: ParkingPaymentNoticeTone): string {
+  switch (tone) {
+    case 'success':
+      return 'border-green-200 bg-green-50 text-green-900'
+    case 'warning':
+      return 'border-amber-200 bg-amber-50 text-amber-950'
+    case 'error':
+      return 'border-red-200 bg-red-50 text-red-950'
+    case 'info':
+      return 'border-blue-200 bg-blue-50 text-blue-950'
+  }
+}
+
+export default function PublicParkingClient({ booking, paymentNotice, canRetryPayment, customerFirstName }: PublicParkingClientProps) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const paymentStatus = booking.payment_status
   const bookingStatus = booking.status
+  const headingStatus = paymentStatus === 'paid' ? 'confirmed' : canRetryPayment ? 'awaiting payment' : 'received'
 
   return (
     <div className="public">
@@ -47,13 +63,30 @@ export default function PublicParkingClient({ booking, paymentMessage, customerF
             </div>
             <div>
               <h2 className="text-lg font-semibold text-text-strong">
-                Parking booking {paymentStatus === 'paid' ? 'confirmed' : 'received'}
+                Parking booking {headingStatus}
               </h2>
             </div>
           </div>
 
-          {paymentMessage && (
-            <p className="text-sm text-text-muted mb-5">{paymentMessage}</p>
+          {paymentNotice && (
+            <div
+              role={paymentNotice.tone === 'error' ? 'alert' : 'status'}
+              className={`mb-5 rounded-lg border p-4 text-sm ${noticeClasses(paymentNotice.tone)}`}
+            >
+              <p className="font-semibold">{paymentNotice.title}</p>
+              <p className="mt-1">{paymentNotice.message}</p>
+              {canRetryPayment && (
+                <form action="/api/parking/payment/retry" method="post" className="mt-4">
+                  <input type="hidden" name="booking_id" value={booking.id} />
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                  >
+                    {paymentStatus === 'failed' ? 'Try payment again' : 'Pay now'}
+                  </button>
+                </form>
+              )}
+            </div>
           )}
 
           <dl className="grid gap-4 sm:grid-cols-2">

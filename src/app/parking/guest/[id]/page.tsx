@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import PublicParkingClient from './_components/PublicParkingClient'
 import type { ParkingBooking } from '@/types/parking'
+import { buildParkingPaymentNotice, canRetryParkingPayment } from './paymentNotice'
 
 interface GuestBookingPageProps {
   params: Promise<{ id: string }>
@@ -28,29 +29,16 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
 
   const paymentStatus = booking.payment_status
   const customerFirstName = booking.customer_first_name || null
-  const paymentMessage = buildPaymentMessage(paymentStatus, paymentParam)
+  const typedBooking = booking as unknown as ParkingBooking
+  const paymentNotice = buildParkingPaymentNotice(paymentStatus, paymentParam)
+  const canRetryPayment = canRetryParkingPayment(typedBooking)
 
   return (
     <PublicParkingClient
-      booking={booking as unknown as ParkingBooking}
-      paymentMessage={paymentMessage}
+      booking={typedBooking}
+      paymentNotice={paymentNotice}
+      canRetryPayment={canRetryPayment}
       customerFirstName={customerFirstName}
     />
   )
-}
-
-function buildPaymentMessage(paymentStatus: string, paymentQuery?: string): string | null {
-  if (paymentQuery === 'success' || paymentStatus === 'paid') {
-    return 'Thanks for completing your payment. Your parking space is now confirmed.'
-  }
-  if (paymentQuery === 'failed' || paymentStatus === 'failed') {
-    return 'We were unable to confirm your payment. Please contact the team and quote your booking reference.'
-  }
-  if (paymentStatus === 'pending') {
-    return 'We have received your booking. A team member will contact you if any further action is required.'
-  }
-  if (paymentStatus === 'refunded') {
-    return 'This booking has been refunded. If you have any questions, please contact the team.'
-  }
-  return null
 }
