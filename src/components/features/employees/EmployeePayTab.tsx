@@ -9,6 +9,7 @@ import { Select } from '@/ds';
 import { FormGroup } from '@/ds';
 import { Alert } from '@/ds';
 import { Badge } from '@/ds';
+import { Checkbox } from '@/ds';
 import {
   upsertEmployeePaySettings,
   addEmployeeRateOverride,
@@ -16,6 +17,10 @@ import {
   type EmployeePaySettings,
   type EmployeeRateOverride,
 } from '@/app/actions/pay-bands';
+import {
+  normalizeNonWorkingWeekdays,
+  WEEKDAY_OPTIONS,
+} from '@/lib/leave/working-days';
 
 interface EmployeePayTabProps {
   employeeId: string;
@@ -48,6 +53,9 @@ export default function EmployeePayTab({
   const [maxHours, setMaxHours] = useState(
     initialPaySettings?.max_weekly_hours?.toString() ?? '',
   );
+  const [nonWorkingWeekdays, setNonWorkingWeekdays] = useState<number[]>(
+    normalizeNonWorkingWeekdays(initialPaySettings?.non_working_weekdays),
+  );
   const [settingsEditing, setSettingsEditing] = useState(false);
   const [settingsIsPending, startSettingsTransition] = useTransition();
   const [settingsError, setSettingsError] = useState('');
@@ -76,6 +84,7 @@ export default function EmployeePayTab({
         employeeId,
         payType,
         maxWeeklyHours: maxH ?? undefined,
+        nonWorkingWeekdays,
       });
       if (!result.success) {
         toast.error(result.error);
@@ -116,6 +125,22 @@ export default function EmployeePayTab({
     setEditOverrideEffectiveFrom(override.effective_from);
     setOverrideError('');
   };
+
+  const toggleNonWorkingWeekday = (weekday: number, checked: boolean) => {
+    setNonWorkingWeekdays(prev => {
+      const next = checked
+        ? [...prev, weekday]
+        : prev.filter(day => day !== weekday);
+      return normalizeNonWorkingWeekdays(next);
+    });
+  };
+
+  const nonWorkingSummary = nonWorkingWeekdays.length > 0
+    ? WEEKDAY_OPTIONS
+        .filter(day => nonWorkingWeekdays.includes(day.value))
+        .map(day => day.label)
+        .join(', ')
+    : 'None';
 
   const handleUpdateOverride = () => {
     if (!editingOverrideId) return;
@@ -225,6 +250,29 @@ export default function EmployeePayTab({
             )}
           </dd>
         </div>
+
+        <div className="py-3 sm:grid sm:grid-cols-4 sm:gap-4 sm:items-start">
+          <dt className="text-sm font-medium text-gray-500">Non-working weekdays</dt>
+          <dd className="mt-1 sm:mt-0 sm:col-span-3">
+            {settingsEditing ? (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {WEEKDAY_OPTIONS.map(day => (
+                  <Checkbox
+                    key={day.value}
+                    label={day.label}
+                    checked={nonWorkingWeekdays.includes(day.value)}
+                    onChange={checked => toggleNonWorkingWeekday(day.value, checked)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <span className="text-sm text-gray-900">{nonWorkingSummary}</span>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              These days are ignored when counting holiday allowance. Saturdays and Sundays are ignored automatically.
+            </p>
+          </dd>
+        </div>
       </dl>
 
       {settingsEditing && (
@@ -242,6 +290,7 @@ export default function EmployeePayTab({
                 setSettingsError('');
                 setPayType(initialPaySettings?.pay_type ?? 'hourly');
                 setMaxHours(initialPaySettings?.max_weekly_hours?.toString() ?? '');
+                setNonWorkingWeekdays(normalizeNonWorkingWeekdays(initialPaySettings?.non_working_weekdays));
               }}
             >
               Cancel

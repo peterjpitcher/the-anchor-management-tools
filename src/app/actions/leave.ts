@@ -18,6 +18,10 @@ import {
   recordHolidayAuditOnly,
   recordHolidayReliabilityEvents,
 } from '@/services/employee-reliability';
+import {
+  isCountedLeaveDate,
+  normalizeNonWorkingWeekdays,
+} from '@/lib/leave/working-days';
 
 export type LeaveRequest = {
   id: string;
@@ -69,6 +73,11 @@ type UpdateLeaveDatesRpcResult = {
   success?: boolean;
   error?: string;
   code?: string;
+};
+
+type EmployeeLeaveSettings = {
+  holiday_allowance_days?: number | null;
+  non_working_weekdays?: unknown;
 };
 
 // Returns true if the current session user IS the employee identified by employeeId
@@ -483,9 +492,9 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
   const [paySettingRes, rotaSettings, approvedRes, pendingRes] = await Promise.all([
     supabase
       .from('employee_pay_settings')
-      .select('holiday_allowance_days')
+      .select('holiday_allowance_days, non_working_weekdays')
       .eq('employee_id', employeeId)
-      .single(),
+      .maybeSingle(),
     getRotaSettings(),
     supabase
       .from('leave_requests')
@@ -501,26 +510,29 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
       .eq('status', 'pending'),
   ]);
 
-  const { data: paySetting } = paySettingRes;
+  if (paySettingRes.error) return { success: false, error: paySettingRes.error.message };
+
+  const paySetting = paySettingRes.data as EmployeeLeaveSettings | null;
   const { defaultHolidayDays } = rotaSettings;
   const allowance = paySetting?.holiday_allowance_days ?? defaultHolidayDays;
+  const nonWorkingWeekdays = normalizeNonWorkingWeekdays(paySetting?.non_working_weekdays);
 
   const approvedIds = (approvedRes.data ?? []).map(r => r.id);
   const pendingIds = (pendingRes.data ?? []).map(r => r.id);
 
   const [approvedDaysResult, pendingDaysResult] = await Promise.all([
     approvedIds.length === 0
-      ? Promise.resolve({ count: 0, error: null })
+      ? Promise.resolve({ data: [], error: null })
       : supabase
           .from('leave_days')
-          .select('*', { count: 'exact', head: true })
+          .select('leave_date')
           .eq('employee_id', employeeId)
           .in('request_id', approvedIds),
     pendingIds.length === 0
-      ? Promise.resolve({ count: 0, error: null })
+      ? Promise.resolve({ data: [], error: null })
       : supabase
           .from('leave_days')
-          .select('*', { count: 'exact', head: true })
+          .select('leave_date')
           .eq('employee_id', employeeId)
           .in('request_id', pendingIds),
   ]);
@@ -528,9 +540,13 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
   if (approvedDaysResult.error) return { success: false, error: approvedDaysResult.error.message };
   if (pendingDaysResult.error) return { success: false, error: pendingDaysResult.error.message };
 
-  const total = approvedDaysResult.count ?? 0;
-  const pendingTotal = pendingDaysResult.count ?? 0;
-  return { success: true, count: total, pendingCount: pendingTotal, allowance, overThreshold: total >= allowance };
+  const total = (approvedDaysResult.data ?? [])
+    .filter(day => isCountedLeaveDate(String(day.leave_date), nonWorkingWeekdays))
+    .length;
+  const pendingTotal = (pendingDaysResult.data ?? [])
+    .filter(day => isCountedLeaveDate(String(day.leave_date), nonWorkingWeekdays))
+    .length;
+  return { success: true, count: total, pendingCount: pendingTotal, allowance, overThreshold: allowance > 0 && total >= allowance };
 }
 
 // ---------------------------------------------------------------------------

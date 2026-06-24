@@ -39,7 +39,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getRotaSettings } from '@/app/actions/rota-settings'
-import { cancelOwnLeaveRequest, deleteLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave'
+import { cancelOwnLeaveRequest, deleteLeaveRequest, getHolidayUsage, updateLeaveRequestDates } from '@/app/actions/leave'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
@@ -265,6 +265,60 @@ function mockCancelOwnClient(options: {
   return { client, employeeQuery, deleteQuery }
 }
 
+function mockHolidayUsageClient(options: {
+  paySettings?: { holiday_allowance_days: number | null; non_working_weekdays?: number[] | null } | null
+  paySettingsError?: { message: string } | null
+  approvedRequests?: Array<{ id: string }>
+  pendingRequests?: Array<{ id: string }>
+  approvedDays?: Array<{ leave_date: string }>
+  pendingDays?: Array<{ leave_date: string }>
+} = {}) {
+  const payQuery = chain()
+  payQuery.maybeSingle.mockResolvedValue({
+    data: options.paySettings === undefined
+      ? { holiday_allowance_days: 20, non_working_weekdays: [] }
+      : options.paySettings,
+    error: options.paySettingsError ?? null,
+  })
+
+  const approvedRequestsQuery = chain() as Record<string, Mock> & { data?: Array<{ id: string }>; error?: null }
+  approvedRequestsQuery.data = options.approvedRequests ?? [{ id: REQUEST_ID }]
+  approvedRequestsQuery.error = null
+
+  const pendingRequestsQuery = chain() as Record<string, Mock> & { data?: Array<{ id: string }>; error?: null }
+  pendingRequestsQuery.data = options.pendingRequests ?? []
+  pendingRequestsQuery.error = null
+
+  const approvedDaysQuery = chain() as Record<string, Mock> & { data?: Array<{ leave_date: string }>; error?: null }
+  approvedDaysQuery.data = options.approvedDays ?? []
+  approvedDaysQuery.error = null
+
+  const pendingDaysQuery = chain() as Record<string, Mock> & { data?: Array<{ leave_date: string }>; error?: null }
+  pendingDaysQuery.data = options.pendingDays ?? []
+  pendingDaysQuery.error = null
+
+  const leaveRequestQueries = [approvedRequestsQuery, pendingRequestsQuery]
+  const leaveDayQueries = [approvedDaysQuery, pendingDaysQuery]
+
+  const client = {
+    from: vi.fn((table: string) => {
+      if (table === 'employee_pay_settings') {
+        return { select: vi.fn(() => payQuery) }
+      }
+      if (table === 'leave_requests') {
+        return { select: vi.fn(() => leaveRequestQueries.shift()) }
+      }
+      if (table === 'leave_days') {
+        return { select: vi.fn(() => leaveDayQueries.shift()) }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    }),
+  }
+
+  mockedCreateClient.mockResolvedValue(client)
+  return { client, approvedDaysQuery, pendingDaysQuery }
+}
+
 describe('leave actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -426,6 +480,38 @@ describe('leave actions', () => {
       const result = await cancelOwnLeaveRequest(REQUEST_ID)
 
       expect(result).toEqual({ success: false, error: 'Only pending holiday requests can be cancelled' })
+    })
+  })
+
+  describe('getHolidayUsage', () => {
+    it('counts only allowance working days from legacy leave day rows', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockHolidayUsageClient({
+        paySettings: { holiday_allowance_days: 10, non_working_weekdays: [2] },
+        approvedDays: [
+          { leave_date: '2026-07-20' },
+          { leave_date: '2026-07-21' },
+          { leave_date: '2026-07-22' },
+          { leave_date: '2026-07-25' },
+          { leave_date: '2026-07-26' },
+        ],
+        pendingRequests: [{ id: OTHER_REQUEST_ID }],
+        pendingDays: [
+          { leave_date: '2026-07-23' },
+          { leave_date: '2026-07-24' },
+          { leave_date: '2026-07-25' },
+        ],
+      })
+
+      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
+
+      expect(result).toEqual({
+        success: true,
+        count: 2,
+        pendingCount: 2,
+        allowance: 10,
+        overThreshold: false,
+      })
     })
   })
 })

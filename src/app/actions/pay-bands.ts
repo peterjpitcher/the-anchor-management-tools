@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
+import { normalizeNonWorkingWeekdays } from '@/lib/leave/working-days';
 
 export type PayAgeBand = {
   id: string;
@@ -31,6 +32,7 @@ export type EmployeePaySettings = {
   pay_type: 'hourly' | 'salaried';
   max_weekly_hours: number | null;
   holiday_allowance_days: number | null;
+  non_working_weekdays: number[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -283,6 +285,7 @@ const PaySettingsSchema = z.object({
   employeeId: z.string().uuid(),
   payType: z.enum(['hourly', 'salaried']),
   maxWeeklyHours: z.number().positive().nullable().optional(),
+  nonWorkingWeekdays: z.array(z.number().int().min(1).max(5)).max(5).optional(),
 });
 
 export async function upsertEmployeePaySettings(input: z.infer<typeof PaySettingsSchema>): Promise<
@@ -295,17 +298,35 @@ export async function upsertEmployeePaySettings(input: z.infer<typeof PaySetting
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: existing } = await supabase
+    .from('employee_pay_settings')
+    .select('*')
+    .eq('employee_id', parsed.data.employeeId)
+    .maybeSingle();
+
+  const nonWorkingWeekdays = normalizeNonWorkingWeekdays(parsed.data.nonWorkingWeekdays);
   const { data, error } = await supabase
     .from('employee_pay_settings')
     .upsert({
       employee_id: parsed.data.employeeId,
       pay_type: parsed.data.payType,
       max_weekly_hours: parsed.data.maxWeeklyHours ?? null,
+      non_working_weekdays: nonWorkingWeekdays,
     }, { onConflict: 'employee_id' })
     .select('*')
     .single();
 
   if (error) return { success: false, error: error.message };
+  await logAuditEvent({
+    user_id: user?.id,
+    operation_type: existing ? 'update' : 'create',
+    resource_type: 'employee_pay_settings',
+    resource_id: parsed.data.employeeId,
+    operation_status: 'success',
+    old_values: existing ? existing as Record<string, unknown> : undefined,
+    new_values: data as Record<string, unknown>,
+  }).catch(() => {});
   revalidatePath(`/employees/${parsed.data.employeeId}`);
   return { success: true, data: data as EmployeePaySettings };
 }

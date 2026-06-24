@@ -11,6 +11,10 @@ import { Alert } from '@/ds';
 import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
+import {
+  countLeaveAllowanceDays,
+  normalizeNonWorkingWeekdays,
+} from '@/lib/leave/working-days';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
@@ -24,11 +28,6 @@ function getHolidayYear(date: Date, startMonth: number, startDay: number): numbe
   const year = date.getFullYear();
   const yearStart = new Date(year, startMonth - 1, startDay);
   return date >= yearStart ? year : year - 1;
-}
-
-function daysBetween(start: string, end: string): number {
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  return Math.round(ms / 86_400_000) + 1;
 }
 
 function formatDate(iso: string) {
@@ -54,6 +53,7 @@ export default function EmployeeHolidaysTab({
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
+  const nonWorkingWeekdays = normalizeNonWorkingWeekdays(paySettings?.non_working_weekdays);
 
   const currentYear = getHolidayYear(new Date(), holidayYearStartMonth, holidayYearStartDay);
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -73,14 +73,14 @@ export default function EmployeeHolidaysTab({
   // Count approved days for selected year (from dates, not leave_days table)
   const approvedDays = yearRequests
     .filter(r => r.status === 'approved')
-    .reduce((sum, r) => sum + daysBetween(r.start_date, r.end_date), 0);
+    .reduce((sum, r) => sum + countLeaveAllowanceDays(r.start_date, r.end_date, nonWorkingWeekdays), 0);
 
   const pendingDays = yearRequests
     .filter(r => r.status === 'pending')
-    .reduce((sum, r) => sum + daysBetween(r.start_date, r.end_date), 0);
+    .reduce((sum, r) => sum + countLeaveAllowanceDays(r.start_date, r.end_date, nonWorkingWeekdays), 0);
 
-  const progressPct = Math.min(100, (approvedDays / allowance) * 100);
-  const overAllowance = approvedDays >= allowance;
+  const progressPct = allowance > 0 ? Math.min(100, (approvedDays / allowance) * 100) : 0;
+  const overAllowance = allowance > 0 && approvedDays >= allowance;
 
   const handleBook = () => {
     if (!bookStart) { setBookError('Choose a start date'); return; }
@@ -219,7 +219,7 @@ export default function EmployeeHolidaysTab({
       ) : (
         <div className="space-y-2">
           {yearRequests.map(r => {
-            const days = daysBetween(r.start_date, r.end_date);
+            const days = countLeaveAllowanceDays(r.start_date, r.end_date, nonWorkingWeekdays);
             return (
               <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
                 <div className="min-w-0">
