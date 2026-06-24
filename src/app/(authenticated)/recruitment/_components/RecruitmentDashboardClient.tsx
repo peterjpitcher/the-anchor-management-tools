@@ -20,6 +20,7 @@ import {
   Card,
   CardBody,
   CardHeader,
+  ConfirmDialog,
   Drawer,
   Input,
   PageHeader,
@@ -282,6 +283,80 @@ function SubmitButton({ children, variant = 'primary' }: { children: React.React
   )
 }
 
+type RecruitmentActionResult = { success?: boolean; message?: string; error?: string } | null | void
+type RecruitmentFormAction = (formData: FormData) => Promise<RecruitmentActionResult>
+
+function ActionFeedbackForm({
+  action,
+  children,
+  className,
+  confirmTitle,
+  confirmMessage,
+  successMessage = 'Done.',
+}: {
+  action: RecruitmentFormAction
+  children: React.ReactNode
+  className?: string
+  confirmTitle?: string
+  confirmMessage?: string
+  successMessage?: string
+}) {
+  const [pending, setPending] = useState(false)
+  const [state, setState] = useState<{ success?: string; error?: string } | null>(null)
+  const [confirmData, setConfirmData] = useState<FormData | null>(null)
+
+  async function run(formData: FormData): Promise<void> {
+    setPending(true)
+    setState(null)
+    try {
+      const result = await action(formData)
+      if (result && 'error' in result && result.error) {
+        setState({ error: result.error })
+        return
+      }
+      setState({ success: result && 'message' in result && result.message ? result.message : successMessage })
+    } catch (error) {
+      setState({ error: error instanceof Error ? error.message : 'Action failed.' })
+    } finally {
+      setPending(false)
+    }
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    if (confirmMessage) {
+      setConfirmData(formData)
+      return
+    }
+    void run(formData)
+  }
+
+  return (
+    <>
+      <form onSubmit={handleSubmit} className={className}>
+        {children}
+        {pending && <p className="text-xs text-text-muted">Working...</p>}
+        {state?.error && <p className="text-xs text-danger">{state.error}</p>}
+        {state?.success && <p className="text-xs text-success">{state.success}</p>}
+      </form>
+      <ConfirmDialog
+        open={Boolean(confirmData)}
+        onClose={() => setConfirmData(null)}
+        onConfirm={async () => {
+          if (!confirmData) return
+          await run(confirmData)
+          setConfirmData(null)
+        }}
+        title={confirmTitle ?? 'Confirm action'}
+        message={confirmMessage}
+        confirmLabel="Confirm"
+        tone="warning"
+      />
+    </>
+  )
+}
+
 export default function RecruitmentDashboardClient({ initialData, permissions }: Props) {
   const [postingState, postingAction] = useActionState(createRecruitmentPostingAction, null)
   const [postingUpdateState, postingUpdateAction] = useActionState(updateRecruitmentPostingAction, null)
@@ -317,6 +392,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [emailSendState, setEmailSendState] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [printableText, setPrintableText] = useState<string | null>(null)
   const [clientMessage, setClientMessage] = useState<string | null>(null)
+  const APPLICATION_PAGE_SIZE = 25
+  const [applicationPage, setApplicationPage] = useState(1)
   const TALENT_PAGE_SIZE = 25
   const [talentCandidates, setTalentCandidates] = useState<RecruitmentCandidate[]>(initialData.candidates ?? [])
   const [talentTotal, setTalentTotal] = useState<number>(initialData.candidatesTotal ?? (initialData.candidates ?? []).length)
@@ -344,6 +421,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const archiveAppointmentFormAction = archiveRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
   const restoreAppointmentFormAction = restoreRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
   const retryCommunicationFormAction = retryRecruitmentCommunicationAction as unknown as (formData: FormData) => Promise<void>
+  const cvRetryFormAction = (formData: FormData) => retryRecruitmentCvExtractionAction(null, formData)
 
   const applications = initialData.applications ?? []
   const postings = initialData.postings ?? []
@@ -406,6 +484,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
       return scoreDiff || toTime(b.created_at) - toTime(a.created_at)
     })
   }, [applications, search, showArchived, statusFilter])
+
+  const applicationTotalPages = Math.max(1, Math.ceil(filteredApplications.length / APPLICATION_PAGE_SIZE))
+  const paginatedApplications = filteredApplications.slice(
+    (applicationPage - 1) * APPLICATION_PAGE_SIZE,
+    applicationPage * APPLICATION_PAGE_SIZE,
+  )
 
   const filteredSlots = slots.filter((slot: any) => showArchived ? Boolean(slot.archived_at) : !slot.archived_at)
   const filteredAppointments = appointments.filter((appointment: any) => showArchived ? Boolean(appointment.archived_at) : !appointment.archived_at)
@@ -651,14 +735,22 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             <div className="flex flex-col gap-3 md:flex-row md:items-center">
               <SearchInput
                 value={search}
-                onChange={setSearch}
+                onChange={(value) => {
+                  setSearch(value)
+                  setApplicationPage(1)
+                  setSelectedBulkIds([])
+                }}
                 placeholder="Search candidates, role, status..."
                 className="md:w-80"
               />
               <Select
                 aria-label="Filter by status"
                 value={statusFilter}
-                onChange={event => setStatusFilter(event.target.value)}
+                onChange={event => {
+                  setStatusFilter(event.target.value)
+                  setApplicationPage(1)
+                  setSelectedBulkIds([])
+                }}
                 className="md:w-48"
               >
                 <option value="">Active statuses</option>
@@ -667,7 +759,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 ))}
               </Select>
               <label className="flex items-center gap-2 text-sm text-text-muted">
-                <input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={event => {
+                    setShowArchived(event.target.checked)
+                    setApplicationPage(1)
+                    setSelectedBulkIds([])
+                  }}
+                />
                 Show archived
               </label>
               {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
@@ -713,7 +813,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 <CardHeader title="Applications" />
                 <CardBody>
                 {permissions.canEdit && selectedBulkIds.length > 0 && (
-                  <form action={bulkFormAction} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-2 p-3">
+                  <ActionFeedbackForm
+                    action={bulkFormAction}
+                    className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-2 p-3"
+                    confirmTitle="Apply bulk action"
+                    confirmMessage="Apply this change to the selected applications?"
+                    successMessage="Bulk action applied."
+                  >
                     {selectedBulkIds.map(id => <input key={id} type="hidden" name="ids" value={id} />)}
                     <span className="text-sm text-text-muted">{selectedBulkIds.length} selected</span>
                     <Select name="bulk_action" defaultValue="status" className="w-36">
@@ -734,7 +840,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         Export CSV
                       </Button>
                     )}
-                  </form>
+                  </ActionFeedbackForm>
                 )}
                 <Table>
                   <TableHeader>
@@ -742,9 +848,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <TableHead>
                         <input
                           type="checkbox"
-                          checked={filteredApplications.length > 0 && selectedBulkIds.length === filteredApplications.length}
-                          onChange={event => setSelectedBulkIds(event.target.checked ? filteredApplications.map((application: any) => application.id) : [])}
-                          aria-label="Select all applications"
+                          checked={paginatedApplications.length > 0 && paginatedApplications.every((application: any) => selectedBulkIds.includes(application.id))}
+                          onChange={event => {
+                            const pageIds = paginatedApplications.map((application: any) => application.id)
+                            setSelectedBulkIds((current) => event.target.checked
+                              ? Array.from(new Set([...current, ...pageIds]))
+                              : current.filter((id) => !pageIds.includes(id)))
+                          }}
+                          aria-label="Select all applications on this page"
                         />
                       </TableHead>
                       <TableHead>Candidate</TableHead>
@@ -755,7 +866,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredApplications.map((application: any) => (
+                    {paginatedApplications.map((application: any) => (
                       <TableRow
                         key={application.id}
                         className={[
@@ -807,6 +918,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <p className="py-6 text-center text-sm text-text-muted">
                     {showArchived ? 'No archived applications match.' : 'No active applications match.'}
                   </p>
+                )}
+                {filteredApplications.length > APPLICATION_PAGE_SIZE && (
+                  <TablePagination
+                    page={applicationPage}
+                    totalPages={applicationTotalPages}
+                    totalItems={filteredApplications.length}
+                    pageSize={APPLICATION_PAGE_SIZE}
+                    onPageChange={(page) => setApplicationPage(page)}
+                  />
                 )}
                 </CardBody>
               </Card>
@@ -868,7 +988,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <div className="space-y-2 border-t border-border pt-3">
                           <p className="text-xs font-semibold uppercase text-text-muted">Actions</p>
                           {permissions.canEdit && (
-                            <form action={statusFormAction} className="flex flex-wrap items-center gap-2">
+                            <ActionFeedbackForm action={statusFormAction} className="flex flex-wrap items-center gap-2" successMessage="Status saved.">
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
                               <Select name="status" defaultValue={selectedApplication.status} className="w-44">
                                 {statusOptions.map(status => (
@@ -876,44 +996,55 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 ))}
                               </Select>
                               <SubmitButton variant="secondary">Save status</SubmitButton>
-                            </form>
+                            </ActionFeedbackForm>
                           )}
                           <div className="flex flex-wrap gap-2">
                             {permissions.canManage && selectedApplication.job_posting_id && (
-                              <form action={rescoreFormAction}>
+                              <ActionFeedbackForm action={rescoreFormAction} successMessage="Application queued for re-score.">
                                 <input type="hidden" name="application_id" value={selectedApplication.id} />
                                 <SubmitButton variant="secondary">Re-score</SubmitButton>
-                              </form>
+                              </ActionFeedbackForm>
                             )}
                             {permissions.canSend && (
                               <>
-                                <form action={bookingInviteFormAction}>
+                                <ActionFeedbackForm action={bookingInviteFormAction} successMessage="Interview invite sent.">
                                   <input type="hidden" name="application_id" value={selectedApplication.id} />
                                   <input type="hidden" name="type" value="interview" />
                                   <SubmitButton variant="secondary">Interview</SubmitButton>
-                                </form>
-                                <form action={bookingInviteFormAction}>
+                                </ActionFeedbackForm>
+                                <ActionFeedbackForm action={bookingInviteFormAction} successMessage="Trial invite sent.">
                                   <input type="hidden" name="application_id" value={selectedApplication.id} />
                                   <input type="hidden" name="type" value="trial_shift" />
                                   <SubmitButton variant="secondary">Trial</SubmitButton>
-                                </form>
+                                </ActionFeedbackForm>
                               </>
                             )}
                           </div>
                           {permissions.canManage && selectedApplication.candidate?.email && (
-                            <form action={hireFormAction} className="flex flex-wrap gap-2">
+                            <ActionFeedbackForm
+                              action={hireFormAction}
+                              className="flex flex-wrap gap-2"
+                              confirmTitle="Hire candidate"
+                              confirmMessage="Create an employee invite for this candidate?"
+                              successMessage="Employee invite created."
+                            >
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
                               <Input name="job_title" placeholder="Job title" className="w-40" />
                               <SubmitButton>Hire</SubmitButton>
-                            </form>
+                            </ActionFeedbackForm>
                           )}
                           {permissions.canEdit && (
-                            <form action={selectedApplication.archived_at ? restoreApplicationFormAction : archiveApplicationFormAction}>
+                            <ActionFeedbackForm
+                              action={selectedApplication.archived_at ? restoreApplicationFormAction : archiveApplicationFormAction}
+                              confirmTitle={selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
+                              confirmMessage={selectedApplication.archived_at ? 'Restore this application?' : 'Archive this application?'}
+                              successMessage={selectedApplication.archived_at ? 'Application restored.' : 'Application archived.'}
+                            >
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
                               <SubmitButton variant="secondary">
                                 {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
                               </SubmitButton>
-                            </form>
+                            </ActionFeedbackForm>
                           )}
                         </div>
                       )}
@@ -930,13 +1061,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <p className="font-medium">CV extraction needs review</p>
                           <p className="mt-1">{selectedCvExtractionMessage}</p>
                           {selectedApplication.candidate?.cv_file_path && (
-                            <form action={cvRetryAction} className="mt-2 flex flex-wrap items-center gap-2">
+                            <ActionFeedbackForm action={cvRetryFormAction} className="mt-2 flex flex-wrap items-center gap-2" successMessage="CV extraction retry queued.">
                               <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
                               <Button type="submit" size="xs" variant="secondary" icon={<ArrowPathIcon className="h-4 w-4" />}>
                                 Retry extraction
                               </Button>
-                              <ActionStateMessage state={cvRetryState} />
-                            </form>
+                            </ActionFeedbackForm>
                           )}
                         </div>
                       )}
@@ -1528,14 +1658,24 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               )}
               {permissions.canEdit && (
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                  <form action={cancelSlotFormAction}>
+                  <ActionFeedbackForm
+                    action={cancelSlotFormAction}
+                    confirmTitle="Cancel slot"
+                    confirmMessage="Cancel this recruitment slot?"
+                    successMessage="Slot cancelled."
+                  >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
                     <SubmitButton variant="secondary">Cancel slot</SubmitButton>
-                  </form>
-                  <form action={selectedSlot.archived_at ? restoreSlotFormAction : archiveSlotFormAction}>
+                  </ActionFeedbackForm>
+                  <ActionFeedbackForm
+                    action={selectedSlot.archived_at ? restoreSlotFormAction : archiveSlotFormAction}
+                    confirmTitle={selectedSlot.archived_at ? 'Restore slot' : 'Archive slot'}
+                    confirmMessage={selectedSlot.archived_at ? 'Restore this slot?' : 'Archive this slot?'}
+                    successMessage={selectedSlot.archived_at ? 'Slot restored.' : 'Slot archived.'}
+                  >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
                     <SubmitButton variant="secondary">{selectedSlot.archived_at ? 'Restore slot' : 'Archive slot'}</SubmitButton>
-                  </form>
+                  </ActionFeedbackForm>
                 </div>
               )}
             </div>
@@ -1667,7 +1807,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
               {permissions.canEdit && (
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                  <form action={rescheduleAppointmentFormAction} className="flex flex-wrap gap-2">
+                  <ActionFeedbackForm action={rescheduleAppointmentFormAction} className="flex flex-wrap gap-2" successMessage="Appointment rescheduled.">
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
                     <Select name="slot_id" className="w-56">
                       {slots.filter((slot: any) => !slot.archived_at && slot.status === 'open' && slot.type === selectedAppointment.type).map((slot: any) => (
@@ -1675,16 +1815,27 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       ))}
                     </Select>
                     <SubmitButton variant="secondary">Reschedule</SubmitButton>
-                  </form>
-                  <form action={cancelAppointmentFormAction} className="flex flex-wrap gap-2">
+                  </ActionFeedbackForm>
+                  <ActionFeedbackForm
+                    action={cancelAppointmentFormAction}
+                    className="flex flex-wrap gap-2"
+                    confirmTitle="Cancel appointment"
+                    confirmMessage="Cancel this appointment and notify the candidate if configured?"
+                    successMessage="Appointment cancelled."
+                  >
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
                     <Input name="reason" placeholder="Cancel reason" className="w-44" />
                     <SubmitButton variant="secondary">Cancel</SubmitButton>
-                  </form>
-                  <form action={selectedAppointment.archived_at ? restoreAppointmentFormAction : archiveAppointmentFormAction}>
+                  </ActionFeedbackForm>
+                  <ActionFeedbackForm
+                    action={selectedAppointment.archived_at ? restoreAppointmentFormAction : archiveAppointmentFormAction}
+                    confirmTitle={selectedAppointment.archived_at ? 'Restore appointment' : 'Archive appointment'}
+                    confirmMessage={selectedAppointment.archived_at ? 'Restore this appointment?' : 'Archive this appointment?'}
+                    successMessage={selectedAppointment.archived_at ? 'Appointment restored.' : 'Appointment archived.'}
+                  >
                     <input type="hidden" name="appointment_id" value={selectedAppointment.id} />
                     <SubmitButton variant="secondary">{selectedAppointment.archived_at ? 'Restore' : 'Archive'}</SubmitButton>
-                  </form>
+                  </ActionFeedbackForm>
                 </div>
               )}
             </div>
@@ -1769,12 +1920,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               </Button>
                             )}
                             {candidate.cv_file_path && ['failed', 'unsupported'].includes(candidate.cv_extraction_status) && permissions.canManage && (
-                              <form action={cvRetryAction}>
+                              <ActionFeedbackForm action={cvRetryFormAction} successMessage="CV retry queued.">
                                 <input type="hidden" name="candidate_id" value={candidate.id} />
                                 <Button type="submit" size="xs" variant="secondary">
                                   Retry
                                 </Button>
-                              </form>
+                              </ActionFeedbackForm>
                             )}
                           </div>
                         </TableCell>
@@ -1791,7 +1942,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <TableCell className="align-top">{candidate.converted_employee_id ? 'Yes' : 'No'}</TableCell>
                         <TableCell className="align-top">
                           {permissions.canManage && (
-                            <form action={matchFormAction} className="flex gap-2">
+                            <ActionFeedbackForm action={matchFormAction} className="flex gap-2" successMessage="Candidate matched.">
                               <input type="hidden" name="candidate_id" value={candidate.id} />
                               <Select name="job_posting_id" className="w-36">
                                 {postings.map((posting: any) => (
@@ -1799,16 +1950,22 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 ))}
                               </Select>
                               <SubmitButton variant="secondary">Match</SubmitButton>
-                            </form>
+                            </ActionFeedbackForm>
                           )}
                         </TableCell>
                         <TableCell className="align-top">
                           {permissions.canDelete && !candidate.anonymised_at ? (
-                            <form action={erasureFormAction} className="flex gap-2">
+                            <ActionFeedbackForm
+                              action={erasureFormAction}
+                              className="flex gap-2"
+                              confirmTitle="Erase candidate"
+                              confirmMessage="This permanently anonymises the candidate record. Continue?"
+                              successMessage="Candidate erased."
+                            >
                               <input type="hidden" name="candidate_id" value={candidate.id} />
                               <Input name="reason" placeholder="Reason" className="w-32" />
                               <SubmitButton variant="danger">Erase</SubmitButton>
-                            </form>
+                            </ActionFeedbackForm>
                           ) : candidate.anonymised_at ? 'Anonymised' : '-'}
                         </TableCell>
                       </TableRow>
@@ -1862,14 +2019,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       </Button>
                     )}
                     {permissions.canManage && selectedTalentCandidate.cv_file_path && (
-                      <form action={cvRetryAction}>
+                      <ActionFeedbackForm action={cvRetryFormAction} successMessage="CV retry queued.">
                         <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
                         <SubmitButton variant="secondary">Retry CV</SubmitButton>
-                      </form>
+                      </ActionFeedbackForm>
                     )}
                   </div>
                   {permissions.canManage && (
-                    <form action={matchFormAction} className="flex flex-wrap gap-2">
+                    <ActionFeedbackForm action={matchFormAction} className="flex flex-wrap gap-2" successMessage="Candidate matched.">
                       <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
                       <Select name="job_posting_id" className="w-56">
                         {postings.map((posting: any) => (
@@ -1877,7 +2034,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         ))}
                       </Select>
                       <SubmitButton variant="secondary">Match to posting</SubmitButton>
-                    </form>
+                    </ActionFeedbackForm>
                   )}
                 </div>
 
@@ -1925,11 +2082,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               </div>
 
               {permissions.canDelete && !selectedTalentCandidate.anonymised_at && (
-                <form action={erasureFormAction} className="flex flex-wrap gap-2 border-t border-border pt-4">
+                <ActionFeedbackForm
+                  action={erasureFormAction}
+                  className="flex flex-wrap gap-2 border-t border-border pt-4"
+                  confirmTitle="Erase candidate"
+                  confirmMessage="This permanently anonymises the candidate record. Continue?"
+                  successMessage="Candidate erased."
+                >
                   <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
                   <Input name="reason" placeholder="Erasure reason" className="w-64" />
                   <SubmitButton variant="danger">Erase candidate data</SubmitButton>
-                </form>
+                </ActionFeedbackForm>
               )}
             </div>
           )}
@@ -2093,10 +2256,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                 </pre>
               </div>
               {permissions.canSend && (
-                <form action={retryCommunicationFormAction}>
+                <ActionFeedbackForm action={retryCommunicationFormAction} successMessage="Communication retry queued.">
                   <input type="hidden" name="communication_id" value={selectedCommunication.id} />
                   <SubmitButton variant="secondary">Retry / resend</SubmitButton>
-                </form>
+                </ActionFeedbackForm>
               )}
             </div>
           )}
