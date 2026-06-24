@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { revalidatePath, revalidateTag } from 'next/cache'
-import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus } from '@/types/parking'
+import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus, ParkingRate } from '@/types/parking'
+import { calculateParkingPricing } from '@/lib/parking/pricing'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
 import { createPendingParkingBooking } from '@/services/parking'
 
@@ -57,6 +58,48 @@ const CreateParkingBookingSchema = z.object({
       if (value == null) return true
       return value === true || value === 'true' || value === 'on'
     })
+})
+
+const UpdateParkingBookingSchema = CreateParkingBookingSchema.omit({
+  send_payment_link: true,
+}).extend({
+  override_price: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value == null || value === '') return undefined
+      const num = typeof value === 'number' ? value : parseFloat(value)
+      return Number.isFinite(num) ? num : undefined
+    }),
+})
+
+const ParkingRateFormSchema = z.object({
+  hourly_rate: z
+    .union([z.string(), z.number()])
+    .transform((value) => Number(value))
+    .pipe(z.number().min(0).max(1000)),
+  daily_rate: z
+    .union([z.string(), z.number()])
+    .transform((value) => Number(value))
+    .pipe(z.number().min(0).max(10000)),
+  weekly_rate: z
+    .union([z.string(), z.number()])
+    .transform((value) => Number(value))
+    .pipe(z.number().min(0).max(100000)),
+  monthly_rate: z
+    .union([z.string(), z.number()])
+    .transform((value) => Number(value))
+    .pipe(z.number().min(0).max(100000)),
+  capacity_override: z
+    .union([z.string(), z.number(), z.undefined()])
+    .optional()
+    .transform((value) => {
+      if (value == null || value === '') return null
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    })
+    .pipe(z.number().int().min(0).max(500).nullable()),
+  notes: z.string().optional().transform((value) => value?.trim() || null),
 })
 
 export async function createParkingBooking(formData: FormData) {
@@ -295,6 +338,212 @@ export async function getParkingRateConfig(): Promise<{ success: true; data: Par
   } catch (error) {
     console.error('Failed to load parking rate configuration', error)
     return { error: 'Failed to load parking rate configuration' }
+  }
+}
+
+export async function getParkingRateSettings(): Promise<{ success: true; data: ParkingRate } | { error: string }> {
+  try {
+    const supabase = await createClient()
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
+    if (!user) {
+      return { error: 'Authentication required' }
+    }
+    if (!canManage) {
+      return { error: 'You do not have permission to manage parking rates' }
+    }
+
+    const rateRecord = await getActiveParkingRate(createAdminClient())
+    if (!rateRecord) {
+      return { error: 'Parking rates have not been configured' }
+    }
+
+    return { success: true, data: rateRecord }
+  } catch (error) {
+    console.error('Failed to load parking rate settings', error)
+    return { error: 'Failed to load parking rate settings' }
+  }
+}
+
+export async function saveParkingRateConfig(formData: FormData) {
+  try {
+    const supabase = await createClient()
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
+    if (!user) {
+      return { error: 'Authentication required' }
+    }
+    if (!canManage) {
+      return { error: 'You do not have permission to manage parking rates' }
+    }
+
+    const parsed = ParkingRateFormSchema.safeParse(Object.fromEntries(formData.entries()))
+    if (!parsed.success) {
+      return { error: parsed.error.errors[0]?.message || 'Invalid parking rate data' }
+    }
+
+    const adminClient = createAdminClient()
+    const { data: rate, error } = await adminClient
+      .from('parking_rates')
+      .insert({
+        hourly_rate: parsed.data.hourly_rate,
+        daily_rate: parsed.data.daily_rate,
+        weekly_rate: parsed.data.weekly_rate,
+        monthly_rate: parsed.data.monthly_rate,
+        capacity_override: parsed.data.capacity_override,
+        notes: parsed.data.notes,
+        effective_from: new Date().toISOString(),
+      })
+      .select('*')
+      .single()
+
+    if (error) {
+      console.error('Failed to save parking rates:', error)
+      return { error: 'Failed to save parking rates' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'create',
+      resource_type: 'parking_rate',
+      resource_id: rate.id,
+      operation_status: 'success',
+      new_values: rate as Record<string, unknown>,
+    })
+
+    revalidatePath('/parking')
+    revalidateTag('dashboard')
+
+    return { success: true, data: rate as ParkingRate }
+  } catch (error) {
+    console.error('Unexpected error saving parking rates', error)
+    return { error: 'Failed to save parking rates' }
+  }
+}
+
+export async function updateParkingBookingDetails(bookingId: string, formData: FormData) {
+  try {
+    const supabase = await createClient()
+    const [{ data: { user } }, hasPermission] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('parking', 'manage'),
+    ])
+    if (!user) {
+      return { error: 'Authentication required' }
+    }
+    if (!hasPermission) {
+      return { error: 'You do not have permission to update parking bookings' }
+    }
+
+    const parsed = UpdateParkingBookingSchema.safeParse(Object.fromEntries(formData.entries()))
+    if (!parsed.success) {
+      return { error: parsed.error.errors[0]?.message || 'Invalid parking booking data' }
+    }
+
+    const adminClient = createAdminClient()
+    const existing = await getParkingBooking(bookingId, adminClient)
+    if (!existing) {
+      return { error: 'Parking booking not found' }
+    }
+    if (existing.status === 'cancelled' || existing.status === 'completed') {
+      return { error: `Parking booking cannot be edited because it is ${existing.status}` }
+    }
+
+    const data = parsed.data
+    const start = new Date(data.start_at)
+    const end = new Date(data.end_at)
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      return { error: 'End time must be after start time' }
+    }
+
+    const rateRecord = await getActiveParkingRate(adminClient)
+    if (!rateRecord) {
+      return { error: 'Parking rates have not been configured' }
+    }
+
+    const pricing = calculateParkingPricing(start, end, {
+      hourlyRate: Number(rateRecord.hourly_rate) || 0,
+      dailyRate: Number(rateRecord.daily_rate) || 0,
+      weeklyRate: Number(rateRecord.weekly_rate) || 0,
+      monthlyRate: Number(rateRecord.monthly_rate) || 0,
+    })
+
+    const priceAffectingChanged =
+      existing.start_at !== data.start_at ||
+      existing.end_at !== data.end_at ||
+      Number(existing.override_price ?? 0) !== Number(data.override_price ?? 0)
+
+    if (priceAffectingChanged && ['paid', 'refunded'].includes(existing.payment_status)) {
+      return { error: 'Paid parking bookings cannot have price-affecting fields edited' }
+    }
+
+    const payload = {
+      customer_first_name: data.customer_first_name,
+      customer_last_name: data.customer_last_name ?? null,
+      customer_mobile: data.customer_mobile,
+      customer_email: data.customer_email ?? null,
+      vehicle_registration: data.vehicle_registration,
+      vehicle_make: data.vehicle_make ?? null,
+      vehicle_model: data.vehicle_model ?? null,
+      vehicle_colour: data.vehicle_colour ?? null,
+      start_at: data.start_at,
+      end_at: data.end_at,
+      duration_minutes: pricing.durationMinutes,
+      calculated_price: pricing.total,
+      pricing_breakdown: pricing.breakdown,
+      notes: data.notes ?? null,
+      override_price: data.override_price ?? null,
+      override_reason: data.override_reason ?? null,
+      capacity_override: data.capacity_override,
+      capacity_override_reason: data.capacity_override_reason ?? null,
+      updated_by: user.id,
+    }
+
+    const updated = await updateParkingBooking(bookingId, payload, adminClient)
+
+    if (existing.payment_status === 'pending') {
+      const nextAmount = updated.override_price ?? updated.calculated_price ?? 0
+      const { error: paymentError } = await adminClient
+        .from('parking_booking_payments')
+        .update({
+          amount: nextAmount,
+          metadata: {
+            parking_booking_edited: true,
+            edited_at: new Date().toISOString(),
+            edited_by: user.id,
+          },
+        })
+        .eq('booking_id', bookingId)
+        .eq('status', 'pending')
+
+      if (paymentError) {
+        console.error('Failed to update pending parking payment amount:', paymentError)
+        return { error: 'Booking updated but pending payment amount could not be updated' }
+      }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'parking_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      old_values: existing as unknown as Record<string, unknown>,
+      new_values: payload,
+      additional_info: { action: 'edit_parking_booking' },
+    })
+
+    revalidatePath('/parking')
+    revalidateTag('dashboard')
+
+    return { success: true, booking: updated }
+  } catch (error) {
+    console.error('Failed to update parking booking details', error)
+    return { error: 'Failed to update parking booking' }
   }
 }
 

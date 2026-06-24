@@ -49,6 +49,7 @@ export interface ParkingBooking {
   payment_status: ParkingPaymentStatus;
   calculated_price: number;
   override_price?: number | null;
+  override_reason?: string | null;
   pricing_breakdown: ParkingPricingBreakdownLine[];
   start_at: string;
   end_at: string;
