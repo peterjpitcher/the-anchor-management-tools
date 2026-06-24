@@ -47,7 +47,7 @@ function mockQuery(data: unknown, error: unknown = null) {
  * Creates a mock Supabase client that responds differently per table.
  * tableResponses is a map of table_name -> { data, error }
  */
-function createMockSupabase(tableResponses: Record<string, { data: unknown; error?: unknown }>) {
+function createMockSupabase(tableResponses: Record<string, { data: unknown; error?: unknown } | Array<{ data: unknown; error?: unknown }>>) {
   const callIndex: Record<string, number> = {}
 
   return {
@@ -60,7 +60,7 @@ function createMockSupabase(tableResponses: Record<string, { data: unknown; erro
         : responses || { data: [], error: null }
 
       const chain: Record<string, ReturnType<typeof vi.fn>> = {}
-      const methods = ['select', 'eq', 'is', 'ilike', 'order', 'limit']
+      const methods = ['select', 'eq', 'is', 'ilike', 'not', 'order', 'limit']
       for (const m of methods) {
         chain[m] = vi.fn().mockReturnValue(chain)
       }
@@ -180,6 +180,37 @@ describe('getClientBalance', () => {
 
     // Only the 'sent' invoice (100) should count; void, written_off, paid are excluded
     expect(result.balance?.unpaidInvoiceBalance).toBe(100)
+  })
+
+  it('uses all unsettled invoices for balance while limiting display invoices', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const unsettledInvoices = Array.from({ length: 60 }, (_, index) => ({
+      id: `inv-${index}`,
+      invoice_number: `INV-${index}`,
+      invoice_date: '2026-01-01',
+      due_date: '2026-01-31',
+      reference: 'OJ Projects',
+      status: 'sent',
+      total_amount: 10,
+      paid_amount: 0,
+    }))
+
+    const mockSb = createMockSupabase({
+      invoices: [
+        { data: unsettledInvoices },
+        { data: unsettledInvoices.slice(0, 50) },
+      ],
+      oj_entries: { data: [] },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.balance?.unpaidInvoiceBalance).toBe(600)
+    expect(result.balance?.invoices).toHaveLength(50)
   })
 
   it('produces correct 2dp values with roundMoney', async () => {

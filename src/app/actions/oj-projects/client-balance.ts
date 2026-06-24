@@ -39,8 +39,20 @@ export async function getClientBalance(
 
   const supabase = await createClient()
 
-  // Fetch all OJ Projects invoices for this vendor (most recent first, up to 50)
-  const { data: invoices, error: invoicesError } = await supabase
+  // Balance must not be derived from the visible invoice list; the drawer only
+  // shows the latest 50 invoices, but the money total needs every unsettled row.
+  const { data: unsettledInvoices, error: unsettledInvoicesError } = await supabase
+    .from('invoices')
+    .select('id, status, total_amount, paid_amount')
+    .eq('vendor_id', vendorId)
+    .is('deleted_at', null)
+    .ilike('reference', 'OJ Projects %')
+    .not('status', 'in', '(paid,void,written_off)')
+
+  if (unsettledInvoicesError) return { error: unsettledInvoicesError.message }
+
+  // Fetch the most recent invoices for display only.
+  const { data: displayInvoices, error: displayInvoicesError } = await supabase
     .from('invoices')
     .select('id, invoice_number, invoice_date, due_date, reference, status, total_amount, paid_amount')
     .eq('vendor_id', vendorId)
@@ -49,11 +61,11 @@ export async function getClientBalance(
     .order('invoice_date', { ascending: false })
     .limit(50)
 
-  if (invoicesError) return { error: invoicesError.message }
+  if (displayInvoicesError) return { error: displayInvoicesError.message }
 
   // Unpaid invoice balance: sum of (total - paid) for non-settled invoices
   const unpaidInvoiceBalance = roundMoney(
-    (invoices || [])
+    (unsettledInvoices || [])
       .filter((inv) => !['paid', 'void', 'written_off'].includes(inv.status))
       .reduce((acc, inv) => {
         const total = Number(inv.total_amount || 0)
@@ -130,7 +142,7 @@ export async function getClientBalance(
   const adjustedUnpaidInvoiceBalance = roundMoney(unpaidInvoiceBalance - creditNoteTotal)
   const totalOutstanding = roundMoney(adjustedUnpaidInvoiceBalance + unbilledTotal)
 
-  const invoiceSummaries: ClientInvoiceSummary[] = (invoices || []).map((inv) => ({
+  const invoiceSummaries: ClientInvoiceSummary[] = (displayInvoices || []).map((inv) => ({
     id: inv.id,
     invoice_number: inv.invoice_number,
     invoice_date: inv.invoice_date,
