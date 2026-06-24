@@ -425,134 +425,8 @@ export class CashingUpService {
   }
 
   static async upsertSession(supabase: SupabaseClient, data: UpsertCashupSessionDTO, userId: string, existingId?: string) {
-    // Calculate totals
-    const totalExpected = data.paymentBreakdowns.reduce((sum, item) => sum + item.expectedAmount, 0);
-    const totalCounted = data.paymentBreakdowns.reduce((sum, item) => sum + item.countedAmount, 0);
-    const totalVariance = totalCounted - totalExpected;
     const salesBreakdownRows = normaliseSalesBreakdowns(data.salesBreakdowns);
-
-    // Prepare session data
-    const sessionData = {
-      site_id: data.siteId,
-      session_date: data.sessionDate,
-      status: data.status || 'draft',
-      notes: data.notes,
-      total_expected_amount: totalExpected,
-      total_counted_amount: totalCounted,
-      total_variance_amount: totalVariance,
-      updated_at: new Date().toISOString(),
-      updated_by_user_id: userId,
-    };
-
-    let sessionId = existingId;
-    const isNewSession = !sessionId; // DEF-C05: track for compensating delete on child insert failure
-
-    if (!sessionId) {
-      // Check for existing session to avoid constraint violation
-      // We construct the query to match the unique index: site_id, session_date
-      const { data: existing } = await supabase
-        .from('cashup_sessions')
-        .select('id')
-        .eq('site_id', data.siteId)
-        .eq('session_date', data.sessionDate)
-        .maybeSingle();
-        
-      if (existing) {
-        throw new Error('A session for this site and date already exists.');
-      }
-        
-      // Insert
-      const { data: newSession, error } = await supabase
-        .from('cashup_sessions')
-        .insert({
-          ...sessionData,
-          prepared_by_user_id: userId,
-          created_by_user_id: userId,
-        })
-        .select('id')
-        .single();
-      
-      if (error) throw error;
-      sessionId = newSession.id;
-    } else {
-      // DEF-C06: guard against modifying locked sessions
-      const { data: current } = await supabase
-        .from('cashup_sessions')
-        .select('status')
-        .eq('id', sessionId)
-        .single();
-      if (current?.status === 'locked') throw new Error('Cannot modify a locked session');
-
-      // Update
-      const { data: updatedSession, error } = await supabase
-        .from('cashup_sessions')
-        .update(sessionData)
-        .eq('id', sessionId)
-        .select('id')
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!updatedSession) throw new Error('Session not found');
-    }
-
-    // Handle children (Replace strategy with compensating restore on failure — DEF-C05)
-    // Fetch existing children before deleting so we can restore if insert fails
-    const [existingBreakdownsRes, existingCountsRes, existingSalesRes] = await Promise.all([
-      supabase.from('cashup_payment_breakdowns').select('*').eq('cashup_session_id', sessionId),
-      supabase.from('cashup_cash_counts').select('*').eq('cashup_session_id', sessionId),
-      supabase.from('cashup_sales_breakdowns').select('*').eq('cashup_session_id', sessionId),
-    ]);
-    const existingBreakdowns = existingBreakdownsRes.data ?? [];
-    const existingCounts = existingCountsRes.data ?? [];
-    const existingSales = existingSalesRes.data ?? [];
-
-    const restoreOrRollbackChildren = async () => {
-      if (isNewSession) {
-        await supabase.from('cashup_sessions').delete().eq('id', sessionId).then(() => {}, () => {});
-        return;
-      }
-
-      await Promise.all([
-        supabase.from('cashup_payment_breakdowns').delete().eq('cashup_session_id', sessionId).then(() => {}, () => {}),
-        supabase.from('cashup_cash_counts').delete().eq('cashup_session_id', sessionId).then(() => {}, () => {}),
-        supabase.from('cashup_sales_breakdowns').delete().eq('cashup_session_id', sessionId).then(() => {}, () => {}),
-      ]);
-
-      await Promise.all([
-        existingBreakdowns.length > 0
-          ? supabase.from('cashup_payment_breakdowns').insert(existingBreakdowns).throwOnError()
-          : Promise.resolve(),
-        existingCounts.length > 0
-          ? supabase.from('cashup_cash_counts').insert(existingCounts).throwOnError()
-          : Promise.resolve(),
-        existingSales.length > 0
-          ? supabase.from('cashup_sales_breakdowns').insert(existingSales).throwOnError()
-          : Promise.resolve(),
-      ]);
-    };
-
-    // Delete existing
-    const { error: deleteBreakdownsError } = await supabase
-      .from('cashup_payment_breakdowns')
-      .delete()
-      .eq('cashup_session_id', sessionId);
-    if (deleteBreakdownsError) throw deleteBreakdownsError;
-
-    const { error: deleteCountsError } = await supabase
-      .from('cashup_cash_counts')
-      .delete()
-      .eq('cashup_session_id', sessionId);
-    if (deleteCountsError) throw deleteCountsError;
-
-    const { error: deleteSalesError } = await supabase
-      .from('cashup_sales_breakdowns')
-      .delete()
-      .eq('cashup_session_id', sessionId);
-    if (deleteSalesError) throw deleteSalesError;
-
-    // Insert new
-    const breakdowns = data.paymentBreakdowns.map(b => ({
-      cashup_session_id: sessionId,
+    const paymentBreakdowns = data.paymentBreakdowns.map(b => ({
       payment_type_code: b.paymentTypeCode,
       payment_type_label: b.paymentTypeLabel,
       expected_amount: b.expectedAmount,
@@ -560,44 +434,32 @@ export class CashingUpService {
       variance_amount: b.countedAmount - b.expectedAmount
     }));
 
-    if (breakdowns.length > 0) {
-      const { error: bdError } = await supabase.from('cashup_payment_breakdowns').insert(breakdowns);
-      if (bdError) {
-        await restoreOrRollbackChildren();
-        throw bdError;
-      }
-    }
-
-    const counts = normalizeCashCountInputs(data.cashCounts).map(c => ({
-      cashup_session_id: sessionId,
+    const cashCounts = normalizeCashCountInputs(data.cashCounts).map(c => ({
       denomination: c.denomination,
       quantity: c.quantity,
       total_amount: c.totalAmount
     }));
 
-    if (counts.length > 0) {
-      const { error: cError } = await supabase.from('cashup_cash_counts').insert(counts);
-      if (cError) {
-        await restoreOrRollbackChildren();
-        throw cError;
-      }
+    const { data: sessionId, error } = await supabase.rpc('upsert_cashup_session_atomic', {
+      p_existing_id: existingId ?? null,
+      p_site_id: data.siteId,
+      p_session_date: data.sessionDate,
+      p_status: data.status || 'draft',
+      p_notes: data.notes ?? null,
+      p_payment_breakdowns: paymentBreakdowns,
+      p_cash_counts: cashCounts,
+      p_sales_breakdowns: salesBreakdownRows,
+      p_user_id: userId,
+    });
+
+    if (error) {
+      throw error;
+    }
+    if (!sessionId) {
+      throw new Error('Failed to save cash-up session');
     }
 
-    if (data.salesBreakdowns) {
-      const salesRows = salesBreakdownRows.map((item) => ({
-        cashup_session_id: sessionId,
-        sales_category: item.sales_category,
-        amount: item.amount,
-      }));
-
-      const { error: salesError } = await supabase.from('cashup_sales_breakdowns').insert(salesRows);
-      if (salesError) {
-        await restoreOrRollbackChildren();
-        throw salesError;
-      }
-    }
-
-    return this.getSession(supabase, sessionId!);
+    return this.getSession(supabase, sessionId);
   }
 
   static async submitSession(supabase: SupabaseClient, id: string, userId: string) {
