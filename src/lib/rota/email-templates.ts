@@ -39,6 +39,19 @@ export type PortalShiftEmailSummary = {
   note?: string | null;
 };
 
+export type OpenShiftRequestDayContext = {
+  date: string;
+  shifts: Array<{
+    employeeName: string;
+    jobTitle?: string | null;
+    startTime: string;
+    endTime: string;
+    department: string;
+    templateName?: string | null;
+    isOpenShift: boolean;
+  }>;
+};
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -359,11 +372,49 @@ export function buildShiftRejectedManagerEmailHtml(
 export function buildOpenShiftRequestManagerEmailHtml(
   shift: PortalShiftEmailSummary,
   requestNote?: string | null,
+  options: {
+    autoAcceptUrl?: string | null;
+    openRotaUrl?: string | null;
+    dayContext?: OpenShiftRequestDayContext[];
+  } = {},
 ): string {
   const staffName = escapeHtml(shift.employeeName || 'A staff member');
   const noteHtml = requestNote?.trim()
     ? `<p><strong>Staff note:</strong> ${escapeHtml(requestNote.trim())}</p>`
     : '<p><strong>Staff note:</strong> No note provided.</p>';
+  const autoAcceptUrl = options.autoAcceptUrl?.trim() || null;
+  const openRotaUrl = options.openRotaUrl?.trim() || `${APP_URL}/rota`;
+  const dayContext = options.dayContext ?? [];
+  const contextHtml = dayContext.length > 0
+    ? `
+      <h3 style="color:#1a1a1a;margin-top:24px">Who's working around this shift</h3>
+      ${dayContext.map(day => {
+        const dateLabel = format(parseISO(day.date), 'EEE d MMM yyyy');
+        const rows = day.shifts.length > 0
+          ? day.shifts.map(item => {
+              const title = item.templateName ? ` — ${escapeHtml(item.templateName)}` : '';
+              const role = item.jobTitle ? `, ${escapeHtml(item.jobTitle)}` : '';
+              const openLabel = item.isOpenShift ? ' <span style="color:#b45309">(open)</span>' : '';
+              return `<li><strong>${escapeHtml(item.startTime)}–${escapeHtml(item.endTime)}</strong> ${escapeHtml(item.employeeName)}${role} — ${escapeHtml(item.department)}${title}${openLabel}</li>`;
+            }).join('')
+          : '<li>No scheduled shifts listed.</li>';
+        return `
+          <div style="margin:12px 0">
+            <p style="margin:0 0 4px 0"><strong>${escapeHtml(dateLabel)}</strong></p>
+            <ul style="margin:0;padding-left:18px">${rows}</ul>
+          </div>
+        `;
+      }).join('')}
+    `
+    : '';
+  const autoAcceptButton = autoAcceptUrl
+    ? `
+      <a href="${escapeHtml(autoAcceptUrl)}"
+         style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px;margin-right:8px">
+        Auto-accept and publish
+      </a>
+    `
+    : '';
 
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
@@ -371,10 +422,12 @@ export function buildOpenShiftRequestManagerEmailHtml(
       <p>${staffName} has asked to work this open shift:</p>
       <p><strong>${shiftLine(shift)}</strong></p>
       ${noteHtml}
-      <p>This has not assigned the shift automatically. Please review it in the rota.</p>
+      ${contextHtml}
+      <p>If the requested shift is still open and unchanged, you can approve it here. If it has changed, this will open the rota instead.</p>
       <p>
-        <a href="${APP_URL}/rota"
-           style="display:inline-block;background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
+        ${autoAcceptButton}
+        <a href="${escapeHtml(openRotaUrl)}"
+           style="display:inline-block;background:#f3f4f6;color:#1f2937;padding:10px 20px;border-radius:4px;text-decoration:none;font-size:14px">
           Open rota
         </a>
       </p>

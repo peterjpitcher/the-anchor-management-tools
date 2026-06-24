@@ -14,8 +14,10 @@ import { fromZonedTime } from 'date-fns-tz';
 import {
   buildOpenShiftRequestManagerEmailHtml,
   buildShiftRejectedManagerEmailHtml,
+  type OpenShiftRequestDayContext,
   type PortalShiftEmailSummary,
 } from '@/lib/rota/email-templates';
+import { createOpenShiftApprovalToken } from '@/lib/rota/open-shift-request-token';
 import {
   recordCouldntWorkReliabilityEvent,
   recordShiftReliabilityEvent,
@@ -109,6 +111,7 @@ export type ShiftAuditTrailEntry = {
   created_at: string;
   user_email: string | null;
   user_id: string | null;
+  user_name?: string | null;
   operation_type: string;
   old_values: Record<string, unknown> | null;
   new_values: Record<string, unknown> | null;
@@ -162,6 +165,10 @@ const SHIFT_AUTO_ACCEPT_POLICY_NOTE =
 
 const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
 const MANAGER_SHIFT_EMAIL = 'manager@the-anchor.pub';
+
+function getAppBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+}
 
 const ACCEPTANCE_RESET_FIELDS = new Set([
   'start_time',
@@ -249,6 +256,58 @@ function shiftEmailSummary(shift: {
     department: shift.department,
     templateName: shift.name ?? null,
   };
+}
+
+type OpenShiftRequestContextRow = {
+  employee_id: string | null;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  department: string;
+  name: string | null;
+  is_open_shift: boolean;
+  status: string;
+  employees:
+    | { first_name: string | null; last_name: string | null; job_title: string | null }
+    | { first_name: string | null; last_name: string | null; job_title: string | null }[]
+    | null;
+};
+
+async function getOpenShiftRequestDayContext(
+  admin: ReturnType<typeof createAdminClient>,
+  shiftDate: string,
+): Promise<OpenShiftRequestDayContext[]> {
+  const startDate = addDaysIso(shiftDate, -1);
+  const endDate = addDaysIso(shiftDate, 1);
+  const dates = [startDate, shiftDate, endDate];
+
+  const { data } = await admin
+    .from('rota_published_shifts')
+    .select('employee_id, shift_date, start_time, end_time, department, name, is_open_shift, status, employees(first_name, last_name, job_title)')
+    .gte('shift_date', startDate)
+    .lte('shift_date', endDate)
+    .eq('status', 'scheduled')
+    .order('shift_date', { ascending: true })
+    .order('start_time', { ascending: true });
+
+  const rows = (data ?? []) as OpenShiftRequestContextRow[];
+  return dates.map(date => ({
+    date,
+    shifts: rows
+      .filter(row => row.shift_date === date)
+      .map(row => {
+        const employee = Array.isArray(row.employees) ? row.employees[0] : row.employees;
+        return {
+          employeeName: row.is_open_shift ? 'Open shift' : employeeDisplayName(employee),
+          jobTitle: employee?.job_title ?? null,
+          startTime: String(row.start_time).slice(0, 5),
+          endTime: String(row.end_time).slice(0, 5),
+          department: row.department,
+          templateName: row.name,
+          isOpenShift: row.is_open_shift,
+        };
+      }),
+  }));
 }
 
 async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createClient>>, employeeId?: string): Promise<{
@@ -1982,8 +2041,29 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
     return { success: false, error: error.message };
   }
 
+  const openShiftRequest = request as OpenShiftRequest;
   const staffName = employeeDisplayName(employee);
   const subject = `Open shift request: ${staffName} on ${shift.shift_date}`;
+  const approvalToken = createOpenShiftApprovalToken({
+    v: 1,
+    requestId: openShiftRequest.id,
+    shiftId: parsed.data.shiftId,
+    employeeId: employee.employee_id,
+    requestedAt: openShiftRequest.requested_at,
+    expected: {
+      shiftDate: shift.shift_date as string,
+      startTime: shift.start_time as string,
+      endTime: shift.end_time as string,
+      unpaidBreakMinutes: Number(shift.unpaid_break_minutes ?? 0),
+      department: shift.department as string,
+      isOvernight: Boolean(shift.is_overnight),
+      name: (shift.name as string | null | undefined) ?? null,
+    },
+  });
+  const autoAcceptUrl = `${getAppBaseUrl()}/api/rota/open-shift-requests/approve?token=${encodeURIComponent(approvalToken)}`;
+  const openRotaUrl = `${getAppBaseUrl()}/rota?week=${encodeURIComponent(shift.shift_date as string)}&shift=${encodeURIComponent(parsed.data.shiftId)}`;
+  const dayContext = await getOpenShiftRequestDayContext(admin, shift.shift_date as string);
+
   let emailStatus: 'sent' | 'failed' = 'failed';
   let emailError: string | null = null;
   try {
@@ -1993,6 +2073,11 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
       html: buildOpenShiftRequestManagerEmailHtml(
         shiftEmailSummary(shift, staffName),
         parsed.data.note?.trim() || null,
+        {
+          autoAcceptUrl,
+          openRotaUrl,
+          dayContext,
+        },
       ),
     });
     emailStatus = emailResult.success ? 'sent' : 'failed';
@@ -2014,7 +2099,7 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
   });
 
   revalidatePath('/portal/shifts');
-  return { success: true, data: request as OpenShiftRequest };
+  return { success: true, data: openShiftRequest };
 }
 
 // ---------------------------------------------------------------------------
