@@ -88,4 +88,5 @@ Status values:
 | PR-41a / A-059 payroll-employees-rbac | done | Added non-PII audit logging for payroll-row deletion, rota-settings updates, employee-note write failures, and RBAC assignments now log readable role/permission names; permission-service tests, typecheck, and lint pass. |
 | PR-41b / A-059 private-bookings-parking-vendors | done | Parking booking status audit now records the actor, expired private-booking holds are audited per booking from cron, and vendor-contact CRUD writes non-PII audit events; focused action tests, typecheck, and lint pass. |
 | PR-41c / A-059 receipts-mgd-table-moves | done | Receipt requeue now logs queued/failure results without transaction IDs, MGD return status audits include old/new lifecycle metadata, and FOH/BOH table moves audit actor/table/window data; focused tests, typecheck, and lint pass. |
+| PR-41d / A-059 recruitment | done | Recruitment mutations now write actor-backed, non-PII audit events for postings, applications, candidates, slots, appointments, communications, hiring, retention, and GDPR erasure; source regression test, typecheck, and lint pass. |
 | A-117 | todo | Included by owner request. |
