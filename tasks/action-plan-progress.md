@@ -53,4 +53,5 @@ Status values:
 | PR-53 / A-026 | done | Parking bookings now have edit flow, cancel confirmation, and rates management UI backed by validated/audited actions; action tests added. |
 | PR-54 / A-027 | done | Rota drag-and-drop now registers `KeyboardSensor` with `sortableKeyboardCoordinates`; source regression test added. |
 | PR-55 / A-028 | done | Pay age bands can be edited/reactivated/deactivated; future pay-band rates and employee overrides can be edited while historical/current rates stay protected; tests added. |
+| PR-56 / A-029 | done | API key table now exposes edit, revoke, and delete actions with confirmations; `deleteApiKey` action and tests added. |
 | A-117 | todo | Included by owner request. |

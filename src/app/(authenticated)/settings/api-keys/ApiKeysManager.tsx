@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { DocumentDuplicateIcon, PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, PlusIcon, PencilIcon, NoSymbolIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Button, IconButton } from '@/ds';
 import { Input } from '@/ds';
 import { Checkbox } from '@/ds';
@@ -9,10 +9,10 @@ import { Card } from '@/ds';
 import { Badge } from '@/ds';
 import { DataTable } from '@/ds';
 import toast from 'react-hot-toast';
-import { generateApiKey, updateApiKey } from './actions';
+import { deleteApiKey, generateApiKey, revokeApiKey, updateApiKey } from './actions';
 import { format } from 'date-fns';
 import type { ApiKey } from '@/types/api';
-import { Alert } from '@/ds';
+import { Alert, ConfirmDialog } from '@/ds';
 
 interface ApiKeysManagerProps {
   initialKeys: ApiKey[];
@@ -145,6 +145,9 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKey | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ApiKey | null>(null);
+  const [isMutatingKey, setIsMutatingKey] = useState(false);
 
   const handleCreateKey = async (data: KeyFormData) => {
     if (!canManage) {
@@ -192,6 +195,38 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
   const handleCopyKey = (key: string) => {
     navigator.clipboard.writeText(key);
     toast.success('API key copied to clipboard');
+  };
+
+  const handleRevokeKey = async () => {
+    if (!revokeTarget) return;
+    setIsMutatingKey(true);
+    try {
+      const result = await revokeApiKey(revokeTarget.id);
+      if ('error' in result) throw new Error(result.error);
+      setKeys(keys.map(k => k.id === revokeTarget.id ? { ...k, is_active: false } : k));
+      toast.success('API key revoked');
+      setRevokeTarget(null);
+    } catch {
+      toast.error('Failed to revoke API key');
+    } finally {
+      setIsMutatingKey(false);
+    }
+  };
+
+  const handleDeleteKey = async () => {
+    if (!deleteTarget) return;
+    setIsMutatingKey(true);
+    try {
+      const result = await deleteApiKey(deleteTarget.id);
+      if ('error' in result) throw new Error(result.error);
+      setKeys(keys.filter(k => k.id !== deleteTarget.id));
+      toast.success('API key deleted');
+      setDeleteTarget(null);
+    } catch {
+      toast.error('Failed to delete API key');
+    } finally {
+      setIsMutatingKey(false);
+    }
   };
 
   const editingKey = editingKeyId ? keys.find(k => k.id === editingKeyId) : null;
@@ -295,18 +330,64 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
               header: '',
               align: 'right' as const,
               cell: (k: ApiKey) => (
-                <IconButton
-                  variant="ghost"
-                  onClick={() => { setEditingKeyId(k.id); setShowCreateForm(false); }}
-                  title="Edit key details"
-                >
-                  <PencilIcon className="h-4 w-4" />
-                </IconButton>
+                <div className="flex justify-end gap-1">
+                  <IconButton
+                    variant="ghost"
+                    onClick={() => { setEditingKeyId(k.id); setShowCreateForm(false); }}
+                    title="Edit key details"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                  </IconButton>
+                  {k.is_active && (
+                    <IconButton
+                      variant="ghost"
+                      onClick={() => setRevokeTarget(k)}
+                      title="Revoke API key"
+                    >
+                      <NoSymbolIcon className="h-4 w-4" />
+                    </IconButton>
+                  )}
+                  <IconButton
+                    variant="ghost"
+                    onClick={() => setDeleteTarget(k)}
+                    title="Delete API key"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </IconButton>
+                </div>
               ),
             }] : []),
           ]}
         />
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(revokeTarget)}
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={handleRevokeKey}
+        type="warning"
+        title="Revoke API key?"
+        message={revokeTarget ? `Revoke ${revokeTarget.name}? Existing integrations using it will stop working.` : 'Revoke this API key?'}
+        confirmText="Revoke"
+        confirmVariant="danger"
+        loading={isMutatingKey}
+        loadingText="Revoking..."
+        closeOnConfirm={false}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteKey}
+        type="danger"
+        destructive
+        title="Delete API key?"
+        message={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone.` : 'Delete this API key?'}
+        confirmText="Delete"
+        loading={isMutatingKey}
+        loadingText="Deleting..."
+        closeOnConfirm={false}
+      />
 
       {/* Usage Instructions */}
       <Card variant="default" padding="md" className="bg-gray-50">
