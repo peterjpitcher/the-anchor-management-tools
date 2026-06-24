@@ -679,42 +679,9 @@ export async function saveOnboardingSection(
     } else if (section === 'emergency_contacts') {
       const parsed = EmergencyContactsSectionSchema.parse(data);
 
-      // DEF-001: Compensation pattern — back up existing contacts before destructive delete
-      const { data: existingContacts } = await adminClient
-        .from('employee_emergency_contacts')
-        .select('*')
-        .eq('employee_id', employeeId);
-
-      // Helper to restore contacts from backup
-      async function restoreContacts(contacts: any[]): Promise<void> {
-        if (!contacts?.length) return;
-        try {
-          await adminClient.from('employee_emergency_contacts').insert(
-            contacts.map((c) => ({
-              employee_id: c.employee_id,
-              name: c.name,
-              relationship: c.relationship,
-              phone_number: c.phone_number,
-              mobile_number: c.mobile_number,
-              address: c.address,
-              priority: c.priority,
-            }))
-          );
-        } catch (restoreErr) {
-          console.error('[saveOnboardingSection] CRITICAL: Failed to restore emergency contacts after failed save:', restoreErr);
-        }
-      }
-
-      // Delete existing contacts for this employee
-      await adminClient
-        .from('employee_emergency_contacts')
-        .delete()
-        .eq('employee_id', employeeId);
-
-      // Insert primary contact
+      const contacts: Array<Record<string, string | null>> = [];
       if (parsed.primary.name) {
-        const { error: primaryError } = await adminClient.from('employee_emergency_contacts').insert({
-          employee_id: employeeId,
+        contacts.push({
           name: parsed.primary.name,
           relationship: parsed.primary.relationship ?? null,
           phone_number: parsed.primary.phone_number ?? null,
@@ -722,18 +689,9 @@ export async function saveOnboardingSection(
           address: parsed.primary.address ?? null,
           priority: 'Primary',
         });
-
-        if (primaryError) {
-          console.error('[saveOnboardingSection] Failed to insert primary emergency contact — attempting restore:', primaryError);
-          await restoreContacts(existingContacts ?? []);
-          return { success: false, error: 'Failed to save primary emergency contact. Previous contacts have been restored. Please try again.' };
-        }
       }
-
-      // Insert secondary contact if provided
       if (parsed.secondary?.name) {
-        const { error: secondaryError } = await adminClient.from('employee_emergency_contacts').insert({
-          employee_id: employeeId,
+        contacts.push({
           name: parsed.secondary.name,
           relationship: parsed.secondary.relationship ?? null,
           phone_number: parsed.secondary.phone_number ?? null,
@@ -741,18 +699,16 @@ export async function saveOnboardingSection(
           address: parsed.secondary.address ?? null,
           priority: 'Secondary',
         });
+      }
 
-        if (secondaryError) {
-          console.error('[saveOnboardingSection] Failed to insert secondary emergency contact — attempting restore:', secondaryError);
-          // Remove the primary we just inserted, then restore original state
-          await adminClient
-            .from('employee_emergency_contacts')
-            .delete()
-            .eq('employee_id', employeeId)
-            .eq('priority', 'Primary');
-          await restoreContacts(existingContacts ?? []);
-          return { success: false, error: 'Failed to save secondary emergency contact. Previous contacts have been restored. Please try again.' };
-        }
+      const { error: contactsError } = await adminClient.rpc('replace_employee_emergency_contacts', {
+        p_employee_id: employeeId,
+        p_contacts: contacts,
+      });
+
+      if (contactsError) {
+        console.error('[saveOnboardingSection] Failed to save emergency contacts atomically:', contactsError);
+        return { success: false, error: 'Failed to save emergency contacts. Please try again.' };
       }
 
     } else if (section === 'financial') {
