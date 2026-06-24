@@ -21,6 +21,14 @@ export interface EmployeeNoteWithAuthor extends EmployeeNote {
   author_name: string;
 }
 
+function escapeCsvCell(rawValue: string): string {
+  const safeValue = /^[=+\-@\t\r\n]/.test(rawValue) ? `'${rawValue}` : rawValue;
+  if (safeValue.includes(',') || safeValue.includes('"') || safeValue.includes('\n') || safeValue.includes('\r')) {
+    return `"${safeValue.replace(/"/g, '""')}"`;
+  }
+  return safeValue;
+}
+
 export interface EmployeeDetailData {
   employee: Employee;
   financialDetails: EmployeeFinancialDetails | null;
@@ -1240,13 +1248,10 @@ export class EmployeeService {
         }
         
         if (typeof value === 'string') {
-          if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-            return `"${value.replace(/"/g, '""')}"`;
-          }
-          return value;
+          return escapeCsvCell(value);
         }
         
-        return String(value);
+        return escapeCsvCell(String(value));
       });
       csvRows.push(values.join(','));
     }
