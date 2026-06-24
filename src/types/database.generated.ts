@@ -2188,6 +2188,7 @@ export type Database = {
           holiday_allowance_days: number
           id: string
           max_weekly_hours: number | null
+          non_working_weekdays: number[]
           pay_type: string
           updated_at: string
         }
@@ -2197,6 +2198,7 @@ export type Database = {
           holiday_allowance_days?: number
           id?: string
           max_weekly_hours?: number | null
+          non_working_weekdays?: number[]
           pay_type?: string
           updated_at?: string
         }
@@ -2206,6 +2208,7 @@ export type Database = {
           holiday_allowance_days?: number
           id?: string
           max_weekly_hours?: number | null
+          non_working_weekdays?: number[]
           pay_type?: string
           updated_at?: string
         }
