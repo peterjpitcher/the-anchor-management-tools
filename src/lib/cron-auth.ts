@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import { createHash, timingSafeEqual } from 'crypto'
 
 type CronRequest = Request | NextRequest
 
@@ -7,9 +8,15 @@ export type CronAuthResult = {
   reason?: string
 }
 
+function secureEquals(left: string, right: string): boolean {
+  const leftDigest = createHash('sha256').update(left).digest()
+  const rightDigest = createHash('sha256').update(right).digest()
+  return timingSafeEqual(leftDigest, rightDigest)
+}
+
 function headerEquals(header: string | null, value: string | undefined) {
   if (!header || !value) return false
-  return header.trim() === value
+  return secureEquals(header.trim(), value)
 }
 
 export function authorizeCronRequest(request: CronRequest): CronAuthResult {
