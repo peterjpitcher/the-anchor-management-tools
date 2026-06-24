@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, ChangeEvent } from 'react'
 import { toast } from 'react-hot-toast'
-import { Button, Input, Select, Spinner } from '@/ds'
+import { Button, ConfirmDialog, Input, Select, Spinner } from '@/ds'
 import {
   markReceiptTransaction,
   deleteReceiptFile,
@@ -78,6 +78,7 @@ export function ReceiptTableRow({
   const [editingField, setEditingField] = useState<'vendor' | 'expense' | null>(null)
   const [classificationDraft, setClassificationDraft] = useState('')
   const [isCustomVendor, setIsCustomVendor] = useState(false)
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null)
 
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
@@ -171,6 +172,7 @@ export function ReceiptTableRow({
         status: newStatus,
         files: remaining
       }, transaction.status)
+      setDeleteFileId(null)
       toast.success('Receipt removed')
     })
   }
@@ -360,12 +362,21 @@ export function ReceiptTableRow({
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
             <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-primary hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
-            <button type="button" onClick={() => handleReceiptDelete(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
+            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
           </div>
         ))}
         {transaction.files.length > 0 && (
           <p className="mt-1 text-[10px] text-text-subtle">Links expire after 5 min. Refresh if a link stops working.</p>
         )}
+        <ConfirmDialog
+          open={Boolean(deleteFileId)}
+          onClose={() => setDeleteFileId(null)}
+          onConfirm={() => deleteFileId ? handleReceiptDelete(deleteFileId) : undefined}
+          title="Delete receipt file"
+          message="Remove this receipt file from the transaction?"
+          confirmLabel="Delete"
+          tone="danger"
+        />
       </td>
 
       <td className="px-4 py-2 min-w-[200px]">

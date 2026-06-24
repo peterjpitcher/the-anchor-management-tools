@@ -66,4 +66,5 @@ Status values:
 | PR-64 / A-037 | done | Messages holding queue now uses `CustomerSearchInput`, highlights suggested customer IDs, surfaces link/ignore errors inline, and refreshes on success; component tests added. |
 | PR-65 / A-038 | done | Messages page now switches to a single-column mobile list/thread flow with a Back affordance while keeping the desktop 3-panel layout; responsive component test added. |
 | PR-66 / A-039 | done | Recruitment actions now use feedback/confirmation forms for silent and destructive flows, applications table paginates at 25 rows, and tests cover pagination plus candidate-erasure confirmation. |
+| PR-67 / A-040 | done | Receipt file deletion now requires confirmation on desktop and mobile; mobile workspace now exposes upload/export/reclassify controls while rules remain available; component tests added. |
 | A-117 | todo | Included by owner request. |
