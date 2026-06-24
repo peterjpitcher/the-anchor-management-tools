@@ -32,11 +32,13 @@ vi.mock('@/lib/email/employee-invite-emails', () => ({
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUser } from '@/lib/audit-helpers'
+import { logAuditEvent } from '@/app/actions/audit'
 import {
   beginSeparation,
   createEmployeeAccount,
   inviteEmployee,
   revokeEmployeeAccess,
+  saveOnboardingSection,
   sendPortalInvite,
   submitOnboardingProfile,
   validateInviteToken,
@@ -49,6 +51,7 @@ const mockedGetCurrentUser = getCurrentUser as unknown as Mock
 const mockedSendWelcomeEmail = sendWelcomeEmail as unknown as Mock
 const mockedSendPortalInviteEmail = sendPortalInviteEmail as unknown as Mock
 const mockedSendSeparationStartedEmail = sendSeparationStartedEmail as unknown as Mock
+const mockedAudit = logAuditEvent as unknown as Mock
 
 function mockMaybeSingle(data: unknown, error: unknown = null) {
   return {
@@ -84,11 +87,47 @@ function mockExpireSiblingsChain() {
   }
 }
 
+function mockOnboardingSaveClient() {
+  const financialUpsert = vi.fn().mockResolvedValue({ error: null })
+  const healthUpsert = vi.fn().mockResolvedValue({ error: null })
+  const from = vi.fn((table: string) => {
+    if (table === 'employee_invite_tokens') {
+      return mockMaybeSingle({
+        id: 'token-1',
+        employee_id: 'employee-1',
+        email: 'employee@example.com',
+        invite_type: 'onboarding',
+        expires_at: '2099-01-01T00:00:00.000Z',
+        completed_at: null,
+      })
+    }
+    if (table === 'employees') {
+      return mockMaybeSingle({
+        auth_user_id: null,
+        email_address: 'employee@example.com',
+        status: 'Onboarding',
+        first_name: 'Alex',
+        last_name: 'Rowe',
+      })
+    }
+    if (table === 'employee_financial_details') {
+      return { upsert: financialUpsert }
+    }
+    if (table === 'employee_health_records') {
+      return { upsert: healthUpsert }
+    }
+    throw new Error(`Unexpected table: ${table}`)
+  })
+
+  return { client: { from }, financialUpsert, healthUpsert }
+}
+
 describe('employee invite status transitions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedPermission.mockResolvedValue(true)
     mockedGetCurrentUser.mockResolvedValue({ user_id: 'user-1', user_email: 'manager@example.com' })
+    mockedAudit.mockResolvedValue(undefined)
   })
 
   it('rejects stale invite tokens when the employee email has changed', async () => {
@@ -279,6 +318,75 @@ describe('employee invite status transitions', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('Primary emergency contact')
     expect(rpc).toHaveBeenCalledWith('complete_employee_onboarding', { p_token: 'token-value' })
+  })
+
+  it('audits onboarding financial writes without sensitive field values', async () => {
+    const { client, financialUpsert } = mockOnboardingSaveClient()
+    mockedCreateAdminClient.mockReturnValue(client)
+
+    const result = await saveOnboardingSection('token-value', 'financial', {
+      ni_number: 'QQ123456C',
+      bank_name: 'Test Bank',
+      payee_name: 'Alex Rowe',
+      branch_address: '1 High Street',
+      bank_sort_code: '112233',
+      bank_account_number: '12345678',
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(financialUpsert).toHaveBeenCalled()
+    expect(mockedAudit).toHaveBeenCalledWith(expect.objectContaining({
+      user_email: 'employee@example.com',
+      operation_type: 'update',
+      resource_type: 'employee_financial_details',
+      resource_id: 'employee-1',
+      operation_status: 'success',
+      new_values: {
+        section: 'financial',
+        updated_via: 'employee_onboarding',
+      },
+    }))
+    const auditPayload = mockedAudit.mock.calls.at(-1)?.[0]
+    expect(JSON.stringify(auditPayload)).not.toContain('QQ123456C')
+    expect(JSON.stringify(auditPayload)).not.toContain('12345678')
+  })
+
+  it('audits onboarding health writes without sensitive field values', async () => {
+    const { client, healthUpsert } = mockOnboardingSaveClient()
+    mockedCreateAdminClient.mockReturnValue(client)
+
+    const result = await saveOnboardingSection('token-value', 'health', {
+      doctor_name: 'Dr Sensitive',
+      doctor_address: 'Private Surgery',
+      has_allergies: true,
+      allergies: 'Peanuts',
+      had_absence_over_2_weeks_last_3_years: false,
+      had_outpatient_treatment_over_3_months_last_3_years: false,
+      has_diabetes: false,
+      has_epilepsy: false,
+      has_skin_condition: false,
+      has_depressive_illness: false,
+      has_bowel_problems: false,
+      has_ear_problems: false,
+      is_registered_disabled: false,
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(healthUpsert).toHaveBeenCalled()
+    expect(mockedAudit).toHaveBeenCalledWith(expect.objectContaining({
+      user_email: 'employee@example.com',
+      operation_type: 'update',
+      resource_type: 'employee_health_records',
+      resource_id: 'employee-1',
+      operation_status: 'success',
+      new_values: {
+        section: 'health',
+        updated_via: 'employee_onboarding',
+      },
+    }))
+    const auditPayload = mockedAudit.mock.calls.at(-1)?.[0]
+    expect(JSON.stringify(auditPayload)).not.toContain('Dr Sensitive')
+    expect(JSON.stringify(auditPayload)).not.toContain('Peanuts')
   })
 
   it('begins separation with a last working day and employee note', async () => {

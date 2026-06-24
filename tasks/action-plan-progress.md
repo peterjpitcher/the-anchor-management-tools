@@ -68,4 +68,5 @@ Status values:
 | PR-66 / A-039 | done | Recruitment actions now use feedback/confirmation forms for silent and destructive flows, applications table paginates at 25 rows, and tests cover pagination plus candidate-erasure confirmation. |
 | PR-67 / A-040 | done | Receipt file deletion now requires confirmation on desktop and mobile; mobile workspace now exposes upload/export/reclassify controls while rules remain available; component tests added. |
 | PR-68 / A-041 | done | Onboarding account, section, and final-submit handlers now catch thrown action errors and show them inline; component tests cover all three action paths. |
+| PR-39 / A-042 | done | Onboarding financial and health saves now write audit events with employee identity and section metadata only; action tests assert raw NI, bank, and health values are not logged. |
 | A-117 | todo | Included by owner request. |

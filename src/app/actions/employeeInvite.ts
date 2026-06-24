@@ -619,6 +619,28 @@ const HealthSectionSchema = z.object({
   disability_details: z.string().optional().nullable(),
 });
 
+async function auditOnboardingSensitiveSectionWrite(
+  employeeId: string,
+  employeeEmail: string | null,
+  section: Extract<OnboardingSectionKey, 'financial' | 'health'>,
+) {
+  await logAuditEvent({
+    user_email: employeeEmail ?? undefined,
+    operation_type: 'update',
+    resource_type: section === 'financial' ? 'employee_financial_details' : 'employee_health_records',
+    resource_id: employeeId,
+    operation_status: 'success',
+    new_values: {
+      section,
+      updated_via: 'employee_onboarding',
+    },
+    additional_info: {
+      source: 'employee_onboarding',
+      contains_sensitive_values: false,
+    },
+  });
+}
+
 export async function saveOnboardingSection(
   token: string,
   section: OnboardingSectionKey,
@@ -749,6 +771,7 @@ export async function saveOnboardingSection(
         }, { onConflict: 'employee_id' });
 
       if (error) throw error;
+      await auditOnboardingSensitiveSectionWrite(employeeId, validation.email, 'financial');
 
     } else if (section === 'health') {
       const parsed = HealthSectionSchema.parse(data);
@@ -761,6 +784,7 @@ export async function saveOnboardingSection(
         }, { onConflict: 'employee_id' });
 
       if (error) throw error;
+      await auditOnboardingSensitiveSectionWrite(employeeId, validation.email, 'health');
     }
 
     return { success: true };
