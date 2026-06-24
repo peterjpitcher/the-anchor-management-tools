@@ -339,6 +339,28 @@ export async function GET(request: Request) {
         const greetingName = fullInvoice.vendor?.contact_name || fullInvoice.vendor?.name || 'there'
         const body = `Dear ${greetingName},\n\nPlease find attached invoice ${fullInvoice.invoice_number} for your records.\n\nThis invoice was generated automatically from a recurring schedule.\n\nBest regards,\nOrange Jelly Limited`
 
+        const { data: statusTransition, error: invoiceUpdateError } = await supabase
+          .from('invoices')
+          .update({
+            status: 'sent',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', fullInvoice.id)
+          .eq('status', 'draft')
+          .select('id')
+          .maybeSingle()
+
+        if (invoiceUpdateError) {
+          throw new Error(invoiceUpdateError.message || 'Failed to update invoice status to sent')
+        }
+        if (!statusTransition) {
+          console.warn(
+            `[Cron] Invoice ${fullInvoice.invoice_number} was already transitioned before recurring send`
+          )
+        } else {
+          ;(fullInvoice as { status?: string }).status = 'sent'
+        }
+
         const emailResult = await sendInvoiceEmail(
           fullInvoice as InvoiceWithDetails,
           recipientResult.to,
@@ -391,26 +413,6 @@ export async function GET(request: Request) {
             claimHeld = false
           }
           continue
-        }
-
-        const { data: statusTransition, error: invoiceUpdateError } = await supabase
-          .from('invoices')
-          .update({
-            status: 'sent',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', fullInvoice.id)
-          .eq('status', 'draft')
-          .select('id')
-          .maybeSingle()
-
-        if (invoiceUpdateError) {
-          throw new Error(invoiceUpdateError.message || 'Failed to update invoice status to sent')
-        }
-        if (!statusTransition) {
-          console.warn(
-            `[Cron] Invoice ${fullInvoice.invoice_number} was already transitioned before recurring send finalization`
-          )
         }
 
         const { error: sentEmailLogError } = await supabase
