@@ -1,7 +1,6 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
@@ -11,9 +10,9 @@ import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { QuoteService, isQuoteStatusTransitionAllowed } from '@/services/quotes'
 import type { 
   Quote, 
+  Invoice,
   QuoteWithDetails, 
   QuoteStatus,
-  QuoteLineItem,
   InvoiceLineItemInput
 } from '@/types/invoices'
 
@@ -707,153 +706,44 @@ export async function convertQuoteToInvoice(quoteId: string) {
       return { error: 'You do not have permission to convert quotes to invoices' }
     }
 
-    // Get quote with line items
-    const { data: quote, error: quoteError } = await supabase
-      .from('quotes')
-      .select(`
-        id,
-        status,
-        deleted_at,
-        converted_to_invoice_id,
-        vendor_id,
-        reference,
-        quote_discount_percentage,
-        subtotal_amount,
-        discount_amount,
-        vat_amount,
-        total_amount,
-        notes,
-        internal_notes,
-        quote_number,
-        line_items:quote_line_items(
-          id,
-          catalog_item_id,
-          description,
-          quantity,
-          unit_price,
-          discount_percentage,
-          vat_rate
-        )
-      `)
-      .eq('id', quoteId)
-      .single()
-
-    if (quoteError || !quote) {
-      return { error: 'Quote not found' }
-    }
-
-    if (isSoftDeletedRecord(quote as Record<string, unknown>)) {
-      return { error: 'Quote not found' }
-    }
-
-    if (quote.status !== 'accepted') {
-      return { error: 'Only accepted quotes can be converted to invoices' }
-    }
-
-    if (quote.converted_to_invoice_id) {
-      return { error: 'This quote has already been converted to an invoice' }
-    }
-
-    const quoteLineItems = Array.isArray(quote.line_items) ? quote.line_items as QuoteLineItem[] : []
-    if (quoteLineItems.length === 0) {
-      return { error: 'Quote has no line items and cannot be converted' }
-    }
-
-    // Get next invoice number
-    const adminClient = createAdminClient()
-    const rollbackCreatedInvoice = async (invoiceId: string) => {
-      const { error: lineItemsDeleteError } = await adminClient
-        .from('invoice_line_items')
-        .delete()
-        .eq('invoice_id', invoiceId)
-      if (lineItemsDeleteError) {
-        console.error('Error rolling back invoice line items after conversion failure:', lineItemsDeleteError)
-      }
-
-      const { error: invoiceDeleteError } = await adminClient
-        .from('invoices')
-        .delete()
-        .eq('id', invoiceId)
-      if (invoiceDeleteError) {
-        console.error('Error rolling back invoice after conversion failure:', invoiceDeleteError)
-      }
-    }
-
-    const { data: seriesData, error: seriesError } = await adminClient
-      .rpc('get_and_increment_invoice_series', { p_series_code: 'INV' })
-      .single()
-
-    if (seriesError) {
-      console.error('Error getting invoice number:', seriesError)
-      return { error: 'Failed to generate invoice number' }
-    }
-
-    const encoded = ((seriesData as { next_sequence: number }).next_sequence + 5000).toString(36).toUpperCase().padStart(5, '0')
-    const invoiceNumber = `INV-${encoded}`
-
-    // Create invoice from quote
-    const { data: invoice, error: invoiceError } = await supabase
-      .from('invoices')
-      .insert({
-        invoice_number: invoiceNumber,
-        vendor_id: quote.vendor_id,
-        invoice_date: getTodayIsoDate(),
-        due_date: getLocalIsoDateDaysAhead(30),
-        reference: quote.reference,
-        invoice_discount_percentage: quote.quote_discount_percentage,
-        subtotal_amount: quote.subtotal_amount,
-        discount_amount: quote.discount_amount,
-        vat_amount: quote.vat_amount,
-        total_amount: quote.total_amount,
-        notes: quote.notes,
-        internal_notes: quote.internal_notes,
-        status: 'draft' as const
+    const { data: conversionResult, error: conversionError } = await supabase
+      .rpc('convert_quote_to_invoice_atomic', {
+        p_quote_id: quoteId,
+        p_invoice_date: getTodayIsoDate(),
+        p_due_date: getLocalIsoDateDaysAhead(30)
       })
-      .select()
-      .single()
 
-    if (invoiceError) {
-      console.error('Error creating invoice:', invoiceError)
-      return { error: 'Failed to create invoice' }
+    if (conversionError || !conversionResult) {
+      const message = conversionError?.message || ''
+      if (message.includes('Quote not found')) {
+        return { error: 'Quote not found' }
+      }
+      if (message.includes('Only accepted quotes can be converted to invoices')) {
+        return { error: 'Only accepted quotes can be converted to invoices' }
+      }
+      if (message.includes('This quote has already been converted to an invoice')) {
+        return { error: 'This quote has already been converted to an invoice' }
+      }
+      if (message.includes('Quote has no line items')) {
+        return { error: 'Quote has no line items and cannot be converted' }
+      }
+      if (message.includes('Quote conversion could not be finalized')) {
+        return { error: 'Quote conversion could not be finalized. Please retry.' }
+      }
+
+      console.error('Error converting quote to invoice:', conversionError)
+      return { error: 'Failed to convert quote to invoice' }
     }
 
-    // Copy line items
-    const invoiceLineItems = quoteLineItems.map((item: QuoteLineItem) => ({
-      invoice_id: invoice.id,
-      catalog_item_id: item.catalog_item_id,
-      description: item.description,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      discount_percentage: item.discount_percentage,
-      vat_rate: item.vat_rate
-      // Note: subtotal_amount, discount_amount, vat_amount, and total_amount are GENERATED columns
-      // and will be automatically calculated by the database
-    }))
-
-    const { error: lineItemsError } = await supabase
-      .from('invoice_line_items')
-      .insert(invoiceLineItems)
-
-    if (lineItemsError) {
-      console.error('Error creating invoice line items:', lineItemsError)
-      await rollbackCreatedInvoice(invoice.id)
-      return { error: 'Failed to create invoice line items' }
+    const conversion = conversionResult as {
+      invoice?: Invoice
+      quote_number?: string
     }
+    const invoice = conversion.invoice
 
-    // Finalize conversion only if quote is still accepted and unconverted.
-    const { data: updatedQuote, error: updateError } = await supabase
-      .from('quotes')
-      .update({ converted_to_invoice_id: invoice.id })
-      .eq('id', quoteId)
-      .eq('status', 'accepted')
-      .is('converted_to_invoice_id', null)
-      .select('id')
-      .maybeSingle()
-
-    if (updateError || !updatedQuote) {
-      console.error('Error updating quote:', updateError)
-      await rollbackCreatedInvoice(invoice.id)
-      return { error: 'Quote conversion could not be finalized. Please retry.' }
+    if (!invoice?.id || !invoice.invoice_number) {
+      console.error('Quote conversion returned an invalid payload:', conversionResult)
+      return { error: 'Failed to convert quote to invoice' }
     }
 
     await logAuditEvent({
@@ -862,7 +752,7 @@ export async function convertQuoteToInvoice(quoteId: string) {
       resource_id: invoice.id,
       operation_status: 'success',
       additional_info: { 
-        converted_from_quote: quote.quote_number,
+        converted_from_quote: conversion.quote_number,
         invoice_number: invoice.invoice_number
       }
     })
