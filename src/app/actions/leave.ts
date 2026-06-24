@@ -247,17 +247,22 @@ export async function reviewLeaveRequest(
   if (request.status !== 'pending') return { success: false, error: 'Request is not pending' };
 
   const reviewedAt = new Date().toISOString();
-  const { error } = await supabase
+  const { data: reviewedRow, error } = await supabase
     .from('leave_requests')
     .update({
       status: decision,
       manager_note: managerNote ?? null,
       reviewed_by: user?.id,
       reviewed_at: reviewedAt,
+      updated_at: reviewedAt,
     })
-    .eq('id', requestId);
+    .eq('id', requestId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle();
 
   if (error) return { success: false, error: error.message };
+  if (!reviewedRow) return { success: false, error: 'Request was already reviewed' };
 
   // If declined, remove the pending leave_days
   if (decision === 'declined') {

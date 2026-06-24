@@ -1014,55 +1014,14 @@ export async function createCreditNote(
       return { error: 'Invoice not found' }
     }
 
-    // Derive VAT rate from the invoice totals
-    const subtotal = Number(invoice.subtotal_amount || 0)
-    const vatAmount = Number(invoice.vat_amount || 0)
-    const vatRate = subtotal > 0 ? Math.round((vatAmount / subtotal) * 100 * 100) / 100 : 20
+    const { data: creditNoteResult, error: insertError } = await supabase.rpc('create_credit_note_atomic', {
+      p_invoice_id: invoiceId,
+      p_amount_ex_vat: amountExVat,
+      p_reason: reason.trim(),
+      p_created_by: user.id,
+    })
 
-    // Calculate amount inc VAT
-    const amountIncVat = Math.round((amountExVat * (1 + vatRate / 100)) * 100) / 100
-
-    // Generate sequential credit note number: CN-{YYYY}-{NNN}
-    const currentYear = new Date().getFullYear()
-    const { data: maxCn, error: maxError } = await supabase
-      .from('credit_notes')
-      .select('credit_note_number')
-      .ilike('credit_note_number', `CN-${currentYear}-%`)
-      .order('credit_note_number', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (maxError) {
-      return { error: 'Failed to generate credit note number' }
-    }
-
-    let nextSeq = 1
-    if (maxCn?.credit_note_number) {
-      const parts = maxCn.credit_note_number.split('-')
-      const lastSeq = parseInt(parts[2], 10)
-      if (Number.isFinite(lastSeq)) {
-        nextSeq = lastSeq + 1
-      }
-    }
-
-    const creditNoteNumber = `CN-${currentYear}-${String(nextSeq).padStart(3, '0')}`
-
-    // Insert the credit note
-    const { data: creditNote, error: insertError } = await supabase
-      .from('credit_notes')
-      .insert({
-        credit_note_number: creditNoteNumber,
-        invoice_id: invoiceId,
-        vendor_id: invoice.vendor_id,
-        amount_ex_vat: amountExVat,
-        vat_rate: vatRate,
-        amount_inc_vat: amountIncVat,
-        reason: reason.trim(),
-        status: 'issued',
-        created_by: user.id,
-      })
-      .select('id, credit_note_number, amount_inc_vat')
-      .single()
+    const creditNote = Array.isArray(creditNoteResult) ? creditNoteResult[0] : creditNoteResult
 
     if (insertError || !creditNote) {
       console.error('[Invoices] Failed to create credit note:', insertError)
@@ -1077,11 +1036,11 @@ export async function createCreditNote(
       resource_id: creditNote.id,
       operation_status: 'success',
       new_values: {
-        credit_note_number: creditNoteNumber,
+        credit_note_number: creditNote.credit_note_number,
         invoice_id: invoiceId,
         invoice_number: invoice.invoice_number,
         amount_ex_vat: amountExVat,
-        amount_inc_vat: amountIncVat,
+        amount_inc_vat: creditNote.amount_inc_vat,
         reason: reason.trim(),
       },
     })

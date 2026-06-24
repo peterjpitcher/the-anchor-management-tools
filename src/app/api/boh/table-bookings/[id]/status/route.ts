@@ -113,6 +113,7 @@ export async function POST(
         }
       : transition.plan.update)
     .eq('id', id)
+    .eq('status', booking.status)
     .select(transition.plan.select)
     .maybeSingle()
 
@@ -120,7 +121,14 @@ export async function POST(
     return NextResponse.json({ error: ACTION_ERROR_MESSAGE[action] }, { status: 500 })
   }
   if (!updatedRow) {
-    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
+      .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
+      .eq('id', id)
+      .maybeSingle()
+    return NextResponse.json(
+      { error: 'Booking changed before this update could be applied', booking: currentBooking ?? null },
+      { status: currentBooking ? 409 : 404 }
+    )
   }
 
   // Tiered deposit refund + cancellation SMS when staff cancel a booking (never fail the status change)

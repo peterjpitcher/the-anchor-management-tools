@@ -288,6 +288,7 @@ export async function DELETE(
       updated_at: nowIso
     })
     .eq('id', id)
+    .eq('status', existing.status)
     .select('id, booking_reference, status, cancelled_at, cancellation_reason')
     .maybeSingle()
 
@@ -296,7 +297,14 @@ export async function DELETE(
   }
 
   if (!cancelledBooking) {
-    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    const { data: currentBooking } = await auth.supabase.from('table_bookings')
+      .select('id, status, cancelled_at, cancellation_reason')
+      .eq('id', id)
+      .maybeSingle()
+    return NextResponse.json(
+      { error: 'Booking changed before this update could be applied', booking: currentBooking ?? null },
+      { status: currentBooking ? 409 : 404 }
+    )
   }
 
   await logAuditEvent({

@@ -713,6 +713,10 @@ function isMissingSickReasonColumn(error: { code?: string; message?: string } | 
   );
 }
 
+function isUniqueConstraintViolation(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '23505';
+}
+
 function isMissingAcceptanceColumn(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false;
   const message = error.message?.toLowerCase() ?? '';
@@ -1363,6 +1367,9 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
     if (error) {
       if (isMissingSickReasonColumn(error)) {
         return { success: false, error: "Couldn't Work reasons require the latest rota database migration before records can be saved" };
+      }
+      if (isUniqueConstraintViolation(error)) {
+        return { success: false, error: "Couldn't Work has already been recorded for this employee and date" };
       }
       return { success: false, error: error.message };
     }
