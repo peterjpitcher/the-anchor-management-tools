@@ -150,39 +150,13 @@ describe('Receipts actions expense-direction safeguards', () => {
   })
 
   it('applies bulk expense classification only to outgoing rows and reports skips', async () => {
-    const updateCalls: Array<{ payload: Record<string, unknown>; field: string; ids: string[] }> = []
-    const selectionRows = [
-      { id: 'tx-in', status: 'pending', amount_in: 18.5, amount_out: null },
-      { id: 'tx-out', status: 'pending', amount_in: null, amount_out: 42.3 },
-    ]
-
-    const selectIn = vi.fn().mockResolvedValue({ data: selectionRows, error: null })
-    const selectEq = vi.fn().mockReturnValue({ in: selectIn })
-    const select = vi.fn().mockReturnValue({ eq: selectEq })
-
-    const update = vi.fn((payload: Record<string, unknown>) => ({
-      in: vi.fn(async (field: string, ids: string[]) => {
-        updateCalls.push({ payload, field, ids })
-        return { error: null }
-      }),
-    }))
-
-    const logInsert = vi.fn().mockResolvedValue({ error: null })
-    const signalInsert = vi.fn().mockResolvedValue({ error: null })
+    const rpc = vi.fn().mockResolvedValue({
+      data: { updated: 1, skippedIncomingCount: 1 },
+      error: null,
+    })
 
     mockedCreateAdminClient.mockReturnValue({
-      from: vi.fn((table: string) => {
-        if (table === 'receipt_transactions') {
-          return { select, update }
-        }
-        if (table === 'receipt_transaction_logs') {
-          return { insert: logInsert }
-        }
-        if (table === 'receipt_classification_signals') {
-          return { insert: signalInsert }
-        }
-        throw new Error(`Unexpected table: ${table}`)
-      }),
+      rpc,
     })
 
     const result = await applyReceiptGroupClassification({
@@ -191,13 +165,15 @@ describe('Receipts actions expense-direction safeguards', () => {
     })
 
     expect(result).toEqual({ success: true, updated: 1, skippedIncomingCount: 1 })
-    expect(updateCalls).toHaveLength(1)
-    expect(updateCalls[0].field).toBe('id')
-    expect(updateCalls[0].ids).toEqual(['tx-out'])
-    expect(updateCalls[0].payload).toMatchObject({
-      expense_category: 'Entertainment',
-      expense_category_source: 'manual',
-    })
+    expect(rpc).toHaveBeenCalledWith('apply_receipt_group_classification_atomic', expect.objectContaining({
+      p_details: 'Shared detail',
+      p_vendor_provided: false,
+      p_vendor_id: null,
+      p_vendor_name: null,
+      p_expense_provided: true,
+      p_expense_category: 'Entertainment',
+      p_user_id: 'user-1',
+    }))
   })
 
   it('does not apply expense updates during retro rules run for incoming-only transactions', async () => {
