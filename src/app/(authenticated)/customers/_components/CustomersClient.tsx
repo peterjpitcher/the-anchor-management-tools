@@ -77,6 +77,7 @@ export interface CustomersClientProps {
   initialSearch: string
   initialShowDeactivated: boolean
   canManageCustomers: boolean
+  canSendBulkMessages: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +91,7 @@ export default function CustomersClient({
   initialSearch,
   initialShowDeactivated,
   canManageCustomers,
+  canSendBulkMessages,
 }: CustomersClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -311,6 +313,14 @@ export default function CustomersClient({
     )
   }, [customers])
 
+  const openBulkSmsForSelected = useCallback(() => {
+    if (selected.size === 0) return
+
+    const params = new URLSearchParams()
+    params.set('customerIds', Array.from(selected).join(','))
+    router.push(`/messages/bulk?${params.toString()}`)
+  }, [router, selected])
+
   // --- Form/Import subviews ---
   if (showForm || editingCustomer) {
     return (
@@ -407,8 +417,11 @@ export default function CustomersClient({
           {selected.size > 0 ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-muted">{selected.size} selected</span>
-              <Button size="sm" icon={<MessageIcon />}>SMS</Button>
-              <Button size="sm">Email</Button>
+              {canSendBulkMessages && (
+                <Button size="sm" icon={<MessageIcon />} onClick={openBulkSmsForSelected}>
+                  SMS
+                </Button>
+              )}
             </div>
           ) : (
             <span className="text-xs text-text-muted">

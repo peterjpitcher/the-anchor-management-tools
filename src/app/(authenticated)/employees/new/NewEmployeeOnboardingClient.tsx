@@ -25,7 +25,7 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 
-type EmployeeStatus = 'Active' | 'Former' | 'Prospective'
+type EmployeeStatus = 'Active' | 'Former' | 'Onboarding'
 
 type RightToWorkDocumentType = 'Passport' | 'Biometric Residence Permit' | 'Share Code' | 'Other' | 'List A' | 'List B'
 type RightToWorkCheckMethod = 'manual' | 'online' | 'digital'
@@ -210,6 +210,14 @@ function hasAnyEmergencyContact(contact: EmployeeSetupState['emergency_contacts'
   return Boolean(contact.name || contact.relationship || contact.phone_number || contact.mobile_number)
 }
 
+function getActionErrorMessage(result: Awaited<ReturnType<typeof addEmployee>> | null | undefined) {
+  const fieldError = result?.errors
+    ? Object.values(result.errors).flat().find((message): message is string => Boolean(message))
+    : undefined
+
+  return fieldError ? `${result?.message ?? 'Failed to create employee'} ${fieldError}` : result?.message
+}
+
 export default function NewEmployeeOnboardingClient() {
   const router = useRouter()
   const supabase = useSupabase()
@@ -351,13 +359,13 @@ export default function NewEmployeeOnboardingClient() {
 
         const createResult = await addEmployee(null as any, employeeFormData)
         if (!createResult || createResult.type !== 'success' || !createResult.employeeId) {
-          throw new Error(createResult?.message || 'Failed to create employee')
+          throw new Error(getActionErrorMessage(createResult) || 'Failed to create employee')
         }
 
         employeeId = createResult.employeeId
       } catch (error) {
         console.error('[NewEmployeeOnboarding] Create failed', error)
-        toast.error('Failed to create employee. Please check the form and try again.')
+        toast.error(error instanceof Error ? error.message : 'Failed to create employee. Please check the form and try again.')
         return
       }
 
@@ -533,7 +541,7 @@ export default function NewEmployeeOnboardingClient() {
                 onChange={(e) => updateEmployee('status', e.target.value as EmployeeStatus)}
                 options={[
                   { value: 'Active', label: 'Active' },
-                  { value: 'Prospective', label: 'Prospective' },
+                  { value: 'Onboarding', label: 'Onboarding' },
                   { value: 'Former', label: 'Former' }
                 ]}
               />

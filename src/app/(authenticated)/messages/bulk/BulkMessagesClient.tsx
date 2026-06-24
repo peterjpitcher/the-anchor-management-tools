@@ -29,6 +29,7 @@ import type { EventCategory } from '@/types/event-categories'
 const DEBOUNCE_MS = 300
 const SMS_SEGMENT_LENGTH = 160
 const SMS_SEGMENT_LENGTH_UNICODE = 70
+const EMPTY_INITIAL_CUSTOMER_IDS: string[] = []
 
 interface EventOption {
   id: string
@@ -39,6 +40,7 @@ interface EventOption {
 interface BulkMessagesClientProps {
   events: EventOption[]
   categories: EventCategory[]
+  initialCustomerIds?: string[]
 }
 
 // --- Helpers ---
@@ -61,7 +63,11 @@ function applyPersonalisation(template: string, recipient: BulkRecipient): strin
 
 // --- Component ---
 
-export default function BulkMessagesClient({ events, categories }: BulkMessagesClientProps) {
+export default function BulkMessagesClient({
+  events,
+  categories,
+  initialCustomerIds = EMPTY_INITIAL_CUSTOMER_IDS,
+}: BulkMessagesClientProps) {
   // Filter state
   const [eventId, setEventId] = useState('')
   const [bookingStatus, setBookingStatus] = useState('')
@@ -87,12 +93,17 @@ export default function BulkMessagesClient({ events, categories }: BulkMessagesC
 
   // Request cancellation via counter
   const requestCounterRef = useRef(0)
+  const initialSelectionAppliedRef = useRef(false)
 
   // Debounce timer
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Quiet hours check
   const quietHoursEval = useMemo(() => evaluateSmsQuietHours(), [])
+  const initialCustomerIdSet = useMemo(
+    () => new Set(initialCustomerIds.filter((id) => id.length > 0)),
+    [initialCustomerIds]
+  )
 
   // Build filters object
   const buildFilters = useCallback((): BulkRecipientFilters => {
@@ -143,6 +154,29 @@ export default function BulkMessagesClient({ events, categories }: BulkMessagesC
       }
     }
   }, [loadRecipients])
+
+  useEffect(() => {
+    if (
+      initialSelectionAppliedRef.current ||
+      initialCustomerIdSet.size === 0 ||
+      recipients.length === 0
+    ) {
+      return
+    }
+
+    const matchingIds = recipients
+      .filter((recipient) => initialCustomerIdSet.has(recipient.id))
+      .map((recipient) => recipient.id)
+
+    if (matchingIds.length > 0) {
+      setSelectedKeys(new Set(matchingIds))
+      toast.info(`${matchingIds.length} of ${initialCustomerIdSet.size} eligible customers selected`)
+    } else {
+      toast.error('Selected customers are not eligible for bulk SMS')
+    }
+
+    initialSelectionAppliedRef.current = true
+  }, [initialCustomerIdSet, recipients])
 
   // Insert personalisation variable at cursor
   const insertVariable = (variable: string) => {

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, Modal } from '@/ds'
+import { Badge, Button, ConfirmDialog, Input, Modal, Textarea } from '@/ds'
+import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
@@ -70,6 +71,18 @@ function normaliseNote(value: string | string[] | null): string | null {
   }
   const trimmed = value?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+function listToInput(value: string | string[] | null): string {
+  if (Array.isArray(value)) return value.filter(Boolean).join('\n')
+  return value ?? ''
+}
+
+function splitListInput(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
 }
 
 function formatMetaValue(value: unknown): string | null {
@@ -240,6 +253,23 @@ interface BookingTable {
   table: BookingTableInner | null
 }
 
+interface BookingItemDish {
+  id: string
+  name: string | null
+}
+
+interface BookingItem {
+  id: string
+  custom_item_name: string | null
+  quantity: number
+  item_type: string | null
+  price_at_booking: number | null
+  special_requests: string | null
+  guest_name: string | null
+  menu_dish_id: string | null
+  menu_dish: BookingItemDish | null
+}
+
 export interface BookingAuditEntry {
   id: number
   event: string
@@ -294,6 +324,7 @@ export interface Booking {
   card_capture_completed_at: string | null
   customer: BookingCustomer | null
   table_booking_tables: BookingTable[]
+  table_booking_items: BookingItem[]
   audit_trail: BookingAuditEntry[]
 }
 
@@ -320,6 +351,20 @@ type MoveTableAvailabilityResponse = {
   }
 }
 
+type BookingEditState = {
+  booking_date: string
+  booking_time: string
+  duration_minutes: string
+  customer_id: string | null
+  special_requirements: string
+  dietary_requirements: string
+  allergies: string
+  celebration_type: string
+  internal_notes: string
+}
+
+type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
+
 export default function BookingDetailClient({ booking, canEdit, canManage, canRefund }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
@@ -334,6 +379,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
+  const [bookingEditOpen, setBookingEditOpen] = useState(false)
+  const [bookingEdit, setBookingEdit] = useState<BookingEditState | null>(null)
+  const [preorderEditOpen, setPreorderEditOpen] = useState(false)
+  const [preorderEdit, setPreorderEdit] = useState<PreorderEditState>({})
   const [smsBody, setSmsBody] = useState('')
   const [showRefundDialog, setShowRefundDialog] = useState(false)
   const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
@@ -414,6 +463,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       }),
     [booking.audit_trail],
   )
+  const preorderItems = booking.table_booking_items ?? []
+  const canEditPreorder =
+    canEdit &&
+    preorderItems.length > 0 &&
+    (!booking.sunday_preorder_cutoff_at || new Date(booking.sunday_preorder_cutoff_at).getTime() > Date.now())
 
   useEffect(() => {
     if (!booking.id || booking.payment_status !== 'completed') return
@@ -469,6 +523,97 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   function openPartySizeEdit() {
     setPartySizeEditValue(String(booking.party_size ?? ''))
     setPartySizeEditOpen(true)
+  }
+
+  function openBookingEdit() {
+    setBookingEdit({
+      booking_date: booking.booking_date,
+      booking_time: booking.booking_time ? booking.booking_time.slice(0, 5) : '',
+      duration_minutes: String(booking.duration_minutes ?? 90),
+      customer_id: booking.customer?.id ?? null,
+      special_requirements: booking.special_requirements ?? '',
+      dietary_requirements: listToInput(booking.dietary_requirements),
+      allergies: listToInput(booking.allergies),
+      celebration_type: booking.celebration_type ?? '',
+      internal_notes: booking.internal_notes ?? '',
+    })
+    setBookingEditOpen(true)
+  }
+
+  function openPreorderEdit() {
+    setPreorderEdit(
+      Object.fromEntries(
+        preorderItems.map((item) => [
+          item.id,
+          {
+            quantity: String(item.quantity ?? 1),
+            special_requests: item.special_requests ?? '',
+          },
+        ])
+      )
+    )
+    setPreorderEditOpen(true)
+  }
+
+  async function handleSubmitBookingEdit() {
+    if (!bookingEdit) return
+
+    const duration = Number.parseInt(bookingEdit.duration_minutes, 10)
+    if (!bookingEdit.booking_date || !bookingEdit.booking_time) {
+      toast.error('Enter a booking date and time')
+      return
+    }
+    if (!Number.isFinite(duration) || duration < 30 || duration > 360) {
+      toast.error('Enter a duration between 30 and 360 minutes')
+      return
+    }
+
+    await runAction(
+      'booking-edit',
+      async () => {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
+          method: 'PATCH',
+          body: {
+            booking_date: bookingEdit.booking_date,
+            booking_time: bookingEdit.booking_time,
+            duration_minutes: duration,
+            customer_id: bookingEdit.customer_id,
+            special_requirements: bookingEdit.special_requirements.trim() || null,
+            dietary_requirements: splitListInput(bookingEdit.dietary_requirements),
+            allergies: splitListInput(bookingEdit.allergies),
+            celebration_type: bookingEdit.celebration_type.trim() || null,
+            internal_notes: bookingEdit.internal_notes.trim() || null,
+          },
+        })
+        setBookingEditOpen(false)
+      },
+      'Booking details updated'
+    )
+  }
+
+  async function handleSubmitPreorderEdit() {
+    const items = preorderItems.map((item) => ({
+      id: item.id,
+      quantity: Number.parseInt(preorderEdit[item.id]?.quantity ?? String(item.quantity ?? 1), 10),
+      special_requests: preorderEdit[item.id]?.special_requests?.trim() || null,
+    }))
+
+    if (items.some((item) => !Number.isFinite(item.quantity) || item.quantity < 1 || item.quantity > 99)) {
+      toast.error('Enter item quantities between 1 and 99')
+      return
+    }
+
+    await runAction(
+      'preorder-edit',
+      async () => {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/preorder`, {
+          method: 'PATCH',
+          body: { items },
+        })
+        setPreorderEditOpen(false)
+      },
+      'Pre-order updated'
+    )
   }
 
   async function handleMoveTable() {
@@ -702,6 +847,61 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             )}
           </SectionCard>
 
+          <SectionCard
+            title="Sunday Pre-Order"
+            action={
+              canEditPreorder ? (
+                <Button size="sm" variant="secondary" onClick={openPreorderEdit}>
+                  Edit pre-order
+                </Button>
+              ) : undefined
+            }
+          >
+            {preorderItems.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Item
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Qty
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Guest
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Requests
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Price
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {preorderItems.map((item) => (
+                      <tr key={item.id}>
+                        <td className="px-3 py-2 font-medium text-gray-900">
+                          {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
+                          {item.item_type ? <span className="ml-2 text-xs text-gray-500">{formatLabel(item.item_type)}</span> : null}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">{item.quantity}</td>
+                        <td className="px-3 py-2 text-gray-700">{item.guest_name || '-'}</td>
+                        <td className="px-3 py-2 text-gray-700">{item.special_requests || '-'}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">
+                          {item.price_at_booking != null ? formatGbp(Number(item.price_at_booking) * Number(item.quantity || 1)) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No saved pre-order items.</p>
+            )}
+          </SectionCard>
+
           <SectionCard title="Lifecycle">
             {lifecycleEvents.length > 0 ? (
               <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -757,6 +957,14 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     disabled={Boolean(actionLoadingKey)}
                   >
                     Mark completed
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={openBookingEdit}
+                    disabled={Boolean(actionLoadingKey)}
+                  >
+                    Edit booking
                   </Button>
                   <Button
                     size="sm"
@@ -1027,6 +1235,163 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         message={`Delete booking ${booking.booking_reference ?? ''} permanently? This cannot be undone.`}
         confirmText="Delete"
       />
+
+      <Modal
+        open={bookingEditOpen}
+        onClose={() => setBookingEditOpen(false)}
+        title="Edit booking"
+        size="xl"
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setBookingEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleSubmitBookingEdit()}
+              loading={actionLoadingKey === 'booking-edit'}
+              disabled={Boolean(actionLoadingKey) || !bookingEdit}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        {bookingEdit && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Input
+                label="Date"
+                type="date"
+                value={bookingEdit.booking_date}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, booking_date: event.target.value } : prev)}
+              />
+              <Input
+                label="Time"
+                type="time"
+                value={bookingEdit.booking_time}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, booking_time: event.target.value } : prev)}
+              />
+              <Input
+                label="Duration"
+                type="number"
+                min={30}
+                max={360}
+                step={15}
+                value={bookingEdit.duration_minutes}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, duration_minutes: event.target.value } : prev)}
+              />
+            </div>
+
+            <div>
+              <p className="mb-1 text-[13px] font-medium text-text">Customer</p>
+              <CustomerSearchInput
+                selectedCustomerId={bookingEdit.customer_id}
+                placeholder="Search customers..."
+                onCustomerSelect={(customer) =>
+                  setBookingEdit((prev) => prev ? { ...prev, customer_id: customer?.id ?? null } : prev)
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Textarea
+                label="Dietary requirements"
+                value={bookingEdit.dietary_requirements}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, dietary_requirements: event.target.value } : prev)}
+                rows={3}
+              />
+              <Textarea
+                label="Allergies"
+                value={bookingEdit.allergies}
+                onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, allergies: event.target.value } : prev)}
+                rows={3}
+              />
+            </div>
+
+            <Input
+              label="Celebration"
+              value={bookingEdit.celebration_type}
+              onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, celebration_type: event.target.value } : prev)}
+            />
+            <Textarea
+              label="Special requirements"
+              value={bookingEdit.special_requirements}
+              onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, special_requirements: event.target.value } : prev)}
+              rows={3}
+            />
+            <Textarea
+              label="Internal notes"
+              value={bookingEdit.internal_notes}
+              onChange={(event) => setBookingEdit((prev) => prev ? { ...prev, internal_notes: event.target.value } : prev)}
+              rows={4}
+            />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={preorderEditOpen}
+        onClose={() => setPreorderEditOpen(false)}
+        title="Edit pre-order"
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setPreorderEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleSubmitPreorderEdit()}
+              loading={actionLoadingKey === 'preorder-edit'}
+              disabled={Boolean(actionLoadingKey)}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {preorderItems.map((item) => (
+            <div key={item.id} className="rounded-md border border-gray-200 p-3">
+              <p className="text-sm font-medium text-gray-900">
+                {item.menu_dish?.name || item.custom_item_name || 'Unnamed item'}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
+                <Input
+                  label="Qty"
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={preorderEdit[item.id]?.quantity ?? String(item.quantity ?? 1)}
+                  onChange={(event) =>
+                    setPreorderEdit((prev) => ({
+                      ...prev,
+                      [item.id]: {
+                        quantity: event.target.value,
+                        special_requests: prev[item.id]?.special_requests ?? item.special_requests ?? '',
+                      },
+                    }))
+                  }
+                />
+                <Input
+                  label="Requests"
+                  value={preorderEdit[item.id]?.special_requests ?? item.special_requests ?? ''}
+                  onChange={(event) =>
+                    setPreorderEdit((prev) => ({
+                      ...prev,
+                      [item.id]: {
+                        quantity: prev[item.id]?.quantity ?? String(item.quantity ?? 1),
+                        special_requests: event.target.value,
+                      },
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       <Modal
         open={partySizeEditOpen}

@@ -23,6 +23,7 @@ export default async function CustomersPage({ searchParams }: Props) {
   }
 
   const canManage = await checkUserPermission('customers', 'manage')
+  const canSendBulkMessages = await checkUserPermission('messages', 'send_marketing')
 
   const page = Math.max(1, Number(resolved.page) || 1)
   const pageSize = Number(resolved.size) || DEFAULT_PAGE_SIZE
@@ -44,6 +45,7 @@ export default async function CustomersPage({ searchParams }: Props) {
       initialSearch={searchTerm}
       initialShowDeactivated={showDeactivated}
       canManageCustomers={canManage}
+      canSendBulkMessages={canSendBulkMessages}
     />
   )
 }
