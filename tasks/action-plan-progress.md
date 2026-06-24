@@ -80,4 +80,5 @@ Status values:
 | PR-75 / A-051 | done | Dish cost helpers now track unpriced ingredients/recipes and GP analysis/composition surfaces cost-incomplete warnings instead of silently inflating GP%; helper and component tests added. |
 | PR-76 / A-052 | done | Holiday allowance counts now ignore Saturdays, Sundays, and employee-specific non-working weekdays from pay settings; migration/rollback, action, helper, typecheck, lint, and Supabase dry-run all pass. |
 | PR-14a-c / A-053 | done | Exported customer-label, site-settings, missing-cashup, menu-target, and payroll-period actions now re-check RBAC before data/service access; payroll cron/staff portal use internal helpers after their own auth; denied-path tests, typecheck, and lint pass. |
+| PR-77 / A-054 | done-before-start | `ConfirmDialog` already awaits async `onConfirm`, keeps controls disabled while pending, preserves the dialog on errors, and surfaces the error; `tests/components/ds-primitives.test.tsx` passes. |
 | A-117 | todo | Included by owner request. |
