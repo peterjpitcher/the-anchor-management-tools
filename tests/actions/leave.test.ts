@@ -39,7 +39,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getRotaSettings } from '@/app/actions/rota-settings'
-import { deleteLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave'
+import { cancelOwnLeaveRequest, deleteLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
@@ -57,7 +57,9 @@ function chain() {
   query.neq = vi.fn(() => query)
   query.lte = vi.fn(() => query)
   query.gte = vi.fn(() => query)
+  query.in = vi.fn(() => query)
   query.select = vi.fn(() => query)
+  query.maybeSingle = vi.fn()
   query.single = vi.fn()
   return query
 }
@@ -190,6 +192,77 @@ function mockDeleteClient(options: {
 
   mockedCreateClient.mockResolvedValue(client)
   return { client, deleteQuery }
+}
+
+function mockCancelOwnClient(options: {
+  user?: { id: string; email?: string | null } | null
+  employee?: { employee_id: string } | null
+  employeeError?: { message: string } | null
+  deletedRequest?: {
+    id: string
+    employee_id: string
+    start_date: string
+    end_date: string
+    note: string | null
+    status: 'pending' | 'approved' | 'declined'
+    manager_note: string | null
+    reviewed_by: string | null
+    reviewed_at: string | null
+    holiday_year: number
+    created_at: string
+    updated_at: string
+  } | null
+  deleteError?: { message: string } | null
+} = {}) {
+  const employeeQuery = chain()
+  employeeQuery.maybeSingle.mockResolvedValue({
+    data: options.employee === undefined ? { employee_id: EMPLOYEE_ID } : options.employee,
+    error: options.employeeError ?? null,
+  })
+
+  const deleteQuery = chain()
+  deleteQuery.maybeSingle.mockResolvedValue({
+    data: options.deletedRequest === undefined
+      ? {
+          id: REQUEST_ID,
+          employee_id: EMPLOYEE_ID,
+          start_date: '2026-06-10',
+          end_date: '2026-06-12',
+          note: null,
+          status: 'pending',
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          holiday_year: 2026,
+          created_at: '2026-05-01T09:00:00Z',
+          updated_at: '2026-05-01T09:00:00Z',
+        }
+      : options.deletedRequest,
+    error: options.deleteError ?? null,
+  })
+
+  const employeesTable = {
+    select: vi.fn(() => employeeQuery),
+  }
+  const leaveRequestsTable = {
+    delete: vi.fn(() => deleteQuery),
+  }
+  const client = {
+    auth: {
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: options.user === undefined ? { id: 'user-1', email: 'employee@example.com' } : options.user },
+        error: null,
+      }),
+    },
+    from: vi.fn((table: string) => {
+      if (table === 'employees') return employeesTable
+      if (table === 'leave_requests') return leaveRequestsTable
+      throw new Error(`Unexpected table: ${table}`)
+    }),
+  }
+
+  mockedCreateClient.mockResolvedValue(client)
+  return { client, employeeQuery, deleteQuery }
 }
 
 describe('leave actions', () => {
@@ -325,6 +398,34 @@ describe('leave actions', () => {
       const result = await deleteLeaveRequest(REQUEST_ID)
 
       expect(result).toEqual({ success: false, error: 'Request not found' })
+    })
+  })
+
+  describe('cancelOwnLeaveRequest', () => {
+    it('deletes only the signed-in employee pending request', async () => {
+      const { deleteQuery } = mockCancelOwnClient()
+
+      const result = await cancelOwnLeaveRequest(REQUEST_ID)
+
+      expect(result).toEqual({ success: true })
+      expect(deleteQuery.eq).toHaveBeenCalledWith('id', REQUEST_ID)
+      expect(deleteQuery.eq).toHaveBeenCalledWith('employee_id', EMPLOYEE_ID)
+      expect(deleteQuery.eq).toHaveBeenCalledWith('status', 'pending')
+      expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+        user_id: 'user-1',
+        operation_type: 'cancel',
+        resource_type: 'leave_request',
+        resource_id: REQUEST_ID,
+        additional_info: { source: 'staff_portal' },
+      }))
+    })
+
+    it('rejects requests that are not pending or not owned by the employee', async () => {
+      mockCancelOwnClient({ deletedRequest: null })
+
+      const result = await cancelOwnLeaveRequest(REQUEST_ID)
+
+      expect(result).toEqual({ success: false, error: 'Only pending holiday requests can be cancelled' })
     })
   })
 })
