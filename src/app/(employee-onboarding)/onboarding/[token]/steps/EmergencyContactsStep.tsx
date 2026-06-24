@@ -75,6 +75,8 @@ export default function EmergencyContactsStep({ token, initialData, onSuccess }:
       } else {
         setError(result.error || 'Failed to save. Please try again.');
       }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to save. Please try again.');
     } finally {
       setLoading(false);
     }

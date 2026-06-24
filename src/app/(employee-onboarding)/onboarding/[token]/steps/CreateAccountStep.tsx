@@ -46,6 +46,8 @@ export default function CreateAccountStep({
       } else {
         setError(result.error || 'Failed to create account.');
       }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to create account.');
     } finally {
       setLoading(false);
     }
