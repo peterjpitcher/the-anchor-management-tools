@@ -74,4 +74,5 @@ Status values:
 | PR-69 / A-045 | done | Leave manager rows now confirm approve/decline, expose edit-date and delete actions behind `leave:edit`, and update/remove rows inline; component tests cover confirm/edit/delete paths. |
 | PR-70 / A-046 | done | Recurring-invoice cron now transitions generated invoices to sent before email delivery, so failed Graph sends cannot leave sealed draft invoices; cron regression test covers the failure path. |
 | PR-71 / A-047 | done | Invoice VAT is rounded per line before summing, and invoice detail totals now display persisted subtotal/VAT/total values; calculator and component regressions added. |
+| PR-72 / A-048 | done | The top invoice action now routes to Record Payment instead of calling the rejected `paid` status transition; component test asserts `Mark as Paid` is gone. |
 | A-117 | todo | Included by owner request. |

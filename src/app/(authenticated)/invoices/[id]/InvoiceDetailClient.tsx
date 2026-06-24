@@ -610,11 +610,11 @@ export default function InvoiceDetailClient({
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => handleStatusChange('paid')}
+          onClick={() => router.push(`/invoices/${invoice.id}/payment`)}
           disabled={actionLoading}
           leftIcon={<CheckCircle className="h-4 w-4" />}
         >
-          Mark as Paid
+          Record Payment
         </Button>
       )}
 
