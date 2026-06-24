@@ -260,10 +260,27 @@ export async function retryRecruitmentCalendarSync(limit = 25, supabase: Generic
     results.push(await syncRecruitmentAppointmentCalendar(row.id, supabase))
   }
 
+  const { data: deletionRows, error: deletionError } = await supabase
+    .from('recruitment_candidate_appointments')
+    .select('id')
+    .eq('status', 'cancelled')
+    .not('calendar_event_id', 'is', null)
+    .order('scheduled_start', { ascending: true })
+    .limit(limit)
+
+  if (deletionError) throw deletionError
+
+  const deletionResults = []
+  for (const row of deletionRows ?? []) {
+    deletionResults.push(await deleteRecruitmentAppointmentCalendarEvent(row.id, supabase))
+  }
+
   return {
     processed: results.length,
     synced: results.filter(result => result.status === 'synced').length,
     fallback: results.filter(result => result.status === 'ics_fallback').length,
+    deletionProcessed: deletionResults.length,
+    deleted: deletionResults.filter(result => result.deleted).length,
+    deletionFailed: deletionResults.filter(result => !result.deleted).length,
   }
 }
-

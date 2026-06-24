@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -25,6 +25,7 @@ const mockedCreateAdminClient = createAdminClient as unknown as Mock
 type BookingRow = {
   deposit_amount: number | null
   deposit_paid_date: string | null
+  event_date?: string | null
 }
 
 type PaymentRow = {
@@ -179,6 +180,10 @@ describe('getPrivateBookingCancellationOutcome', () => {
     vi.clearAllMocks()
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns no_money when nothing paid', async () => {
     mockSupabase({
       booking: { deposit_amount: 150, deposit_paid_date: null },
@@ -251,5 +256,24 @@ describe('getPrivateBookingCancellationOutcome', () => {
     const outcome = await getPrivateBookingCancellationOutcome('booking-7')
 
     expect(outcome.outcome).toBe('manual_review')
+  })
+
+  it('uses Europe/London calendar days for the 30-day deposit refund threshold', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-24T23:30:00.000Z')) // 25 Jun 2026 in London
+    mockSupabase({
+      booking: {
+        deposit_amount: 150,
+        deposit_paid_date: '2026-01-10',
+        event_date: '2026-07-24',
+      },
+      payments: [],
+    })
+
+    const outcome = await getPrivateBookingCancellationOutcome('booking-london-boundary')
+
+    expect(outcome.outcome).toBe('non_refundable_retained')
+    expect(outcome.retained_amount).toBe(150)
+    expect(outcome.refund_amount).toBe(0)
   })
 })

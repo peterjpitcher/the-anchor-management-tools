@@ -2016,7 +2016,7 @@ export async function previewRecruitmentBookingToken(
     .from('recruitment_candidate_appointments')
     .select('*')
     .eq('booking_token_hash', tokenHash)
-    .in('status', ['scheduled', 'cancelled', 'rescheduled'])
+    .in('status', ['scheduled'])
     .order('scheduled_start', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -2104,11 +2104,21 @@ export async function cancelRecruitmentAppointment(
   if (updateError) throw updateError
 
   if (appointment.slot_id) {
-    await supabase
+    const { error: slotUpdateError } = await supabase
       .from('recruitment_appointment_slots')
       .update({ status: 'open' })
       .eq('id', appointment.slot_id)
+
+    if (slotUpdateError) throw slotUpdateError
   }
+
+  const { error: tokenUpdateError } = await supabase
+    .from('recruitment_applications')
+    .update({ booking_token_used_at: null })
+    .eq('id', appointment.application_id)
+    .eq('booking_token_hash', tokenHash)
+
+  if (tokenUpdateError) throw tokenUpdateError
 
   await transitionRecruitmentApplicationStatus(appointment.application_id, 'on_hold', {
     note: 'Candidate cancelled appointment',

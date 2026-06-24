@@ -109,6 +109,73 @@ describe('refundActions', () => {
 
       expect(result).toEqual({ error: expect.stringContaining('180') })
     })
+
+    it('loads parking refund customer details using real parking booking columns', async () => {
+      const mockAuth = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) } }
+      vi.mocked(createClient).mockResolvedValue(mockAuth as any)
+      vi.mocked(refundPayPalPayment).mockResolvedValue({
+        refundId: 'PAYPAL-REFUND-1',
+        status: 'PENDING',
+        statusDetails: 'ECHECK',
+      } as any)
+
+      const parkingSelect = vi.fn()
+      const parkingPaymentLookup: any = {
+        select: vi.fn((columns: string) => {
+          parkingSelect(columns)
+          return parkingPaymentLookup
+        }),
+        eq: vi.fn(() => parkingPaymentLookup),
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: {
+            id: 'parking-payment-1',
+            transaction_id: 'CAPTURE-1',
+            paid_at: new Date().toISOString(),
+            amount: 20,
+            booking_id: 'parking-booking-1',
+            parking_bookings: {
+              customer_id: 'customer-1',
+              customer_first_name: 'Sam',
+              customer_last_name: 'Jones',
+              customer_email: 'sam@example.com',
+              customer_mobile: '+447700900000',
+            },
+          },
+          error: null,
+        }),
+      }
+      const existingRefundLookup: any = {
+        select: vi.fn(() => existingRefundLookup),
+        eq: vi.fn(() => existingRefundLookup),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }
+      const refundUpdate: any = {
+        update: vi.fn(() => refundUpdate),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }
+      let refundTableCalls = 0
+      const db = {
+        from: vi.fn((table: string) => {
+          if (table === 'parking_booking_payments') return parkingPaymentLookup
+          if (table === 'payment_refunds') {
+            refundTableCalls += 1
+            return refundTableCalls === 1 ? existingRefundLookup : refundUpdate
+          }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+        rpc: vi.fn().mockResolvedValue({ data: { refund_id: 'refund-1' }, error: null }),
+      }
+      vi.mocked(createAdminClient).mockReturnValue(db as any)
+
+      const { processPayPalRefund } = await import('../refundActions')
+      const result = await processPayPalRefund('parking', 'parking-payment-1', 10, 'test')
+
+      expect(result).toMatchObject({ success: true, pending: true, refundId: 'refund-1' })
+      expect(parkingSelect).toHaveBeenCalledWith(
+        'id, transaction_id, paid_at, amount, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)'
+      )
+      expect(refundPayPalPayment).toHaveBeenCalledWith('CAPTURE-1', 10, expect.any(String))
+    })
   })
 
   describe('processManualRefund', () => {
