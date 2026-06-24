@@ -1870,55 +1870,16 @@ export async function rescheduleRecruitmentAppointmentByStaff(
   if (error) throw error
   if (!appointment) throw new Error('Appointment not found.')
 
-  const { data: newSlot, error: slotError } = await supabase
-    .from('recruitment_appointment_slots')
-    .update({ status: 'booked' })
-    .eq('id', newSlotId)
-    .eq('status', 'open')
-    .is('archived_at', null)
-    .gt('starts_at', new Date().toISOString())
-    .select('*')
-    .maybeSingle()
-
-  if (slotError) throw slotError
-  if (!newSlot) throw new Error('Slot is no longer available.')
-
-  const { data, error: updateError } = await supabase
-    .from('recruitment_candidate_appointments')
-    .update({
-      slot_id: newSlot.id,
-      scheduled_start: newSlot.starts_at,
-      scheduled_end: newSlot.ends_at,
-      timezone: newSlot.timezone,
-      location: newSlot.location,
-      supervisor_staff_id: newSlot.supervisor_staff_id,
-      status: 'scheduled',
-      calendar_sync_status: 'pending',
-      calendar_last_error: null,
-      reschedule_count: Number(appointment.reschedule_count ?? 0) + 1,
-    })
-    .eq('id', appointmentId)
-    .select('*')
-    .single()
-
-  if (updateError) throw updateError
-
-  if (appointment.slot_id) {
-    await supabase
-      .from('recruitment_appointment_slots')
-      .update({ status: 'open' })
-      .eq('id', appointment.slot_id)
-  }
-
-  await insertStatusEvent(supabase, {
-    applicationId: appointment.application_id,
-    fromStatus: null,
-    toStatus: appointment.type === 'trial_shift' ? 'trial_scheduled' : 'interview_scheduled',
-    changedBy: currentUserId ?? null,
-    note: 'Appointment rescheduled by manager',
-    metadata: { appointment_id: appointmentId, old_slot_id: appointment.slot_id, new_slot_id: newSlot.id },
+  const { data, error: rescheduleError } = await supabase.rpc('recruitment_reschedule_appointment', {
+    p_appointment_id: appointmentId,
+    p_new_slot_id: newSlotId,
+    p_booking_token_hash: null,
+    p_actor_user_id: currentUserId ?? null,
+    p_note: 'Appointment rescheduled by manager',
+    p_enforce_reschedule_limit: false,
   })
 
+  if (rescheduleError) throw rescheduleError
   return data
 }
 
@@ -2068,11 +2029,6 @@ export async function claimRecruitmentAppointmentSlot(
 
   if (error) throw error
 
-  await supabase
-    .from('recruitment_applications')
-    .update({ booking_token_used_at: new Date().toISOString() })
-    .eq('id', preview.application.id)
-
   return appointmentId as string
 }
 
@@ -2159,52 +2115,18 @@ export async function rescheduleRecruitmentAppointment(
     throw new Error('This appointment has already been rescheduled once.')
   }
 
-  const { data: newSlot, error: slotError } = await supabase
-    .from('recruitment_appointment_slots')
-    .update({ status: 'booked' })
-    .eq('id', newSlotId)
-    .eq('status', 'open')
-    .gt('starts_at', new Date().toISOString())
-    .select('*')
-    .maybeSingle()
-
-  if (slotError) throw slotError
-  if (!newSlot) throw new Error('Slot is no longer available.')
-
-  const { error: updateError } = await supabase
-    .from('recruitment_candidate_appointments')
-    .update({
-      slot_id: newSlot.id,
-      scheduled_start: newSlot.starts_at,
-      scheduled_end: newSlot.ends_at,
-      timezone: newSlot.timezone,
-      location: newSlot.location,
-      supervisor_staff_id: newSlot.supervisor_staff_id,
-      status: 'scheduled',
-      calendar_sync_status: 'pending',
-      calendar_last_error: null,
-      reschedule_count: Number(appointment.reschedule_count ?? 0) + 1,
-    })
-    .eq('id', appointment.id)
-
-  if (updateError) throw updateError
-
-  if (appointment.slot_id) {
-    await supabase
-      .from('recruitment_appointment_slots')
-      .update({ status: 'open' })
-      .eq('id', appointment.slot_id)
-  }
-
-  await insertStatusEvent(supabase, {
-    applicationId: appointment.application_id,
-    fromStatus: null,
-    toStatus: appointment.type === 'trial_shift' ? 'trial_scheduled' : 'interview_scheduled',
-    note: 'Candidate rescheduled appointment',
-    metadata: { appointment_id: appointment.id, old_slot_id: appointment.slot_id, new_slot_id: newSlot.id },
+  const { data: updatedAppointment, error: rescheduleError } = await supabase.rpc('recruitment_reschedule_appointment', {
+    p_appointment_id: appointment.id,
+    p_new_slot_id: newSlotId,
+    p_booking_token_hash: tokenHash,
+    p_actor_user_id: null,
+    p_note: 'Candidate rescheduled appointment',
+    p_enforce_reschedule_limit: true,
   })
 
-  return { success: true, appointmentId: appointment.id }
+  if (rescheduleError) throw rescheduleError
+
+  return { success: true, appointmentId: (updatedAppointment as any)?.id ?? appointment.id }
 }
 
 export async function getRecruitmentCvSignedUrl(
