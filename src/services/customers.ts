@@ -37,23 +37,6 @@ function sanitizeLastName(lastName: string | undefined): string {
   return capitaliseName(trimmed);
 }
 
-function toCanonicalPhoneSetFromRows(rows: CustomerPhoneLookupRow[]): Set<string> {
-  const canonicalPhones = new Set<string>();
-
-  for (const row of rows) {
-    const rawPhone = row.mobile_e164 || row.mobile_number;
-    if (!rawPhone) continue;
-
-    try {
-      canonicalPhones.add(formatPhoneForStorage(rawPhone));
-    } catch {
-      // Keep scanning. Bad historical rows should not abort import/create lookups.
-    }
-  }
-
-  return canonicalPhones;
-}
-
 function isDuplicateKeyError(error: { code?: string; message?: string } | null): boolean {
   return error?.code === '23505';
 }
@@ -282,6 +265,7 @@ export class CustomerService {
     // Validate and Format
     const validCustomers: Array<CreateCustomerInput & { mobile_number: string }> = [];
     const seenPhones = new Set<string>();
+    const seenEmails = new Set<string>();
     let invalidCount = 0;
     let duplicateInFileCount = 0;
 
@@ -307,10 +291,19 @@ export class CustomerService {
       }
       seenPhones.add(formattedPhone);
 
+      const email = sanitizeEmail(c.email);
+      if (email && seenEmails.has(email)) {
+        duplicateInFileCount++;
+        continue;
+      }
+      if (email) {
+        seenEmails.add(email);
+      }
+
       validCustomers.push({
         ...c,
         mobile_number: formattedPhone,
-        email: sanitizeEmail(c.email) ?? undefined,
+        email: email ?? undefined,
         last_name: sanitizeLastName(c.last_name)
       });
     }
@@ -319,41 +312,7 @@ export class CustomerService {
       return { created: [], skippedInvalid: invalidCount, skippedDuplicates: duplicateInFileCount, skippedExisting: 0 };
     }
 
-    // Check Database Duplicates
-    const canonicalPhoneList = Array.from(seenPhones);
-    const { data: existingCanonicalRows, error: existingCanonicalError } = await supabase
-      .from('customers')
-      .select('id, mobile_number, mobile_e164')
-      .in('mobile_e164', canonicalPhoneList);
-
-    if (existingCanonicalError) {
-      console.error('Batch customer import canonical lookup error:', existingCanonicalError);
-      throw new Error('Failed to import customers');
-    }
-
-    const { data: existingLegacyRows, error: existingLegacyError } = await supabase
-      .from('customers')
-      .select('id, mobile_number, mobile_e164')
-      .in('mobile_number', canonicalPhoneList);
-
-    if (existingLegacyError) {
-      console.error('Batch customer import legacy lookup error:', existingLegacyError);
-      throw new Error('Failed to import customers');
-    }
-
-    const existingSet = toCanonicalPhoneSetFromRows([
-      ...((existingCanonicalRows || []) as CustomerPhoneLookupRow[]),
-      ...((existingLegacyRows || []) as CustomerPhoneLookupRow[])
-    ]);
-    const newCustomers = validCustomers.filter(c => !existingSet.has(c.mobile_number!));
-    let skippedExistingCount = validCustomers.length - newCustomers.length;
-
-    if (newCustomers.length === 0) {
-      return { created: [], skippedInvalid: invalidCount, skippedDuplicates: duplicateInFileCount, skippedExisting: skippedExistingCount };
-    }
-
-    // Batch Insert
-    const insertPayload = newCustomers.map((customer) => ({
+    const importPayload = validCustomers.map((customer) => ({
       first_name: sanitizeFirstName(customer.first_name),
       last_name: sanitizeLastName(customer.last_name),
       mobile_number: customer.mobile_number,
@@ -362,50 +321,25 @@ export class CustomerService {
       sms_opt_in: customer.sms_opt_in
     }));
 
-    let createdRows: Customer[] = [];
+    const { data: importResult, error: importError } = await supabase
+      .rpc('import_customers_atomic', { p_customers: importPayload });
 
-    const { data: created, error } = await supabase
-      .from('customers')
-      .insert(insertPayload)
-      .select();
-
-    if (error) {
-      if (isDuplicateKeyError(error as { code?: string; message?: string } | null)) {
-        const { data: upserted, error: upsertError } = await supabase
-          .from('customers')
-          .upsert(insertPayload, {
-            onConflict: 'mobile_e164',
-            ignoreDuplicates: true
-          })
-          .select();
-
-        if (upsertError) {
-          if (isEmailUniqueViolation(upsertError)) {
-            throw new Error('Import contains an email that already belongs to another customer');
-          }
-          console.error('Batch customer import upsert error:', upsertError);
-          throw new Error('Failed to import customers');
-        }
-
-        createdRows = (upserted || []) as Customer[];
-      } else {
-        if (isEmailUniqueViolation(error)) {
-          throw new Error('Import contains an email that already belongs to another customer');
-        }
-        console.error('Batch customer import error:', error);
-        throw new Error('Failed to import customers');
-      }
-    } else {
-      createdRows = (created || []) as Customer[];
+    if (importError) {
+      console.error('Batch customer import error:', importError);
+      throw new Error('Failed to import customers');
     }
 
-    skippedExistingCount += Math.max(0, newCustomers.length - createdRows.length);
+    const result = importResult as { created?: Customer[]; skippedExisting?: number } | null;
+    if (!result || !Array.isArray(result.created)) {
+      console.error('Batch customer import invalid RPC result:', importResult);
+      throw new Error('Failed to import customers');
+    }
 
     return { 
-      created: createdRows, 
+      created: result.created, 
       skippedInvalid: invalidCount, 
       skippedDuplicates: duplicateInFileCount, 
-      skippedExisting: skippedExistingCount 
+      skippedExisting: Number(result.skippedExisting ?? 0)
     };
   }
 
