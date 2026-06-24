@@ -42,6 +42,8 @@ type CustomerCategoryStatsQueryRow = {
 export interface CustomerListResult {
   customers: Customer[]
   totalCount: number
+  smsActiveCount: number
+  smsDeactivatedCount: number
   customerPreferences: Record<string, CustomerCategoryStats[]>
   customerLabels: Record<string, CustomerLabelAssignment[]>
   unreadCounts: Record<string, number>
@@ -69,7 +71,17 @@ export async function getCustomerList(params: {
   // Build the base query for counting
   let countQuery = supabase
     .from('customers')
-    .select('id', { count: 'estimated', head: true })
+    .select('id', { count: 'exact', head: true })
+
+  let smsActiveCountQuery = supabase
+    .from('customers')
+    .select('id', { count: 'exact', head: true })
+    .neq('sms_status', 'opted_out')
+
+  let smsDeactivatedCountQuery = supabase
+    .from('customers')
+    .select('id', { count: 'exact', head: true })
+    .eq('sms_status', 'opted_out')
 
   // Build the data query
   let dataQuery = supabase
@@ -91,6 +103,8 @@ export async function getCustomerList(params: {
     const term = `%${searchTerm.trim()}%`
     const searchFilter = `first_name.ilike.${term},last_name.ilike.${term},mobile_number.ilike.${term},email.ilike.${term}`
     countQuery = countQuery.or(searchFilter)
+    smsActiveCountQuery = smsActiveCountQuery.or(searchFilter)
+    smsDeactivatedCountQuery = smsDeactivatedCountQuery.or(searchFilter)
     dataQuery = dataQuery.or(searchFilter)
   }
 
@@ -100,14 +114,20 @@ export async function getCustomerList(params: {
   dataQuery = dataQuery.range(from, to)
 
   // Run count and data in parallel
-  const [{ count, error: countError }, { data: rows, error: dataError }] =
-    await Promise.all([countQuery, dataQuery])
+  const [
+    { count, error: countError },
+    { count: smsActiveCount, error: smsActiveCountError },
+    { count: smsDeactivatedCount, error: smsDeactivatedCountError },
+    { data: rows, error: dataError }
+  ] = await Promise.all([countQuery, smsActiveCountQuery, smsDeactivatedCountQuery, dataQuery])
 
-  if (countError || dataError) {
-    console.error('Error fetching customer list:', countError ?? dataError)
+  if (countError || smsActiveCountError || smsDeactivatedCountError || dataError) {
+    console.error('Error fetching customer list:', countError ?? smsActiveCountError ?? smsDeactivatedCountError ?? dataError)
     return {
       customers: [],
       totalCount: 0,
+      smsActiveCount: 0,
+      smsDeactivatedCount: 0,
       customerPreferences: {},
       customerLabels: {},
       unreadCounts: {},
@@ -122,6 +142,8 @@ export async function getCustomerList(params: {
     return {
       customers: [],
       totalCount,
+      smsActiveCount: smsActiveCount ?? 0,
+      smsDeactivatedCount: smsDeactivatedCount ?? 0,
       customerPreferences: {},
       customerLabels: {},
       unreadCounts: {}
@@ -172,7 +194,15 @@ export async function getCustomerList(params: {
       ? (unreadResult as Record<string, number>)
       : {}
 
-  return { customers, totalCount, customerPreferences, customerLabels, unreadCounts }
+  return {
+    customers,
+    totalCount,
+    smsActiveCount: smsActiveCount ?? 0,
+    smsDeactivatedCount: smsDeactivatedCount ?? 0,
+    customerPreferences,
+    customerLabels,
+    unreadCounts
+  }
 }
 
 type ManageContext =

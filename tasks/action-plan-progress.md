@@ -44,6 +44,7 @@ Status values:
 | PR-23 / A-011 | done | Candidate cancellation clears `booking_token_used_at`, cancelled appointments are not returned as current, and service tests cover rebooking. |
 | PR-24 / A-012 | done | Recruitment calendar retry now deletes orphaned Outlook events for cancelled appointments; test covers the retry path. |
 | PR-32 / A-013 | done | Private-booking cancellation refund threshold uses Europe/London calendar days; BST boundary test added. |
+| PR-S5 / A-082 | done | Customer list counts now use exact server counts, SMS stat cards use exact full-result counts instead of current-page rows, and import dedup runs globally inside the atomic import RPC; source regression test, typecheck, lint, and Supabase dry-run pass. |
 | PR-25 / A-016 | done | Avatar upload validates size, MIME allowlist, and file signatures; stored extension is derived from MIME; action tests cover rejects. |
 | PR-31 / A-017 | done | Manual mileage create/update now uses transactional RPCs with in-DB tax-year recalculation; rollback SQL added; dry-run passed. |
 | PR-17 / A-018 | done | RBAC role/permission and user/role replacements now diff-and-apply additions before removals; tests cover insert-failure safety. |
@@ -94,4 +95,5 @@ Status values:
 | PR-42c / A-060 receipts bulk classify | done | Receipt bulk group classification now runs selection, row locks, updates, transaction logs, and classification signals inside `apply_receipt_group_classification_atomic`; migration/rollback, focused action test, typecheck, lint, and Supabase dry-run pass. |
 | PR-42d / A-060 menu ingredient price history | done | Menu ingredient create/update and inline pack-cost edits now write ingredient rows and price history through transaction RPCs; migration/rollback, source regression test, typecheck, lint, and Supabase dry-run pass. |
 | PR-42e / A-060 quote-to-invoice | done | Quote conversion now locks and validates the quote, advances the invoice series, creates invoice and line items, and marks the quote converted in one RPC; migration/rollback, source regression test, typecheck, lint, and Supabase dry-run pass. |
+| PR-42f / A-060 customer dedup/import | done | Customer import now normalizes and file-dedups in app, then performs global mobile/email dedup and insert in one `import_customers_atomic` RPC with `ON CONFLICT DO NOTHING`; migration/rollback, source regression test, typecheck, lint, and Supabase dry-run pass. |
 | A-117 | todo | Included by owner request. |

@@ -99,6 +99,8 @@ export default function CustomersClient({
 
   const [customers, setCustomers] = useState<Customer[]>(initialData.customers)
   const [totalCount, setTotalCount] = useState(initialData.totalCount)
+  const [smsActiveCount, setSmsActiveCount] = useState(initialData.smsActiveCount)
+  const [smsDeactivatedCount, setSmsDeactivatedCount] = useState(initialData.smsDeactivatedCount)
   const [customerPreferences, setCustomerPreferences] = useState<
     Record<string, CustomerCategoryStats[]>
   >(initialData.customerPreferences)
@@ -161,6 +163,8 @@ export default function CustomersClient({
         })
         setCustomers(result.customers)
         setTotalCount(result.totalCount)
+        setSmsActiveCount(result.smsActiveCount)
+        setSmsDeactivatedCount(result.smsDeactivatedCount)
         setCustomerPreferences(result.customerPreferences)
         setCustomerLabels(result.customerLabels)
         setUnreadCounts(result.unreadCounts)
@@ -384,8 +388,8 @@ export default function CustomersClient({
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         <Stat label="Total customers" value={totalCount.toLocaleString()} />
-        <Stat label="SMS Active" value={String(customers.filter(c => c.sms_opt_in !== false).length)} />
-        <Stat label="SMS Deactivated" value={String(customers.filter(c => c.sms_opt_in === false).length)} />
+        <Stat label="SMS Active" value={smsActiveCount.toLocaleString()} />
+        <Stat label="SMS Deactivated" value={smsDeactivatedCount.toLocaleString()} />
         <Stat label="This page" value={String(customers.length)} hint={`of ${totalCount}`} />
       </div>
 
