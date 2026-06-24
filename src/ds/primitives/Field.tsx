@@ -18,8 +18,8 @@ export function Field({ label, error, hint, required, children, className }: Fie
   const errorId = `${id}-error`
   const hintId = `${id}-hint`
   const describedBy = [
+    hint ? hintId : null,
     error ? errorId : null,
-    !error && hint ? hintId : null,
   ].filter(Boolean).join(' ') || undefined
   const child = isValidElement<Record<string, unknown>>(children)
     ? cloneElement(children, {
@@ -43,14 +43,14 @@ export function Field({ label, error, hint, required, children, className }: Fie
 
       {child}
 
+      {hint && (
+        <p id={hintId} className="text-xs text-text-subtle">
+          {hint}
+        </p>
+      )}
       {error && (
         <p id={errorId} className="text-xs text-danger" role="alert">
           {error}
-        </p>
-      )}
-      {!error && hint && (
-        <p id={hintId} className="text-xs text-text-subtle">
-          {hint}
         </p>
       )}
     </div>
