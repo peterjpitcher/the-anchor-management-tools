@@ -603,6 +603,66 @@ export async function deleteLeaveRequest(
   return { success: true };
 }
 
+export async function cancelOwnLeaveRequest(
+  requestId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const parsedRequestId = z.string().uuid().safeParse(requestId);
+  if (!parsedRequestId.success) return { success: false, error: parsedRequestId.error.message };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'You must be signed in to cancel a holiday request' };
+
+  const { data: employee, error: employeeError } = await supabase
+    .from('employees')
+    .select('employee_id')
+    .eq('auth_user_id', user.id)
+    .in('status', ['Active', 'Started Separation'])
+    .maybeSingle();
+
+  if (employeeError) return { success: false, error: employeeError.message };
+  if (!employee?.employee_id) {
+    return { success: false, error: 'Your account is not linked to an active employee profile' };
+  }
+
+  const { data: deletedRequest, error } = await supabase
+    .from('leave_requests')
+    .delete()
+    .eq('id', parsedRequestId.data)
+    .eq('employee_id', employee.employee_id)
+    .eq('status', 'pending')
+    .select('id, employee_id, start_date, end_date, note, status, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at')
+    .maybeSingle();
+
+  if (error) return { success: false, error: error.message };
+  if (!deletedRequest) {
+    return { success: false, error: 'Only pending holiday requests can be cancelled' };
+  }
+
+  void logAuditEvent({
+    user_id: user.id,
+    operation_type: 'cancel',
+    resource_type: 'leave_request',
+    resource_id: parsedRequestId.data,
+    operation_status: 'success',
+    old_values: deletedRequest,
+    additional_info: { source: 'staff_portal' },
+  });
+
+  await recordHolidayAuditOnly({
+    leave: deletedRequest as LeaveRequest,
+    action: 'holiday_cancelled',
+    userId: user.id,
+    userEmail: user.email ?? null,
+  });
+
+  revalidatePath('/rota');
+  revalidatePath('/rota/leave');
+  revalidatePath('/portal/leave');
+  revalidatePath(`/employees/${employee.employee_id}`);
+  return { success: true };
+}
+
 // ---------------------------------------------------------------------------
 // Update leave request date range (manager) — regenerates leave_days
 // ---------------------------------------------------------------------------

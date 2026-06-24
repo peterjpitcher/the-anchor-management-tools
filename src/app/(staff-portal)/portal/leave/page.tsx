@@ -4,6 +4,7 @@ import { Badge } from '@/ds';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import type { LeaveRequest } from '@/app/actions/leave';
+import { CancelLeaveRequestButton } from './CancelLeaveRequestButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,10 @@ export default async function MyLeavePage() {
 
   const requests = requestsResult.success ? requestsResult.data : [];
   const usedDays = usageResult.success ? usageResult.count : 0;
+  const loadErrors = [
+    !requestsResult.success ? requestsResult.error : null,
+    !usageResult.success ? usageResult.error : null,
+  ].filter(Boolean);
 
   return (
     <div className="space-y-6">
@@ -77,6 +82,12 @@ export default async function MyLeavePage() {
           Request holiday
         </a>
       </div>
+
+      {loadErrors.length > 0 && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadErrors.join(' ')}
+        </div>
+      )}
 
       {/* Days used */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -119,6 +130,7 @@ export default async function MyLeavePage() {
                     {req.status}
                   </Badge>
                 </div>
+                {req.status === 'pending' && <CancelLeaveRequestButton requestId={req.id} />}
               </div>
             );
           })}
