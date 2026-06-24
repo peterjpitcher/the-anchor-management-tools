@@ -290,6 +290,18 @@ export async function updateRecruitmentPostingAction(_prevState: unknown, formDa
     const id = formString(formData, 'id')
     if (!id) throw new Error('Posting ID is required.')
     const posting = await updateRecruitmentJobPosting(id, parseJobPostingForm(formData), user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'update',
+      resource: 'recruitment_job_posting',
+      resourceId: posting.id ?? id,
+      status: 'success',
+      newValues: {
+        status: posting.status,
+        is_public: posting.is_public,
+        positions_available: posting.positions_available,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: posting, message: 'Recruitment posting updated.' }
   } catch (error) {
@@ -385,6 +397,20 @@ export async function createManualRecruitmentApplicationAction(_prevState: unkno
       currentUserId: user.id,
     })
 
+    await auditRecruitmentMutation({
+      user,
+      operation: 'create',
+      resource: 'recruitment_application',
+      resourceId: result.application.id,
+      status: 'success',
+      newValues: {
+        candidate_id: result.candidate.id,
+        job_posting_id: result.application.job_posting_id,
+        status: result.application.status,
+        source: result.application.source,
+        duplicate_of_application_id: result.duplicateOfApplicationId ?? null,
+      },
+    })
     revalidatePath('/recruitment')
     return {
       success: true,
@@ -417,6 +443,32 @@ export async function updateRecruitmentCandidateAction(_prevState: unknown, form
       right_to_work_checked_at: parseDateTimeLocal(formString(formData, 'right_to_work_checked_at')),
     }, user.id)
 
+    await auditRecruitmentMutation({
+      user,
+      operation: 'update',
+      resource: 'recruitment_candidate',
+      resourceId: candidateId,
+      status: 'success',
+      newValues: {
+        changed_fields: [
+          'first_name',
+          'last_name',
+          'email',
+          'phone',
+          'phone_e164',
+          'location',
+          'notes',
+          'sms_consent',
+          'future_recruitment_consent',
+          'right_to_work_status',
+          'right_to_work_document_type',
+          'right_to_work_checked_at',
+        ].filter((field) => formData.has(field)),
+        right_to_work_status: (candidate as any).right_to_work_status ?? null,
+        sms_consent: (candidate as any).sms_consent ?? null,
+        future_recruitment_consent: (candidate as any).future_recruitment_consent ?? null,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: candidate, message: 'Candidate updated.' }
   } catch (error) {
@@ -434,6 +486,14 @@ export async function transitionRecruitmentStatusAction(formData: FormData): Pro
       note: formString(formData, 'note'),
       actorUserId: user.id,
     })
+    await auditRecruitmentMutation({
+      user,
+      operation: 'update_status',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: { status: (application as any).status ?? status },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: application, message: 'Application status updated.' }
   } catch (error) {
@@ -448,6 +508,16 @@ export async function rescoreRecruitmentApplicationAction(formData: FormData): P
     if (!applicationId) throw new Error('Application ID is required.')
 
     const result = await rescoreRecruitmentApplication(applicationId, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'rescore',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: {
+        scoring_warning: Boolean(result.scoringError),
+      },
+    })
     revalidatePath('/recruitment')
     return {
       success: true,
@@ -466,6 +536,17 @@ export async function retryRecruitmentCvExtractionAction(_prevState: unknown, fo
     if (!candidateId) throw new Error('Candidate ID is required.')
 
     const result = await reprocessRecruitmentCandidateCv(candidateId, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'reprocess_cv',
+      resource: 'recruitment_candidate',
+      resourceId: candidateId,
+      status: 'success',
+      newValues: {
+        cv_warning: Boolean(result.cvExtractionError),
+        rescored_applications: result.rescoredApplications.length,
+      },
+    })
     revalidatePath('/recruitment')
     return {
       success: true,
@@ -484,6 +565,16 @@ export async function retryManualReviewCvsAction(_prevState: unknown, formData: 
     const user = await requireRecruitmentPermission('manage')
     const limit = Number.parseInt(formString(formData, 'limit') ?? '10', 10)
     const result = await reprocessRecruitmentManualReviewCvs(Number.isFinite(limit) ? limit : 10, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'reprocess_cv',
+      resource: 'recruitment_candidate',
+      status: 'success',
+      newValues: {
+        processed: result.processed.length,
+        failures: result.failures.length,
+      },
+    })
     revalidatePath('/recruitment')
     return {
       success: true,
@@ -503,6 +594,18 @@ export async function matchRecruitmentCandidateAction(formData: FormData): Promi
     if (!candidateId || !postingId) throw new Error('Candidate and posting are required.')
 
     const result = await matchRecruitmentCandidateToPosting(candidateId, postingId, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'create',
+      resource: 'recruitment_application',
+      resourceId: result.application.id,
+      status: 'success',
+      newValues: {
+        candidate_id: candidateId,
+        job_posting_id: postingId,
+        duplicate_of_application_id: result.duplicateOfApplicationId ?? null,
+      },
+    })
     revalidatePath('/recruitment')
     return {
       success: true,
@@ -561,6 +664,19 @@ export async function createRecruitmentSlotAction(_prevState: unknown, formData:
       interviewer_user_id: null,
       supervisor_staff_id: formString(formData, 'supervisor_staff_id'),
     }, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'create',
+      resource: 'recruitment_appointment_slot',
+      resourceId: slot.id,
+      status: 'success',
+      newValues: {
+        type: (slot as any).type,
+        starts_at: (slot as any).starts_at,
+        ends_at: (slot as any).ends_at,
+        status: (slot as any).status,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: slot, message: 'Appointment slot created.' }
   } catch (error) {
@@ -612,6 +728,14 @@ export async function cancelRecruitmentSlotAction(formData: FormData): Promise<A
     const slotId = formString(formData, 'slot_id')
     if (!slotId) throw new Error('Slot ID is required.')
     const slot = await cancelRecruitmentAppointmentSlot(slotId, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'cancel',
+      resource: 'recruitment_appointment_slot',
+      resourceId: slotId,
+      status: 'success',
+      newValues: { status: (slot as any).status ?? 'cancelled' },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: slot, message: 'Slot cancelled.' }
   } catch (error) {
@@ -625,6 +749,14 @@ export async function archiveRecruitmentApplicationAction(formData: FormData): P
     const applicationId = formString(formData, 'application_id')
     if (!applicationId) throw new Error('Application ID is required.')
     const application = await setRecruitmentArchiveState('recruitment_applications', applicationId, true, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'archive',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: { archived: true, status: (application as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: application, message: 'Application archived.' }
   } catch (error) {
@@ -638,6 +770,14 @@ export async function restoreRecruitmentApplicationAction(formData: FormData): P
     const applicationId = formString(formData, 'application_id')
     if (!applicationId) throw new Error('Application ID is required.')
     const application = await setRecruitmentArchiveState('recruitment_applications', applicationId, false, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'restore',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: { archived: false, status: (application as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: application, message: 'Application restored.' }
   } catch (error) {
@@ -651,6 +791,14 @@ export async function archiveRecruitmentSlotAction(formData: FormData): Promise<
     const slotId = formString(formData, 'slot_id')
     if (!slotId) throw new Error('Slot ID is required.')
     const slot = await setRecruitmentArchiveState('recruitment_appointment_slots', slotId, true, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'archive',
+      resource: 'recruitment_appointment_slot',
+      resourceId: slotId,
+      status: 'success',
+      newValues: { archived: true, status: (slot as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: slot, message: 'Slot archived.' }
   } catch (error) {
@@ -664,6 +812,14 @@ export async function restoreRecruitmentSlotAction(formData: FormData): Promise<
     const slotId = formString(formData, 'slot_id')
     if (!slotId) throw new Error('Slot ID is required.')
     const slot = await setRecruitmentArchiveState('recruitment_appointment_slots', slotId, false, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'restore',
+      resource: 'recruitment_appointment_slot',
+      resourceId: slotId,
+      status: 'success',
+      newValues: { archived: false, status: (slot as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: slot, message: 'Slot restored.' }
   } catch (error) {
@@ -694,6 +850,19 @@ export async function recordRecruitmentAppointmentOutcomeAction(formData: FormDa
       })
     }
 
+    await auditRecruitmentMutation({
+      user,
+      operation: 'record_outcome',
+      resource: 'recruitment_appointment',
+      resourceId: appointmentId,
+      status: 'success',
+      newValues: {
+        status: (result as any).status,
+        outcome: (result as any).outcome ?? null,
+        outcome_rating: (result as any).outcome_rating ?? null,
+        meal_provided: (result as any).meal_provided ?? null,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: result, message: 'Appointment outcome recorded.' }
   } catch (error) {
@@ -707,6 +876,14 @@ export async function cancelRecruitmentAppointmentAction(formData: FormData): Pr
     const appointmentId = formString(formData, 'appointment_id')
     if (!appointmentId) throw new Error('Appointment ID is required.')
     const appointment = await cancelRecruitmentAppointmentByStaff(appointmentId, formString(formData, 'reason'), user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'cancel',
+      resource: 'recruitment_appointment',
+      resourceId: appointmentId,
+      status: 'success',
+      newValues: { status: (appointment as any).status ?? 'cancelled' },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: appointment, message: 'Appointment cancelled.' }
   } catch (error) {
@@ -721,6 +898,18 @@ export async function rescheduleRecruitmentAppointmentAction(formData: FormData)
     const slotId = formString(formData, 'slot_id')
     if (!appointmentId || !slotId) throw new Error('Appointment and new slot are required.')
     const appointment = await rescheduleRecruitmentAppointmentByStaff(appointmentId, slotId, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'reschedule',
+      resource: 'recruitment_appointment',
+      resourceId: appointmentId,
+      status: 'success',
+      newValues: {
+        slot_id: (appointment as any).slot_id ?? slotId,
+        scheduled_start: (appointment as any).scheduled_start ?? null,
+        scheduled_end: (appointment as any).scheduled_end ?? null,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: appointment, message: 'Appointment rescheduled.' }
   } catch (error) {
@@ -734,6 +923,14 @@ export async function archiveRecruitmentAppointmentAction(formData: FormData): P
     const appointmentId = formString(formData, 'appointment_id')
     if (!appointmentId) throw new Error('Appointment ID is required.')
     const appointment = await setRecruitmentArchiveState('recruitment_candidate_appointments', appointmentId, true, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'archive',
+      resource: 'recruitment_appointment',
+      resourceId: appointmentId,
+      status: 'success',
+      newValues: { archived: true, status: (appointment as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: appointment, message: 'Appointment archived.' }
   } catch (error) {
@@ -747,6 +944,14 @@ export async function restoreRecruitmentAppointmentAction(formData: FormData): P
     const appointmentId = formString(formData, 'appointment_id')
     if (!appointmentId) throw new Error('Appointment ID is required.')
     const appointment = await setRecruitmentArchiveState('recruitment_candidate_appointments', appointmentId, false, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'restore',
+      resource: 'recruitment_appointment',
+      resourceId: appointmentId,
+      status: 'success',
+      newValues: { archived: false, status: (appointment as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: appointment, message: 'Appointment restored.' }
   } catch (error) {
@@ -771,6 +976,18 @@ export async function recordRecruitmentScorecardAction(_prevState: unknown, form
       comments: formString(formData, 'comments'),
       criteria: criteria as any,
     }, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'create',
+      resource: 'recruitment_interview_scorecard',
+      resourceId: scorecard.id,
+      status: 'success',
+      newValues: {
+        appointment_id: appointmentId,
+        overall_rating: (scorecard as any).overall_rating,
+        recommendation: (scorecard as any).recommendation,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: scorecard, message: 'Scorecard saved.' }
   } catch (error) {
@@ -784,6 +1001,14 @@ export async function retryRecruitmentCommunicationAction(formData: FormData): P
     const communicationId = formString(formData, 'communication_id')
     if (!communicationId) throw new Error('Communication ID is required.')
     const result = await retryRecruitmentCommunication(communicationId, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'retry',
+      resource: 'recruitment_communication',
+      resourceId: communicationId,
+      status: 'success',
+      newValues: { status: (result as any).status ?? null },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: result, message: 'Communication retried.' }
   } catch (error) {
@@ -802,6 +1027,19 @@ export async function bulkRecruitmentApplicationsAction(formData: FormData): Pro
       status: formString(formData, 'status'),
       note: formString(formData, 'note'),
     }, user.id)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'bulk_update',
+      resource: 'recruitment_application',
+      status: 'success',
+      newValues: {
+        action,
+        requested: ids.length,
+        updated: result.updated,
+        failures: result.failures.length,
+        status: formString(formData, 'status'),
+      },
+    })
     revalidatePath('/recruitment')
     return {
       success: true,
@@ -842,6 +1080,17 @@ export async function issueRecruitmentBookingInviteAction(formData: FormData): P
       alertBody: `A ${type === 'trial_shift' ? 'trial shift' : 'interview'} booking link was sent. Link expires ${new Date(booking.expiresAt).toLocaleDateString('en-GB')}.`,
       currentUserId: user.id,
     })
+    await auditRecruitmentMutation({
+      user,
+      operation: 'send_invite',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: {
+        appointment_type: type,
+        expires_at: booking.expiresAt,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: booking, message: 'Booking invite sent.' }
   } catch (error) {
@@ -878,6 +1127,14 @@ export async function sendRecruitmentDecisionEmailAction(formData: FormData): Pr
       subjectOverride: formString(formData, 'subject'),
       bodyOverride: formString(formData, 'body'),
       offerTerms: formString(formData, 'offer_terms'),
+    })
+    await auditRecruitmentMutation({
+      user,
+      operation: 'send_email',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: { template_type: type },
     })
     revalidatePath('/recruitment')
     return { success: true, data: result, message: 'Recruitment email sent.' }
@@ -949,6 +1206,17 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
       .eq('employee_id', invite.employeeId)
 
     await completeRecruitmentHireHandoff(applicationId, invite.employeeId, user.id, admin)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'hire_handoff',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: {
+        employee_id: invite.employeeId,
+        job_title: jobTitle,
+      },
+    })
     revalidatePath('/recruitment')
     revalidatePath('/employees')
     return { success: true, data: { employeeId: invite.employeeId }, message: 'Candidate invite sent and hire handoff completed.' }
@@ -959,8 +1227,18 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
 
 export async function runRecruitmentRetentionAction(_prevState?: unknown): Promise<ActionResult> {
   try {
-    await requireRecruitmentPermission('manage')
+    const user = await requireRecruitmentPermission('manage')
     const result = await runRecruitmentRetentionCleanup()
+    await auditRecruitmentMutation({
+      user,
+      operation: 'retention_cleanup',
+      resource: 'recruitment_candidate',
+      status: 'success',
+      newValues: {
+        anonymised: result.anonymised,
+        cv_deleted: result.cvDeleted,
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: result, message: 'Recruitment retention cleanup completed.' }
   } catch (error) {
@@ -970,11 +1248,23 @@ export async function runRecruitmentRetentionAction(_prevState?: unknown): Promi
 
 export async function eraseRecruitmentCandidateAction(formData: FormData): Promise<ActionResult> {
   try {
-    await requireSuperAdmin()
+    const user = await requireSuperAdmin()
     const candidateId = formString(formData, 'candidate_id')
     const reason = formString(formData, 'reason') ?? 'GDPR erasure request'
     if (!candidateId) throw new Error('Candidate ID is required.')
     const result = await eraseRecruitmentCandidate(candidateId, reason)
+    await auditRecruitmentMutation({
+      user,
+      operation: 'erase',
+      resource: 'recruitment_candidate',
+      resourceId: candidateId,
+      status: 'success',
+      newValues: {
+        pii_erased: true,
+        cancelled_appointments: result.cancelledAppointments,
+        reason_recorded: Boolean(reason),
+      },
+    })
     revalidatePath('/recruitment')
     return { success: true, data: result, message: 'Candidate PII erased.' }
   } catch (error) {
