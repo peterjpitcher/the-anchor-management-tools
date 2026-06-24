@@ -86,4 +86,5 @@ Status values:
 | PR-80 / A-057 | done | DS `Field` now keeps hint and error text rendered together and wires both into `aria-describedby` with `aria-invalid`; DS tests, typecheck, and lint pass. |
 | PR-81 / A-058 | done | Added `scope="col"` to remaining JSX raw table headers across app/components/DS tables and verified no TSX `<th>` remains without scope; inspected raw checkboxes for visible labels/aria labels; typecheck and lint pass. |
 | PR-41a / A-059 payroll-employees-rbac | done | Added non-PII audit logging for payroll-row deletion, rota-settings updates, employee-note write failures, and RBAC assignments now log readable role/permission names; permission-service tests, typecheck, and lint pass. |
+| PR-41b / A-059 private-bookings-parking-vendors | done | Parking booking status audit now records the actor, expired private-booking holds are audited per booking from cron, and vendor-contact CRUD writes non-PII audit events; focused action tests, typecheck, and lint pass. |
 | A-117 | todo | Included by owner request. |

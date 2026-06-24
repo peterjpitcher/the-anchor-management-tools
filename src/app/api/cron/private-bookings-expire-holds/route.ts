@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { authorizeCronRequest } from '@/lib/cron-auth';
+import { logAuditEvent } from '@/app/actions/audit';
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
@@ -54,6 +55,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   for (const id of ids) {
     try {
+      await logAuditEvent({
+        operation_type: 'update',
+        resource_type: 'private_booking',
+        resource_id: id,
+        operation_status: 'success',
+        new_values: {
+          status: 'cancelled',
+          cancellation_reason: 'Deposit hold expired',
+          cancelled_at: now,
+        },
+        additional_info: {
+          action: 'expire_booking_hold',
+          actor: 'system_cron',
+          route: '/api/cron/private-bookings-expire-holds',
+        },
+      });
+
       // expireBooking expects draft status — but we already set cancelled above.
       // Instead, perform per-row cleanup inline: cancel pending SMS, calendar, notification.
 
