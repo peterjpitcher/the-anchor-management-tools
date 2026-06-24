@@ -118,3 +118,11 @@ export type UserWithRoles = {
   email: string;
   roles: Role[];
 };
+
+export type UserSummaryWithRoles = {
+  id: string;
+  email: string | null;
+  created_at: string;
+  last_sign_in_at?: string | null;
+  roles: Role[];
+};

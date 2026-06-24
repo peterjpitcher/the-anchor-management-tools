@@ -228,4 +228,62 @@ describe('PermissionService deleteRole race safety', () => {
     expect(deleteIn).not.toHaveBeenCalled()
     expect(mockedRevalidateTag).not.toHaveBeenCalled()
   })
+
+  it('enriches admin user rows with joined role details', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'user-1',
+          email: 'manager@example.com',
+          created_at: '2026-01-01T00:00:00.000Z',
+          last_sign_in_at: null,
+        },
+      ],
+      error: null,
+    })
+    const rolesIn = vi.fn().mockResolvedValue({
+      data: [
+        {
+          user_id: 'user-1',
+          roles: {
+            id: 'role-1',
+            name: 'Manager',
+            description: 'Can manage shifts',
+            is_system: false,
+            created_at: '2026-01-01T00:00:00.000Z',
+            updated_at: '2026-01-01T00:00:00.000Z',
+          },
+        },
+      ],
+      error: null,
+    })
+
+    mockedCreateAdminClient.mockReturnValue({
+      rpc,
+      from: vi.fn((table: string) => {
+        if (table !== 'user_roles') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: vi.fn().mockReturnValue({ in: rolesIn }),
+        }
+      }),
+    })
+
+    const users = await PermissionService.getAllUsers({ id: 'acting-user' } as any)
+
+    expect(users).toEqual([
+      expect.objectContaining({
+        id: 'user-1',
+        roles: [
+          expect.objectContaining({
+            id: 'role-1',
+            name: 'Manager',
+          }),
+        ],
+      }),
+    ])
+    expect(rolesIn).toHaveBeenCalledWith('user_id', ['user-1'])
+  })
 })

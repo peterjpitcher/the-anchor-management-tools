@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { Role } from '@/types/rbac';
+import type { Role, UserSummaryWithRoles } from '@/types/rbac';
 import UserRolesModal from './UserRolesModal';
 import { format } from 'date-fns';
 import { DataTable, type Column } from '@/ds';
 import { Button } from '@/ds';
 import { Card } from '@/ds';
 
-type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign_in_at'>;
+type UserSummary = UserSummaryWithRoles;
 
 interface UserListProps {
   users: UserSummary[];

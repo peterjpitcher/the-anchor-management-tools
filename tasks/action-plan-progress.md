@@ -57,4 +57,5 @@ Status values:
 | PR-57 / A-030 | done | Parking guest payment failures now show explicit error states, pending/failed bookings show a retry/pay button, and the retry route only redirects active payable bookings to PayPal; focused tests added. |
 | PR-58 / A-031 | done | Profile GDPR self-export now resolves linked customer ids by email before exporting messages and fails visibly on customer/message query errors; action tests added. |
 | PR-59 / A-032 | done | Roles now have `/roles/[id]/edit`, custom role cards expose an Edit button, and the existing audited `updateRole` action backs the form; component test added. |
+| PR-60 / A-033 | done | Users are now enriched with real joined roles, the role column renders actual badges, and the role filter uses those role ids; service and component tests added. |
 | A-117 | todo | Included by owner request. |
