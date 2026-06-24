@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { Checkbox, ConfirmDialog, Radio } from '@/ds/primitives'
+import { Checkbox, ConfirmDialog, Field, Radio } from '@/ds/primitives'
 import { DataTable } from '@/ds/composites/DataTable'
 import { SectionNav } from '@/ds/composites/SectionNav'
 import { Tabs } from '@/ds/composites/Tabs'
@@ -28,6 +28,21 @@ describe('DS primitives', () => {
 
     expect(radio).toBeInTheDocument()
     expect(onChange).toHaveBeenCalledWith('hourly')
+  })
+
+  it('field associates labels, hints, and errors with its control', () => {
+    render(
+      <Field label="Email address" hint="Use the staff email." error="Email is required">
+        <input />
+      </Field>,
+    )
+
+    const input = screen.getByRole('textbox', { name: 'Email address' })
+    const describedBy = input.getAttribute('aria-describedby') ?? ''
+
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(describedBy).toContain(screen.getByText('Use the staff email.').id)
+    expect(describedBy).toContain(screen.getByText('Email is required').id)
   })
 
   it('confirm dialog waits for async confirmation before closing', async () => {
