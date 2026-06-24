@@ -2,12 +2,16 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { CustomerLabel, CustomerLabelAssignment } from '@/app/actions/customer-labels'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export async function getBulkCustomerLabels(customerIds: string[]): Promise<{
   assignments?: Record<string, CustomerLabelAssignment[]>,
   error?: string
 }> {
   try {
+    const canView = await checkUserPermission('customers', 'view')
+    if (!canView) return { error: 'Permission denied' }
+
     const supabase = await createClient()
 
     // Get all assignments for the given customer IDs (label data joined inline)

@@ -16,11 +16,13 @@ import { getRotaSettings } from '@/app/actions/rota-settings';
 import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import {
-  addPayrollMonths,
-  getDefaultPayrollPeriodDates,
-  getPayrollMonthForIsoDate,
   PAYROLL_PERIOD_FUTURE_MONTHS,
 } from '@/lib/rota/payroll-periods';
+import {
+  ensurePayrollPeriodsAheadRecords,
+  getOrCreatePayrollPeriodForDateRecord,
+  getOrCreatePayrollPeriodRecord,
+} from '@/lib/rota/payroll-period-store';
 
 // ---------------------------------------------------------------------------
 // Payroll periods
@@ -33,6 +35,18 @@ export type PayrollPeriod = {
   period_start: string; // YYYY-MM-DD
   period_end: string;   // YYYY-MM-DD
 };
+
+async function assertPayrollPeriodAccess(): Promise<void> {
+  const [canViewPayroll, canViewTimeclock, canViewRota] = await Promise.all([
+    checkUserPermission('payroll', 'view'),
+    checkUserPermission('timeclock', 'view'),
+    checkUserPermission('rota', 'view'),
+  ]);
+
+  if (!canViewPayroll && !canViewTimeclock && !canViewRota) {
+    throw new Error('Permission denied');
+  }
+}
 
 function toLocalHHMM(isoUtc: string | null | undefined): string | null {
   if (!isoUtc) return null;
@@ -53,65 +67,21 @@ async function invalidatePayrollApproval(
 }
 
 export async function getOrCreatePayrollPeriod(year: number, month: number): Promise<PayrollPeriod> {
-  const supabase = createAdminClient();
-  const { period_start, period_end } = getDefaultPayrollPeriodDates(year, month);
-
-  // Attempt insert first; if a unique violation occurs (concurrent insert), fall back to select
-  const { data: created, error: insertError } = await supabase
-    .from('payroll_periods')
-    .insert({ year, month, period_start, period_end })
-    .select('id, year, month, period_start, period_end')
-    .single();
-
-  if (!insertError) return created as PayrollPeriod;
-
-  // code 23505 = unique_violation — row already exists (race condition or prior insert)
-  if (insertError.code === '23505') {
-    const { data: existing, error: selectError } = await supabase
-      .from('payroll_periods')
-      .select('id, year, month, period_start, period_end')
-      .eq('year', year)
-      .eq('month', month)
-      .single();
-
-    if (selectError || !existing) throw new Error(selectError?.message ?? 'Failed to fetch existing payroll period');
-    return existing as PayrollPeriod;
-  }
-
-  throw new Error(insertError.message);
+  await assertPayrollPeriodAccess();
+  return getOrCreatePayrollPeriodRecord(year, month);
 }
 
 export async function getOrCreatePayrollPeriodForDate(anchorDateIso: string = getTodayIsoDate()): Promise<PayrollPeriod> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from('payroll_periods')
-    .select('id, year, month, period_start, period_end')
-    .lte('period_start', anchorDateIso)
-    .gte('period_end', anchorDateIso)
-    .order('period_start', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (data) return data as PayrollPeriod;
-
-  const { year, month } = getPayrollMonthForIsoDate(anchorDateIso);
-  return getOrCreatePayrollPeriod(year, month);
+  await assertPayrollPeriodAccess();
+  return getOrCreatePayrollPeriodForDateRecord(anchorDateIso);
 }
 
 export async function ensurePayrollPeriodsAhead(
   anchorDateIso: string = getTodayIsoDate(),
   futureMonths: number = PAYROLL_PERIOD_FUTURE_MONTHS,
 ): Promise<PayrollPeriod[]> {
-  const currentPeriod = await getOrCreatePayrollPeriodForDate(anchorDateIso);
-  const futurePeriods = await Promise.all(
-    Array.from({ length: futureMonths }, (_, index) => {
-      const { year, month } = addPayrollMonths(currentPeriod, index + 1);
-      return getOrCreatePayrollPeriod(year, month);
-    }),
-  );
-
-  return [currentPeriod, ...futurePeriods];
+  await assertPayrollPeriodAccess();
+  return ensurePayrollPeriodsAheadRecords(anchorDateIso, futureMonths);
 }
 
 export async function updatePayrollPeriod(
@@ -166,7 +136,7 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
 
   const supabase = await createClient();
 
-  const period = await getOrCreatePayrollPeriod(year, month);
+  const period = await getOrCreatePayrollPeriodRecord(year, month);
   const monthStart = period.period_start;
   const monthEnd = period.period_end;
 
@@ -588,7 +558,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
   const snapshot = approval.snapshot as { rows: PayrollRow[]; employees: PayrollEmployeeSummary[] };
 
   // Load the payroll period to get the period_end date
-  const period = await getOrCreatePayrollPeriod(year, month);
+  const period = await getOrCreatePayrollPeriodRecord(year, month);
 
   // Find employees leaving or already separated with employment_end_date within this payroll period
   const { data: leavingRaw } = await supabase

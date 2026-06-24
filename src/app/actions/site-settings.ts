@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/app/actions/audit'
+import { checkUserPermission } from '@/app/actions/rbac'
 
 export interface SiteSettings {
   id: string
@@ -44,6 +45,8 @@ export async function updateSiteSettings(formData: FormData): Promise<{ success?
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
+  const canManage = await checkUserPermission('settings', 'manage', user.id)
+  if (!canManage) return { error: 'Permission denied' }
 
   const id = formData.get('id') as string
   if (!id) return { error: 'Missing site ID' }
@@ -99,6 +102,8 @@ export async function updateSiteToggle(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
+  const canManage = await checkUserPermission('settings', 'manage', user.id)
+  if (!canManage) return { error: 'Permission denied' }
 
   const { error } = await supabase
     .from('sites')
