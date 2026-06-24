@@ -12,6 +12,8 @@ import { Badge } from '@/ds';
 import {
   createPayAgeBand,
   addPayBandRate,
+  updatePayAgeBand,
+  updatePayBandRate,
   type PayAgeBand,
   type PayBandRate,
 } from '@/app/actions/pay-bands';
@@ -30,10 +32,23 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function RateHistory({ rates, bandId, canManage }: { rates: PayBandRate[]; bandId: string; canManage: boolean }) {
+function RateHistory({
+  rates,
+  bandId,
+  canManage,
+  onRateUpdated,
+}: {
+  rates: PayBandRate[];
+  bandId: string;
+  canManage: boolean;
+  onRateUpdated: (rate: PayBandRate) => void;
+}) {
   const [showForm, setShowForm] = useState(false);
   const [rate, setRate] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
+  const [editingRateId, setEditingRateId] = useState<string | null>(null);
+  const [editRate, setEditRate] = useState('');
+  const [editEffectiveFrom, setEditEffectiveFrom] = useState('');
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState('');
 
@@ -50,9 +65,42 @@ function RateHistory({ rates, bandId, canManage }: { rates: PayBandRate[]; bandI
         return;
       }
       toast.success('Rate added');
+      onRateUpdated(result.data);
       setRate('');
       setEffectiveFrom('');
       setShowForm(false);
+    });
+  };
+
+  const startEditRate = (rateRow: PayBandRate) => {
+    setEditingRateId(rateRow.id);
+    setEditRate(String(rateRow.hourly_rate));
+    setEditEffectiveFrom(rateRow.effective_from);
+    setError('');
+  };
+
+  const handleUpdateRate = () => {
+    if (!editingRateId) return;
+    const parsed = parseFloat(editRate);
+    if (!parsed || parsed <= 0) { setError('Enter a valid hourly rate'); return; }
+    if (!editEffectiveFrom) { setError('Choose an effective-from date'); return; }
+    setError('');
+
+    startTransition(async () => {
+      const result = await updatePayBandRate({
+        id: editingRateId,
+        hourlyRate: parsed,
+        effectiveFrom: editEffectiveFrom,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success('Rate updated');
+      onRateUpdated(result.data);
+      setEditingRateId(null);
+      setEditRate('');
+      setEditEffectiveFrom('');
     });
   };
 
@@ -85,13 +133,32 @@ function RateHistory({ rates, bandId, canManage }: { rates: PayBandRate[]; bandI
               <th className="text-left pb-1 font-medium">Rate</th>
               <th className="text-left pb-1 font-medium">Effective from</th>
               <th className="text-left pb-1 font-medium">Status</th>
+              {canManage && <th className="text-right pb-1 font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {rates.map(r => (
               <tr key={r.id} className="border-b border-gray-50">
-                <td className="py-1.5 font-medium text-gray-900">{formatRate(r.hourly_rate)}</td>
-                <td className="py-1.5 text-gray-600">{formatDate(r.effective_from)}</td>
+                <td className="py-1.5 font-medium text-gray-900">
+                  {editingRateId === r.id ? (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editRate}
+                      onChange={e => setEditRate(e.target.value)}
+                    />
+                  ) : formatRate(r.hourly_rate)}
+                </td>
+                <td className="py-1.5 text-gray-600">
+                  {editingRateId === r.id ? (
+                    <Input
+                      type="date"
+                      value={editEffectiveFrom}
+                      onChange={e => setEditEffectiveFrom(e.target.value)}
+                    />
+                  ) : formatDate(r.effective_from)}
+                </td>
                 <td className="py-1.5">
                   {r.effective_from > today ? (
                     <Badge variant="warning" size="sm">Upcoming</Badge>
@@ -101,6 +168,24 @@ function RateHistory({ rates, bandId, canManage }: { rates: PayBandRate[]; bandI
                     <span className="text-gray-400 text-xs">Historical</span>
                   )}
                 </td>
+                {canManage && (
+                  <td className="py-1.5 text-right">
+                    {editingRateId === r.id ? (
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" size="sm" onClick={handleUpdateRate} disabled={isPending}>
+                          Save
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setEditingRateId(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : r.effective_from > today ? (
+                      <Button type="button" size="sm" variant="ghost" onClick={() => startEditRate(r)}>
+                        Edit
+                      </Button>
+                    ) : null}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -146,10 +231,56 @@ function RateHistory({ rates, bandId, canManage }: { rates: PayBandRate[]; bandI
   );
 }
 
-function BandCard({ band, rates, canManage }: { band: PayAgeBand; rates: PayBandRate[]; canManage: boolean }) {
+function BandCard({
+  band,
+  rates,
+  canManage,
+  onBandUpdated,
+  onRateUpdated,
+}: {
+  band: PayAgeBand;
+  rates: PayBandRate[];
+  canManage: boolean;
+  onBandUpdated: (band: PayAgeBand) => void;
+  onRateUpdated: (bandId: string, rate: PayBandRate) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [editingBand, setEditingBand] = useState(false);
+  const [editLabel, setEditLabel] = useState(band.label);
+  const [editMinAge, setEditMinAge] = useState(String(band.min_age));
+  const [editMaxAge, setEditMaxAge] = useState(band.max_age == null ? '' : String(band.max_age));
+  const [editSortOrder, setEditSortOrder] = useState(String(band.sort_order));
+  const [editError, setEditError] = useState('');
+  const [isPending, startTransition] = useTransition();
   const today = new Date().toISOString().slice(0, 10);
   const currentRate = rates.find(r => r.effective_from <= today) ?? null;
+
+  const saveBand = (isActive = band.is_active) => {
+    if (!editLabel.trim()) { setEditError('Band label is required'); return; }
+    const min = parseInt(editMinAge);
+    if (isNaN(min) || min < 0) { setEditError('Enter a valid minimum age'); return; }
+    const max = editMaxAge ? parseInt(editMaxAge) : null;
+    if (max !== null && max <= min) { setEditError('Maximum age must be greater than minimum age'); return; }
+    setEditError('');
+
+    startTransition(async () => {
+      const result = await updatePayAgeBand({
+        id: band.id,
+        label: editLabel.trim(),
+        minAge: min,
+        maxAge: max ?? undefined,
+        sortOrder: parseInt(editSortOrder) || 0,
+        isActive,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(isActive ? 'Band updated' : 'Band deactivated');
+      onBandUpdated(result.data);
+      setEditingBand(false);
+    });
+  };
 
   return (
     <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
@@ -182,7 +313,50 @@ function BandCard({ band, rates, canManage }: { band: PayAgeBand; rates: PayBand
 
       {expanded && (
         <div className="px-4 pb-4">
-          <RateHistory rates={rates} bandId={band.id} canManage={canManage} />
+          {canManage && (
+            <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              {editingBand ? (
+                <div className="space-y-3">
+                  {editError && <p className="text-xs text-red-600">{editError}</p>}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <Input label="Label" value={editLabel} onChange={e => setEditLabel(e.target.value)} />
+                    <Input label="Min age" type="number" min="0" max="100" value={editMinAge} onChange={e => setEditMinAge(e.target.value)} />
+                    <Input label="Max age" type="number" min="1" max="100" value={editMaxAge} onChange={e => setEditMaxAge(e.target.value)} />
+                    <Input label="Sort" type="number" min="0" value={editSortOrder} onChange={e => setEditSortOrder(e.target.value)} />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={() => saveBand()} disabled={isPending}>
+                      Save band
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setEditingBand(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setEditingBand(true)}>
+                    Edit band
+                  </Button>
+                  {band.is_active ? (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => saveBand(false)} disabled={isPending}>
+                      Deactivate
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => saveBand(true)} disabled={isPending}>
+                      Reactivate
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <RateHistory
+            rates={rates}
+            bandId={band.id}
+            canManage={canManage}
+            onRateUpdated={(rate) => onRateUpdated(band.id, rate)}
+          />
         </div>
       )}
     </div>
@@ -190,6 +364,8 @@ function BandCard({ band, rates, canManage }: { band: PayAgeBand; rates: PayBand
 }
 
 export default function PayBandsManager({ canManage, initialBands, initialRates }: PayBandsManagerProps) {
+  const [bands, setBands] = useState(initialBands);
+  const [ratesByBand, setRatesByBand] = useState(initialRates);
   const [showNewBandForm, setShowNewBandForm] = useState(false);
   const [label, setLabel] = useState('');
   const [minAge, setMinAge] = useState('');
@@ -218,11 +394,33 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
         return;
       }
       toast.success('Age band created');
+      setBands(prev => [...prev, result.data].sort((a, b) => (a.sort_order - b.sort_order) || (a.min_age - b.min_age)));
       setLabel('');
       setMinAge('');
       setMaxAge('');
       setSortOrder('0');
       setShowNewBandForm(false);
+    });
+  };
+
+  const handleBandUpdated = (updatedBand: PayAgeBand) => {
+    setBands(prev =>
+      prev
+        .map(band => band.id === updatedBand.id ? updatedBand : band)
+        .sort((a, b) => (a.sort_order - b.sort_order) || (a.min_age - b.min_age))
+    );
+  };
+
+  const handleRateUpdated = (bandId: string, updatedRate: PayBandRate) => {
+    setRatesByBand(prev => {
+      const existing = prev[bandId] ?? [];
+      const next = existing.some(rate => rate.id === updatedRate.id)
+        ? existing.map(rate => rate.id === updatedRate.id ? updatedRate : rate)
+        : [updatedRate, ...existing];
+      return {
+        ...prev,
+        [bandId]: next.sort((a, b) => b.effective_from.localeCompare(a.effective_from)),
+      };
     });
   };
 
@@ -294,18 +492,20 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
         </div>
       )}
 
-      {initialBands.length === 0 ? (
+      {bands.length === 0 ? (
         <p className="text-sm text-gray-400 italic py-4 text-center">
           No age bands configured yet. Create your first band above.
         </p>
       ) : (
         <div className="space-y-2">
-          {initialBands.map(band => (
+          {bands.map(band => (
             <BandCard
               key={band.id}
               band={band}
-              rates={initialRates[band.id] ?? []}
+              rates={ratesByBand[band.id] ?? []}
               canManage={canManage}
+              onBandUpdated={handleBandUpdated}
+              onRateUpdated={handleRateUpdated}
             />
           ))}
         </div>
