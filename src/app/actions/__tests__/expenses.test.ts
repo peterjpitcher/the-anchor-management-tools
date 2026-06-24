@@ -26,10 +26,12 @@ const mockFrom = vi.fn(() => createQueryChain(latestQueryResult))
 const mockUpload = vi.fn().mockResolvedValue({ error: null })
 const mockRemove = vi.fn().mockResolvedValue({ error: null })
 const mockCreateSignedUrl = vi.fn().mockResolvedValue({ data: { signedUrl: 'https://example.com/signed' } })
+const mockRpc = vi.fn().mockResolvedValue({ data: [], error: null })
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
     from: mockFrom,
+    rpc: mockRpc,
     storage: {
       from: vi.fn(() => ({
         upload: mockUpload,
@@ -92,6 +94,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(checkUserPermission).mockResolvedValue(true)
   latestQueryResult = { data: null, error: null, count: 0 }
+  mockRpc.mockResolvedValue({ data: [], error: null })
 })
 
 // ---------------------------------------------------------------------------
@@ -282,20 +285,14 @@ describe('updateExpense', () => {
 
 describe('deleteExpense', () => {
   it('should delete expense and clean up storage files', async () => {
-    // First call: select expense_files, second call: delete expense
-    let callCount = 0
-    mockFrom.mockImplementation(() => {
-      callCount++
-      if (callCount === 1) {
-        // Fetching files
-        return createQueryChain({ data: [{ storage_path: 'exp-id/file1.jpg' }], error: null })
-      }
-      // Deleting expense
-      return createQueryChain({ data: null, error: null })
-    })
+    mockRpc.mockResolvedValue({ data: ['exp-id/file1.jpg'], error: null })
 
     const result = await deleteExpense('expense-to-delete')
     expect(result.success).toBe(true)
+    expect(mockRpc).toHaveBeenCalledWith('delete_expense_atomic', {
+      p_expense_id: 'expense-to-delete',
+    })
+    expect(mockRemove).toHaveBeenCalledWith(['exp-id/file1.jpg'])
   })
 
   it('should reject empty ID', async () => {
