@@ -353,58 +353,31 @@ export class MenuService {
   static async createIngredient(input: CreateIngredientInput) {
     const supabase = await createClient();
 
-    const { data: ingredient, error } = await supabase
-      .from('menu_ingredients')
-      .insert({
-        name: input.name,
-        description: input.description || null,
-        default_unit: input.default_unit,
-        storage_type: input.storage_type,
-        purchase_department: input.purchase_department,
-        supplier_name: input.supplier_name || null,
-        supplier_sku: input.supplier_sku || null,
-        brand: input.brand || null,
-        pack_size: input.pack_size ?? null,
-        pack_size_unit: input.pack_size_unit ?? null,
-        pack_cost: input.pack_cost,
-        portions_per_pack: input.portions_per_pack ?? null,
-        wastage_pct: input.wastage_pct,
-        shelf_life_days: input.shelf_life_days ?? null,
-        allergens: input.allergens,
-        dietary_flags: input.dietary_flags,
-        notes: input.notes || null,
-        is_active: input.is_active,
-        abv: input.abv ?? null,
-      })
-      .select()
-      .single();
+    const { data: ingredient, error } = await supabase.rpc('menu_create_ingredient_with_price', {
+      p_name: input.name,
+      p_description: input.description || null,
+      p_default_unit: input.default_unit,
+      p_storage_type: input.storage_type,
+      p_purchase_department: input.purchase_department,
+      p_supplier_name: input.supplier_name || null,
+      p_supplier_sku: input.supplier_sku || null,
+      p_brand: input.brand || null,
+      p_pack_size: input.pack_size ?? null,
+      p_pack_size_unit: input.pack_size_unit ?? null,
+      p_pack_cost: input.pack_cost,
+      p_portions_per_pack: input.portions_per_pack ?? null,
+      p_wastage_pct: input.wastage_pct,
+      p_shelf_life_days: input.shelf_life_days ?? null,
+      p_allergens: input.allergens,
+      p_dietary_flags: input.dietary_flags,
+      p_notes: input.notes || null,
+      p_is_active: input.is_active,
+      p_abv: input.abv ?? null,
+    });
 
     if (error) {
       console.error('createMenuIngredient error:', error);
       throw new Error('Failed to create ingredient');
-    }
-
-    if (input.pack_cost > 0) {
-      const { error: priceHistoryError } = await supabase.from('menu_ingredient_prices').insert({
-        ingredient_id: ingredient.id,
-        pack_cost: input.pack_cost,
-        supplier_name: input.supplier_name || null,
-        supplier_sku: input.supplier_sku || null,
-      });
-      if (priceHistoryError) {
-        // Compensating delete — remove the orphaned ingredient row before re-throwing,
-        // so the DB is never left with an ingredient that has no price history.
-        console.error('createMenuIngredient price history error:', priceHistoryError);
-        try {
-          const { error: deleteError } = await supabase.from('menu_ingredients').delete().eq('id', ingredient.id);
-          if (deleteError) {
-            console.error('[MenuService] createIngredient: compensating delete failed — orphaned row requires manual cleanup:', { id: ingredient.id, error: deleteError });
-          }
-        } catch (deleteException) {
-          console.error('[MenuService] createIngredient: compensating delete threw — orphaned row requires manual cleanup:', { id: ingredient.id, error: deleteException });
-        }
-        throw new Error('Failed to record ingredient price history');
-      }
     }
 
     return ingredient;
@@ -413,71 +386,32 @@ export class MenuService {
   static async updateIngredient(id: string, input: UpdateIngredientInput) {
     const supabase = await createClient();
 
-    // DEFECT-006 fix: destructure the error from the SELECT so a DB failure is not
-    // silently swallowed and misreported as "Ingredient not found".
-    const { data: existing, error: fetchError } = await supabase
-      .from('menu_ingredients')
-      .select('id, pack_cost')
-      .eq('id', id)
-      .single();
-
-    if (fetchError) {
-      console.error('updateMenuIngredient fetch error:', fetchError);
-      throw new Error('Failed to fetch ingredient: ' + fetchError.message);
-    }
-    if (!existing) {
-      throw new Error('Ingredient not found');
-    }
-
-    const { data: ingredient, error } = await supabase
-      .from('menu_ingredients')
-      .update({
-        name: input.name,
-        description: input.description || null,
-        default_unit: input.default_unit,
-        storage_type: input.storage_type,
-        purchase_department: input.purchase_department,
-        supplier_name: input.supplier_name || null,
-        supplier_sku: input.supplier_sku || null,
-        brand: input.brand || null,
-        pack_size: input.pack_size ?? null,
-        pack_size_unit: input.pack_size_unit ?? null,
-        pack_cost: input.pack_cost,
-        portions_per_pack: input.portions_per_pack ?? null,
-        wastage_pct: input.wastage_pct,
-        shelf_life_days: input.shelf_life_days ?? null,
-        allergens: input.allergens,
-        dietary_flags: input.dietary_flags,
-        notes: input.notes || null,
-        is_active: input.is_active,
-        abv: input.abv ?? null,
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const { data: ingredient, error } = await supabase.rpc('menu_update_ingredient_with_price', {
+      p_ingredient_id: id,
+      p_name: input.name,
+      p_description: input.description || null,
+      p_default_unit: input.default_unit,
+      p_storage_type: input.storage_type,
+      p_purchase_department: input.purchase_department,
+      p_supplier_name: input.supplier_name || null,
+      p_supplier_sku: input.supplier_sku || null,
+      p_brand: input.brand || null,
+      p_pack_size: input.pack_size ?? null,
+      p_pack_size_unit: input.pack_size_unit ?? null,
+      p_pack_cost: input.pack_cost,
+      p_portions_per_pack: input.portions_per_pack ?? null,
+      p_wastage_pct: input.wastage_pct,
+      p_shelf_life_days: input.shelf_life_days ?? null,
+      p_allergens: input.allergens,
+      p_dietary_flags: input.dietary_flags,
+      p_notes: input.notes || null,
+      p_is_active: input.is_active,
+      p_abv: input.abv ?? null,
+    });
 
     if (error) {
       console.error('updateMenuIngredient error:', error);
-      throw new Error('Failed to update ingredient');
-    }
-
-    // Only record new price if it actually changed
-    if (Number(input.pack_cost) !== Number(existing.pack_cost) && input.pack_cost !== undefined) {
-      const { error: priceHistoryError } = await supabase.from('menu_ingredient_prices').insert({
-        ingredient_id: id,
-        pack_cost: input.pack_cost,
-        supplier_name: input.supplier_name || null,
-        supplier_sku: input.supplier_sku || null,
-      });
-      if (priceHistoryError) {
-        // DEFECT-007 fix: the ingredient update already committed; surface a specific error
-        // so the caller knows the price history record is missing and can retry manually.
-        // The ingredient's pack_cost in menu_ingredients is now updated; history is the gap.
-        console.error('updateMenuIngredient price history error:', priceHistoryError);
-        throw new Error(
-          'Ingredient updated but price history could not be recorded. Please record the price manually.'
-        );
-      }
+      throw new Error(error.message === 'Ingredient not found' ? 'Ingredient not found' : 'Failed to update ingredient');
     }
 
     return ingredient;
@@ -1447,48 +1381,17 @@ export class MenuService {
   static async updateIngredientPackCost(id: string, packCost: number): Promise<{ previousValue: number }> {
     const supabase = createAdminClient();
 
-    // Get current value
-    const { data: existing, error: fetchError } = await supabase
-      .from('menu_ingredients')
-      .select('pack_cost')
-      .eq('id', id)
-      .single();
+    const { data: previousValue, error } = await supabase.rpc('menu_update_ingredient_pack_cost', {
+      p_ingredient_id: id,
+      p_pack_cost: packCost,
+    });
 
-    if (fetchError || !existing) {
-      throw new Error('Ingredient not found');
+    if (error) {
+      console.error('updateIngredientPackCost error:', error);
+      throw new Error(error.message === 'Ingredient not found' ? 'Ingredient not found' : 'Failed to update ingredient pack cost');
     }
 
-    const previousValue = Number(existing.pack_cost);
-
-    // Update the column directly
-    const { error: updateError } = await supabase
-      .from('menu_ingredients')
-      .update({ pack_cost: packCost })
-      .eq('id', id);
-
-    if (updateError) {
-      console.error('updateIngredientPackCost error:', updateError);
-      throw new Error('Failed to update ingredient pack cost');
-    }
-
-    // Record price history if the value actually changed
-    if (packCost !== previousValue) {
-      const { error: priceError } = await supabase
-        .from('menu_ingredient_prices')
-        .insert({
-          ingredient_id: id,
-          pack_cost: packCost,
-        });
-
-      if (priceError) {
-        console.error('updateIngredientPackCost price history error:', priceError);
-        throw new Error(
-          'Pack cost updated but price history could not be recorded. Please record the price manually.'
-        );
-      }
-    }
-
-    return { previousValue };
+    return { previousValue: Number(previousValue) };
   }
 
   /**
