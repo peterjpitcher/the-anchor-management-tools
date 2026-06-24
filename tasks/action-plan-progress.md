@@ -63,4 +63,5 @@ Status values:
 | PR-62b / A-035 billing settings | done | Client drawer now exposes vendor billing settings editor backed by audited/revalidated `upsertVendorBillingSettings`; action tests cover audit/revalidation. |
 | PR-62c / A-035 entries pagination | done | OJ entries now load counted 50-row pages with `TablePagination`; action tests cover `range()` and total count. |
 | PR-63 / A-036 | done | `getClientBalance` now uses an unbounded unsettled-invoice query for money totals and keeps the 50-invoice cap only for display; regression test covers 60 invoices. |
+| PR-64 / A-037 | done | Messages holding queue now uses `CustomerSearchInput`, highlights suggested customer IDs, surfaces link/ignore errors inline, and refreshes on success; component tests added. |
 | A-117 | todo | Included by owner request. |
