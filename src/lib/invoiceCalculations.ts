@@ -19,6 +19,10 @@ export type InvoiceTotalsResult = {
   }>
 }
 
+function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
 /**
  * Calculate invoice totals in a single place so both server and client agree.
  * The function guards against zero-subtotals to avoid NaN propagation.
@@ -59,7 +63,7 @@ export function calculateInvoiceTotals(
       ? subtotalBeforeInvoiceDiscount * (sanitizedDiscount / 100)
       : 0
 
-  const vatAmount = lineBreakdown.reduce((acc, line) => {
+  const vatAmount = roundCurrency(lineBreakdown.reduce((acc, line) => {
     if (subtotalBeforeInvoiceDiscount <= 0) {
       return acc
     }
@@ -67,12 +71,12 @@ export function calculateInvoiceTotals(
     const lineShare = line.baseAfterLineDiscount / subtotalBeforeInvoiceDiscount
     const invoiceDiscountShare = invoiceDiscountAmount * lineShare
     const baseAfterAllDiscounts = line.baseAfterLineDiscount - invoiceDiscountShare
-    const vat = baseAfterAllDiscounts * (line.vatRate / 100)
+    const vat = roundCurrency(baseAfterAllDiscounts * (line.vatRate / 100))
 
     return acc + vat
-  }, 0)
+  }, 0))
 
-  const totalAmount = subtotalBeforeInvoiceDiscount - invoiceDiscountAmount + vatAmount
+  const totalAmount = roundCurrency(subtotalBeforeInvoiceDiscount - invoiceDiscountAmount + vatAmount)
 
   const breakdownWithVat = lineBreakdown.map((line) => {
     if (subtotalBeforeInvoiceDiscount <= 0) {
@@ -88,14 +92,14 @@ export function calculateInvoiceTotals(
     const lineShare = line.baseAfterLineDiscount / subtotalBeforeInvoiceDiscount
     const invoiceDiscountShare = invoiceDiscountAmount * lineShare
     const baseAfterAllDiscounts = line.baseAfterLineDiscount - invoiceDiscountShare
-    const vat = baseAfterAllDiscounts * (line.vatRate / 100)
+    const vat = roundCurrency(baseAfterAllDiscounts * (line.vatRate / 100))
 
     return {
       baseAfterLineDiscount: line.baseAfterLineDiscount,
       invoiceDiscountShare,
       baseAfterAllDiscounts,
       vat,
-      total: baseAfterAllDiscounts + vat,
+      total: roundCurrency(baseAfterAllDiscounts + vat),
     }
   })
 

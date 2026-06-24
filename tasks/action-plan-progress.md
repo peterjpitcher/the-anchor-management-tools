@@ -73,4 +73,5 @@ Status values:
 | PR-68 / A-044 | done | Staff portal employees can cancel their own pending holiday requests, cancel/load failures show inline, and the portal layout now has a sign-out control; action and UI tests added. |
 | PR-69 / A-045 | done | Leave manager rows now confirm approve/decline, expose edit-date and delete actions behind `leave:edit`, and update/remove rows inline; component tests cover confirm/edit/delete paths. |
 | PR-70 / A-046 | done | Recurring-invoice cron now transitions generated invoices to sent before email delivery, so failed Graph sends cannot leave sealed draft invoices; cron regression test covers the failure path. |
+| PR-71 / A-047 | done | Invoice VAT is rounded per line before summing, and invoice detail totals now display persisted subtotal/VAT/total values; calculator and component regressions added. |
 | A-117 | todo | Included by owner request. |
