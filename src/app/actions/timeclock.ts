@@ -5,6 +5,11 @@ import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
 import { checkUserPermission } from '@/app/actions/rbac';
+import {
+  normalizeTimeclockPin,
+  phoneLastFourMatchesPin,
+  verifyTimeclockPin,
+} from '@/lib/timeclock/pin';
 
 // Timeclock uses the service-role (admin) client so that clock in/out works
 // on the public kiosk without Supabase auth session.
@@ -19,6 +24,43 @@ async function canManageTimeclock(options?: { allowPayrollApprove?: boolean }): 
     return checkUserPermission('payroll', 'approve');
   }
   return false;
+}
+
+async function canUseAuthenticatedTimeclock(): Promise<boolean> {
+  const [canClock, canEdit] = await Promise.all([
+    checkUserPermission('timeclock', 'clock'),
+    checkUserPermission('timeclock', 'edit'),
+  ]);
+  return canClock || canEdit;
+}
+
+async function verifyClockIdentity(
+  employee: {
+    timeclock_pin_hash?: string | null;
+    mobile_number?: string | null;
+    phone_number?: string | null;
+  },
+  pin?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const normalizedPin = normalizeTimeclockPin(pin);
+
+  if (normalizedPin) {
+    const matchesStoredPin = employee.timeclock_pin_hash
+      ? verifyTimeclockPin(normalizedPin, employee.timeclock_pin_hash)
+      : phoneLastFourMatchesPin(normalizedPin, employee.mobile_number, employee.phone_number);
+
+    if (matchesStoredPin) {
+      return { ok: true };
+    }
+
+    return { ok: false, error: 'Timeclock PIN did not match.' };
+  }
+
+  if (await canUseAuthenticatedTimeclock()) {
+    return { ok: true };
+  }
+
+  return { ok: false, error: 'Enter your timeclock PIN.' };
 }
 
 async function invalidatePayrollApprovalsForDate(
@@ -67,18 +109,25 @@ export type TimeclockSession = {
 // Uses the service-role (admin) client — the public kiosk has no auth session.
 // ---------------------------------------------------------------------------
 
-export async function clockIn(employeeId: string): Promise<
+export async function clockIn(employeeId: string, pin?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
   const supabase = await createClient();
 
   const { data: employee } = await supabase
     .from('employees')
-    .select('employee_id, status')
+    .select('employee_id, status, mobile_number, phone_number, timeclock_pin_hash')
     .eq('employee_id', employeeId)
     .single();
   if (!employee) return { success: false, error: 'Employee not found' };
   if (!['Active', 'Started Separation'].includes(employee.status)) return { success: false, error: 'Employee is not active' };
+
+  const identity = await verifyClockIdentity(employee as {
+    timeclock_pin_hash?: string | null;
+    mobile_number?: string | null;
+    phone_number?: string | null;
+  }, pin);
+  if (!identity.ok) return { success: false, error: identity.error };
 
   // Prevent double clock-in — explicit null check narrows the race window
   const { data: openSession } = await supabase
@@ -135,17 +184,33 @@ export async function clockIn(employeeId: string): Promise<
 // Clock out
 // ---------------------------------------------------------------------------
 
-export async function clockOut(employeeId: string): Promise<
+export async function clockOut(employeeId: string, pin?: string): Promise<
   { success: true; data: TimeclockSession } | { success: false; error: string }
 > {
   const supabase = await createClient();
+
+  const { data: employee } = await supabase
+    .from('employees')
+    .select('employee_id, status, mobile_number, phone_number, timeclock_pin_hash')
+    .eq('employee_id', employeeId)
+    .single();
+  if (!employee) return { success: false, error: 'Employee not found' };
+  if (!['Active', 'Started Separation'].includes(employee.status)) return { success: false, error: 'Employee is not active' };
+
+  const identity = await verifyClockIdentity(employee as {
+    timeclock_pin_hash?: string | null;
+    mobile_number?: string | null;
+    phone_number?: string | null;
+  }, pin);
+  if (!identity.ok) return { success: false, error: identity.error };
 
   const { data: openSession, error: findError } = await supabase
     .from('timeclock_sessions')
     .select('id, work_date')
     .eq('employee_id', employeeId)
     .is('clock_out_at', null)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (findError || !openSession) {
     return { success: false, error: 'No open clock-in session found.' };
@@ -157,10 +222,12 @@ export async function clockOut(employeeId: string): Promise<
     .from('timeclock_sessions')
     .update({ clock_out_at: nowUtc.toISOString() })
     .eq('id', openSession.id)
+    .is('clock_out_at', null)
     .select('*')
-    .single();
+    .maybeSingle();
 
   if (error) return { success: false, error: error.message };
+  if (!data) return { success: false, error: 'No open clock-in session found.' };
 
   void logAuditEvent({
     operation_type: 'clock_out',

@@ -28,7 +28,7 @@ interface EmployeeFormProps {
 type FormField = {
   name: string;
   label: string;
-  type: 'text' | 'email' | 'tel' | 'date' | 'textarea' | 'select' | 'checkbox';
+  type: 'text' | 'email' | 'tel' | 'date' | 'password' | 'textarea' | 'select' | 'checkbox';
   required?: boolean;
   defaultValue?: string | null;
   defaultChecked?: boolean;
@@ -116,6 +116,7 @@ export default function EmployeeForm({
         { name: 'employment_start_date', label: 'Employment Start Date', type: 'date', required: true, defaultValue: employee?.employment_start_date?.split('T')[0] },
         { name: 'employment_end_date', label: 'Employment End Date', type: 'date', defaultValue: employee?.employment_end_date?.split('T')[0] },
         { name: 'first_shift_date', label: 'First Shift Date', type: 'date', defaultValue: employee?.first_shift_date?.split('T')[0] },
+        ...(employee ? [{ name: 'timeclock_pin', label: 'Timeclock PIN', type: 'password' as const, defaultValue: '' }] : []),
       ]
     },
     {

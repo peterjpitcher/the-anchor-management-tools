@@ -157,7 +157,7 @@ describe('Timeclock actions', () => {
             select: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
                 single: vi.fn().mockResolvedValue({
-                  data: { employee_id: 'emp-1', status: 'Active' },
+                  data: { employee_id: 'emp-1', status: 'Active', mobile_number: '07700901234', timeclock_pin_hash: null },
                   error: null,
                 }),
               }),
@@ -183,7 +183,7 @@ describe('Timeclock actions', () => {
         return { select: vi.fn() }
       })
 
-      const result = await clockIn('emp-1')
+      const result = await clockIn('emp-1', '1234')
       expect(result).toEqual({
         success: false,
         error: 'Already clocked in. Please clock out first.',
@@ -206,7 +206,7 @@ describe('Timeclock actions', () => {
             select: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
                 single: vi.fn().mockResolvedValue({
-                  data: { employee_id: 'emp-1', status },
+                  data: { employee_id: 'emp-1', status, mobile_number: '07700901234', timeclock_pin_hash: null },
                   error: null,
                 }),
               }),
@@ -258,7 +258,7 @@ describe('Timeclock actions', () => {
         return { select: vi.fn() }
       })
 
-      const result = await clockIn('emp-1')
+      const result = await clockIn('emp-1', '1234')
       expect(result.success).toBe(true)
       expect(mockedLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -276,17 +276,36 @@ describe('Timeclock actions', () => {
   describe('clockOut', () => {
     it('should return error when no open session found', async () => {
       const client = mockAdminClient()
-      client.from = vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            is: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }),
+      client.from = vi.fn().mockImplementation((table: string) => {
+        if (table === 'employees') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: { employee_id: 'emp-1', status: 'Active', mobile_number: '07700901234', timeclock_pin_hash: null },
+                  error: null,
+                }),
+              }),
             }),
-          }),
-        }),
+          }
+        }
+        if (table === 'timeclock_sessions') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                is: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }),
+                  }),
+                }),
+              }),
+            }),
+          }
+        }
+        return { select: vi.fn() }
       })
 
-      const result = await clockOut('emp-1')
+      const result = await clockOut('emp-1', '1234')
       expect(result).toEqual({ success: false, error: 'No open clock-in session found.' })
     })
 
@@ -300,22 +319,38 @@ describe('Timeclock actions', () => {
 
       const client = mockAdminClient()
       client.from = vi.fn().mockImplementation((table: string) => {
+        if (table === 'employees') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: { employee_id: 'emp-1', status: 'Active', mobile_number: '07700901234', timeclock_pin_hash: null },
+                  error: null,
+                }),
+              }),
+            }),
+          }
+        }
         if (table === 'timeclock_sessions') {
           return {
             select: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
                 is: vi.fn().mockReturnValue({
-                  single: vi.fn().mockResolvedValue({
-                    data: { id: 'session-1', work_date: '2026-04-06' },
-                    error: null,
+                  limit: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({
+                      data: { id: 'session-1', work_date: '2026-04-06' },
+                      error: null,
+                    }),
                   }),
                 }),
               }),
             }),
             update: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                  single: vi.fn().mockResolvedValue({ data: updatedSession, error: null }),
+                is: vi.fn().mockReturnValue({
+                  select: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({ data: updatedSession, error: null }),
+                  }),
                 }),
               }),
             }),
@@ -333,7 +368,7 @@ describe('Timeclock actions', () => {
         return { select: vi.fn() }
       })
 
-      const result = await clockOut('emp-1')
+      const result = await clockOut('emp-1', '1234')
       expect(result.success).toBe(true)
       expect(mockedLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({

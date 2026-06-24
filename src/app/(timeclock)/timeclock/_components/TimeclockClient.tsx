@@ -32,6 +32,8 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
   const [isPending, startTransition] = useTransition()
   const [currentTime, setCurrentTime] = useState('')
   const [currentDate, setCurrentDate] = useState('')
+  const [pinTarget, setPinTarget] = useState<Employee | null>(null)
+  const [pin, setPin] = useState('')
 
   // Live clock
   useEffect(() => {
@@ -57,21 +59,36 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
       return
     }
 
-    const isClockedIn = clockedInIds.has(emp.employee_id)
+    setPinTarget(emp)
+    setPin('')
+  }
+
+  const submitPin = () => {
+    if (!pinTarget) return
+
+    const normalizedPin = pin.replace(/\D/g, '')
+    if (normalizedPin.length !== 4) {
+      toast.error('Enter your 4-digit PIN')
+      return
+    }
+
+    const isClockedIn = clockedInIds.has(pinTarget.employee_id)
 
     startTransition(async () => {
       try {
         if (isClockedIn) {
-          const result = await clockOut(emp.employee_id)
+          const result = await clockOut(pinTarget.employee_id, normalizedPin)
           if (!result.success) { toast.error(result.error); return }
-          toast.success(`See you later, ${empName(emp)}!`)
-          setSessions(prev => prev.filter(s => s.employee_id !== emp.employee_id))
+          toast.success(`See you later, ${empName(pinTarget)}!`)
+          setSessions(prev => prev.filter(s => s.employee_id !== pinTarget.employee_id))
         } else {
-          const result = await clockIn(emp.employee_id)
+          const result = await clockIn(pinTarget.employee_id, normalizedPin)
           if (!result.success) { toast.error(result.error); return }
-          toast.success(`Welcome in, ${empName(emp)}!`)
-          setSessions(prev => [...prev, { ...result.data, employee_name: empName(emp) }])
+          toast.success(`Welcome in, ${empName(pinTarget)}!`)
+          setSessions(prev => [...prev, { ...result.data, employee_name: empName(pinTarget) }])
         }
+        setPinTarget(null)
+        setPin('')
         router.refresh()
       } catch {
         toast.error('Something went wrong. Please try again.')
@@ -141,6 +158,55 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
       <div className="kiosk__footer">
         <span>The Anchor, Staines-upon-Thames</span>
       </div>
+
+      {pinTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <form
+            className="w-full max-w-sm rounded-lg bg-white p-6 text-gray-900 shadow-xl"
+            onSubmit={(event) => {
+              event.preventDefault()
+              submitPin()
+            }}
+          >
+            <h3 className="text-lg font-semibold">{empName(pinTarget)}</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              {clockedInIds.has(pinTarget.employee_id) ? 'Clock out' : 'Clock in'}
+            </p>
+            <label htmlFor="timeclock-pin" className="mt-5 block text-sm font-medium text-gray-700">
+              PIN
+            </label>
+            <input
+              id="timeclock-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={pin}
+              onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+              className="mt-2 w-full rounded-md border border-gray-300 px-4 py-3 text-center text-2xl tracking-[0.4em] text-gray-900 focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-600"
+              autoFocus
+            />
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+                onClick={() => { setPinTarget(null); setPin('') }}
+                disabled={isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={isPending}
+              >
+                {isPending ? 'Saving...' : 'Confirm'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

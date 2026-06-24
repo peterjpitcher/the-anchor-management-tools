@@ -29,6 +29,7 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
   const router = useRouter();
   const [sessions, setSessions] = useState(initialSessions);
   const [selectedId, setSelectedId] = useState<string>('');
+  const [pin, setPin] = useState('');
   const [isPending, startTransition] = useTransition();
   const [currentTime, setCurrentTime] = useState(() => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
 
@@ -49,13 +50,16 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
     if (!selectedId) { toast.error('Please select your name'); return; }
     if (!UUID_RE.test(selectedId)) { toast.error('Invalid employee selection'); return; }
     if (isAlreadyClockedIn) { toast.error('You are already clocked in'); return; }
+    const normalizedPin = pin.replace(/\D/g, '');
+    if (normalizedPin.length !== 4) { toast.error('Enter your 4-digit PIN'); return; }
     startTransition(async () => {
       try {
-        const result = await clockIn(selectedId);
+        const result = await clockIn(selectedId, normalizedPin);
         if (!result.success) { toast.error(result.error); return; }
         toast.success(`Welcome in, ${empName(selectedEmp!)} 👋`);
         setSessions(prev => [...prev, { ...result.data, employee_name: empName(selectedEmp!) }]);
         setSelectedId('');
+        setPin('');
         router.refresh();
       } catch {
         toast.error('Something went wrong. Please try again.');
@@ -67,13 +71,16 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
     if (!selectedId) { toast.error('Please select your name'); return; }
     if (!UUID_RE.test(selectedId)) { toast.error('Invalid employee selection'); return; }
     if (!isAlreadyClockedIn) { toast.error('You are not currently clocked in'); return; }
+    const normalizedPin = pin.replace(/\D/g, '');
+    if (normalizedPin.length !== 4) { toast.error('Enter your 4-digit PIN'); return; }
     startTransition(async () => {
       try {
-        const result = await clockOut(selectedId);
+        const result = await clockOut(selectedId, normalizedPin);
         if (!result.success) { toast.error(result.error); return; }
         toast.success(`See you later, ${empName(selectedEmp!)}! ✅`);
         setSessions(prev => prev.filter(s => s.employee_id !== selectedId));
         setSelectedId('');
+        setPin('');
         router.refresh();
       } catch {
         toast.error('Something went wrong. Please try again.');
@@ -117,6 +124,22 @@ export default function TimeclockKiosk({ employees, openSessions: initialSession
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+            PIN
+          </label>
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={4}
+            value={pin}
+            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-4 py-3 text-base focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            disabled={isPending}
+          />
         </div>
 
         {/* Status indicator */}
