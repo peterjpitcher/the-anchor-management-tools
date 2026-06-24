@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -8,6 +7,25 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { logger } from '@/lib/logger'
 
 export const maxDuration = 60
+
+type PendingDepositBooking = {
+  id: string
+  customer_id: string | null
+  booking_reference: string
+  booking_date: string
+  booking_time: string | null
+  booking_type: string | null
+  hold_expires_at: string | null
+  payment_status: string | null
+  paypal_deposit_capture_id: string | null
+}
+
+function hasCapturedDeposit(booking: PendingDepositBooking) {
+  return Boolean(booking.paypal_deposit_capture_id)
+    || booking.payment_status === 'completed'
+    || booking.payment_status === 'partial_refund'
+    || booking.payment_status === 'refunded'
+}
 
 export async function GET(request: NextRequest) {
   const authResult = authorizeCronRequest(request)
@@ -18,16 +36,16 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient()
     const now = new Date()
+    const nowIso = now.toISOString()
 
-    // Find pending_payment bookings where the booking is within 24 hours.
-    // Fetch a slightly wider window (25h) to avoid edge cases, then filter precisely.
-    const cutoffDate = new Date(now.getTime() + 25 * 60 * 60 * 1000)
     const { data: candidates, error } = await supabase
       .from('table_bookings')
-      .select('id, customer_id, booking_reference, booking_date, booking_time, deposit_waived')
+      .select('id, customer_id, booking_reference, booking_date, booking_time, booking_type, hold_expires_at, payment_status, paypal_deposit_capture_id')
       .eq('status', 'pending_payment')
       .eq('deposit_waived', false)
-      .lte('booking_date', cutoffDate.toISOString().split('T')[0])
+      .not('hold_expires_at', 'is', null)
+      .lte('hold_expires_at', nowIso)
+      .limit(1000)
 
     if (error) {
       console.error('[deposit-timeout] fetch error:', error)
@@ -36,30 +54,80 @@ export async function GET(request: NextRequest) {
     }
 
     let cancelled = 0
-    for (const booking of candidates ?? []) {
-      // Precise 24-hour check using venue-local London time. The server may run
-      // in UTC, and naive Date parsing is wrong around BST/DST boundaries.
-      const clock = String(booking.booking_time || '00:00').slice(0, 5)
-      const bookingDateTime = fromZonedTime(`${booking.booking_date}T${clock}:00`, 'Europe/London')
-      if (bookingDateTime.getTime() - now.getTime() > 24 * 60 * 60 * 1000) continue
+    for (const booking of (candidates ?? []) as PendingDepositBooking[]) {
+      const holdExpiry = booking.hold_expires_at ? Date.parse(booking.hold_expires_at) : Number.NaN
+      if (!Number.isFinite(holdExpiry) || holdExpiry > now.getTime()) continue
 
-      const { error: updateErr } = await supabase
+      if (hasCapturedDeposit(booking)) {
+        logger.warn('[deposit-timeout] skipping booking with captured deposit', {
+          metadata: {
+            bookingId: booking.id,
+            paymentStatus: booking.payment_status,
+            hasCaptureId: Boolean(booking.paypal_deposit_capture_id),
+          },
+        })
+        continue
+      }
+
+      const { data: updatedRows, error: updateErr } = await supabase
         .from('table_bookings')
         .update({
           status: 'cancelled',
-          cancelled_at: now.toISOString(),
+          cancelled_at: nowIso,
           cancelled_by: 'system',
-          cancellation_reason: 'deposit_not_paid_within_24h',
+          cancellation_reason: 'payment_hold_expired',
           paypal_deposit_order_id: null,
           hold_expires_at: null,
-          updated_at: now.toISOString(),
+          updated_at: nowIso,
         })
         .eq('id', booking.id)
         .eq('status', 'pending_payment') // Guard against race conditions
+        .not('hold_expires_at', 'is', null)
+        .lte('hold_expires_at', nowIso)
+        .is('paypal_deposit_capture_id', null)
+        .or('payment_status.is.null,payment_status.eq.pending,payment_status.eq.failed')
+        .select('id')
 
       if (updateErr) {
         console.error('[deposit-timeout] update error for booking', booking.id, updateErr)
         continue
+      }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        continue
+      }
+
+      const { error: holdErr } = await supabase
+        .from('booking_holds')
+        .update({
+          status: 'expired',
+          released_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('hold_type', 'payment_hold')
+        .eq('status', 'active')
+        .eq('table_booking_id', booking.id)
+
+      if (holdErr) {
+        console.error('[deposit-timeout] hold expiry error for booking', booking.id, holdErr)
+      }
+
+      const { error: paymentErr } = await supabase
+        .from('payments')
+        .update({
+          status: 'failed',
+          metadata: {
+            payment_kind: 'table_deposit',
+            reason: 'hold_expired',
+            updated_at: nowIso,
+          },
+        })
+        .eq('table_booking_id', booking.id)
+        .eq('charge_type', 'table_deposit')
+        .eq('status', 'pending')
+
+      if (paymentErr) {
+        console.error('[deposit-timeout] payment failure update error for booking', booking.id, paymentErr)
       }
 
       try {
@@ -70,23 +138,27 @@ export async function GET(request: NextRequest) {
           operation_status: 'success',
           additional_info: {
             booking_reference: booking.booking_reference,
-            reason: 'deposit_not_paid_within_24h',
+            booking_type: booking.booking_type,
+            reason: 'payment_hold_expired',
             cancelled_by: 'system',
+            hold_expires_at: booking.hold_expires_at,
           },
         })
       } catch (auditErr) {
         console.error('[deposit-timeout] audit log error for booking', booking.id, auditErr)
       }
 
-      try {
-        await sendTableBookingCancelledSmsIfAllowed(supabase, {
-          customerId: booking.customer_id,
-          bookingReference: booking.booking_reference,
-          bookingDate: booking.booking_date,
-          refundResult: { refunded: false, reason: 'no_deposit' },
-        })
-      } catch (err) {
-        console.error('[deposit-timeout] SMS error for booking', booking.id, err)
+      if (booking.customer_id) {
+        try {
+          await sendTableBookingCancelledSmsIfAllowed(supabase, {
+            customerId: booking.customer_id,
+            bookingReference: booking.booking_reference,
+            bookingDate: booking.booking_date,
+            refundResult: { refunded: false, reason: 'no_deposit' },
+          })
+        } catch (err) {
+          console.error('[deposit-timeout] SMS error for booking', booking.id, err)
+        }
       }
 
       cancelled++

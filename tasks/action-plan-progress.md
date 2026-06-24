@@ -1,0 +1,47 @@
+# Full Action-Plan Progress
+
+Baseline: `main` at `18ba92b0`.
+
+Status values:
+- `done-before-start`: verified in earlier commits.
+- `done`: completed on `codex/action-plan-everything`.
+- `todo`: not implemented yet.
+- `blocked`: cannot be completed without an external dependency.
+
+## Current checkpoint
+
+- `done-before-start`: PR-01, PR-02, PR-03, PR-04, PR-05, PR-06, PR-07, PR-08, PR-S1, PR-S3, PR-S6, PR-10 partial, PR-11, PR-12, PR-13, PR-15, PR-16, PR-18-grant, rota audit/shift-request email work.
+- `in-progress`: Phase 2 high-risk money/flow fixes.
+- `todo`: everything else in `tasks/action-plan.md` and `tasks/remediation-spec.md`, including A-117.
+
+## Proof log
+
+| Unit | Status | Proof |
+|---|---|---|
+| PR-01 / A-001 | done-before-start | Commit `18ba92b0`, migration `20260708000014_drop_timeclock_anon_update.sql`, Supabase push applied. |
+| PR-02 / A-002 | done-before-start | Commit `18ba92b0`, `/m` added to middleware public prefixes. |
+| PR-03 / A-019/A-055 | done-before-start | Commit `18ba92b0`, DS Checkbox rebuilt and tested. |
+| PR-04 / A-020 | done-before-start | Commit `18ba92b0`, DataTable sortable headers use buttons/aria-sort. |
+| PR-05 / A-054 | done-before-start | Commit `18ba92b0`, ConfirmDialog async-safe. |
+| PR-06 / A-056/A-057 | done-before-start | Commit `18ba92b0`, Tabs and Field accessibility tests. |
+| PR-07 / A-058 partial | done-before-start | Commit `18ba92b0`, roles/receipts empty checkbox labels fixed. |
+| PR-08 / A-021/A-022 | done-before-start | Commit `18ba92b0`, nav permission filtering and tests. |
+| PR-S6 / A-093 partial | done-before-start | Commit `18ba92b0`, BOH table-booking server route gating. |
+| PR-10 / A-003 | done-before-start | Commit `18ba92b0`, daily summary RBAC gates. |
+| PR-10 / A-006 | done-before-start | Commit `18ba92b0`, `getEventBookings` checks `events:view` before admin PII query. |
+| PR-11 / A-004 | done-before-start | Commit `18ba92b0`, holiday usage ownership/RBAC. |
+| PR-12 / A-005 | done-before-start | Commit `18ba92b0`, pay-band/rate/budget read gates. |
+| PR-13 / A-007 | done-before-start | Commit `18ba92b0`, AI menu parsing gates. |
+| PR-15 / A-014 | done-before-start | Commit `18ba92b0`, permission cache invalidation. |
+| PR-16 / A-015 | done-before-start | Commit `18ba92b0`, role permission self-escalation block. |
+| PR-18-grant / A-008 prep | done-before-start | Commit `18ba92b0`, migration `20260708000015_add_payments_capture_api_scope.sql`, Supabase push applied. |
+| PR-S1 / A-086 partial | done-before-start | Commit `18ba92b0`, mark-read/write gates. |
+| PR-S2 / A-088 partial | done-before-start | Commit `18ba92b0`, `sendPayrollEmail` checks `payroll:send`; permission exists in `20260228100000_rota_system.sql`. |
+| PR-S3 / A-081 partial | done-before-start | Commit `18ba92b0`, private-booking items layout gate. |
+| PR-18b / A-008 external PayPal scopes | done | Event and table booking external PayPal create/capture routes require `payments:capture`; test `tests/api/eventPayPalExternalScope.test.ts`. |
+| PR-21 / A-009 | done | Parking refunds use real `parking_bookings` columns and regression test covers pending refunds. |
+| PR-22 / A-010 | done | Deposit-timeout cron now requires expired `hold_expires_at`, skips captured deposits, expires hold/payment rows, and has route tests. |
+| PR-23 / A-011 | done | Candidate cancellation clears `booking_token_used_at`, cancelled appointments are not returned as current, and service tests cover rebooking. |
+| PR-24 / A-012 | done | Recruitment calendar retry now deletes orphaned Outlook events for cancelled appointments; test covers the retry path. |
+| PR-32 / A-013 | done | Private-booking cancellation refund threshold uses Europe/London calendar days; BST boundary test added. |
+| A-117 | todo | Included by owner request. |

@@ -117,13 +117,39 @@ export async function getPrivateBookingPaidTotals(
 
 const CANCELLATION_ADMIN_DEDUCTION_RATE = 0.05
 const CANCELLATION_THRESHOLD_DAYS = 30
+const LONDON_TIMEZONE = 'Europe/London'
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+function londonDateString(value: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: LONDON_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value)
+
+  const lookup = new Map(parts.map(part => [part.type, part.value]))
+  return `${lookup.get('year')}-${lookup.get('month')}-${lookup.get('day')}`
+}
+
+function dateStringToDayNumber(value: string): number {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return Number.NaN
+  return Math.floor(Date.UTC(year, month - 1, day) / MS_PER_DAY)
+}
+
+function eventDateString(eventDate: string): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return eventDate
+  const parsed = new Date(eventDate)
+  if (Number.isNaN(parsed.getTime())) return null
+  return londonDateString(parsed)
+}
 
 function daysUntilEvent(eventDate: string): number {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  const event = new Date(eventDate)
-  event.setHours(0, 0, 0, 0)
-  return Math.ceil((event.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  const today = londonDateString(new Date())
+  const event = eventDateString(eventDate)
+  if (!event) return 0
+  return dateStringToDayNumber(event) - dateStringToDayNumber(today)
 }
 
 /**

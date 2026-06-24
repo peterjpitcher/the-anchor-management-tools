@@ -96,20 +96,23 @@ async function loadSourceBooking(
   if (sourceType === 'parking') {
     const { data } = await db
       .from('parking_booking_payments')
-      .select('id, transaction_id, paid_at, amount, booking_id, parking_bookings(customer_id, guest_name, email, phone)')
+      .select('id, transaction_id, paid_at, amount, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
     const booking = (data as any).parking_bookings
+    const firstName = typeof booking?.customer_first_name === 'string' ? booking.customer_first_name.trim() : ''
+    const lastName = typeof booking?.customer_last_name === 'string' ? booking.customer_last_name.trim() : ''
+    const customerName = [firstName, lastName].filter(Boolean).join(' ') || null
     return {
       id: data.id,
       captureId: data.transaction_id,
       captureDate: data.paid_at,
       originalAmount: Number(data.amount) || 0,
       customerId: booking?.customer_id ?? null,
-      customerName: booking?.guest_name ?? null,
-      customerEmail: booking?.email ?? null,
-      customerPhone: booking?.phone ?? null,
+      customerName,
+      customerEmail: booking?.customer_email ?? null,
+      customerPhone: booking?.customer_mobile ?? null,
     }
   }
 
