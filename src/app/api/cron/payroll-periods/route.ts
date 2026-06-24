@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { ensurePayrollPeriodsAhead } from '@/app/actions/payroll';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { PAYROLL_PERIOD_FUTURE_MONTHS } from '@/lib/rota/payroll-periods';
+import { ensurePayrollPeriodsAheadRecords } from '@/lib/rota/payroll-period-store';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
   try {
     const today = getTodayIsoDate();
-    const periods = await ensurePayrollPeriodsAhead(today, PAYROLL_PERIOD_FUTURE_MONTHS);
+    const periods = await ensurePayrollPeriodsAheadRecords(today, PAYROLL_PERIOD_FUTURE_MONTHS);
 
     return NextResponse.json({
       success: true,

@@ -1,8 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
-import { getOrCreatePayrollPeriod, getOrCreatePayrollPeriodForDate, type PayrollPeriod } from '@/app/actions/payroll';
 import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
+import {
+  getOrCreatePayrollPeriodForDateRecord,
+  getOrCreatePayrollPeriodRecord,
+  type PayrollPeriodRecord as PayrollPeriod,
+} from '@/lib/rota/payroll-period-store';
 import { generateCalendarToken } from '@/lib/portal/calendar-token';
 import { getBatchHourlyRates, calculatePaidHours, calculateActualPaidHours } from '@/lib/rota/pay-calculator';
 import type { RateResolver } from '@/lib/rota/pay-calculator';
@@ -307,9 +311,9 @@ export default async function MyShiftsPage({
 
   const resolvedParams = await searchParams;
   const requestedPeriod = parsePeriodParams(resolvedParams ?? {});
-  const currentPeriod = await getOrCreatePayrollPeriodForDate(today);
+  const currentPeriod = await getOrCreatePayrollPeriodForDateRecord(today);
   const period = requestedPeriod
-    ? await getOrCreatePayrollPeriod(requestedPeriod.year, requestedPeriod.month)
+    ? await getOrCreatePayrollPeriodRecord(requestedPeriod.year, requestedPeriod.month)
     : currentPeriod;
 
   let shiftsQuery = supabase

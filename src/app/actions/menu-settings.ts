@@ -7,8 +7,14 @@ import { MenuSettingsService } from '@/services/menu-settings'; // New service i
 import { getCurrentUser } from '@/lib/audit-helpers'; // Assuming audit-helpers is in lib
 
 export async function getMenuTargetGp(options?: { client?: any }): Promise<number> {
-  // This is a read function, it can directly use the service or remain as is
-  // For consistency, let's have it use the service for the read logic too.
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('menu_management', 'view'),
+    checkUserPermission('menu_management', 'manage'),
+  ]);
+  if (!canView && !canManage) {
+    throw new Error('Permission denied');
+  }
+
   return MenuSettingsService.getMenuTargetGp(options);
 }
 

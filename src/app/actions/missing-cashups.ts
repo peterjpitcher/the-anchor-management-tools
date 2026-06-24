@@ -3,11 +3,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { eachDayOfInterval, subDays, format } from 'date-fns';
 import { getErrorMessage } from '@/lib/errors';
+import { checkUserPermission } from '@/app/actions/rbac';
 
 export async function getMissingCashupDatesAction(siteId: string, daysBack = 365) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
+  const canView = await checkUserPermission('cashing_up', 'view', user.id);
+  if (!canView) return { success: false, error: 'Permission denied' };
+
   const today = new Date();
   const fromDate = subDays(today, daysBack);
 

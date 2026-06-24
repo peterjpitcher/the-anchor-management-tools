@@ -79,4 +79,5 @@ Status values:
 | PR-74 / A-050 | done | Employee CSV exports now prefix formula-triggering cell values before CSV escaping; service test covers `=`, `+`, `-`, `@`, tab, and carriage-return prefixes. |
 | PR-75 / A-051 | done | Dish cost helpers now track unpriced ingredients/recipes and GP analysis/composition surfaces cost-incomplete warnings instead of silently inflating GP%; helper and component tests added. |
 | PR-76 / A-052 | done | Holiday allowance counts now ignore Saturdays, Sundays, and employee-specific non-working weekdays from pay settings; migration/rollback, action, helper, typecheck, lint, and Supabase dry-run all pass. |
+| PR-14a-c / A-053 | done | Exported customer-label, site-settings, missing-cashup, menu-target, and payroll-period actions now re-check RBAC before data/service access; payroll cron/staff portal use internal helpers after their own auth; denied-path tests, typecheck, and lint pass. |
 | A-117 | todo | Included by owner request. |
