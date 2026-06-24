@@ -333,6 +333,11 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
     }
 
     const { oldPermissions, newPermissions } = await PermissionService.assignPermissionsToRole(roleId, dedupedPermissionIds);
+    const permissionName = (permissionId: string) => {
+      const row = permissionRowsById.get(permissionId);
+      return row ? `${row.module_name}:${row.action}` : 'unknown';
+    };
+    const oldPermissionIds = oldPermissions.map((item: any) => item.permission_id).filter(Boolean);
 
     await logAuditEvent({
       user_id: user.id,
@@ -342,10 +347,10 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
       resource_id: roleId,
       operation_status: 'success',
       old_values: {
-        permission_ids: oldPermissions.map((item: any) => item.permission_id),
+        permissions: oldPermissionIds.map(permissionName),
       },
       new_values: {
-        permission_ids: newPermissions,
+        permissions: newPermissions.map(permissionName),
       },
     });
     
@@ -367,6 +372,10 @@ export async function assignRolesToUser(userId: string, roleIds: string[]) {
     const { user } = permission;
 
     const { oldRoles, newRoles } = await PermissionService.assignRolesToUser(userId, roleIds, user.id);
+    const allRoles = await PermissionService.getAllRoles();
+    const roleRowsById = new Map(allRoles.map((role) => [role.id, role]));
+    const roleName = (roleId: string) => roleRowsById.get(roleId)?.name ?? 'unknown';
+    const oldRoleIds = oldRoles.map((record: any) => record.role_id).filter(Boolean);
 
     await logAuditEvent({
       user_id: user.id,
@@ -376,10 +385,10 @@ export async function assignRolesToUser(userId: string, roleIds: string[]) {
       resource_id: userId,
       operation_status: 'success',
       old_values: {
-        role_ids: oldRoles.map((record: any) => record.role_id),
+        roles: oldRoleIds.map(roleName),
       },
       new_values: {
-        role_ids: newRoles,
+        roles: newRoles.map(roleName),
       },
     });
     

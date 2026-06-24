@@ -525,6 +525,18 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
       revalidatePath(`/employees/${notePayload.employee_id}`);
       return { type: 'success', message: 'Note added successfully.' };
     } catch (error: unknown) {
+      await logAuditEvent({
+          ...(userInfo.user_id && { user_id: userInfo.user_id }),
+          ...(userInfo.user_email && { user_email: userInfo.user_email }),
+          operation_type: 'add_note',
+          resource_type: 'employee',
+          resource_id: notePayload.employee_id,
+          operation_status: 'failure',
+          error_message: getErrorMessage(error),
+          additional_info: {
+              source: 'employee_note',
+          }
+      }).catch(() => {});
       return { type: 'error', message: `Database error: ${getErrorMessage(error)}` };
     }
 }
