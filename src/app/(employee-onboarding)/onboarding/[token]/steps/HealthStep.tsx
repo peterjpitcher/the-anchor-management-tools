@@ -89,6 +89,8 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
       } else {
         setError(result.error || 'Failed to save. Please try again.');
       }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to save. Please try again.');
     } finally {
       setLoading(false);
     }

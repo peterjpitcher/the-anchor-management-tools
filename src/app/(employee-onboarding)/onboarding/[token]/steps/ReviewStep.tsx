@@ -29,6 +29,8 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
       } else {
         setError(result.error || 'Failed to submit. Please try again.');
       }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to submit. Please try again.');
     } finally {
       setLoading(false);
     }

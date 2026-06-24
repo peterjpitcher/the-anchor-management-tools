@@ -72,6 +72,8 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
       } else {
         setGlobalError(result.error || 'Failed to save. Please try again.');
       }
+    } catch (caught) {
+      setGlobalError(caught instanceof Error ? caught.message : 'Failed to save. Please try again.');
     } finally {
       setLoading(false);
     }
