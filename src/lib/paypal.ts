@@ -417,11 +417,46 @@ export async function refundPayPalPayment(
 }
 
 // Verify webhook signature
+const PAYPAL_WEBHOOK_TRANSMISSION_TOLERANCE_MS = 5 * 60 * 1000
+
+export function isPayPalTransmissionTimeFresh(
+  transmissionTime: string | undefined,
+  nowMs = Date.now(),
+  toleranceMs = PAYPAL_WEBHOOK_TRANSMISSION_TOLERANCE_MS
+): boolean {
+  if (!transmissionTime) {
+    return false
+  }
+
+  const transmittedMs = Date.parse(transmissionTime)
+  if (!Number.isFinite(transmittedMs)) {
+    return false
+  }
+
+  return Math.abs(nowMs - transmittedMs) <= toleranceMs
+}
+
 export async function verifyPayPalWebhook(
   headers: Record<string, string>,
   body: string,
   webhookId: string
 ): Promise<boolean> {
+  const requiredHeaders = [
+    'paypal-auth-algo',
+    'paypal-cert-url',
+    'paypal-transmission-id',
+    'paypal-transmission-sig',
+    'paypal-transmission-time',
+  ]
+
+  if (requiredHeaders.some((header) => !headers[header])) {
+    return false
+  }
+
+  if (!isPayPalTransmissionTimeFresh(headers['paypal-transmission-time'])) {
+    return false
+  }
+
   const accessToken = await getAccessToken();
   const { baseUrl } = getPayPalConfig();
 

@@ -48,6 +48,41 @@ function getEventBookingIdFromCustomId(resource: any): string | null {
   return bookingId || null
 }
 
+async function recordManualReviewAudit(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: {
+    bookingId: string
+    eventId: string
+    orderId: string
+    captureId: string
+    amount: number
+    currency: string
+    state: string
+    reason: string | null
+  }
+) {
+  const { error } = await supabase.from('audit_logs').insert({
+    operation_type: 'event_payment.paypal_webhook_manual_review',
+    resource_type: 'event_booking',
+    resource_id: input.bookingId,
+    operation_status: 'failure',
+    additional_info: {
+      event_id: input.eventId,
+      order_id: input.orderId,
+      capture_id: input.captureId,
+      amount: input.amount,
+      currency: input.currency,
+      state: input.state,
+      reason: input.reason,
+      source: 'paypal_event_bookings_webhook',
+    },
+  })
+
+  if (error) {
+    throw new Error(`Failed to audit PayPal event-booking manual review: ${error.message}`)
+  }
+}
+
 export async function POST(request: NextRequest): Promise<Response> {
   const supabase = createAdminClient()
   const body = await request.text()
@@ -155,6 +190,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (confirmError) throw confirmError
     const confirm = (confirmRaw || {}) as Record<string, unknown>
     const state = typeof confirm.state === 'string' ? confirm.state : 'blocked'
+    const reason = typeof confirm.reason === 'string' ? confirm.reason : null
+    let responseState = state
+    let responseStatus = 200
 
     if (state === 'confirmed') {
       await sendEventPaymentConfirmationSms(supabase, {
@@ -183,6 +221,36 @@ export async function POST(request: NextRequest): Promise<Response> {
         amount,
         currency,
       })
+      await recordManualReviewAudit(supabase, {
+        bookingId,
+        eventId,
+        orderId,
+        captureId,
+        amount,
+        currency,
+        state,
+        reason,
+      })
+      responseStatus = 202
+    } else {
+      await sendEventPaymentManualReviewSms(supabase, { bookingId })
+      await sendEventPaymentManualReviewEmail(supabase, {
+        bookingId,
+        amount,
+        currency,
+      })
+      await recordManualReviewAudit(supabase, {
+        bookingId,
+        eventId,
+        orderId,
+        captureId,
+        amount,
+        currency,
+        state,
+        reason,
+      })
+      responseState = 'manual_review'
+      responseStatus = 202
     }
 
     await persistIdempotencyResponse(
@@ -190,7 +258,9 @@ export async function POST(request: NextRequest): Promise<Response> {
       idempotencyKey,
       requestHash,
       {
-        state,
+        state: responseState,
+        original_state: responseState === state ? undefined : state,
+        reason,
         event_id: eventId,
         booking_id: bookingId,
         processed_at: new Date().toISOString(),
@@ -199,7 +269,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     )
     claimHeld = false
 
-    return NextResponse.json({ received: true, state })
+    return NextResponse.json(
+      { received: true, state: responseState, original_state: responseState === state ? undefined : state, reason },
+      { status: responseStatus }
+    )
   } catch (error) {
     if (claimHeld && idempotencyKey && requestHash) {
       await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash).catch(() => undefined)
