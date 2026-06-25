@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { PermissionService } from '@/services/permission';
 import { UpsertCashupSessionDTO } from '@/types/cashing-up';
+import { z } from 'zod';
 
 export interface ImportRow {
   date: string;
@@ -25,6 +26,17 @@ export interface ImportResult {
   };
   errors: string[];
 }
+
+const importRowSchema = z.object({
+  date: z.string().min(1, 'Date is required'),
+  siteName: z.string().optional(),
+  cashCounted: z.number().min(0, 'Cash counted must be 0 or more').optional(),
+  cashExpected: z.number().min(0, 'Cash expected must be 0 or more').optional(),
+  card: z.number().min(0, 'Card must be 0 or more'),
+  stripe: z.number().min(0, 'Stripe must be 0 or more'),
+  notes: z.string().optional(),
+  cashCounts: z.record(z.string(), z.number().min(0, 'Denomination totals must be 0 or more')).optional(),
+});
 
 export async function importCashupHistoryAction(rows: ImportRow[]): Promise<ImportResult> {
   const supabase = await createClient();
@@ -55,7 +67,14 @@ export async function importCashupHistoryAction(rows: ImportRow[]): Promise<Impo
   const errors: string[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+    const parsed = importRowSchema.safeParse(rows[i]);
+    if (!parsed.success) {
+      results.failed++;
+      errors.push(`Row ${i + 1}: ${parsed.error.errors[0]?.message ?? 'Invalid row'}`);
+      continue;
+    }
+
+    const row = parsed.data;
     
     try {
       // 1. Match Site
@@ -97,6 +116,9 @@ export async function importCashupHistoryAction(rows: ImportRow[]): Promise<Impo
         for (const [denom, value] of Object.entries(row.cashCounts)) {
           const denomination = parseFloat(denom);
           const totalAmount = Number(value);
+          if (!Number.isFinite(denomination) || denomination <= 0) {
+            throw new Error(`Invalid denomination: "${denom}"`);
+          }
           
           if (totalAmount > 0) {
             cashCounts.push({ denomination, totalAmount });
@@ -106,10 +128,14 @@ export async function importCashupHistoryAction(rows: ImportRow[]): Promise<Impo
       }
 
       // Determine Cash Counted
-      let finalCashCounted = row.cashCounted || 0;
-      // If 0 but counts exist, use counts
-      if (finalCashCounted === 0 && calculatedCashTotal > 0) {
-          finalCashCounted = calculatedCashTotal;
+      let finalCashCounted = row.cashCounted ?? 0;
+      if (calculatedCashTotal > 0) {
+        if (row.cashCounted !== undefined && Math.abs(row.cashCounted - calculatedCashTotal) > 0.01) {
+          throw new Error(
+            `Cash total ${row.cashCounted.toFixed(2)} does not match denomination total ${calculatedCashTotal.toFixed(2)}`
+          );
+        }
+        finalCashCounted = calculatedCashTotal;
       }
 
       // Determine Cash Expected (Z Report)

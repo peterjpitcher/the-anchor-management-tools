@@ -3,8 +3,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { DailyClient } from '@/app/(authenticated)/cashing-up/daily/_components/DailyClient'
 
 const routerPushMock = vi.hoisted(() => vi.fn())
+const routerRefreshMock = vi.hoisted(() => vi.fn())
 const upsertSessionActionMock = vi.hoisted(() => vi.fn())
 const upsertAndSubmitSessionActionMock = vi.hoisted(() => vi.fn())
+const approveSessionActionMock = vi.hoisted(() => vi.fn())
+const deleteSessionActionMock = vi.hoisted(() => vi.fn())
+const lockSessionActionMock = vi.hoisted(() => vi.fn())
+const unlockSessionActionMock = vi.hoisted(() => vi.fn())
+const setDailyTargetActionMock = vi.hoisted(() => vi.fn())
 const getDailySummaryActionMock = vi.hoisted(() => vi.fn())
 const getMissingCashupDatesActionMock = vi.hoisted(() => vi.fn())
 const toastMock = vi.hoisted(() => ({
@@ -15,10 +21,16 @@ const toastMock = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: routerPushMock,
+    refresh: routerRefreshMock,
   }),
 }))
 
 vi.mock('@/app/actions/cashing-up', () => ({
+  approveSessionAction: approveSessionActionMock,
+  deleteSessionAction: deleteSessionActionMock,
+  lockSessionAction: lockSessionActionMock,
+  setDailyTargetAction: setDailyTargetActionMock,
+  unlockSessionAction: unlockSessionActionMock,
   upsertSessionAction: upsertSessionActionMock,
   upsertAndSubmitSessionAction: upsertAndSubmitSessionActionMock,
 }))
@@ -59,6 +71,11 @@ describe('DailyClient', () => {
     getMissingCashupDatesActionMock.mockResolvedValue({ success: true, dates: [] })
     upsertSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1' } })
     upsertAndSubmitSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1' } })
+    approveSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1', status: 'approved' } })
+    deleteSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1' } })
+    lockSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1', status: 'locked' } })
+    unlockSessionActionMock.mockResolvedValue({ success: true, data: { id: 'session-1', status: 'approved' } })
+    setDailyTargetActionMock.mockResolvedValue({ success: true })
   })
 
   it('hides number input steppers on the daily cash-up fields', () => {
@@ -165,5 +182,90 @@ describe('DailyClient', () => {
     expect(row.getByText('£1,674.23')).toBeInTheDocument()
     expect(row.getByText('£1,828.43')).toBeInTheDocument()
     expect(row.queryByText('£3,670.76')).not.toBeInTheDocument()
+  })
+
+  it('wires approve action for submitted sessions', async () => {
+    render(
+      <DailyClient
+        {...baseProps}
+        existingSession={{
+          id: 'session-1',
+          status: 'submitted',
+          site_id: 'site-1',
+          session_date: '2026-05-24',
+          notes: null,
+          total_expected_amount: 0,
+          total_counted_amount: 0,
+          total_variance_amount: 0,
+          prepared_by_user_id: null,
+          approved_by_user_id: null,
+          locked_at: null,
+          created_by_user_id: null,
+          updated_by_user_id: null,
+          created_at: '',
+          updated_at: '',
+          cashup_payment_breakdowns: [],
+          cashup_cash_counts: [],
+          cashup_sales_breakdowns: [],
+        }}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    await waitFor(() => {
+      expect(approveSessionActionMock).toHaveBeenCalledWith('session-1')
+    })
+    expect(routerRefreshMock).toHaveBeenCalled()
+  })
+
+  it('saves the daily target', async () => {
+    render(<DailyClient {...baseProps} dailyTarget={100} />)
+    const targetInput = screen.getByLabelText('Target')
+
+    fireEvent.change(targetInput, { target: { value: '125.50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Target' }))
+
+    await waitFor(() => {
+      expect(setDailyTargetActionMock).toHaveBeenCalledWith('site-1', '2026-05-24', 125.5)
+    })
+    expect(routerRefreshMock).toHaveBeenCalled()
+  })
+
+  it('confirms before deleting an unlocked session', async () => {
+    render(
+      <DailyClient
+        {...baseProps}
+        existingSession={{
+          id: 'session-1',
+          status: 'draft',
+          site_id: 'site-1',
+          session_date: '2026-05-24',
+          notes: null,
+          total_expected_amount: 0,
+          total_counted_amount: 0,
+          total_variance_amount: 0,
+          prepared_by_user_id: null,
+          approved_by_user_id: null,
+          locked_at: null,
+          created_by_user_id: null,
+          updated_by_user_id: null,
+          created_at: '',
+          updated_at: '',
+          cashup_payment_breakdowns: [],
+          cashup_cash_counts: [],
+          cashup_sales_breakdowns: [],
+        }}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' })
+    fireEvent.click(deleteButtons[deleteButtons.length - 1])
+
+    await waitFor(() => {
+      expect(deleteSessionActionMock).toHaveBeenCalledWith('session-1')
+    })
+    expect(routerRefreshMock).toHaveBeenCalled()
   })
 })

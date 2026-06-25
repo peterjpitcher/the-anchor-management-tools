@@ -74,21 +74,20 @@ export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO,
   }
 
   try {
-    const savedSession = await CashingUpService.upsertSession(
+    const result = await CashingUpService.upsertSession(
       supabase,
-      { ...data, status: 'draft' },
+      { ...data, status: 'submitted' },
       user.id,
       existingId
     );
-    const result = await CashingUpService.submitSession(supabase, savedSession.id, user.id);
     revalidatePath('/cashing-up');
     revalidateTag('dashboard');
     void logAuditEvent({
-      operation_type: existingId ? 'update' : 'create',
+      operation_type: 'submit',
       resource_type: 'cashup_session',
+      resource_id: result.id,
       operation_status: 'success',
     });
-    void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
     return { success: true, data: result };
   } catch (error: unknown) {
     console.error('Submit cashup error:', error);
@@ -170,6 +169,31 @@ export async function unlockSessionAction(id: string) {
     revalidatePath('/cashing-up');
     revalidateTag('dashboard');
     void logAuditEvent({ operation_type: 'update', resource_type: 'cashup_session', operation_status: 'success' });
+    return { success: true, data: result };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function deleteSessionAction(id: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'delete', user.id);
+  if (!hasPermission) return { success: false, error: 'Forbidden' };
+
+  try {
+    const result = await CashingUpService.deleteSession(supabase, id);
+    revalidatePath('/cashing-up');
+    revalidateTag('dashboard');
+    void logAuditEvent({
+      operation_type: 'delete',
+      resource_type: 'cashup_session',
+      resource_id: id,
+      operation_status: 'success',
+    });
     return { success: true, data: result };
   } catch (error: unknown) {
     return { success: false, error: getErrorMessage(error) };

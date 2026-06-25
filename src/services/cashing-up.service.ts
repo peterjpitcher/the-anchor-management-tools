@@ -528,6 +528,20 @@ export class CashingUpService {
     return this.getSession(supabase, id);
   }
 
+  static async deleteSession(supabase: SupabaseClient, id: string) {
+    const { data: deletedRow, error } = await supabase
+      .from('cashup_sessions')
+      .delete()
+      .eq('id', id)
+      .neq('status', 'locked')
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!deletedRow) throw new Error('Session not found or locked');
+    return deletedRow;
+  }
+
   static async getWeeklyData(supabase: SupabaseClient, siteId: string, weekStartDate: string) {
     // Compute the week end date (DEF-M02: use format() to avoid UTC toISOString shift)
     const weekEndDate = (() => {
