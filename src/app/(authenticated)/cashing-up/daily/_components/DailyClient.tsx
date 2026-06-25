@@ -6,9 +6,17 @@ import {
   Card, CardHeader, CardBody,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
-import { Field, Input, Button, Badge, Alert, Stat } from '@/ds'
+import { ConfirmDialog, Field, Input, Button, Badge, Alert, Stat } from '@/ds'
 import { Icon } from '@/ds/icons'
-import { upsertSessionAction, upsertAndSubmitSessionAction } from '@/app/actions/cashing-up'
+import {
+  approveSessionAction,
+  deleteSessionAction,
+  lockSessionAction,
+  setDailyTargetAction,
+  unlockSessionAction,
+  upsertAndSubmitSessionAction,
+  upsertSessionAction,
+} from '@/app/actions/cashing-up'
 import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import toast from 'react-hot-toast'
@@ -143,6 +151,9 @@ export function DailyClient({
   const [sessionId, setSessionId] = useState<string | null>(existingSession?.id ?? null)
   const [currentStatus, setCurrentStatus] = useState<CashupStatus | null>(existingSession?.status ?? null)
   const [editMode, setEditMode] = useState(() => shouldStartInEditMode(existingSession, initialEditMode))
+  const [targetAmount, setTargetAmount] = useState(() => dailyTarget.toString())
+  const [savingTarget, setSavingTarget] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const isReadOnlyStatus = currentStatus !== null && currentStatus !== 'draft'
   const isLockedStatus = currentStatus === 'locked'
   const fieldsDisabled = isLockedStatus || (isReadOnlyStatus && !editMode)
@@ -181,7 +192,8 @@ export function DailyClient({
     setSessionId(existingSession?.id ?? null)
     setCurrentStatus(existingSession?.status ?? null)
     setEditMode(shouldStartInEditMode(existingSession, initialEditMode))
-  }, [dailySummary, existingSession, initialEditMode, sessionDate])
+    setTargetAmount(dailyTarget.toString())
+  }, [dailySummary, dailyTarget, existingSession, initialEditMode, sessionDate])
 
   useEffect(() => {
     if (sessionDate) {
@@ -214,7 +226,7 @@ export function DailyClient({
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const salesSplitTotal = drinksSalesNum + foodSalesNum + otherSalesNum
   const salesSplitVariance = Number((salesSplitTotal - totalRevenue).toFixed(2))
-  const target = dailyTarget
+  const target = parseFloat(targetAmount) || 0
 
   const buildSessionDTO = useCallback((status: UpsertCashupSessionDTO['status'] = 'draft'): UpsertCashupSessionDTO => {
     const cashCounts = DENOMINATIONS.map(denom => {
@@ -308,6 +320,88 @@ export function DailyClient({
     setEditMode(true)
   }, [isLockedStatus])
 
+  const handleStatusAction = useCallback(async (
+    action: 'approve' | 'lock' | 'unlock'
+  ) => {
+    if (!sessionId) {
+      toast.error('Save the session first')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const result =
+        action === 'approve'
+          ? await approveSessionAction(sessionId)
+          : action === 'lock'
+            ? await lockSessionAction(sessionId)
+            : await unlockSessionAction(sessionId)
+
+      if (result.success) {
+        setCurrentStatus(result.data?.status ?? (action === 'unlock' ? 'approved' : action === 'lock' ? 'locked' : 'approved'))
+        setEditMode(false)
+        toast.success(
+          action === 'approve'
+            ? 'Session approved'
+            : action === 'lock'
+              ? 'Session locked'
+              : 'Session unlocked'
+        )
+        router.refresh()
+      } else {
+        toast.error(result.error || `Failed to ${action} session`)
+      }
+    } catch {
+      toast.error(`Failed to ${action} session`)
+    } finally {
+      setSaving(false)
+    }
+  }, [router, sessionId])
+
+  const handleSaveTarget = useCallback(async () => {
+    const amount = parseFloat(targetAmount)
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error('Target must be a positive amount')
+      return
+    }
+
+    setSavingTarget(true)
+    try {
+      const result = await setDailyTargetAction(siteId, sessionDate, amount)
+      if (result.success) {
+        toast.success('Daily target saved')
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Failed to save target')
+      }
+    } catch {
+      toast.error('Failed to save target')
+    } finally {
+      setSavingTarget(false)
+    }
+  }, [router, sessionDate, siteId, targetAmount])
+
+  const handleDeleteSession = useCallback(async () => {
+    if (!sessionId) return
+
+    setSaving(true)
+    try {
+      const result = await deleteSessionAction(sessionId)
+      if (result.success) {
+        toast.success('Session deleted')
+        setShowDeleteConfirm(false)
+        clearFormFields()
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Failed to delete session')
+      }
+    } catch {
+      toast.error('Failed to delete session')
+    } finally {
+      setSaving(false)
+    }
+  }, [clearFormFields, router, sessionId])
+
   const cashupDateUrl = useCallback((date: string, openForEditing = false): string => {
     const params = new URLSearchParams({ date, siteId })
     if (openForEditing) params.set('edit', '1')
@@ -356,11 +450,77 @@ export function DailyClient({
                 {currentStatus}
               </Badge>
             )}
-            {dailyTarget > 0 && (
-              <div className="ml-auto flex items-center gap-1.5 text-xs">
-                <span className="text-text-muted">Target:</span>
-                <span className="font-semibold font-mono">£{fmt(dailyTarget)}</span>
+            <div className="ml-auto flex items-end gap-1.5 text-xs">
+              <Field label="Target" className="mb-0">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={targetAmount}
+                  onChange={(event) => setTargetAmount(event.target.value)}
+                  className={`${numberInputNoSpinnerClass} h-7 w-24 py-1 text-right text-xs font-mono`}
+                />
+              </Field>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSaveTarget}
+                loading={savingTarget}
+              >
+                Save Target
+              </Button>
+              {target > 0 && (
+                <div className="pb-1 font-semibold font-mono text-text-muted">
+                  £{fmt(target)}
+                </div>
+              )}
+            </div>
+            {currentStatus === 'submitted' && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleStatusAction('approve')}
+                  loading={saving}
+                >
+                  Approve
+                </Button>
               </div>
+            )}
+            {currentStatus === 'approved' && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleStatusAction('lock')}
+                  loading={saving}
+                >
+                  Lock
+                </Button>
+              </div>
+            )}
+            {currentStatus === 'locked' && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleStatusAction('unlock')}
+                  loading={saving}
+                >
+                  Unlock
+                </Button>
+              </div>
+            )}
+            {sessionId && currentStatus !== 'locked' && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setShowDeleteConfirm(true)}
+                loading={saving}
+              >
+                Delete
+              </Button>
             )}
           </div>
         </CardBody>
@@ -716,6 +876,15 @@ export function DailyClient({
           </CardBody>
         </Card>
       </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete Cash-Up Session"
+        message="Delete this cash-up session and its payment, cash count, and sales rows?"
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleDeleteSession}
+        onClose={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

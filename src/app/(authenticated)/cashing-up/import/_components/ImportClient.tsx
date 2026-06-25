@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import {
   Card, CardHeader, CardBody,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -8,6 +8,8 @@ import {
 import { Button, Alert, FileUpload, ProgressBar } from '@/ds'
 import Papa from 'papaparse'
 import { importCashupHistoryAction, ImportRow } from '@/app/actions/cashing-up-import'
+
+const PREVIEW_PAGE_SIZE = 25
 
 interface ImportResultState {
   total: number
@@ -37,6 +39,14 @@ export function ImportClient() {
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<ImportResultState | null>(null)
   const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null)
+  const [previewPage, setPreviewPage] = useState(0)
+  const [confirmed, setConfirmed] = useState(false)
+
+  const totalPreviewPages = Math.max(1, Math.ceil(previewData.length / PREVIEW_PAGE_SIZE))
+  const visiblePreviewRows = useMemo(
+    () => previewData.slice(previewPage * PREVIEW_PAGE_SIZE, (previewPage + 1) * PREVIEW_PAGE_SIZE),
+    [previewData, previewPage]
+  )
 
   const handleFiles = (files: File[]) => {
     const file = files[0]
@@ -45,6 +55,8 @@ export function ImportClient() {
     setResult(null)
     setProgress(null)
     setPreviewData([])
+    setPreviewPage(0)
+    setConfirmed(false)
 
     Papa.parse(file, {
       header: true,
@@ -95,6 +107,8 @@ export function ImportClient() {
         }
 
         setPreviewData(rows)
+        setPreviewPage(0)
+        setConfirmed(false)
       },
       error: (err) => {
         setError('Failed to read file: ' + err.message)
@@ -103,7 +117,7 @@ export function ImportClient() {
   }
 
   const handleImport = () => {
-    if (!previewData.length) return
+    if (!previewData.length || !confirmed) return
 
     startTransition(async () => {
       const BATCH_SIZE = 50
@@ -205,9 +219,20 @@ export function ImportClient() {
           <CardHeader
             title={`Preview (${previewData.length} rows)`}
             action={
-              <Button variant="primary" onClick={handleImport} loading={isPending}>
-                Import {previewData.length} Rows
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <label className="flex items-center gap-2 text-xs text-text-muted">
+                  <input
+                    type="checkbox"
+                    checked={confirmed}
+                    onChange={(event) => setConfirmed(event.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                  Confirm import
+                </label>
+                <Button variant="primary" onClick={handleImport} loading={isPending} disabled={!confirmed}>
+                  Import {previewData.length} Rows
+                </Button>
+              </div>
             }
           />
           <Table>
@@ -223,8 +248,8 @@ export function ImportClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {previewData.slice(0, 10).map((row, i) => (
-                <TableRow key={i}>
+              {visiblePreviewRows.map((row, i) => (
+                <TableRow key={`${row.date}-${previewPage}-${i}`}>
                   <TableCell>{row.date}</TableCell>
                   <TableCell className="text-text-muted">{row.siteName || '-'}</TableCell>
                   <TableCell align="right" className="font-mono">
@@ -240,9 +265,29 @@ export function ImportClient() {
               ))}
             </TableBody>
           </Table>
-          {previewData.length > 10 && (
-            <div className="px-4 py-2 text-xs text-text-subtle bg-surface-2 text-center border-t border-border">
-              ...and {previewData.length - 10} more rows
+          {previewData.length > PREVIEW_PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-3 border-t border-border bg-surface-2 px-4 py-2 text-xs text-text-subtle">
+              <span>
+                Page {previewPage + 1} of {totalPreviewPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPreviewPage((page) => Math.max(0, page - 1))}
+                  disabled={previewPage === 0}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPreviewPage((page) => Math.min(totalPreviewPages - 1, page + 1))}
+                  disabled={previewPage >= totalPreviewPages - 1}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </Card>

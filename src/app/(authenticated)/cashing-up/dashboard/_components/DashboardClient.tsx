@@ -1,9 +1,10 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { Card, CardHeader, CardBody, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/ds'
-import { Stat, Badge, ProgressBar, Select } from '@/ds'
+import { Stat, Badge, ProgressBar, Select, Input } from '@/ds'
 
 interface DashboardData {
   kpis: {
@@ -63,6 +64,7 @@ const YEAR_OPTIONS = Array.from({ length: currentYear - 2018 }, (_, i) => ({
   label: String(currentYear - i),
   value: String(currentYear - i),
 }))
+const EMPTY_VARIANCE_ROWS: DashboardData['tables']['variance'] = []
 
 function pctChange(current: number, previous: number): number | undefined {
   if (previous === 0) return undefined
@@ -90,6 +92,7 @@ function formatPerformancePercent(percent: number | null): string {
 
 export function DashboardClient({ dashboardData, comparisonData, weeklyProgress, selectedYear, compareYear, error }: Props) {
   const router = useRouter()
+  const [sessionSearch, setSessionSearch] = useState('')
 
   const handleYearChange = (year: string) => {
     const params = new URLSearchParams()
@@ -109,6 +112,23 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
     { label: 'None', value: '' },
     ...YEAR_OPTIONS.filter((o) => o.value !== String(selectedYear)),
   ]
+  const varianceRows = dashboardData?.tables.variance ?? EMPTY_VARIANCE_ROWS
+  const visibleVarianceRows = useMemo(() => {
+    const term = sessionSearch.trim().toLowerCase()
+    if (!term) return varianceRows
+    return varianceRows.filter((row) =>
+      [
+        formatSessionDate(row.sessionDate),
+        row.sessionDate,
+        row.notes ?? '',
+        String(row.cashTotal),
+        String(row.cardTotal),
+        String(row.stripeTotal),
+        String(row.totalTakings),
+        String(row.variance),
+      ].some((value) => value.toLowerCase().includes(term))
+    )
+  }, [sessionSearch, varianceRows])
 
   if (error || !dashboardData) {
     return (
@@ -120,7 +140,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
     )
   }
 
-  const { kpis, tables } = dashboardData
+  const { kpis } = dashboardData
   const comp = comparisonData?.kpis
   const varianceIsPositive = kpis.totalVariance >= 0
 
@@ -215,7 +235,16 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
 
       {/* Recent sessions table */}
       <Card>
-        <CardHeader title="Recent Variance & Discrepancies" />
+        <CardHeader title="Variance & Discrepancies" />
+        <CardBody>
+          <Input
+            value={sessionSearch}
+            onChange={(event) => setSessionSearch(event.target.value)}
+            placeholder="Search sessions..."
+            aria-label="Search cash-up sessions"
+            className="sm:max-w-xs"
+          />
+        </CardBody>
         <Table>
           <TableHeader>
             <TableRow>
@@ -230,14 +259,14 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tables.variance.length === 0 ? (
+            {visibleVarianceRows.length === 0 ? (
               <TableRow>
                 <TableCell className="text-center py-8 text-text-muted" align="center">
-                  No records found
+                  {sessionSearch ? 'No sessions match your search' : 'No records found'}
                 </TableCell>
               </TableRow>
             ) : (
-              tables.variance.slice(0, 7).map((row, idx) => {
+              visibleVarianceRows.map((row, idx) => {
                 const targetTone = performanceTone(row.targetPerformancePercent)
                 return (
                   <TableRow key={idx} className={performanceRowClass(row.targetPerformancePercent)}>
