@@ -123,10 +123,11 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
             <p className="text-sm text-gray-500">All staff are already clocked in.</p>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="foh-clock-in-employee" className="block text-sm font-medium text-gray-700 mb-1.5">
                 Who&apos;s clocking in?
               </label>
               <select
+                id="foh-clock-in-employee"
                 value={selectedId}
                 onChange={e => setSelectedId(e.target.value)}
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"

@@ -17,6 +17,10 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
 
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn(),
+}))
+
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn(),
 }))
@@ -37,6 +41,7 @@ vi.mock('date-fns-tz', () => ({
 
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
   clockIn,
@@ -48,6 +53,7 @@ import {
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
+const mockedCreateServerClient = createServerClient as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 
 // ---------------------------------------------------------------------------
@@ -101,6 +107,11 @@ function mockAdminClient(overrides: Record<string, unknown> = {}) {
 describe('Timeclock actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedCreateServerClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+      },
+    })
   })
 
   // -----------------------------------------------------------------------
@@ -266,6 +277,92 @@ describe('Timeclock actions', () => {
           resource_type: 'timeclock_session',
         }),
       )
+    })
+
+    it('should allow the manager FOH kiosk account to clock staff in without a PIN', async () => {
+      mockedPermission.mockImplementation(async (moduleName: string, action: string, userId?: string) => {
+        return moduleName === 'table_bookings' && action === 'view' && userId === 'manager-user'
+      })
+      mockedCreateServerClient.mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'manager-user', email: 'manager@the-anchor.pub' } },
+            error: null,
+          }),
+        },
+      })
+
+      const session = {
+        id: 'session-1',
+        employee_id: 'emp-1',
+        work_date: '2026-04-06',
+        clock_in_at: '2026-04-06T08:00:00Z',
+        clock_out_at: null,
+      }
+
+      const client = mockAdminClient()
+      client.from = vi.fn().mockImplementation((table: string) => {
+        if (table === 'employees') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: { employee_id: 'emp-1', status: 'Active', mobile_number: '07700901234', timeclock_pin_hash: null },
+                  error: null,
+                }),
+              }),
+            }),
+          }
+        }
+        if (table === 'timeclock_sessions') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                is: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+                single: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: session, error: null }),
+              }),
+            }),
+            update: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ error: null }),
+            }),
+          }
+        }
+        if (table === 'rota_shifts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+                }),
+              }),
+            }),
+          }
+        }
+        if (table === 'payroll_periods') {
+          return {
+            select: vi.fn().mockReturnValue({
+              lte: vi.fn().mockReturnValue({
+                gte: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          }
+        }
+        return { select: vi.fn() }
+      })
+
+      const result = await clockIn('emp-1')
+
+      expect(result.success).toBe(true)
+      expect(mockedPermission).toHaveBeenCalledWith('table_bookings', 'view', 'manager-user')
     })
   })
 
