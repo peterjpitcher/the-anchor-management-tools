@@ -308,10 +308,49 @@ export function DishDrawer({
       setSaving(true);
       setServerError(null);
 
+      const name = formState.name.trim();
+      if (!name) {
+        setServerError('Dish name is required');
+        toast.error('Dish name is required');
+        return;
+      }
+
+      const sellingPrice = parseFloat(formState.selling_price || '0');
+      if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+        setServerError('Selling price must be zero or more');
+        toast.error('Selling price must be zero or more');
+        return;
+      }
+
+      const validAssignments = formAssignments.filter((row) => row.menu_code && row.category_code);
+      if (validAssignments.length === 0) {
+        setServerError('Add at least one menu assignment');
+        toast.error('Add at least one menu assignment');
+        return;
+      }
+
+      const ingredientMissingGroup = formIngredients.find((row) =>
+        row.ingredient_id &&
+        parseFloat(row.quantity || '0') > 0 &&
+        ['choice', 'upgrade'].includes(row.inclusion_type || 'included') &&
+        !row.option_group?.trim()
+      );
+      const recipeMissingGroup = formRecipes.find((row) =>
+        row.recipe_id &&
+        parseFloat(row.quantity || '0') > 0 &&
+        ['choice', 'upgrade'].includes(row.inclusion_type || 'included') &&
+        !row.option_group?.trim()
+      );
+      if (ingredientMissingGroup || recipeMissingGroup) {
+        setServerError('Choice and upgrade rows need an option group');
+        toast.error('Choice and upgrade rows need an option group');
+        return;
+      }
+
       const payload = {
-        name: formState.name.trim(),
+        name,
         description: formState.description || null,
-        selling_price: parseFloat(formState.selling_price || '0') || 0,
+        selling_price: sellingPrice,
         calories: formState.calories ? parseInt(formState.calories, 10) : null,
         notes: formState.notes || null,
         is_active: formState.is_active,
@@ -344,8 +383,7 @@ export function DishDrawer({
             upgrade_price: row.inclusion_type === 'upgrade' && row.upgrade_price ? parseFloat(row.upgrade_price) : undefined,
             option_group: ['choice', 'upgrade'].includes(row.inclusion_type) ? (row.option_group?.trim() || undefined) : undefined,
           })),
-        assignments: formAssignments
-          .filter((row) => row.menu_code && row.category_code)
+        assignments: validAssignments
           .map((row) => ({
             menu_code: row.menu_code,
             category_code: row.category_code,

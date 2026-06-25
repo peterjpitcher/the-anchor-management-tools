@@ -1,6 +1,6 @@
 'use client';
 
-import { Spinner } from '@/ds';
+import { Button, Spinner } from '@/ds';
 import { useInlineEdit } from './useInlineEdit';
 
 interface EditableCurrencyCellProps {
@@ -57,10 +57,17 @@ export function EditableCurrencyCell({
                 cancelEditing();
               }
             }}
-            onBlur={() => void saveValue()}
             className="w-20 rounded border border-border bg-surface px-2 py-1 text-sm"
             aria-label={`Edit ${fieldLabel} for ${entityName}`}
           />
+        </div>
+        <div className="flex items-center gap-1">
+          <Button type="button" size="xs" variant="primary" onClick={() => void saveValue()}>
+            Save
+          </Button>
+          <Button type="button" size="xs" variant="ghost" onClick={cancelEditing}>
+            Cancel
+          </Button>
         </div>
         {error && (
           <span className="text-xs text-danger">{error}</span>

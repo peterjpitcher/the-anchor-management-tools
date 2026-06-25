@@ -47,6 +47,7 @@ interface UpgradeRow {
 }
 
 interface AllergenComponent {
+  id: string;
   name: string;
   inclusionType: string;
 }
@@ -295,7 +296,7 @@ export function DishGpAnalysisTab({
 
       for (const allergen of detail.allergens) {
         const existing = allergenMap.get(allergen) ?? [];
-        existing.push({ name: detail.ingredient_name, inclusionType });
+        existing.push({ id: row.ingredient_id, name: detail.ingredient_name, inclusionType });
         allergenMap.set(allergen, existing);
       }
     }
@@ -311,7 +312,7 @@ export function DishGpAnalysisTab({
 
       for (const allergen of detail.allergen_flags) {
         const existing = allergenMap.get(allergen) ?? [];
-        existing.push({ name: detail.recipe_name, inclusionType });
+        existing.push({ id: row.recipe_id, name: detail.recipe_name, inclusionType });
         allergenMap.set(allergen, existing);
       }
     }
@@ -360,19 +361,17 @@ export function DishGpAnalysisTab({
           continue;
         } else if (comp.inclusionType === 'choice') {
           // Check if there's an alternative in the group without this allergen
-          const groupName = formIngredients.find((r) => {
-            const detail = dish.ingredients.find((d) => d.ingredient_id === r.ingredient_id);
-            return detail?.ingredient_name === comp.name && r.inclusion_type === 'choice';
-          })?.option_group?.trim()
-            || formRecipes.find((r) => {
-              const detail = dish.recipes.find((d) => d.recipe_id === r.recipe_id);
-              return detail?.recipe_name === comp.name && r.inclusion_type === 'choice';
-            })?.option_group?.trim()
+          const groupName = formIngredients.find((r) =>
+            r.ingredient_id === comp.id && r.inclusion_type === 'choice'
+          )?.option_group?.trim()
+            || formRecipes.find((r) =>
+              r.recipe_id === comp.id && r.inclusion_type === 'choice'
+            )?.option_group?.trim()
             || '';
 
           const groupItems = choiceGroupItems.get(groupName) ?? [];
           const hasAlternative = groupItems.some((item) =>
-            item.name !== comp.name && !item.allergens.includes(allergen)
+            item.id !== comp.id && !item.allergens.includes(allergen)
           );
           if (!hasAlternative) {
             removable = false;

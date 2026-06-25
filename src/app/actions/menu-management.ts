@@ -524,13 +524,16 @@ export async function updateDishPrice(id: string, sellingPrice: number) {
 
 export async function verifyDishAllergens(id: string) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { error: 'Authentication required' };
+    }
+
     const hasPermission = await checkUserPermission('menu_management', 'manage');
     if (!hasPermission) {
       return { error: 'You do not have permission to manage dishes' };
     }
-
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
 
     const { createAdminClient } = await import('@/lib/supabase/admin');
     const admin = createAdminClient();
@@ -549,10 +552,11 @@ export async function verifyDishAllergens(id: string) {
       resource_type: 'menu_dish',
       resource_id: id,
       operation_status: 'success',
+      user_id: user.id,
       additional_info: {
         field: 'allergen_verified',
         new_value: true,
-        verified_by: user?.email,
+        verified_by: user.email,
       },
     });
 
