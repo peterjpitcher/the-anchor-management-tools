@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { sendBulkSMSDirect } from '@/app/actions/sms-bulk-direct'
 import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
-import type { BulkRecipientFilters, BulkRecipient, SendBulkResult } from '@/types/bulk-messages'
+import type { BulkRecipientFilters, BulkRecipient, BulkRecipientsPage, SendBulkResult } from '@/types/bulk-messages'
 
 const DIRECT_SEND_THRESHOLD = 100
 
@@ -15,7 +15,7 @@ const DIRECT_SEND_THRESHOLD = 100
  */
 export async function fetchBulkRecipients(
   filters: BulkRecipientFilters
-): Promise<{ data: BulkRecipient[] } | { error: string }> {
+): Promise<BulkRecipientsPage | { error: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
@@ -27,6 +27,8 @@ export async function fetchBulkRecipients(
   const escapedSearch = filters.search
     ? filters.search.replace(/[%_\\]/g, '\\$&')
     : null
+  const page = Math.max(Number(filters.page ?? 1), 1)
+  const pageSize = Math.min(Math.max(Number(filters.pageSize ?? 50), 1), 100)
 
   const { data, error } = await supabase.rpc('get_bulk_sms_recipients', {
     p_event_id: filters.eventId || null,
@@ -36,10 +38,32 @@ export async function fetchBulkRecipients(
     p_created_after: filters.createdAfter || null,
     p_created_before: filters.createdBefore || null,
     p_search: escapedSearch,
+    p_page: page,
+    p_page_size: pageSize,
   })
 
   if (error) return { error: `Failed to fetch recipients: ${error.message}` }
-  return { data: (data ?? []) as BulkRecipient[] }
+
+  const rows = (data ?? []) as Array<BulkRecipient & { total_count?: number | string | null }>
+  const recipients = rows.map((row) => ({
+    id: row.id,
+    first_name: sanitizeRecipientName(row.first_name),
+    last_name: sanitizeRecipientName(row.last_name),
+    mobile_number: row.mobile_number,
+    last_booking_date: row.last_booking_date,
+  }))
+
+  return {
+    data: recipients,
+    total: Number(rows[0]?.total_count ?? recipients.length),
+    page,
+    pageSize,
+  }
+}
+
+function sanitizeRecipientName(value: string | null | undefined): string {
+  const trimmed = (value ?? '').trim()
+  return trimmed.toLowerCase() === 'null' ? '' : trimmed
 }
 
 /**

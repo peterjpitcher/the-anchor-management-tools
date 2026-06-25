@@ -8,6 +8,7 @@ import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
 import { DataTable, Column } from '@/ds'
+import { TablePagination } from '@/ds'
 import { Badge } from '@/ds'
 import { Alert } from '@/ds'
 import { toast } from '@/ds'
@@ -30,6 +31,7 @@ const DEBOUNCE_MS = 300
 const SMS_SEGMENT_LENGTH = 160
 const SMS_SEGMENT_LENGTH_UNICODE = 70
 const EMPTY_INITIAL_CUSTOMER_IDS: string[] = []
+const RECIPIENT_PAGE_SIZE = 50
 
 interface EventOption {
   id: string
@@ -56,9 +58,11 @@ function countSmsSegments(text: string): { chars: number; segments: number; isUn
 }
 
 function applyPersonalisation(template: string, recipient: BulkRecipient): string {
+  const firstName = recipient.first_name || 'there'
+  const lastName = recipient.last_name || ''
   return template
-    .replace(/\{\{first_name\}\}/g, recipient.first_name)
-    .replace(/\{\{last_name\}\}/g, recipient.last_name)
+    .replace(/\{\{first_name\}\}/g, firstName)
+    .replace(/\{\{last_name\}\}/g, lastName)
 }
 
 // --- Component ---
@@ -79,6 +83,8 @@ export default function BulkMessagesClient({
 
   // Recipients state
   const [recipients, setRecipients] = useState<BulkRecipient[]>([])
+  const [recipientTotal, setRecipientTotal] = useState(0)
+  const [recipientPage, setRecipientPage] = useState(1)
   const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,13 +125,17 @@ export default function BulkMessagesClient({
   }, [eventId, bookingStatus, smsOptIn, categoryId, createdAfter, createdBefore, search])
 
   // Fetch recipients
-  const loadRecipients = useCallback(async () => {
+  const loadRecipients = useCallback(async (requestedPage = 1) => {
     const currentRequest = ++requestCounterRef.current
     setLoading(true)
     setError(null)
     setSelectedKeys(new Set())
 
-    const filters = buildFilters()
+    const filters = {
+      ...buildFilters(),
+      page: requestedPage,
+      pageSize: RECIPIENT_PAGE_SIZE,
+    }
     const result = await fetchBulkRecipients(filters)
 
     // Only update state if this is still the latest request
@@ -134,8 +144,11 @@ export default function BulkMessagesClient({
     if ('error' in result) {
       setError(result.error)
       setRecipients([])
+      setRecipientTotal(0)
     } else {
       setRecipients(result.data)
+      setRecipientTotal(result.total)
+      setRecipientPage(result.page)
     }
     setLoading(false)
   }, [buildFilters])
@@ -146,7 +159,7 @@ export default function BulkMessagesClient({
       clearTimeout(debounceTimerRef.current)
     }
     debounceTimerRef.current = setTimeout(() => {
-      loadRecipients()
+      loadRecipients(1)
     }, DEBOUNCE_MS)
     return () => {
       if (debounceTimerRef.current) {
@@ -235,6 +248,7 @@ export default function BulkMessagesClient({
 
   // SMS segment info
   const smsInfo = countSmsSegments(message)
+  const recipientTotalPages = Math.max(1, Math.ceil(recipientTotal / RECIPIENT_PAGE_SIZE))
 
   // Columns
   const columns: Column<BulkRecipient>[] = useMemo(
@@ -457,7 +471,7 @@ export default function BulkMessagesClient({
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-medium text-gray-900">Recipients</h3>
                 <Badge variant="info" size="sm">
-                  {loading ? '...' : recipients.length}
+                  {loading ? '...' : `${recipients.length} of ${recipientTotal}`}
                 </Badge>
               </div>
               {selectedKeys.size > 0 && (
@@ -484,6 +498,17 @@ export default function BulkMessagesClient({
             emptyDescription="Try adjusting your filters to find customers."
             size="sm"
           />
+          {recipientTotal > RECIPIENT_PAGE_SIZE && (
+            <TablePagination
+              page={recipientPage}
+              totalPages={recipientTotalPages}
+              totalItems={recipientTotal}
+              pageSize={RECIPIENT_PAGE_SIZE}
+              onPageChange={(nextPage) => {
+                void loadRecipients(nextPage)
+              }}
+            />
+          )}
         </Card>
 
         {/* Compose Panel */}

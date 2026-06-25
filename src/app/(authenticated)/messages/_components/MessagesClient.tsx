@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
+import { formatDateInLondon, getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 
 import {
   PageHeader,
@@ -38,6 +39,8 @@ import { sendSmsReply } from '@/app/actions/messageActions'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 const REFRESH_INTERVAL = 15000
+const SMS_SEGMENT_LENGTH = 160
+const SMS_SEGMENT_LENGTH_UNICODE = 70
 
 type ConversationFilter = 'all' | 'unread' | 'email' | 'sms' | 'whatsapp'
 
@@ -100,6 +103,14 @@ function channelLabel(channel: CommunicationChannel): string {
     default:
       return channel
   }
+}
+
+function countSmsSegments(text: string): { chars: number; segments: number; isUnicode: boolean } {
+  const chars = text.length
+  if (chars === 0) return { chars: 0, segments: 0, isUnicode: false }
+  const isUnicode = /[^\x00-\x7F\u00A0\u00A3\u00A4\u00A5\u00A7\u00BF\u00C4-\u00C6\u00C9\u00D1\u00D6\u00D8\u00DC\u00DF\u00E0\u00E4-\u00E9\u00EC\u00F1\u00F2\u00F6\u00F8\u00F9\u00FC]/.test(text)
+  const limit = isUnicode ? SMS_SEGMENT_LENGTH_UNICODE : SMS_SEGMENT_LENGTH
+  return { chars, segments: Math.ceil(chars / limit), isUnicode }
 }
 
 /* ------------------------------------------------------------------ */
@@ -385,10 +396,11 @@ export function MessagesClient() {
     : undefined
   const customerName = selectedCustomer ? formatCustomerName(selectedCustomer) : ''
   const canReply = canSendMessages && selectedCustomer?.sms_opt_in !== false
+  const replySmsInfo = useMemo(() => countSmsSegments(newMessage), [newMessage])
 
   // Group messages by date
   const groupedMessages = messages.reduce<Record<string, CustomerCommunication[]>>((groups, message) => {
-    const date = new Date(message.created_at).toLocaleDateString()
+    const date = toLocalIsoDate(new Date(message.created_at))
     if (!groups[date]) groups[date] = []
     groups[date].push(message)
     return groups
@@ -631,7 +643,9 @@ export function MessagesClient() {
                         {/* Date separator */}
                         <div className="flex items-center justify-center mb-3">
                           <span className="px-3 py-0.5 text-[11px] font-medium text-text-muted bg-surface rounded-pill">
-                            {date === new Date().toLocaleDateString() ? 'Today' : date}
+                            {date === getTodayIsoDate()
+                              ? 'Today'
+                              : formatDateInLondon(date, { day: 'numeric', month: 'long', year: 'numeric' })}
                           </span>
                         </div>
 
@@ -684,26 +698,35 @@ export function MessagesClient() {
 
                 {/* Composer */}
                 {canReply && (
-                  <div className="border-t border-border p-3 flex gap-2">
-                    <Textarea
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Type a message..."
-                      rows={1}
-                      className="flex-1 min-h-[36px] max-h-[120px] resize-none"
-                      disabled={sending}
-                    />
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => void handleSend()}
-                      loading={sending}
-                      disabled={!newMessage.trim() || sending}
-                      icon={<Icon name="message" size={16} />}
-                    >
-                      Send
-                    </Button>
+                  <div className="border-t border-border p-3">
+                    <div className="flex gap-2">
+                      <Textarea
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Type a message..."
+                        rows={1}
+                        className="flex-1 min-h-[36px] max-h-[120px] resize-none"
+                        disabled={sending}
+                      />
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => void handleSend()}
+                        loading={sending}
+                        disabled={!newMessage.trim() || sending}
+                        icon={<Icon name="message" size={16} />}
+                      >
+                        Send
+                      </Button>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-text-muted">
+                      <span>{replySmsInfo.chars} characters</span>
+                      <span>
+                        {replySmsInfo.segments} SMS segment{replySmsInfo.segments === 1 ? '' : 's'}
+                      </span>
+                      {replySmsInfo.isUnicode && <Badge tone="warning">Unicode</Badge>}
+                    </div>
                   </div>
                 )}
                 {selectedCustomer?.sms_opt_in === false && (
