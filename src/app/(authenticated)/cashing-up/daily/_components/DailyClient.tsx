@@ -223,6 +223,13 @@ export function DailyClient({
   const otherSalesNum = parseFloat(otherSales) || 0
   const cashExpectedNum = parseFloat(cashExpected) || 0
   const cashVariance = cashCountedTotal - cashExpectedNum
+  // Flag ANY non-zero variance (rounded to pence) so it surfaces inline for review.
+  const varianceFlagged = Number(cashVariance.toFixed(2)) !== 0
+  const varianceClass = !varianceFlagged
+    ? 'text-text-muted'
+    : cashVariance < 0
+      ? 'text-danger-fg'
+      : 'text-warning-fg'
   const totalRevenue = cashCountedTotal + cardNum + stripeNum
   const salesSplitTotal = drinksSalesNum + foodSalesNum + otherSalesNum
   const salesSplitVariance = Number((salesSplitTotal - totalRevenue).toFixed(2))
@@ -634,7 +641,7 @@ export function DailyClient({
 
               <div className="flex justify-between items-center">
                 <span className="text-xs font-medium text-text">Variance:</span>
-                <span className={`font-mono font-bold ${cashVariance < 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
+                <span className={`font-mono font-bold ${varianceClass}`}>
                   £{fmt(cashVariance)}
                 </span>
               </div>
@@ -730,11 +737,11 @@ export function DailyClient({
               </Field>
             </div>
 
-            {/* Variance summary */}
-            <Alert tone="info" className="p-3">
+            {/* Variance summary — any non-zero variance is flagged for review */}
+            <Alert tone={varianceFlagged ? 'warning' : 'success'} className="p-3">
               <div className="flex justify-between items-center">
-                <span>Cash variance:</span>
-                <strong className={cashVariance < 0 ? 'text-danger-fg' : 'text-success-fg'}>
+                <span>{varianceFlagged ? 'Cash variance — review before approving' : 'Cash balanced'}</span>
+                <strong className={varianceClass}>
                   £{fmt(cashVariance)}
                 </strong>
               </div>
