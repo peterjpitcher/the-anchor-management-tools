@@ -16,6 +16,9 @@ import {
   TrashIcon,
   SparklesIcon,
   CheckCircleIcon,
+  HeartIcon,
+  StarIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { PageLayout } from '@/ds';
 import { Card } from '@/ds';
@@ -43,6 +46,21 @@ const PRESET_COLORS = [
   { name: 'Gray', value: '#6B7280' },
   { name: 'Indigo', value: '#6366F1' },
 ];
+
+const PRESET_ICONS = [
+  { name: 'Star', value: 'star', icon: StarIcon },
+  { name: 'Tag', value: 'tag', icon: TagIcon },
+  { name: 'People', value: 'users', icon: UserGroupIcon },
+  { name: 'Heart', value: 'heart', icon: HeartIcon },
+  { name: 'Check', value: 'check', icon: CheckCircleIcon },
+  { name: 'Sparkles', value: 'sparkles', icon: SparklesIcon },
+];
+
+function CustomerLabelIcon({ icon, className }: { icon?: string; className?: string }) {
+  const match = PRESET_ICONS.find((option) => option.value === icon) ?? PRESET_ICONS[0];
+  const IconComponent = match.icon;
+  return <IconComponent className={className} />;
+}
 
 interface CustomerLabelsClientProps {
   initialLabels: CustomerLabel[];
@@ -259,7 +277,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                       className="h-8 w-8 flex items-center justify-center rounded-full text-white"
                       style={{ backgroundColor: label.color }}
                     >
-                      <TagIcon className="h-4 w-4" />
+                      <CustomerLabelIcon icon={label.icon} className="h-4 w-4" />
                     </span>
                     <div>
                       <p className="text-sm font-medium text-gray-900">{label.name}</p>
@@ -338,6 +356,34 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
                     <span className="sr-only">{color.name}</span>
                   </button>
                 ))}
+              </div>
+            </FormGroup>
+
+            <FormGroup label="Icon">
+              <div className="grid grid-cols-3 gap-2">
+                {PRESET_ICONS.map((icon) => {
+                  const IconComponent = icon.icon;
+                  return (
+                    <button
+                      key={icon.value}
+                      type="button"
+                      className={`flex h-10 items-center justify-center gap-2 rounded-md border text-sm ${
+                        formData.icon === icon.value ? 'border-primary bg-primary-soft text-primary' : 'border-border'
+                      }`}
+                      onClick={() => {
+                        if (!canManageUI) {
+                          toast.error('You do not have permission to update customer labels.');
+                          return;
+                        }
+                        setFormData({ ...formData, icon: icon.value });
+                      }}
+                      disabled={!canManageUI}
+                    >
+                      <IconComponent className="h-4 w-4" />
+                      {icon.name}
+                    </button>
+                  );
+                })}
               </div>
             </FormGroup>
 
