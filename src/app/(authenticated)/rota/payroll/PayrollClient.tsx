@@ -12,7 +12,8 @@ import type { PayrollRow } from '@/lib/rota/excel-export';
 import type { PayrollEmployeeSummary } from '@/lib/rota/email-templates';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
+import { validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
 import { hasCouldntWorkPayrollFlag, isCouldntWorkPayrollFlag, parsePayrollFlags, payrollFlagLabel } from '@/lib/rota/payroll-flags';
 import { PayrollSummaryBar } from './PayrollSummaryBar';
 import { computeEmployeeCards } from './payrollCycleStats';
@@ -80,7 +81,7 @@ function DayInfoChips({ info }: { info?: RotaDayInfo }) {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
+  return formatDateInLondon(`${iso}T12:00:00Z`, {
     weekday: 'short', day: 'numeric', month: 'short',
   });
 }
@@ -185,6 +186,7 @@ export default function PayrollClient({
     setEditSaving(false);
     if (!result.success) { toast.error(result.error); return; }
     setEditingKey(null);
+    if (approval) setApproval(null);
     router.refresh();
   };
 
@@ -194,6 +196,7 @@ export default function PayrollClient({
     setDeleteLoading(false);
     if (!result.success) { toast.error(result.error); return; }
     setConfirmDeleteKey(null);
+    if (approval) setApproval(null);
     router.refresh();
   };
 
@@ -211,9 +214,10 @@ export default function PayrollClient({
 
   const handleSaveNote = (shiftId: string) => {
     startNoteTransition(async () => {
-      const result = await upsertShiftNote(shiftId, editNoteValue);
+      const result = await upsertShiftNote(shiftId, editNoteValue, year, month);
       if (!result.success) { toast.error(result.error); return; }
       setEditingNoteKey(null);
+      if (approval) setApproval(null);
       router.refresh();
     });
   };
@@ -223,8 +227,14 @@ export default function PayrollClient({
   const [periodStart, setPeriodStart] = useState(initialPeriod.period_start);
   const [periodEnd, setPeriodEnd] = useState(initialPeriod.period_end);
   const [periodPending, startPeriodTransition] = useTransition();
+  const periodError = validatePayrollPeriodRange(periodStart, periodEnd);
 
   const handleSavePeriod = () => {
+    if (periodError) {
+      toast.error(periodError);
+      return;
+    }
+
     startPeriodTransition(async () => {
       const result = await updatePayrollPeriod(year, month, periodStart, periodEnd);
       if (!result.success) { toast.error(result.error); return; }
@@ -304,6 +314,7 @@ export default function PayrollClient({
               type="date"
               value={periodStart}
               onChange={e => setPeriodStart(e.target.value)}
+              aria-invalid={Boolean(periodError)}
               className="border border-gray-300 rounded px-2 py-1 text-sm"
             />
             <span className="text-gray-400">–</span>
@@ -311,14 +322,18 @@ export default function PayrollClient({
               type="date"
               value={periodEnd}
               onChange={e => setPeriodEnd(e.target.value)}
+              aria-invalid={Boolean(periodError)}
               className="border border-gray-300 rounded px-2 py-1 text-sm"
             />
-            <Button type="button" size="sm" onClick={handleSavePeriod} disabled={periodPending}>
+            <Button type="button" size="sm" onClick={handleSavePeriod} disabled={periodPending || Boolean(periodError)}>
               {periodPending ? 'Saving…' : 'Save'}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => { setPeriodStart(initialPeriod.period_start); setPeriodEnd(initialPeriod.period_end); setEditingPeriod(false); }}>
               Cancel
             </Button>
+            {periodError ? (
+              <span className="text-xs text-red-600">{periodError}</span>
+            ) : null}
           </>
         ) : (
           <>
@@ -345,9 +360,9 @@ export default function PayrollClient({
           {approval ? (
             <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
               <CheckCircleIcon className="h-4 w-4 shrink-0" />
-              <span>Approved {new Date(approval.approved_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <span>Approved {formatDateInLondon(approval.approved_at, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               {approval.email_sent_at && (
-                <span className="text-green-600">· Emailed {new Date(approval.email_sent_at).toLocaleDateString('en-GB')}</span>
+                <span className="text-green-600">· Emailed {formatDateInLondon(approval.email_sent_at)}</span>
               )}
             </div>
           ) : (
@@ -374,7 +389,7 @@ export default function PayrollClient({
             </Button>
           )}
           {canApprove && !approval && (
-            <Button type="button" size="sm" onClick={handleApprove} disabled={approvePending}>
+            <Button type="button" size="sm" onClick={handleApprove} disabled={approvePending || initialRows.length === 0}>
               {approvePending ? 'Approving…' : 'Approve payroll'}
             </Button>
           )}

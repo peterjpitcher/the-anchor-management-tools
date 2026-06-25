@@ -30,6 +30,9 @@ interface RotaPayrollProps {
 
 export function RotaPayroll({ runs }: RotaPayrollProps) {
   const currentPeriod = runs.find((r) => r.status === 'draft') || runs[runs.length - 1]
+  const openPayroll = () => {
+    window.location.assign('/rota/payroll')
+  }
 
   return (
     <div className="space-y-6">
@@ -70,9 +73,9 @@ export function RotaPayroll({ runs }: RotaPayrollProps) {
                   <TableCell className="text-right">{run.employeeCount}</TableCell>
                   <TableCell>
                     <Dropdown trigger={<button type="button" className="text-xs text-text-muted hover:text-text">...</button>}>
-                      <DropdownItem onClick={() => {}}>View</DropdownItem>
-                      <DropdownItem onClick={() => {}}>Export</DropdownItem>
-                      {run.status === 'draft' && <DropdownItem onClick={() => {}}>Submit</DropdownItem>}
+                      <DropdownItem onClick={openPayroll}>View</DropdownItem>
+                      <DropdownItem onClick={openPayroll}>Export</DropdownItem>
+                      {run.status === 'draft' && <DropdownItem onClick={openPayroll}>Submit</DropdownItem>}
                     </Dropdown>
                   </TableCell>
                 </TableRow>
