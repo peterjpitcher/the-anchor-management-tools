@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 import {
@@ -22,7 +22,7 @@ import {
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { toast } from '@/ds'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 
 import {
   loadProfile,
@@ -31,6 +31,7 @@ import {
   exportProfileData,
   requestAccountDeletion as requestAccountDeletionAction,
   uploadAvatar,
+  removeAvatar,
 } from '@/app/actions/profile'
 
 /* ------------------------------------------------------------------ */
@@ -57,9 +58,12 @@ export function ProfileClient() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [removingAvatar, setRemovingAvatar] = useState(false)
   const [saving, setSaving] = useState(false)
   const [fullName, setFullName] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showRemoveAvatarConfirm, setShowRemoveAvatarConfirm] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
 
   const fetchProfile = useCallback(async () => {
     setLoading(true)
@@ -117,7 +121,26 @@ export function ProfileClient() {
     } catch {
       toast.error('Failed to upload avatar')
     } finally {
+      event.target.value = ''
       setUploading(false)
+    }
+  }
+
+  async function handleRemoveAvatar() {
+    try {
+      setRemovingAvatar(true)
+      const result = await removeAvatar()
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to remove avatar')
+        return
+      }
+      toast.success('Avatar removed')
+      setShowRemoveAvatarConfirm(false)
+      await fetchProfile()
+    } catch {
+      toast.error('Failed to remove avatar')
+    } finally {
+      setRemovingAvatar(false)
     }
   }
 
@@ -227,6 +250,15 @@ export function ProfileClient() {
         title="Request Account Deletion"
         message="Are you sure you want to request account deletion? This action cannot be undone."
         confirmLabel="Request Deletion"
+        tone="danger"
+      />
+      <ConfirmDialog
+        open={showRemoveAvatarConfirm}
+        onClose={() => setShowRemoveAvatarConfirm(false)}
+        onConfirm={handleRemoveAvatar}
+        title="Remove Profile Photo"
+        message="Remove your profile photo from your account?"
+        confirmLabel="Remove Photo"
         tone="danger"
       />
 
@@ -376,17 +408,28 @@ export function ProfileClient() {
                   <p className="text-xs text-text-muted">{profile.email}</p>
                 </div>
 
-                {/* Upload button */}
-                <label className="cursor-pointer">
+                {/* Upload controls */}
+                <div className="flex flex-wrap items-center justify-center gap-2">
                   <Button
                     variant="secondary"
                     size="sm"
                     loading={uploading}
-                    onClick={() => document.getElementById('avatar-upload-ds')?.click()}
+                    onClick={() => avatarInputRef.current?.click()}
                   >
                     Change Photo
                   </Button>
+                  {profile.avatar_url ? (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={removingAvatar}
+                      onClick={() => setShowRemoveAvatarConfirm(true)}
+                    >
+                      Remove Photo
+                    </Button>
+                  ) : null}
                   <input
+                    ref={avatarInputRef}
                     id="avatar-upload-ds"
                     type="file"
                     accept="image/*"
@@ -394,14 +437,14 @@ export function ProfileClient() {
                     onChange={(e) => void handleUploadAvatar(e)}
                     disabled={uploading}
                   />
-                </label>
+                </div>
 
                 {/* Account stats */}
                 <div className="w-full border-t border-border pt-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-text-muted">Member since</span>
                     <span className="text-xs text-text-strong">
-                      {new Date(profile.created_at).toLocaleDateString('en-GB', {
+                      {formatDateInLondon(profile.created_at, {
                         day: 'numeric',
                         month: 'long',
                         year: 'numeric',
@@ -411,7 +454,7 @@ export function ProfileClient() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-text-muted">Last updated</span>
                     <span className="text-xs text-text-strong">
-                      {new Date(profile.updated_at).toLocaleDateString('en-GB', {
+                      {formatDateInLondon(profile.updated_at, {
                         day: 'numeric',
                         month: 'long',
                         year: 'numeric',

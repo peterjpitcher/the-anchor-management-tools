@@ -9,10 +9,16 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn(),
+}))
+
 import { createClient } from '@/lib/supabase/server'
-import { exportProfileData, updateProfile, uploadAvatar } from '@/app/actions/profile'
+import { logAuditEvent } from '@/app/actions/audit'
+import { changePassword, exportProfileData, removeAvatar, updateProfile, uploadAvatar } from '@/app/actions/profile'
 
 const mockedCreateClient = createClient as unknown as Mock
+const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 const validPngBytes = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
   0x00, 0x00, 0x00, 0x0d,
@@ -199,6 +205,163 @@ describe('Profile action mutation guards', () => {
 
     expect(result).toEqual({ error: 'Avatar must be 5 MB or smaller' })
     expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('removes the current avatar file and clears the profile avatar', async () => {
+    const profileMaybeSingle = vi.fn().mockResolvedValue({
+      data: { avatar_url: 'avatars/user-1.png' },
+      error: null,
+    })
+    const profileEq = vi.fn().mockReturnValue({ maybeSingle: profileMaybeSingle })
+    const profileSelect = vi.fn().mockReturnValue({ eq: profileEq })
+
+    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'user-1' }, error: null })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn().mockReturnValue({ eq: updateEq })
+
+    const remove = vi.fn().mockResolvedValue({ error: null })
+
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-1',
+            },
+          },
+          error: null,
+        }),
+      },
+      from: vi.fn((table: string) => {
+        if (table !== 'profiles') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: profileSelect,
+          update,
+        }
+      }),
+      storage: {
+        from: vi.fn((bucket: string) => {
+          if (bucket !== 'avatars') {
+            throw new Error(`Unexpected bucket: ${bucket}`)
+          }
+
+          return { remove }
+        }),
+      },
+    })
+
+    const result = await removeAvatar()
+
+    expect(result).toEqual({ success: true })
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ avatar_url: null }))
+    expect(remove).toHaveBeenCalledWith(['avatars/user-1.png'])
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'update',
+      resource_type: 'profile',
+      additional_info: { field: 'avatar_url', action: 'removed' },
+    }))
+  })
+
+  it('changes password only after verifying the current password', async () => {
+    const signInWithPassword = vi.fn().mockResolvedValue({ error: null })
+    const updateUser = vi.fn().mockResolvedValue({ error: null })
+
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-1',
+              email: 'manager@example.com',
+            },
+          },
+          error: null,
+        }),
+        signInWithPassword,
+        updateUser,
+      },
+    })
+
+    const result = await changePassword({
+      currentPassword: 'OldPassword1!',
+      newPassword: 'NewPassword2!',
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'manager@example.com',
+      password: 'OldPassword1!',
+    })
+    expect(updateUser).toHaveBeenCalledWith({ password: 'NewPassword2!' })
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'password_change',
+      resource_type: 'profile',
+    }))
+  })
+
+  it('rejects weak password changes before re-authenticating', async () => {
+    const signInWithPassword = vi.fn()
+    const updateUser = vi.fn()
+
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-1',
+              email: 'manager@example.com',
+            },
+          },
+          error: null,
+        }),
+        signInWithPassword,
+        updateUser,
+      },
+    })
+
+    const result = await changePassword({
+      currentPassword: 'OldPassword1!',
+      newPassword: 'password',
+    })
+
+    expect(result).toEqual({
+      error: 'Password must include at least three of: uppercase, lowercase, number, symbol',
+    })
+    expect(signInWithPassword).not.toHaveBeenCalled()
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('does not update the password when the current password is wrong', async () => {
+    const signInWithPassword = vi.fn().mockResolvedValue({ error: { message: 'invalid login' } })
+    const updateUser = vi.fn()
+
+    mockedCreateClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-1',
+              email: 'manager@example.com',
+            },
+          },
+          error: null,
+        }),
+        signInWithPassword,
+        updateUser,
+      },
+    })
+
+    const result = await changePassword({
+      currentPassword: 'wrong-password',
+      newPassword: 'NewPassword2!',
+    })
+
+    expect(result).toEqual({ error: 'Current password is incorrect' })
+    expect(updateUser).not.toHaveBeenCalled()
   })
 
   it('exports messages by linked customer id, not auth user id', async () => {
