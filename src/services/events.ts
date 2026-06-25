@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { toLocalIsoDate } from '@/lib/dateUtils';
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 import { generateEventMarketingLinks } from '@/app/actions/event-marketing-links';
 import { z } from 'zod';
 import { sendSMS } from '@/lib/twilio';
@@ -325,15 +325,9 @@ export const eventSchema = z.object({
   name: z.string().min(1, 'Event name is required').max(200, 'Event name too long'),
   date: z.string()
     .min(1, 'Date is required')
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format')
     .refine((val) => {
-      try {
-        const eventDate = new Date(val + 'T00:00:00')
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        return eventDate >= today
-      } catch {
-        return false
-      }
+      return val >= getTodayIsoDate()
     }, { message: 'Event date cannot be in the past' }),
   time: z.string()
     .min(1, 'Time is required')
@@ -967,9 +961,10 @@ export class EventService {
     orderAsc?: boolean;
     dateFrom?: string;
     dateTo?: string;
+    categoryId?: string;
   }) {
     const supabase = await createClient();
-    const { status = 'scheduled', searchTerm, page = 1, pageSize = 10, orderBy = 'date', orderAsc = true, dateFrom, dateTo } = options || {};
+    const { status = 'scheduled', searchTerm, page = 1, pageSize = 10, orderBy = 'date', orderAsc = true, dateFrom, dateTo, categoryId } = options || {};
 
     let query = supabase
       .from('events')
@@ -983,6 +978,9 @@ export class EventService {
     }
     if (dateTo) {
       query = query.lte('date', dateTo);
+    }
+    if (categoryId) {
+      query = query.eq('category_id', categoryId);
     }
     if (searchTerm) {
       const sanitizedSearch = sanitizeEventSearchTerm(searchTerm);
@@ -1140,7 +1138,6 @@ export class EventService {
       .select('id, event_booking_id, amount, status')
       .in('event_booking_id', bookingIds)
       .in('charge_type', ['prepaid_event', 'seat_increase'])
-      .eq('payment_provider', 'paypal')
       .in('status', ['succeeded', 'partially_refunded'])
 
     // Track refund results per booking for SMS/email
@@ -1163,7 +1160,11 @@ export class EventService {
             sourcePaymentId: payment.id,
             metadata: { cancelled_by: cancelledBy }
           })
-          refundsProcessed++
+          if (refundResult.status === 'succeeded' || refundResult.status === 'pending') {
+            refundsProcessed++
+          } else if (refundResult.status === 'manual_required' || refundResult.status === 'failed') {
+            refundsFailed++
+          }
           const existing: { status: EventRefundResult['status']; amount: number } =
             refundResults.get(payment.event_booking_id) ?? { status: 'succeeded', amount: 0 }
           existing.amount += refundResult.amount

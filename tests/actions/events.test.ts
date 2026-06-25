@@ -51,6 +51,8 @@ vi.mock('@/lib/sms/customers', () => ({
 
 vi.mock('@/lib/events/manage-booking', () => ({
   createEventManageToken: vi.fn(),
+  getEventRefundPolicy: vi.fn(() => ({ refundRate: 0.5, policyBand: 'partial' })),
+  processEventRefund: vi.fn(),
   updateEventBookingSeatsById: vi.fn(),
 }))
 
@@ -230,6 +232,38 @@ describe('Events actions', () => {
           operation_type: 'create',
           resource_type: 'event',
           resource_id: 'event-1',
+        }),
+      )
+    })
+
+    it('does not throw when JSON form fields are malformed', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockSupabaseClientForEvents()
+
+      const createdEvent = {
+        id: 'event-1',
+        name: 'Quiz Night',
+        date: '2026-04-10',
+        slug: 'quiz-night',
+      }
+
+      mockedEventSchema.safeParse.mockReturnValue({
+        success: true,
+        data: { name: 'Quiz Night', date: '2026-04-10', highlights: [] },
+      })
+      ;(EventService.createEvent as Mock).mockResolvedValue(createdEvent)
+
+      const formData = buildFormData({
+        name: 'Quiz Night',
+        date: '2026-04-10',
+        highlights: '[not-json',
+      })
+      const result = await createEvent(formData)
+
+      expect(result).toEqual({ success: true, data: createdEvent })
+      expect(mockedEventSchema.safeParse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          highlights: [],
         }),
       )
     })

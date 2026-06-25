@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { eventSchema, getPublishValidationIssues, isWorldCup2026Event } from '@/services/events'
 
 const baseEventInput = {
@@ -9,6 +9,10 @@ const baseEventInput = {
 }
 
 describe('eventSchema time normalization', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('preserves midnight values as 00:00', () => {
     const result = eventSchema.parse({
       ...baseEventInput,
@@ -58,6 +62,21 @@ describe('eventSchema time normalization', () => {
         sort_order: 1,
       },
     ])
+  })
+
+  it('validates dates against the current London date', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-14T23:30:00Z'))
+
+    expect(eventSchema.safeParse({
+      ...baseEventInput,
+      date: '2026-07-14',
+    }).success).toBe(false)
+
+    expect(eventSchema.safeParse({
+      ...baseEventInput,
+      date: '2026-07-15',
+    }).success).toBe(true)
   })
 })
 
