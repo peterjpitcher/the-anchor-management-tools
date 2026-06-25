@@ -50,6 +50,7 @@ export interface ExpenseStats {
   quarterTotal: number
   vatReclaimable: number
   missingReceipts: number
+  supplierSpend: Array<{ supplier: string; amount: number }>
 }
 
 export interface ExpenseFilters {
@@ -88,15 +89,32 @@ export interface ExpenseInsightsData {
 // Validation schemas
 // ---------------------------------------------------------------------------
 
-const expenseSchema = z.object({
-  expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
-  company_ref: z.string().min(1, 'Company/ref is required').max(200, 'Max 200 characters'),
-  justification: z.string().min(1, 'Justification is required').max(500, 'Max 500 characters'),
-  amount: z.number().positive('Amount must be greater than 0'),
-  vat_applicable: z.boolean(),
-  vat_amount: z.number().min(0, 'VAT amount must be >= 0'),
-  notes: z.string().max(2000, 'Max 2000 characters').nullable().optional(),
-})
+const expenseSchema = z
+  .object({
+    expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+    company_ref: z.string().min(1, 'Company/ref is required').max(200, 'Max 200 characters'),
+    justification: z.string().min(1, 'Justification is required').max(500, 'Max 500 characters'),
+    amount: z.number().positive('Amount must be greater than 0'),
+    vat_applicable: z.boolean(),
+    vat_amount: z.number().min(0, 'VAT amount must be >= 0'),
+    notes: z.string().max(2000, 'Max 2000 characters').nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.vat_amount > value.amount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vat_amount'],
+        message: 'VAT amount cannot exceed the gross amount',
+      })
+    }
+    if (!value.vat_applicable && value.vat_amount !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vat_amount'],
+        message: 'VAT amount must be 0 when VAT is not applicable',
+      })
+    }
+  })
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -214,7 +232,7 @@ export async function getExpenseStats(): Promise<{
     // Fetch all expenses for this quarter with file info
     const { data, error } = await supabase
       .from('expenses')
-      .select('id, amount, vat_applicable, vat_amount, expense_files(id)')
+      .select('id, amount, vat_applicable, vat_amount, company_ref, expense_files(id)')
       .gte('expense_date', qStartStr)
       .lte('expense_date', qEndStr)
 
@@ -227,12 +245,16 @@ export async function getExpenseStats(): Promise<{
     let quarterTotal = 0
     let vatReclaimable = 0
     let missingReceipts = 0
+    const supplierTotals = new Map<string, number>()
 
     for (const row of rows) {
-      quarterTotal += Number(row.amount)
+      const amount = Number(row.amount)
+      quarterTotal += amount
       if (row.vat_applicable) {
         vatReclaimable += Number(row.vat_amount)
       }
+      const supplier = String(row.company_ref ?? '').trim() || 'Unknown supplier'
+      supplierTotals.set(supplier, (supplierTotals.get(supplier) ?? 0) + amount)
       const fileCount = Array.isArray(row.expense_files) ? row.expense_files.length : 0
       if (fileCount === 0) {
         missingReceipts++
@@ -245,6 +267,10 @@ export async function getExpenseStats(): Promise<{
         quarterTotal: Math.round(quarterTotal * 100) / 100,
         vatReclaimable: Math.round(vatReclaimable * 100) / 100,
         missingReceipts,
+        supplierSpend: Array.from(supplierTotals.entries())
+          .map(([supplier, amount]) => ({ supplier, amount: Math.round(amount * 100) / 100 }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 8),
       },
     }
   } catch (err) {

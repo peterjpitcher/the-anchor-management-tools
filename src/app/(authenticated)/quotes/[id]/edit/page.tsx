@@ -81,9 +81,8 @@ export default function EditQuotePage({ params }: { params: Promise<{ id: string
 
         const quoteData = quoteResult.quote
         
-        // Only allow editing draft quotes
-        if (quoteData.status !== 'draft') {
-          throw new Error('Only draft quotes can be edited')
+        if (!['draft', 'sent', 'expired'].includes(quoteData.status) || quoteData.converted_to_invoice_id) {
+          throw new Error('Only draft, sent, or expired unconverted quotes can be edited')
         }
 
         setVendors(vendorsResult.vendors)

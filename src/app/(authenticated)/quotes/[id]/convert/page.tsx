@@ -15,6 +15,12 @@ import { Spinner } from '@/ds'
 import { toast } from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
+
+function formatCurrency(value: number | null | undefined): string {
+  const amount = Number(value ?? 0)
+  return `£${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`
+}
+
 export default function ConvertQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
@@ -187,7 +193,7 @@ export default function ConvertQuotePage({ params }: { params: Promise<{ id: str
             
             <div className="flex justify-between">
               <span className="text-gray-600">Total Amount:</span>
-              <span className="font-bold text-lg">£{quote.total_amount.toFixed(2)}</span>
+              <span className="font-bold text-lg">{formatCurrency(quote.total_amount)}</span>
             </div>
           </div>
         </Card>

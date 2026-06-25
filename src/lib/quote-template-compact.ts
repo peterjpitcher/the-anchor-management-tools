@@ -47,8 +47,9 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     return formatDateFull(date)
   }
 
-  const formatCurrency = (amount: number) => {
-    return `£${amount.toFixed(2)}`
+  const formatCurrency = (amount: number | null | undefined) => {
+    const value = Number(amount ?? 0)
+    return `£${(Number.isFinite(value) ? value : 0).toFixed(2)}`
   }
 
   // Calculate line item totals

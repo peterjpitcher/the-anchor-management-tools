@@ -20,6 +20,12 @@ import { ConfirmDialog } from '@/ds'
 import { DataTable } from '@/ds'
 
 import { usePermissions } from '@/contexts/PermissionContext'
+
+function formatCurrency(value: number | null | undefined): string {
+  const amount = Number(value ?? 0)
+  return `£${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`
+}
+
 export default function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
@@ -526,7 +532,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="flex justify-between text-base sm:text-lg font-semibold pt-2 border-t">
                 <span>Total:</span>
-                <span>£{quote.total_amount.toFixed(2)}</span>
+                <span>{formatCurrency(quote.total_amount)}</span>
               </div>
             </div>
             </Card>
@@ -561,7 +567,7 @@ export default function QuoteDetailPage({ params }: { params: Promise<{ id: stri
             <div className="space-y-4">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">Total Amount</p>
-                <p className="text-xl sm:text-2xl font-bold">£{quote.total_amount.toFixed(2)}</p>
+                <p className="text-xl sm:text-2xl font-bold">{formatCurrency(quote.total_amount)}</p>
               </div>
               
               <div>

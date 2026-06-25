@@ -87,6 +87,7 @@ import {
   updateExpense,
   deleteExpense,
   getExpenseFiles,
+  getExpenseStats,
 } from '../expenses'
 import { checkUserPermission } from '@/app/actions/rbac'
 
@@ -198,6 +199,32 @@ describe('createExpense', () => {
     expect(result.error).toBeDefined()
   })
 
+  it('should reject VAT above the gross amount', async () => {
+    const result = await createExpense({
+      expense_date: '2026-04-05',
+      company_ref: 'Test',
+      justification: 'Test',
+      amount: 10,
+      vat_applicable: true,
+      vat_amount: 12,
+    })
+
+    expect(result.error).toBe('VAT amount cannot exceed the gross amount')
+  })
+
+  it('should reject VAT amount when VAT is not applicable', async () => {
+    const result = await createExpense({
+      expense_date: '2026-04-05',
+      company_ref: 'Test',
+      justification: 'Test',
+      amount: 10,
+      vat_applicable: false,
+      vat_amount: 2,
+    })
+
+    expect(result.error).toBe('VAT amount must be 0 when VAT is not applicable')
+  })
+
   it('should return error when permission denied', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(false)
 
@@ -277,6 +304,20 @@ describe('updateExpense', () => {
 
     expect(result.error).toBeDefined()
   })
+
+  it('should reject VAT above the gross amount', async () => {
+    const result = await updateExpense({
+      id: 'existing-id',
+      expense_date: '2026-04-06',
+      company_ref: 'B&Q',
+      justification: 'Test',
+      amount: 25,
+      vat_applicable: true,
+      vat_amount: 30,
+    })
+
+    expect(result.error).toBe('VAT amount cannot exceed the gross amount')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -298,6 +339,35 @@ describe('deleteExpense', () => {
   it('should reject empty ID', async () => {
     const result = await deleteExpense('')
     expect(result.error).toContain('required')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getExpenseStats
+// ---------------------------------------------------------------------------
+
+describe('getExpenseStats', () => {
+  it('aggregates real supplier spend for the quarter', async () => {
+    latestQueryResult = {
+      data: [
+        { id: '1', amount: 10, vat_applicable: true, vat_amount: 2, company_ref: 'Supplier A', expense_files: [] },
+        { id: '2', amount: 25, vat_applicable: false, vat_amount: 0, company_ref: 'Supplier B', expense_files: [{ id: 'file' }] },
+        { id: '3', amount: 5, vat_applicable: false, vat_amount: 0, company_ref: 'Supplier A', expense_files: [{ id: 'file' }] },
+      ],
+      error: null,
+      count: 0,
+    }
+
+    const result = await getExpenseStats()
+
+    expect(result.success).toBe(true)
+    expect(result.data?.quarterTotal).toBe(40)
+    expect(result.data?.vatReclaimable).toBe(2)
+    expect(result.data?.missingReceipts).toBe(1)
+    expect(result.data?.supplierSpend).toEqual([
+      { supplier: 'Supplier B', amount: 25 },
+      { supplier: 'Supplier A', amount: 15 },
+    ])
   })
 })
 
