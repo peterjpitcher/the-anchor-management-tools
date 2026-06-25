@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { toLocalIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
@@ -49,7 +49,7 @@ type FinalizeDepositPaymentResult = {
 function formatEventDate(eventDate: string | null | undefined, booking?: { date_tbd?: boolean | null; internal_notes?: string | null }): string {
   if (booking && isBookingDateTbd(booking)) return 'Date to be confirmed'
   return eventDate
-    ? new Date(eventDate).toLocaleDateString('en-GB', {
+    ? formatDateInLondon(eventDate, {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
@@ -465,12 +465,7 @@ export async function recordFinalPayment(bookingId: string, method: string, perf
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
   if (booking.contact_phone || booking.customer_id) {
-    const finalIsTbd = isBookingDateTbd(booking);
-    const eventDate = finalIsTbd
-      ? 'Date to be confirmed'
-      : new Date(booking.event_date).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric'
-        });
+    const eventDate = formatEventDate(booking.event_date, booking)
 
     const smsMessage = finalPaymentMessage({
       customerFirstName: booking.customer_first_name,
@@ -596,12 +591,7 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
   // SMS
   if (booking.contact_phone || booking.customer_id) {
-    const balanceIsTbd = isBookingDateTbd(booking);
-    const eventDate = balanceIsTbd
-      ? 'Date to be confirmed'
-      : new Date(booking.event_date).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric'
-        });
+    const eventDate = formatEventDate(booking.event_date, booking)
 
     const smsMessage = finalPaymentMessage({
       customerFirstName: booking.customer_first_name,

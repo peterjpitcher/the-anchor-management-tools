@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPhoneForStorage } from '@/lib/utils';
-import { toLocalIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
@@ -52,22 +52,26 @@ import { sendBookingConfirmedSideEffects } from './payments';
 // Private helpers
 // ---------------------------------------------------------------------------
 
+function formatPrivateBookingDate(
+  value: string | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' },
+): string {
+  if (!value) return ''
+  return formatDateInLondon(value, options)
+}
+
  
 async function sendCreationSms(booking: any, phone?: string | null): Promise<void> {
   const isTbd = isBookingDateTbd(booking);
   const eventDateReadable = isTbd
     ? 'Date to be confirmed'
-    : new Date(booking.event_date).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      });
+    : formatPrivateBookingDate(booking.event_date);
 
   const depositAmount = toNumber(booking.deposit_amount);
 
   // Calculate hold expiry (14 days from creation)
   const holdExpiryDate = booking.hold_expiry ? new Date(booking.hold_expiry) : new Date();
-  const expiryReadable = holdExpiryDate.toLocaleDateString('en-GB', {
+  const expiryReadable = formatPrivateBookingDate(holdExpiryDate, {
     day: 'numeric',
     month: 'long'
   });
@@ -145,7 +149,7 @@ type CancellationSmsVariant = {
 }
 
 const UPDATE_BOOKING_BASE_SELECT =
-  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs'
+  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute'
 
 const CANCELLED_BOOKING_CORRECTION_FIELDS = new Set([
   'contact_email',
@@ -757,12 +761,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // Send Date Change SMS if hold was reset
   if (!abortSmsSideEffects && holdExpiryIso && updatedBooking.status === 'draft') {
-    const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
+    const eventDateReadable = formatPrivateBookingDate(updatedBooking.event_date);
 
     const expiryDate = new Date(holdExpiryIso);
-    const expiryReadable = expiryDate.toLocaleDateString('en-GB', {
+    const expiryReadable = formatPrivateBookingDate(expiryDate, {
       day: 'numeric', month: 'long'
     });
 
@@ -801,11 +803,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     (setupDateChanged || setupTimeChanged);
 
   if (!abortSmsSideEffects && shouldSendSetupReminder) {
-    const eventDateReadable = new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
+    const eventDateReadable = formatPrivateBookingDate(updatedBooking.event_date);
 
     const setupTimeReadable = updatedBooking.setup_time
       ? new Date(`1970-01-01T${updatedBooking.setup_time}`).toLocaleTimeString('en-GB', {
@@ -849,11 +847,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     const updatedIsTbd = isBookingDateTbd(updatedBooking);
     const eventDateReadable = updatedIsTbd
       ? 'Date to be confirmed'
-      : new Date(updatedBooking.event_date).toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        });
+      : formatPrivateBookingDate(updatedBooking.event_date);
 
     const firstName =
       updatedBooking.customer_first_name || updatedBooking.customer_name?.split(' ')[0] || 'there';
@@ -1256,9 +1250,7 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     const bookingIsTbd = isBookingDateTbd(booking);
     const eventDate = bookingIsTbd
       ? 'Date to be confirmed'
-      : new Date(booking.event_date).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric'
-        });
+      : formatPrivateBookingDate(booking.event_date);
 
     const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
     // Pick the cancellation variant based on paid totals + dispute state.
@@ -1428,9 +1420,7 @@ export async function expireBooking(
     const expiryIsTbd = isBookingDateTbd(booking);
     const eventDate = expiryIsTbd
       ? 'Date to be confirmed'
-      : new Date(booking.event_date).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric'
-        });
+      : formatPrivateBookingDate(booking.event_date);
 
     const smsMessage = bookingExpiredMessage({
       customerFirstName: booking.customer_first_name,
@@ -1521,11 +1511,11 @@ export async function extendHold(
   // 4. Send SMS
   let smsSent = false;
   if (booking.contact_phone || booking.customer_id) {
-    const expiryReadable = newExpiry.toLocaleDateString('en-GB', {
+    const expiryReadable = formatPrivateBookingDate(newExpiry, {
       day: 'numeric', month: 'long', year: 'numeric'
     });
     const eventDateReadable = booking.event_date
-      ? new Date(booking.event_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+      ? formatPrivateBookingDate(booking.event_date)
       : 'your event';
 
     const smsMessage = holdExtendedMessage({

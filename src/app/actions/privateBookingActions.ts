@@ -15,7 +15,7 @@ import type {
 } from '@/types/private-bookings'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
-import { toLocalIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import { sanitizeMoneyString } from '@/lib/utils'
 import { logAuditEvent } from './audit'
 import {
@@ -347,6 +347,14 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     special_requirements: getStringAllowEmpty(formData, 'special_requirements'),
     accessibility_needs: getStringAllowEmpty(formData, 'accessibility_needs'),
     source: getStringAllowEmpty(formData, 'source'),
+    deposit_amount: (() => {
+      const value = getStringAllowEmpty(formData, 'deposit_amount')
+      return value ? parseFloat(value) : undefined
+    })(),
+    balance_due_date: getStringAllowEmpty(formData, 'balance_due_date'),
+    has_open_dispute: formData.has('has_open_dispute')
+      ? formData.getAll('has_open_dispute').includes('true')
+      : undefined,
     status: getString(formData, 'status') as BookingStatus | undefined,
   }
 
@@ -649,7 +657,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
     const customerFirstName =
       booking?.customer_first_name ?? booking?.customer_name ?? null
     const eventDateReadable = booking?.event_date
-      ? new Date(booking.event_date).toLocaleDateString('en-GB', {
+      ? formatDateInLondon(booking.event_date, {
           day: 'numeric',
           month: 'long',
           year: 'numeric',

@@ -80,6 +80,7 @@ export interface PrivateBooking {
   customer_requests?: string
   special_requirements?: string
   accessibility_needs?: string
+  has_open_dispute?: boolean
   source?: string
   created_by?: string
   created_at: string

@@ -48,10 +48,9 @@ export type PrivateBookingCancellationOutcome = {
  * `private_booking_payments` (these are non-deposit top-up payments recorded
  * after the deposit).
  *
- * Dispute detection is primary-signal based: any payment note containing
- * `dispute` or `chargeback` (case-insensitive, word boundary) flips
- * `has_open_dispute` to true. When a dedicated dispute/chargeback webhook
- * table exists this should be replaced with a proper lookup.
+ * Dispute detection is sourced from `private_bookings.has_open_dispute`; staff
+ * and future webhook handlers should set that structured flag rather than
+ * relying on free-text payment notes.
  */
 export async function getPrivateBookingPaidTotals(
   bookingId: string,
@@ -60,7 +59,7 @@ export async function getPrivateBookingPaidTotals(
 
   const { data: booking, error: bookingError } = await db
     .from('private_bookings')
-    .select('deposit_amount, deposit_paid_date, event_date')
+    .select('deposit_amount, deposit_paid_date, event_date, has_open_dispute')
     .eq('id', bookingId)
     .single()
 
@@ -97,20 +96,11 @@ export async function getPrivateBookingPaidTotals(
     0,
   )
 
-  // Dispute detection: look for payment notes containing "dispute" or
-  // "chargeback" at word boundaries, case-insensitive. If a product has a
-  // dedicated dispute/chargeback table or Stripe webhook persistence, replace
-  // the regex detection with a proper lookup.
-  const hasOpenDispute = (payments ?? []).some(
-    (p) =>
-      typeof p?.notes === 'string' && /\b(dispute|chargeback)\b/i.test(p.notes),
-  )
-
   return {
     deposit_paid: depositPaid,
     balance_payments_total: balancePaymentsTotal,
     total_paid: depositPaid + balancePaymentsTotal,
-    has_open_dispute: hasOpenDispute,
+    has_open_dispute: booking.has_open_dispute === true,
     event_date: booking.event_date ?? null,
   }
 }

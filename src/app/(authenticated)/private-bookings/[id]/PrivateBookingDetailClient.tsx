@@ -2648,28 +2648,34 @@ export default function PrivateBookingDetailClient({
                       (booking.status === "draft" || booking.status === "confirmed") &&
                       canManageDeposits && (
                         <div className="mt-1 flex flex-col gap-1 items-end">
-                          <button type="button"
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
                             onClick={() => setShowDepositModal(true)}
-                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
                           >
                             Record Payment
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={handlePaypalDeposit}
                             disabled={paypalDepositLoading}
-                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                            loading={paypalDepositLoading}
                           >
-                            {paypalDepositLoading ? 'Creating link…' : 'Pay via PayPal'}
-                          </button>
-                          <button
+                            Pay via PayPal
+                          </Button>
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={handleSendDepositLink}
                             disabled={sendingDepositLink}
-                            className="text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                            loading={sendingDepositLink}
                           >
-                            {sendingDepositLink ? 'Sending…' : 'Send payment link'}
-                          </button>
+                            Send payment link
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -2751,12 +2757,15 @@ export default function PrivateBookingDetailClient({
                             </>
                           )}
                           {!isDateTbd && !booking.final_payment_date && remaining > 0 && canManageDeposits && (
-                            <button type="button"
+                            <Button
+                              type="button"
+                              variant="primary"
+                              size="sm"
                               onClick={() => setShowFinalModal(true)}
-                              className="mt-1 text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                              className="mt-1"
                             >
                               Record Payment
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
