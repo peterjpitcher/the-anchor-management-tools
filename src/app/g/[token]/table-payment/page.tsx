@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
@@ -35,36 +34,42 @@ function getSingleValue(value: string | string[] | undefined): string | undefine
   return value
 }
 
+function DepositReceivedPanel({
+  contactPhone,
+  guestFirstName,
+}: {
+  contactPhone: string
+  guestFirstName: string | null
+}) {
+  return (
+    <GuestPageShell>
+      <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Deposit received</h1>
+        <p className="mt-2 text-sm text-slate-700">
+          {formatGuestGreeting(guestFirstName, 'your deposit payment has been received.')}
+        </p>
+        <p className="mt-3 text-sm text-slate-700">
+          Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
+        </p>
+        <p className="mt-3 text-sm text-slate-700">
+          If you do not receive confirmation, call {contactPhone}.
+        </p>
+        <div className="mt-6">
+          <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
+            Back to The Anchor
+          </Link>
+        </div>
+      </div>
+    </GuestPageShell>
+  )
+}
+
 export default async function TablePaymentPage({ params, searchParams }: TablePaymentPageProps) {
   const { token } = await params
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const state = getSingleValue(resolvedSearchParams.state)
   const reason = getSingleValue(resolvedSearchParams.reason)
   const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
-
-  if (state === 'paid') {
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Deposit received</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(null, 'your deposit payment has been received.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">
-            Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
-          </p>
-          <p className="mt-3 text-sm text-slate-700">
-            If you do not receive confirmation, call {contactPhone}.
-          </p>
-          <div className="mt-6">
-            <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
-              Back to The Anchor
-            </Link>
-          </div>
-        </div>
-      </GuestPageShell>
-    )
-  }
 
   if (state === 'blocked') {
     return (
@@ -128,15 +133,15 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   }
 
   // preview.state === 'ready' from here — all fields are available
+  const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const { data: booking } = await supabase
     .from('table_bookings')
     .select('payment_status, paypal_deposit_order_id')
     .eq('id', preview.tableBookingId)
     .single()
 
-  // Already paid — redirect to confirmed page
   if (booking?.payment_status === 'completed') {
-    redirect(`/g/${token}/table-payment?state=paid`)
+    return <DepositReceivedPanel contactPhone={contactPhone} guestFirstName={guestFirstName} />
   }
 
   // Create or reuse PayPal order (only reuse if still valid on PayPal's side)
@@ -434,7 +439,6 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     }
   }
 
-  const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const paypalClientId = process.env.PAYPAL_CLIENT_ID ?? ''
   const paypalEnvironment = process.env.PAYPAL_ENVIRONMENT ?? 'live'
 

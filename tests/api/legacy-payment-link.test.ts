@@ -40,7 +40,7 @@ vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
   createSundayPreorderToken: vi.fn(),
 }))
 
-import { createTableCheckoutSessionByRawToken } from '@/lib/table-bookings/bookings'
+import { createTableCheckoutSessionByRawToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 
 function buildSupabase(bookingOverrides: Record<string, unknown> = {}) {
   const guestTokenMaybeSingle = vi.fn().mockResolvedValue({
@@ -149,6 +149,20 @@ describe('Legacy payment link — canonical deposit charging (walk-in launch)', 
 
     const stripeArgs = createStripeTableDepositCheckoutSessionMock.mock.calls[0]?.[0]
     expect(stripeArgs.unitAmountMinor).toBe(8000)
+  })
+
+  it('uses London end-of-day for confirmed-booking fallback hold expiry', async () => {
+    const result = await getTablePaymentPreviewByRawToken(
+      buildSupabase({
+        hold_expires_at: null,
+        booking_date: '2026-07-15',
+      }) as any,
+      'raw-legacy-token'
+    )
+
+    expect(result).toMatchObject({ state: 'ready' })
+    if (result.state !== 'ready') throw new Error('Expected ready preview')
+    expect(result.holdExpiresAt).toBe('2026-07-15T22:59:59.000Z')
   })
 
   it('fails with state: blocked + reason: invalid_amount when no canonical deposit resolves', async () => {
