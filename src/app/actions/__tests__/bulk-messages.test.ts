@@ -48,8 +48,8 @@ function setAuthUser(user: typeof MOCK_USER | null) {
 }
 
 const MOCK_RECIPIENTS = [
-  { id: 'cust-1', first_name: 'Alice', last_name: 'Smith', mobile_number: '+447700900001', last_booking_date: '2025-03-01' },
-  { id: 'cust-2', first_name: 'Bob', last_name: 'Jones', mobile_number: '+447700900002', last_booking_date: null },
+  { id: 'cust-1', first_name: 'Alice', last_name: 'Smith', mobile_number: '+447700900001', last_booking_date: '2025-03-01', total_count: 2 },
+  { id: 'cust-2', first_name: 'Bob', last_name: 'Jones', mobile_number: '+447700900002', last_booking_date: null, total_count: 2 },
 ]
 
 // ---------------------------------------------------------------------------
@@ -85,7 +85,15 @@ describe('fetchBulkRecipients', () => {
 
   it('should return recipients on success with default filters', async () => {
     const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
-    expect(result).toEqual({ data: MOCK_RECIPIENTS })
+    expect(result).toEqual({
+      data: [
+        { id: 'cust-1', first_name: 'Alice', last_name: 'Smith', mobile_number: '+447700900001', last_booking_date: '2025-03-01' },
+        { id: 'cust-2', first_name: 'Bob', last_name: 'Jones', mobile_number: '+447700900002', last_booking_date: null },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 50,
+    })
   })
 
   it('should map filters correctly to RPC params', async () => {
@@ -107,7 +115,17 @@ describe('fetchBulkRecipients', () => {
       p_created_after: '2025-01-01',
       p_created_before: '2025-12-31',
       p_search: 'Alice',
+      p_page: 1,
+      p_page_size: 50,
     })
+  })
+
+  it('passes pagination params to the RPC', async () => {
+    await fetchBulkRecipients({ smsOptIn: 'opted_in', page: 3, pageSize: 25 })
+    expect(mockRpc).toHaveBeenCalledWith(
+      'get_bulk_sms_recipients',
+      expect.objectContaining({ p_page: 3, p_page_size: 25 })
+    )
   })
 
   it('should set p_sms_opt_in_only to false when smsOptIn is "all"', async () => {
@@ -128,6 +146,8 @@ describe('fetchBulkRecipients', () => {
       p_created_after: null,
       p_created_before: null,
       p_search: null,
+      p_page: 1,
+      p_page_size: 50,
     })
   })
 
@@ -164,7 +184,26 @@ describe('fetchBulkRecipients', () => {
   it('should return empty array when RPC returns null data', async () => {
     mockRpc.mockResolvedValue({ data: null, error: null })
     const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
-    expect(result).toEqual({ data: [] })
+    expect(result).toEqual({ data: [], total: 0, page: 1, pageSize: 50 })
+  })
+
+  it('normalises null-like names before preview personalisation uses them', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        { id: 'cust-1', first_name: null, last_name: 'null', mobile_number: '+447700900001', last_booking_date: null, total_count: 1 },
+      ],
+      error: null,
+    })
+
+    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    expect(result).toEqual({
+      data: [
+        { id: 'cust-1', first_name: '', last_name: '', mobile_number: '+447700900001', last_booking_date: null },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    })
   })
 })
 

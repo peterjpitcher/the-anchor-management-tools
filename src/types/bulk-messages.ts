@@ -6,6 +6,8 @@ export interface BulkRecipientFilters {
   createdAfter?: string    // ISO date
   createdBefore?: string   // ISO date
   search?: string
+  page?: number
+  pageSize?: number
 }
 
 export interface BulkRecipient {
@@ -14,6 +16,13 @@ export interface BulkRecipient {
   last_name: string
   mobile_number: string      // mobile_e164 from the RPC
   last_booking_date: string | null
+}
+
+export interface BulkRecipientsPage {
+  data: BulkRecipient[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 export interface SendBulkResult {

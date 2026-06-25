@@ -300,14 +300,6 @@ export async function GET(request: NextRequest) {
         await new Promise(resolve => setTimeout(resolve, 100))
 
       } catch (error: unknown) {
-        logger.error('Error reconciling SMS delivery state', {
-          error: error instanceof Error ? error : new Error(String(error)),
-          metadata: {
-            messageId: message.id,
-            twilioSid: message.twilio_message_sid
-          }
-        })
-        
         // Handle message not found
         const rawCode = getErrorCode(error)
         const twilioErrorCode =
@@ -337,6 +329,7 @@ export async function GET(request: NextRequest) {
                 error: notFoundUpdateError.message
               }
             })
+            errors++
           } else if (!notFoundRow) {
             logger.warn('Twilio missing-message reconciliation no-op due to missing row', {
               metadata: {
@@ -370,9 +363,18 @@ export async function GET(request: NextRequest) {
               messageStatus: 'failed',
               errorCode: '20404'
             })
+            updated++
           }
+          continue
         }
-        
+
+        logger.error('Error reconciling SMS delivery state', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: {
+            messageId: message.id,
+            twilioSid: message.twilio_message_sid
+          }
+        })
         errors++
       }
     }
