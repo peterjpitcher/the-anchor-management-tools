@@ -108,6 +108,24 @@ describe('calculateInvoiceTotals', () => {
       expect(result.totalAmount).toBe(0.12)
     })
 
+    it('rounds the per-line total so PDF rendering matches screen/stored (A-047)', () => {
+      // Regression: the PDF templates used to add raw per-line VAT then round
+      // for display (add-then-round), e.g. (2.20 + 0.385).toFixed(2) = "2.58".
+      // The shared calculator rounds per-line VAT first (round-then-add):
+      // roundCurrency(0.385) = 0.39 → total = 2.20 + 0.39 = 2.59.
+      // Templates now render lineBreakdown[i].total so the penny matches.
+      const lines: InvoiceLineInput[] = [
+        { quantity: 1, unit_price: 2.2, discount_percentage: 0, vat_rate: 17.5 },
+      ]
+      const result = calculateInvoiceTotals(lines, 0)
+      expect(result.lineBreakdown[0].vat).toBe(0.39)
+      expect(result.lineBreakdown[0].total).toBe(2.59)
+      // The naive add-then-round the templates used to do diverged by a penny.
+      const naivePdfTotal = Number((2.2 + 2.2 * 0.175).toFixed(2))
+      expect(naivePdfTotal).toBe(2.58)
+      expect(result.lineBreakdown[0].total).not.toBe(naivePdfTotal)
+    })
+
     it('should apply VAT after invoice-level discount', () => {
       const lines: InvoiceLineInput[] = [
         { quantity: 1, unit_price: 100, discount_percentage: 0, vat_rate: 20 },

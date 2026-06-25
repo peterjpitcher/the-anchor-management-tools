@@ -1,6 +1,7 @@
 import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
 export interface InvoiceTemplateData {
   invoice: InvoiceWithDetails
@@ -85,6 +86,19 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
     }
     return terms === 0 ? 'Due upon receipt' : `${terms} days`
   }
+
+  // Use the shared calculator so per-line totals round identically to the
+  // on-screen and stored values (round-then-add, not add-then-round).
+  const lineItems = invoice.line_items ?? []
+  const totals = calculateInvoiceTotals(
+    lineItems.map(li => ({
+      quantity: li.quantity,
+      unit_price: li.unit_price,
+      discount_percentage: li.discount_percentage,
+      vat_rate: li.vat_rate,
+    })),
+    invoice.invoice_discount_percentage
+  )
 
   return `
 <!DOCTYPE html>
@@ -427,18 +441,18 @@ export function generateInvoiceHTML(data: InvoiceTemplateData): string {
         </tr>
       </thead>
       <tbody>
-        ${invoice.line_items?.map(item => `
+        ${lineItems.map((item, index) => `
           <tr>
             <td class="item-description">${item.description}</td>
             <td class="text-right">${item.quantity}</td>
             <td class="text-right">${formatCurrency(item.unit_price)}</td>
             <td class="text-right">
-              ${item.discount_percentage > 0 ? 
-                `<span class="discount-text">-${item.discount_percentage}%</span>` : 
+              ${item.discount_percentage > 0 ?
+                `<span class="discount-text">-${item.discount_percentage}%</span>` :
                 '-'}
             </td>
             <td class="text-right">${item.vat_rate}%</td>
-            <td class="text-right"><strong>${formatCurrency(calculateLineTotal(item))}</strong></td>
+            <td class="text-right"><strong>${formatCurrency(totals.lineBreakdown[index].total)}</strong></td>
           </tr>
         `).join('') || '<tr><td colspan="6" style="text-align: center; color: #6b7280;">No line items</td></tr>'}
       </tbody>

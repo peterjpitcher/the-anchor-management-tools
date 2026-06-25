@@ -12,7 +12,13 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { AppShell } from '@/ds/shell'
 
-function AuthenticatedLayoutContent({ children }: { children: React.ReactNode }) {
+function AuthenticatedLayoutContent({
+  children,
+  userRoleLabel,
+}: {
+  children: React.ReactNode
+  userRoleLabel: string
+}) {
   const router = useRouter()
   const pathname = usePathname() ?? '/'
   const supabase = useSupabase()
@@ -166,7 +172,7 @@ async function handleSignOut() {
         fohMode={fohOnlyMode}
         fohEmployeeId={fohEmployeeId}
         userName={user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User'}
-        userRole="Manager"
+        userRole={userRoleLabel}
         onSignOut={handleSignOut}
         isSigningOut={isSigningOut}
       >
@@ -179,14 +185,16 @@ async function handleSignOut() {
 
 export default function AuthenticatedLayout({
   children,
-  initialPermissions
+  initialPermissions,
+  userRoleLabel = 'Staff'
 }: {
   children: React.ReactNode;
   initialPermissions?: UserPermission[];
+  userRoleLabel?: string;
 }) {
   return (
     <PermissionProvider initialPermissions={initialPermissions}>
-      <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
+      <AuthenticatedLayoutContent userRoleLabel={userRoleLabel}>{children}</AuthenticatedLayoutContent>
     </PermissionProvider>
   )
 }

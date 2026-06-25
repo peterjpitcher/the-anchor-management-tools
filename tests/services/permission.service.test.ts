@@ -114,21 +114,16 @@ describe('PermissionService deleteRole race safety', () => {
       data: [{ user_id: 'user-1' }, { user_id: 'user-2' }],
       error: null,
     })
-    const deleteIn = vi.fn().mockResolvedValue({ error: null })
-    const deleteEq = vi.fn().mockReturnValue({ in: deleteIn })
-    const insert = vi.fn().mockResolvedValue({ error: null })
+    const rpc = vi.fn().mockResolvedValue({ error: null })
 
     const adminClient = {
+      rpc,
       from: vi.fn((table: string) => {
         if (table === 'roles') {
           return { select: vi.fn().mockReturnValue({ eq: roleEq }) }
         }
         if (table === 'role_permissions') {
-          return {
-            select: vi.fn().mockReturnValue({ eq: existingPermissionsEq }),
-            delete: vi.fn().mockReturnValue({ eq: deleteEq }),
-            insert,
-          }
+          return { select: vi.fn().mockReturnValue({ eq: existingPermissionsEq }) }
         }
         if (table === 'user_roles') {
           return { select: vi.fn().mockReturnValue({ eq: assignedUsersEq }) }
@@ -145,11 +140,14 @@ describe('PermissionService deleteRole race safety', () => {
     })
     expect(mockedRevalidateTag).toHaveBeenCalledWith('permissions-user-1')
     expect(mockedRevalidateTag).toHaveBeenCalledWith('permissions-user-2')
-    expect(insert).toHaveBeenCalledWith([{ role_id: 'role-1', permission_id: 'permission-new' }])
-    expect(deleteIn).toHaveBeenCalledWith('permission_id', ['permission-old'])
+    // The replace is a single atomic RPC, not a separate delete + insert.
+    expect(rpc).toHaveBeenCalledWith('replace_role_permissions', {
+      p_role_id: 'role-1',
+      p_permission_ids: ['permission-new'],
+    })
   })
 
-  it('keeps existing role permissions when adding new permissions fails', async () => {
+  it('does not invalidate caches when the atomic permission replace fails', async () => {
     const roleMaybeSingle = vi.fn().mockResolvedValue({
       data: { id: 'role-1', is_system: false },
       error: null,
@@ -164,21 +162,16 @@ describe('PermissionService deleteRole race safety', () => {
       data: [{ user_id: 'user-1' }],
       error: null,
     })
-    const deleteIn = vi.fn().mockResolvedValue({ error: null })
-    const deleteEq = vi.fn().mockReturnValue({ in: deleteIn })
-    const insert = vi.fn().mockResolvedValue({ error: { message: 'insert failed' } })
+    const rpc = vi.fn().mockResolvedValue({ error: { message: 'replace failed' } })
 
     const adminClient = {
+      rpc,
       from: vi.fn((table: string) => {
         if (table === 'roles') {
           return { select: vi.fn().mockReturnValue({ eq: roleEq }) }
         }
         if (table === 'role_permissions') {
-          return {
-            select: vi.fn().mockReturnValue({ eq: existingPermissionsEq }),
-            delete: vi.fn().mockReturnValue({ eq: deleteEq }),
-            insert,
-          }
+          return { select: vi.fn().mockReturnValue({ eq: existingPermissionsEq }) }
         }
         if (table === 'user_roles') {
           return { select: vi.fn().mockReturnValue({ eq: assignedUsersEq }) }
@@ -190,30 +183,27 @@ describe('PermissionService deleteRole race safety', () => {
     mockedCreateAdminClient.mockReturnValue(adminClient)
 
     await expect(PermissionService.assignPermissionsToRole('role-1', ['permission-new'])).rejects.toThrow(
-      'Failed to assign permissions'
+      'Failed to update permissions'
     )
-    expect(insert).toHaveBeenCalledWith([{ role_id: 'role-1', permission_id: 'permission-new' }])
-    expect(deleteIn).not.toHaveBeenCalled()
+    expect(rpc).toHaveBeenCalledWith('replace_role_permissions', {
+      p_role_id: 'role-1',
+      p_permission_ids: ['permission-new'],
+    })
     expect(mockedRevalidateTag).not.toHaveBeenCalled()
   })
 
-  it('keeps existing user roles when adding replacement roles fails', async () => {
+  it('does not invalidate caches when the atomic role replace fails', async () => {
     const existingRolesEq = vi.fn().mockResolvedValue({
       data: [{ role_id: 'role-old' }],
       error: null,
     })
-    const deleteIn = vi.fn().mockResolvedValue({ error: null })
-    const deleteEq = vi.fn().mockReturnValue({ in: deleteIn })
-    const insert = vi.fn().mockResolvedValue({ error: { message: 'insert failed' } })
+    const rpc = vi.fn().mockResolvedValue({ error: { message: 'replace failed' } })
 
     const adminClient = {
+      rpc,
       from: vi.fn((table: string) => {
         if (table === 'user_roles') {
-          return {
-            select: vi.fn().mockReturnValue({ eq: existingRolesEq }),
-            delete: vi.fn().mockReturnValue({ eq: deleteEq }),
-            insert,
-          }
+          return { select: vi.fn().mockReturnValue({ eq: existingRolesEq }) }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -222,10 +212,13 @@ describe('PermissionService deleteRole race safety', () => {
     mockedCreateAdminClient.mockReturnValue(adminClient)
 
     await expect(PermissionService.assignRolesToUser('user-1', ['role-new'], 'manager-1')).rejects.toThrow(
-      'Failed to assign roles'
+      'Failed to update user roles'
     )
-    expect(insert).toHaveBeenCalledWith([{ user_id: 'user-1', role_id: 'role-new', assigned_by: 'manager-1' }])
-    expect(deleteIn).not.toHaveBeenCalled()
+    expect(rpc).toHaveBeenCalledWith('replace_user_roles', {
+      p_user_id: 'user-1',
+      p_role_ids: ['role-new'],
+      p_assigned_by: 'manager-1',
+    })
     expect(mockedRevalidateTag).not.toHaveBeenCalled()
   })
 
