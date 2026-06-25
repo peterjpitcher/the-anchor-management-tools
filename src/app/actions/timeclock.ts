@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient as createServerClient } from '@/lib/supabase/server';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
@@ -16,6 +17,7 @@ import {
 const createClient = () => createAdminClient();
 
 const TIMEZONE = 'Europe/London';
+const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub';
 
 async function canManageTimeclock(options?: { allowPayrollApprove?: boolean }): Promise<boolean> {
   const canEdit = await checkUserPermission('timeclock', 'edit');
@@ -31,7 +33,24 @@ async function canUseAuthenticatedTimeclock(): Promise<boolean> {
     checkUserPermission('timeclock', 'clock'),
     checkUserPermission('timeclock', 'edit'),
   ]);
-  return canClock || canEdit;
+  if (canClock || canEdit) {
+    return true;
+  }
+
+  return canUseManagerFohKioskTimeclock();
+}
+
+async function canUseManagerFohKioskTimeclock(): Promise<boolean> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.id || user.email?.toLowerCase() !== MANAGER_IPAD_EMAIL) {
+    return false;
+  }
+
+  return checkUserPermission('table_bookings', 'view', user.id);
 }
 
 async function verifyClockIdentity(
