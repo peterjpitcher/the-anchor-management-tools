@@ -37,7 +37,7 @@ export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema
       expires_at: data.expires_at ?? undefined,
     });
     
-    const result = await ShortLinkService.createShortLink(validatedData);
+    const result = await ShortLinkService.createShortLink(validatedData, user.id);
 
     await logAuditEvent({
       operation_type: 'create',
@@ -178,7 +178,8 @@ export async function deleteShortLink(id: string) {
   }
 }
 
-// Create a short link without authentication (for system use)
+// Create a short link from a server action. Internal system code should call
+// ShortLinkService.createShortLinkInternal directly, not this exposed action.
 export async function createShortLinkInternal(data: {
   destination_url: string;
   link_type: string;
@@ -186,11 +187,19 @@ export async function createShortLinkInternal(data: {
   expires_at?: string;
 }) {
   try {
+    const supabase = await createClient();
+    const [{ data: { user } }, canManage] = await Promise.all([
+      supabase.auth.getUser(),
+      checkUserPermission('short_links', 'manage'),
+    ]);
+    if (!user) return { error: 'Authentication required' };
+    if (!canManage) return { error: 'You do not have permission to manage short links' };
+
     const result = await ShortLinkService.createShortLinkInternal(data);
     return { success: true, data: result };
   } catch (error: unknown) {
     console.error('Internal short link error:', error);
-    return { error: `Failed to create short link: $\{getErrorMessage(error)\}` };
+    return { error: `Failed to create short link: ${getErrorMessage(error)}` };
   }
 }
 
@@ -205,7 +214,7 @@ export async function getOrCreateUtmVariant(parentId: string, channelKey: string
     if (!user) return { error: 'Authentication required' };
     if (!canManage) return { error: 'You do not have permission to manage short links' };
 
-    const result = await ShortLinkService.getOrCreateUtmVariant(parentId, channelKey);
+    const result = await ShortLinkService.getOrCreateUtmVariant(parentId, channelKey, user.id);
 
     if (!result.already_exists) {
       await logAuditEvent({

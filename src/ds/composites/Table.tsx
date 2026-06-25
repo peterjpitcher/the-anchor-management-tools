@@ -154,13 +154,15 @@ interface TableCellProps {
   children?: React.ReactNode
   className?: string
   align?: 'left' | 'right' | 'center'
+  colSpan?: number
 }
 
-export function TableCell({ children, className, align = 'left' }: TableCellProps) {
+export function TableCell({ children, className, align = 'left', colSpan }: TableCellProps) {
   const alignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
 
   return (
     <td
+      colSpan={colSpan}
       className={cn(
         'px-4 py-[var(--spacing-row-h)] text-[13px] text-text whitespace-nowrap',
         alignClass,
