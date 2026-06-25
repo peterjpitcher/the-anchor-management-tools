@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { Button } from '@/ds'
@@ -10,10 +9,11 @@ import { FormGroup } from '@/ds'
 import { Section } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
+import { changePassword } from '@/app/actions/profile'
 
 export default function ChangePasswordPage() {
-  const supabase = useSupabase()
   const router = useRouter()
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,19 +26,23 @@ export default function ChangePasswordPage() {
       return
     }
 
-    if (newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters long')
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long')
       return
     }
 
     try {
       setLoading(true)
 
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
+      const result = await changePassword({
+        currentPassword,
+        newPassword,
       })
 
-      if (error) throw error
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to update password')
+        return
+      }
 
       toast.success('Password updated successfully')
       router.push('/profile')
@@ -60,10 +64,25 @@ export default function ChangePasswordPage() {
         <Section>
           <Card>
             <form onSubmit={handleChangePassword} className="space-y-6">
+            <FormGroup
+              label="Current Password"
+              required
+            >
+              <Input
+                type="password"
+                id="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                placeholder="Enter current password"
+              />
+            </FormGroup>
+
             <FormGroup 
               label="New Password" 
               required
-              help="Must be at least 6 characters long"
+              help="At least 8 characters, using at least three of uppercase, lowercase, number, and symbol"
             >
               <Input
                 type="password"
@@ -71,7 +90,8 @@ export default function ChangePasswordPage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
+                autoComplete="new-password"
                 placeholder="Enter new password"
               />
             </FormGroup>
@@ -86,7 +106,8 @@ export default function ChangePasswordPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
+                autoComplete="new-password"
                 placeholder="Confirm new password"
               />
             </FormGroup>

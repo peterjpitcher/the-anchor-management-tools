@@ -292,6 +292,96 @@ export async function requestAccountDeletion(reason = 'User requested account de
   }
 }
 
+function getPasswordStrengthError(password: string, email?: string | null): string | null {
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long'
+  }
+
+  const categoryCount = [
+    /[a-z]/.test(password),
+    /[A-Z]/.test(password),
+    /\d/.test(password),
+    /[^A-Za-z0-9]/.test(password),
+  ].filter(Boolean).length
+
+  if (categoryCount < 3) {
+    return 'Password must include at least three of: uppercase, lowercase, number, symbol'
+  }
+
+  const emailName = email?.split('@')[0]?.toLowerCase()
+  if (emailName && emailName.length >= 4 && password.toLowerCase().includes(emailName)) {
+    return 'Password must not include your email name'
+  }
+
+  return null
+}
+
+export async function changePassword({
+  currentPassword,
+  newPassword,
+}: {
+  currentPassword: string
+  newPassword: string
+}) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  if (!user.email) {
+    return { error: 'This account does not have an email address' }
+  }
+
+  if (!currentPassword) {
+    return { error: 'Enter your current password' }
+  }
+
+  const strengthError = getPasswordStrengthError(newPassword, user.email)
+  if (strengthError) {
+    return { error: strengthError }
+  }
+
+  if (currentPassword === newPassword) {
+    return { error: 'New password must be different from your current password' }
+  }
+
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  })
+
+  if (signInError) {
+    return { error: 'Current password is incorrect' }
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: newPassword,
+  })
+
+  if (updateError) {
+    console.error('Error updating password', updateError)
+    return { error: 'Failed to update password' }
+  }
+
+  try {
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'password_change',
+      resource_type: 'profile',
+      resource_id: user.id,
+      operation_status: 'success',
+    })
+  } catch (auditError) {
+    console.error('Error logging password change audit event', auditError)
+  }
+
+  return { success: true as const }
+}
+
 export async function uploadAvatar(formData: FormData) {
   const supabase = await createClient()
   const {
@@ -357,4 +447,75 @@ export async function uploadAvatar(formData: FormData) {
 
   revalidatePath('/profile')
   return { success: true as const, avatarUrl: filePath }
+}
+
+export async function removeAvatar() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('avatar_url')
+    .eq('id', user.id)
+    .maybeSingle<Pick<ProfileRecord, 'avatar_url'>>()
+
+  if (profileError) {
+    console.error('Error loading profile avatar', profileError)
+    return { error: 'Failed to load avatar' }
+  }
+
+  if (!profile) {
+    return { error: 'Profile not found' }
+  }
+
+  const { data: updatedProfile, error: updateError } = await supabase
+    .from('profiles')
+    .update({
+      avatar_url: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id)
+    .select('id')
+    .maybeSingle()
+
+  if (updateError) {
+    console.error('Error removing profile avatar', updateError)
+    return { error: 'Failed to remove avatar' }
+  }
+
+  if (!updatedProfile) {
+    return { error: 'Profile not found' }
+  }
+
+  if (profile.avatar_url) {
+    const { error: removeError } = await supabase.storage
+      .from('avatars')
+      .remove([profile.avatar_url])
+
+    if (removeError) {
+      console.error('Error deleting avatar file', removeError)
+    }
+  }
+
+  try {
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'profile',
+      resource_id: user.id,
+      operation_status: 'success',
+      additional_info: { field: 'avatar_url', action: 'removed' },
+    })
+  } catch (auditError) {
+    console.error('Error logging avatar removal audit event', auditError)
+  }
+
+  revalidatePath('/profile')
+  return { success: true as const }
 }
