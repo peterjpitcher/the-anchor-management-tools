@@ -52,6 +52,9 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
 
   return (
     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <p className="mb-2 text-xs font-medium text-amber-900">
+        Confirm you want to ask to work this shift.
+      </p>
       <label htmlFor={`open-shift-note-${shiftId}`} className="text-xs font-medium text-amber-900">
         Note for manager (optional)
       </label>
@@ -70,7 +73,7 @@ export default function OpenShiftRequestButton({ shiftId, alreadyRequested }: Pr
           disabled={isPending}
           className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
         >
-          {isPending ? 'Sending...' : 'Send request'}
+          {isPending ? 'Sending...' : 'Confirm request'}
         </button>
         <button
           type="button"

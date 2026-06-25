@@ -161,4 +161,75 @@ describe('PayPal parking webhook fail-closed guards', () => {
       operation_status: 'failure',
     }))
   })
+
+  it('rejects completed captures when the amount does not match the pending parking payment', async () => {
+    ;(verifyPayPalWebhook as unknown as vi.Mock).mockResolvedValue(true)
+    ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-completed')
+    ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
+    ;(persistIdempotencyResponse as unknown as vi.Mock).mockResolvedValue(undefined)
+    ;(releaseIdempotencyClaim as unknown as vi.Mock).mockResolvedValue(undefined)
+
+    const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
+    const bookingQuery: any = {
+      select: vi.fn(() => bookingQuery),
+      eq: vi.fn(() => bookingQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'booking-1', payment_status: 'pending', status: 'pending_payment', reference: 'PARK-1' },
+        error: null,
+      }),
+    }
+    const paymentQuery: any = {
+      select: vi.fn(() => paymentQuery),
+      update: vi.fn(() => paymentQuery),
+      eq: vi.fn(() => paymentQuery),
+      order: vi.fn(() => paymentQuery),
+      limit: vi.fn(() => paymentQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: 'payment-1', status: 'pending', transaction_id: null, amount: 25, currency: 'GBP' },
+        error: null,
+      }),
+    }
+
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'webhook_logs') {
+          return { insert: webhookLogInsert }
+        }
+        if (table === 'parking_bookings') {
+          return bookingQuery
+        }
+        if (table === 'parking_booking_payments') {
+          return paymentQuery
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const eventPayload = {
+      id: 'WH-COMPLETED-MISMATCH',
+      event_type: 'PAYMENT.CAPTURE.COMPLETED',
+      resource: {
+        id: 'CAPTURE-1',
+        custom_id: 'booking-1',
+        amount: { value: '30.00', currency_code: 'GBP' },
+      },
+    }
+
+    const request = new Request('http://localhost/api/webhooks/paypal/parking', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(eventPayload),
+    })
+
+    const response = await POST(request as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload).toEqual({ error: 'Webhook processing failed' })
+    expect(paymentQuery.update).not.toHaveBeenCalled()
+    expect(persistIdempotencyResponse).not.toHaveBeenCalled()
+    expect(releaseIdempotencyClaim).toHaveBeenCalledWith(expect.anything(), 'webhook:paypal:parking:WH-COMPLETED-MISMATCH', 'hash-completed')
+  })
 })

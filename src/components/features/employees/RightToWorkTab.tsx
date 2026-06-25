@@ -11,7 +11,7 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { toast } from '@/ds'
+import { ConfirmDialog, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
@@ -58,6 +58,7 @@ export default function RightToWorkTab({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
   const [deletingPhoto, setDeletingPhoto] = useState(false)
+  const [deletePhotoOpen, setDeletePhotoOpen] = useState(false)
 
   useEffect(() => {
     setRightToWorkData(rightToWork)
@@ -177,18 +178,22 @@ export default function RightToWorkTab({
       return
     }
 
-    if (!confirm('Are you sure you want to delete this photo?')) {
-      return
-    }
-
     setDeletingPhoto(true)
-    const result = await deleteRightToWorkPhoto(employeeId)
-    setDeletingPhoto(false)
+    try {
+      const result = await deleteRightToWorkPhoto(employeeId)
 
-    if (result.success) {
-      router.refresh()
-    } else if (result.error) {
-      alert(result.error)
+      if (result.success) {
+        setDeletePhotoOpen(false)
+        setPhotoUrl(null)
+        setRightToWorkData(current => current ? { ...current, photo_storage_path: null } : current)
+        toast.success('Right to work document deleted.')
+        router.refresh()
+        return
+      }
+
+      throw new Error(result.error || 'Failed to delete right to work document.')
+    } finally {
+      setDeletingPhoto(false)
     }
   }
 
@@ -457,7 +462,7 @@ export default function RightToWorkTab({
                   <button
                     type="button"
                     className="inline-flex items-center rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    onClick={handleDeletePhoto}
+                    onClick={() => setDeletePhotoOpen(true)}
                     disabled={deletingPhoto}
                   >
                     <Trash2 className="mr-1 h-4 w-4" />
@@ -484,6 +489,17 @@ export default function RightToWorkTab({
 	          <SubmitButton disabled={!canEdit} pending={isSaving} />
 	        </div>
 	      </form>
+      <ConfirmDialog
+        open={deletePhotoOpen}
+        onClose={() => setDeletePhotoOpen(false)}
+        onConfirm={handleDeletePhoto}
+        title="Delete right to work document?"
+        message="This removes the stored document from the employee record. This cannot be undone."
+        confirmLabel="Delete"
+        loadingText="Deleting..."
+        tone="danger"
+        closeOnConfirm={false}
+      />
 	    </div>
 	  )
 }

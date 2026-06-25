@@ -35,6 +35,15 @@ function formatDate(iso: string): string {
   });
 }
 
+function getUsageProgress(usage: { count: number; allowance: number }) {
+  const allowance = Number.isFinite(usage.allowance) ? Math.max(0, usage.allowance) : 0;
+  const count = Number.isFinite(usage.count) ? Math.max(0, usage.count) : 0;
+  const isOverAllowance = allowance > 0 && count >= allowance;
+  const percent = allowance > 0 ? Math.min(100, Math.round((count / allowance) * 100)) : 0;
+
+  return { allowance, count, isOverAllowance, percent };
+}
+
 function LeaveRequestRow({
   request,
   empName,
@@ -63,6 +72,7 @@ function LeaveRequestRow({
   const [isPending, startTransition] = useTransition();
 
   const days = daysBetween(request.start_date, request.end_date);
+  const usageProgress = usage ? getUsageProgress(usage) : null;
 
   const runReview = async (decision: 'approved' | 'declined') => {
     const result = await reviewLeaveRequest(request.id, decision, managerNote || undefined);
@@ -181,7 +191,7 @@ function LeaveRequestRow({
               <dt className="text-gray-500 text-xs">Holiday year</dt>
               <dd className="text-gray-900">{request.holiday_year}/{String(request.holiday_year + 1).slice(2)}</dd>
             </div>
-            {usage && (
+            {usageProgress && (
               <div className="col-span-2">
                 <dt className="text-gray-500 text-xs mb-1">
                   Allowance used ({request.holiday_year}/{String(request.holiday_year + 1).slice(2)})
@@ -190,12 +200,12 @@ function LeaveRequestRow({
                   <div className="flex items-center gap-2">
                     <div className="flex-1 bg-gray-200 rounded-full h-1.5">
                       <div
-                        className={`h-1.5 rounded-full ${usage.count >= usage.allowance ? 'bg-red-500' : 'bg-green-500'}`}
-                        style={{ width: `${Math.min(100, Math.round((usage.count / usage.allowance) * 100))}%` }}
+                        className={`h-1.5 rounded-full ${usageProgress.isOverAllowance ? 'bg-red-500' : 'bg-green-500'}`}
+                        style={{ width: `${usageProgress.percent}%` }}
                       />
                     </div>
-                    <span className={`text-xs font-medium ${usage.count >= usage.allowance ? 'text-red-600' : 'text-gray-700'}`}>
-                      {usage.count} / {usage.allowance} days
+                    <span className={`text-xs font-medium ${usageProgress.isOverAllowance ? 'text-red-600' : 'text-gray-700'}`}>
+                      {usageProgress.count} / {usageProgress.allowance} days
                     </span>
                   </div>
                 </dd>

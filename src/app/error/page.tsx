@@ -21,6 +21,11 @@ const FRIENDLY_MESSAGES: Record<string, { title: string; message: string }> = {
     message:
       'Please wait a few seconds before requesting another password reset email.',
   },
+  rate_limited: {
+    title: 'Too many attempts',
+    message:
+      'Please wait a few minutes before opening that link again.',
+  },
 }
 
 function getFriendlyMessage(code?: string | string[]) {

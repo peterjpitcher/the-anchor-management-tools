@@ -3,6 +3,9 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { isShortLinkHost, isShortLinkPath } from '@/lib/short-links/routing'
 
 const LOGIN_REDIRECT_COOKIE = 'post_login_redirect'
+const ONBOARDING_TOKEN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
+const ONBOARDING_TOKEN_RATE_LIMIT_MAX = 60
+const onboardingTokenRateLimitStore = new Map<string, { count: number; resetTime: number }>()
 
 const PUBLIC_PATH_PREFIXES = [
   '/_next',     // Next.js internal
@@ -79,10 +82,79 @@ function applyNoIndexHeader(response: NextResponse) {
   return response
 }
 
+function getClientIp(request: NextRequest) {
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0]?.trim() || 'unknown'
+  }
+  return request.headers.get('x-real-ip') || request.headers.get('cf-connecting-ip') || 'unknown'
+}
+
+function getOnboardingTokenFromPath(pathname: string) {
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments[0] !== 'onboarding') return null
+  const token = segments[1]
+  if (!token || token === 'success') return null
+  return token
+}
+
+function rateLimitHeaders(resetTime: number) {
+  const retryAfter = Math.max(1, Math.ceil((resetTime - Date.now()) / 1000))
+  return {
+    'Retry-After': String(retryAfter),
+    'X-RateLimit-Limit': String(ONBOARDING_TOKEN_RATE_LIMIT_MAX),
+    'X-RateLimit-Remaining': '0',
+    'X-RateLimit-Reset': new Date(resetTime).toISOString(),
+  }
+}
+
+function applyOnboardingTokenRateLimit(request: NextRequest) {
+  const token = getOnboardingTokenFromPath(request.nextUrl.pathname)
+  if (!token) return null
+
+  const now = Date.now()
+  for (const [key, value] of onboardingTokenRateLimitStore.entries()) {
+    if (value.resetTime <= now) {
+      onboardingTokenRateLimitStore.delete(key)
+    }
+  }
+
+  const key = `${token}:${getClientIp(request)}`
+  const existing = onboardingTokenRateLimitStore.get(key)
+  const current = existing && existing.resetTime > now
+    ? { count: existing.count + 1, resetTime: existing.resetTime }
+    : { count: 1, resetTime: now + ONBOARDING_TOKEN_RATE_LIMIT_WINDOW_MS }
+
+  onboardingTokenRateLimitStore.set(key, current)
+  if (current.count <= ONBOARDING_TOKEN_RATE_LIMIT_MAX) return null
+
+  const headers = rateLimitHeaders(current.resetTime)
+  if (request.method === 'GET' || request.method === 'HEAD') {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/error'
+    redirectUrl.search = '?code=rate_limited'
+    const response = NextResponse.redirect(redirectUrl, 303)
+    for (const [header, value] of Object.entries(headers)) {
+      response.headers.set(header, value)
+    }
+    return response
+  }
+
+  return NextResponse.json(
+    { error: 'Too many invite-link requests. Please try again later.' },
+    { status: 429, headers }
+  )
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   if (isShortLinkHost(hostname) && isShortLinkPath(request.nextUrl.pathname)) {
     return NextResponse.next()
+  }
+
+  const onboardingRateLimitResponse = applyOnboardingTokenRateLimit(request)
+  if (onboardingRateLimitResponse) {
+    return applyNoIndexHeader(onboardingRateLimitResponse)
   }
 
   // 1. Create an unmodified response

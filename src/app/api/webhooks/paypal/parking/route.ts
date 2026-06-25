@@ -42,6 +42,19 @@ function sanitizeHeadersForLog(headers: Record<string, string>): Record<string, 
   return sanitized
 }
 
+function parsePayPalMoney(value: unknown): number | null {
+  const amount = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(amount) ? Number(amount.toFixed(2)) : null
+}
+
+function payPalMoneyMatches(actual: number, expected: number): boolean {
+  return Math.abs(Number(actual.toFixed(2)) - Number(expected.toFixed(2))) <= 0.01
+}
+
+function normalizeCurrency(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : null
+}
+
 async function logPayPalWebhook(
   supabase: ReturnType<typeof createAdminClient>,
   input: {
@@ -302,10 +315,14 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
   const resource = event.resource
   const bookingId = resource.custom_id
   const captureId = resource.id
-  const amount = parseFloat(resource.amount?.value ?? '0')
+  const amount = parsePayPalMoney(resource.amount?.value)
+  const currency = normalizeCurrency(resource.amount?.currency_code)
 
   if (!bookingId) {
     throw new Error('Parking payment completed webhook missing booking ID')
+  }
+  if (amount === null || !currency) {
+    throw new Error('Parking payment completed webhook missing amount or currency')
   }
 
   const { data: booking, error: bookingLookupError } = await supabase
@@ -322,6 +339,32 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
     throw new Error(`Parking booking not found for payment webhook: ${bookingId}`)
   }
 
+  const { data: expectedPayment, error: expectedPaymentLookupError } = await supabase
+    .from('parking_booking_payments')
+    .select('id, transaction_id, status, amount, currency')
+    .eq('booking_id', bookingId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (expectedPaymentLookupError) {
+    throw new Error(`Failed to load expected parking payment: ${expectedPaymentLookupError.message}`)
+  }
+  if (!expectedPayment) {
+    throw new Error(`No parking payment found for booking ${bookingId}`)
+  }
+
+  const expectedAmount = parsePayPalMoney(expectedPayment.amount)
+  const expectedCurrency = normalizeCurrency(expectedPayment.currency)
+  if (
+    expectedAmount === null ||
+    !expectedCurrency ||
+    !payPalMoneyMatches(amount, expectedAmount) ||
+    currency !== expectedCurrency
+  ) {
+    throw new Error(`PayPal capture amount or currency mismatch for parking booking ${bookingId}`)
+  }
+
   const { data: updatedPayment, error: paymentUpdateError } = await supabase
     .from('parking_booking_payments')
     .update({
@@ -334,7 +377,7 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
         amount
       }
     })
-    .eq('booking_id', bookingId)
+    .eq('id', expectedPayment.id)
     .eq('status', 'pending')
     .select('id, transaction_id')
     .maybeSingle()
@@ -347,9 +390,7 @@ async function handlePaymentCompleted(supabase: ReturnType<typeof createAdminCli
     const { data: existingPayment, error: existingPaymentLookupError } = await supabase
       .from('parking_booking_payments')
       .select('id, transaction_id, status')
-      .eq('booking_id', bookingId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .eq('id', expectedPayment.id)
       .maybeSingle()
 
     if (existingPaymentLookupError) {
