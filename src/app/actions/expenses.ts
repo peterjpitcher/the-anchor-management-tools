@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import {
@@ -156,7 +156,7 @@ export async function getExpenses(
 ): Promise<{ success: boolean; data?: Expense[]; error?: string }> {
   try {
     await requireExpensePermission('view')
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     let query = supabase
       .from('expenses')
@@ -215,7 +215,7 @@ export async function getExpenseStats(): Promise<{
 }> {
   try {
     await requireExpensePermission('view')
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     // Determine current quarter boundaries using London timezone
     const todayStr = getTodayIsoDate() // YYYY-MM-DD in Europe/London
@@ -303,7 +303,7 @@ export async function createExpense(formData: {
       return { error: parsed.error.errors[0]?.message ?? 'Validation failed' }
     }
 
-    const supabase = createAdminClient()
+    const supabase = await createClient()
     const { data, error } = await supabase
       .from('expenses')
       .insert({
@@ -365,7 +365,7 @@ export async function updateExpense(formData: {
       return { error: parsed.error.errors[0]?.message ?? 'Validation failed' }
     }
 
-    const supabase = createAdminClient()
+    const supabase = await createClient()
     const { error } = await supabase
       .from('expenses')
       .update({
@@ -412,7 +412,7 @@ export async function deleteExpense(
     const { userId } = await requireExpensePermission('manage')
     if (!id) return { error: 'Expense ID is required' }
 
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     const { data: filePaths, error } = await supabase.rpc('delete_expense_atomic', {
       p_expense_id: id,
@@ -477,7 +477,7 @@ export async function uploadExpenseFile(
     const expenseId = formData.get('expense_id') as string | null
     if (!expenseId) return { error: 'Expense ID is required' }
 
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     // Verify the expense exists
     const { data: expense, error: expenseError } = await supabase
@@ -636,7 +636,7 @@ export async function deleteExpenseFile(
     const { userId } = await requireExpensePermission('manage')
     if (!fileId) return { error: 'File ID is required' }
 
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     // Fetch the file record to get storage_path
     const { data: file, error: fetchError } = await supabase
@@ -704,7 +704,7 @@ export async function getExpenseFiles(
     await requireExpensePermission('view')
     if (!expenseId) return { success: false, error: 'Expense ID is required' }
 
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     const { data: files, error } = await supabase
       .from('expense_files')
@@ -762,7 +762,7 @@ export async function getExpenseInsights(
 ): Promise<{ success: boolean; data?: ExpenseInsightsData; error?: string }> {
   try {
     await requireExpensePermission('view')
-    const supabase = createAdminClient()
+    const supabase = await createClient()
 
     const { data, error } = await supabase
       .from('expenses')

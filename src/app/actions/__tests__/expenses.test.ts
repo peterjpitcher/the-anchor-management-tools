@@ -28,8 +28,8 @@ const mockRemove = vi.fn().mockResolvedValue({ error: null })
 const mockCreateSignedUrl = vi.fn().mockResolvedValue({ data: { signedUrl: 'https://example.com/signed' } })
 const mockRpc = vi.fn().mockResolvedValue({ data: [], error: null })
 
-vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn(async () => ({
     from: mockFrom,
     rpc: mockRpc,
     storage: {
