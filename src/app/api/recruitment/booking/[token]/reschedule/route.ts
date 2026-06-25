@@ -7,6 +7,7 @@ import {
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
 import { sendRecruitmentManagerAlert, sendRecruitmentTemplateEmail } from '@/lib/recruitment/communications'
+import { guardPublicRecruitmentRequest } from '@/lib/recruitment/public-security'
 
 type RouteContext = {
   params: Promise<{ token: string }>
@@ -15,7 +16,14 @@ type RouteContext = {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params
-    const body = await request.json().catch(() => null) as { slot_id?: string } | null
+    const body = await request.json().catch(() => null) as { slot_id?: string; turnstile_token?: string } | null
+    const guard = await guardPublicRecruitmentRequest(request, token, {
+      scope: 'recruitment-booking-reschedule',
+      requireTurnstile: true,
+      turnstileToken: body?.turnstile_token ?? null,
+    })
+    if (guard) return guard
+
     const slotId = body?.slot_id
     if (!slotId) {
       return createErrorResponse('Slot ID is required', 'VALIDATION_ERROR', 400)

@@ -1,11 +1,29 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import Script from 'next/script'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/ds'
 
 type Props = {
   token: string
   initialPreview: any
+}
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        element: HTMLElement,
+        options: {
+          sitekey: string
+          callback?: (token: string) => void
+          'expired-callback'?: () => void
+          'error-callback'?: () => void
+        }
+      ) => string
+      reset?: (widgetId?: string) => void
+    }
+  }
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -27,9 +45,40 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
   const [selectedSlot, setSelectedSlot] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [turnstileReady, setTurnstileReady] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const turnstileRef = useRef<HTMLDivElement | null>(null)
+  const turnstileWidgetId = useRef<string | null>(null)
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
   const currentAppointment = preview?.currentAppointment
   const readOnly = useMemo(() => appointmentStarted(currentAppointment), [currentAppointment])
+  const needsTurnstile = Boolean(turnstileSiteKey)
+  const blockedByTurnstile = needsTurnstile && !turnstileToken
+
+  useEffect(() => {
+    if (!turnstileSiteKey || !turnstileReady || !turnstileRef.current || turnstileWidgetId.current || !window.turnstile) {
+      return
+    }
+
+    turnstileWidgetId.current = window.turnstile.render(turnstileRef.current, {
+      sitekey: turnstileSiteKey,
+      callback: setTurnstileToken,
+      'expired-callback': () => setTurnstileToken(null),
+      'error-callback': () => setTurnstileToken(null),
+    })
+  }, [turnstileReady, turnstileSiteKey])
+
+  function turnstileHeaders(): Record<string, string> {
+    return turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {}
+  }
+
+  function resetTurnstile() {
+    if (turnstileWidgetId.current && window.turnstile?.reset) {
+      window.turnstile.reset(turnstileWidgetId.current)
+    }
+    setTurnstileToken(null)
+  }
 
   async function refresh() {
     const response = await fetch(`/api/recruitment/booking/${encodeURIComponent(token)}`)
@@ -51,10 +100,11 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     setMessage(null)
     const response = await fetch(`/api/recruitment/booking/${encodeURIComponent(token)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot_id: selectedSlot }),
+      headers: { 'Content-Type': 'application/json', ...turnstileHeaders() },
+      body: JSON.stringify({ slot_id: selectedSlot, turnstile_token: turnstileToken }),
     })
     const payload = await response.json()
+    resetTurnstile()
     setPending(false)
     if (!response.ok || !payload.success) {
       setMessage(payload?.error?.message || 'Booking failed.')
@@ -69,8 +119,10 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     setMessage(null)
     const response = await fetch(`/api/recruitment/booking/${encodeURIComponent(token)}/cancel`, {
       method: 'POST',
+      headers: turnstileHeaders(),
     })
     const payload = await response.json()
+    resetTurnstile()
     setPending(false)
     if (!response.ok || !payload.success) {
       setMessage(payload?.error?.message || 'Cancellation failed.')
@@ -86,10 +138,11 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     setMessage(null)
     const response = await fetch(`/api/recruitment/booking/${encodeURIComponent(token)}/reschedule`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot_id: selectedSlot }),
+      headers: { 'Content-Type': 'application/json', ...turnstileHeaders() },
+      body: JSON.stringify({ slot_id: selectedSlot, turnstile_token: turnstileToken }),
     })
     const payload = await response.json()
+    resetTurnstile()
     setPending(false)
     if (!response.ok || !payload.success) {
       setMessage(payload?.error?.message || 'Reschedule failed.')
@@ -112,6 +165,13 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
 
   return (
     <main className="min-h-screen bg-bg px-4 py-10">
+      {turnstileSiteKey ? (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          strategy="afterInteractive"
+          onLoad={() => setTurnstileReady(true)}
+        />
+      ) : null}
       <div className="mx-auto max-w-2xl space-y-5">
         <div>
           <h1 className="text-2xl font-semibold text-text-strong">The Anchor</h1>
@@ -124,10 +184,10 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
             <p className="mt-2 text-sm text-text">{formatDateTime(currentAppointment.scheduled_start)}</p>
             <p className="text-sm text-text-muted">{currentAppointment.location}</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" onClick={cancel} disabled={pending || readOnly}>
+              <Button type="button" variant="secondary" onClick={cancel} disabled={pending || readOnly || blockedByTurnstile}>
                 Cancel
               </Button>
-              <Button type="button" variant="secondary" onClick={reschedule} disabled={pending || readOnly || !selectedSlot || currentAppointment.reschedule_count >= 1}>
+              <Button type="button" variant="secondary" onClick={reschedule} disabled={pending || readOnly || !selectedSlot || currentAppointment.reschedule_count >= 1 || blockedByTurnstile}>
                 Reschedule
               </Button>
             </div>
@@ -155,12 +215,18 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
               ))}
             </div>
             {!currentAppointment && (
-              <Button type="button" variant="primary" className="mt-4" onClick={claim} disabled={pending || !selectedSlot}>
+              <Button type="button" variant="primary" className="mt-4" onClick={claim} disabled={pending || !selectedSlot || blockedByTurnstile}>
                 Book
               </Button>
             )}
           </section>
         )}
+
+        {turnstileSiteKey ? (
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <div ref={turnstileRef} />
+          </div>
+        ) : null}
 
         {message && (
           <p className="text-sm text-text-muted">{message}</p>
@@ -169,4 +235,3 @@ export default function RecruitmentBookingClient({ token, initialPreview }: Prop
     </main>
   )
 }
-
