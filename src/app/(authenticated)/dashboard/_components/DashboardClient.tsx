@@ -221,12 +221,28 @@ export default function DashboardClient({
               <>
                 <div className="h-px bg-border my-1" />
                 <div className="flex flex-col gap-2">
-                  {todayItems.slice(0, 6).map((item) => (
-                    <div key={item.id} className="flex min-w-0 items-start gap-2 text-[13px]">
-                      <span className="min-w-0 flex-1 truncate text-text-muted">{item.title}</span>
-                      <span className="max-w-[55%] truncate text-xs text-text-subtle">{item.subtitle}</span>
-                    </div>
-                  ))}
+                  {todayItems.slice(0, 6).map((item) => {
+                    const content = (
+                      <>
+                        <span className="min-w-0 flex-1 truncate text-text-muted">{item.title}</span>
+                        <span className="max-w-[55%] truncate text-xs text-text-subtle">{item.subtitle}</span>
+                      </>
+                    )
+
+                    return item.href ? (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        className="flex min-w-0 items-start gap-2 rounded-md text-[13px] hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                      >
+                        {content}
+                      </Link>
+                    ) : (
+                      <div key={item.id} className="flex min-w-0 items-start gap-2 text-[13px]">
+                        {content}
+                      </div>
+                    )
+                  })}
                 </div>
               </>
             )}
