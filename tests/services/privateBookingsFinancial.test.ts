@@ -26,6 +26,7 @@ type BookingRow = {
   deposit_amount: number | null
   deposit_paid_date: string | null
   event_date?: string | null
+  has_open_dispute?: boolean | null
 }
 
 type PaymentRow = {
@@ -118,11 +119,11 @@ describe('getPrivateBookingPaidTotals', () => {
     expect(totals.has_open_dispute).toBe(false)
   })
 
-  it('flags has_open_dispute when a payment note mentions "dispute"', async () => {
+  it('flags has_open_dispute from the structured booking flag', async () => {
     mockSupabase({
-      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10' },
+      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10', has_open_dispute: true },
       payments: [
-        { amount: 100, notes: 'opened a dispute via Stripe' },
+        { amount: 100, notes: null },
       ],
     })
 
@@ -131,28 +132,15 @@ describe('getPrivateBookingPaidTotals', () => {
     expect(totals.has_open_dispute).toBe(true)
   })
 
-  it('flags has_open_dispute when a payment note mentions "chargeback"', async () => {
+  it('does not infer disputes from free-text payment notes', async () => {
     mockSupabase({
-      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10' },
+      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10', has_open_dispute: false },
       payments: [
-        { amount: 100, notes: 'Chargeback received from the bank' },
+        { amount: 100, notes: 'opened a dispute via Stripe' },
       ],
     })
 
     const totals = await getPrivateBookingPaidTotals('booking-d2')
-
-    expect(totals.has_open_dispute).toBe(true)
-  })
-
-  it('does not flag dispute for tangentially similar strings', async () => {
-    mockSupabase({
-      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10' },
-      payments: [
-        { amount: 100, notes: 'indisputable payment reference 123' },
-      ],
-    })
-
-    const totals = await getPrivateBookingPaidTotals('booking-d3')
 
     expect(totals.has_open_dispute).toBe(false)
   })
@@ -228,9 +216,9 @@ describe('getPrivateBookingCancellationOutcome', () => {
 
   it('returns manual_review when has_open_dispute is true', async () => {
     mockSupabase({
-      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10' },
+      booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10', has_open_dispute: true },
       payments: [
-        { amount: 200, notes: 'customer filed a dispute' },
+        { amount: 200, notes: null },
       ],
     })
 
@@ -243,13 +231,10 @@ describe('getPrivateBookingCancellationOutcome', () => {
   })
 
   it('manual_review takes precedence over other outcomes even when no money was paid', async () => {
-    // Edge case: a dispute note can only exist on a payment row, so if there
-    // is a dispute there must be a payment. This test just guards the
-    // precedence ordering if that assumption changes later.
     mockSupabase({
-      booking: { deposit_amount: 0, deposit_paid_date: null },
+      booking: { deposit_amount: 0, deposit_paid_date: null, has_open_dispute: true },
       payments: [
-        { amount: 0, notes: 'chargeback in progress' },
+        { amount: 0, notes: null },
       ],
     })
 

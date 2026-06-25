@@ -149,6 +149,7 @@ export const privateBookingSchema = z.object({
   deposit_amount: z.number().min(0).optional(),
   balance_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
   hold_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional().or(z.literal('')),
+  has_open_dispute: z.boolean().optional(),
   status: z.enum(['draft', 'confirmed', 'completed', 'cancelled']).optional()
 })
 
@@ -201,6 +202,7 @@ export type CreatePrivateBookingInput = {
   deposit_amount?: number;
   balance_due_date?: string;
   hold_expiry?: string;
+  has_open_dispute?: boolean;
   status?: string;
   created_by?: string;
   date_tbd?: boolean;

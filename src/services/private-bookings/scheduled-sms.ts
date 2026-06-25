@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { formatDateInLondon } from '@/lib/dateUtils'
 import {
   depositReminder7DayMessage,
   depositReminder1DayMessage,
@@ -435,7 +436,7 @@ function toIsoDateSlice(value: string | null | undefined): string {
 
 function formatReadableDate(value: string): string {
   try {
-    return new Date(value).toLocaleDateString('en-GB', {
+    return formatDateInLondon(value, {
       day: 'numeric',
       month: 'long',
       year: 'numeric',

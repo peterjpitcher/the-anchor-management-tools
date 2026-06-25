@@ -90,6 +90,15 @@ function getLondonRunKey(now: Date = new Date()): string {
   }).format(now)
 }
 
+function formatLondonDate(value: string | Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: LONDON_TZ,
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(value))
+}
+
 /**
  * Reserve a send via the business idempotency key before any cron-driven SMS
  * fires. Key shape is `{booking_id}:{trigger_type}:{window_key}` — if another
@@ -492,11 +501,7 @@ export async function GET(request: Request) {
         const diffMs = expiry.getTime() - now.getTime()
         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
 
-        const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        })
+        const eventDateReadable = formatLondonDate(booking.event_date)
 
         // Window key for idempotency: anchor on hold_expiry ISO date. Same
         // booking + same expiry day + same trigger = same send cycle.
@@ -701,15 +706,9 @@ export async function GET(request: Request) {
             : Math.max(totalAmount, 0)
           if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
 
-          const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
-            day: 'numeric', month: 'long', year: 'numeric'
-          });
+          const eventDateReadable = formatLondonDate(booking.event_date);
           const dueDateReadable = booking.balance_due_date
-            ? new Date(booking.balance_due_date).toLocaleDateString('en-GB', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric'
-            })
+            ? formatLondonDate(booking.balance_due_date)
             : eventDateReadable
 
           let triggerType: 'balance_reminder_14day' | 'balance_reminder_7day' | 'balance_reminder_1day'
@@ -927,11 +926,7 @@ export async function GET(request: Request) {
           const rawFirstName = booking.customer_first_name || booking.customer_name?.split(' ')[0]
           const displayFirstName = getSmartFirstName(rawFirstName)
           const eventDateReadable = booking.event_date
-            ? new Date(booking.event_date).toLocaleDateString('en-GB', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              })
+            ? formatLondonDate(booking.event_date)
             : 'the event date'
 
           // Atomic claim BEFORE sending: only proceed if this cron run wins the
@@ -1115,11 +1110,7 @@ export async function GET(request: Request) {
             continue
           }
 
-          const eventDateReadable = new Date(booking.event_date).toLocaleDateString('en-GB', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-          })
+          const eventDateReadable = formatLondonDate(booking.event_date)
 
           const messageBody = reviewRequestMessage({
             customerFirstName: booking.customer_first_name,

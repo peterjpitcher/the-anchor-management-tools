@@ -13,6 +13,7 @@ import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
+import { Checkbox } from '@/ds'
 import { FormGroup } from '@/ds'
 import { Alert } from '@/ds'
 import { LinkButton } from '@/ds'
@@ -328,6 +329,44 @@ export default function EditPrivateBookingPage({
                   />
                 </FormGroup>
               </div>
+            </div>
+          </Section>
+
+          {/* Financial Details */}
+          <Section title="Financial Details">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormGroup label="Deposit Amount">
+                <Input
+                  type="number"
+                  name="deposit_amount"
+                  id="deposit_amount"
+                  min="0"
+                  step="0.01"
+                  defaultValue={booking.deposit_amount ?? 0}
+                  disabled={!!booking.deposit_paid_date}
+                />
+              </FormGroup>
+
+              <FormGroup label="Balance Due Date">
+                <Input
+                  type="date"
+                  name="balance_due_date"
+                  id="balance_due_date"
+                  disabled={dateTbd}
+                  defaultValue={booking.balance_due_date || ''}
+                />
+              </FormGroup>
+            </div>
+
+            <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+              <input type="hidden" name="has_open_dispute" value="false" />
+              <Checkbox
+                name="has_open_dispute"
+                value="true"
+                defaultChecked={booking.has_open_dispute === true}
+                label="Open payment dispute or chargeback"
+                description="Cancellation and refund decisions will require manual review while this is selected."
+              />
             </div>
           </Section>
 

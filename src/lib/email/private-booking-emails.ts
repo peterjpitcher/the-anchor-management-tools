@@ -1,6 +1,7 @@
 import { sendEmail } from './emailService';
 import { logger } from '@/lib/logger';
 import { generateBookingCalendarInvite } from './calendar-invite';
+import { formatDateInLondon } from '@/lib/dateUtils';
 
 const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ';
 
@@ -10,7 +11,9 @@ const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ';
 const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
 
 function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString('en-GB', {
+  const parsed = new Date(isoDate)
+  if (!Number.isFinite(parsed.getTime())) return isoDate || 'Date to be confirmed'
+  return formatDateInLondon(parsed, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

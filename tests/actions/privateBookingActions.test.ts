@@ -356,6 +356,29 @@ describe('privateBookingActions', () => {
       )
     })
 
+    it('passes editable financial fields and structured dispute flag', async () => {
+      const mockBooking = { id: 'booking-1' }
+      mockedUpdateBooking.mockResolvedValue(mockBooking)
+
+      const formData = buildCreateFormData({
+        deposit_amount: '175.50',
+        balance_due_date: '2026-06-01',
+        has_open_dispute: 'true',
+      })
+
+      await updatePrivateBooking('booking-1', formData)
+
+      expect(mockedUpdateBooking).toHaveBeenCalledWith(
+        'booking-1',
+        expect.objectContaining({
+          deposit_amount: 175.5,
+          balance_due_date: '2026-06-01',
+          has_open_dispute: true,
+        }),
+        'user-1',
+      )
+    })
+
     it('should return error when user lacks edit permission', async () => {
       mockedPermission.mockResolvedValue(false)
 
