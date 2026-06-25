@@ -32,6 +32,7 @@ const mockCapturePayPalPayment = vi.fn();
 const mockGetPayPalOrder = vi.fn();
 
 vi.mock('@/lib/paypal', () => ({
+  PAYPAL_DEFAULT_CURRENCY: 'GBP',
   capturePayPalPayment: mockCapturePayPalPayment,
   getPayPalOrder: mockGetPayPalOrder,
 }));
@@ -117,7 +118,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
     expect(body.success).toBe(true);
     expect(withApiAuth).toHaveBeenCalledWith(expect.any(Function), ['payments:capture'], expect.any(Request));
     expect(mockCapturePayPalPayment).toHaveBeenCalledOnce();
-    expect(mockCapturePayPalPayment).toHaveBeenCalledWith('ORDER-123');
+    expect(mockCapturePayPalPayment).toHaveBeenCalledWith('ORDER-123', 'GBP');
   });
 
   it('returns 404 if booking not found', async () => {

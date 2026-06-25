@@ -32,7 +32,12 @@ export function parsePayPalAmountGbp(value: string | number | null | undefined):
 }
 
 export function extractPayPalOrderAmountGbp(order: unknown): number | null {
-  const rawValue = (order as any)?.purchase_units?.[0]?.amount?.value
+  const amount = (order as any)?.purchase_units?.[0]?.amount
+  const currencyCode = typeof amount?.currency_code === 'string'
+    ? amount.currency_code.trim().toUpperCase()
+    : null
+  if (currencyCode !== 'GBP') return null
+  const rawValue = amount?.value
   return parsePayPalAmountGbp(rawValue)
 }
 

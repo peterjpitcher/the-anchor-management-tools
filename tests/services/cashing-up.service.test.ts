@@ -12,6 +12,7 @@ const mockEq = vi.fn();
 const mockSingle = vi.fn();
 const mockMaybeSingle = vi.fn();
 const mockSelectFromEq = vi.fn();
+const mockRpc = vi.fn();
 
 const mockSupabase = {
   from: vi.fn(() => ({
@@ -20,25 +21,8 @@ const mockSupabase = {
     update: mockUpdate,
     delete: mockDelete,
   })),
+  rpc: mockRpc,
 } as unknown as SupabaseClient;
-
-function isCashCountInsertPayload(payload: unknown): payload is Array<Record<string, unknown>> {
-  return Array.isArray(payload) && payload.some(row => (
-    typeof row === 'object' &&
-    row !== null &&
-    'denomination' in row &&
-    'total_amount' in row
-  ));
-}
-
-function isSalesBreakdownInsertPayload(payload: unknown): payload is Array<Record<string, unknown>> {
-  return Array.isArray(payload) && payload.some(row => (
-    typeof row === 'object' &&
-    row !== null &&
-    'sales_category' in row &&
-    'amount' in row
-  ));
-}
 
 // Chain mocks
 mockSelect.mockReturnValue({ eq: mockEq });
@@ -57,14 +41,24 @@ mockEq.mockReturnValue({
 describe('CashingUpService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSelect.mockReset();
+    mockInsert.mockReset();
+    mockUpdate.mockReset();
+    mockDelete.mockReset();
+    mockEq.mockReset();
+    mockSingle.mockReset();
+    mockMaybeSingle.mockReset();
+    mockSelectFromEq.mockReset();
+    mockRpc.mockReset();
     
     // Default chain setup
-    mockSupabase.from = vi.fn().mockReturnValue({
+    (mockSupabase as any).from = vi.fn().mockReturnValue({
         select: mockSelect,
         insert: mockInsert,
         update: mockUpdate,
         delete: mockDelete,
     });
+    (mockSupabase as any).rpc = mockRpc;
     
     mockSelect.mockReturnValue({ eq: mockEq });
     mockEq.mockReturnValue({ 
@@ -78,6 +72,7 @@ describe('CashingUpService', () => {
     mockUpdate.mockReturnValue({ eq: mockEq });
     mockDelete.mockReturnValue({ eq: mockEq });
     mockSelectFromEq.mockReturnValue({ single: mockSingle, maybeSingle: mockMaybeSingle });
+    mockRpc.mockResolvedValue({ data: 'new-session-id', error: null });
   });
 
   it('should calculate totals correctly on upsert', async () => {
@@ -94,12 +89,6 @@ describe('CashingUpService', () => {
       cashCounts: [],
     };
 
-    // Mock no existing session
-    mockMaybeSingle.mockResolvedValue({ data: null });
-    
-    // Mock successful insert
-    mockSingle.mockResolvedValue({ data: { id: 'new-session-id' } });
-    
     // Mock getSession return
     const mockSession = {
         id: 'new-session-id',
@@ -107,22 +96,16 @@ describe('CashingUpService', () => {
         total_counted_amount: 290,
         total_variance_amount: -10
     };
-    // We need to handle the getSession call at the end of upsert
-    // It calls select().eq().single()
-    // We can mock the implementation of mockSingle to return different things based on context if needed,
-    // or just rely on the fact that we want to verify the INSERT call arguments.
-    
-    mockSingle.mockResolvedValueOnce({ data: { id: 'new-session-id' } }) // for insert
-              .mockResolvedValueOnce({ data: mockSession }); // for getSession
+    mockSingle.mockResolvedValueOnce({ data: mockSession }); // for getSession
 
     await CashingUpService.upsertSession(mockSupabase, dto, userId);
 
-    // Verify insert was called with correct calculations
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({
-      total_expected_amount: 300,
-      total_counted_amount: 290,
-      total_variance_amount: -10,
-      status: 'draft'
+    expect(mockRpc).toHaveBeenCalledWith('upsert_cashup_session_atomic', expect.objectContaining({
+      p_payment_breakdowns: expect.arrayContaining([
+        expect.objectContaining({ payment_type_code: 'CASH', expected_amount: 100, counted_amount: 90, variance_amount: -10 }),
+        expect.objectContaining({ payment_type_code: 'CARD', expected_amount: 200, counted_amount: 200, variance_amount: 0 }),
+      ]),
+      p_status: 'draft',
     }));
   });
 
@@ -146,20 +129,12 @@ describe('CashingUpService', () => {
       ],
     };
 
-    mockMaybeSingle.mockResolvedValue({ data: null });
-    mockSingle
-      .mockResolvedValueOnce({ data: { id: 'new-session-id' } })
-      .mockResolvedValueOnce({ data: { id: 'new-session-id' } });
+    mockSingle.mockResolvedValueOnce({ data: { id: 'new-session-id' } });
 
     await CashingUpService.upsertSession(mockSupabase, dto, userId);
 
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({
-      total_counted_amount: 51.8,
-      total_variance_amount: 51.8,
-    }));
-
-    const cashCountInsertCall = mockInsert.mock.calls.find(([payload]) => isCashCountInsertPayload(payload));
-    expect(cashCountInsertCall?.[0]).toEqual(expect.arrayContaining([
+    const rpcPayload = mockRpc.mock.calls[0]?.[1]
+    expect(rpcPayload.p_cash_counts).toEqual(expect.arrayContaining([
       expect.objectContaining({ denomination: 20, quantity: 2, total_amount: 40 }),
       expect.objectContaining({ denomination: 10, quantity: 1, total_amount: 10 }),
       expect.objectContaining({ denomination: 1, quantity: 1, total_amount: 1 }),
@@ -187,18 +162,15 @@ describe('CashingUpService', () => {
       ],
     };
 
-    mockMaybeSingle.mockResolvedValue({ data: null });
-    mockSingle
-      .mockResolvedValueOnce({ data: { id: 'new-session-id' } })
-      .mockResolvedValueOnce({ data: { id: 'new-session-id' } });
+    mockSingle.mockResolvedValueOnce({ data: { id: 'new-session-id' } });
 
     await CashingUpService.upsertSession(mockSupabase, dto, userId);
 
-    const salesInsertCall = mockInsert.mock.calls.find(([payload]) => isSalesBreakdownInsertPayload(payload));
-    expect(salesInsertCall?.[0]).toEqual([
-      expect.objectContaining({ cashup_session_id: 'new-session-id', sales_category: 'drinks_sales', amount: 70 }),
-      expect.objectContaining({ cashup_session_id: 'new-session-id', sales_category: 'food_sales', amount: 20 }),
-      expect.objectContaining({ cashup_session_id: 'new-session-id', sales_category: 'other_sales', amount: 10 }),
+    const rpcPayload = mockRpc.mock.calls[0]?.[1]
+    expect(rpcPayload.p_sales_breakdowns).toEqual([
+      expect.objectContaining({ sales_category: 'drinks_sales', amount: 70 }),
+      expect.objectContaining({ sales_category: 'food_sales', amount: 20 }),
+      expect.objectContaining({ sales_category: 'other_sales', amount: 10 }),
     ]);
   });
 
@@ -211,8 +183,7 @@ describe('CashingUpService', () => {
       cashCounts: []
     };
 
-    // Mock existing session
-    mockMaybeSingle.mockResolvedValue({ data: { id: 'existing-id' } });
+    mockRpc.mockResolvedValueOnce({ data: null, error: new Error('already exists') });
 
     await expect(CashingUpService.upsertSession(mockSupabase, dto, userId))
       .rejects.toThrow('already exists');
@@ -293,7 +264,7 @@ describe('CashingUpService', () => {
       cashCounts: []
     };
 
-    mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    mockRpc.mockResolvedValueOnce({ data: null, error: new Error('Session not found') });
 
     await expect(
       CashingUpService.upsertSession(mockSupabase, dto, userId, 'session-1')

@@ -25,6 +25,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 vi.mock('@/lib/paypal', () => ({
+  PAYPAL_DEFAULT_CURRENCY: 'GBP',
   capturePayPalPayment: (...args: unknown[]) => capturePayPalPayment(...args),
   getPayPalOrder: (...args: unknown[]) => getPayPalOrder(...args),
 }))
@@ -166,6 +167,7 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
       expect.anything(),
       BOOKING_ID,
     )
+    expect(capturePayPalPayment).toHaveBeenCalledWith('ORDER-123', 'GBP')
   })
 
   it('sends post-deposit notifications for a regular booking_type', async () => {

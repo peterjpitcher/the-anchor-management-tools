@@ -3,7 +3,7 @@ import { eventSchema, getPublishValidationIssues, isWorldCup2026Event } from '@/
 
 const baseEventInput = {
   name: 'Test Event',
-  date: '2026-06-20',
+  date: '2027-06-20',
   time: '20:00',
   capacity: null,
 }

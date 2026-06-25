@@ -8,6 +8,7 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 vi.mock('@/lib/paypal', () => ({
+  PAYPAL_DEFAULT_CURRENCY: 'GBP',
   refundPayPalPayment: vi.fn(),
 }))
 vi.mock('@/lib/refund-notifications', () => ({
@@ -28,6 +29,7 @@ import { createClient } from '@/lib/supabase/server'
 import { refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification } from '@/lib/refund-notifications'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 
 function mockSupabaseChain(returnData: any = null, returnError: any = null) {
   const chain: any = {
@@ -132,6 +134,7 @@ describe('refundActions', () => {
             transaction_id: 'CAPTURE-1',
             paid_at: new Date().toISOString(),
             amount: 20,
+            currency: 'GBP',
             booking_id: 'parking-booking-1',
             parking_bookings: {
               customer_id: 'customer-1',
@@ -172,9 +175,90 @@ describe('refundActions', () => {
 
       expect(result).toMatchObject({ success: true, pending: true, refundId: 'refund-1' })
       expect(parkingSelect).toHaveBeenCalledWith(
-        'id, transaction_id, paid_at, amount, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)'
+        'id, transaction_id, paid_at, amount, currency, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)'
       )
-      expect(refundPayPalPayment).toHaveBeenCalledWith('CAPTURE-1', 10, expect.any(String))
+      expect(refundPayPalPayment).toHaveBeenCalledWith('CAPTURE-1', 10, expect.any(String), 'GBP')
+    })
+
+    it('does not mark a pending PayPal refund completed when post-processing fails', async () => {
+      const mockAuth = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) } }
+      vi.mocked(createClient).mockResolvedValue(mockAuth as any)
+      vi.mocked(refundPayPalPayment).mockResolvedValue({
+        refundId: 'PAYPAL-REFUND-PENDING',
+        status: 'PENDING',
+        statusDetails: 'ECHECK',
+        amount: '10.00',
+        currency: 'GBP',
+      } as any)
+      vi.mocked(logAuditEvent).mockRejectedValueOnce(new Error('audit unavailable'))
+
+      const privateBookingLookup: any = {
+        select: vi.fn(() => privateBookingLookup),
+        eq: vi.fn(() => privateBookingLookup),
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: {
+            id: 'booking-1',
+            paypal_deposit_capture_id: 'CAPTURE-1',
+            deposit_paid_date: new Date().toISOString(),
+            deposit_amount: 20,
+            customer_id: null,
+            customer_name: 'Test Customer',
+            contact_email: null,
+            contact_phone: null,
+          },
+          error: null,
+        }),
+      }
+      const existingRefundLookup: any = {
+        select: vi.fn(() => existingRefundLookup),
+        eq: vi.fn(() => existingRefundLookup),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }
+      const pendingUpdatePayloads: any[] = []
+      const pendingUpdate: any = {
+        update: vi.fn((payload: any) => {
+          pendingUpdatePayloads.push(payload)
+          return pendingUpdate
+        }),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }
+      const fallbackUpdatePayloads: any[] = []
+      const fallbackUpdate: any = {
+        update: vi.fn((payload: any) => {
+          fallbackUpdatePayloads.push(payload)
+          return fallbackUpdate
+        }),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }
+      let paymentRefundCalls = 0
+      const db = {
+        from: vi.fn((table: string) => {
+          if (table === 'private_bookings') return privateBookingLookup
+          if (table === 'payment_refunds') {
+            paymentRefundCalls += 1
+            if (paymentRefundCalls === 1) return existingRefundLookup
+            if (paymentRefundCalls === 2) return pendingUpdate
+            return fallbackUpdate
+          }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+        rpc: vi.fn().mockResolvedValue({ data: { refund_id: 'refund-1' }, error: null }),
+      }
+      vi.mocked(createAdminClient).mockReturnValue(db as any)
+
+      const { processPayPalRefund } = await import('../refundActions')
+      const result = await processPayPalRefund('private_booking', 'booking-1', 10, 'test')
+
+      expect(result).toMatchObject({ success: true, pending: true, refundId: 'refund-1' })
+      expect(pendingUpdatePayloads[0]).toMatchObject({
+        paypal_refund_id: 'PAYPAL-REFUND-PENDING',
+        paypal_status: 'PENDING',
+      })
+      expect(fallbackUpdatePayloads[0]).toMatchObject({
+        status: 'pending',
+        paypal_status: 'PENDING',
+      })
+      expect(fallbackUpdatePayloads[0]).not.toMatchObject({ status: 'completed' })
     })
   })
 

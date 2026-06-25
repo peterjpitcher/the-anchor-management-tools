@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   recordAnalyticsEvent: vi.fn(),
   syncPubOpsEventCalendarByBookingId: vi.fn(),
   syncPubOpsEventCalendarByEventId: vi.fn(),
+  sendEventBookingCancelledEmail: vi.fn(),
   logger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -45,6 +46,10 @@ vi.mock('@/lib/analytics/events', () => ({
 vi.mock('@/lib/google-calendar-events', () => ({
   syncPubOpsEventCalendarByBookingId: mocks.syncPubOpsEventCalendarByBookingId,
   syncPubOpsEventCalendarByEventId: mocks.syncPubOpsEventCalendarByEventId,
+}))
+
+vi.mock('@/lib/email/event-ticket-emails', () => ({
+  sendEventBookingCancelledEmail: mocks.sendEventBookingCancelledEmail,
 }))
 
 vi.mock('@/lib/logger', () => ({

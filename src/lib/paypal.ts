@@ -8,6 +8,8 @@ type PayPalConfig = {
 
 type PayPalLink = { rel: string; href: string };
 
+export const PAYPAL_DEFAULT_CURRENCY = 'GBP';
+
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 type PayPalErrorBody = {
@@ -101,6 +103,14 @@ function extractApproveUrl(links?: PayPalLink[]) {
   return candidate?.href;
 }
 
+export function normalizePayPalCurrencyCode(currency?: string | null): string {
+  const normalized = (currency || PAYPAL_DEFAULT_CURRENCY).trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    throw new Error(`Invalid PayPal currency code: ${currency || ''}`);
+  }
+  return normalized;
+}
+
 function cacheAccessToken(token: string, expiresInSeconds?: number) {
   const safeExpires = typeof expiresInSeconds === 'number' && expiresInSeconds > 0
     ? Date.now() + expiresInSeconds * 1000
@@ -158,7 +168,7 @@ function buildCheckoutPayload(options: CheckoutOrderOptions) {
     reference,
     description,
     amount,
-    currency = 'GBP',
+    currency = PAYPAL_DEFAULT_CURRENCY,
     returnUrl,
     cancelUrl,
     brandName = 'The Anchor Pub',
@@ -172,7 +182,7 @@ function buildCheckoutPayload(options: CheckoutOrderOptions) {
         custom_id: customId,
         description,
         amount: {
-          currency_code: currency,
+          currency_code: normalizePayPalCurrencyCode(currency),
           value: amount.toFixed(2),
         },
       },
@@ -290,7 +300,7 @@ export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions)
         custom_id: options.customId,
         description: options.description,
         amount: {
-          currency_code: options.currency ?? 'GBP',
+          currency_code: normalizePayPalCurrencyCode(options.currency),
           value: options.amount.toFixed(2),
         },
       },
@@ -334,9 +344,12 @@ export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions)
 }
 
 // Capture PayPal payment
-export async function capturePayPalPayment(orderId: string) {
+export async function capturePayPalPayment(orderId: string, expectedCurrency?: string) {
   const accessToken = await getAccessToken();
   const { baseUrl } = getPayPalConfig();
+  const normalizedExpectedCurrency = expectedCurrency
+    ? normalizePayPalCurrencyCode(expectedCurrency)
+    : null;
 
   const response = await retry(
     async () => fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
@@ -356,11 +369,23 @@ export async function capturePayPalPayment(orderId: string) {
   }
 
   const data = await response.json();
+  const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+  const captureCurrency = typeof capture?.amount?.currency_code === 'string'
+    ? capture.amount.currency_code.trim().toUpperCase()
+    : null;
+
+  if (normalizedExpectedCurrency && captureCurrency !== normalizedExpectedCurrency) {
+    throw new Error(
+      `PayPal capture currency mismatch: expected ${normalizedExpectedCurrency}, got ${captureCurrency || 'missing'}`
+    );
+  }
+
   return {
-    transactionId: data.purchase_units[0].payments.captures[0].id,
+    transactionId: capture.id,
     status: data.status,
-    payerId: data.payer.payer_id,
-    amount: data.purchase_units[0].payments.captures[0].amount.value,
+    payerId: data.payer?.payer_id,
+    amount: capture.amount.value,
+    currency: captureCurrency,
     customId: data.purchase_units[0].custom_id || null,
   };
 }
@@ -369,20 +394,23 @@ export async function capturePayPalPayment(orderId: string) {
 export async function refundPayPalPayment(
   captureId: string,
   amount: number,
-  requestId: string
+  requestId: string,
+  currency?: string
 ): Promise<{
   refundId: string;
   status: string;
   statusDetails?: string;
   amount: string;
+  currency: string | null;
 }> {
   const accessToken = await getAccessToken();
   const { baseUrl } = getPayPalConfig();
+  const normalizedCurrency = normalizePayPalCurrencyCode(currency);
 
   const refundData = {
     amount: {
       value: amount.toFixed(2),
-      currency_code: 'GBP',
+      currency_code: normalizedCurrency,
     },
   };
 
@@ -413,6 +441,9 @@ export async function refundPayPalPayment(
     status: data.status,
     statusDetails: data.status_details?.reason,
     amount: data.amount?.value ?? amount.toFixed(2),
+    currency: typeof data.amount?.currency_code === 'string'
+      ? data.amount.currency_code.trim().toUpperCase()
+      : normalizedCurrency,
   };
 }
 

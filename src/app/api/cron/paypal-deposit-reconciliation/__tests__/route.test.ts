@@ -10,6 +10,7 @@ const mockGetPayPalOrder = vi.fn()
 const mockCapturePayPalPayment = vi.fn()
 const mockIsPayPalOrderNotFoundError = vi.fn()
 vi.mock('@/lib/paypal', () => ({
+  PAYPAL_DEFAULT_CURRENCY: 'GBP',
   getPayPalOrder: mockGetPayPalOrder,
   capturePayPalPayment: mockCapturePayPalPayment,
   isPayPalOrderNotFoundError: mockIsPayPalOrderNotFoundError,

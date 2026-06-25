@@ -97,7 +97,8 @@ describe('processEventRefund', () => {
     expect(refundPayPalPayment).toHaveBeenCalledWith(
       'CAPTURE-123',
       10,
-      'event-refund-booking-1-payment-1-event_cancel_full-1000'
+      'event-refund-booking-1-payment-1-event_cancel_full-1000',
+      'GBP'
     )
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
       event_booking_id: 'booking-1',

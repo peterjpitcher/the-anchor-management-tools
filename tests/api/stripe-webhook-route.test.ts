@@ -234,7 +234,7 @@ describe('Stripe webhook route', () => {
   // -----------------------------------------------------------------------
 
   describe('checkout.session.completed', () => {
-    it('should call confirm_event_payment_v05 RPC for prepaid event', async () => {
+    it('should call confirm_table_payment_v05 RPC for table deposits', async () => {
       ;(verifyStripeWebhookSignature as unknown as vi.Mock).mockReturnValue(true)
       ;(computeIdempotencyRequestHash as unknown as vi.Mock).mockReturnValue('hash-cs')
       ;(claimIdempotencyKey as unknown as vi.Mock).mockResolvedValue({ state: 'claimed' })
@@ -264,15 +264,15 @@ describe('Stripe webhook route', () => {
         payment_intent: 'pi_test_1',
         amount_total: 2000,
         currency: 'gbp',
-        metadata: { event_booking_id: 'b1' },
+        metadata: { payment_kind: 'table_deposit', table_booking_id: 'tb1' },
       }
       const body = buildStripeEvent('checkout.session.completed', sessionObject, 'evt_cs_1')
       const req = makeRequest(body, { 'stripe-signature': 'valid' })
       const res = await POST(req as any)
 
       expect(res.status).toBe(200)
-      expect(rpcMock).toHaveBeenCalledWith('confirm_event_payment_v05', expect.objectContaining({
-        p_event_booking_id: 'b1',
+      expect(rpcMock).toHaveBeenCalledWith('confirm_table_payment_v05', expect.objectContaining({
+        p_table_booking_id: 'tb1',
         p_checkout_session_id: 'cs_test_1',
       }))
     })
@@ -468,7 +468,9 @@ describe('Stripe webhook route', () => {
 
       const sessionObject = {
         id: 'cs_err_1',
-        metadata: { event_booking_id: 'b-err' },
+        amount_total: 1000,
+        currency: 'gbp',
+        metadata: { payment_kind: 'table_deposit', table_booking_id: 'tb-err' },
       }
       const body = buildStripeEvent('checkout.session.completed', sessionObject, 'evt_err_1')
       const req = makeRequest(body, { 'stripe-signature': 'valid' })
@@ -507,7 +509,7 @@ describe('Stripe webhook route', () => {
           if (table === 'payments') {
             return {
               select: vi.fn().mockReturnValue({
-                eq: paymentLookupResult,
+                eq: vi.fn().mockReturnValue({ not: paymentLookupResult }),
               }),
               update: vi.fn().mockReturnValue({
                 eq: paymentUpdateResult,

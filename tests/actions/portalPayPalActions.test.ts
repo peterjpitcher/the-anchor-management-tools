@@ -6,6 +6,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 vi.mock('@/lib/paypal', () => ({
+  PAYPAL_DEFAULT_CURRENCY: 'GBP',
   capturePayPalPayment: vi.fn(),
   createSimplePayPalOrder: vi.fn(),
   getPayPalOrder: vi.fn(),

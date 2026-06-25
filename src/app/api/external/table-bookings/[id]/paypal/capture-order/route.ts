@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { withApiAuth } from '@/lib/api/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { capturePayPalPayment, getPayPalOrder } from '@/lib/paypal';
+import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
@@ -130,9 +130,9 @@ export async function POST(
       }
 
       // Capture the PayPal payment
-      let captureResult: { transactionId: string; status: string; payerId?: string; amount?: string };
+      let captureResult: { transactionId: string; status: string; payerId?: string; amount?: string; currency?: string | null };
       try {
-        captureResult = await capturePayPalPayment(orderId);
+        captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY);
       } catch (err) {
         void logAuditEvent({
           operation_type: 'payment.capture_failed',

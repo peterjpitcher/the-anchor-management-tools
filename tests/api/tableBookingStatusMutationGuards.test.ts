@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const mockTableBookingPermission = vi.hoisted(() => vi.fn())
+
 vi.mock('@/lib/foh/api-auth', () => ({
-  requireFohPermission: vi.fn(),
+  requireFohPermission: mockTableBookingPermission,
+  requireBohTableBookingPermission: mockTableBookingPermission,
 }))
 
 vi.mock('@/lib/foh/bookings', () => ({
@@ -9,6 +12,10 @@ vi.mock('@/lib/foh/bookings', () => ({
   getFeePerHead: vi.fn(),
   createChargeRequestForBooking: vi.fn(),
   hasUnpaidRequiredDeposit: vi.fn(() => false),
+}))
+
+vi.mock('@/app/actions/audit', () => ({
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
@@ -27,8 +34,11 @@ const BOOKING_UUID = '00000000-0000-4000-8000-000000000001'
 function buildUpdateNoRowSupabase() {
   const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   const select = vi.fn().mockReturnValue({ maybeSingle })
-  const eq = vi.fn().mockReturnValue({ select })
-  const update = vi.fn().mockReturnValue({ eq })
+  const updateChain = {
+    eq: vi.fn(() => updateChain),
+    select,
+  }
+  const update = vi.fn().mockReturnValue(updateChain)
 
   // Updated: routes now also call .from('table_bookings').select(...) for
   // diagnostic booking state on rejected transitions, so we include select.
@@ -41,22 +51,25 @@ function buildUpdateNoRowSupabase() {
       from: vi.fn().mockReturnValue({ update, select: readSelect }),
     },
     update,
-    eq,
+    eq: updateChain.eq,
   }
 }
 
 function buildUpdateSuccessSupabase(data: Record<string, unknown>) {
   const maybeSingle = vi.fn().mockResolvedValue({ data, error: null })
   const select = vi.fn().mockReturnValue({ maybeSingle })
-  const eq = vi.fn().mockReturnValue({ select })
-  const update = vi.fn().mockReturnValue({ eq })
+  const updateChain = {
+    eq: vi.fn(() => updateChain),
+    select,
+  }
+  const update = vi.fn().mockReturnValue(updateChain)
 
   return {
     supabase: {
       from: vi.fn().mockReturnValue({ update }),
     },
     update,
-    eq,
+    eq: updateChain.eq,
   }
 }
 
@@ -84,7 +97,10 @@ describe('Table-booking mutation row-effect guards', () => {
 
     expect(eq).toHaveBeenCalledWith('id', BOOKING_UUID)
     expect(response.status).toBe(404)
-    expect(payload).toEqual({ error: 'Booking not found' })
+    expect(payload).toEqual({
+      error: 'Booking changed before this update could be applied',
+      booking: null,
+    })
   })
 
   it('returns 404 and skips charge-request creation when FOH no-show update affects no rows', async () => {
@@ -113,7 +129,10 @@ describe('Table-booking mutation row-effect guards', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(404)
-    expect(payload).toEqual({ error: 'Booking not found' })
+    expect(payload).toEqual({
+      error: 'Booking changed before this update could be applied',
+      booking: null,
+    })
     expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 
@@ -149,7 +168,10 @@ describe('Table-booking mutation row-effect guards', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(404)
-    expect(payload).toEqual({ error: 'Booking not found' })
+    expect(payload).toEqual({
+      error: 'Booking changed before this update could be applied',
+      booking: null,
+    })
     expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 

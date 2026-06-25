@@ -95,7 +95,7 @@ describe('RecruitmentDashboardClient A-039', () => {
   it('paginates the applications table at 25 rows', () => {
     render(<RecruitmentDashboardClient initialData={makeInitialData()} permissions={permissions} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Applications/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /Applications/i }))
 
     expect(screen.getByText('Candidate 30 Test')).toBeInTheDocument()
     expect(screen.queryByText('Candidate 1 Test')).not.toBeInTheDocument()
@@ -123,7 +123,7 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Talent pool/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /Talent pool/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Erase' }))
 
     expect(screen.getByRole('dialog', { name: 'Erase candidate' })).toBeInTheDocument()

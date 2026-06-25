@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
+import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { generateBookingToken } from '@/lib/private-bookings/booking-token'
@@ -49,6 +49,11 @@ function getPayPalOrderAmount(order: any): number | null {
   const raw = order?.purchase_units?.[0]?.amount?.value
   const amount = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN
   return Number.isFinite(amount) ? amount : null
+}
+
+function getPayPalOrderCurrency(order: any): string | null {
+  const raw = order?.purchase_units?.[0]?.amount?.currency_code
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
 }
 
 function amountsMatch(actual: number, expected: number): boolean {
@@ -1738,11 +1743,13 @@ export async function createDepositPaymentOrder(
     try {
       const existingOrder = await getPayPalOrder(booking.paypal_deposit_order_id)
       const existingOrderAmount = getPayPalOrderAmount(existingOrder)
+      const existingOrderCurrency = getPayPalOrderCurrency(existingOrder)
       // If order is still CREATED or APPROVED, return its approve URL
       if (
         (existingOrder?.status === 'CREATED' || existingOrder?.status === 'APPROVED') &&
         existingOrderAmount !== null &&
-        amountsMatch(existingOrderAmount, depositAmount)
+        amountsMatch(existingOrderAmount, depositAmount) &&
+        existingOrderCurrency === PAYPAL_DEFAULT_CURRENCY
       ) {
         const approveUrl =
           existingOrder.links?.find((l: { rel: string; href: string }) => l.rel === 'payer-action')?.href ||
@@ -1751,7 +1758,10 @@ export async function createDepositPaymentOrder(
           return { success: true, approveUrl, orderId: booking.paypal_deposit_order_id }
         }
       }
-      if (existingOrderAmount !== null && !amountsMatch(existingOrderAmount, depositAmount)) {
+      if (
+        existingOrderAmount !== null &&
+        (!amountsMatch(existingOrderAmount, depositAmount) || existingOrderCurrency !== PAYPAL_DEFAULT_CURRENCY)
+      ) {
         await admin
           .from('private_bookings')
           .update({ paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
@@ -1857,14 +1867,19 @@ export async function captureDepositPayment(
 
     const order = await getPayPalOrder(orderId)
     const orderAmount = getPayPalOrderAmount(order)
-    if (orderAmount === null || !amountsMatch(orderAmount, expectedAmount)) {
+    const orderCurrency = getPayPalOrderCurrency(order)
+    if (
+      orderAmount === null ||
+      !amountsMatch(orderAmount, expectedAmount) ||
+      orderCurrency !== PAYPAL_DEFAULT_CURRENCY
+    ) {
       logger.error('PayPal order amount mismatch before capture', {
-        metadata: { bookingId, orderId, orderAmount, expectedAmount }
+        metadata: { bookingId, orderId, orderAmount, orderCurrency, expectedAmount, expectedCurrency: PAYPAL_DEFAULT_CURRENCY }
       })
       return { error: `Payment amount mismatch: PayPal order is not for the expected £${expectedAmount.toFixed(2)} deposit. Please create a fresh payment link.` }
     }
 
-    const captureResult = await capturePayPalPayment(orderId)
+    const captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY)
 
     // SEC-3: Validate captured amount matches expected deposit
     const capturedAmount = parseFloat(captureResult.amount)
@@ -1890,6 +1905,7 @@ export async function captureDepositPayment(
           order_id: orderId,
           capture_id: captureResult.transactionId,
           amount: captureResult.amount,
+          currency: captureResult.currency,
         },
       })
     } catch (auditError) {
