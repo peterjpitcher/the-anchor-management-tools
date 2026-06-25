@@ -7,7 +7,7 @@ import { Input } from '@/ds'
 import { Checkbox } from '@/ds'
 import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusinessHoursByDay } from '@/app/actions/business-hours'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
-import { format } from 'date-fns'
+import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
 import { TrashIcon } from '@heroicons/react/24/outline'
 
@@ -153,7 +153,7 @@ export function SpecialHoursModal({
     setLoading(true)
 
     const formData = new FormData()
-    const dateStr = format(date, 'yyyy-MM-dd')
+    const dateStr = toLocalIsoDate(date)
     
     // Merge Sunday Lunch into scheduleConfig
     const finalConfig = [...scheduleConfig]
@@ -238,7 +238,7 @@ export function SpecialHoursModal({
     <Modal
       open={isOpen}
       onClose={onClose}
-      title={`Edit Hours: ${format(date, 'EEEE, d MMMM yyyy')}`}
+      title={`Edit Hours: ${formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
       size="lg"
       footer={
         <ModalActions align="between">

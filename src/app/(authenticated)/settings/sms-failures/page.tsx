@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatErrorMessage } from '@/lib/sms-status'
-import { Badge, Card, PageLayout, Section, Stat } from '@/ds'
+import { Badge, Button, Card, PageLayout, Section, Stat } from '@/ds'
+import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
 
 type SmsFailureRow = {
   id: string
@@ -210,6 +211,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                       <th scope="col" className="px-4 py-3">Error</th>
                       <th scope="col" className="px-4 py-3">To</th>
                       <th scope="col" className="px-4 py-3">Message</th>
+                      <th scope="col" className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -247,6 +249,22 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                             {maskPhone(row.to_number)}
                           </td>
                           <td className="max-w-md px-4 py-3 text-text-muted">{truncate(row.body)}</td>
+                          <td className="whitespace-nowrap px-4 py-3">
+                            <div className="flex justify-end gap-2">
+                              <form action={retrySmsFailureFromForm}>
+                                <input type="hidden" name="message_id" value={row.id} />
+                                <Button type="submit" size="xs" variant="secondary">
+                                  Retry
+                                </Button>
+                              </form>
+                              <form action={dismissSmsFailureFromForm}>
+                                <input type="hidden" name="message_id" value={row.id} />
+                                <Button type="submit" size="xs" variant="ghost">
+                                  Dismiss
+                                </Button>
+                              </form>
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}

@@ -44,6 +44,17 @@ const SECTION_ITEMS = [
   { id: 'profile', label: 'Profile' },
 ]
 
+const SETTINGS_LINKS = [
+  { href: '/settings/business-hours', title: 'Business Hours', description: 'Opening hours and special days', icon: 'calendar' },
+  { href: '/settings/table-bookings', title: 'Table Bookings', description: 'Tables, areas, groups, and pacing', icon: 'table' },
+  { href: '/settings/customer-labels', title: 'Customer Labels', description: 'Customer tags and automation rules', icon: 'users' },
+  { href: '/settings/event-categories', title: 'Event Categories', description: 'Defaults and marketing metadata', icon: 'calendar' },
+  { href: '/settings/api-keys', title: 'API Keys', description: 'External API access and revocation', icon: 'link' },
+  { href: '/settings/sms-failures', title: 'SMS Failures', description: 'Retry or dismiss failed messages', icon: 'message' },
+  { href: '/settings/pay-bands', title: 'Pay Bands', description: 'Age bands, rates, and overrides', icon: 'pound' },
+  { href: '/settings/gdpr', title: 'GDPR', description: 'Data export and deletion tools', icon: 'eyeOff' },
+] as const
+
 /* ------------------------------------------------------------------ */
 /*  General Section                                                    */
 /* ------------------------------------------------------------------ */
@@ -323,6 +334,29 @@ function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; 
           </div>
         )}
       </form>
+
+      <Card>
+        <CardHeader title="Settings Pages" subtitle="Specialised configuration areas" />
+        <CardBody>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {SETTINGS_LINKS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-start gap-3 rounded-default border border-border p-3 hover:bg-surface-hover"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-default bg-primary-soft text-primary">
+                  <Icon name={item.icon} size={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-text-strong">{item.title}</span>
+                  <span className="block text-xs leading-5 text-text-muted">{item.description}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Developer Tools */}
       <Card>

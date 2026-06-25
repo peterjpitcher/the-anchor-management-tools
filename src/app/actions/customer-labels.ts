@@ -13,7 +13,7 @@ const CustomerLabelSchema = z.object({
   name: z.string().min(1, 'Label name is required').max(255),
   description: z.string().optional(),
   color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid color format'),
-  icon: z.string().optional(),
+  icon: z.enum(['star', 'tag', 'users', 'heart', 'check', 'sparkles']).optional(),
   auto_apply_rules: z.any().optional()
 })
 
@@ -171,9 +171,11 @@ export async function updateCustomerLabel(
       return { error: 'Customer label not found' }
     }
 
+    const validatedData = CustomerLabelSchema.partial().parse(labelData)
+
     const { data, error } = await admin
       .from('customer_labels')
-      .update(labelData)
+      .update(validatedData)
       .eq('id', id)
       .select()
       .maybeSingle()
