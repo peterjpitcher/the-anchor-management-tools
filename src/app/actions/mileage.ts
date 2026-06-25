@@ -6,7 +6,7 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   getTaxYearBounds,
   THRESHOLD_MILES,
@@ -132,6 +132,13 @@ export interface MileageInsightsData {
   byDestination: MileageDestinationBreakdown[]
 }
 
+export interface MileageTripsPage {
+  trips: MileageTrip[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -169,6 +176,22 @@ function hasAtMostOneDecimalPlace(miles: number): boolean {
 
 function roundMiles(miles: number): number {
   return Math.round(miles * 10) / 10
+}
+
+function sanitizeMileageSearchTerm(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/[,%_()"'\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
+function escapeCsvCell(rawValue: string): string {
+  const safeValue = /^[=+\-@\t\r\n]/.test(rawValue) ? `'${rawValue}` : rawValue
+  if (safeValue.includes(',') || safeValue.includes('"') || safeValue.includes('\n') || safeValue.includes('\r')) {
+    return `"${safeValue.replace(/"/g, '""')}"`
+  }
+  return safeValue
 }
 
 function validateManualTripLegs(
@@ -323,14 +346,47 @@ export async function getDestinations(): Promise<{
 export async function getTrips(filters?: {
   dateFrom?: string
   dateTo?: string
-}): Promise<{ success?: boolean; error?: string; data?: MileageTrip[] }> {
+  searchTerm?: string
+  page?: number
+  pageSize?: number
+}): Promise<{ success?: boolean; error?: string; data?: MileageTrip[]; pageInfo?: MileageTripsPage }> {
   try {
     await requireMileagePermission('view')
     const db = createAdminClient()
+    const pageSize = Math.min(Math.max(Number(filters?.pageSize ?? 25), 1), 100)
+    const page = Math.max(Number(filters?.page ?? 1), 1)
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
+    const searchTerm = sanitizeMileageSearchTerm(filters?.searchTerm)
+
+    let matchingTripIds: string[] = []
+    if (searchTerm) {
+      const searchPattern = `%${searchTerm}%`
+      const { data: matchingDestinations, error: destinationSearchError } = await db
+        .from('mileage_destinations')
+        .select('id')
+        .ilike('name', searchPattern)
+        .limit(100)
+
+      if (destinationSearchError) throw destinationSearchError
+
+      const destinationIds = (matchingDestinations ?? []).map((destination) => destination.id)
+      if (destinationIds.length > 0) {
+        const { data: matchingLegs, error: legSearchError } = await db
+          .from('mileage_trip_legs')
+          .select('trip_id')
+          .or(
+            `from_destination_id.in.(${destinationIds.join(',')}),to_destination_id.in.(${destinationIds.join(',')})`
+          )
+
+        if (legSearchError) throw legSearchError
+        matchingTripIds = Array.from(new Set((matchingLegs ?? []).map((leg) => leg.trip_id)))
+      }
+    }
 
     let query = db
       .from('mileage_trips')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('trip_date', { ascending: false })
       .order('created_at', { ascending: false })
 
@@ -340,10 +396,24 @@ export async function getTrips(filters?: {
     if (filters?.dateTo) {
       query = query.lte('trip_date', filters.dateTo)
     }
+    if (searchTerm) {
+      const searchPattern = `%${searchTerm}%`
+      const clauses = [`description.ilike.${searchPattern}`]
+      if (matchingTripIds.length > 0) {
+        clauses.push(`id.in.(${matchingTripIds.join(',')})`)
+      }
+      query = query.or(clauses.join(','))
+    }
 
-    const { data: trips, error: tripError } = await query
+    const { data: trips, error: tripError, count } = await query.range(from, to)
     if (tripError) throw tripError
-    if (!trips || trips.length === 0) return { success: true, data: [] }
+    if (!trips || trips.length === 0) {
+      return {
+        success: true,
+        data: [],
+        pageInfo: { trips: [], total: count ?? 0, page, pageSize },
+      }
+    }
 
     // Fetch legs for all trips
     const tripIds = trips.map((t) => t.id)
@@ -408,9 +478,130 @@ export async function getTrips(filters?: {
       }
     })
 
-    return { success: true, data: result }
+    return {
+      success: true,
+      data: result,
+      pageInfo: { trips: result, total: count ?? result.length, page, pageSize },
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch trips'
+    return { error: message }
+  }
+}
+
+export async function exportMileageTripsCsv(filters?: {
+  dateFrom?: string
+  dateTo?: string
+  searchTerm?: string
+}): Promise<{ data?: string; filename?: string; error?: string }> {
+  try {
+    await requireMileagePermission('view')
+    const result = await getTrips({
+      dateFrom: filters?.dateFrom,
+      dateTo: filters?.dateTo,
+      searchTerm: filters?.searchTerm,
+      page: 1,
+      pageSize: 100,
+    })
+
+    if (result.error) return { error: result.error }
+
+    const total = result.pageInfo?.total ?? result.data?.length ?? 0
+    const pageSize = 100
+    let trips = result.data ?? []
+
+    if (total > pageSize) {
+      const pageCount = Math.ceil(total / pageSize)
+      const remainingPages = await Promise.all(
+        Array.from({ length: pageCount - 1 }, (_, index) =>
+          getTrips({
+            dateFrom: filters?.dateFrom,
+            dateTo: filters?.dateTo,
+            searchTerm: filters?.searchTerm,
+            page: index + 2,
+            pageSize,
+          })
+        )
+      )
+
+      for (const pageResult of remainingPages) {
+        if (pageResult.error) return { error: pageResult.error }
+        trips = trips.concat(pageResult.data ?? [])
+      }
+    }
+
+    const headers = [
+      'Date',
+      'Description',
+      'Route',
+      'Total Miles',
+      'Standard Miles',
+      'Reduced Miles',
+      'Amount Due',
+      'Source',
+    ]
+    const rows = trips.map((trip) => [
+      formatDateInLondon(trip.tripDate, { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      trip.description ?? '',
+      trip.routeSummary,
+      trip.totalMiles.toFixed(1),
+      trip.milesAtStandardRate.toFixed(1),
+      trip.milesAtReducedRate.toFixed(1),
+      trip.amountDue.toFixed(2),
+      trip.source === 'oj_projects' ? 'OJ Projects' : 'Manual',
+    ])
+
+    const csv = [
+      headers.map(escapeCsvCell).join(','),
+      ...rows.map((row) => row.map(escapeCsvCell).join(',')),
+    ].join('\n')
+
+    return {
+      data: csv,
+      filename: `mileage-trips-${getTodayIsoDate()}.csv`,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to export trips'
+    return { error: message }
+  }
+}
+
+export async function getRatePreviewContext(input: {
+  tripDate: string
+  excludeTripId?: string | null
+}): Promise<{ data?: { cumulativeMilesBefore: number }; error?: string }> {
+  try {
+    await requireMileagePermission('view')
+    const parsed = z.object({
+      tripDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+      excludeTripId: z.string().uuid().optional().nullable(),
+    }).safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Invalid trip date' }
+    }
+
+    const { start } = getTaxYearBounds(parsed.data.tripDate)
+    const db = createAdminClient()
+    let query = db
+      .from('mileage_trips')
+      .select('id, total_miles')
+      .gte('trip_date', start)
+      .lt('trip_date', parsed.data.tripDate)
+
+    if (parsed.data.excludeTripId) {
+      query = query.neq('id', parsed.data.excludeTripId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    const cumulativeMilesBefore = roundMiles(
+      (data ?? []).reduce((sum, trip) => sum + Number(trip.total_miles), 0)
+    )
+
+    return { data: { cumulativeMilesBefore } }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to calculate mileage preview'
     return { error: message }
   }
 }
@@ -784,6 +975,75 @@ export async function upsertDistanceCache(input: {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to save distance'
+    return { error: message }
+  }
+}
+
+export async function deleteDistanceCache(input: {
+  fromDestinationId: string
+  toDestinationId: string
+}): Promise<{ success?: boolean; error?: string; data?: DistanceCacheEntry }> {
+  try {
+    const { userId } = await requireMileagePermission('manage')
+    const parsed = z.object({
+      fromDestinationId: z.string().uuid(),
+      toDestinationId: z.string().uuid(),
+    }).safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Invalid distance' }
+    }
+    if (parsed.data.fromDestinationId === parsed.data.toDestinationId) {
+      return { error: 'Choose two different destinations' }
+    }
+
+    const db = createAdminClient()
+    const [canonFrom, canonTo] = canonicalPair(
+      parsed.data.fromDestinationId,
+      parsed.data.toDestinationId
+    )
+
+    const { data: existing, error: fetchError } = await db
+      .from('mileage_destination_distances')
+      .select('from_destination_id, to_destination_id, miles')
+      .eq('from_destination_id', canonFrom)
+      .eq('to_destination_id', canonTo)
+      .maybeSingle()
+
+    if (fetchError) throw fetchError
+    if (!existing) return { error: 'Distance not found' }
+
+    const { error: deleteError } = await db
+      .from('mileage_destination_distances')
+      .delete()
+      .eq('from_destination_id', canonFrom)
+      .eq('to_destination_id', canonTo)
+
+    if (deleteError) throw deleteError
+
+    await logAuditEvent({
+      user_id: userId,
+      operation_type: 'delete',
+      resource_type: 'mileage_destination_distance',
+      resource_id: `${canonFrom}:${canonTo}`,
+      operation_status: 'success',
+      old_values: {
+        from_destination_id: canonFrom,
+        to_destination_id: canonTo,
+        miles: Number(existing.miles),
+      },
+    })
+
+    revalidateMileagePaths()
+    return {
+      success: true,
+      data: {
+        fromDestinationId: canonFrom,
+        toDestinationId: canonTo,
+        miles: Number(existing.miles),
+      },
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete distance'
     return { error: message }
   }
 }

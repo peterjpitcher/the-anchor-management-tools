@@ -77,6 +77,7 @@ vi.mock('@/lib/audit-helpers', () => ({
 
 vi.mock('@/lib/dateUtils', () => ({
   getTodayIsoDate: vi.fn(() => '2026-05-05'),
+  formatDateInLondon: vi.fn((value: string) => value),
 }))
 
 vi.mock('@/app/actions/audit', () => ({
@@ -87,7 +88,7 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
-import { createTrip, getTripStats, updateTrip } from '../mileage'
+import { createTrip, getTrips, getTripStats, updateTrip } from '../mileage'
 
 const HOME_ID = '00000000-0000-4000-8000-000000000001'
 const DEST_ID = '00000000-0000-4000-8000-000000000002'
@@ -125,6 +126,96 @@ describe('getTripStats', () => {
       { gte: '2026-04-06', lte: '2027-04-05' },
       { gte: '2026-01-01', lte: '2026-12-31' },
     ])
+  })
+})
+
+describe('getTrips', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('uses counted pagination and hydrates legs for the current page', async () => {
+    const tripRows = [
+      {
+        id: 'trip-1',
+        trip_date: '2026-07-24',
+        description: 'Supplier run',
+        total_miles: 20,
+        miles_at_standard_rate: 20,
+        miles_at_reduced_rate: 0,
+        amount_due: 11,
+        source: 'manual',
+        created_at: '2026-07-24T12:00:00Z',
+      },
+      {
+        id: 'trip-2',
+        trip_date: '2026-07-23',
+        description: null,
+        total_miles: 10,
+        miles_at_standard_rate: 10,
+        miles_at_reduced_rate: 0,
+        amount_due: 5.5,
+        source: 'manual',
+        created_at: '2026-07-23T12:00:00Z',
+      },
+    ]
+    const tripRange = vi.fn().mockResolvedValue({ data: tripRows, error: null, count: 52 })
+    const tripOrder = vi.fn(() => tripBuilder)
+    const tripSelect = vi.fn(() => tripBuilder)
+    const tripBuilder = {
+      select: tripSelect,
+      order: tripOrder,
+      range: tripRange,
+    }
+
+    const legsOrder = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'leg-1',
+          trip_id: 'trip-1',
+          leg_order: 1,
+          from_destination_id: HOME_ID,
+          to_destination_id: DEST_ID,
+          miles: 10,
+        },
+        {
+          id: 'leg-2',
+          trip_id: 'trip-1',
+          leg_order: 2,
+          from_destination_id: DEST_ID,
+          to_destination_id: HOME_ID,
+          miles: 10,
+        },
+      ],
+      error: null,
+    })
+    const legsIn = vi.fn(() => ({ order: legsOrder }))
+    const legsSelect = vi.fn(() => ({ in: legsIn }))
+
+    const destinationsIn = vi.fn().mockResolvedValue({
+      data: [
+        { id: HOME_ID, name: 'The Anchor' },
+        { id: DEST_ID, name: 'Costco' },
+      ],
+      error: null,
+    })
+    const destinationsSelect = vi.fn(() => ({ in: destinationsIn }))
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_trips') return tripBuilder
+      if (table === 'mileage_trip_legs') return { select: legsSelect }
+      if (table === 'mileage_destinations') return { select: destinationsSelect }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await getTrips({ page: 2, pageSize: 25 })
+
+    expect(result.success).toBe(true)
+    expect(tripSelect).toHaveBeenCalledWith('*', { count: 'exact' })
+    expect(tripRange).toHaveBeenCalledWith(25, 49)
+    expect(result.pageInfo).toMatchObject({ total: 52, page: 2, pageSize: 25 })
+    expect(result.data?.[0]?.routeSummary).toBe('The Anchor → Costco → The Anchor')
   })
 })
 
