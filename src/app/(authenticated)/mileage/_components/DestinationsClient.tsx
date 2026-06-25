@@ -7,6 +7,7 @@ import {
   updateDestination,
   deleteDestination,
   upsertDistanceCache,
+  deleteDistanceCache,
   type MileageDestination,
   type MileageDistance,
 } from '@/app/actions/mileage'
@@ -53,6 +54,11 @@ export function DestinationsClient({
   const [showForm, setShowForm] = useState(false)
   const [editingDest, setEditingDest] = useState<MileageDestination | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MileageDestination | null>(null)
+  const [distanceDeleteTarget, setDistanceDeleteTarget] = useState<{
+    fromId: string
+    toId: string
+    label: string
+  } | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
   // Form fields
@@ -134,6 +140,26 @@ export function DestinationsClient({
         )
       )
       setAnchorDistanceDrafts((prev) => ({ ...prev, [destinationId]: String(miles) }))
+    }
+  }
+
+  function applyDistanceDelete(fromId: string, toId: string): void {
+    const [canonFrom, canonTo] = canonicalPair(fromId, toId)
+    const key = distanceKey(canonFrom, canonTo)
+    setDistances((prev) =>
+      prev.filter((distance) => distanceKey(distance.fromDestinationId, distance.toDestinationId) !== key)
+    )
+
+    if (homeBase && (canonFrom === homeBase.id || canonTo === homeBase.id)) {
+      const destinationId = canonFrom === homeBase.id ? canonTo : canonFrom
+      setDestinations((prev) =>
+        prev.map((destination) =>
+          destination.id === destinationId
+            ? { ...destination, milesFromAnchor: null }
+            : destination
+        )
+      )
+      setAnchorDistanceDrafts((prev) => ({ ...prev, [destinationId]: '' }))
     }
   }
 
@@ -301,6 +327,29 @@ export function DestinationsClient({
     })
   }
 
+  function handleDeleteDistance(): void {
+    if (!distanceDeleteTarget) return
+
+    setFormError(null)
+    setDistanceError(null)
+    startTransition(async () => {
+      const result = await deleteDistanceCache({
+        fromDestinationId: distanceDeleteTarget.fromId,
+        toDestinationId: distanceDeleteTarget.toId,
+      })
+      if (result.error) {
+        setDistanceError(result.error)
+        setDistanceDeleteTarget(null)
+        return
+      }
+      applyDistanceDelete(
+        result.data?.fromDestinationId ?? distanceDeleteTarget.fromId,
+        result.data?.toDestinationId ?? distanceDeleteTarget.toId
+      )
+      setDistanceDeleteTarget(null)
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* Header row */}
@@ -318,7 +367,7 @@ export function DestinationsClient({
       )}
 
       {/* Error banner */}
-      {(formError || distanceError) && !showForm && !deleteTarget && (
+      {(formError || distanceError) && !showForm && !deleteTarget && !distanceDeleteTarget && (
         <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
           {formError ?? distanceError}
         </div>
@@ -405,6 +454,21 @@ export function DestinationsClient({
                         >
                           Save
                         </Button>
+                        {dest.milesFromAnchor != null && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                            aria-label={`Clear miles from ${homeBase.name} to ${dest.name}`}
+                            onClick={() =>
+                              setDistanceDeleteTarget({
+                                fromId: homeBase.id,
+                                toId: dest.id,
+                                label: `${homeBase.name} to ${dest.name}`,
+                              })
+                            }
+                          />
+                        )}
                       </div>
                     ) : dest.milesFromAnchor != null ? (
                       `${dest.milesFromAnchor} mi`
@@ -537,6 +601,11 @@ export function DestinationsClient({
                   <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                     Miles
                   </th>
+                  {canManage && (
+                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -554,6 +623,23 @@ export function DestinationsClient({
                     <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-500">
                       {distance.miles} mi
                     </td>
+                    {canManage && (
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<TrashIcon className="h-4 w-4 text-red-500" />}
+                          aria-label={`Delete distance from ${distance.fromDestinationName} to ${distance.toDestinationName}`}
+                          onClick={() =>
+                            setDistanceDeleteTarget({
+                              fromId: distance.fromDestinationId,
+                              toId: distance.toDestinationId,
+                              label: `${distance.fromDestinationName} to ${distance.toDestinationName}`,
+                            })
+                          }
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -630,6 +716,16 @@ export function DestinationsClient({
         onConfirm={handleDelete}
         title="Delete Destination"
         message={`Are you sure you want to delete "${deleteTarget?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+      />
+
+      <ConfirmDialog
+        open={!!distanceDeleteTarget}
+        onClose={() => setDistanceDeleteTarget(null)}
+        onConfirm={handleDeleteDistance}
+        title="Delete Distance"
+        message={`Delete the saved distance for ${distanceDeleteTarget?.label}? Future trips will need miles entered again.`}
         confirmLabel="Delete"
         tone="danger"
       />

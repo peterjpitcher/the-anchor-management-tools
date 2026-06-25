@@ -6,6 +6,7 @@ import {
   createTrip,
   updateTrip,
   getDistanceCache,
+  getRatePreviewContext,
   type MileageDestination,
   type MileageTrip,
 } from '@/app/actions/mileage'
@@ -54,6 +55,7 @@ export function TripForm({
   const [description, setDescription] = useState('')
   const [stops, setStops] = useState<TripFormStop[]>([createEmptyStop()])
   const [returnMiles, setReturnMiles] = useState('')
+  const [previewCumulativeMiles, setPreviewCumulativeMiles] = useState(cumulativeMilesBefore)
 
   const getDestinationName = useCallback(
     (id: string | undefined): string | null => {
@@ -89,7 +91,25 @@ export function TripForm({
     setError(null)
     setReturnMilesError(null)
     setStopErrors(new Map())
-  }, [editingTrip, homeBase, open])
+    setPreviewCumulativeMiles(cumulativeMilesBefore)
+  }, [editingTrip, homeBase, open, cumulativeMilesBefore])
+
+  useEffect(() => {
+    if (!open || !tripDate) return
+    let cancelled = false
+
+    getRatePreviewContext({
+      tripDate,
+      excludeTripId: editingTrip?.id ?? null,
+    }).then((result) => {
+      if (cancelled || result.error || !result.data) return
+      setPreviewCumulativeMiles(result.data.cumulativeMilesBefore)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, tripDate, editingTrip?.id])
 
   function fillStopMilesFromCache(index: number, destId: string, prevDestId: string): void {
     fetchCachedDistance(prevDestId, destId).then((cachedMiles) => {
@@ -209,7 +229,7 @@ export function TripForm({
     (parseFloat(returnMiles) || 0)
 
   const standardRate = getStandardRate(tripDate)
-  const rateSplit = calculateHmrcRateSplit(cumulativeMilesBefore, totalMiles, tripDate)
+  const rateSplit = calculateHmrcRateSplit(previewCumulativeMiles, totalMiles, tripDate)
   const crossesThreshold =
     rateSplit.milesAtStandardRate > 0 && rateSplit.milesAtReducedRate > 0
 

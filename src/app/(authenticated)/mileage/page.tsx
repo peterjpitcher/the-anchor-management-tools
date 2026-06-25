@@ -23,6 +23,9 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
   ])
 
   const trips = tripsResult.data ?? []
+  const tripTotal = tripsResult.pageInfo?.total ?? trips.length
+  const tripPage = tripsResult.pageInfo?.page ?? 1
+  const tripPageSize = tripsResult.pageInfo?.pageSize ?? 25
   const stats = statsResult.data ?? {
     quarterTotalMiles: 0,
     quarterAmountDue: 0,
@@ -46,6 +49,9 @@ export default async function MileagePage(): Promise<React.JSX.Element> {
       <SectionNav items={MILEAGE_SECTION_NAV} activeId="trips" />
       <MileageClient
         initialTrips={trips}
+        initialTotal={tripTotal}
+        initialPage={tripPage}
+        initialPageSize={tripPageSize}
         initialStats={stats}
         destinations={destinations}
         canManage={canManage}
