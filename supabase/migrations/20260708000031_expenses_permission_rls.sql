@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE POLICY "expenses_permission_select"
 ON public.expenses
 FOR SELECT
@@ -118,7 +116,3 @@ BEGIN
   RETURN v_file_paths;
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.delete_expense_atomic(uuid) TO authenticated, service_role;
-
-COMMIT;

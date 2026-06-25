@@ -111,6 +111,3 @@ BEGIN
   OFFSET (v_page - 1) * v_page_size;
 END;
 $$;
-
-REVOKE ALL ON FUNCTION public.get_bulk_sms_recipients(UUID, TEXT, BOOLEAN, UUID, DATE, DATE, TEXT, INTEGER, INTEGER) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_bulk_sms_recipients(UUID, TEXT, BOOLEAN, UUID, DATE, DATE, TEXT, INTEGER, INTEGER) TO authenticated;

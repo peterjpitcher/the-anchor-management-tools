@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE OR REPLACE FUNCTION public.delete_expense_atomic(p_expense_id uuid)
 RETURNS text[]
 LANGUAGE plpgsql
@@ -29,7 +27,3 @@ BEGIN
   RETURN v_file_paths;
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.delete_expense_atomic(uuid) TO authenticated, service_role;
-
-COMMIT;

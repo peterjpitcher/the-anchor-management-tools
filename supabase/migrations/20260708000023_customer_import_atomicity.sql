@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE OR REPLACE FUNCTION public.import_customers_atomic(p_customers jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -78,7 +76,3 @@ BEGIN
   );
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.import_customers_atomic(jsonb) TO authenticated, service_role;
-
-COMMIT;
