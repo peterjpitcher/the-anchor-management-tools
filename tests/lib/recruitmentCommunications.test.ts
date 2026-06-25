@@ -321,6 +321,45 @@ describe('recruitment communications safety', () => {
     expect(context.available_times).toContain('18:00-18:30')
   })
 
+  it('adds open trial shift times to trial invite drafts', async () => {
+    draftRecruitmentEmail.mockResolvedValue({
+      runId: 'run-1',
+      result: {
+        subject: 'Trial shift invitation - The Anchor',
+        body: 'Hi {{first_name}},\n\nWe would like to invite you for a trial shift.\n\nPlease bring proof of your right to work in the UK.\n\nBest,\nThe Anchor',
+      },
+    })
+
+    const slots = listChain({
+      data: [
+        {
+          starts_at: '2099-01-07T17:00:00.000Z',
+          ends_at: '2099-01-07T19:00:00.000Z',
+          timezone: 'Europe/London',
+        },
+      ],
+      error: null,
+    })
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: application, error: null }),
+      recruitment_appointment_slots: slots,
+      recruitment_email_templates: maybeSingleChain({
+        data: {
+          subject: 'Trial shift invitation - The Anchor',
+          body: 'Hi {{first_name}}, choose a time here: {{booking_link}}',
+        },
+        error: null,
+      }),
+    })
+
+    const result = await draftRecruitmentEmailForApplication('application-1', 'trial_invite', {}, supabase)
+
+    expect(result.success).toBe(true)
+    expect(slots.eq).toHaveBeenCalledWith('type', 'trial_shift')
+    expect(result.body).toContain('Available trial shift times:')
+    expect(result.body).toContain('17:00-19:00')
+  })
+
   it('allows reviewed interview invite emails with literal slot times and no booking link', async () => {
     sendEmail.mockResolvedValue({ success: true, messageId: 'email-1' })
     const communications = insertUpdateChain()
