@@ -6,6 +6,11 @@ interface QuoteTemplateData {
   logoUrl?: string
 }
 
+function formatCurrency(value: number | null | undefined): string {
+  const amount = Number(value ?? 0)
+  return `£${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`
+}
+
 export function generateQuoteHTML(data: QuoteTemplateData): string {
   const { quote, logoUrl } = data
   
@@ -332,21 +337,21 @@ export function generateQuoteHTML(data: QuoteTemplateData): string {
       <div class="summary-table">
         <div class="summary-row">
           <span>Subtotal:</span>
-          <span>£${quote.subtotal_amount.toFixed(2)}</span>
+          <span>${formatCurrency(quote.subtotal_amount)}</span>
         </div>
-        ${quote.discount_amount > 0 ? `
+        ${Number(quote.discount_amount ?? 0) > 0 ? `
           <div class="summary-row discount">
             <span>Discount (${quote.quote_discount_percentage}%):</span>
-            <span>-£${quote.discount_amount.toFixed(2)}</span>
+            <span>-${formatCurrency(quote.discount_amount)}</span>
           </div>
         ` : ''}
         <div class="summary-row">
           <span>VAT:</span>
-          <span>£${quote.vat_amount.toFixed(2)}</span>
+          <span>${formatCurrency(quote.vat_amount)}</span>
         </div>
         <div class="summary-row total">
           <span>Total:</span>
-          <span>£${quote.total_amount.toFixed(2)}</span>
+          <span>${formatCurrency(quote.total_amount)}</span>
         </div>
       </div>
     </div>

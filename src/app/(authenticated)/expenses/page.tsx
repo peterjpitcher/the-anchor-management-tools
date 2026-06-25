@@ -50,7 +50,7 @@ export default async function ExpensesPage(): Promise<React.JSX.Element> {
       />
       <ExpensesClient
         initialExpenses={expensesResult.data ?? []}
-        initialStats={statsResult.data ?? { quarterTotal: 0, vatReclaimable: 0, missingReceipts: 0 }}
+        initialStats={statsResult.data ?? { quarterTotal: 0, vatReclaimable: 0, missingReceipts: 0, supplierSpend: [] }}
       />
     </div>
   )

@@ -25,6 +25,7 @@ import {
 } from '@/ds'
 import { toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { buildMgdHmrcLines } from '@/lib/mgd/hmrcFormat'
 import { CollectionForm } from './CollectionForm'
 import {
   getCollections,
@@ -68,6 +69,27 @@ function isLocked(ret: MgdReturn | null): boolean {
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(value)
+
+function csvCell(value: string | number | null | undefined): string {
+  const raw = value == null ? '' : String(value)
+  return `"${raw.replace(/"/g, '""')}"`
+}
+
+function downloadCsv(filename: string, rows: Array<Record<string, string | number | null | undefined>>): void {
+  if (rows.length === 0) return
+  const headers = Object.keys(rows[0])
+  const csv = [
+    headers.map(csvCell).join(','),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(',')),
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -113,6 +135,8 @@ export function MgdClient({
   const [showHmrcFormat, setShowHmrcFormat] = useState(false)
   const [datePaid, setDatePaid] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [collectionSearch, setCollectionSearch] = useState('')
+  const [returnSearch, setReturnSearch] = useState('')
 
   // Determine which return is currently being viewed
   const viewingReturn = selectedPeriod
@@ -144,6 +168,20 @@ export function MgdClient({
     toggleSort: toggleCollectionSort,
   } = useSort<MgdCollection, CollectionSortKey>(collections, 'date', 'desc', collectionComparators)
 
+  const visibleCollections = useMemo(() => {
+    const term = collectionSearch.trim().toLowerCase()
+    if (!term) return sortedCollections
+    return sortedCollections.filter((collection) =>
+      [
+        collection.collection_date,
+        collection.notes ?? '',
+        String(collection.net_take),
+        String(collection.mgd_amount),
+        String(collection.vat_on_supplier),
+      ].some((value) => value.toLowerCase().includes(term))
+    )
+  }, [collectionSearch, sortedCollections])
+
   // Sorting -- Return History table
   type ReturnSortKey = 'period' | 'netTake' | 'mgd' | 'status' | 'datePaid'
 
@@ -163,6 +201,20 @@ export function MgdClient({
     sort: returnSort,
     toggleSort: toggleReturnSort,
   } = useSort<MgdReturn, ReturnSortKey>(allReturns, 'period', 'desc', returnComparators)
+
+  const visibleReturns = useMemo(() => {
+    const term = returnSearch.trim().toLowerCase()
+    if (!term) return sortedReturns
+    return sortedReturns.filter((ret) =>
+      [
+        periodLabel(ret.period_start, ret.period_end),
+        ret.status,
+        ret.date_paid ?? '',
+        String(ret.total_net_take ?? 0),
+        String(ret.total_mgd ?? 0),
+      ].some((value) => value.toLowerCase().includes(term))
+    )
+  }, [returnSearch, sortedReturns])
 
   // Data refresh
   const refreshData = useCallback(async (): Promise<void> => {
@@ -252,6 +304,36 @@ export function MgdClient({
     } finally { setSubmitting(false) }
   }
 
+  function exportCollections(): void {
+    downloadCsv(
+      `mgd-collections-${viewingReturn?.period_start ?? 'all'}-${viewingReturn?.period_end ?? 'all'}.csv`,
+      visibleCollections.map((collection) => ({
+        Date: collection.collection_date,
+        'Net Take': collection.net_take,
+        'MGD Amount': collection.mgd_amount,
+        'VAT on Supplier': collection.vat_on_supplier,
+        Notes: collection.notes ?? '',
+      }))
+    )
+  }
+
+  function exportReturns(): void {
+    downloadCsv(
+      'mgd-return-history.csv',
+      visibleReturns.map((ret) => ({
+        Period: periodLabel(ret.period_start, ret.period_end),
+        'Period Start': ret.period_start,
+        'Period End': ret.period_end,
+        'Net Take': ret.total_net_take ?? 0,
+        'MGD Due': ret.total_mgd ?? 0,
+        'VAT on Supplier': ret.total_vat_on_supplier ?? 0,
+        Status: ret.status,
+        'Date Paid': ret.date_paid ?? '',
+        Collections: ret.collection_count ?? 0,
+      }))
+    )
+  }
+
   // Render
   return (
     <div className="space-y-6">
@@ -308,6 +390,9 @@ export function MgdClient({
                 <Stat label="MGD Due (20%)" value={formatCurrency(viewingReturn.total_mgd ?? 0)} />
                 <Stat label="VAT on Supplier" value={formatCurrency(viewingReturn.total_vat_on_supplier ?? 0)} />
               </div>
+              <div className="mt-4">
+                <Stat label="Collections in Period" value={String(viewingReturn.collection_count ?? collections.length)} />
+              </div>
             </>
           ) : (
             <Empty
@@ -340,11 +425,25 @@ export function MgdClient({
             )
           }
         />
-        {collections.length === 0 ? (
+        <CardBody>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Input
+              value={collectionSearch}
+              onChange={(event) => setCollectionSearch(event.target.value)}
+              placeholder="Search collections..."
+              aria-label="Search collections"
+              className="sm:max-w-xs"
+            />
+            <Button variant="secondary" size="sm" onClick={exportCollections} disabled={visibleCollections.length === 0}>
+              Export CSV
+            </Button>
+          </div>
+        </CardBody>
+        {visibleCollections.length === 0 ? (
           <CardBody>
             <Empty
-              title="No collections"
-              description="No machine game collections recorded for this period."
+              title={collectionSearch ? 'No collections match your search' : 'No collections'}
+              description={collectionSearch ? 'Try a different search.' : 'No machine game collections recorded for this period.'}
             />
           </CardBody>
         ) : (
@@ -386,7 +485,7 @@ export function MgdClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedCollections.map((c) => (
+              {visibleCollections.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="text-text">
                     {formatDateInLondon(c.collection_date, { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -418,11 +517,25 @@ export function MgdClient({
       {/* Return History */}
       <Card>
         <CardHeader title="Return History" />
-        {allReturns.length === 0 ? (
+        <CardBody>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Input
+              value={returnSearch}
+              onChange={(event) => setReturnSearch(event.target.value)}
+              placeholder="Search returns..."
+              aria-label="Search returns"
+              className="sm:max-w-xs"
+            />
+            <Button variant="secondary" size="sm" onClick={exportReturns} disabled={visibleReturns.length === 0}>
+              Export CSV
+            </Button>
+          </div>
+        </CardBody>
+        {visibleReturns.length === 0 ? (
           <CardBody>
             <Empty
-              title="No returns"
-              description="Returns are created automatically when you record collections."
+              title={returnSearch ? 'No returns match your search' : 'No returns'}
+              description={returnSearch ? 'Try a different search.' : 'Returns are created automatically when you record collections.'}
             />
           </CardBody>
         ) : (
@@ -470,7 +583,7 @@ export function MgdClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedReturns.map((r) => {
+              {visibleReturns.map((r) => {
                 const isSelected =
                   selectedPeriod?.periodStart === r.period_start &&
                   selectedPeriod?.periodEnd === r.period_end
@@ -575,23 +688,7 @@ export function MgdClient({
 // ---------------------------------------------------------------------------
 
 function HmrcFormatContent({ viewingReturn }: { viewingReturn: MgdReturn }) {
-  const netTake = Math.round(viewingReturn.total_net_take ?? 0)
-  const mgd = Math.round(viewingReturn.total_mgd ?? 0)
-  const fmtWhole = (v: number): string => `£${v.toFixed(2)}`
-  const lines = [
-    { box: 1, label: 'Number of machines available for play at the end of the period', value: '1' },
-    { box: 2, label: 'Total net takings liable to higher rate of duty', value: fmtWhole(0) },
-    { box: 3, label: 'MGD due at higher rate', value: fmtWhole(0) },
-    { box: 4, label: 'Total net takings liable to standard rate of duty', value: fmtWhole(netTake) },
-    { box: 5, label: 'MGD due at standard rate', value: fmtWhole(mgd) },
-    { box: 6, label: 'Total net takings liable to lower rate of duty', value: fmtWhole(0) },
-    { box: 7, label: 'MGD due at lower rate', value: fmtWhole(0) },
-    { box: 8, label: 'Duty payable before any adjustments', value: fmtWhole(mgd) },
-    { box: 9, label: 'Under declared duty from previous MGD periods', value: fmtWhole(0) },
-    { box: 10, label: 'Amount of duty brought forward', value: fmtWhole(0) },
-    { box: 11, label: 'Negative amount of duty to carry forward to next return', value: fmtWhole(0) },
-    { box: 12, label: 'Net duty payable on this return', value: fmtWhole(mgd) },
-  ]
+  const lines = buildMgdHmrcLines(viewingReturn)
 
   return (
     <div className="space-y-2">

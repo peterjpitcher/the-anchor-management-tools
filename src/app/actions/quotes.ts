@@ -16,6 +16,34 @@ import type {
   InvoiceLineItemInput
 } from '@/types/invoices'
 
+const EDITABLE_QUOTE_STATUSES: QuoteStatus[] = ['draft', 'sent', 'expired']
+
+type QuoteAmountFields = {
+  subtotal_amount?: number | string | null
+  discount_amount?: number | string | null
+  vat_amount?: number | string | null
+  total_amount?: number | string | null
+}
+
+function moneyOrZero(value: number | string | null | undefined): number {
+  const amount = Number(value ?? 0)
+  return Number.isFinite(amount) ? amount : 0
+}
+
+function normalizeQuoteAmountFields<T extends QuoteAmountFields>(quote: T): T {
+  return {
+    ...quote,
+    subtotal_amount: moneyOrZero(quote.subtotal_amount),
+    discount_amount: moneyOrZero(quote.discount_amount),
+    vat_amount: moneyOrZero(quote.vat_amount),
+    total_amount: moneyOrZero(quote.total_amount),
+  }
+}
+
+function quoteCanBeEdited(status: QuoteStatus): boolean {
+  return EDITABLE_QUOTE_STATUSES.includes(status)
+}
+
 // Quote validation schema
 const CreateQuoteSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -74,8 +102,7 @@ export async function getQuoteSummary() {
       draft_badge: 0
     }
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = getTodayIsoDate()
 
     const visibleQuotes = quotes || []
 
@@ -83,14 +110,14 @@ export async function getQuoteSummary() {
       if (quote.status === 'draft') {
         summary.draft_badge++
       } else if (quote.status === 'sent') {
-        const validUntil = new Date(quote.valid_until)
-        if (validUntil < today) {
-          summary.total_expired += quote.total_amount
+        const amount = moneyOrZero(quote.total_amount)
+        if (quote.valid_until < today) {
+          summary.total_expired += amount
         } else {
-          summary.total_pending += quote.total_amount
+          summary.total_pending += amount
         }
       } else if (quote.status === 'accepted') {
-        summary.total_accepted += quote.total_amount
+        summary.total_accepted += moneyOrZero(quote.total_amount)
       }
     })
 
@@ -136,7 +163,7 @@ export async function getQuotes(status?: QuoteStatus) {
     // Update expired status for sent quotes
     const today = getTodayIsoDate()
     const updatedQuotes = visibleQuotes.map(quote => ({
-      ...quote,
+      ...normalizeQuoteAmountFields(quote),
       status: quote.status === 'sent' && quote.valid_until < today ? 'expired' as QuoteStatus : quote.status
     }))
 
@@ -183,7 +210,7 @@ export async function getQuote(quoteId: string) {
       quote.status = 'expired' as QuoteStatus
     }
 
-    return { quote: quote as QuoteWithDetails }
+    return { quote: normalizeQuoteAmountFields(quote) as QuoteWithDetails }
   } catch (error) {
     console.error('Error in getQuote:', error)
     return { error: 'An unexpected error occurred' }
@@ -371,6 +398,7 @@ export async function updateQuote(formData: FormData) {
         discount_amount,
         vat_amount,
         total_amount,
+        converted_to_invoice_id,
         notes,
         internal_notes,
         line_items:quote_line_items(
@@ -391,8 +419,9 @@ export async function updateQuote(formData: FormData) {
       return { error: 'Quote not found' }
     }
 
-    if (currentQuote.status !== 'draft') {
-      return { error: 'Only draft quotes can be edited' }
+    const currentStatus = currentQuote.status as QuoteStatus
+    if (!quoteCanBeEdited(currentStatus) || currentQuote.converted_to_invoice_id) {
+      return { error: 'Only draft, sent, or expired unconverted quotes can be edited' }
     }
 
     // Parse and validate form data
@@ -431,10 +460,10 @@ export async function updateQuote(formData: FormData) {
       valid_until: currentQuote.valid_until,
       reference: currentQuote.reference,
       quote_discount_percentage: currentQuote.quote_discount_percentage,
-      subtotal_amount: currentQuote.subtotal_amount,
-      discount_amount: currentQuote.discount_amount,
-      vat_amount: currentQuote.vat_amount,
-      total_amount: currentQuote.total_amount,
+      subtotal_amount: moneyOrZero(currentQuote.subtotal_amount),
+      discount_amount: moneyOrZero(currentQuote.discount_amount),
+      vat_amount: moneyOrZero(currentQuote.vat_amount),
+      total_amount: moneyOrZero(currentQuote.total_amount),
       notes: currentQuote.notes,
       internal_notes: currentQuote.internal_notes,
     }
@@ -471,7 +500,8 @@ export async function updateQuote(formData: FormData) {
       .from('quotes')
       .update(quoteUpdatePayload)
       .eq('id', quoteId)
-      .eq('status', 'draft')
+      .in('status', EDITABLE_QUOTE_STATUSES)
+      .is('converted_to_invoice_id', null)
       .select('id')
       .maybeSingle()
 
@@ -499,7 +529,8 @@ export async function updateQuote(formData: FormData) {
           updated_at: new Date().toISOString()
         })
         .eq('id', quoteId)
-        .eq('status', 'draft')
+        .in('status', EDITABLE_QUOTE_STATUSES)
+        .is('converted_to_invoice_id', null)
         .select('id')
         .maybeSingle()
 
@@ -537,7 +568,8 @@ export async function updateQuote(formData: FormData) {
           updated_at: new Date().toISOString()
         })
         .eq('id', quoteId)
-        .eq('status', 'draft')
+        .in('status', EDITABLE_QUOTE_STATUSES)
+        .is('converted_to_invoice_id', null)
         .select('id')
         .maybeSingle()
 
@@ -564,7 +596,7 @@ export async function updateQuote(formData: FormData) {
       resource_id: quoteId,
       operation_status: 'success',
       old_values: { 
-        total_amount: currentQuote.total_amount,
+        total_amount: moneyOrZero(currentQuote.total_amount),
         vendor_id: currentQuote.vendor_id
       },
       new_values: { 

@@ -208,6 +208,8 @@ export async function sendQuoteEmail(
   ccRecipients?: string[]
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
+    const totalAmount = Number(quote.total_amount ?? 0)
+    const formattedTotalAmount = `£${(Number.isFinite(totalAmount) ? totalAmount : 0).toFixed(2)}`
     // Generate quote PDF
     const pdfBuffer = await generateQuotePDF(quote)
 
@@ -219,7 +221,7 @@ Thanks for getting in touch!
 
 I've attached quote ${quote.quote_number} for your review:
 
-Total Amount: £${quote.total_amount.toFixed(2)}
+Total Amount: ${formattedTotalAmount}
 Quote Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB')}
 
 ${quote.notes ? `${quote.notes}\n\n` : ''}Please take your time to review everything, and don't hesitate to reach out if you have any questions or would like to discuss anything.

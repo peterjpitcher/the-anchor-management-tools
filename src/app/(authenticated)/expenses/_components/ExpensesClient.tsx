@@ -48,20 +48,6 @@ const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
 
 // ---------------------------------------------------------------------------
-// Category data for ProgressBar sidebar
-// ---------------------------------------------------------------------------
-
-const EXPENSE_CATEGORIES = [
-  { name: 'Marketing', budget: 1500 },
-  { name: 'Maintenance', budget: 1000 },
-  { name: 'Training', budget: 600 },
-  { name: 'Licensing', budget: 250 },
-  { name: 'Software', budget: 400 },
-  { name: 'Security', budget: 800 },
-  { name: 'Events', budget: 1500 },
-]
-
-// ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
 
@@ -259,15 +245,7 @@ export function ExpensesClient({
     [refreshData]
   )
 
-  // Compute category spend from expenses
-  const categorySpend = useMemo(() => {
-    const spend: Record<string, number> = {}
-    for (const exp of expenses) {
-      const cat = exp.company_ref || 'Other'
-      spend[cat] = (spend[cat] || 0) + exp.amount
-    }
-    return spend
-  }, [expenses])
+  const highestSupplierSpend = Math.max(...stats.supplierSpend.map((row) => row.amount), 0)
 
   return (
     <div className="space-y-6">
@@ -389,29 +367,31 @@ export function ExpensesClient({
           </Card>
         </div>
 
-        {/* Right: Category breakdown sidebar with ProgressBars */}
+        {/* Right: Supplier breakdown sidebar with ProgressBars */}
         <div>
           <Card>
-            <CardHeader title="Spend by category" subtitle="Current period" />
+            <CardHeader title="Supplier spend" subtitle="This quarter" />
             <CardBody>
-              <div className="space-y-4">
-                {EXPENSE_CATEGORIES.map((cat) => {
-                  const spend = categorySpend[cat.name] ?? 0
-                  const pct = cat.budget > 0 ? Math.round((spend / cat.budget) * 100) : 0
-                  const tone = pct > 90 ? 'danger' : pct > 75 ? 'warning' : 'primary'
-                  return (
-                    <div key={cat.name}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] font-medium text-text">{cat.name}</span>
-                        <span className="text-[11px] tabular-nums text-text-muted">
-                          {formatCurrency(spend)} / {formatCurrency(cat.budget)}
-                        </span>
+              {stats.supplierSpend.length === 0 ? (
+                <Empty title="No supplier spend" description="Quarterly supplier totals will appear here." />
+              ) : (
+                <div className="space-y-4">
+                  {stats.supplierSpend.map((row) => {
+                    const pct = highestSupplierSpend > 0 ? Math.round((row.amount / highestSupplierSpend) * 100) : 0
+                    return (
+                      <div key={row.supplier}>
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                          <span className="truncate text-[12px] font-medium text-text">{row.supplier}</span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-text-muted">
+                            {formatCurrency(row.amount)}
+                          </span>
+                        </div>
+                        <ProgressBar value={pct} tone="primary" />
                       </div>
-                      <ProgressBar value={pct} tone={tone} />
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </CardBody>
           </Card>
         </div>
