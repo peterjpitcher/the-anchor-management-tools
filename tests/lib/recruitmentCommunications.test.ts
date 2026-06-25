@@ -53,6 +53,17 @@ function retryCommunicationChain(original: any, insertResult: { data: any; error
   return chain
 }
 
+function listChain(result: { data: any; error: any }) {
+  const chain: any = {}
+  chain.select = vi.fn(() => chain)
+  chain.eq = vi.fn(() => chain)
+  chain.is = vi.fn(() => chain)
+  chain.gt = vi.fn(() => chain)
+  chain.order = vi.fn(() => chain)
+  chain.limit = vi.fn().mockResolvedValue(result)
+  return chain
+}
+
 function mockSupabase(tables: Record<string, any>) {
   return {
     from: vi.fn((table: string) => {
@@ -260,6 +271,74 @@ describe('recruitment communications safety', () => {
         communication_id: 'comm-retry',
         retry_of_communication_id: 'comm-original',
       }),
+    }))
+  })
+
+  it('adds open schedule times to interview invite drafts', async () => {
+    draftRecruitmentEmail.mockResolvedValue({
+      runId: 'run-1',
+      result: {
+        subject: 'Interview invitation - The Anchor',
+        body: 'Hi {{first_name}},\n\nThank you for applying for {{role_title}}. We would like to invite you for an interview.\n\nPlease bring proof of your right to work in the UK.\n\nBest,\nThe Anchor',
+      },
+    })
+
+    const slots = listChain({
+      data: [
+        {
+          starts_at: '2099-01-05T18:00:00.000Z',
+          ends_at: '2099-01-05T18:30:00.000Z',
+          timezone: 'Europe/London',
+        },
+        {
+          starts_at: '2099-01-06T19:00:00.000Z',
+          ends_at: '2099-01-06T19:30:00.000Z',
+          timezone: 'Europe/London',
+        },
+      ],
+      error: null,
+    })
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: application, error: null }),
+      recruitment_appointment_slots: slots,
+      recruitment_email_templates: maybeSingleChain({
+        data: {
+          subject: 'Interview invitation - The Anchor',
+          body: 'Hi {{first_name}}, choose a time here: {{booking_link}}',
+        },
+        error: null,
+      }),
+    })
+
+    const result = await draftRecruitmentEmailForApplication('application-1', 'interview_invite', {}, supabase)
+
+    expect(result.success).toBe(true)
+    expect(slots.eq).toHaveBeenCalledWith('type', 'interview')
+    expect(result.body).toContain('Available interview times:')
+    expect(result.body).toContain('18:00-18:30')
+    expect(result.body).toContain('19:00-19:30')
+    const context = draftRecruitmentEmail.mock.calls[0][1].context
+    expect(context.available_times).toContain('18:00-18:30')
+  })
+
+  it('allows reviewed interview invite emails with literal slot times and no booking link', async () => {
+    sendEmail.mockResolvedValue({ success: true, messageId: 'email-1' })
+    const communications = insertUpdateChain()
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: application, error: null }),
+      recruitment_email_templates: maybeSingleChain({ data: null, error: null }),
+      recruitment_communications: communications,
+    })
+
+    const result = await sendRecruitmentTemplateEmail('application-1', 'interview_invite', {
+      subjectOverride: 'Interview invitation - The Anchor',
+      bodyOverride: 'Hi Jane,\n\nAvailable interview times:\n- Monday 5 January 2099, 18:00-18:30',
+    }, supabase)
+
+    expect(result.success).toBe(true)
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'jane@example.com',
+      text: expect.stringContaining('18:00-18:30'),
     }))
   })
 
