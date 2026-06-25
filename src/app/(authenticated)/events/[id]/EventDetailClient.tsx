@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useCallback, useTransition, useMemo } from 'react'
+import { useState, useCallback, useTransition, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Card, CardHeader, CardBody,
   PageHeader,
   Tabs,
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
   Badge,
   Button,
   Input,
+  Select,
   ConfirmDialog,
   CustomerLink,
   toast,
@@ -57,6 +58,7 @@ interface EventDetailClientProps {
   marketingLinks: EventMarketingLink[]
   marketingMessages: EventMarketingMessage[]
   categories: EventCategory[]
+  transferEvents: Event[]
   permissions: { canEdit: boolean; canDelete: boolean; canManage: boolean }
   initialError: string | null
 }
@@ -160,6 +162,7 @@ export default function EventDetailClient({
   marketingLinks: initialLinks,
   marketingMessages,
   categories,
+  transferEvents,
   permissions,
   initialError,
 }: EventDetailClientProps) {
@@ -546,6 +549,7 @@ export default function EventDetailClient({
                 onMarkPaid={handleMarkPaid}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
+                transferEvents={transferEvents}
                 onStartTransfer={(bookingId) => {
                   setTransferringBookingId(bookingId)
                   setTransferTargetEventId('')
@@ -807,6 +811,7 @@ function AttendeesTab({
   onMarkPaid,
   transferringBookingId,
   transferTargetEventId,
+  transferEvents,
   onStartTransfer,
   onTransferTargetEventIdChange,
   onConfirmTransfer,
@@ -843,12 +848,40 @@ function AttendeesTab({
   onMarkPaid: (id: string, method: 'cash' | 'card_terminal' | 'comp') => void
   transferringBookingId: string | null
   transferTargetEventId: string
+  transferEvents: Event[]
   onStartTransfer: (id: string) => void
   onTransferTargetEventIdChange: (v: string) => void
   onConfirmTransfer: () => void
   onCancelTransfer: () => void
   isPending: boolean
 }) {
+  const pageSize = 25
+  const [attendeePage, setAttendeePage] = useState(1)
+  const totalAttendeePages = Math.max(1, Math.ceil(visibleBookings.length / pageSize))
+  const pagedBookings = useMemo(
+    () => visibleBookings.slice((attendeePage - 1) * pageSize, attendeePage * pageSize),
+    [visibleBookings, attendeePage],
+  )
+  const transferOptions = useMemo(
+    () => [
+      { value: '', label: 'Select event' },
+      ...transferEvents
+        .filter((candidate) => {
+          if (candidate.id === event.id) return false
+          return !['cancelled', 'draft'].includes(String(candidate.event_status || ''))
+        })
+        .map((candidate) => ({
+          value: candidate.id,
+          label: `${candidate.name} · ${formatDateInLondon(candidate.date)}${candidate.time ? ` ${formatTime12Hour(candidate.time)}` : ''}`,
+        })),
+    ],
+    [event.id, transferEvents],
+  )
+
+  useEffect(() => {
+    setAttendeePage((current) => Math.min(current, totalAttendeePages))
+  }, [totalAttendeePages])
+
   return (
     <div className="flex flex-col gap-6">
       {/* Stat cards */}
@@ -984,7 +1017,7 @@ function AttendeesTab({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleBookings.map((booking) => {
+                  {pagedBookings.map((booking) => {
                     const isEditing = editingBookingId === booking.id
                     const isTransferring = transferringBookingId === booking.id
                     const customerName = [
@@ -1056,10 +1089,10 @@ function AttendeesTab({
                             {!isCancelled && !isEditing && (
                               isTransferring ? (
                                 <div className="flex flex-wrap items-center gap-1">
-                                  <Input
+                                  <Select
                                     value={transferTargetEventId}
                                     onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
-                                    placeholder="Target event ID"
+                                    options={transferOptions}
                                     className="w-44"
                                   />
                                   <Button size="sm" variant="primary" onClick={onConfirmTransfer} disabled={!transferTargetEventId.trim() || isPending}>
@@ -1119,6 +1152,13 @@ function AttendeesTab({
                   })}
                 </TableBody>
               </Table>
+              <TablePagination
+                page={attendeePage}
+                totalPages={totalAttendeePages}
+                onPageChange={setAttendeePage}
+                pageSize={pageSize}
+                totalItems={visibleBookings.length}
+              />
             </div>
           )}
         </CardBody>

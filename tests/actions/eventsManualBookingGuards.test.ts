@@ -58,6 +58,8 @@ vi.mock('@/lib/sms/customers', () => ({
 
 vi.mock('@/lib/events/manage-booking', () => ({
   createEventManageToken: vi.fn(),
+  getEventRefundPolicy: vi.fn(() => ({ refundRate: 0.5, policyBand: 'partial' })),
+  processEventRefund: vi.fn(),
   updateEventBookingSeatsById: vi.fn(),
 }))
 
@@ -109,7 +111,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cancelEventManualBooking, createEventManualBooking, updateEventManualBookingSeats } from '@/app/actions/events'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
-import { createEventManageToken, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
+import { createEventManageToken, processEventRefund, updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { sendSMS } from '@/lib/twilio'
@@ -119,6 +121,7 @@ const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedEnsureCustomerForPhone = ensureCustomerForPhone as unknown as Mock
 const mockedCreateEventManageToken = createEventManageToken as unknown as Mock
+const mockedProcessEventRefund = processEventRefund as unknown as Mock
 const mockedUpdateEventBookingSeatsById = updateEventBookingSeatsById as unknown as Mock
 const mockedSendEventBookingSeatUpdateSms = sendEventBookingSeatUpdateSms as unknown as Mock
 const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as Mock
@@ -854,6 +857,118 @@ describe('Event manual booking cancellation guards', () => {
         },
       },
     })
+  })
+
+  it('calculates staff cancellation refunds from the amount paid, not current event price', async () => {
+    const bookingId = '550e8400-e29b-41d4-a716-446655440270'
+    const eventId = '550e8400-e29b-41d4-a716-446655440271'
+    const customerId = '550e8400-e29b-41d4-a716-446655440272'
+
+    mockedProcessEventRefund.mockResolvedValueOnce({
+      status: 'succeeded',
+      amount: 40,
+      currency: 'GBP',
+    })
+
+    const loadMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: bookingId,
+        event_id: eventId,
+        customer_id: customerId,
+        seats: 2,
+        status: 'confirmed',
+        is_reminder_only: false,
+        event: {
+          id: eventId,
+          name: 'Test Event',
+          start_datetime: '2026-08-01T18:00:00.000Z',
+          date: '2026-08-01',
+          time: '18:00:00',
+          payment_mode: 'prepaid',
+          price: 999,
+          price_per_seat: 999,
+        },
+        customer: null,
+      },
+      error: null,
+    })
+    const loadEq = vi.fn().mockReturnValue({ maybeSingle: loadMaybeSingle })
+    const loadSelect = vi.fn().mockReturnValue({ eq: loadEq })
+
+    const cancelMaybeSingle = vi.fn().mockResolvedValue({ data: { id: bookingId }, error: null })
+    const cancelSelect = vi.fn().mockReturnValue({ maybeSingle: cancelMaybeSingle })
+    const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
+    const cancelUpdate = vi.fn().mockReturnValue({ eq: cancelEq })
+
+    const holdSelect = vi.fn().mockResolvedValue({ data: [{ id: 'hold-1' }], error: null })
+    const holdEq2 = vi.fn().mockReturnValue({ select: holdSelect })
+    const holdEq1 = vi.fn().mockReturnValue({ eq: holdEq2 })
+    const holdUpdate = vi.fn().mockReturnValue({ eq: holdEq1 })
+
+    const tableSelect = vi.fn().mockResolvedValue({ data: [{ id: 'tb-1' }], error: null })
+    const tableNot = vi.fn().mockReturnValue({ select: tableSelect })
+    const tableEq = vi.fn().mockReturnValue({ not: tableNot })
+    const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
+
+    const paymentsInStatus = vi.fn().mockResolvedValue({
+      data: [{ id: 'pay-1', amount: 80, status: 'succeeded', charge_type: 'prepaid_event' }],
+      error: null,
+    })
+    const paymentsInChargeType = vi.fn().mockReturnValue({ in: paymentsInStatus })
+    const paymentsEq = vi.fn().mockReturnValue({ in: paymentsInChargeType })
+    const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
+
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'bookings') {
+          return {
+            select: loadSelect,
+            update: cancelUpdate,
+          }
+        }
+
+        if (table === 'booking_holds') {
+          return { update: holdUpdate }
+        }
+
+        if (table === 'table_bookings') {
+          return { update: tableUpdate }
+        }
+
+        if (table === 'payments') {
+          return { select: paymentsSelect }
+        }
+
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const result = await cancelEventManualBooking({
+      bookingId,
+      sendSms: false,
+    })
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        refund_status: 'succeeded',
+        refund_amount: 40,
+      },
+    })
+    expect(mockedProcessEventRefund).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        bookingId,
+        customerId,
+        eventId,
+        amount: 40,
+        reason: 'staff_cancel_partial',
+        metadata: expect.objectContaining({
+          amount_paid: 80,
+          seats: 2,
+        }),
+      }),
+    )
   })
 })
 

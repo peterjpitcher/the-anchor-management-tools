@@ -1,12 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
-import { getEventById, getEventBookings } from '@/app/actions/events'
+import { getEventById, getEventBookings, getEvents } from '@/app/actions/events'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
 import { getEventMarketingMessages } from '@/app/actions/event-marketing-messages'
 import type { EventMarketingMessage } from '@/app/actions/event-marketing-messages'
 import type { EventBookingRow } from '@/app/actions/events'
+import type { Event } from '@/types/database'
 import EventDetailClient from './EventDetailClient'
 
 export const dynamic = 'force-dynamic'
@@ -119,6 +120,16 @@ export default async function EventDetailPage({ params }: PageProps) {
   const categoriesResult = await getActiveEventCategories()
   const categories = categoriesResult.data ?? []
 
+  let transferEvents: Event[] = []
+  if (eventData && canManage) {
+    try {
+      const transferEventsResult = await getEvents({ status: 'all', page: 1, pageSize: 500 })
+      transferEvents = transferEventsResult.data ?? []
+    } catch {
+      transferEvents = []
+    }
+  }
+
   if (!eventData && errors.length === 0) {
     errors.push('We could not load this event.')
   }
@@ -132,6 +143,7 @@ export default async function EventDetailPage({ params }: PageProps) {
       marketingLinks={marketingLinks}
       marketingMessages={marketingMessages}
       categories={categories}
+      transferEvents={transferEvents}
       permissions={{ canEdit, canDelete, canManage }}
       initialError={initialError}
     />

@@ -90,6 +90,47 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
+const stringArrayFormFieldSchema = z.array(z.string().trim().min(1).max(300)).max(50)
+const eventFaqFormFieldSchema = z.array(z.object({
+  question: z.string().trim().min(1).max(300),
+  answer: z.string().trim().min(1).max(2000),
+  sort_order: z.number().int().min(0).max(1000).optional(),
+})).max(25)
+
+function parseJsonFormField<T>(
+  rawValue: FormDataEntryValue | undefined,
+  schema: z.ZodType<T>,
+  fallback: T,
+  fieldName: string
+): T {
+  if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+    return fallback
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue)
+    const result = schema.safeParse(parsed)
+    if (result.success) {
+      return result.data
+    }
+    logger.warn('Invalid JSON form field in event payload', {
+      metadata: {
+        fieldName,
+        issue: result.error.issues[0]?.message,
+      },
+    })
+    return fallback
+  } catch (error) {
+    logger.warn('Failed to parse JSON form field in event payload', {
+      metadata: {
+        fieldName,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+    return fallback
+  }
+}
+
 async function recordEventAnalyticsSafe(
   supabase: ReturnType<typeof createAdminClient>,
   payload: Parameters<typeof recordAnalyticsEvent>[1],
@@ -224,11 +265,11 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     short_description: rawData.short_description as string || categoryDefaults.short_description || null,
     long_description: rawData.long_description as string || categoryDefaults.long_description || null,
     brief: (rawData.brief as string)?.trim() || null,
-    highlights: rawData.highlights ? JSON.parse(rawData.highlights as string) : categoryDefaults.highlights || [],
-    keywords: rawData.keywords ? JSON.parse(rawData.keywords as string) : [],
-    primary_keywords: rawData.primary_keywords ? JSON.parse(rawData.primary_keywords as string) : categoryDefaults.primary_keywords || [],
-    secondary_keywords: rawData.secondary_keywords ? JSON.parse(rawData.secondary_keywords as string) : categoryDefaults.secondary_keywords || [],
-    local_seo_keywords: rawData.local_seo_keywords ? JSON.parse(rawData.local_seo_keywords as string) : categoryDefaults.local_seo_keywords || [],
+    highlights: parseJsonFormField(rawData.highlights, stringArrayFormFieldSchema, categoryDefaults.highlights || [], 'highlights'),
+    keywords: parseJsonFormField(rawData.keywords, stringArrayFormFieldSchema, [], 'keywords'),
+    primary_keywords: parseJsonFormField(rawData.primary_keywords, stringArrayFormFieldSchema, categoryDefaults.primary_keywords || [], 'primary_keywords'),
+    secondary_keywords: parseJsonFormField(rawData.secondary_keywords, stringArrayFormFieldSchema, categoryDefaults.secondary_keywords || [], 'secondary_keywords'),
+    local_seo_keywords: parseJsonFormField(rawData.local_seo_keywords, stringArrayFormFieldSchema, categoryDefaults.local_seo_keywords || [], 'local_seo_keywords'),
     image_alt_text: rawData.image_alt_text as string || null,
     social_copy_whatsapp: rawData.social_copy_whatsapp as string || null,
     previous_event_summary: rawData.previous_event_summary as string || null,
@@ -258,8 +299,8 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     thumbnail_image_url: rawData.thumbnail_image_url as string || null,
     poster_image_url: rawData.poster_image_url as string || null,
     promo_video_url: rawData.promo_video_url as string || categoryDefaults.promo_video_url || null,
-    highlight_video_urls: rawData.highlight_video_urls ? JSON.parse(rawData.highlight_video_urls as string) : categoryDefaults.highlight_video_urls || [],
-    gallery_image_urls: rawData.gallery_image_urls ? JSON.parse(rawData.gallery_image_urls as string) : categoryDefaults.gallery_image_urls || [],
+    highlight_video_urls: parseJsonFormField(rawData.highlight_video_urls, stringArrayFormFieldSchema, categoryDefaults.highlight_video_urls || [], 'highlight_video_urls'),
+    gallery_image_urls: parseJsonFormField(rawData.gallery_image_urls, stringArrayFormFieldSchema, categoryDefaults.gallery_image_urls || [], 'gallery_image_urls'),
     promo_sms_enabled: rawData.promo_sms_enabled === 'true' ? true : rawData.promo_sms_enabled === 'false' ? false : categoryDefaults.promo_sms_enabled ?? true,
     bookings_enabled: rawData.bookings_enabled === 'true' ? true : rawData.bookings_enabled === 'false' ? false : categoryDefaults.bookings_enabled ?? true
   };
@@ -288,18 +329,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
   // Handle FAQs — undefined means "not provided, preserve existing"; array means "replace with these"
   const faqsJson = formData.get('faqs') as string | null;
   if (faqsJson !== null) {
-    try {
-      const parsed = JSON.parse(faqsJson);
-      if (Array.isArray(parsed)) {
-        data.faqs = parsed.filter((faq: EventFaqInput) => faq.question && faq.answer);
-      }
-    } catch (e) {
-      logger.warn('Failed to parse FAQs from event form data', {
-        metadata: {
-          error: e instanceof Error ? e.message : String(e),
-        },
-      })
-    }
+    data.faqs = parseJsonFormField(faqsJson, eventFaqFormFieldSchema, [], 'faqs')
   }
   // If faqsJson was null (not in FormData), data.faqs remains undefined — service layer will skip FAQ replacement
 
@@ -603,6 +633,7 @@ export async function getEvents(options?: {
   orderAsc?: boolean;
   dateFrom?: string;
   dateTo?: string;
+  categoryId?: string;
 }): Promise<{ data?: (Event & { booked_count: number; link_clicks: number })[], pagination?: { totalCount: number, currentPage: number, pageSize: number, totalPages: number }, error?: string }> {
   try {
     const { events, pagination } = await EventService.getEvents(options);
@@ -1510,8 +1541,22 @@ export async function cancelEventManualBooking(input: {
         ? getEventRefundPolicy(eventStartIso)
         : { refundRate: 0, policyBand: 'none' as const }
       const seatCount = Math.max(1, Number(bookingRow.seats || 1))
-      const pricePerSeat = resolveEventPriceAmount(eventRecord as unknown as Event)
-      const candidateRefundAmount = toMoney(seatCount * pricePerSeat * policy.refundRate)
+      const { data: paidRows, error: paidRowsError } = await supabase
+        .from('payments')
+        .select('id, amount, status, charge_type')
+        .eq('event_booking_id', bookingRow.id)
+        .in('charge_type', ['prepaid_event', 'seat_increase'])
+        .in('status', ['succeeded', 'partially_refunded'])
+
+      if (paidRowsError) {
+        throw paidRowsError
+      }
+
+      const amountPaid = (paidRows || []).reduce(
+        (sum, row) => sum + Math.max(0, Number(row.amount || 0)),
+        0,
+      )
+      const candidateRefundAmount = toMoney(amountPaid * policy.refundRate)
 
       if (candidateRefundAmount > 0) {
         try {
@@ -1524,6 +1569,7 @@ export async function cancelEventManualBooking(input: {
             metadata: {
               cancelled_by: 'admin',
               policy_band: policy.policyBand,
+              amount_paid: toMoney(amountPaid),
               seats: seatCount
             }
           })

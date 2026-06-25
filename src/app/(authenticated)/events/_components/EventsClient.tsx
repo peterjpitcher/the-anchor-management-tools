@@ -105,6 +105,7 @@ export default function EventsClient({
           searchTerm: currentFilters.searchTerm || undefined,
           dateFrom: currentFilters.dateFrom || undefined,
           dateTo: currentFilters.dateTo || undefined,
+          categoryId: currentFilters.category === 'all' ? undefined : currentFilters.category,
           page,
           pageSize: 25,
         })
@@ -194,6 +195,11 @@ export default function EventsClient({
   const handleEventClick = useCallback((event: Event) => {
     router.push(`/events/${event.id}`)
   }, [router])
+
+  const handleEditEvent = useCallback((event: Event) => {
+    setActiveEvent(event)
+    setDrawerOpen(true)
+  }, [])
 
   const handleNewEvent = useCallback(() => {
     setActiveEvent(null)
@@ -322,6 +328,7 @@ export default function EventsClient({
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             onEventClick={handleEventClick}
+            onEditEvent={handleEditEvent}
             onPageChange={handlePageChange}
             onDeleteSelected={handleDeleteSelected}
           />

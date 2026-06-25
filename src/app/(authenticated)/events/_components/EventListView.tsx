@@ -2,7 +2,7 @@
 
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TablePagination,
-  Badge, Checkbox, IconButton, ConfirmDialog,
+  Badge, Checkbox, Button, ConfirmDialog, Dropdown, DropdownItem,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { BarMini } from './BarMini'
@@ -19,6 +19,7 @@ interface EventListViewProps {
   selectedIds: Set<string>
   onSelectionChange: (ids: Set<string>) => void
   onEventClick: (event: Event) => void
+  onEditEvent: (event: Event) => void
   onPageChange: (page: number) => void
   onDeleteSelected: () => void
 }
@@ -60,6 +61,7 @@ export function EventListView({
   selectedIds,
   onSelectionChange,
   onEventClick,
+  onEditEvent,
   onPageChange,
   onDeleteSelected,
 }: EventListViewProps) {
@@ -181,13 +183,26 @@ export function EventListView({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <IconButton
-                      icon={<Icon name="moreHorizontal" size={16} />}
-                      label="Event actions"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                      }}
-                    />
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Dropdown
+                        trigger={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            icon={<Icon name="moreHorizontal" size={16} />}
+                            aria-label="Event actions"
+                          />
+                        }
+                      >
+                        <DropdownItem onClick={() => onEventClick(event)} icon={<Icon name="externalLink" size={14} />}>
+                          Open details
+                        </DropdownItem>
+                        <DropdownItem onClick={() => onEditEvent(event)} icon={<Icon name="edit" size={14} />}>
+                          Edit event
+                        </DropdownItem>
+                      </Dropdown>
+                    </div>
                   </TableCell>
                 </TableRow>
               )
