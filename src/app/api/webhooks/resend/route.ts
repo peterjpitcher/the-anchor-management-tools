@@ -63,10 +63,12 @@ const EMAIL_STATUS_RANK: Record<string, number> = {
   received: 100,
 }
 
+class ResendWebhookAuthError extends Error {}
+
 function requireHeader(request: Request, name: string): string {
   const value = request.headers.get(name)
   if (!value) {
-    throw new Error(`Missing ${name} header`)
+    throw new ResendWebhookAuthError(`Missing ${name} header`)
   }
   return value
 }
@@ -422,13 +424,67 @@ async function finishResendWebhookClaim(
   }
 }
 
-async function updateCustomerEmailHealth(adminClient: any, event: ResendEmailEvent, recipient: string | null) {
+async function loadCustomerEmailHealthTarget(
+  adminClient: any,
+  recipient: string,
+  customerId: string | null | undefined,
+) {
+  if (customerId) {
+    const { data: customer, error } = await adminClient
+      .from('customers')
+      .select('id, email_delivery_failures')
+      .eq('id', customerId)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('Failed to load customer for email health by id', {
+        metadata: { customerId, error: error.message },
+      })
+      return null
+    }
+
+    return customer ?? null
+  }
+
+  const { data: customers, error } = await adminClient
+    .from('customers')
+    .select('id, email_delivery_failures')
+    .eq('email', recipient)
+    .limit(2)
+
+  if (error) {
+    logger.warn('Failed to load customer for email health by exact email', {
+      metadata: { email: recipient, error: error.message },
+    })
+    return null
+  }
+
+  if ((customers ?? []).length > 1) {
+    logger.warn('Skipping Resend customer email health update for ambiguous email address', {
+      metadata: { email: recipient, count: customers.length },
+    })
+    return null
+  }
+
+  return customers?.[0] ?? null
+}
+
+async function updateCustomerEmailHealth(
+  adminClient: any,
+  event: ResendEmailEvent,
+  recipient: string | null,
+  customerId?: string | null,
+) {
   if (!recipient) {
     return
   }
 
   const normalizedEmail = recipient.trim().toLowerCase()
   const nowIso = resolveEventTime(event)
+  const customer = await loadCustomerEmailHealthTarget(adminClient, normalizedEmail, customerId)
+  if (!customer) {
+    return
+  }
 
   if (event.type === 'email.delivered') {
     const { error } = await adminClient
@@ -439,11 +495,11 @@ async function updateCustomerEmailHealth(adminClient: any, event: ResendEmailEve
         last_email_failure_reason: null,
         last_successful_email_at: nowIso,
       })
-      .ilike('email', normalizedEmail)
+      .eq('id', customer.id)
 
     if (error) {
       logger.warn('Failed to update customer email delivery success state', {
-        metadata: { email: normalizedEmail, error: error.message },
+        metadata: { customerId: customer.id, email: normalizedEmail, error: error.message },
       })
     }
     return
@@ -454,61 +510,47 @@ async function updateCustomerEmailHealth(adminClient: any, event: ResendEmailEve
     return
   }
 
-  const { data: customers, error: loadError } = await adminClient
+  const nextFailures = Number(customer.email_delivery_failures ?? 0) + 1
+  const status =
+    event.type === 'email.bounced'
+      ? 'bounced'
+      : event.type === 'email.complained'
+        ? 'complained'
+        : event.type === 'email.suppressed'
+          ? 'invalid'
+          : undefined
+
+  const { error } = await adminClient
     .from('customers')
-    .select('id, email_delivery_failures')
-    .ilike('email', normalizedEmail)
-
-  if (loadError) {
-    logger.warn('Failed to load customers for email failure state', {
-      metadata: { email: normalizedEmail, error: loadError.message },
+    .update({
+      ...(status ? { email_status: status, email_deactivated_at: nowIso } : {}),
+      email_delivery_failures: nextFailures,
+      last_email_failure_reason: errorFromEvent(event) ?? event.type,
     })
-    return
-  }
+    .eq('id', customer.id)
 
-  for (const customer of customers ?? []) {
-    const nextFailures = Number(customer.email_delivery_failures ?? 0) + 1
-    const status =
-      event.type === 'email.bounced'
-        ? 'bounced'
-        : event.type === 'email.complained'
-          ? 'complained'
-          : event.type === 'email.suppressed'
-            ? 'invalid'
-            : undefined
-
-    const { error } = await adminClient
-      .from('customers')
-      .update({
-        ...(status ? { email_status: status, email_deactivated_at: nowIso } : {}),
-        email_delivery_failures: nextFailures,
-        last_email_failure_reason: errorFromEvent(event) ?? event.type,
+  if (error) {
+    logger.warn('Failed to update customer email failure state', {
+      metadata: { customerId: customer.id, email: normalizedEmail, error: error.message },
+    })
+  } else if (status && (event.type === 'email.bounced' || event.type === 'email.complained' || event.type === 'email.suppressed')) {
+    try {
+      await ConsentService.recordOptOut(customer.id, 'email', 'direct_message', {
+        captureMethod: 'provider_event',
+        metadata: {
+          resend_event_type: event.type,
+          reason: errorFromEvent(event) ?? event.type,
+          email: normalizedEmail,
+        },
       })
-      .eq('id', customer.id)
-
-    if (error) {
-      logger.warn('Failed to update customer email failure state', {
-        metadata: { customerId: customer.id, email: normalizedEmail, error: error.message },
+    } catch (consentError) {
+      logger.warn('Failed to record email opt-out consent audit from Resend event', {
+        metadata: {
+          customerId: customer.id,
+          email: normalizedEmail,
+          error: consentError instanceof Error ? consentError.message : String(consentError),
+        },
       })
-    } else if (status && (event.type === 'email.bounced' || event.type === 'email.complained' || event.type === 'email.suppressed')) {
-      try {
-        await ConsentService.recordOptOut(customer.id, 'email', 'direct_message', {
-          captureMethod: 'provider_event',
-          metadata: {
-            resend_event_type: event.type,
-            reason: errorFromEvent(event) ?? event.type,
-            email: normalizedEmail,
-          },
-        })
-      } catch (consentError) {
-        logger.warn('Failed to record email opt-out consent audit from Resend event', {
-          metadata: {
-            customerId: customer.id,
-            email: normalizedEmail,
-            error: consentError instanceof Error ? consentError.message : String(consentError),
-          },
-        })
-      }
     }
   }
 }
@@ -521,7 +563,7 @@ export async function POST(request: Request) {
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET
     if (!webhookSecret) {
       logger.error('RESEND_WEBHOOK_SECRET not configured')
-      return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+      return NextResponse.json({ success: true, ignored: true, reason: 'webhook_not_configured' })
     }
 
     const payload = await request.text()
@@ -529,15 +571,22 @@ export async function POST(request: Request) {
     const svixId = requireHeader(request, 'svix-id')
     const svixTimestamp = requireHeader(request, 'svix-timestamp')
     const svixSignature = requireHeader(request, 'svix-signature')
-    const event = resend.webhooks.verify({
-      payload,
-      headers: {
-        id: svixId,
-        timestamp: svixTimestamp,
-        signature: svixSignature,
-      },
-      webhookSecret,
-    }) as unknown as ResendEmailEvent
+    let event: ResendEmailEvent
+    try {
+      event = resend.webhooks.verify({
+        payload,
+        headers: {
+          id: svixId,
+          timestamp: svixTimestamp,
+          signature: svixSignature,
+        },
+        webhookSecret,
+      }) as unknown as ResendEmailEvent
+    } catch (verifyError) {
+      throw new ResendWebhookAuthError(
+        verifyError instanceof Error ? verifyError.message : 'Invalid Resend webhook signature'
+      )
+    }
 
     adminClient = createAdminClient()
     const claim = await claimResendWebhook(adminClient, svixId, event)
@@ -602,7 +651,7 @@ export async function POST(request: Request) {
     }
 
     const { data: existingMessage, error: loadMessageError } = await (adminClient.from('email_messages') as any)
-      .select('id, status')
+      .select('id, status, customer_id')
       .eq('resend_message_id', emailId)
       .maybeSingle()
 
@@ -649,7 +698,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await updateCustomerEmailHealth(adminClient, event, recipient)
+    await updateCustomerEmailHealth(adminClient, event, recipient, existingMessage?.customer_id ?? null)
 
     await finishResendWebhookClaim(adminClient, svixId, 'processed')
     return NextResponse.json({ success: true })
@@ -662,10 +711,7 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error : new Error(String(error)),
     })
 
-    const message = getErrorMessage(error)
-    const status = message.toLowerCase().includes('missing svix') || message.toLowerCase().includes('signature')
-      ? 401
-      : 500
+    const status = error instanceof ResendWebhookAuthError ? 401 : 500
 
     return NextResponse.json(
       { error: status === 401 ? 'Unauthorized' : 'Webhook processing failed' },

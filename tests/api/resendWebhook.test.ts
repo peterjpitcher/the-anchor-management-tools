@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 const verifyWebhook = vi.hoisted(() => vi.fn())
 
@@ -43,9 +45,33 @@ describe('Resend webhook route', () => {
     expect(verifyWebhook).not.toHaveBeenCalled()
   })
 
+  it('acks when the webhook secret is missing to avoid provider retry storms', async () => {
+    delete process.env.RESEND_WEBHOOK_SECRET
+
+    const { POST } = await import('@/app/api/webhooks/resend/route')
+    const response = await POST(new Request('http://localhost/api/webhooks/resend', {
+      method: 'POST',
+      headers: {
+        'svix-id': 'msg_missing_secret',
+        'svix-timestamp': '1780000000',
+        'svix-signature': 'v1,test',
+      },
+      body: '{}',
+    }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      success: true,
+      ignored: true,
+      reason: 'webhook_not_configured',
+    })
+    expect(verifyWebhook).not.toHaveBeenCalled()
+    expect(createAdminClient).not.toHaveBeenCalled()
+  })
+
   it('updates message state and records suppressions for bounced emails', async () => {
     const messageSelectMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'email-message-1', status: 'sent' },
+      data: { id: 'email-message-1', status: 'sent', customer_id: 'customer-1' },
       error: null,
     })
     const messageSelectEq = vi.fn().mockReturnValue({ maybeSingle: messageSelectMaybeSingle })
@@ -57,15 +83,14 @@ describe('Resend webhook route', () => {
     const webhookLogFinishEq = vi.fn().mockReturnValue({ contains: webhookLogFinishContains })
     const webhookLogUpdate = vi.fn().mockReturnValue({ eq: webhookLogFinishEq })
     const suppressionUpsert = vi.fn().mockResolvedValue({ error: null })
-    const customerSelect = vi.fn().mockReturnValue({
-      ilike: vi.fn().mockResolvedValue({
-        data: [{ id: 'customer-1', email_delivery_failures: 1 }],
-        error: null,
-      }),
+    const customerSelectMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'customer-1', email_delivery_failures: 1 },
+      error: null,
     })
-    const customerUpdate = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    })
+    const customerSelectEq = vi.fn().mockReturnValue({ maybeSingle: customerSelectMaybeSingle })
+    const customerSelect = vi.fn().mockReturnValue({ eq: customerSelectEq })
+    const customerUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const customerUpdate = vi.fn().mockReturnValue({ eq: customerUpdateEq })
 
     createAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
@@ -124,6 +149,8 @@ describe('Resend webhook route', () => {
     }))
     expect(messageSelectEq).toHaveBeenCalledWith('resend_message_id', 'email-1')
     expect(messageUpdateEq).toHaveBeenCalledWith('id', 'email-message-1')
+    expect(customerSelectEq).toHaveBeenCalledWith('id', 'customer-1')
+    expect(customerUpdateEq).toHaveBeenCalledWith('id', 'customer-1')
     expect(webhookLogInsert).toHaveBeenCalledWith(expect.objectContaining({
       webhook_type: 'resend',
       status: 'processing',
@@ -193,15 +220,21 @@ describe('Resend webhook route', () => {
     const webhookLogFinishEq = vi.fn().mockReturnValue({ contains: webhookLogFinishContains })
     const webhookLogUpdate = vi.fn().mockReturnValue({ eq: webhookLogFinishEq })
     const messageSelectMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'email-message-1', status: 'clicked' },
+      data: { id: 'email-message-1', status: 'clicked', customer_id: 'customer-1' },
       error: null,
     })
     const messageSelectEq = vi.fn().mockReturnValue({ maybeSingle: messageSelectMaybeSingle })
     const messageSelect = vi.fn().mockReturnValue({ eq: messageSelectEq })
     const messageUpdateEq = vi.fn().mockResolvedValue({ error: null })
     const messageUpdate = vi.fn().mockReturnValue({ eq: messageUpdateEq })
-    const customerUpdateIlike = vi.fn().mockResolvedValue({ error: null })
-    const customerUpdate = vi.fn().mockReturnValue({ ilike: customerUpdateIlike })
+    const customerSelectMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'customer-1', email_delivery_failures: 1 },
+      error: null,
+    })
+    const customerSelectEq = vi.fn().mockReturnValue({ maybeSingle: customerSelectMaybeSingle })
+    const customerSelect = vi.fn().mockReturnValue({ eq: customerSelectEq })
+    const customerUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const customerUpdate = vi.fn().mockReturnValue({ eq: customerUpdateEq })
 
     createAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
@@ -218,7 +251,7 @@ describe('Resend webhook route', () => {
           }
         }
         if (table === 'customers') {
-          return { update: customerUpdate }
+          return { select: customerSelect, update: customerUpdate }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -249,5 +282,13 @@ describe('Resend webhook route', () => {
     expect(messageUpdate).toHaveBeenCalledWith(expect.not.objectContaining({
       status: 'delivered',
     }))
+    expect(customerSelectEq).toHaveBeenCalledWith('id', 'customer-1')
+    expect(customerUpdateEq).toHaveBeenCalledWith('id', 'customer-1')
+  })
+
+  it('does not use ILIKE email matching for customer health updates', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/webhooks/resend/route.ts'), 'utf8')
+
+    expect(source).not.toContain(".ilike('email'")
   })
 })

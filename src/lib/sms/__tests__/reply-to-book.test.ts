@@ -321,10 +321,18 @@ describe('handleReplyToBook', () => {
       rpcResult: { state: 'confirmed', booking_id: 'booking-uuid-001', event_name: 'Quiz Night' },
     })
 
-    const result = await handleReplyToBook(PHONE, '2')
+    const result = await handleReplyToBook(PHONE, '2', {
+      inboundMessageId: 'inbound-message-1',
+      inboundTwilioMessageSid: 'SM-INBOUND-1',
+    })
 
     expect(result.handled).toBe(true)
     expect(result.response).toBeUndefined()
+    expect(db.update).toHaveBeenCalledWith(expect.objectContaining({
+      booking_created: true,
+      inbound_message_id: 'inbound-message-1',
+      inbound_twilio_message_sid: 'SM-INBOUND-1',
+    }))
 
     expect(mockCreateBooking).toHaveBeenCalledWith(
       expect.objectContaining({

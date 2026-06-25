@@ -70,6 +70,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 import { POST } from '@/app/api/webhooks/twilio/route'
+import { getTwilioWebhookValidationUrl } from '@/lib/twilio-webhook'
 import { skipTwilioSignatureValidation } from '@/lib/env'
 import { isStatusUpgrade } from '@/lib/sms-status'
 
@@ -130,6 +131,7 @@ describe('Twilio webhook route', () => {
   const originalAuthToken = process.env.TWILIO_AUTH_TOKEN
   const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const originalSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const originalWebhookBaseUrl = process.env.WEBHOOK_BASE_URL
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -149,6 +151,7 @@ describe('Twilio webhook route', () => {
     restore('TWILIO_AUTH_TOKEN', originalAuthToken)
     restore('NEXT_PUBLIC_SUPABASE_URL', originalSupabaseUrl)
     restore('NEXT_PUBLIC_SUPABASE_ANON_KEY', originalSupabaseAnonKey)
+    restore('WEBHOOK_BASE_URL', originalWebhookBaseUrl)
   })
 
   // -----------------------------------------------------------------------
@@ -156,6 +159,14 @@ describe('Twilio webhook route', () => {
   // -----------------------------------------------------------------------
 
   describe('signature validation', () => {
+    it('builds Twilio signature URL from the configured public webhook base', () => {
+      process.env.WEBHOOK_BASE_URL = 'https://public.example.com'
+
+      expect(getTwilioWebhookValidationUrl('https://internal.vercel.app/api/webhooks/twilio?source=twilio')).toBe(
+        'https://public.example.com/api/webhooks/twilio?source=twilio'
+      )
+    })
+
     it('should return 401 when Twilio signature is invalid', async () => {
       ;(twilio.validateRequest as unknown as vi.Mock).mockReturnValue(false)
 

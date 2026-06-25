@@ -38,6 +38,11 @@ type EventRow = {
   booking_mode: string | null
 }
 
+type ReplyToBookOptions = {
+  inboundMessageId?: string | null
+  inboundTwilioMessageSid?: string | null
+}
+
 // ─── Seat Count Parser ────────────────────────────────────────────────────────
 
 /**
@@ -104,7 +109,8 @@ export async function findActivePromoContext(phoneNumber: string): Promise<Promo
  */
 export async function handleReplyToBook(
   phoneNumber: string,
-  messageBody: string
+  messageBody: string,
+  options: ReplyToBookOptions = {}
 ): Promise<{ handled: boolean; response?: string }> {
   // 1. Parse seat count — if null, fall through to normal inbound handling
   const seats = parseSeatCount(messageBody)
@@ -266,7 +272,12 @@ export async function handleReplyToBook(
   // 10. Mark promo context as booking_created = true (best-effort)
   const { error: updatePromoError } = await db
     .from('sms_promo_context' as any) // not in generated types yet
-    .update({ booking_created: true })
+    .update({
+      booking_created: true,
+      booking_created_at: new Date().toISOString(),
+      inbound_message_id: options.inboundMessageId ?? null,
+      inbound_twilio_message_sid: options.inboundTwilioMessageSid ?? null,
+    })
     .eq('id', promo.id)
     .maybeSingle()
 

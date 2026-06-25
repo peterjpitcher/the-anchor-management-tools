@@ -12,6 +12,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { getErrorMessage } from '@/lib/errors';
 import { handleReplyToBook } from '@/lib/sms/reply-to-book';
 import { sendSMS } from '@/lib/twilio';
+import { getTwilioWebhookValidationUrl } from '@/lib/twilio-webhook';
 import {
   captureTwilioMedia,
   findCustomerByPhone,
@@ -185,7 +186,6 @@ async function logWebhookAttempt(
   }
 }
 
-// Verify Twilio webhook signature
 function verifyTwilioSignature(request: NextRequest, body: string): boolean {
   const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
   if (!twilioAuthToken) {
@@ -199,8 +199,7 @@ function verifyTwilioSignature(request: NextRequest, body: string): boolean {
     return false;
   }
 
-  // Construct the full URL
-  const url = request.url;
+  const url = getTwilioWebhookValidationUrl(request.url);
   
   // Parse form data for validation
   const params = new URLSearchParams(body);
@@ -839,13 +838,20 @@ async function handleInboundSMS(
 
     if (!isWhatsApp) {
       try {
-        const replyResult = await handleReplyToBook(normalizedFromNumber, messageBody);
+        const replyResult = await handleReplyToBook(normalizedFromNumber, messageBody, {
+          inboundMessageId: savedMessage.id,
+          inboundTwilioMessageSid: messageSid,
+        });
         if (replyResult.handled && replyResult.response) {
           await sendSMS(normalizedFromNumber, replyResult.response, {
             skipQuietHours: true,
             createCustomerIfMissing: false,
             customerId: customer.id,
-            metadata: { template_key: 'event_reply_booking_response' },
+            metadata: {
+              template_key: 'event_reply_booking_response',
+              inbound_message_id: savedMessage.id,
+              inbound_twilio_message_sid: messageSid,
+            },
           });
         }
       } catch (replyError) {
