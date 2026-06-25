@@ -13,6 +13,7 @@ import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
 import { toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
+import { formatDateInLondon } from '@/lib/dateUtils'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 
 const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'List A', 'List B', 'Other'] as const
@@ -203,7 +204,7 @@ export default function RightToWorkTab({
                   <h3 className="text-sm font-medium text-yellow-800">Document Expiring Soon</h3>
                   <p className="mt-1 text-sm text-yellow-700">
                     This document expires on{' '}
-                    {new Date(rightToWorkData.document_expiry_date!).toLocaleDateString()}.
+                    {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
                     Please obtain updated documentation before expiry.
                   </p>
                 </div>
@@ -219,7 +220,7 @@ export default function RightToWorkTab({
                   <h3 className="text-sm font-medium text-red-800">Follow-up Required</h3>
                   <p className="mt-1 text-sm text-red-700">
                     A follow-up check was due on{' '}
-                    {new Date(rightToWorkData.follow_up_date!).toLocaleDateString()}.
+                    {formatDateInLondon(rightToWorkData.follow_up_date!)}.
                   </p>
                 </div>
               </div>
