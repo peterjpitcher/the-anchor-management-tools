@@ -9,12 +9,13 @@ import { updateTimeclockSession, createTimeclockSession, deleteTimeclockSession 
 import { buildPayrollWorkbook, getPayrollFilename, type PayrollRow } from '@/lib/rota/excel-export';
 import { buildPayrollEmailHtml, buildEarningsAlertEmailHtml, type PayrollEmployeeSummary, type LeavingEmployee } from '@/lib/rota/email-templates';
 import { sendEmail } from '@/lib/email/emailService';
-import { format, differenceInYears, parseISO } from 'date-fns';
+import { differenceInYears, parseISO } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { PAYROLL_COULDNT_WORK_FLAG } from '@/lib/rota/payroll-flags';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
+import { hasPayrollVariance, validatePayrollPeriodRange } from '@/lib/rota/payroll-guards';
 import {
   PAYROLL_PERIOD_FUTURE_MONTHS,
 } from '@/lib/rota/payroll-periods';
@@ -66,6 +67,13 @@ async function invalidatePayrollApproval(
     .eq('month', month);
 }
 
+function payrollMonthLabel(year: number, month: number): string {
+  return formatDateInLondon(`${year}-${String(month).padStart(2, '0')}-01T12:00:00Z`, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 export async function getOrCreatePayrollPeriod(year: number, month: number): Promise<PayrollPeriod> {
   await assertPayrollPeriodAccess();
   return getOrCreatePayrollPeriodRecord(year, month);
@@ -92,6 +100,9 @@ export async function updatePayrollPeriod(
 ): Promise<{ success: true; data: PayrollPeriod } | { success: false; error: string }> {
   const canApprove = await checkUserPermission('payroll', 'approve');
   if (!canApprove) return { success: false, error: 'Permission denied' };
+
+  const validationError = validatePayrollPeriodRange(periodStart, periodEnd);
+  if (validationError) return { success: false, error: validationError };
 
   const supabase = createAdminClient();
 
@@ -139,6 +150,7 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
   const period = await getOrCreatePayrollPeriodRecord(year, month);
   const monthStart = period.period_start;
   const monthEnd = period.period_end;
+  const todayIso = getTodayIsoDate();
 
   // Fetch everything needed in parallel — shifts, sessions, and all rate-lookup tables.
   // Rate data is fetched once here and computed in-memory below, replacing the previous
@@ -360,7 +372,7 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
     if (session?.is_auto_close) flagParts.push('auto_close');
     if (session?.is_unscheduled) flagParts.push('unscheduled');
     if (isCouldntWork) flagParts.push(PAYROLL_COULDNT_WORK_FLAG);
-    if (plannedHours !== null && actualHours !== null && Math.abs(plannedHours - actualHours) > 0.5) {
+    if (hasPayrollVariance(plannedHours, actualHours, shift.shift_date, todayIso)) {
       flagParts.push('variance');
     }
 
@@ -501,6 +513,9 @@ export async function approvePayrollMonth(year: number, month: number): Promise<
   // Build snapshot at approval time
   const reviewData = await getPayrollMonthData(year, month);
   if (!reviewData.success) return { success: false, error: reviewData.error };
+  if (reviewData.data.length === 0) {
+    return { success: false, error: 'No payroll rows to approve' };
+  }
 
   const snapshot = {
     rows: reviewData.data,
@@ -544,6 +559,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   // Load approved snapshot
   const { data: approval } = await supabase
@@ -551,7 +567,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
     .select('id, year, month, approved_at, approved_by, snapshot, email_sent_at, email_sent_by')
     .eq('year', year)
     .eq('month', month)
-    .single();
+    .maybeSingle();
 
   if (!approval) return { success: false, error: 'Month has not been approved yet' };
 
@@ -581,15 +597,15 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
   const filename = getPayrollFilename(year, month);
 
   // Build email body
-  const monthLabel = format(new Date(year, month - 1, 1), 'MMMM yyyy');
+  const monthLabel = payrollMonthLabel(year, month);
   const htmlBody = buildPayrollEmailHtml(year, month, snapshot.employees, leavingEmployees);
 
   // Get sender's email for CC
   const { data: senderProfile } = await supabase
     .from('profiles')
     .select('email')
-    .eq('id', user!.id)
-    .single();
+    .eq('id', user.id)
+    .maybeSingle();
 
   const ccEmails = senderProfile?.email ? [senderProfile.email] : [];
 
@@ -619,7 +635,7 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
     status: logStatus,
     error_message: result.success ? null : result.error ?? null,
     message_id: result.success ? result.messageId ?? null : null,
-    sent_by: user!.id,
+    sent_by: user.id,
   });
 
   if (!result.success) return { success: false, error: 'Email send failed' };
@@ -627,19 +643,19 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
   // Record email sent timestamp on approval — non-fatal if it fails
   const { error: timestampError } = await supabase
     .from('payroll_month_approvals')
-    .update({ email_sent_at: new Date().toISOString(), email_sent_by: user!.id })
+    .update({ email_sent_at: new Date().toISOString(), email_sent_by: user.id })
     .eq('id', approval.id);
   if (timestampError) {
     console.error('[sendPayrollEmail] Failed to update email_sent_at:', timestampError.message);
   }
 
   void logAuditEvent({
-    user_id: user?.id,
+    user_id: user.id,
     operation_type: 'send',
     resource_type: 'payroll_month',
     resource_id: `${year}-${String(month).padStart(2, '0')}`,
     operation_status: 'success',
-    additional_info: { to: ACCOUNTANT_EMAIL, month_label: format(new Date(year, month - 1, 1), 'MMMM yyyy') },
+    additional_info: { to: ACCOUNTANT_EMAIL, month_label: monthLabel },
   });
 
   // Send earnings alert to manager if any employee earned over £833 this month
@@ -668,19 +684,22 @@ export async function sendPayrollEmail(year: number, month: number): Promise<
 export async function upsertShiftNote(
   shiftId: string,
   note: string,
+  year?: number,
+  month?: number,
 ): Promise<{ success: true } | { success: false; error: string }> {
   const canApprove = await checkUserPermission('payroll', 'approve');
   if (!canApprove) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
 
   if (note.trim()) {
     // Atomic upsert — unique constraint on (entity_type, entity_id) ensures one note per entity
     const { error: upsertError } = await supabase
       .from('reconciliation_notes')
       .upsert(
-        { entity_type: 'shift', entity_id: shiftId, note: note.trim(), created_by: user!.id, updated_at: new Date().toISOString() },
+        { entity_type: 'shift', entity_id: shiftId, note: note.trim(), created_by: user.id, updated_at: new Date().toISOString() },
         { onConflict: 'entity_type,entity_id' },
       );
     if (upsertError) return { success: false, error: upsertError.message };
@@ -692,6 +711,10 @@ export async function upsertShiftNote(
       .eq('entity_type', 'shift')
       .eq('entity_id', shiftId);
     if (deleteError) return { success: false, error: deleteError.message };
+  }
+
+  if (typeof year === 'number' && typeof month === 'number') {
+    await invalidatePayrollApproval(createAdminClient(), year, month);
   }
 
   revalidatePath('/rota/payroll');

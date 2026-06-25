@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ensurePayrollPeriodsAhead, getPayrollMonthData, getOrCreatePayrollPeriod } from '@/app/actions/payroll';
 import type { PayrollMonthApproval, PayrollPeriod } from '@/app/actions/payroll';
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { buildPayrollMonthOptions } from '@/lib/rota/payroll-periods';
 import PayrollClient from './PayrollClient';
 import { rotaNavItems } from '../nav';
@@ -52,12 +52,13 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       .select('*')
       .eq('year', year)
       .eq('month', month)
-      .single(),
+      .maybeSingle(),
   ]);
   const dayInfo = await getRotaWeekDayInfo(payrollPeriod.period_start, payrollPeriod.period_end);
 
-  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-GB', {
-    month: 'long', year: 'numeric',
+  const monthLabel = formatDateInLondon(`${year}-${String(month).padStart(2, '0')}-01T12:00:00Z`, {
+    month: 'long',
+    year: 'numeric',
   });
 
   const monthOptions = buildPayrollMonthOptions(defaultPeriod);

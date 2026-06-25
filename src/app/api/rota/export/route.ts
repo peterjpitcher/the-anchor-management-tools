@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     .select('snapshot')
     .eq('year', year)
     .eq('month', month)
-    .single();
+    .maybeSingle();
 
   if (error || !approval) {
     return NextResponse.json({ error: 'Month has not been approved yet' }, { status: 409 });
