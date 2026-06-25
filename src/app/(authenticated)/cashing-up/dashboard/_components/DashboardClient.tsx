@@ -294,7 +294,7 @@ export function DashboardClient({ dashboardData, comparisonData, weeklyProgress,
                         )}
                       </div>
                     </TableCell>
-                    <TableCell align="right" className={`font-mono font-bold ${row.variance < 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
+                    <TableCell align="right" className={`font-mono font-bold ${Number((row.variance ?? 0).toFixed(2)) === 0 ? 'text-text-muted' : row.variance < 0 ? 'text-danger-fg' : 'text-warning-fg'}`}>
                       {'£'}{fmt(row.variance)}
                     </TableCell>
                     <TableCell className="text-text-muted italic">{row.notes || '-'}</TableCell>
