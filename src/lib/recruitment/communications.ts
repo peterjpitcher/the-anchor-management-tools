@@ -13,8 +13,6 @@ type MergeData = Record<string, string | number | null | undefined>
 const RECRUITMENT_FROM_EMAIL = 'peter@orangejelly.co.uk'
 
 const REQUIRED_TEMPLATE_PLACEHOLDERS: Partial<Record<RecruitmentTemplateType, string[]>> = {
-  interview_invite: ['booking_link'],
-  trial_invite: ['booking_link'],
   offer: ['offer_terms'],
   interview_confirmation: ['appointment_time'],
   trial_confirmation: ['appointment_time'],
@@ -88,11 +86,103 @@ function stringList(value: unknown): string[] {
     .filter(Boolean)
 }
 
+function appointmentTypeForInvite(type: RecruitmentTemplateType): 'interview' | 'trial_shift' | null {
+  if (type === 'interview_invite') return 'interview'
+  if (type === 'trial_invite') return 'trial_shift'
+  return null
+}
+
+function formatSlotTime(slot: any): string | null {
+  const startsAt = new Date(slot?.starts_at)
+  const endsAt = new Date(slot?.ends_at)
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return null
+
+  const timeZone = slot?.timezone || 'Europe/London'
+  const date = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone,
+  }).format(startsAt)
+  const time = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  })
+  return `${date}, ${time.format(startsAt)}-${time.format(endsAt)}`
+}
+
+function availableTimesBlock(appointmentType: 'interview' | 'trial_shift', availableTimes: string): string {
+  const label = appointmentType === 'trial_shift' ? 'trial shift' : 'interview'
+  return [
+    `Available ${label} times:`,
+    availableTimes,
+    '',
+    'Please let us know which time suits you best.',
+  ].join('\n')
+}
+
+function ensureInviteHasAvailableTimes(
+  body: string,
+  appointmentType: 'interview' | 'trial_shift',
+  availableTimes: string | null,
+) {
+  if (!availableTimes) return body
+
+  const block = availableTimesBlock(appointmentType, availableTimes)
+  const firstSlot = availableTimes
+    .split('\n')
+    .map(line => line.replace(/^-\s*/, '').trim())
+    .find(Boolean)
+
+  const nextBody = body
+    .replace(/Please choose a time using this link:\s*\{\{\s*booking_link\s*\}\}/gi, block)
+    .replace(/Choose a time here:\s*\{\{\s*booking_link\s*\}\}/gi, block)
+    .replace(/\{\{\s*booking_link\s*\}\}/gi, block)
+
+  if (!firstSlot || nextBody.includes(firstSlot)) {
+    return nextBody
+  }
+
+  const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
+  if (nextBody.includes(rightToWorkMarker)) {
+    return nextBody.replace(rightToWorkMarker, `\n\n${block}${rightToWorkMarker}`)
+  }
+
+  return `${nextBody.trim()}\n\n${block}`
+}
+
+async function loadOpenRecruitmentSlotTimes(
+  appointmentType: 'interview' | 'trial_shift',
+  supabase: GenericClient,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('recruitment_appointment_slots')
+    .select('starts_at, ends_at, timezone')
+    .eq('type', appointmentType)
+    .eq('status', 'open')
+    .is('archived_at', null)
+    .gt('starts_at', new Date().toISOString())
+    .order('starts_at', { ascending: true })
+    .limit(8)
+
+  if (error) throw error
+
+  const times = (data ?? [])
+    .map(formatSlotTime)
+    .filter((value): value is string => Boolean(value))
+
+  return times.length ? times.map(time => `- ${time}`).join('\n') : null
+}
+
 function buildMergeData(input: {
   application: any
   appointment?: any
   bookingLink?: string | null
   offerTerms?: string | null
+  availableTimes?: string | null
   extra?: MergeData
 }): MergeData {
   const candidate = input.application?.candidate ?? {}
@@ -108,6 +198,7 @@ function buildMergeData(input: {
     venue: appointment?.location || 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ',
     offer_terms: input.offerTerms ?? null,
     pay_hours: input.offerTerms ?? null,
+    available_times: input.availableTimes ?? null,
     right_to_work_wording: 'Please bring proof of your right to work in the UK.',
     signature: 'The Anchor',
     ...input.extra,
@@ -241,6 +332,10 @@ export async function draftRecruitmentEmailForApplication(
 ) {
   const application = await loadRecruitmentApplicationForComms(applicationId, supabase)
   let appointment: any = null
+  const inviteAppointmentType = appointmentTypeForInvite(type)
+  const availableTimes = inviteAppointmentType && !options.bookingLink
+    ? await loadOpenRecruitmentSlotTimes(inviteAppointmentType, supabase)
+    : null
 
   if (options.appointmentId) {
     const { data, error } = await supabase
@@ -257,6 +352,7 @@ export async function draftRecruitmentEmailForApplication(
     appointment,
     bookingLink: options.bookingLink ?? null,
     offerTerms: options.offerTerms ?? null,
+    availableTimes,
   })
 
   const { data: template, error: templateError } = await supabase
@@ -294,6 +390,7 @@ export async function draftRecruitmentEmailForApplication(
     ai_strengths: application.ai_strengths,
     public_positive_signals: publicPositiveSignals.slice(0, 6),
     deterministic_fields: deterministicContext,
+    available_times: availableTimes,
   }
 
   if (!isDeclineEmail) {
@@ -324,7 +421,11 @@ export async function draftRecruitmentEmailForApplication(
     success: true as const,
     runId: draft.runId,
     subject: mergeTemplate(draft.result.subject, deterministicContext),
-    body: mergeTemplate(draft.result.body, deterministicContext),
+    body: ensureInviteHasAvailableTimes(
+      mergeTemplate(draft.result.body, deterministicContext),
+      inviteAppointmentType ?? 'interview',
+      availableTimes,
+    ),
   }
 }
 
