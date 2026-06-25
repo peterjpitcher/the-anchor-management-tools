@@ -4,6 +4,7 @@ import { getOpenAIConfig } from '@/lib/openai/config'
 import { MENU_PURCHASE_DEPARTMENTS, type MenuPurchaseDepartment } from '@/lib/menu/purchase-departments'
 import { retry, RetryConfigs } from '@/lib/retry'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { z } from 'zod'
 
 const MODEL_PRICING_PER_1K_TOKENS: Record<string, { prompt: number; completion: number }> = {
   'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
@@ -264,6 +265,34 @@ export type ReviewResult = {
   suggestions: ReviewSuggestion[]
 }
 
+const ReviewSuggestionSchema = z.object({
+  field: z.enum([
+    'name',
+    'description',
+    'supplier_name',
+    'supplier_sku',
+    'brand',
+    'pack_size',
+    'pack_size_unit',
+    'pack_cost',
+    'portions_per_pack',
+    'wastage_pct',
+    'storage_type',
+    'purchase_department',
+    'allergens',
+    'dietary_flags',
+    'notes',
+  ]),
+  suggestedValue: z.any(),
+  reason: z.string().trim().min(1).max(500),
+})
+
+const ReviewResultSchema = z.object({
+  valid: z.boolean(),
+  issues: z.array(z.string().trim().min(1).max(500)).default([]),
+  suggestions: z.array(ReviewSuggestionSchema).default([]),
+}).strict()
+
 export async function reviewIngredientWithAI(ingredient: AiParsedIngredient): Promise<ReviewResult> {
   try {
     const canManageMenu = await checkUserPermission('menu_management', 'manage')
@@ -339,7 +368,22 @@ Be concise.`
 
     if (!content) return { valid: true, issues: [], suggestions: [] }
 
-    return JSON.parse(content)
+    const parsed = JSON.parse(content)
+    const validation = ReviewResultSchema.safeParse(parsed)
+    if (!validation.success) {
+      console.error('AI review response failed validation', validation.error.flatten())
+      return { valid: true, issues: ['AI review failed (invalid response)'], suggestions: [] }
+    }
+
+    return {
+      valid: validation.data.valid,
+      issues: validation.data.issues,
+      suggestions: validation.data.suggestions.map((suggestion) => ({
+        field: suggestion.field,
+        suggestedValue: suggestion.suggestedValue,
+        reason: suggestion.reason,
+      })),
+    }
 
   } catch (error) {
     console.error('reviewIngredientWithAI error:', error)

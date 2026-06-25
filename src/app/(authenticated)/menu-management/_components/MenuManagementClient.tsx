@@ -13,7 +13,7 @@ import {
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { listMenuDishes, listMenuIngredients } from '@/app/actions/menu-management'
+import { listMenuDishes, listMenuIngredients, toggleDishActive } from '@/app/actions/menu-management'
 import { MenuDishesTable, type MenuDishesFilter } from '../_components/MenuDishesTable'
 import { DishDrawer } from '../dishes/_components/DishDrawer'
 import type { DishListItem, IngredientSummary, RecipeSummary, MenuSummary } from '../dishes/_components/DishExpandedRow'
@@ -309,6 +309,18 @@ export default function MenuManagementClient(): React.ReactElement {
     setDrawerOpen(true)
   }, [dishes])
 
+  const handleToggleDishActive = useCallback(async (dish: DishListItem) => {
+    const result = await toggleDishActive(dish.id)
+    if (result.error) {
+      toast.error(result.error)
+      return
+    }
+    setDishes((prev) => prev.map((item) =>
+      item.id === dish.id ? { ...item, is_active: !dish.is_active } : item
+    ))
+    toast.success(dish.is_active ? 'Dish deactivated' : 'Dish activated')
+  }, [])
+
   const handleDrawerClose = useCallback(() => { setDrawerOpen(false); setEditingDish(null) }, [])
   const handleSaved = useCallback(() => { void loadDishes() }, [loadDishes])
 
@@ -576,11 +588,28 @@ export default function MenuManagementClient(): React.ReactElement {
                 const dishGp = hasMeaningfulGp(dish) ? `${Math.round((dish.gp_pct as number) * 100)}%` : '--'
                 const tone = gpColour(dish.gp_pct, targetGpPct)
                 return (
-                  <div key={dish.id} role="button" tabIndex={0} className="cursor-pointer" onClick={() => handleDishClick(dish)} onKeyDown={(e) => { if (e.key === 'Enter') handleDishClick(dish) }}><Card className="hover:shadow-md transition-shadow">
+                  <div
+                    key={dish.id}
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer"
+                    onClick={(event) => {
+                      if ((event.target as HTMLElement).closest('[role="switch"]')) return
+                      handleDishClick(dish)
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.target as HTMLElement).closest('[role="switch"]')) return
+                      if (event.key === 'Enter') handleDishClick(dish)
+                    }}
+                  ><Card className="hover:shadow-md transition-shadow">
                     <CardBody className="space-y-2">
                       <div className="flex items-start justify-between">
                         <h4 className="text-sm font-semibold text-text-strong">{dish.name}</h4>
-                        <Switch checked={dish.is_active} onChange={() => {}} size="sm" />
+                        <Switch
+                          checked={dish.is_active}
+                          onChange={() => void handleToggleDishActive(dish)}
+                          size="sm"
+                        />
                       </div>
                       {dish.description && <p className="text-xs text-text-muted line-clamp-2">{dish.description}</p>}
                       <div className="flex items-center justify-between">

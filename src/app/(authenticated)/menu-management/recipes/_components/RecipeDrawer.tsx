@@ -13,7 +13,7 @@ import { Alert } from '@/ds';
 import { ConfirmDialog } from '@/ds';
 import { toast } from '@/ds';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { createMenuRecipe, updateMenuRecipe } from '@/app/actions/menu-management';
+import { createMenuRecipe, deleteMenuRecipe, updateMenuRecipe } from '@/app/actions/menu-management';
 import {
   RecipeIngredientRow,
   defaultIngredientRow,
@@ -310,12 +310,9 @@ export function RecipeDrawer({
   async function handleDelete() {
     if (!recipe) return;
     try {
-      const response = await fetch(`/api/menu-management/recipes/${recipe.id}`, {
-        method: 'DELETE',
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to delete recipe');
+      const result = await deleteMenuRecipe(recipe.id);
+      if (result.error) {
+        throw new Error(result.error);
       }
       toast.success('Recipe deleted');
       onSaved();

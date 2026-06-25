@@ -11,7 +11,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { MenuService } from '@/services/menu'
+import { DishSchema, MenuService } from '@/services/menu'
 import { MenuSettingsService } from '@/services/menu-settings'
 
 const mockedCreateClient = createClient as unknown as Mock
@@ -110,5 +110,44 @@ describe('MenuService delete guards', () => {
         assignments: [{ menu_code: 'main', category_code: 'food', sort_order: 0 }],
       })
     ).rejects.toThrow('Dish not found')
+  })
+})
+
+describe('DishSchema composition validation', () => {
+  const baseDish = {
+    name: 'Burger',
+    selling_price: 12,
+    is_active: true,
+    is_sunday_lunch: false,
+    assignments: [{ menu_code: 'main', category_code: 'food', sort_order: 0 }],
+  }
+
+  it('requires option groups for choice ingredient rows', () => {
+    expect(() =>
+      DishSchema.parse({
+        ...baseDish,
+        ingredients: [{
+          ingredient_id: '11111111-1111-4111-8111-111111111111',
+          quantity: 1,
+          unit: 'portion',
+          inclusion_type: 'choice',
+          option_group: '',
+        }],
+      })
+    ).toThrow(/Option group is required/)
+  })
+
+  it('requires option groups for upgrade recipe rows', () => {
+    expect(() =>
+      DishSchema.parse({
+        ...baseDish,
+        recipes: [{
+          recipe_id: '22222222-2222-4222-8222-222222222222',
+          quantity: 1,
+          inclusion_type: 'upgrade',
+          option_group: '',
+        }],
+      })
+    ).toThrow(/Option group is required/)
   })
 })

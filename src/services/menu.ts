@@ -68,10 +68,24 @@ const BaseIngredientLinkSchema = z.object({
   measure_ml: z.number().nonnegative().nullable().optional(),
 });
 
+function requireOptionGroupForChoices(
+  value: { inclusion_type?: string; option_group?: string | null },
+  context: z.RefinementCtx
+) {
+  const inclusionType = value.inclusion_type || 'included';
+  if ((inclusionType === 'choice' || inclusionType === 'upgrade') && !value.option_group?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Option group is required for choice and upgrade rows',
+      path: ['option_group'],
+    });
+  }
+}
+
 export const DishIngredientSchema = BaseIngredientLinkSchema.extend({
   inclusion_type: z.enum(['included', 'removable', 'choice', 'upgrade']).default('included'),
   upgrade_price: z.number().nonnegative().nullable().optional(),
-});
+}).superRefine(requireOptionGroupForChoices);
 
 export const RecipeIngredientSchema = BaseIngredientLinkSchema.extend({});
 
@@ -85,7 +99,7 @@ export const DishRecipeSchema = z.object({
   option_group: z.string().nullable().optional(),
   inclusion_type: z.enum(['included', 'removable', 'choice', 'upgrade']).default('included'),
   upgrade_price: z.number().nonnegative().nullable().optional(),
-});
+}).superRefine(requireOptionGroupForChoices);
 
 export const RecipeSchema = z.object({
   name: z.string().min(1),
