@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fromZonedTime } from 'date-fns-tz'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { sendEmail } from '@/lib/email/emailService'
 import { notifyCustomer } from '@/lib/notifications/notify'
@@ -25,6 +26,7 @@ import {
 // Re-exported for backwards-compat in this file. The single source of truth is
 // `LARGE_GROUP_DEPOSIT_PER_PERSON_GBP` in `./deposit.ts`. Spec §7.3, §8.3.
 const DEPOSIT_PER_PERSON_GBP = LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
+const LONDON_TIMEZONE = 'Europe/London'
 
 export type TableBookingState = 'confirmed' | 'pending_payment' | 'blocked'
 
@@ -153,6 +155,10 @@ function parseIsoDate(value: string | null | undefined): Date | null {
   if (!value) return null
   const date = new Date(value)
   return Number.isFinite(date.getTime()) ? date : null
+}
+
+function endOfLondonBookingDay(bookingDate: string): Date {
+  return fromZonedTime(`${bookingDate}T23:59:59`, LONDON_TIMEZONE)
 }
 
 function resolveBaseUrl(appBaseUrl?: string | null): string {
@@ -572,7 +578,7 @@ export async function getTablePaymentPreviewByRawToken(
   // payment use end-of-booking-day as a fallback (the booking is already secured).
   let holdExpiry = parseIsoDate(booking.hold_expires_at)
   if (!holdExpiry && booking.booking_date) {
-    holdExpiry = new Date(`${booking.booking_date}T23:59:59`)
+    holdExpiry = endOfLondonBookingDay(booking.booking_date)
   }
   if (!holdExpiry || holdExpiry.getTime() <= Date.now()) {
     return { state: 'blocked', reason: 'hold_expired' }
