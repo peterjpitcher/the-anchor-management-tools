@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE OR REPLACE FUNCTION public.replace_employee_emergency_contacts(
   p_employee_id uuid,
   p_contacts jsonb
@@ -71,7 +69,3 @@ BEGIN
   RETURN jsonb_build_object('saved', v_saved_count);
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.replace_employee_emergency_contacts(uuid, jsonb) TO authenticated, service_role;
-
-COMMIT;

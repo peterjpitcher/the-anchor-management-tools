@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE OR REPLACE FUNCTION public.upsert_cashup_session_atomic(
   p_existing_id uuid,
   p_site_id uuid,
@@ -158,17 +156,3 @@ BEGIN
   RETURN v_session_id;
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.upsert_cashup_session_atomic(
-  uuid,
-  uuid,
-  date,
-  text,
-  text,
-  jsonb,
-  jsonb,
-  jsonb,
-  uuid
-) TO authenticated, service_role;
-
-COMMIT;

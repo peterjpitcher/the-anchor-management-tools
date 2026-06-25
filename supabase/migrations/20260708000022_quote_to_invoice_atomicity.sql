@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE OR REPLACE FUNCTION public.convert_quote_to_invoice_atomic(
   p_quote_id uuid,
   p_invoice_date date,
@@ -135,7 +133,3 @@ BEGIN
   );
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.convert_quote_to_invoice_atomic(uuid, date, date) TO authenticated, service_role;
-
-COMMIT;

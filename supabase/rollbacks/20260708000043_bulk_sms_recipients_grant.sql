@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.get_bulk_sms_recipients(UUID, TEXT, BOOLEAN, UUID, DATE, DATE, TEXT, INTEGER, INTEGER) FROM authenticated;
