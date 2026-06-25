@@ -329,9 +329,9 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
             </TableRow>
           </TableHeader>
           <TableBody>
-            {links.length === 0 ? (
+            {displayLinks.length === 0 ? (
               <TableRow>
-                <TableCell className="text-center text-text-muted py-8" align="center">
+                <TableCell colSpan={6} className="text-center text-text-muted py-8" align="center">
                   No short links found
                 </TableCell>
               </TableRow>

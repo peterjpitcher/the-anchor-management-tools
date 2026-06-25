@@ -76,7 +76,7 @@ describe('ShortLinkService', () => {
     })
 
     const result = await ShortLinkService.createShortLink({
-      destination_url: 'https://example.com',
+      destination_url: 'https://the-anchor.pub',
       link_type: 'custom' as any,
       metadata: {},
       expires_at: null,
@@ -100,7 +100,7 @@ describe('ShortLinkService', () => {
     })
 
     const result = await ShortLinkService.createShortLink({
-      destination_url: 'https://example.com',
+      destination_url: 'https://the-anchor.pub',
       link_type: 'custom' as any,
       metadata: {},
       expires_at: null,
@@ -127,7 +127,7 @@ describe('ShortLinkService', () => {
 
     const result = await ShortLinkService.createShortLink({
       name: 'My Link',
-      destination_url: 'https://example.com/new',
+      destination_url: 'https://the-anchor.pub/new',
       link_type: 'custom' as any,
       metadata: {},
       expires_at: null,
@@ -142,6 +142,42 @@ describe('ShortLinkService', () => {
     expect(mockRpc).toHaveBeenCalled()
   })
 
+  it('rejects destinations outside the short-link allowlist', async () => {
+    await expect(
+      ShortLinkService.createShortLink({
+        name: 'Bad Link',
+        destination_url: 'https://evil.example/phish',
+        link_type: 'custom' as any,
+        metadata: {},
+        expires_at: null,
+      })
+    ).rejects.toThrow(/approved Anchor or Orange Jelly domains/)
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('sets the creating user on new staff short links', async () => {
+    mockMaybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: { id: 'id-owned' }, error: null })
+    mockRpcSingle.mockResolvedValue({
+      data: { short_code: 'owned1', full_url: 'https://l.the-anchor.pub/owned1' },
+      error: null,
+    })
+
+    await ShortLinkService.createShortLink({
+      name: 'Owned Link',
+      destination_url: 'https://the-anchor.pub/owned',
+      link_type: 'custom' as any,
+      metadata: {},
+      expires_at: null,
+    }, 'user-123')
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Owned Link',
+      created_by: 'user-123',
+    }))
+  })
+
   it('prevents updating a short link to a destination URL that already exists', async () => {
     mockMaybeSingle.mockResolvedValue({
       data: { id: 'other-id', short_code: 'abc123', created_at: '2026-01-01T00:00:00Z' },
@@ -152,7 +188,7 @@ describe('ShortLinkService', () => {
       ShortLinkService.updateShortLink({
         id: 'my-id',
         name: null,
-        destination_url: 'https://example.com',
+        destination_url: 'https://the-anchor.pub',
         link_type: 'custom' as any,
         expires_at: null,
       })
@@ -170,7 +206,7 @@ describe('ShortLinkService', () => {
       ShortLinkService.updateShortLink({
         id: 'my-id',
         name: null,
-        destination_url: 'https://example.com',
+        destination_url: 'https://the-anchor.pub',
         link_type: 'custom' as any,
         expires_at: null,
       })
@@ -184,7 +220,7 @@ describe('ShortLinkService', () => {
     })
 
     const result = await ShortLinkService.createShortLinkInternal({
-      destination_url: 'https://example.com',
+      destination_url: 'https://the-anchor.pub',
       link_type: 'custom',
       metadata: {},
     })
@@ -205,7 +241,7 @@ describe('ShortLinkService', () => {
     })
 
     const result = await ShortLinkService.createShortLinkInternal({
-      destination_url: 'https://example.com/new',
+      destination_url: 'https://the-anchor.pub/new',
       link_type: 'custom',
       metadata: {},
     })

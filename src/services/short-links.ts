@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
+import { assertAllowedShortLinkDestination } from '@/lib/short-links/destination-allowlist';
 import { resolveShortLinkName } from '@/lib/short-links/names';
 import {
   SHORT_LINK_INSIGHTS_TIMEZONE,
@@ -277,8 +278,9 @@ export class ShortLinkService {
   ) {
     const { data, error } = await supabase
       .from('short_links')
-      .select('id, short_code, destination_url, name, created_at')
+      .select('id, short_code, destination_url, name, created_by, created_at')
       .eq('destination_url', destinationUrl)
+      .is('parent_link_id', null)
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle();
@@ -301,21 +303,30 @@ export class ShortLinkService {
     return (data ?? null) as ShortLinkParentRow | null;
   }
 
-  static async createShortLink(data: CreateShortLinkInput): Promise<{
+  static async createShortLink(data: CreateShortLinkInput, createdBy?: string): Promise<{
     id: string;
     short_code: string;
     full_url: string;
     already_exists: boolean;
   }> {
     const supabase = await createClient();
-    const linkName = resolveShortLinkName(data.name, data.destination_url);
+    const destinationUrl = assertAllowedShortLinkDestination(data.destination_url);
+    const linkName = resolveShortLinkName(data.name, destinationUrl);
 
-    const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
+    const existing = await this.findShortLinkByDestinationUrl(supabase, destinationUrl);
     if (existing) {
+      const patch: Record<string, unknown> = {};
       if (!existing.name?.trim()) {
+        patch.name = linkName;
+      }
+      if (createdBy && !existing.created_by) {
+        patch.created_by = createdBy;
+      }
+
+      if (Object.keys(patch).length > 0) {
         await createAdminClient()
           .from('short_links')
-          .update({ name: linkName })
+          .update(patch)
           .eq('id', existing.id);
       }
 
@@ -329,7 +340,7 @@ export class ShortLinkService {
     
     const { data: result, error } = await supabase
       .rpc('create_short_link', {
-        p_destination_url: data.destination_url,
+        p_destination_url: destinationUrl,
         p_link_type: data.link_type,
         p_metadata: data.metadata || {},
         p_expires_at: data.expires_at || null,
@@ -351,7 +362,7 @@ export class ShortLinkService {
     if (rpcResult?.short_code) {
       await createAdminClient()
         .from('short_links')
-        .update({ name: linkName })
+        .update({ name: linkName, ...(createdBy ? { created_by: createdBy } : {}) })
         .eq('short_code', rpcResult.short_code as string);
     }
 
@@ -384,7 +395,8 @@ export class ShortLinkService {
 
     let countQuery = supabase
       .from('short_links')
-      .select('id', { count: 'exact', head: true });
+      .select('id', { count: 'exact', head: true })
+      .is('parent_link_id', null);
 
     let parentQuery = supabase
       .from('short_links')
@@ -445,9 +457,10 @@ export class ShortLinkService {
 
   static async updateShortLink(input: UpdateShortLinkInput) {
     const supabase = createAdminClient();
-    const linkName = resolveShortLinkName(input.name, input.destination_url);
+    const destinationUrl = assertAllowedShortLinkDestination(input.destination_url);
+    const linkName = resolveShortLinkName(input.name, destinationUrl);
 
-    const conflict = await this.findShortLinkByDestinationUrl(supabase, input.destination_url);
+    const conflict = await this.findShortLinkByDestinationUrl(supabase, destinationUrl);
     if (conflict && conflict.id !== input.id) {
       throw new Error(
         `A short link already exists for this URL (${buildShortLinkUrl(conflict.short_code)}).`
@@ -458,7 +471,7 @@ export class ShortLinkService {
       .from('short_links')
       .update({
         name: linkName,
-        destination_url: input.destination_url,
+        destination_url: destinationUrl,
         link_type: input.link_type,
         expires_at: input.expires_at ?? null,
         updated_at: new Date().toISOString()
@@ -505,9 +518,10 @@ export class ShortLinkService {
     name?: string;
   }): Promise<{ short_code: string; full_url: string; already_exists: boolean }> {
     const supabase = await createAdminClient();
-    const linkName = resolveShortLinkName(data.name, data.destination_url);
+    const destinationUrl = assertAllowedShortLinkDestination(data.destination_url);
+    const linkName = resolveShortLinkName(data.name, destinationUrl);
 
-    const existing = await this.findShortLinkByDestinationUrl(supabase, data.destination_url);
+    const existing = await this.findShortLinkByDestinationUrl(supabase, destinationUrl);
     if (existing) {
       if (!existing.name?.trim()) {
         await supabase
@@ -525,7 +539,7 @@ export class ShortLinkService {
 
     const { data: result, error } = await supabase
       .rpc('create_short_link', {
-        p_destination_url: data.destination_url,
+        p_destination_url: destinationUrl,
         p_link_type: data.link_type,
         p_metadata: data.metadata || {},
         p_expires_at: data.expires_at || null,
@@ -535,7 +549,7 @@ export class ShortLinkService {
 
     if (error) {
       if (error.code === '23505') {
-        return this.createShortLinkInternal(data);
+        return this.createShortLinkInternal({ ...data, destination_url: destinationUrl });
       }
       throw new Error(error.message || 'Failed to create short link');
     }
@@ -574,6 +588,7 @@ export class ShortLinkService {
 
     const utmContent = data.utm_content.trim().toLowerCase();
     const destinationUrl = withUtmContent(data.destination_url || parent.destination_url, utmContent);
+    assertAllowedShortLinkDestination(destinationUrl);
     const metadata = {
       ...(parent.metadata?.event_id ? { event_id: parent.metadata.event_id } : {}),
       channel: 'meta_ads',
@@ -657,7 +672,8 @@ export class ShortLinkService {
 
   static async getOrCreateUtmVariant(
     parentId: string,
-    channelKey: string
+    channelKey: string,
+    createdBy?: string
   ): Promise<{ id: string; short_code: string; full_url: string; already_exists: boolean }> {
     const { CHANNEL_MAP } = await import('@/lib/short-links/channels');
     const { buildUtmUrl, buildVariantName } = await import('@/lib/short-links/utm');
@@ -676,7 +692,9 @@ export class ShortLinkService {
 
     if (parentError || !parent) throw new Error('Parent link not found');
 
-    const utmDestination = buildUtmUrl(parent.destination_url, channel, parent.name || parent.id);
+    const utmDestination = assertAllowedShortLinkDestination(
+      buildUtmUrl(parent.destination_url, channel, parent.name || parent.id)
+    );
     const variantName = buildVariantName(parent.name || `/${parent.id.slice(0, 6)}`, channel.label);
 
     // Check for existing variant by channel (more robust than URL matching)
@@ -714,7 +732,7 @@ export class ShortLinkService {
     // Set parent_link_id and name on the new variant
     await supabase
       .from('short_links')
-      .update({ parent_link_id: parentId, name: variantName })
+      .update({ parent_link_id: parentId, name: variantName, ...(createdBy ? { created_by: createdBy } : {}) })
       .eq('short_code', shortCode);
 
     // Fetch the created link's ID
@@ -739,7 +757,7 @@ export class ShortLinkService {
       .from('short_links')
       .select('id, short_code, link_type, destination_url, click_count, last_clicked_at, metadata')
       .eq('short_code', shortCode)
-      .single();
+      .maybeSingle();
     
     if (error || !link) throw new Error('Short link not found');
     

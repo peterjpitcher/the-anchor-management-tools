@@ -6,11 +6,12 @@ import {
   Card, CardHeader, CardBody, RevenueChart,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
-import { Stat, Badge, Button, Select } from '@/ds'
+import { Stat, Badge, Button, Select, Alert } from '@/ds'
 import { getShortLinkVolumeAdvanced } from '@/app/actions/short-links'
 import { SHORT_LINKS_NAV } from '../../nav'
 import { groupLinksIntoCampaigns } from '@/lib/short-links/insights-grouping'
 import type { AnalyticsLinkRow } from '@/types/short-links'
+import { getErrorMessage } from '@/lib/errors'
 
 const TIME_OPTIONS = [
   { value: '7', label: 'Last 7 days' },
@@ -28,10 +29,12 @@ export function InsightsClient() {
   const [activeTab, setActiveTab] = useState('all')
   const [analyticsData, setAnalyticsData] = useState<AnalyticsLinkRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [days, setDays] = useState('30')
 
   const loadData = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const end = new Date()
       const start = new Date()
@@ -67,9 +70,15 @@ export function InsightsClient() {
           }
         })
         setAnalyticsData(mapped)
+      } else {
+        setAnalyticsData([])
+        setError(result && 'error' in result && typeof result.error === 'string'
+          ? result.error
+          : 'Could not load short-link insights')
       }
-    } catch {
-      // Silently handle
+    } catch (loadError) {
+      setAnalyticsData([])
+      setError(getErrorMessage(loadError))
     } finally {
       setLoading(false)
     }
@@ -124,6 +133,12 @@ export function InsightsClient() {
           Refresh
         </Button>
       </div>
+
+      {error && (
+        <Alert tone="danger" title="Could not load insights" className="mb-6">
+          {error}
+        </Alert>
+      )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -226,7 +241,7 @@ export function InsightsClient() {
               <TableBody>
                 {grouped.campaigns.length === 0 ? (
                   <TableRow>
-                    <TableCell className="text-center text-text-muted py-8" align="center">
+                    <TableCell colSpan={5} className="text-center text-text-muted py-8" align="center">
                       No campaigns found
                     </TableCell>
                   </TableRow>
