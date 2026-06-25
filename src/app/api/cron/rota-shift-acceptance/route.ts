@@ -206,14 +206,16 @@ export async function GET(request: Request) {
       auto_accept_reason: SHIFT_AUTO_ACCEPT_POLICY_NOTE,
     };
 
-    const { error } = await supabase
+    const { data: acceptedShift, error } = await supabase
       .from('rota_published_shifts')
       .update(acceptance)
       .eq('id', shift.id)
       .eq('employee_id', shift.employee_id)
-      .eq('acceptance_status', 'pending');
+      .eq('acceptance_status', 'pending')
+      .select('id')
+      .maybeSingle();
 
-    if (error) {
+    if (error || !acceptedShift) {
       autoAcceptFailed += 1;
       continue;
     }
