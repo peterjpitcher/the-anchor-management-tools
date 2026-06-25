@@ -1,9 +1,13 @@
 'use client';
 
 import type { EmployeeHealthRecord } from '@/types/database';
+import { formatDateInLondon } from '@/lib/dateUtils';
+import { LinkButton } from '@/ds';
 
 interface HealthRecordsTabProps {
+  employeeId: string;
   healthRecord: EmployeeHealthRecord | null;
+  canEdit: boolean;
 }
 
 const DetailItem = ({ label, value }: { label: string; value: string | undefined | null | boolean }) => (
@@ -15,7 +19,7 @@ const DetailItem = ({ label, value }: { label: string; value: string | undefined
   </div>
 );
 
-export default function HealthRecordsTab({ healthRecord }: HealthRecordsTabProps) {
+export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: HealthRecordsTabProps) {
   const hasAllergies = Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies)
 
   const details = [
@@ -42,7 +46,7 @@ export default function HealthRecordsTab({ healthRecord }: HealthRecordsTabProps
       { label: 'Registered Disabled?', value: healthRecord?.is_registered_disabled ?? false },
       ...((healthRecord?.is_registered_disabled) ? [
           { label: 'Disability Registration Number', value: healthRecord.disability_reg_number },
-          { label: 'Registration Expiry Date', value: healthRecord.disability_reg_expiry_date ? new Date(healthRecord.disability_reg_expiry_date).toLocaleDateString() : 'N/A' },
+          { label: 'Registration Expiry Date', value: healthRecord.disability_reg_expiry_date ? formatDateInLondon(healthRecord.disability_reg_expiry_date) : 'N/A' },
           { label: 'Disability Details', value: healthRecord.disability_details },
       ] : [
           { label: 'Disability Registration Number', value: 'N/A' },
@@ -60,7 +64,11 @@ export default function HealthRecordsTab({ healthRecord }: HealthRecordsTabProps
             Confidential health and medical information.
           </p>
         </div>
-        {/* Placeholder for future "Edit" button */}
+        {canEdit && (
+          <LinkButton href={`/employees/${employeeId}/edit?tab=health`} variant="secondary" size="sm">
+            Edit
+          </LinkButton>
+        )}
       </div>
       
       <dl className="sm:divide-y sm:divide-gray-200">

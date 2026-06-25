@@ -187,12 +187,24 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     {
       key: 'financial',
       label: 'Financial',
-      content: <FinancialDetailsTab financialDetails={financialDetails} />
+      content: (
+        <FinancialDetailsTab
+          employeeId={employee.employee_id}
+          financialDetails={financialDetails}
+          canEdit={permissions.canEdit}
+        />
+      )
     },
     {
       key: 'health',
       label: 'Health',
-      content: <HealthRecordsTab healthRecord={healthRecord} />
+      content: (
+        <HealthRecordsTab
+          employeeId={employee.employee_id}
+          healthRecord={healthRecord}
+          canEdit={permissions.canEdit}
+        />
+      )
     },
     {
       key: 'contacts',

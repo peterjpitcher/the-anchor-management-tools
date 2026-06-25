@@ -49,7 +49,7 @@ export interface EmployeeDetailResult {
 }
 
 export interface EmployeeEditResult {
-  data?: EmployeeEditData
+  data?: EmployeeEditData & { canViewDocuments: boolean }
   error?: string
   notFound?: boolean
   unauthorized?: boolean
@@ -124,8 +124,9 @@ export async function getEmployeeDetailData(employeeId: string): Promise<Employe
 }
 
 export async function getEmployeeEditData(employeeId: string): Promise<EmployeeEditResult> {
-  const [canEdit] = await Promise.all([
+  const [canEdit, canViewDocuments] = await Promise.all([
     checkUserPermission('employees', 'edit'),
+    checkUserPermission('employees', 'view_documents'),
   ]);
 
   if (!canEdit) {
@@ -134,7 +135,7 @@ export async function getEmployeeEditData(employeeId: string): Promise<EmployeeE
 
   try {
     const employeeData = await EmployeeService.getEmployeeByIdForEdit(employeeId);
-    return { data: employeeData };
+    return { data: { ...employeeData, canViewDocuments } };
   } catch (error: unknown) {
     console.error('[employeeEdit] unexpected error', error);
     if (getErrorMessage(error) === 'Employee not found.') {

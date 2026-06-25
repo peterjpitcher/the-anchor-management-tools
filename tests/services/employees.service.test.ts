@@ -5,7 +5,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { EmployeeService } from '@/services/employees'
+import { EmergencyContactSchema, employeeSchema, EmployeeService } from '@/services/employees'
 
 describe('EmployeeService CSV export', () => {
   it('prefixes spreadsheet formula trigger characters in exported cells', () => {
@@ -27,6 +27,62 @@ describe('EmployeeService CSV export', () => {
     expect(csv).toContain("'-Danger")
     expect(csv).toContain("'\tTabbed")
     expect(csv).toContain("'\rCarriage")
+  })
+
+  it('formats exported dates in London time', () => {
+    const csv = EmployeeService.generateCSV([
+      {
+        employee_id: 'employee-1',
+        employment_start_date: '2026-07-14T23:30:00.000Z',
+      } as any,
+    ], ['employment_start_date'])
+
+    expect(csv).toContain('15/07/2026')
+  })
+})
+
+describe('employee phone validation', () => {
+  it('normalises employee phone fields to E.164 before storage', () => {
+    const parsed = employeeSchema.parse({
+      first_name: 'Jacob',
+      last_name: 'Williams',
+      email_address: 'jacob@example.com',
+      job_title: 'Bartender',
+      employment_start_date: '2026-05-22',
+      status: 'Active',
+      phone_number: '020 7946 0000',
+      mobile_number: '07561 773635',
+    })
+
+    expect(parsed.phone_number).toBe('+442079460000')
+    expect(parsed.mobile_number).toBe('+447561773635')
+  })
+
+  it('normalises emergency contact phone fields to E.164 before storage', () => {
+    const parsed = EmergencyContactSchema.parse({
+      employee_id: '3f24f3f6-26bb-4a53-a29a-07b6acffad4f',
+      name: 'Emergency Contact',
+      phone_number: '020 7946 0000',
+      mobile_number: '07561 773635',
+      priority: 'Primary',
+    })
+
+    expect(parsed.phone_number).toBe('+442079460000')
+    expect(parsed.mobile_number).toBe('+447561773635')
+  })
+
+  it('rejects invalid employee phone fields', () => {
+    const parsed = employeeSchema.safeParse({
+      first_name: 'Jacob',
+      last_name: 'Williams',
+      email_address: 'jacob@example.com',
+      job_title: 'Bartender',
+      employment_start_date: '2026-05-22',
+      status: 'Active',
+      mobile_number: 'not a phone number',
+    })
+
+    expect(parsed.success).toBe(false)
   })
 })
 

@@ -47,6 +47,7 @@ Status values:
 | PR-24 / A-012 | done | Recruitment calendar retry now deletes orphaned Outlook events for cancelled appointments; test covers the retry path. |
 | PR-32 / A-013 | done | Private-booking cancellation refund threshold uses Europe/London calendar days; BST boundary test added. |
 | PR-S5 / A-082 | done | Customer list counts now use exact server counts, SMS stat cards use exact full-result counts instead of current-page rows, and import dedup runs globally inside the atomic import RPC; source regression test, typecheck, lint, and Supabase dry-run pass. |
+| PR-91 / A-083 | done | Employee and emergency-contact phone fields now normalise to E.164 through the shared phone helper, employee CSV dates use London date formatting, financial/health detail tabs link to the matching edit tabs, and `/employees/:id/edit` includes right-to-work editing. Tests: `tests/services/employees.service.test.ts`, `tests/actions/employeeActions.test.ts`; typecheck and lint pass. |
 | PR-25 / A-016 | done | Avatar upload validates size, MIME allowlist, and file signatures; stored extension is derived from MIME; action tests cover rejects. |
 | PR-31 / A-017 | done | Manual mileage create/update now uses transactional RPCs with in-DB tax-year recalculation; rollback SQL added; dry-run passed. |
 | PR-17 / A-018 | done | RBAC role/permission and user/role replacements now diff-and-apply additions before removals; tests cover insert-failure safety. |

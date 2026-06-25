@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
+import { formatPhoneForStorage } from '@/lib/utils';
 import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
 import type { AuditLogEntry } from '@/app/actions/employeeDetails';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeEmergencyContact, EmployeeRightToWork, AttachmentCategory, EmployeeNote, AuditLog } from '@/types/database';
@@ -45,6 +46,7 @@ export interface EmployeeEditData {
   employee: Employee;
   financialDetails: EmployeeFinancialDetails | null;
   healthRecord: EmployeeHealthRecord | null;
+  rightToWork: EmployeeRightToWork | null;
 }
 
 async function enrichNotesWithAuthors(
@@ -98,6 +100,24 @@ async function enrichNotesWithAuthors(
   });
 }
 
+const phoneNumberSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.union([
+    z.string().transform((value, ctx) => {
+      try {
+        return formatPhoneForStorage(value);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invalid phone number format',
+        });
+        return z.NEVER;
+      }
+    }),
+    z.null(),
+  ])
+);
+
 export const employeeSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
@@ -108,8 +128,8 @@ export const employeeSchema = z.object({
   date_of_birth: z.union([z.string().min(1), z.null()]).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
   post_code: z.union([z.string().min(1), z.null()]).optional(),
-  phone_number: z.union([z.string().min(1), z.null()]).optional(),
-  mobile_number: z.union([z.string().min(1), z.null()]).optional(),
+  phone_number: phoneNumberSchema.optional(),
+  mobile_number: phoneNumberSchema.optional(),
   first_shift_date: z.union([z.string().min(1), z.null()]).optional(),
   uniform_preference: z.union([z.string().min(1), z.null()]).optional(),
   keyholder_status: z.union([z.boolean(), z.null()]).optional(),
@@ -178,8 +198,8 @@ export const EmergencyContactSchema = z.object({
   employee_id: z.string().uuid(),
   name: z.string().min(1, 'Name is required'),
   relationship: z.union([z.string().min(1), z.null()]).optional(),
-  phone_number: z.union([z.string().regex(/^(\+?44|0)?[0-9]{10,11}$/, 'Invalid UK phone number format'), z.null()]).optional(),
-  mobile_number: z.union([z.string().regex(/^(\+?44|0)?[0-9]{10,11}$/, 'Invalid UK phone number format'), z.null()]).optional(),
+  phone_number: phoneNumberSchema.optional(),
+  mobile_number: phoneNumberSchema.optional(),
   priority: z.enum(['Primary', 'Secondary', 'Other']).optional(),
   address: z.union([z.string().min(1), z.null()]).optional(),
 });
@@ -1037,19 +1057,23 @@ export class EmployeeService {
 
     const [
       financialResult,
-      healthResult
+      healthResult,
+      rightToWorkResult
     ] = await Promise.all([
       supabase.from('employee_financial_details').select('*').eq('employee_id', employeeId).maybeSingle(),
-      supabase.from('employee_health_records').select('*').eq('employee_id', employeeId).maybeSingle()
+      supabase.from('employee_health_records').select('*').eq('employee_id', employeeId).maybeSingle(),
+      supabase.from('employee_right_to_work').select('*').eq('employee_id', employeeId).maybeSingle()
     ]);
 
     if (financialResult.error) console.error('[EmployeeService] financial fetch failed for edit', financialResult.error);
     if (healthResult.error) console.error('[EmployeeService] health fetch failed for edit', healthResult.error);
+    if (rightToWorkResult.error) console.error('[EmployeeService] right-to-work fetch failed for edit', rightToWorkResult.error);
 
     return {
       employee,
       financialDetails: financialResult.data ?? null,
-      healthRecord: healthResult.data ?? null
+      healthRecord: healthResult.data ?? null,
+      rightToWork: rightToWorkResult.data ?? null
     };
   }
 
@@ -1244,7 +1268,11 @@ export class EmployeeService {
         }
         
         if (field.includes('date') && value) {
-          return new Date(value).toLocaleDateString('en-GB');
+          return escapeCsvCell(formatDateInLondon(value, {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+          }));
         }
         
         if (typeof value === 'string') {

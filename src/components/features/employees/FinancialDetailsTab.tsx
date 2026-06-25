@@ -1,9 +1,12 @@
 'use client';
 
 import type { EmployeeFinancialDetails } from '@/types/database';
+import { LinkButton } from '@/ds';
 
 interface FinancialDetailsTabProps {
+  employeeId: string;
   financialDetails: EmployeeFinancialDetails | null;
+  canEdit: boolean;
 }
 
 const DetailItem = ({ label, value }: { label: string; value: string | undefined | null }) => (
@@ -13,7 +16,7 @@ const DetailItem = ({ label, value }: { label: string; value: string | undefined
   </div>
 );
 
-export default function FinancialDetailsTab({ financialDetails }: FinancialDetailsTabProps) {
+export default function FinancialDetailsTab({ employeeId, financialDetails, canEdit }: FinancialDetailsTabProps) {
   const details = [
     { label: 'NI Number', value: financialDetails?.ni_number },
     { label: 'Account Name(s)', value: financialDetails?.payee_name },
@@ -32,7 +35,11 @@ export default function FinancialDetailsTab({ financialDetails }: FinancialDetai
             Confidential financial and payment information.
           </p>
         </div>
-        {/* Placeholder for future "Edit" button */}
+        {canEdit && (
+          <LinkButton href={`/employees/${employeeId}/edit?tab=financial`} variant="secondary" size="sm">
+            Edit
+          </LinkButton>
+        )}
       </div>
       
       <dl className="sm:divide-y sm:divide-gray-200">

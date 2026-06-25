@@ -37,6 +37,8 @@ export default async function EditEmployeePage({ params }: EditEmployeePageProps
       employee={result.data.employee}
       financialDetails={result.data.financialDetails}
       healthRecord={result.data.healthRecord}
+      rightToWork={result.data.rightToWork}
+      canViewDocuments={result.data.canViewDocuments}
     />
   )
 }
