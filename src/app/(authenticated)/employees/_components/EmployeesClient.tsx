@@ -224,6 +224,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
                       <TableHead>Employee</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Start Date</TableHead>
+                      <TableHead>Holiday</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -250,6 +251,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
                           <div className="text-[13px]">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
                           <div className="text-[11px] text-text-subtle">{calculateLengthOfService(emp.employment_start_date)}</div>
                         </TableCell>
+                        <TableCell className="text-[13px]">{emp.holiday_days_current_year ?? 0} days</TableCell>
                         <TableCell>
                           <Badge tone={statusBadgeTone(emp.status)} dot>{emp.status}</Badge>
                           {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (

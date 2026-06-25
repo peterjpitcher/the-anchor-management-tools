@@ -11,12 +11,11 @@ function readRepoFile(path: string) {
 
 describe('employees roster holiday column', () => {
   it('shows holiday days instead of birthdays on the main roster table', () => {
-    const employeesClientPage = readRepoFile('src/app/(authenticated)/employees/EmployeesClientPage.tsx')
+    const employeesClient = readRepoFile('src/app/(authenticated)/employees/_components/EmployeesClient.tsx')
 
-    expect(employeesClientPage).toContain("header: 'Holiday'")
-    expect(employeesClientPage).toContain("key: 'holiday_days_current_year'")
-    expect(employeesClientPage).toContain('holiday_days_current_year ?? 0')
-    expect(employeesClientPage).not.toContain("header: 'Birthday'")
-    expect(employeesClientPage).not.toContain("key: 'date_of_birth'")
+    expect(employeesClient).toContain('<TableHead>Holiday</TableHead>')
+    expect(employeesClient).toContain('holiday_days_current_year ?? 0')
+    expect(employeesClient).not.toContain('<TableHead>Birthday</TableHead>')
+    expect(employeesClient).not.toContain('date_of_birth')
   })
 })

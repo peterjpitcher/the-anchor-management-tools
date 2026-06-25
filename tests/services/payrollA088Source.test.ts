@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 
 const payrollActions = readFileSync(resolve(process.cwd(), 'src/app/actions/payroll.ts'), 'utf8')
 const payrollClient = readFileSync(resolve(process.cwd(), 'src/app/(authenticated)/rota/payroll/PayrollClient.tsx'), 'utf8')
-const rotaPayroll = readFileSync(resolve(process.cwd(), 'src/app/(authenticated)/rota/_components/RotaPayroll.tsx'), 'utf8')
 
 function functionBody(source: string, name: string): string {
   const start = source.indexOf(`export async function ${name}`)
@@ -30,7 +29,9 @@ describe('A-088 payroll wiring', () => {
   })
 
   it('does not use dead no-op payroll run menu handlers', () => {
-    expect(rotaPayroll).not.toContain('onClick={() => {}}')
-    expect(rotaPayroll).toContain("window.location.assign('/rota/payroll')")
+    expect(payrollClient).not.toContain('onClick={() => {}}')
+    expect(payrollClient).toContain('const handleSend')
+    expect(payrollClient).toContain('const handleApprove')
+    expect(payrollClient).toContain('const handleSavePeriod')
   })
 })
