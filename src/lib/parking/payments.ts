@@ -1,4 +1,4 @@
-import { createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder, refundPayPalPayment } from '@/lib/paypal'
+import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder, refundPayPalPayment } from '@/lib/paypal'
 import { insertParkingPayment, getPendingParkingPayment, updateParkingBooking, logParkingNotification } from './repository'
 import { ParkingBooking, ParkingPaymentRecord } from '@/types/parking'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -49,6 +49,20 @@ function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: b
   }
 }
 
+function parsePayPalMoney(value: unknown): number | null {
+  const amount = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(amount) ? Number(amount.toFixed(2)) : null
+}
+
+function payPalMoneyMatches(actual: number, expected: number): boolean {
+  return Math.abs(Number(actual.toFixed(2)) - Number(expected.toFixed(2))) <= 0.01
+}
+
+function extractPayPalOrderCurrency(order: any): string | null {
+  const raw = order?.purchase_units?.[0]?.amount?.currency_code
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
+}
+
 export async function createParkingPaymentOrder(
   booking: ParkingBooking,
   options: CreatePaymentOptions
@@ -89,7 +103,7 @@ export async function createParkingPaymentOrder(
     amount,
     returnUrl: options.returnUrl,
     cancelUrl: options.cancelUrl,
-    currency: options.currency
+    currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY
   })
 
   if (!approveUrl) {
@@ -100,7 +114,7 @@ export async function createParkingPaymentOrder(
     {
       booking_id: booking.id,
       amount,
-      currency: options.currency ?? 'GBP',
+      currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY,
       status: 'pending',
       paypal_order_id: orderId,
       expires_at: booking.payment_due_at,
@@ -310,7 +324,7 @@ export async function captureParkingPayment(
 
   const { data: paymentRecord, error: paymentLookupError } = await supabase
     .from('parking_booking_payments')
-    .select('id, status, booking_id, paypal_order_id')
+    .select('id, status, booking_id, paypal_order_id, amount, currency')
     .eq('booking_id', booking.id)
     .eq('paypal_order_id', paypalOrderId)
     .in('status', ['pending', 'paid'])
@@ -355,8 +369,23 @@ export async function captureParkingPayment(
   if (typeof orderCustomId !== 'string' || orderCustomId !== booking.id) {
     throw new Error('PayPal order does not belong to this booking')
   }
+  const expectedCurrency = (paymentRecord.currency || PAYPAL_DEFAULT_CURRENCY).toUpperCase()
+  const orderAmount = parsePayPalMoney(orderDetails?.purchase_units?.[0]?.amount?.value)
+  const expectedAmount = Number(paymentRecord.amount || 0)
+  const orderCurrency = extractPayPalOrderCurrency(orderDetails)
+  if (
+    orderAmount === null ||
+    !payPalMoneyMatches(orderAmount, expectedAmount) ||
+    orderCurrency !== expectedCurrency
+  ) {
+    throw new Error('PayPal order amount or currency does not match this booking')
+  }
 
-  const captureResult = await capturePayPalPayment(paypalOrderId)
+  const captureResult = await capturePayPalPayment(paypalOrderId, expectedCurrency)
+  const capturedAmount = parsePayPalMoney(captureResult.amount)
+  if (capturedAmount === null || !payPalMoneyMatches(capturedAmount, expectedAmount)) {
+    throw new Error('Captured PayPal amount does not match this booking')
+  }
 
   const { data: paymentUpdate, error } = await supabase
     .from('parking_booking_payments')
@@ -427,7 +456,7 @@ export async function refundParkingPayment(
   }
 
   const { randomUUID } = await import('crypto')
-  await refundPayPalPayment(payment.transaction_id, amount, randomUUID())
+  await refundPayPalPayment(payment.transaction_id, amount, randomUUID(), payment.currency)
 
   await updateParkingBooking(
     booking.id,

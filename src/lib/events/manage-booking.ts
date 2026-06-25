@@ -352,12 +352,13 @@ export async function processEventRefund(
       const paypalRefund = await refundPayPalPayment(
         payment.paypal_capture_id,
         amountForPayment,
-        `event-refund-${input.bookingId}-${payment.id}-${input.reason}-${Math.round(amountForPayment * 100)}`.slice(0, 108)
+        `event-refund-${input.bookingId}-${payment.id}-${input.reason}-${Math.round(amountForPayment * 100)}`.slice(0, 108),
+        payment.currency
       )
       paypalRefundMeta = {
         id: paypalRefund.refundId,
         status: String(paypalRefund.status || 'unknown'),
-        currency: 'GBP'
+        currency: paypalRefund.currency || (payment.currency || 'GBP').toUpperCase()
       }
 
       const mappedStatus = mapRefundStatus(paypalRefund.status)

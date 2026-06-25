@@ -79,5 +79,62 @@ describe('refundPayPalPayment', () => {
     expect(result.status).toBe('PENDING')
     expect(result.statusDetails).toBe('ECHECK')
     expect(result.amount).toBe('25.00')
+    expect(result.currency).toBe('GBP')
+  })
+
+  it('uses the requested refund currency instead of hardcoded GBP', async () => {
+    const fetchSpy = mockFetchForRefund({
+      id: 'REFUND-EUR',
+      status: 'COMPLETED',
+      amount: { value: '12.00', currency_code: 'EUR' },
+    })
+
+    const { refundPayPalPayment } = await import('../paypal')
+    const result = await refundPayPalPayment('CAPTURE-EUR', 12, 'req-eur', 'eur')
+
+    const refundCall = fetchSpy.mock.calls.find(call =>
+      typeof call[0] === 'string' && call[0].includes('/refund')
+    )
+    const body = JSON.parse(refundCall![1]!.body as string)
+    expect(body.amount.currency_code).toBe('EUR')
+    expect(result.currency).toBe('EUR')
+  })
+})
+
+describe('capturePayPalPayment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    process.env.PAYPAL_CLIENT_ID = 'test-client-id'
+    process.env.PAYPAL_CLIENT_SECRET = 'test-secret'
+    process.env.PAYPAL_ENVIRONMENT = 'sandbox'
+  })
+
+  it('rejects a captured payment with the wrong currency', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'test-token', expires_in: 3600 }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          id: 'ORDER-1',
+          status: 'COMPLETED',
+          payer: { payer_id: 'PAYER-1' },
+          purchase_units: [{
+            custom_id: 'booking-1',
+            payments: {
+              captures: [{
+                id: 'CAPTURE-1',
+                amount: { value: '10.00', currency_code: 'EUR' },
+              }],
+            },
+          }],
+        }), { status: 201 })
+      )
+
+    const { capturePayPalPayment } = await import('../paypal')
+    await expect(capturePayPalPayment('ORDER-1', 'GBP')).rejects.toThrow(
+      'PayPal capture currency mismatch'
+    )
   })
 })

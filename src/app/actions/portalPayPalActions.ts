@@ -1,7 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
+import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
@@ -10,6 +10,11 @@ function getPayPalOrderAmount(order: any): number | null {
   const raw = order?.purchase_units?.[0]?.amount?.value
   const amount = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN
   return Number.isFinite(amount) ? amount : null
+}
+
+function getPayPalOrderCurrency(order: any): string | null {
+  const raw = order?.purchase_units?.[0]?.amount?.currency_code
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
 }
 
 function amountsMatch(actual: number, expected: number): boolean {
@@ -88,7 +93,7 @@ export async function createDepositPaymentOrderByToken(
       amount: depositAmount,
       returnUrl: `${portalUrl}?payment_pending=1`,
       cancelUrl: portalUrl,
-      currency: 'GBP',
+      currency: PAYPAL_DEFAULT_CURRENCY,
       brandName: 'The Anchor',
       requestId: `pb-deposit-portal-${bookingId}-${Date.now()}`,
     })
@@ -198,14 +203,19 @@ export async function captureDepositPaymentByToken(
 
     const order = await getPayPalOrder(paypalOrderId)
     const orderAmount = getPayPalOrderAmount(order)
-    if (orderAmount === null || !amountsMatch(orderAmount, expectedAmount)) {
+    const orderCurrency = getPayPalOrderCurrency(order)
+    if (
+      orderAmount === null ||
+      !amountsMatch(orderAmount, expectedAmount) ||
+      orderCurrency !== PAYPAL_DEFAULT_CURRENCY
+    ) {
       logger.error('Portal capture: order amount mismatch before capture', {
-        metadata: { bookingId, paypalOrderId, orderAmount, expectedAmount }
+        metadata: { bookingId, paypalOrderId, orderAmount, orderCurrency, expectedAmount, expectedCurrency: PAYPAL_DEFAULT_CURRENCY }
       })
       return { error: 'Payment amount does not match the expected deposit. Please contact us.' }
     }
 
-    const captureResult = await capturePayPalPayment(paypalOrderId)
+    const captureResult = await capturePayPalPayment(paypalOrderId, PAYPAL_DEFAULT_CURRENCY)
 
     // Validate captured amount matches expected deposit
     const capturedAmount = parseFloat(captureResult.amount)
@@ -232,6 +242,7 @@ export async function captureDepositPaymentByToken(
           capture_id: captureResult.transactionId,
           order_id: paypalOrderId,
           amount: captureResult.amount,
+          currency: captureResult.currency,
         }
       })
 

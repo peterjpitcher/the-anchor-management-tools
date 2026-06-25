@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError, PayPalApiError } from '@/lib/paypal'
+import { PAYPAL_DEFAULT_CURRENCY, getPayPalOrder, capturePayPalPayment, isPayPalOrderNotFoundError, PayPalApiError } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 
@@ -17,6 +17,16 @@ type PendingPayPalBooking = {
   status: string | null
   paypal_reconciliation_attempts?: number | null
   paypal_reconciliation_last_error?: string | null
+}
+
+function getOrderAmountCurrency(order: any): string | null {
+  const raw = order?.purchase_units?.[0]?.amount?.currency_code
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
+}
+
+function getCaptureAmountCurrency(order: any): string | null {
+  const raw = order?.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.currency_code
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
 }
 
 function summarizePayPalLookupError(error: unknown): string {
@@ -290,10 +300,14 @@ export async function GET(request: NextRequest) {
         // Already captured — record the deposit
         const captureId = order.purchase_units?.[0]?.payments?.captures?.[0]?.id ?? null
         const capturedAmount = Number(order.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value ?? 0)
+        const capturedCurrency = getCaptureAmountCurrency(order)
         const expectedAmount = Number(booking.deposit_amount ?? 0)
-        if (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) {
+        if (
+          (expectedAmount > 0 && Math.abs(capturedAmount - expectedAmount) > 0.01) ||
+          capturedCurrency !== PAYPAL_DEFAULT_CURRENCY
+        ) {
           logger.error('PayPal reconciliation: amount mismatch on completed order', {
-            metadata: { bookingId, orderId, capturedAmount, expectedAmount }
+            metadata: { bookingId, orderId, capturedAmount, capturedCurrency, expectedAmount, expectedCurrency: PAYPAL_DEFAULT_CURRENCY }
           })
           results.push({ bookingId, outcome: 'amount_mismatch' })
           continue
@@ -320,7 +334,16 @@ export async function GET(request: NextRequest) {
       } else if (orderStatus === 'APPROVED') {
         // Customer approved but capture never happened — capture now
         try {
-          const captureResult = await capturePayPalPayment(orderId)
+          const orderCurrency = getOrderAmountCurrency(order)
+          if (orderCurrency !== PAYPAL_DEFAULT_CURRENCY) {
+            logger.error('PayPal reconciliation: currency mismatch before capture', {
+              metadata: { bookingId, orderId, orderCurrency, expectedCurrency: PAYPAL_DEFAULT_CURRENCY }
+            })
+            results.push({ bookingId, outcome: 'amount_mismatch' })
+            continue
+          }
+
+          const captureResult = await capturePayPalPayment(orderId, PAYPAL_DEFAULT_CURRENCY)
 
           const capturedAmount = parseFloat(captureResult.amount)
           const expectedAmount = Number(booking.deposit_amount ?? 0)

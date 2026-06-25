@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { refundPayPalPayment } from '@/lib/paypal'
+import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification } from '@/lib/refund-notifications'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -35,6 +35,7 @@ interface SourceBookingData {
   customerName: string | null
   customerEmail: string | null
   customerPhone: string | null
+  currency: string
 }
 
 async function getAuthenticatedUser(): Promise<{ userId: string } | { error: string }> {
@@ -70,6 +71,7 @@ async function loadSourceBooking(
       customerName: data.customer_name,
       customerEmail: data.contact_email,
       customerPhone: data.contact_phone,
+      currency: PAYPAL_DEFAULT_CURRENCY,
     }
   }
 
@@ -90,13 +92,14 @@ async function loadSourceBooking(
       customerName: customer ? `${customer.first_name} ${customer.last_name}`.trim() : null,
       customerEmail: customer?.email ?? null,
       customerPhone: customer?.mobile_e164 ?? null,
+      currency: PAYPAL_DEFAULT_CURRENCY,
     }
   }
 
   if (sourceType === 'parking') {
     const { data } = await db
       .from('parking_booking_payments')
-      .select('id, transaction_id, paid_at, amount, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)')
+      .select('id, transaction_id, paid_at, amount, currency, booking_id, parking_bookings(customer_id, customer_first_name, customer_last_name, customer_email, customer_mobile)')
       .eq('id', sourceId)
       .maybeSingle()
     if (!data) return null
@@ -113,6 +116,7 @@ async function loadSourceBooking(
       customerName,
       customerEmail: booking?.customer_email ?? null,
       customerPhone: booking?.customer_mobile ?? null,
+      currency: (data.currency || PAYPAL_DEFAULT_CURRENCY).toUpperCase(),
     }
   }
 
@@ -247,7 +251,7 @@ export async function processPayPalRefund(
   //    money has already left the account.
   let result: Awaited<ReturnType<typeof refundPayPalPayment>>
   try {
-    result = await refundPayPalPayment(booking.captureId, amount, paypalRequestId)
+    result = await refundPayPalPayment(booking.captureId, amount, paypalRequestId, booking.currency)
   } catch (err) {
     // PayPal API actually rejected the refund — safe to mark as failed
     const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -274,6 +278,10 @@ export async function processPayPalRefund(
   // PayPal returned a response (2xx) — money may have moved. From here,
   // any error is a local bookkeeping issue, NOT a reason to mark as failed.
   try {
+    if (result.currency && result.currency !== booking.currency) {
+      throw new Error(`PayPal refund currency mismatch: expected ${booking.currency}, got ${result.currency}`)
+    }
+
     if (result.status === 'COMPLETED') {
       const { error: completedUpdateError } = await db.from('payment_refunds').update({
         status: 'completed',
@@ -373,13 +381,30 @@ export async function processPayPalRefund(
     const errorMessage = postProcessErr instanceof Error ? postProcessErr.message : 'Unknown error'
     console.error('PayPal refund succeeded but post-processing failed:', errorMessage)
 
-    // Best-effort: mark as completed even if we lost some details
-    await db.from('payment_refunds').update({
-      status: 'completed',
-      paypal_status: result.status,
-      completed_at: new Date().toISOString(),
-      failure_message: `Post-processing error: ${errorMessage}`,
-    }).eq('id', refundRow.id)
+    const normalizedStatus = String(result.status || '').toUpperCase()
+    const fallbackUpdate =
+      normalizedStatus === 'COMPLETED'
+        ? {
+            status: 'completed',
+            paypal_status: 'COMPLETED',
+            completed_at: new Date().toISOString(),
+            failure_message: `Post-processing error: ${errorMessage}`,
+          }
+        : normalizedStatus === 'PENDING'
+          ? {
+              status: 'pending',
+              paypal_status: 'PENDING',
+              paypal_status_details: result.statusDetails || null,
+              failure_message: `Post-processing error: ${errorMessage}`,
+            }
+          : {
+              status: 'failed',
+              paypal_status: normalizedStatus || result.status,
+              failed_at: new Date().toISOString(),
+              failure_message: `PayPal returned ${result.status}; post-processing error: ${errorMessage}`,
+            }
+
+    await db.from('payment_refunds').update(fallbackUpdate).eq('id', refundRow.id)
 
     await logAuditEvent({
       user_id: userId,
@@ -396,6 +421,19 @@ export async function processPayPalRefund(
     })
 
     revalidatePath(REVALIDATE_PATHS[sourceType])
+    if (normalizedStatus === 'PENDING') {
+      return {
+        success: true,
+        refundId: refundRow.id,
+        pending: true,
+        warning: 'Refund is pending at PayPal but some local updates may have failed. Please refresh.',
+      }
+    }
+
+    if (normalizedStatus !== 'COMPLETED') {
+      return { error: `PayPal refund returned status: ${result.status}. Some local updates may have failed.` }
+    }
+
     return { success: true, refundId: refundRow.id, warning: 'Refund processed at PayPal but some local updates may have failed. Please refresh.' }
   }
 }

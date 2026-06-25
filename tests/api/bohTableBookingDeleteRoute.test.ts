@@ -58,8 +58,11 @@ describe('BOH table-booking DELETE behavior', () => {
       error: null,
     })
     const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
-    const update = vi.fn().mockReturnValue({ eq: updateEq })
+    const updateChain = {
+      eq: vi.fn(() => updateChain),
+      select: updateSelect,
+    }
+    const update = vi.fn().mockReturnValue(updateChain)
 
     const hardDeleteEq = vi.fn()
     const hardDelete = vi.fn().mockReturnValue({ eq: hardDeleteEq })

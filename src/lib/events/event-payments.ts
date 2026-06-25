@@ -556,10 +556,10 @@ async function captureEventPayPalOrderFromPreview(
   let capturedCurrency = (payment.currency || preview.currency).toUpperCase()
 
   if (!captureId) {
-    const capture = await capturePayPalPayment(input.orderId)
+    const capture = await capturePayPalPayment(input.orderId, preview.currency)
     captureId = capture.transactionId
     capturedAmount = Number(capture.amount)
-    capturedCurrency = preview.currency.toUpperCase()
+    capturedCurrency = (capture.currency || preview.currency).toUpperCase()
     if (!captureId || !Number.isFinite(capturedAmount) || !amountsMatch(capturedAmount, preview.totalAmount)) {
       return { state: 'blocked', reason: 'capture_amount_mismatch' }
     }

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const mockTableBookingPermission = vi.hoisted(() => vi.fn())
+
 vi.mock('@/lib/foh/api-auth', () => ({
-  requireFohPermission: vi.fn(),
+  requireFohPermission: mockTableBookingPermission,
+  requireBohTableBookingPermission: mockTableBookingPermission,
 }))
 
 vi.mock('@/lib/foh/bookings', () => ({

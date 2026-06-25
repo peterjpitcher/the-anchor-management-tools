@@ -92,7 +92,7 @@ describe('FOH event booking rollback safety', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn((name: string) => {
-        if (name === 'create_event_booking_v05') {
+        if (name === 'create_event_booking_v06') {
           return Promise.resolve({
             data: {
               state: 'confirmed',

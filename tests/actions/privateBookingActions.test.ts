@@ -42,6 +42,7 @@ vi.mock('@/lib/errors', () => ({
 }))
 
 vi.mock('@/lib/paypal', () => ({
+  PAYPAL_DEFAULT_CURRENCY: 'GBP',
   createSimplePayPalOrder: vi.fn(),
   capturePayPalPayment: vi.fn(),
   getPayPalOrder: vi.fn(),

@@ -245,6 +245,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
 
   // Capture server action — 'use server' inside the function body
   const bookingIdForCapture = preview.tableBookingId
+  const expectedCurrencyForCapture = preview.currency
   async function captureDeposit(captureOrderId: string): Promise<{ success: boolean; error?: string }> {
     'use server'
     const db = createAdminClient()
@@ -304,7 +305,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         return { success: false, error: 'Payment amount no longer matches this booking. Please refresh the page.' }
       }
 
-      const capture = await capturePayPalPayment(captureOrderId)
+      const capture = await capturePayPalPayment(captureOrderId, expectedCurrencyForCapture)
 
       // Validate that the captured order belongs to this booking
       if (capture.customId && capture.customId !== bookingIdForCapture) {
