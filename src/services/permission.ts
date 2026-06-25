@@ -157,12 +157,36 @@ const getCachedUserPermissions = (userId: string) =>
     { revalidate: 60, tags: [`permissions-${userId}`] }
   )();
 
+// Cache whether a user holds the super_admin role for 60 seconds, sharing the
+// same cache tag as permissions so it is busted on any role change.
+const getCachedIsSuperAdmin = (userId: string) =>
+  unstable_cache(
+    async (): Promise<boolean> => {
+      const admin = createAdminClient();
+      const { data, error } = await admin.rpc('get_user_roles', { p_user_id: userId });
+      if (error) {
+        console.error('Error fetching cached user roles:', error);
+        return false;
+      }
+      return ((data as Array<{ role_name?: string }>) ?? []).some(
+        (row) => row.role_name === 'super_admin'
+      );
+    },
+    ['user-is-super-admin', userId],
+    { revalidate: 60, tags: [`permissions-${userId}`] }
+  )();
+
 export class PermissionService {
   static async checkUserPermission(
     moduleName: ModuleName,
     action: ActionType,
     userId: string
   ): Promise<boolean> {
+    // super_admin is granted every permission. This short-circuit guarantees
+    // full access even if no explicit permission rows are assigned to the role.
+    if (await getCachedIsSuperAdmin(userId)) {
+      return true;
+    }
     // Use the cached permissions fetch so multiple permission checks within the
     // same request window only make one DB call.
     const permissions = await getCachedUserPermissions(userId);
@@ -365,10 +389,6 @@ export class PermissionService {
       throw new Error('Failed to load existing permissions');
     }
 
-    const existingPermissionIds = Array.from(
-      new Set((existing || []).map((item: any) => item.permission_id).filter(Boolean))
-    );
-
     const { data: assignedUsers, error: assignedUsersError } = await admin
       .from('user_roles')
       .select('user_id')
@@ -379,40 +399,17 @@ export class PermissionService {
       throw new Error('Failed to load assigned users');
     }
 
-    const permissionIdsToAdd = dedupedPermissionIds.filter(
-      (permissionId) => !existingPermissionIds.includes(permissionId)
-    );
-    const permissionIdsToRemove = existingPermissionIds.filter(
-      (permissionId) => !dedupedPermissionIds.includes(permissionId)
-    );
+    // Replace the full permission set atomically. The RPC deletes existing rows
+    // and inserts the new set inside one transactional function body, so a
+    // partial failure can never leave permissions half-applied.
+    const { error: replaceError } = await admin.rpc('replace_role_permissions', {
+      p_role_id: roleId,
+      p_permission_ids: dedupedPermissionIds
+    });
 
-    if (permissionIdsToAdd.length > 0) {
-      const rolePermissions = permissionIdsToAdd.map(permissionId => ({
-        role_id: roleId,
-        permission_id: permissionId
-      }));
-      
-      const { error: insertError } = await admin
-        .from('role_permissions')
-        .insert(rolePermissions);
-      
-      if (insertError) {
-        console.error('Error assigning permissions:', insertError);
-        throw new Error('Failed to assign permissions');
-      }
-    }
-
-    if (permissionIdsToRemove.length > 0) {
-      const { error: deleteError } = await admin
-        .from('role_permissions')
-        .delete()
-        .eq('role_id', roleId)
-        .in('permission_id', permissionIdsToRemove);
-
-      if (deleteError) {
-        console.error('Error removing permissions:', deleteError);
-        throw new Error('Failed to update permissions');
-      }
+    if (replaceError) {
+      console.error('Error replacing role permissions:', replaceError);
+      throw new Error('Failed to update permissions');
     }
 
     revalidateUserPermissionTags((assignedUsers || []).map((row: any) => row.user_id));
@@ -433,45 +430,18 @@ export class PermissionService {
       throw new Error('Failed to load existing roles');
     }
 
-    const existingRoleIds = Array.from(
-      new Set((existing || []).map((item: any) => item.role_id).filter(Boolean))
-    );
+    // Replace the full role set atomically. The RPC deletes existing rows and
+    // inserts the new set inside one transactional function body, so a partial
+    // failure can never leave the user's roles half-applied.
+    const { error: replaceError } = await admin.rpc('replace_user_roles', {
+      p_user_id: userId,
+      p_role_ids: dedupedRoleIds,
+      p_assigned_by: assignedByUserId
+    });
 
-    const roleIdsToAdd = dedupedRoleIds.filter(
-      (roleId) => !existingRoleIds.includes(roleId)
-    );
-    const roleIdsToRemove = existingRoleIds.filter(
-      (roleId) => !dedupedRoleIds.includes(roleId)
-    );
-
-    if (roleIdsToAdd.length > 0) {
-      const userRoles = roleIdsToAdd.map(roleId => ({
-        user_id: userId,
-        role_id: roleId,
-        assigned_by: assignedByUserId
-      }));
-      
-      const { error: insertError } = await admin
-        .from('user_roles')
-        .insert(userRoles);
-      
-      if (insertError) {
-        console.error('Error assigning roles:', insertError);
-        throw new Error('Failed to assign roles');
-      }
-    }
-
-    if (roleIdsToRemove.length > 0) {
-      const { error: deleteError } = await admin
-        .from('user_roles')
-        .delete()
-        .eq('user_id', userId)
-        .in('role_id', roleIdsToRemove);
-
-      if (deleteError) {
-        console.error('Error removing user roles:', deleteError);
-        throw new Error('Failed to update user roles');
-      }
+    if (replaceError) {
+      console.error('Error replacing user roles:', replaceError);
+      throw new Error('Failed to update user roles');
     }
 
     // Bust the cached permissions for the affected user so the next check

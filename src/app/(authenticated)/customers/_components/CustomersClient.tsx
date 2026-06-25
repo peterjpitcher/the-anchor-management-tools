@@ -118,6 +118,11 @@ export default function CustomersClient({
   const [tab, setTab] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
+  // Client-side column sorting of the loaded page (list is paginated server-side,
+  // so we sort the currently loaded rows — mirrors the previous DataTable behaviour)
+  const [sortColumn, setSortColumn] = useState<'name' | 'contact' | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
   // Form / UI state
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -325,6 +330,31 @@ export default function CustomersClient({
     router.push(`/messages/bulk?${params.toString()}`)
   }, [router, selected])
 
+  // Toggle sort: same column flips direction, new column starts ascending
+  const handleSort = useCallback((column: 'name' | 'contact') => {
+    setSortColumn(prev => {
+      if (prev === column) {
+        setSortDirection(d => (d === 'asc' ? 'desc' : 'asc'))
+        return prev
+      }
+      setSortDirection('asc')
+      return column
+    })
+  }, [])
+
+  // Sorted view of the currently loaded page
+  const sortedCustomers = useMemo(() => {
+    if (!sortColumn) return customers
+    const sortKey = (customer: Customer) => {
+      if (sortColumn === 'name') {
+        return [customer.first_name, customer.last_name].filter(Boolean).join(' ').toLowerCase()
+      }
+      return (customer.mobile_number || customer.email || '').toLowerCase()
+    }
+    const dir = sortDirection === 'asc' ? 1 : -1
+    return [...customers].sort((a, b) => sortKey(a).localeCompare(sortKey(b)) * dir)
+  }, [customers, sortColumn, sortDirection])
+
   // --- Form/Import subviews ---
   if (showForm || editingCustomer) {
     return (
@@ -462,15 +492,27 @@ export default function CustomersClient({
                   <TableHead className="w-9">
                     <Checkbox aria-label="Select all" checked={selected.size === customers.length && customers.length > 0} onChange={toggleAll} />
                   </TableHead>
-                  <TableHead>Customer</TableHead>
+                  <TableHead
+                    sortable
+                    sortDirection={sortColumn === 'name' ? sortDirection : null}
+                    onSort={() => handleSort('name')}
+                  >
+                    Customer
+                  </TableHead>
                   <TableHead>Labels</TableHead>
                   <TableHead>Preferences</TableHead>
-                  <TableHead>Contact</TableHead>
+                  <TableHead
+                    sortable
+                    sortDirection={sortColumn === 'contact' ? sortDirection : null}
+                    onSort={() => handleSort('contact')}
+                  >
+                    Contact
+                  </TableHead>
                   {canManageCustomers && <TableHead className="w-20" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customers.map(customer => (
+                {sortedCustomers.map(customer => (
                   <TableRow key={customer.id}>
                     <TableCell>
                       <Checkbox aria-label="Select customer" checked={selected.has(customer.id)} onChange={() => toggleSel(customer.id)} />

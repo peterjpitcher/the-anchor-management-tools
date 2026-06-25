@@ -2,6 +2,7 @@ import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { escapeHtml } from '@/lib/cron/alerting'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
@@ -179,6 +180,21 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     : isRemittanceAdvice
       ? remittancePaymentReference || '-'
       : formatPaymentTerms()
+
+  // Use the shared calculator so per-line totals round identically to the
+  // on-screen and stored values (round-then-add, not add-then-round).
+  // Only the standard invoice line table consumes this; credit-note and
+  // remittance variants render their own fields and are untouched.
+  const lineItems = invoice.line_items ?? []
+  const totals = calculateInvoiceTotals(
+    lineItems.map(li => ({
+      quantity: li.quantity,
+      unit_price: li.unit_price,
+      discount_percentage: li.discount_percentage,
+      vat_rate: li.vat_rate,
+    })),
+    invoice.invoice_discount_percentage
+  )
 
   return `
 <!DOCTYPE html>
@@ -528,7 +544,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
         </tr>
       </thead>
       <tbody>
-        ${invoice.line_items?.map(item => `
+        ${lineItems.map((item, index) => `
           <tr>
             <td>
               <div class="item-description">${escapeHtml(item.description)}</div>
@@ -538,7 +554,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
             <td class="text-right">${formatCurrency(item.unit_price)}</td>
             ${hasDiscounts ? `<td class="text-right">${item.discount_percentage || 0}%</td>` : ''}
             <td class="text-right">${item.vat_rate}%</td>
-            <td class="text-right">${formatCurrency(calculateLineTotal(item))}</td>
+            <td class="text-right">${formatCurrency(totals.lineBreakdown[index].total)}</td>
           </tr>
         `).join('') || ''}
       </tbody>
