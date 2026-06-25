@@ -106,4 +106,13 @@ describe('POST /api/parking/payment/retry', () => {
     expect(response.status).toBe(303)
     expect(response.headers.get('location')).toBe('http://localhost/parking/guest/missing-booking?payment=not_found')
   })
+
+  it('redirects requests without a booking id to a branded payment error page', async () => {
+    const response = await POST(makeRequest(''))
+
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('http://localhost/parking/payment-error?reason=missing_parameters')
+    expect(getParkingBooking).not.toHaveBeenCalled()
+    expect(createParkingPaymentOrder).not.toHaveBeenCalled()
+  })
 })

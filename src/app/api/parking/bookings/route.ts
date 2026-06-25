@@ -15,6 +15,7 @@ import {
 } from '@/lib/api/idempotency'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
+import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
 const CreateBookingSchema = z.object({
   customer: z.object({
@@ -214,8 +215,8 @@ export async function POST(request: NextRequest) {
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
         const paymentResult = await createParkingPaymentOrder(booking, {
-          returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
-          cancelUrl: `${appUrl}/parking/bookings/${booking.id}?cancelled=true`,
+          returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
+          cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
           client: supabase
         })
 

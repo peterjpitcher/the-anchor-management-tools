@@ -2,16 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getParkingBooking } from '@/lib/parking/repository'
 import { captureParkingPayment } from '@/lib/parking/payments'
+import { parkingGuestUrl, parkingPaymentErrorUrl } from '@/lib/parking/public-links'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const bookingId = searchParams.get('booking_id')
-  const paypalToken = searchParams.get('token')
+  const bookingId = searchParams.get('booking_id')?.trim() || ''
+  const paypalToken = searchParams.get('token')?.trim() || ''
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
-  if (!bookingId || !paypalToken) {
-    return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId ?? ''}?payment=missing_parameters`)
+  if (!bookingId) {
+    return NextResponse.redirect(parkingPaymentErrorUrl(appUrl, 'missing_parameters'), { status: 303 })
+  }
+
+  if (!paypalToken) {
+    return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'missing_parameters'), { status: 303 })
   }
 
   try {
@@ -19,18 +24,18 @@ export async function GET(request: NextRequest) {
     const booking = await getParkingBooking(bookingId, supabase)
 
     if (!booking) {
-      return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=not_found`)
+      return NextResponse.redirect(parkingPaymentErrorUrl(appUrl, 'not_found', bookingId), { status: 303 })
     }
 
     if (booking.payment_status === 'paid' && booking.status === 'confirmed') {
-      return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=success`)
+      return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'success'), { status: 303 })
     }
 
     await captureParkingPayment(booking, paypalToken, { client: supabase })
 
-    return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=success`)
+    return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'success'), { status: 303 })
   } catch (error) {
     console.error('Parking PayPal return handler error:', error)
-    return NextResponse.redirect(`${appUrl}/parking/guest/${bookingId}?payment=failed`)
+    return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'failed'), { status: 303 })
   }
 }

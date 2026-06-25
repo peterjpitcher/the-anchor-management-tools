@@ -3,17 +3,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder } from '@/lib/parking/payments'
 import { logger } from '@/lib/logger'
+import { parkingGuestUrl, parkingPaymentErrorUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
 function appBaseUrl(request: NextRequest): string {
   return process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 }
 
-function guestUrl(baseUrl: string, bookingId: string, payment: string): string {
-  return `${baseUrl}/parking/guest/${encodeURIComponent(bookingId)}?payment=${payment}`
-}
-
 function redirectToGuest(baseUrl: string, bookingId: string, payment: string): NextResponse {
-  return NextResponse.redirect(guestUrl(baseUrl, bookingId, payment), { status: 303 })
+  return NextResponse.redirect(parkingGuestUrl(baseUrl, bookingId, payment), { status: 303 })
 }
 
 export async function POST(request: NextRequest) {
@@ -24,11 +21,11 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     bookingId = String(formData.get('booking_id') ?? '').trim()
   } catch {
-    return NextResponse.redirect(`${baseUrl}/parking/guest/?payment=missing_parameters`, { status: 303 })
+    return NextResponse.redirect(parkingPaymentErrorUrl(baseUrl, 'missing_parameters'), { status: 303 })
   }
 
   if (!bookingId) {
-    return NextResponse.redirect(`${baseUrl}/parking/guest/?payment=missing_parameters`, { status: 303 })
+    return NextResponse.redirect(parkingPaymentErrorUrl(baseUrl, 'missing_parameters'), { status: 303 })
   }
 
   const supabase = createAdminClient()
@@ -57,8 +54,8 @@ export async function POST(request: NextRequest) {
     }
 
     const approveUrl = await createParkingPaymentOrder(booking, {
-      returnUrl: `${baseUrl}/api/parking/payment/return?booking_id=${booking.id}`,
-      cancelUrl: guestUrl(baseUrl, booking.id, 'cancelled'),
+      returnUrl: parkingPaymentReturnUrl(baseUrl, booking.id),
+      cancelUrl: parkingGuestUrl(baseUrl, booking.id, 'cancelled'),
       client: supabase,
     }).then(result => result.approveUrl)
 
