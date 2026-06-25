@@ -2280,6 +2280,7 @@ export async function runRecruitmentRetentionCleanup(
   for (const application of applications ?? []) {
     const candidate = application.candidate as any
     if (!candidate?.id || candidate.converted_employee_id) continue
+    if (candidate.anonymised_at) continue
 
     if (candidate.cv_file_path) {
       const { error: removeError } = await supabase.storage

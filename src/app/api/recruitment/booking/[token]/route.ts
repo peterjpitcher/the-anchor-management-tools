@@ -10,6 +10,7 @@ import {
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
 import { sendRecruitmentManagerAlert, sendRecruitmentTemplateEmail } from '@/lib/recruitment/communications'
+import { guardPublicRecruitmentRequest } from '@/lib/recruitment/public-security'
 
 type RouteContext = {
   params: Promise<{ token: string }>
@@ -18,6 +19,12 @@ type RouteContext = {
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params
+    const guard = await guardPublicRecruitmentRequest(_request, token, {
+      scope: 'recruitment-booking-preview',
+      maxAttempts: 30,
+    })
+    if (guard) return guard
+
     const preview = await previewRecruitmentBookingToken(token)
     if (!preview.valid || !preview.application) {
       return createErrorResponse('Booking link is invalid or expired', 'BOOKING_TOKEN_INVALID', 404)
@@ -49,7 +56,14 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params
-    const body = await request.json().catch(() => null) as { slot_id?: string } | null
+    const body = await request.json().catch(() => null) as { slot_id?: string; turnstile_token?: string } | null
+    const guard = await guardPublicRecruitmentRequest(request, token, {
+      scope: 'recruitment-booking-claim',
+      requireTurnstile: true,
+      turnstileToken: body?.turnstile_token ?? null,
+    })
+    if (guard) return guard
+
     const slotId = body?.slot_id
     if (!slotId) {
       return createErrorResponse('Slot ID is required', 'VALIDATION_ERROR', 400)
