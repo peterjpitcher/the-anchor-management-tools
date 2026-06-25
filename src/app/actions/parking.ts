@@ -12,6 +12,7 @@ import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus, Parkin
 import { calculateParkingPricing } from '@/lib/parking/pricing'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
 import { createPendingParkingBooking } from '@/services/parking'
+import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
 const CreateParkingBookingSchema = z.object({
   customer_first_name: z.string().min(1, 'First name is required'),
@@ -173,8 +174,8 @@ export async function createParkingBooking(formData: FormData) {
       try {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
         const { approveUrl } = await createParkingPaymentOrder(booking, {
-          returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
-          cancelUrl: `${appUrl}/parking/bookings/${booking.id}?cancelled=true`,
+          returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
+          cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
           client: adminClient
         })
         paymentLink = approveUrl
@@ -742,8 +743,8 @@ export async function generateParkingPaymentLink(bookingId: string) {
       || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
     const { approveUrl } = await createParkingPaymentOrder(booking as ParkingBooking, {
-      returnUrl: `${appUrl}/api/parking/payment/return?booking_id=${booking.id}`,
-      cancelUrl: `${appUrl}/parking`,
+      returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
+      cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
       client: adminClient
     })
 
