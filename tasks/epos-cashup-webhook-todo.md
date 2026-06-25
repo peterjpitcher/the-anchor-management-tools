@@ -13,9 +13,10 @@ Endpoint to register in Tabology: `https://management.orangejelly.co.uk/api/webh
 - [x] `.env.example` — `TABOLOGY_WEBHOOK_SECRET`, `SYSTEM_USER_ID`
 - [x] Inline variance flag on the daily sign-off view (+ dashboard £0 consistency)
 - [x] Unit tests for verifier + mapper
-- [ ] Verify: lint, typecheck, test, build
-- [ ] Commit on `feat/tabology-cashup-webhook`
+- [x] Verify: lint, typecheck, test, build (16 tests pass; typecheck/lint/build clean)
+- [x] Commit on `feat/tabology-cashup-webhook` (12b8f09a)
 - [ ] Confirm with owner before merge/deploy (live endpoint needs production)
+- [ ] Set `TABOLOGY_WEBHOOK_SECRET` in Vercel; paste endpoint URL + signing secret into Tabology
 
 ## Key decisions / assumptions
 
