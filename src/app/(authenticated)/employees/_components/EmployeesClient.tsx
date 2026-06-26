@@ -205,6 +205,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
               <SearchInput
                 value={searchTerm}
                 onChange={(v) => updateFilters({ search: v })}
+                debounceDelay={350}
                 placeholder="Search by name, role..."
                 className="w-60"
               />

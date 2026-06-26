@@ -137,6 +137,77 @@ describe('Mutation race/row-effect guards', () => {
     await expect(CustomerService.deleteCustomer('customer-1')).rejects.toThrow('Customer not found')
   })
 
+  it('CustomerService.deleteCustomer anonymises linked customers when hard delete hits a foreign key', async () => {
+    const customer = {
+      id: 'customer-1',
+      first_name: 'Elizabeth',
+      last_name: 'Collinge',
+      mobile_number: '+447795053291',
+      mobile_e164: '+447795053291',
+      email: 'elizabeth@example.com',
+    }
+    let capturedPayload: Record<string, unknown> | null = null
+
+    const fetchMaybeSingle = vi.fn().mockResolvedValue({ data: customer, error: null })
+    const fetchEq = vi.fn().mockReturnValue({ maybeSingle: fetchMaybeSingle })
+
+    const deleteMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: '23503',
+        message: 'update or delete on table "customers" violates foreign key constraint',
+      },
+    })
+    const deleteSelect = vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle })
+    const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
+
+    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'customer-1' }, error: null })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const update = vi.fn((payload: Record<string, unknown>) => {
+      capturedPayload = payload
+      return { eq: updateEq }
+    })
+
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'customers') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          delete: vi.fn().mockReturnValue({ eq: deleteEq }),
+          update,
+        }
+      }),
+    })
+
+    await expect(CustomerService.deleteCustomer('customer-1')).resolves.toEqual(customer)
+
+    expect(capturedPayload).toEqual(
+      expect.objectContaining({
+        first_name: 'Deleted',
+        last_name: 'Customer',
+        internal_notes: null,
+        email: null,
+        sms_opt_in: false,
+        sms_status: 'opted_out',
+        marketing_sms_opt_in: false,
+        whatsapp_opt_in: false,
+        whatsapp_status: 'opted_out',
+        marketing_whatsapp_opt_in: false,
+        marketing_email_opt_in: false,
+        messaging_status: 'opted_out',
+        stripe_customer_id: null,
+      })
+    )
+    const anonymizedPhone = capturedPayload?.mobile_number
+    expect(typeof anonymizedPhone).toBe('string')
+    expect(anonymizedPhone as string).toMatch(/^\+447000\d{8}$/)
+    expect(capturedPayload?.mobile_e164).toBe(anonymizedPhone)
+  })
+
   it('CustomerService.toggleSmsOptIn throws not-found when update affects no rows', async () => {
     const fetchMaybeSingle = vi.fn().mockResolvedValue({
       data: {
