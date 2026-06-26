@@ -508,6 +508,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Project</TableHead>
+                <TableHead>Client</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Hours/Qty</TableHead>
                 <TableHead>Amount</TableHead>
@@ -535,6 +536,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                   <TableRow key={entry.id}>
                     <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
                     <TableCell>{entry.project?.project_name || 'Unknown'}</TableCell>
+                    <TableCell>{entry.vendor?.name || 'Unknown'}</TableCell>
                     <TableCell>
                       <Badge tone={typeTone}>{entry.entry_type}</Badge>
                     </TableCell>
