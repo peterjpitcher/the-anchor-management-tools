@@ -444,6 +444,7 @@ export default function CustomersClient({
           <SearchInput
             value={searchTerm}
             onChange={handleSearch}
+            debounceDelay={350}
             placeholder="Search by name, phone, or email..."
             className="w-80"
           />

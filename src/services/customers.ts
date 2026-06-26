@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
+import { createHash } from 'node:crypto';
 import type { 
   CreateCustomerInput, 
   UpdateCustomerInput, 
@@ -41,6 +42,10 @@ function isDuplicateKeyError(error: { code?: string; message?: string } | null):
   return error?.code === '23505';
 }
 
+function isForeignKeyViolation(error: { code?: string } | null): boolean {
+  return error?.code === '23503';
+}
+
 function isPhoneUniqueViolation(error: { message?: string } | null): boolean {
   const message = error?.message?.toLowerCase() || '';
   return (
@@ -54,6 +59,80 @@ function isPhoneUniqueViolation(error: { message?: string } | null): boolean {
 function isEmailUniqueViolation(error: { message?: string } | null): boolean {
   const message = error?.message?.toLowerCase() || '';
   return message.includes('idx_customers_email_unique') || message.includes('customers_email');
+}
+
+function buildDeletedCustomerPhone(customerId: string, attempt: number): string {
+  const hash = createHash('sha256').update(`${customerId}:${attempt}`).digest('hex');
+  let digits = '';
+  for (const char of hash) {
+    digits += String(parseInt(char, 16) % 10);
+  }
+  return `+447000${digits.slice(0, 8)}`;
+}
+
+async function anonymizeCustomerForDelete(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  customerId: string
+): Promise<void> {
+  let lastError: { code?: string; message?: string } | null = null;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const deletedPhone = buildDeletedCustomerPhone(customerId, attempt);
+    const payload: Record<string, unknown> = {
+      first_name: 'Deleted',
+      last_name: 'Customer',
+      internal_notes: null,
+      mobile_number: deletedPhone,
+      mobile_e164: deletedPhone,
+      mobile_number_raw: null,
+      email: null,
+      sms_opt_in: false,
+      sms_status: 'opted_out',
+      marketing_sms_opt_in: false,
+      whatsapp_opt_in: false,
+      whatsapp_status: 'opted_out',
+      marketing_whatsapp_opt_in: false,
+      marketing_email_opt_in: false,
+      messaging_status: 'opted_out',
+      stripe_customer_id: null,
+      sms_delivery_failures: 0,
+      last_sms_failure_reason: null,
+      last_successful_sms_at: null,
+      last_successful_delivery: null,
+      consecutive_failures: 0,
+      total_failures_30d: 0,
+      last_failure_type: null,
+      sms_deactivated_at: new Date().toISOString(),
+      sms_deactivation_reason: 'customer_deleted',
+    };
+
+    const { data: anonymizedCustomer, error } = await supabase
+      .from('customers')
+      .update(payload)
+      .eq('id', customerId)
+      .select('id')
+      .maybeSingle();
+
+    if (!error && anonymizedCustomer) return;
+
+    if (error) {
+      lastError = error as { code?: string; message?: string };
+      if (
+        isDuplicateKeyError(lastError) &&
+        isPhoneUniqueViolation(lastError)
+      ) {
+        continue;
+      }
+
+      console.error('Customer anonymization error:', error);
+      throw new Error('Failed to delete customer');
+    }
+
+    throw new Error('Customer not found');
+  }
+
+  console.error('Customer anonymization exhausted unique phone retries:', lastError);
+  throw new Error('Failed to delete customer');
 }
 
 async function findExistingCustomerByPhone(
@@ -255,6 +334,11 @@ export class CustomerService {
       .maybeSingle();
 
     if (error) {
+      if (isForeignKeyViolation(error as { code?: string } | null)) {
+        await anonymizeCustomerForDelete(supabase, id);
+        return customer;
+      }
+
       console.error('Customer deletion error:', error);
       throw new Error('Failed to delete customer');
     }

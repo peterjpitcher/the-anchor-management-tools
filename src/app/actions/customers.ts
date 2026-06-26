@@ -369,6 +369,7 @@ export async function deleteCustomer(id: string) {
     }
 
     revalidatePath('/customers')
+    revalidatePath(`/customers/${id}`)
     revalidateTag('dashboard')
     return { success: true }
   } catch (error) {

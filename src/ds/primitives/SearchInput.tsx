@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Input } from './Input'
 
@@ -37,13 +38,44 @@ export function SearchInput({
   defaultValue,
   onChange,
   onSearch,
-  debounceDelay: _debounce,
+  debounceDelay,
   loading: _loading,
   placeholder = 'Search...',
   className,
 }: SearchInputProps) {
-  const handleChange = onChange ?? onSearch ?? (() => {})
-  const value = valueProp ?? defaultValue ?? ''
+  const emitChange = useCallback(
+    (value: string) => {
+      const handler = onChange ?? onSearch
+      handler?.(value)
+    },
+    [onChange, onSearch]
+  )
+  const committedValue = valueProp ?? defaultValue ?? ''
+  const delay = useMemo(
+    () => (typeof debounceDelay === 'number' && debounceDelay > 0 ? debounceDelay : 0),
+    [debounceDelay]
+  )
+  const [draftValue, setDraftValue] = useState(committedValue)
+  const value = delay > 0 ? draftValue : committedValue
+
+  useEffect(() => {
+    setDraftValue(committedValue)
+  }, [committedValue])
+
+  useEffect(() => {
+    if (delay === 0 || draftValue === committedValue) return
+    const timer = window.setTimeout(() => emitChange(draftValue), delay)
+    return () => window.clearTimeout(timer)
+  }, [committedValue, delay, draftValue, emitChange])
+
+  const handleChange = (nextValue: string) => {
+    if (delay > 0) {
+      setDraftValue(nextValue)
+      return
+    }
+    emitChange(nextValue)
+  }
+
   return (
     <div className={cn('relative', className)}>
       <Input
