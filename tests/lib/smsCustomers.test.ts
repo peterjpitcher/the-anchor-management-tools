@@ -253,7 +253,9 @@ describe('ensureCustomerForPhone', () => {
     expect(inserts).toHaveLength(1)
     expect(inserts[0]).toMatchObject({
       first_name: 'Jane',
-      last_name: 'Smith'
+      last_name: 'Smith',
+      sms_opt_in: false,
+      sms_status: 'active'
     })
   })
 
