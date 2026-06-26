@@ -134,7 +134,13 @@ export class CustomerService {
       mobile_number: mobileNumber,
       mobile_e164: mobileNumber,
       email: sanitizeEmail(input.email),
-      sms_opt_in: input.sms_opt_in
+      sms_opt_in: input.sms_opt_in !== false,
+      sms_status: input.sms_opt_in === false ? 'opted_out' : 'active',
+      marketing_sms_opt_in: false,
+      whatsapp_opt_in: true,
+      whatsapp_status: 'active',
+      marketing_whatsapp_opt_in: false,
+      marketing_email_opt_in: false
     };
 
     const { data: customer, error } = await supabase
@@ -318,7 +324,13 @@ export class CustomerService {
       mobile_number: customer.mobile_number,
       mobile_e164: customer.mobile_number,
       email: sanitizeEmail(customer.email),
-      sms_opt_in: customer.sms_opt_in
+      sms_opt_in: customer.sms_opt_in !== false,
+      sms_status: customer.sms_opt_in === false ? 'opted_out' : 'active',
+      marketing_sms_opt_in: false,
+      whatsapp_opt_in: true,
+      whatsapp_status: 'active',
+      marketing_whatsapp_opt_in: false,
+      marketing_email_opt_in: false
     }));
 
     const { data: importResult, error: importError } = await supabase
