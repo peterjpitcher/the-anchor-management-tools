@@ -192,8 +192,13 @@ describe('parking customer resolution guards', () => {
       expect.objectContaining({
         mobile_number: '+447700900999',
         mobile_e164: '+447700900999',
-        sms_opt_in: false,
+        sms_opt_in: true,
         sms_status: 'active',
+        marketing_sms_opt_in: false,
+        whatsapp_opt_in: true,
+        whatsapp_status: 'active',
+        marketing_whatsapp_opt_in: false,
+        marketing_email_opt_in: false,
       })
     )
     expect(errorSpy).not.toHaveBeenCalledWith('Failed to create customer', expect.anything())

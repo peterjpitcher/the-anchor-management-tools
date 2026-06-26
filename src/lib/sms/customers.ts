@@ -256,8 +256,13 @@ export async function ensureCustomerForPhone(
       mobile_number: standardizedPhone,
       mobile_e164: standardizedPhone,
       email: sanitizedEmail,
-      sms_opt_in: false,
-      sms_status: 'active'
+      sms_opt_in: true,
+      sms_status: 'active',
+      marketing_sms_opt_in: false,
+      whatsapp_opt_in: true,
+      whatsapp_status: 'active',
+      marketing_whatsapp_opt_in: false,
+      marketing_email_opt_in: false
     }
 
     const { data: inserted, error: insertError } = await client

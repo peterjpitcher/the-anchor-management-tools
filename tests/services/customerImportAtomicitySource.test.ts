@@ -12,6 +12,14 @@ const rollbackSource = readFileSync(
   resolve(process.cwd(), 'supabase/rollbacks/20260708000023_customer_import_atomicity.sql'),
   'utf8'
 )
+const contactDefaultsMigrationSource = readFileSync(
+  resolve(process.cwd(), 'supabase/migrations/20260712000000_customer_import_contact_defaults.sql'),
+  'utf8'
+)
+const contactDefaultsRollbackSource = readFileSync(
+  resolve(process.cwd(), 'supabase/rollbacks/20260712000000_customer_import_contact_defaults.sql'),
+  'utf8'
+)
 
 function serviceMethodBody(name: string) {
   const start = serviceSource.indexOf(`static async ${name}`)
@@ -44,5 +52,14 @@ describe('customer import atomicity wiring', () => {
     expect(migrationSource).toContain('c.mobile_number = v.mobile_number')
     expect(migrationSource).toContain('lower(c.email) = v.email')
     expect(rollbackSource).toContain('DROP FUNCTION IF EXISTS public.import_customers_atomic')
+  })
+
+  it('keeps imported customer service contact defaults active', () => {
+    expect(contactDefaultsMigrationSource).toContain('whatsapp_opt_in')
+    expect(contactDefaultsMigrationSource).toContain("COALESCE((item->>'sms_opt_in')::boolean, true)")
+    expect(contactDefaultsMigrationSource).toContain("COALESCE((item->>'whatsapp_opt_in')::boolean, true)")
+    expect(contactDefaultsMigrationSource).toContain('marketing_email_opt_in')
+    expect(contactDefaultsMigrationSource).toContain('GRANT EXECUTE ON FUNCTION public.import_customers_atomic(jsonb) TO authenticated, service_role')
+    expect(contactDefaultsRollbackSource).toContain('CREATE OR REPLACE FUNCTION public.import_customers_atomic')
   })
 })
