@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 
-import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth'
+import { withApiAuth, createApiResponse, createErrorResponse, createCorsPreflightResponse } from '@/lib/api/auth'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
@@ -132,14 +132,9 @@ function buildInternalNotificationEmail(args: {
 }
 
 export async function OPTIONS() {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
-      'Access-Control-Max-Age': '86400',
-    },
+  return createCorsPreflightResponse({
+    methods: 'POST, OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization, X-API-Key',
   })
 }
 

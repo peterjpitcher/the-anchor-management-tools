@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
+import { withApiAuth, createApiResponse, createErrorResponse, createCorsPreflightResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { resolveStatusFilters } from '@/lib/events/status-filters';
@@ -24,14 +24,10 @@ type EventCapacityRow = {
 
 // Handle CORS preflight
 export async function OPTIONS(request: NextRequest) {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
-      'Access-Control-Max-Age': '86400',
-    },
+  return createCorsPreflightResponse({
+    request,
+    methods: 'GET, POST, OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization, X-API-Key',
   });
 }
 
