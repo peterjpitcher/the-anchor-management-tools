@@ -133,6 +133,47 @@ export async function logApiUsage(
   }
 }
 
+const DEFAULT_CORS_ALLOWED_ORIGIN = 'https://www.the-anchor.pub';
+const DEFAULT_CORS_ALLOWED_HEADERS = 'Content-Type, Authorization, X-API-Key, Idempotency-Key, X-Turnstile-Token';
+
+function parseCorsAllowedOrigins(): string[] {
+  return (process.env.CORS_ALLOWED_ORIGIN ?? DEFAULT_CORS_ALLOWED_ORIGIN)
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+export function getCorsAllowedOrigin(requestOrigin?: string | null): string {
+  const allowedOrigins = parseCorsAllowedOrigins();
+
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+
+  return allowedOrigins[0] ?? DEFAULT_CORS_ALLOWED_ORIGIN;
+}
+
+export function createCorsPreflightResponse({
+  request,
+  methods = 'GET, POST, OPTIONS',
+  allowedHeaders = DEFAULT_CORS_ALLOWED_HEADERS,
+}: {
+  request?: Request;
+  methods?: string;
+  allowedHeaders?: string;
+} = {}) {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': getCorsAllowedOrigin(request?.headers.get('origin')),
+      'Access-Control-Allow-Methods': methods,
+      'Access-Control-Allow-Headers': allowedHeaders,
+      'Access-Control-Max-Age': '86400',
+      Vary: 'Origin',
+    },
+  });
+}
+
 export function createApiResponse(
   data: any,
   status: number = 200,
@@ -150,17 +191,15 @@ export function createApiResponse(
     ? 'public, max-age=60, stale-while-revalidate=120'
     : 'no-store'
 
-  // SECURITY: Set CORS_ALLOWED_ORIGIN env var to restrict cross-origin access to known domains
-  // (e.g. 'https://www.the-anchor.pub' for the external booking widget).
-  // Defaults to '*' only as a fallback — operators should always configure this in production.
-  const corsOrigin = process.env.CORS_ALLOWED_ORIGIN ?? '*'
+  const corsOrigin = getCorsAllowedOrigin()
 
   const responseHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'Cache-Control': cacheControl,
     'Access-Control-Allow-Origin': corsOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Idempotency-Key, X-Turnstile-Token',
+    'Access-Control-Allow-Headers': DEFAULT_CORS_ALLOWED_HEADERS,
+    Vary: 'Origin',
     ...headers,
   }
 
