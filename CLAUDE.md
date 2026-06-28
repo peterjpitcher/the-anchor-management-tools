@@ -60,7 +60,7 @@ When given a bug report, just fix it. Don't ask for hand-holding. Check Supabase
 
 ## Domain Rules
 
-- £10 deposit per person for groups of 7 or more (NOT credit card holds — that was old functionality)
+- £10 deposit per person for groups of 10 or more (NOT credit card holds — that was old functionality)
 - Events hosted by the venue itself are exceptions to deposit rules
 - Contracts must be generated for private bookings
 - Booking amendments, cancellations, and deletions must track payment state correctly

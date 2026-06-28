@@ -16,6 +16,7 @@
 - Evidence suggests the move to 10 was a deliberate spec change (2026-04-28 spec, May migrations) — groups of 7–9 currently pay **no deposit**.
 - **Action:** rule which is correct. If 10+ is current policy → update CLAUDE.md (and anywhere else that states 7). If 7+ stands → fix both the TS constant and the SQL RPC together.
 - Related (F22): the rule lives in two places (TS + SQL) and the code comment admits the threshold "has changed twice already" — consolidate or add a cross-check test.
+- **Resolved 2026-06-28: ruled 10+ (live code is authoritative); CLAUDE.md updated to match.**
 
 ---
 
