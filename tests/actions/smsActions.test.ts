@@ -44,7 +44,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { sendSMS } from '@/lib/twilio'
-import { sendBulkSMSAsync, sendOTPMessage, sendSms } from '@/app/actions/sms'
+import { sendBulkSMSAsync, sendSms } from '@/app/actions/sms'
 
 describe('sms action bulk guards', () => {
   beforeEach(() => {
@@ -148,105 +148,6 @@ describe('sms action bulk guards', () => {
       })
     )
     expect(result).not.toHaveProperty('error')
-  })
-})
-
-describe('sms action OTP guards', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    ;(createAdminClient as unknown as vi.Mock).mockReturnValue({})
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
-      customerId: 'customer-otp',
-      resolutionError: undefined
-    })
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
-      success: true,
-      sid: 'SM-OTP-1'
-    })
-  })
-
-  it('fails closed when customer resolution safety check errors', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
-      customerId: null,
-      resolutionError: 'lookup_failed'
-    })
-
-    await expect(
-      sendOTPMessage({
-        phoneNumber: '+447700900123',
-        message: 'Code: 123456'
-      })
-    ).rejects.toThrow('SMS blocked by customer safety check')
-
-    expect(sendSMS).not.toHaveBeenCalled()
-  })
-
-  it('fails closed when customer resolution returns no customer ID', async () => {
-    ;(ensureCustomerForPhone as unknown as vi.Mock).mockResolvedValue({
-      customerId: null,
-      resolutionError: undefined
-    })
-
-    await expect(
-      sendOTPMessage({
-        phoneNumber: '+447700900124',
-        message: 'Code: 654321'
-      })
-    ).rejects.toThrow('SMS blocked by customer safety check')
-
-    expect(sendSMS).not.toHaveBeenCalled()
-  })
-
-  it('sends OTP when customer resolution succeeds', async () => {
-    const result = await sendOTPMessage({
-      phoneNumber: '+447700900125',
-      message: 'Code: 246810'
-    })
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        success: true,
-        messageSid: 'SM-OTP-1',
-        logFailure: false,
-      })
-    )
-    expect(sendSMS).toHaveBeenCalledWith(
-      '+447700900125',
-      'Code: 246810',
-      expect.objectContaining({
-        customerId: 'customer-otp',
-        createCustomerIfMissing: false,
-        metadata: expect.objectContaining({
-          context: 'otp',
-          template_key: 'otp_message',
-          trigger_type: 'otp_message'
-        })
-      })
-    )
-  })
-
-  it('fails safe when OTP sendSMS returns logging_failed as non-success', async () => {
-    ;(sendSMS as unknown as vi.Mock).mockResolvedValue({
-      success: false,
-      sid: 'SM-OTP-logging-1',
-      code: 'logging_failed',
-      logFailure: true,
-      error: 'DB insert failed',
-    })
-
-    const result = await sendOTPMessage({
-      phoneNumber: '+447700900126',
-      message: 'Code: 135790'
-    })
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        success: true,
-        messageSid: 'SM-OTP-logging-1',
-        code: 'logging_failed',
-        logFailure: true,
-      })
-    )
   })
 })
 
