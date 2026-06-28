@@ -247,26 +247,6 @@ export class InvoiceService {
     return updatedInvoice;
   }
 
-  static async persistOverdueInvoices() {
-    const adminClient = await createAdminClient();
-    const today = getTodayIsoDate();
-
-    const { error } = await adminClient
-      .from('invoices')
-      .update({
-        status: 'overdue' as InvoiceStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .lte('due_date', today)
-      .eq('status', 'sent')
-      .is('deleted_at', null);
-
-    if (error) {
-      console.error('Error persisting overdue invoices:', error);
-      throw new Error('Failed to persist overdue invoices');
-    }
-  }
-
   static async getInvoices(
     status?: InvoiceStatus | 'unpaid',
     page: number = 1,
