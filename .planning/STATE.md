@@ -116,9 +116,10 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 260519-ice | Restore events detail page with attendees, marketing links, promotion content, and full metadata display | 2026-05-19 | 95c18f0d | [260519-ice-restore-events-detail-page-with-attendee](./quick/260519-ice-restore-events-detail-page-with-attendee/) |
 | 260610-bop | Delete dead unauthenticated RLS-bypassing phone-cleanup server actions (audit finding F5) | 2026-06-10 | 98dadb72 | [260610-bop-delete-dead-unauthenticated-fix-phone-nu](./quick/260610-bop-delete-dead-unauthenticated-fix-phone-nu/) |
+| 260628-mde | Delete dead ungated RLS-bypassing sendOTPMessage server action (SEC-DEADCODE-01) | 2026-06-28 | c44d2fa2 | [260628-mde-delete-dead-ungated-server-action-sendot](./quick/260628-mde-delete-dead-ungated-server-action-sendot/) |
 
 ## Session Continuity
 
-Last activity: 2026-06-10 - Completed quick task 260610-bop: Delete dead unauthenticated phone-cleanup actions (audit F5)
+Last activity: 2026-06-28 - Completed quick task 260628-mde: Delete dead ungated sendOTPMessage server action (SEC-DEADCODE-01)
 Stopped at: Completed 04-02-PLAN.md — All phases complete
 Resume file: .planning/ROADMAP.md
