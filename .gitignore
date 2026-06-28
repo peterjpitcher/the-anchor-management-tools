@@ -92,3 +92,6 @@ supabase/.temp/
 # QA review + task working artifacts (regenerated per session)
 tasks/codex-qa-review/
 tasks/ai-seo-content-quality/
+
+# graphify knowledge-graph tool output (generated, ~18MB) — do not commit
+graphify-out/
