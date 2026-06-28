@@ -7,7 +7,7 @@ import { headers } from 'next/headers'
 import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { ensureCustomerForPhone, resolveCustomerIdForSms } from '@/lib/sms/customers'
+import { resolveCustomerIdForSms } from '@/lib/sms/customers'
 import { sendBulkSms } from '@/lib/sms/bulk'
 import { parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
@@ -165,84 +165,6 @@ async function ensureBulkRateLimitNotExceeded() {
   }
 
   return null
-}
-
-export async function sendOTPMessage(params: { phoneNumber: string; message: string; customerId?: string }) {
-  const { phoneNumber, message, customerId } = params
-  let resolvedCustomerId = customerId ?? undefined
-
-  try {
-    const supabase = createAdminClient()
-
-    if (!resolvedCustomerId) {
-      const ensured = await ensureCustomerForPhone(supabase, phoneNumber)
-      if (ensured.resolutionError) {
-        logger.error('OTP SMS blocked because customer resolution safety check failed', {
-          metadata: {
-            phoneNumber,
-            reason: ensured.resolutionError
-          }
-        })
-        throw new Error('SMS blocked by customer safety check')
-      }
-
-      resolvedCustomerId = ensured.customerId ?? undefined
-      if (!resolvedCustomerId) {
-        logger.error('OTP SMS blocked because customer resolution returned no customer', {
-          metadata: { phoneNumber }
-        })
-        throw new Error('SMS blocked by customer safety check')
-      }
-    }
-
-    const otpStage = createHash('sha256').update(message).digest('hex').slice(0, 16)
-
-    const result = await sendSMS(phoneNumber, message, {
-      customerId: resolvedCustomerId,
-      metadata: {
-        context: 'otp',
-        template_key: 'otp_message',
-        trigger_type: 'otp_message',
-        stage: otpStage
-      },
-      createCustomerIfMissing: false // Don't create customer for OTP if not found
-    })
-
-    const otpCode = typeof result?.code === 'string' ? result.code : undefined
-    const otpLogFailure = result?.logFailure === true || otpCode === 'logging_failed'
-
-    if (otpLogFailure) {
-      // Fail-safe: the OTP SMS may have been delivered but outbound logging failed. Do not throw,
-      // or clients may retry and amplify duplicate OTP sends.
-      logger.error('OTP SMS sent but outbound message logging failed', {
-        metadata: {
-          customerId: resolvedCustomerId ?? null,
-          code: otpCode ?? null,
-        },
-      })
-    } else if (!result.success) {
-      throw new Error(result.error || 'Failed to send OTP SMS')
-    }
-
-    return {
-      success: true,
-      messageSid: result.sid,
-      code: otpCode,
-      logFailure: otpLogFailure,
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (message !== 'SMS blocked by customer safety check') {
-      logger.error('Failed to send OTP SMS', {
-        error: error instanceof Error ? error : new Error(String(error)),
-        metadata: {
-          phoneNumber,
-          customerId: resolvedCustomerId ?? null,
-        },
-      })
-    }
-    throw error
-  }
 }
 
 export async function sendSms(params: SendSmsParams) {
