@@ -12,6 +12,12 @@ Use this index to find the canonical documentation for The Anchor Management Too
 - [Hiring workflow requirements](./plans/hiring-workflow.md) – jobs, candidates, and hiring workflow requirements with discovery notes.
 - [OJ Projects PRD](./plans/oj-projects.md) – client projects, time/mileage tracking, and automated monthly invoicing.
 
+## Audits & Reports
+- [Full application review blueprint](./audits/full-application-review-blueprint.md) – exhaustive review checklist and historical review evidence.
+- [Agent handoff 2026-02-14](./reports/agent-handoff-2026-02-14.md) – historical hardening review handoff.
+- [Table bookings phase 1 discovery](./reports/table-bookings-phase1-discovery.md) – table-bookings discovery report.
+- [Main menu items](./reports/main-menu-items.md) – generated active menu item copy.
+
 ## Development Workflow
 - [Contributing](./CONTRIBUTING.md) – project structure, coding standards, branch strategy, and PR expectations.
 - [Testing](./TESTING.md) – current automated test status, manual smoke checks, and how to add new coverage.

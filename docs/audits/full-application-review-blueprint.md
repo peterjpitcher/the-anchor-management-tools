@@ -2928,8 +2928,8 @@ Files touched in latest segment:
 - `tests/lib/parkingPaymentsPersistence.test.ts`
 - `src/services/sms-queue.ts`
 - `tests/services/smsQueue.service.test.ts`
-- `FULL_APPLICATION_REVIEW_BLUEPRINT.md`
-- `AGENT_HANDOFF_2026-02-14.md`
+- `docs/audits/full-application-review-blueprint.md`
+- `docs/reports/agent-handoff-2026-02-14.md`
 
 Validation evidence (latest Dev 2 batch, finding 458):
 - `./node_modules/.bin/eslint src/services/sms-queue.ts tests/services/smsQueue.service.test.ts` passed
@@ -3158,7 +3158,7 @@ Execution notes for next agent:
 - Treat this repository as already dirty and never revert unrelated edits.
 
 Handover addendum (2026-02-15):
-- See `/Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md` for the forwardable prompt, remaining-work checklist, and updated triage counts/commands.
+- See `docs/reports/agent-handoff-2026-02-14.md` for the forwardable prompt, remaining-work checklist, and updated triage counts/commands.
 
 ## 4-Developer Parallel Handoff (2026-02-15)
 
@@ -3171,7 +3171,7 @@ Reserved finding ID ranges (do not use IDs outside your range):
 Shared rules (all devs):
 - Every fix must include regression tests.
 - After each substantial batch: targeted eslint/vitest -> `tsc --noEmit` -> full vitest -> `next build`.
-- After each batch, update BOTH `/Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md` and `/Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md` with: new finding IDs (within your reserved range), severity + summary, regression coverage entries, and exact validation evidence (include test/file counts).
+- After each batch, update BOTH `docs/reports/agent-handoff-2026-02-14.md` and `docs/audits/full-application-review-blueprint.md` with: new finding IDs (within your reserved range), severity + summary, regression coverage entries, and exact validation evidence (include test/file counts).
 
 ### Prompt (Dev 1): Actions + API Routes + Webhooks (Non-cron)
 ```text
@@ -3180,8 +3180,8 @@ You are Developer 1 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -3230,8 +3230,8 @@ You are Developer 2 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -3281,8 +3281,8 @@ You are Developer 3 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -3332,8 +3332,8 @@ You are Developer 4 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.

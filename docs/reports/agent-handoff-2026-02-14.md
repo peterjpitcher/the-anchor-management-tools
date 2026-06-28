@@ -923,7 +923,7 @@ Continue the meticulous end-to-end bug/risk hardening review, with priority on r
 - `539. SCRIPT-143` (P1)
 - `540. SCRIPT-144` (P1)
 
-See details in `/Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md`.
+See details in `docs/audits/full-application-review-blueprint.md`.
 
 ## Latest Finding Detail
 - `500. SCRIPT-146` (P1 follow-up): `scripts/database/check-deployment-status.ts` still parsed confirm-mode `--limit` with permissive `Number.parseInt`, so malformed values like `--limit=1e0` could be coerced to `1` and satisfy send-mode gating. Fix: tighten `assertSendLimit` to strict positive-integer parsing (`/^[1-9]\d*$/` + `Number.isInteger`) and keep hard requirement `--limit=1`, and expand `getArgValue(...)` to support `--flag=value` form so cap parsing is consistent across both argument styles. Regression: expanded `tests/scripts/testNoHardcodedApiKeysInScripts.test.ts` and `tests/scripts/testScriptMutationGating.test.ts` to require strict parser markers and forbid the legacy `const parsed = Number.parseInt(limitRaw, 10)` pattern.
@@ -1400,8 +1400,8 @@ See details in `/Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICAT
 - `src/lib/fix-superadmin-permissions-script-safety.ts`
 - `tests/lib/fixSuperadminPermissionsScriptSafety.test.ts`
 - `tests/scripts/testScriptMutationGating.test.ts`
-- `FULL_APPLICATION_REVIEW_BLUEPRINT.md`
-- `AGENT_HANDOFF_2026-02-14.md`
+- `docs/audits/full-application-review-blueprint.md`
+- `docs/reports/agent-handoff-2026-02-14.md`
 
 ## Latest Batch Validation Evidence
 Validation evidence (latest Dev 3 batch, finding 500 follow-up - deployment-status strict confirm cap parsing):
@@ -1729,8 +1729,8 @@ You are taking over a production-hardening reliability/safety review after a sev
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -1776,7 +1776,7 @@ Reserved finding ID ranges (do not use IDs outside your range):
 Shared rules (all devs):
 - Every fix must include regression tests.
 - After each substantial batch: targeted eslint/vitest -> `tsc --noEmit` -> full vitest -> `next build`.
-- After each batch, update BOTH `/Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md` and `/Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md` with: new finding IDs (within your reserved range), severity + summary, regression coverage entries, and exact validation evidence (include test/file counts).
+- After each batch, update BOTH `docs/reports/agent-handoff-2026-02-14.md` and `docs/audits/full-application-review-blueprint.md` with: new finding IDs (within your reserved range), severity + summary, regression coverage entries, and exact validation evidence (include test/file counts).
 
 ### Prompt (Dev 1): Actions + API Routes + Webhooks (Non-cron)
 ```text
@@ -1785,8 +1785,8 @@ You are Developer 1 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -1835,8 +1835,8 @@ You are Developer 2 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -1886,8 +1886,8 @@ You are Developer 3 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
@@ -1937,8 +1937,8 @@ You are Developer 4 of 4 taking over a production-hardening reliability/safety r
 Repo: /Users/peterpitcher/Cursor/anchor-management-tools
 
 Read these first (fully):
-1) /Users/peterpitcher/Cursor/anchor-management-tools/AGENT_HANDOFF_2026-02-14.md
-2) /Users/peterpitcher/Cursor/anchor-management-tools/FULL_APPLICATION_REVIEW_BLUEPRINT.md
+1) docs/reports/agent-handoff-2026-02-14.md
+2) docs/audits/full-application-review-blueprint.md
 
 Hard rules:
 - Repo is intentionally dirty: do NOT revert unrelated changes.
