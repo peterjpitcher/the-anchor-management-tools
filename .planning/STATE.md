@@ -2,9 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-05-19T07:24:01Z"
+current_plan: 2 of 2 (all complete)
+status: unknown
+stopped_at: Completed quick task 260628-mvt
+last_updated: "2026-06-28T15:42:14.287Z"
+last_activity: "2026-06-28 - Completed quick task 260628-mde: Delete dead ungated sendOTPMessage server action (SEC-DEADCODE-01)"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -117,9 +119,10 @@ None yet.
 | 260519-ice | Restore events detail page with attendees, marketing links, promotion content, and full metadata display | 2026-05-19 | 95c18f0d | [260519-ice-restore-events-detail-page-with-attendee](./quick/260519-ice-restore-events-detail-page-with-attendee/) |
 | 260610-bop | Delete dead unauthenticated RLS-bypassing phone-cleanup server actions (audit finding F5) | 2026-06-10 | 98dadb72 | [260610-bop-delete-dead-unauthenticated-fix-phone-nu](./quick/260610-bop-delete-dead-unauthenticated-fix-phone-nu/) |
 | 260628-mde | Delete dead ungated RLS-bypassing sendOTPMessage server action (SEC-DEADCODE-01) | 2026-06-28 | c44d2fa2 | [260628-mde-delete-dead-ungated-server-action-sendot](./quick/260628-mde-delete-dead-ungated-server-action-sendot/) |
+| 260628-mvt | Graphify cleanup: delete 40 verified-dead files (36 + 4 cascaded), drop 3 dead service methods, ratify deposit threshold at 10+ (CLEANUP-DEADCODE-01) | 2026-06-28 | bb72cf2b | [260628-mvt-graphify-cleanup-delete-36-verified-dead](./quick/260628-mvt-graphify-cleanup-delete-36-verified-dead/) |
 
 ## Session Continuity
 
-Last activity: 2026-06-28 - Completed quick task 260628-mde: Delete dead ungated sendOTPMessage server action (SEC-DEADCODE-01)
-Stopped at: Completed 04-02-PLAN.md — All phases complete
-Resume file: .planning/ROADMAP.md
+Last activity: 2026-06-28 - Completed quick task 260628-mvt: Graphify cleanup (40 dead files removed, 3 dead methods dropped, deposit threshold ratified at 10+)
+Stopped at: Completed quick task 260628-mvt
+Resume file: None
