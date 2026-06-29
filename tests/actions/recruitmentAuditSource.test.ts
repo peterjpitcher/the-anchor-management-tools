@@ -55,6 +55,15 @@ describe('recruitment audit source coverage', () => {
     )
   })
 
+  it('does not send manager alert emails for booking invite sends', () => {
+    const bookingInviteAction = actionBlock('issueRecruitmentBookingInviteAction')
+
+    expect(bookingInviteAction).toContain('await issueRecruitmentBookingLink')
+    expect(bookingInviteAction).toContain('await sendRecruitmentTemplateEmail')
+    expect(bookingInviteAction).not.toContain('notifyRecruitmentManager')
+    expect(bookingInviteAction).not.toContain('sendRecruitmentManagerAlert')
+  })
+
   it('refreshes and warns in the reviewed email composer after sends', () => {
     expect(dashboardClientSource).toContain("import { useRouter } from 'next/navigation'")
     expect(dashboardClientSource).toContain('const router = useRouter()')

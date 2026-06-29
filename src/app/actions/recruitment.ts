@@ -1106,12 +1106,6 @@ export async function issueRecruitmentBookingInviteAction(formData: FormData): P
       currentUserId: user.id,
       bookingLink: booking.bookingUrl,
     })
-    await notifyRecruitmentManager({
-      applicationId,
-      alertType: type === 'trial_shift' ? 'trial invite sent' : 'interview invite sent',
-      alertBody: `A ${type === 'trial_shift' ? 'trial shift' : 'interview'} booking link was sent. Link expires ${new Date(booking.expiresAt).toLocaleDateString('en-GB')}.`,
-      currentUserId: user.id,
-    })
     await auditRecruitmentMutation({
       user,
       operation: 'send_invite',
