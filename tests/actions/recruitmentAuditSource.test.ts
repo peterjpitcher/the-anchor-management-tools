@@ -63,4 +63,14 @@ describe('recruitment audit source coverage', () => {
     expect(dashboardClientSource).toContain("['queued', 'sent'].includes(communication.delivery_status)")
     expect(dashboardClientSource).toContain('const duplicateEmailWarning')
   })
+
+  it('keeps awaiting-booking applications visible in the pipeline', () => {
+    const pipelineStart = dashboardClientSource.indexOf('const pipeline = useMemo')
+    const pipelineEnd = dashboardClientSource.indexOf('const selectedApplicationEvents', pipelineStart)
+    const pipelineBlock = dashboardClientSource.slice(pipelineStart, pipelineEnd)
+
+    expect(pipelineBlock).toContain("'interview_invited'")
+    expect(pipelineBlock).toContain("'trial_offered'")
+    expect(pipelineBlock).not.toContain('.slice(0, 6)')
+  })
 })

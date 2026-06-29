@@ -619,10 +619,19 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const filteredCommunications = communications
 
   const pipeline = useMemo(() => {
-    const columns = ['new', 'ai_screened', 'shortlisted', 'interview_scheduled', 'trial_scheduled', 'offered']
+    const columns = [
+      'new',
+      'ai_screened',
+      'shortlisted',
+      'interview_invited',
+      'interview_scheduled',
+      'trial_offered',
+      'trial_scheduled',
+      'offered',
+    ]
     return columns.map(status => ({
       status,
-      applications: filteredApplications.filter((application: any) => application.status === status).slice(0, 6),
+      applications: filteredApplications.filter((application: any) => application.status === status),
     }))
   }, [filteredApplications])
   const selectedApplicationEvents = statusEvents.filter((event: any) => event.application_id === selectedApplication?.id).slice(0, 8)
@@ -907,7 +916,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             </div>
 
             {activeTab === 'pipeline' && (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
                 {pipeline.map(column => (
                   <div key={column.status} className="rounded-md border border-border bg-surface p-3">
                     <div className="mb-2 flex items-center justify-between">
