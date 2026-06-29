@@ -179,6 +179,99 @@ function scoreText(score: number | null | undefined) {
   return typeof score === 'number' ? `${scoreLabel(score)} ${score}` : scoreLabel(score)
 }
 
+function statusLabel(status: string | null | undefined) {
+  return status ? status.replaceAll('_', ' ') : 'unknown'
+}
+
+type QuickStatusAction = {
+  status: string
+  label: string
+  note: string
+  variant?: 'primary' | 'secondary' | 'danger'
+  confirmTitle?: string
+  confirmMessage?: string
+}
+
+function quickStatusActionsFor(status: string): QuickStatusAction[] {
+  const rejectAction: QuickStatusAction = {
+    status: 'rejected',
+    label: 'Reject candidate',
+    note: 'Rejected from quick action',
+    variant: 'danger',
+    confirmTitle: 'Reject candidate',
+    confirmMessage: 'Reject this candidate?',
+  }
+
+  switch (status) {
+    case 'new':
+    case 'ai_screened':
+      return [
+        { status: 'shortlisted', label: 'Shortlist candidate', note: 'Shortlisted from quick action', variant: 'primary' },
+        rejectAction,
+      ]
+    case 'shortlisted':
+      return [rejectAction]
+    case 'interview_scheduled':
+      return [
+        { status: 'interviewed', label: 'Mark interviewed', note: 'Marked interviewed from quick action', variant: 'primary' },
+        rejectAction,
+      ]
+    case 'interviewed':
+      return [
+        { status: 'offered', label: 'Mark offered', note: 'Marked offered from quick action', variant: 'primary' },
+        rejectAction,
+      ]
+    case 'trial_scheduled':
+      return [
+        { status: 'trial_completed', label: 'Mark trial completed', note: 'Marked trial completed from quick action', variant: 'primary' },
+        rejectAction,
+      ]
+    case 'trial_completed':
+      return [
+        { status: 'offered', label: 'Mark offered', note: 'Marked offered from quick action', variant: 'primary' },
+        rejectAction,
+      ]
+    case 'offered':
+      return [{ status: 'hired', label: 'Mark hired', note: 'Marked hired from quick action', variant: 'primary' }]
+    case 'on_hold':
+      return [{ status: 'shortlisted', label: 'Reopen as shortlisted', note: 'Reopened from quick action', variant: 'primary' }]
+    default:
+      return []
+  }
+}
+
+function recruitmentNextActionHint(status: string, interviewInviteSent: boolean, trialInviteSent: boolean) {
+  switch (status) {
+    case 'new':
+    case 'ai_screened':
+      return 'Review, then shortlist, reject, or send an interview booking link.'
+    case 'shortlisted':
+      return interviewInviteSent ? 'Interview invite has been sent. Wait for booking or resend only if needed.' : 'Send an interview booking link when ready.'
+    case 'interview_invited':
+      return 'Waiting for the candidate to book an interview. Resend the link only if needed.'
+    case 'interview_scheduled':
+      return 'After the interview, mark them interviewed.'
+    case 'interviewed':
+      return trialInviteSent ? 'Trial invite has been sent. Wait for booking or resend only if needed.' : 'Send a trial booking link, make an offer, or reject.'
+    case 'trial_offered':
+      return 'Waiting for the candidate to book a trial shift. Resend the link only if needed.'
+    case 'trial_scheduled':
+      return 'After the trial, mark it completed.'
+    case 'trial_completed':
+      return 'Decide whether to make an offer or reject.'
+    case 'offered':
+      return 'Create the employee invite when they accept.'
+    case 'hired':
+      return 'Candidate is hired.'
+    case 'rejected':
+      return 'Candidate has been rejected.'
+    case 'withdrawn':
+      return 'Candidate has withdrawn.'
+    default:
+      return 'Use the next action that matches the latest candidate conversation.'
+  }
+}
+
 function scoreRowClass(score: number | null | undefined) {
   const tone = scoreTone(score)
   if (tone === 'success') return 'border-l-4 border-success/70 bg-success-soft/30'
@@ -395,9 +488,17 @@ function ActionStateMessage({ state }: { state: any }) {
   )
 }
 
-function SubmitButton({ children, variant = 'primary' }: { children: React.ReactNode; variant?: 'primary' | 'secondary' | 'danger' }) {
+function SubmitButton({
+  children,
+  variant = 'primary',
+  disabled = false,
+}: {
+  children: React.ReactNode
+  variant?: 'primary' | 'secondary' | 'danger'
+  disabled?: boolean
+}) {
   return (
-    <Button type="submit" size="sm" variant={variant}>
+    <Button type="submit" size="sm" variant={variant} disabled={disabled}>
       {children}
     </Button>
   )
@@ -413,6 +514,7 @@ function ActionFeedbackForm({
   confirmTitle,
   confirmMessage,
   successMessage = 'Done.',
+  onSuccess,
 }: {
   action: RecruitmentFormAction
   children: React.ReactNode
@@ -420,6 +522,7 @@ function ActionFeedbackForm({
   confirmTitle?: string
   confirmMessage?: string
   successMessage?: string
+  onSuccess?: () => void
 }) {
   const [pending, setPending] = useState(false)
   const [state, setState] = useState<{ success?: string; error?: string } | null>(null)
@@ -435,6 +538,7 @@ function ActionFeedbackForm({
         return
       }
       setState({ success: result && 'message' in result && result.message ? result.message : successMessage })
+      onSuccess?.()
     } catch (error) {
       setState({ error: error instanceof Error ? error.message : 'Action failed.' })
     } finally {
@@ -636,17 +740,44 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   }, [filteredApplications])
   const selectedApplicationEvents = statusEvents.filter((event: any) => event.application_id === selectedApplication?.id).slice(0, 8)
   const selectedApplicationAiRuns = aiRuns.filter((run: any) => run.application_id === selectedApplication?.id || run.candidate_id === selectedCandidate?.id).slice(0, 8)
-  const selectedApplicationCommunications = communications.filter((communication: any) => (
+  const selectedApplicationAllCommunications = communications.filter((communication: any) => (
     communication.application_id === selectedApplication?.id || communication.candidate_id === selectedCandidate?.id
-  )).slice(0, 8)
+  ))
+  const selectedApplicationCommunications = selectedApplicationAllCommunications.slice(0, 8)
   const previousEmailForDraft = emailDraft && !emailDraft.error
-    ? selectedApplicationCommunications.find((communication: any) => (
+    ? selectedApplicationAllCommunications.find((communication: any) => (
       communication.type === emailDraft.type
       && ['queued', 'sent'].includes(communication.delivery_status)
     ))
     : null
   const duplicateEmailWarning = previousEmailForDraft
     ? `This ${emailDraft?.type.replaceAll('_', ' ')} email is already ${previousEmailForDraft.delivery_status} for this application (${formatDateTime(previousEmailForDraft.sent_at || previousEmailForDraft.created_at)}).`
+    : null
+  const selectedApplicationStatus = selectedApplication?.status ?? ''
+  const candidateHasEmail = Boolean(selectedApplication?.candidate?.email)
+  const interviewInviteSent = selectedApplicationAllCommunications.some((communication: any) => (
+    communication.type === 'interview_invite'
+    && ['queued', 'sent'].includes(communication.delivery_status)
+  ))
+  const trialInviteSent = selectedApplicationAllCommunications.some((communication: any) => (
+    communication.type === 'trial_invite'
+    && ['queued', 'sent'].includes(communication.delivery_status)
+  ))
+  const canSendInterviewBooking = Boolean(selectedApplication && [
+    'new',
+    'ai_screened',
+    'shortlisted',
+    'interview_invited',
+    'on_hold',
+  ].includes(selectedApplicationStatus))
+  const canSendTrialBooking = Boolean(selectedApplication && [
+    'interviewed',
+    'trial_offered',
+    'on_hold',
+  ].includes(selectedApplicationStatus))
+  const quickStatusActions = selectedApplication ? quickStatusActionsFor(selectedApplicationStatus) : []
+  const nextActionHint = selectedApplication
+    ? recruitmentNextActionHint(selectedApplicationStatus, interviewInviteSent, trialInviteSent)
     : null
   const selectedApplicationAppointments = appointments.filter((appointment: any) => (
     appointment.application_id === selectedApplication?.id || appointment.candidate_id === selectedCandidate?.id
@@ -1127,52 +1258,116 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </Button>
                       </div>
                       {(permissions.canEdit || permissions.canManage || permissions.canSend) && (
-                        <div className="space-y-2 border-t border-border pt-3">
+                        <div className="space-y-3 border-t border-border pt-3">
                           <p className="text-xs font-semibold uppercase text-text-muted">Actions</p>
-                          {permissions.canEdit && (
-                            <ActionFeedbackForm action={statusFormAction} className="flex flex-wrap items-center gap-2" successMessage="Status saved.">
-                              <input type="hidden" name="application_id" value={selectedApplication.id} />
-                              <Select name="status" defaultValue={selectedApplication.status} className="w-44">
-                                {statusOptions.map(status => (
-                                  <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
-                                ))}
-                              </Select>
-                              <SubmitButton variant="secondary">Save status</SubmitButton>
-                            </ActionFeedbackForm>
+                          {nextActionHint && (
+                            <div className="rounded border border-border bg-surface-2 p-3">
+                              <p className="text-xs font-semibold uppercase text-text-muted">Next step</p>
+                              <p className="mt-1 text-sm text-text">{nextActionHint}</p>
+                            </div>
                           )}
-                          <div className="flex flex-wrap gap-2">
-                            {permissions.canManage && selectedApplication.job_posting_id && (
-                              <ActionFeedbackForm action={rescoreFormAction} successMessage="Application queued for re-score.">
+                          {permissions.canEdit && (
+                            <div className="space-y-2">
+                              {quickStatusActions.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {quickStatusActions.map(action => (
+                                    <ActionFeedbackForm
+                                      key={action.status}
+                                      action={statusFormAction}
+                                      successMessage={`${statusLabel(action.status)} saved.`}
+                                      confirmTitle={action.confirmTitle}
+                                      confirmMessage={action.confirmMessage}
+                                      onSuccess={() => router.refresh()}
+                                    >
+                                      <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                      <input type="hidden" name="status" value={action.status} />
+                                      <input type="hidden" name="note" value={action.note} />
+                                      <SubmitButton variant={action.variant ?? 'secondary'}>{action.label}</SubmitButton>
+                                    </ActionFeedbackForm>
+                                  ))}
+                                </div>
+                              )}
+                              <ActionFeedbackForm
+                                action={statusFormAction}
+                                className="flex flex-wrap items-center gap-2"
+                                successMessage="Status saved."
+                                onSuccess={() => router.refresh()}
+                              >
                                 <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                <SubmitButton variant="secondary">Re-score</SubmitButton>
+                                <Select name="status" defaultValue={selectedApplication.status} className="w-44" aria-label="Manual status">
+                                  {statusOptions.map(status => (
+                                    <option key={status} value={status}>{statusLabel(status)}</option>
+                                  ))}
+                                </Select>
+                                <input type="hidden" name="note" value="Status changed manually" />
+                                <SubmitButton variant="secondary">Save manual status</SubmitButton>
                               </ActionFeedbackForm>
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase text-text-muted">Booking links</p>
+                            {!candidateHasEmail && permissions.canSend && (
+                              <p className="text-xs text-text-muted">Add an email address before sending booking links.</p>
                             )}
-                            {permissions.canSend && (
-                              <>
-                                <ActionFeedbackForm action={bookingInviteFormAction} successMessage="Interview invite sent.">
+                            <div className="flex flex-wrap gap-2">
+                              {permissions.canSend && candidateHasEmail && canSendInterviewBooking && (
+                                <ActionFeedbackForm
+                                  action={bookingInviteFormAction}
+                                  successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
+                                  confirmTitle={interviewInviteSent ? 'Resend interview link' : undefined}
+                                  confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
+                                  onSuccess={() => router.refresh()}
+                                >
                                   <input type="hidden" name="application_id" value={selectedApplication.id} />
                                   <input type="hidden" name="type" value="interview" />
-                                  <SubmitButton variant="secondary">Interview</SubmitButton>
+                                  <SubmitButton variant={interviewInviteSent ? 'secondary' : 'primary'}>
+                                    {interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link'}
+                                  </SubmitButton>
                                 </ActionFeedbackForm>
-                                <ActionFeedbackForm action={bookingInviteFormAction} successMessage="Trial invite sent.">
+                              )}
+                              {permissions.canSend && candidateHasEmail && canSendTrialBooking && (
+                                <ActionFeedbackForm
+                                  action={bookingInviteFormAction}
+                                  successMessage={trialInviteSent ? 'Trial booking link resent.' : 'Trial booking link sent.'}
+                                  confirmTitle={trialInviteSent ? 'Resend trial link' : undefined}
+                                  confirmMessage={trialInviteSent ? 'A trial invite has already been sent. Send another booking link?' : undefined}
+                                  onSuccess={() => router.refresh()}
+                                >
                                   <input type="hidden" name="application_id" value={selectedApplication.id} />
                                   <input type="hidden" name="type" value="trial_shift" />
-                                  <SubmitButton variant="secondary">Trial</SubmitButton>
+                                  <SubmitButton variant={trialInviteSent ? 'secondary' : 'primary'}>
+                                    {trialInviteSent ? 'Resend trial booking link' : 'Send trial booking link'}
+                                  </SubmitButton>
                                 </ActionFeedbackForm>
-                              </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {permissions.canManage && selectedApplication.job_posting_id && (
+                              <ActionFeedbackForm
+                                action={rescoreFormAction}
+                                successMessage="Application queued for re-score."
+                                onSuccess={() => router.refresh()}
+                              >
+                                <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                <SubmitButton variant="secondary">Re-score AI fit</SubmitButton>
+                              </ActionFeedbackForm>
                             )}
                           </div>
-                          {permissions.canManage && selectedApplication.candidate?.email && (
+                          {permissions.canManage && candidateHasEmail && (
                             <ActionFeedbackForm
                               action={hireFormAction}
-                              className="flex flex-wrap gap-2"
+                              className="flex flex-wrap items-center gap-2"
                               confirmTitle="Hire candidate"
-                              confirmMessage="Create an employee invite for this candidate?"
+                              confirmMessage="Create an employee invite and link it to this application?"
                               successMessage="Employee invite created."
+                              onSuccess={() => router.refresh()}
                             >
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
-                              <Input name="job_title" placeholder="Job title" className="w-40" />
-                              <SubmitButton>Hire</SubmitButton>
+                              <Input name="job_title" placeholder="Job title for employee invite" className="w-56" />
+                              <SubmitButton variant={selectedApplicationStatus === 'offered' ? 'primary' : 'secondary'}>
+                                Create employee invite
+                              </SubmitButton>
                             </ActionFeedbackForm>
                           )}
                           {permissions.canEdit && (
@@ -1181,9 +1376,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               confirmTitle={selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
                               confirmMessage={selectedApplication.archived_at ? 'Restore this application?' : 'Archive this application?'}
                               successMessage={selectedApplication.archived_at ? 'Application restored.' : 'Application archived.'}
+                              onSuccess={() => router.refresh()}
                             >
                               <input type="hidden" name="application_id" value={selectedApplication.id} />
-                              <SubmitButton variant="secondary">
+                              <SubmitButton variant={selectedApplication.archived_at ? 'secondary' : 'danger'}>
                                 {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
                               </SubmitButton>
                             </ActionFeedbackForm>
