@@ -3,7 +3,7 @@
 import { useState, useTransition, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button, Input, Card, CardBody, CardHeader, Spinner } from '@/ds'
+import { Button, Input, Select, Card, CardBody, CardHeader, Spinner } from '@/ds'
 import { importReceiptStatement } from '@/app/actions/receipts'
 import { usePermissions } from '@/contexts/PermissionContext'
 import type { ReceiptBatch } from '@/types/database'
@@ -22,6 +22,7 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
   const { hasPermission } = usePermissions()
   const canManageReceipts = hasPermission('receipts', 'manage')
   const [statementFile, setStatementFile] = useState<File | null>(null)
+  const [sourceType, setSourceType] = useState<'bank' | 'amex'>('bank')
   const [isStatementPending, startStatementTransition] = useTransition()
 
   async function handleStatementSubmit(event: FormEvent<HTMLFormElement>) {
@@ -36,6 +37,7 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
     }
     const formData = new FormData()
     formData.append('statement', statementFile)
+    formData.append('sourceType', sourceType)
 
     startStatementTransition(async () => {
       const result = await importReceiptStatement(formData)
@@ -67,6 +69,14 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
       <CardHeader title="Upload bank statement" subtitle="Import CSV and auto-match recurring items." />
       <CardBody>
         <form onSubmit={handleStatementSubmit} className="space-y-3">
+          <Select
+            value={sourceType}
+            onChange={(event) => setSourceType(event.target.value as 'bank' | 'amex')}
+            options={[
+              { value: 'bank', label: 'Bank statement' },
+              { value: 'amex', label: 'American Express statement' },
+            ]}
+          />
           <Input
             type="file"
             accept=".csv"

@@ -23,9 +23,12 @@ interface ReceiptsClientProps {
   initialData: ReceiptWorkspaceData
   canExport?: boolean
   canGovernRules?: boolean
+  availableCardMembers: string[]
   initialFilters: {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
+    sourceType: 'bank' | 'amex' | 'all'
+    cardMember: string
     showOnlyOutstanding: boolean
     groupByVendor: boolean
     missingVendorOnly: boolean
@@ -65,7 +68,7 @@ function updateSummaryForStatusChange(
   }))
 }
 
-export default function ReceiptsClient({ initialData, canExport = false, canGovernRules = false, initialFilters }: ReceiptsClientProps) {
+export default function ReceiptsClient({ initialData, canExport = false, canGovernRules = false, availableCardMembers, initialFilters }: ReceiptsClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { hasPermission } = usePermissions()
@@ -180,6 +183,7 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
           <ReceiptFilters
             filters={initialFilters}
             availableMonths={availableMonths}
+            availableCardMembers={availableCardMembers}
           />
         </CardBody>
       </Card>

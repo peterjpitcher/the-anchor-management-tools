@@ -50,6 +50,11 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const missingExpenseOnly = needsExpenseParam === '1'
   const search = typeof resolvedParams?.search === 'string' ? resolvedParams.search : ''
 
+  const rawSource = typeof resolvedParams?.source === 'string' ? resolvedParams.source : undefined
+  const sourceType = rawSource === 'bank' || rawSource === 'amex' ? rawSource : 'all'
+
+  const cardMember = typeof resolvedParams?.cardMember === 'string' ? resolvedParams.cardMember : undefined
+
   const rawSort = typeof resolvedParams?.sort === 'string' ? resolvedParams.sort : undefined
   const sortByFromQuery = rawSort && SORT_COLUMNS.has(rawSort) ? rawSort as ReceiptWorkspaceFilters['sortBy'] : undefined
   const rawSortDirection = typeof resolvedParams?.sortDirection === 'string' ? resolvedParams.sortDirection : undefined
@@ -77,6 +82,8 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     groupByVendor,
     missingVendorOnly: missingVendorOnly ? true : undefined,
     missingExpenseOnly: missingExpenseOnly ? true : undefined,
+    sourceType: sourceType !== 'all' ? sourceType : undefined,
+    cardMember: cardMember || undefined,
     month,
     sortBy,
     sortDirection,
@@ -111,6 +118,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
         initialData={data}
         canExport={canExport}
         canGovernRules={canGovernRules}
+        availableCardMembers={data.availableCardMembers}
         initialFilters={{
           status,
           direction,
@@ -119,6 +127,8 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
           groupByVendor,
           missingVendorOnly,
           missingExpenseOnly,
+          sourceType,
+          cardMember: cardMember ?? '',
           month: filters.month ?? month,
           sortBy,
           sortDirection,
