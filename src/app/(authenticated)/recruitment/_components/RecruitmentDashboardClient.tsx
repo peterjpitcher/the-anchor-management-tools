@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -477,6 +478,7 @@ function ActionFeedbackForm({
 }
 
 export default function RecruitmentDashboardClient({ initialData, permissions }: Props) {
+  const router = useRouter()
   const [postingState, postingAction] = useActionState(createRecruitmentPostingAction, null)
   const [postingUpdateState, postingUpdateAction] = useActionState(updateRecruitmentPostingAction, null)
   const [postingDuplicateState, postingDuplicateAction] = useActionState(duplicateRecruitmentPostingAction, null)
@@ -628,6 +630,15 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const selectedApplicationCommunications = communications.filter((communication: any) => (
     communication.application_id === selectedApplication?.id || communication.candidate_id === selectedCandidate?.id
   )).slice(0, 8)
+  const previousEmailForDraft = emailDraft && !emailDraft.error
+    ? selectedApplicationCommunications.find((communication: any) => (
+      communication.type === emailDraft.type
+      && ['queued', 'sent'].includes(communication.delivery_status)
+    ))
+    : null
+  const duplicateEmailWarning = previousEmailForDraft
+    ? `This ${emailDraft?.type.replaceAll('_', ' ')} email is already ${previousEmailForDraft.delivery_status} for this application (${formatDateTime(previousEmailForDraft.sent_at || previousEmailForDraft.created_at)}).`
+    : null
   const selectedApplicationAppointments = appointments.filter((appointment: any) => (
     appointment.application_id === selectedApplication?.id || appointment.candidate_id === selectedCandidate?.id
   )).slice(0, 5)
@@ -661,6 +672,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     }
     setEmailDraft(null)
     setEmailSendState({ success: true, message: result.message ?? 'Recruitment email sent.' })
+    router.refresh()
   }
 
   async function openCv(candidateId: string) {
@@ -1299,6 +1311,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <Input name="subject" defaultValue={emailDraft.subject} />
                           <Textarea name="body" defaultValue={emailDraft.body} rows={6} />
                           <Input name="offer_terms" placeholder="Offer terms if sending an offer" />
+                          {duplicateEmailWarning && (
+                            <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                              {duplicateEmailWarning}
+                            </p>
+                          )}
                           <SubmitButton>Send reviewed email</SubmitButton>
                         </form>
                       )}

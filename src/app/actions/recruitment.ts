@@ -55,6 +55,32 @@ type ActionResult<T = unknown> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string }
 
+const EMAIL_STATUS_TRANSITIONS: Partial<Record<RecruitmentTemplateType, {
+  status: string
+  note: string
+}>> = {
+  interview_invite: {
+    status: 'interview_invited',
+    note: 'Interview invite email sent',
+  },
+  trial_invite: {
+    status: 'trial_offered',
+    note: 'Trial invite email sent',
+  },
+  offer: {
+    status: 'offered',
+    note: 'Offer email sent',
+  },
+  rejection: {
+    status: 'rejected',
+    note: 'Rejection email sent',
+  },
+  already_considered: {
+    status: 'declined_duplicate',
+    note: 'Already considered email sent',
+  },
+}
+
 async function currentUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -1134,16 +1160,45 @@ export async function sendRecruitmentDecisionEmailAction(formData: FormData): Pr
       bodyOverride: formString(formData, 'body'),
       offerTerms: formString(formData, 'offer_terms'),
     })
+    const statusTransition = EMAIL_STATUS_TRANSITIONS[type]
+    let statusUpdateError: string | null = null
+
+    if (statusTransition) {
+      try {
+        await transitionRecruitmentApplicationStatus(applicationId, statusTransition.status, {
+          note: statusTransition.note,
+          metadata: {
+            template_type: type,
+            communication_id: result.communicationId,
+          },
+          actorUserId: user.id,
+        })
+      } catch (error) {
+        statusUpdateError = error instanceof Error ? error.message : 'Failed to update application status.'
+      }
+    }
+
     await auditRecruitmentMutation({
       user,
       operation: 'send_email',
       resource: 'recruitment_application',
       resourceId: applicationId,
       status: 'success',
-      newValues: { template_type: type },
+      newValues: {
+        template_type: type,
+        communication_id: result.communicationId,
+        status_transition: statusTransition?.status ?? null,
+        status_update_error: statusUpdateError,
+      },
     })
     revalidatePath('/recruitment')
-    return { success: true, data: result, message: 'Recruitment email sent.' }
+    return {
+      success: true,
+      data: result,
+      message: statusUpdateError
+        ? `Recruitment email sent, but status was not updated: ${statusUpdateError}`
+        : 'Recruitment email sent.',
+    }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to send recruitment email.' }
   }
