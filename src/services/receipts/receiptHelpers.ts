@@ -41,6 +41,11 @@ import {
 export const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
 export const BULK_STATUS_OPTIONS = receiptTransactionStatusSchema.options
 
+// Below this AI-reported confidence the AI classifier does not even propose a rule
+// suggestion — keeps the suggestion queue trustworthy and cheap to review. (Lives here,
+// a non-'use server' module, so it can be a plain const export.)
+export const AI_SUGGESTION_MIN_CONFIDENCE = 70
+
 export const bulkGroupQuerySchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
   statuses: z.array(receiptTransactionStatusSchema).optional(),

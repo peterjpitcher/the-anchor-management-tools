@@ -12,7 +12,8 @@ vi.mock('@/lib/openai', () => ({
 
 import { classifyReceiptTransaction, classifyReceiptTransactionsBatch } from '@/lib/openai'
 import { getOpenAIConfig } from '@/lib/openai/config'
-import { classifyReceiptTransactionsWithAI, AI_SUGGESTION_MIN_CONFIDENCE } from '@/lib/receipts/ai-classification'
+import { classifyReceiptTransactionsWithAI } from '@/lib/receipts/ai-classification'
+import { AI_SUGGESTION_MIN_CONFIDENCE } from '@/services/receipts/receiptHelpers'
 
 const mockedGetOpenAIConfig = getOpenAIConfig as unknown as Mock
 const mockedClassifyReceipt = classifyReceiptTransaction as unknown as Mock
