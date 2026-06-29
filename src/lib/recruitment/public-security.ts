@@ -10,6 +10,13 @@ type PublicRecruitmentGuardOptions = {
   windowMs?: number
 }
 
+export function isRecruitmentTurnstileConfigured() {
+  return Boolean(
+    process.env.TURNSTILE_SECRET_KEY?.trim()
+    && process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()
+  )
+}
+
 export async function guardPublicRecruitmentRequest(
   request: Request,
   rawToken: string,
@@ -41,7 +48,7 @@ export async function guardPublicRecruitmentRequest(
     )
   }
 
-  if (options.requireTurnstile) {
+  if (options.requireTurnstile && isRecruitmentTurnstileConfigured()) {
     const token = options.turnstileToken || request.headers.get('x-turnstile-token')
     const turnstile = await verifyTurnstileToken(token, getClientIp(request))
     if (!turnstile.success) {

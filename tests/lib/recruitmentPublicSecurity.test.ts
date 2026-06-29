@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/guest/token-throttle', () => ({
   checkGuestTokenThrottle: vi.fn(),
@@ -11,11 +11,30 @@ vi.mock('@/lib/turnstile', () => ({
 
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { verifyTurnstileToken } from '@/lib/turnstile'
-import { guardPublicRecruitmentRequest } from '@/lib/recruitment/public-security'
+import { guardPublicRecruitmentRequest, isRecruitmentTurnstileConfigured } from '@/lib/recruitment/public-security'
+
+const originalTurnstileSecret = process.env.TURNSTILE_SECRET_KEY
+const originalTurnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
 describe('guardPublicRecruitmentRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.TURNSTILE_SECRET_KEY = 'secret-key'
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = 'site-key'
+  })
+
+  afterEach(() => {
+    if (originalTurnstileSecret === undefined) {
+      delete process.env.TURNSTILE_SECRET_KEY
+    } else {
+      process.env.TURNSTILE_SECRET_KEY = originalTurnstileSecret
+    }
+
+    if (originalTurnstileSiteKey === undefined) {
+      delete process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+    } else {
+      process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = originalTurnstileSiteKey
+    }
   })
 
   it('returns 429 when the guest token throttle blocks the request', async () => {
@@ -55,6 +74,25 @@ describe('guardPublicRecruitmentRequest', () => {
 
     expect(response).toBeNull()
     expect(verifyTurnstileToken).toHaveBeenCalledWith('header-token', '203.0.113.10')
+  })
+
+  it('skips Turnstile when the browser site key is not configured', async () => {
+    delete process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+    vi.mocked(checkGuestTokenThrottle).mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 900,
+      remaining: 4,
+    })
+
+    const response = await guardPublicRecruitmentRequest(
+      new Request('http://localhost/api/recruitment/booking/token-value', { method: 'POST' }),
+      'token-value',
+      { scope: 'claim', requireTurnstile: true }
+    )
+
+    expect(response).toBeNull()
+    expect(isRecruitmentTurnstileConfigured()).toBe(false)
+    expect(verifyTurnstileToken).not.toHaveBeenCalled()
   })
 
   it('returns 403 when Turnstile fails', async () => {
