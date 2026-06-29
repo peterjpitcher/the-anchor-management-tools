@@ -462,3 +462,81 @@ describe('AI receipt classification batch — re-classification guard', () => {
     expect(updatePayloads).toHaveLength(0)
   })
 })
+
+describe('AI receipt classification batch — Amex merchant hints', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedGetOpenAIConfig.mockResolvedValue({ apiKey: 'test-api-key' })
+    mockedClassifyBatch.mockResolvedValue({
+      results: [{
+        id: 'tx-amex',
+        vendorName: 'AI Vendor',
+        expenseCategory: 'Entertainment',
+        reasoning: 'Matched merchant hint',
+        confidence: 90,
+        suggestedRuleKeywords: 'merchant',
+      }],
+      usage: undefined,
+    })
+  })
+
+  it('passes merchantHint built from category + town for Amex rows', async () => {
+    const tx = {
+      id: 'tx-amex',
+      details: 'AMZN MKTP UK',
+      transaction_type: null,
+      amount_in: null,
+      amount_out: 42.5,
+      vendor_name: null,
+      vendor_source: null,
+      vendor_rule_id: null,
+      expense_category: null,
+      expense_category_source: null,
+      expense_rule_id: null,
+      status: 'pending',
+      ai_confidence: null,
+      ai_suggested_keywords: null,
+      source_type: 'amex',
+      merchant_category: 'General Purchases-Groceries',
+      merchant_town: 'London',
+    }
+
+    const { supabase } = makeMockSupabase(tx)
+
+    await classifyReceiptTransactionsWithAI(supabase as never, [tx.id])
+
+    expect(mockedClassifyBatch).toHaveBeenCalledTimes(1)
+    const callArgs = mockedClassifyBatch.mock.calls[0][0]
+    expect(callArgs.items[0].merchantHint).toBe('General Purchases-Groceries · London')
+  })
+
+  it('leaves merchantHint undefined for bank rows', async () => {
+    const tx = {
+      id: 'tx-amex',
+      details: 'SKY SUBSCRIPTION',
+      transaction_type: 'Direct Debit',
+      amount_in: null,
+      amount_out: 85.0,
+      vendor_name: null,
+      vendor_source: null,
+      vendor_rule_id: null,
+      expense_category: null,
+      expense_category_source: null,
+      expense_rule_id: null,
+      status: 'pending',
+      ai_confidence: null,
+      ai_suggested_keywords: null,
+      source_type: 'bank',
+      merchant_category: null,
+      merchant_town: null,
+    }
+
+    const { supabase } = makeMockSupabase(tx)
+
+    await classifyReceiptTransactionsWithAI(supabase as never, [tx.id])
+
+    expect(mockedClassifyBatch).toHaveBeenCalledTimes(1)
+    const callArgs = mockedClassifyBatch.mock.calls[0][0]
+    expect(callArgs.items[0].merchantHint).toBeUndefined()
+  })
+})
