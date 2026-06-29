@@ -154,4 +154,26 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(startsAt?.value).toBe('2099-01-01T10:15')
     expect(endsAt?.value).toBe('2099-01-01T12:15')
   })
+
+  it('shows slot opens and closes times in the schedule table', () => {
+    const data = makeInitialData()
+    data.slots = [{
+      id: 'slot-1',
+      type: 'interview',
+      starts_at: '2026-07-01T11:00:00.000Z',
+      ends_at: '2026-07-01T13:00:00.000Z',
+      location: 'The Anchor',
+      status: 'open',
+      archived_at: null,
+    }]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+
+    fireEvent.click(screen.getByRole('tab', { name: /Schedule/i }))
+
+    expect(screen.getByRole('columnheader', { name: 'Opens' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Closes' })).toBeInTheDocument()
+    expect(screen.getByText('1 Jul 2026, 12:00')).toBeInTheDocument()
+    expect(screen.getByText('1 Jul 2026, 14:00')).toBeInTheDocument()
+  })
 })

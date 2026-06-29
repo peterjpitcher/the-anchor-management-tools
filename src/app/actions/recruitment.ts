@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { inviteEmployee } from '@/app/actions/employeeInvite'
@@ -162,9 +163,7 @@ async function formCvUpload(formData: FormData, key = 'cv') {
 }
 
 function parseDateTimeLocal(value: string | null): string | null {
-  if (!value) return null
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+  return parseLondonDateTimeLocalToIso(value)
 }
 
 async function notifyRecruitmentManager(input: {
