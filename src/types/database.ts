@@ -106,6 +106,8 @@ export type ReceiptTransactionStatus =
 
 export type ReceiptClassificationSource = 'ai' | 'manual' | 'rule' | 'import';
 
+export type ReceiptSourceType = 'bank' | 'amex';
+
 export type ReceiptExpenseCategory =
   | 'Total Staff'
   | 'Business Rate'
@@ -166,6 +168,7 @@ export interface ReceiptBatch {
   uploaded_by: string | null;
   original_filename: string;
   source_hash: string | null;
+  source_type: ReceiptSourceType;
   row_count: number;
   notes: string | null;
   created_at: string;
@@ -208,6 +211,12 @@ export interface ReceiptTransaction {
   amount_total: number | null;
   balance: number | null;
   dedupe_hash: string;
+  source_type: ReceiptSourceType;
+  card_member: string | null;
+  card_account: string | null;
+  merchant_category: string | null;
+  merchant_town: string | null;
+  external_reference: string | null;
   status: ReceiptTransactionStatus;
   receipt_required: boolean;
   marked_by: string | null;

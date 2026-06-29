@@ -10,6 +10,8 @@ import type {
   ReceiptRule,
   ReceiptTransaction,
   ReceiptFile,
+  ReceiptSourceType,
+  ReceiptTransactionStatus,
   ReceiptExpenseCategory,
   ReceiptClassificationSource,
   ReceiptRuleConflict,
@@ -37,6 +39,19 @@ export type CsvRow = {
   Balance: string
 }
 
+export type AmexCsvRow = {
+  Date: string
+  Description: string
+  'Card Member': string
+  'Account #': string
+  Amount: string
+  'Extended Details': string
+  'Appears On Your Statement As': string
+  'Town/City': string
+  Reference: string
+  Category: string
+}
+
 export type ParsedTransactionRow = {
   transactionDate: string
   details: string
@@ -45,6 +60,19 @@ export type ParsedTransactionRow = {
   amountOut: number | null
   balance: number | null
   dedupeHash: string
+  // Source + Amex extensions. Bank rows omit these (treated as defaults downstream).
+  sourceType?: ReceiptSourceType
+  cardMember?: string | null
+  cardAccount?: string | null
+  merchantCategory?: string | null
+  merchantTown?: string | null
+  externalReference?: string | null
+  status?: ReceiptTransactionStatus
+  receiptRequired?: boolean
+  expenseCategory?: ReceiptExpenseCategory | null
+  expenseCategorySource?: ReceiptClassificationSource | null
+  vendorName?: string | null
+  vendorSource?: ReceiptClassificationSource | null
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +84,8 @@ export type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | '
 export type ReceiptWorkspaceFilters = {
   status?: ReceiptTransaction['status'] | 'all'
   direction?: 'in' | 'out' | 'all'
+  sourceType?: 'bank' | 'amex' | 'all'
+  cardMember?: string
   search?: string
   showOnlyOutstanding?: boolean
   groupByVendor?: boolean
@@ -123,6 +153,7 @@ export type ReceiptWorkspaceData = {
   }
   knownVendors: string[]
   availableMonths: string[]
+  availableCardMembers: string[]
 }
 
 export type ReceiptMissingExpenseSummaryItem = {

@@ -188,6 +188,8 @@ export const receiptExpenseCategorySchema = z.enum([
   'Drinks Gas',
 ]);
 
+export const receiptSourceTypeSchema = z.enum(['bank', 'amex']);
+
 export const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
 export const receiptRuleKindSchema = z.enum([
   'standard',
