@@ -92,36 +92,140 @@ function appointmentTypeForInvite(type: RecruitmentTemplateType): 'interview' | 
   return null
 }
 
-function formatSlotTime(slot: any): string | null {
-  const startsAt = new Date(slot?.starts_at)
-  const endsAt = new Date(slot?.ends_at)
-  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return null
+type SlotTimeWindow = {
+  startsAt: Date
+  endsAt: Date
+  timezone: string
+}
 
-  const timeZone = slot?.timezone || 'Europe/London'
-  const date = new Intl.DateTimeFormat('en-GB', {
+function slotDateKey(value: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone,
+  }).formatToParts(value)
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+  return `${year}-${month}-${day}`
+}
+
+function formatSlotDate(value: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     timeZone,
-  }).format(startsAt)
-  const time = new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
+  }).format(value)
+}
+
+function formatSlotClock(value: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: 'numeric',
     minute: '2-digit',
-    hourCycle: 'h23',
+    hour12: true,
     timeZone,
-  })
-  return `${date}, ${time.format(startsAt)}-${time.format(endsAt)}`
+  }).formatToParts(value)
+  const hour = parts.find(part => part.type === 'hour')?.value ?? ''
+  const minute = parts.find(part => part.type === 'minute')?.value ?? '00'
+  const dayPeriod = (parts.find(part => part.type === 'dayPeriod')?.value ?? '').toLowerCase()
+  return `${hour}${minute === '00' ? '' : `:${minute}`}${dayPeriod}`
+}
+
+function parseSlotTime(slot: any): SlotTimeWindow | null {
+  const startsAt = new Date(slot?.starts_at)
+  const endsAt = new Date(slot?.ends_at)
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return null
+  if (endsAt <= startsAt) return null
+
+  return {
+    startsAt,
+    endsAt,
+    timezone: slot?.timezone || 'Europe/London',
+  }
+}
+
+function canMergeSlotWindows(left: SlotTimeWindow, right: SlotTimeWindow): boolean {
+  if (left.timezone !== right.timezone) return false
+  if (slotDateKey(left.startsAt, left.timezone) !== slotDateKey(right.startsAt, right.timezone)) return false
+  return right.startsAt.getTime() <= left.endsAt.getTime()
+}
+
+function formatSlotWindow(slot: SlotTimeWindow): string {
+  const startDate = formatSlotDate(slot.startsAt, slot.timezone)
+  const startTime = formatSlotClock(slot.startsAt, slot.timezone)
+  const endTime = formatSlotClock(slot.endsAt, slot.timezone)
+
+  if (slotDateKey(slot.startsAt, slot.timezone) === slotDateKey(slot.endsAt, slot.timezone)) {
+    return `${startDate} ${startTime} to ${endTime}`
+  }
+
+  const endDate = formatSlotDate(slot.endsAt, slot.timezone)
+  return `${startDate} ${startTime} to ${endDate} ${endTime}`
+}
+
+function formatSlotTimes(slots: any[]): string | null {
+  const windows = slots
+    .map(parseSlotTime)
+    .filter((value): value is SlotTimeWindow => Boolean(value))
+    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
+
+  const merged: SlotTimeWindow[] = []
+  for (const window of windows) {
+    const previous = merged[merged.length - 1]
+    if (previous && canMergeSlotWindows(previous, window)) {
+      if (window.endsAt > previous.endsAt) {
+        previous.endsAt = window.endsAt
+      }
+      continue
+    }
+    merged.push({ ...window })
+  }
+
+  return merged.length ? merged.map(slot => `- ${formatSlotWindow(slot)}`).join('\n') : null
 }
 
 function availableTimesBlock(appointmentType: 'interview' | 'trial_shift', availableTimes: string): string {
   const label = appointmentType === 'trial_shift' ? 'trial shift' : 'interview'
-  return [
-    `Available ${label} times:`,
+  const lines = [
+    `Please let us know your preferred time from the available ${label} times:`,
     availableTimes,
-    '',
-    'Please let us know which time suits you best.',
-  ].join('\n')
+  ]
+
+  if (appointmentType === 'interview') {
+    lines.push('', 'The interview is expected to be no more than 1 hour.')
+  }
+
+  return lines.join('\n')
+}
+
+function trialShiftDetailsText(): string {
+  return 'The trial shift is expected to be 2 hours, with a quick briefing before and a short debrief after. The trial shift will be with an existing member of staff, and the briefing and debrief will be with Billy, the General Manager.'
+}
+
+function ensureInterviewDurationNote(body: string): string {
+  if (/no more than 1 hour/i.test(body)) return body
+
+  const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
+  if (body.includes(rightToWorkMarker)) {
+    return body.replace(rightToWorkMarker, `\n\nThe interview is expected to be no more than 1 hour.${rightToWorkMarker}`)
+  }
+
+  return `${body.trim()}\n\nThe interview is expected to be no more than 1 hour.`
+}
+
+function ensureTrialShiftDetails(body: string): string {
+  if (/2 hours/i.test(body) && /Billy/i.test(body) && /General Manager/i.test(body)) return body
+
+  const details = trialShiftDetailsText()
+  const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
+  if (body.includes(rightToWorkMarker)) {
+    return body.replace(rightToWorkMarker, `\n\n${details}${rightToWorkMarker}`)
+  }
+
+  return `${body.trim()}\n\n${details}`
 }
 
 function ensureInviteHasAvailableTimes(
@@ -129,29 +233,36 @@ function ensureInviteHasAvailableTimes(
   appointmentType: 'interview' | 'trial_shift',
   availableTimes: string | null,
 ) {
-  if (!availableTimes) return body
+  let nextBody = body
 
-  const block = availableTimesBlock(appointmentType, availableTimes)
-  const firstSlot = availableTimes
-    .split('\n')
-    .map(line => line.replace(/^-\s*/, '').trim())
-    .find(Boolean)
+  if (availableTimes) {
+    const block = availableTimesBlock(appointmentType, availableTimes)
+    const firstSlot = availableTimes
+      .split('\n')
+      .map(line => line.replace(/^-\s*/, '').trim())
+      .find(Boolean)
 
-  const nextBody = body
-    .replace(/Please choose a time using this link:\s*\{\{\s*booking_link\s*\}\}/gi, block)
-    .replace(/Choose a time here:\s*\{\{\s*booking_link\s*\}\}/gi, block)
-    .replace(/\{\{\s*booking_link\s*\}\}/gi, block)
+    nextBody = nextBody
+      .replace(/Please choose a time using this link:\s*\{\{\s*booking_link\s*\}\}/gi, block)
+      .replace(/Choose a time here:\s*\{\{\s*booking_link\s*\}\}/gi, block)
+      .replace(/\{\{\s*booking_link\s*\}\}/gi, block)
+      .replace(/Please let us know your preferred time from the following options:\s*\n(?:-\s*.+\n?)+/gi, block)
 
-  if (!firstSlot || nextBody.includes(firstSlot)) {
-    return nextBody
+    if (firstSlot && !nextBody.includes(firstSlot)) {
+      const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
+      if (nextBody.includes(rightToWorkMarker)) {
+        nextBody = nextBody.replace(rightToWorkMarker, `\n\n${block}${rightToWorkMarker}`)
+      } else {
+        nextBody = `${nextBody.trim()}\n\n${block}`
+      }
+    }
   }
 
-  const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
-  if (nextBody.includes(rightToWorkMarker)) {
-    return nextBody.replace(rightToWorkMarker, `\n\n${block}${rightToWorkMarker}`)
+  if (appointmentType === 'interview') {
+    return ensureInterviewDurationNote(nextBody)
   }
 
-  return `${nextBody.trim()}\n\n${block}`
+  return ensureTrialShiftDetails(nextBody)
 }
 
 async function loadOpenRecruitmentSlotTimes(
@@ -166,15 +277,10 @@ async function loadOpenRecruitmentSlotTimes(
     .is('archived_at', null)
     .gt('starts_at', new Date().toISOString())
     .order('starts_at', { ascending: true })
-    .limit(8)
 
   if (error) throw error
 
-  const times = (data ?? [])
-    .map(formatSlotTime)
-    .filter((value): value is string => Boolean(value))
-
-  return times.length ? times.map(time => `- ${time}`).join('\n') : null
+  return formatSlotTimes(data ?? [])
 }
 
 function buildMergeData(input: {
@@ -421,11 +527,13 @@ export async function draftRecruitmentEmailForApplication(
     success: true as const,
     runId: draft.runId,
     subject: mergeTemplate(draft.result.subject, deterministicContext),
-    body: ensureInviteHasAvailableTimes(
-      mergeTemplate(draft.result.body, deterministicContext),
-      inviteAppointmentType ?? 'interview',
-      availableTimes,
-    ),
+    body: inviteAppointmentType
+      ? ensureInviteHasAvailableTimes(
+          mergeTemplate(draft.result.body, deterministicContext),
+          inviteAppointmentType,
+          availableTimes,
+        )
+      : mergeTemplate(draft.result.body, deterministicContext),
   }
 }
 
@@ -577,8 +685,14 @@ export async function sendRecruitmentTemplateEmail(
     throw new Error(`No active ${type} recruitment email template found.`)
   }
 
+  const inviteAppointmentType = appointmentTypeForInvite(type)
   const subject = mergeTemplate(options.subjectOverride ?? template.subject, mergeData)
-  const body = normalizeBodyText(mergeTemplate(options.bodyOverride ?? template.body, mergeData))
+  const mergedBody = mergeTemplate(options.bodyOverride ?? template.body, mergeData)
+  const body = normalizeBodyText(
+    inviteAppointmentType
+      ? ensureInviteHasAvailableTimes(mergedBody, inviteAppointmentType, null)
+      : mergedBody
+  )
   assertNoUnresolvedPlaceholders(subject, body)
 
   const { data: communication, error: commError } = await supabase

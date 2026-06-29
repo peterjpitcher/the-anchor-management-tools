@@ -59,7 +59,7 @@ function listChain(result: { data: any; error: any }) {
   chain.eq = vi.fn(() => chain)
   chain.is = vi.fn(() => chain)
   chain.gt = vi.fn(() => chain)
-  chain.order = vi.fn(() => chain)
+  chain.order = vi.fn().mockResolvedValue(result)
   chain.limit = vi.fn().mockResolvedValue(result)
   return chain
 }
@@ -279,20 +279,35 @@ describe('recruitment communications safety', () => {
       runId: 'run-1',
       result: {
         subject: 'Interview invitation - The Anchor',
-        body: 'Hi {{first_name}},\n\nThank you for applying for {{role_title}}. We would like to invite you for an interview.\n\nPlease bring proof of your right to work in the UK.\n\nBest,\nThe Anchor',
+        body: 'Hi {{first_name}},\n\nThank you for applying for {{role_title}}. We would like to invite you for an interview.\n\nPlease let us know your preferred time from the following options:\n- Wednesday, 1 July 2026, 12:00-13:00\n- Wednesday, 1 July 2026, 13:00-14:00\n- Wednesday, 1 July 2026, 14:00-15:00\n- Wednesday, 1 July 2026, 15:00-16:00\n\nPlease bring proof of your right to work in the UK.\n\nBest,\nThe Anchor',
       },
     })
 
     const slots = listChain({
       data: [
         {
-          starts_at: '2099-01-05T18:00:00.000Z',
-          ends_at: '2099-01-05T18:30:00.000Z',
+          starts_at: '2026-07-01T11:00:00.000Z',
+          ends_at: '2026-07-01T12:00:00.000Z',
           timezone: 'Europe/London',
         },
         {
-          starts_at: '2099-01-06T19:00:00.000Z',
-          ends_at: '2099-01-06T19:30:00.000Z',
+          starts_at: '2026-07-01T12:00:00.000Z',
+          ends_at: '2026-07-01T13:00:00.000Z',
+          timezone: 'Europe/London',
+        },
+        {
+          starts_at: '2026-07-01T13:00:00.000Z',
+          ends_at: '2026-07-01T14:00:00.000Z',
+          timezone: 'Europe/London',
+        },
+        {
+          starts_at: '2026-07-01T14:00:00.000Z',
+          ends_at: '2026-07-01T15:00:00.000Z',
+          timezone: 'Europe/London',
+        },
+        {
+          starts_at: '2026-07-02T11:00:00.000Z',
+          ends_at: '2026-07-02T15:00:00.000Z',
           timezone: 'Europe/London',
         },
       ],
@@ -314,11 +329,14 @@ describe('recruitment communications safety', () => {
 
     expect(result.success).toBe(true)
     expect(slots.eq).toHaveBeenCalledWith('type', 'interview')
-    expect(result.body).toContain('Available interview times:')
-    expect(result.body).toContain('18:00-18:30')
-    expect(result.body).toContain('19:00-19:30')
+    expect(slots.limit).not.toHaveBeenCalled()
+    expect(result.body).toContain('available interview times:')
+    expect(result.body).toContain('Wednesday, 1 July 2026 12pm to 4pm')
+    expect(result.body).toContain('Thursday, 2 July 2026 12pm to 4pm')
+    expect(result.body).toContain('The interview is expected to be no more than 1 hour.')
+    expect(result.body).not.toContain('12:00-13:00')
     const context = draftRecruitmentEmail.mock.calls[0][1].context
-    expect(context.available_times).toContain('18:00-18:30')
+    expect(context.available_times).toContain('Wednesday, 1 July 2026 12pm to 4pm')
   })
 
   it('adds open trial shift times to trial invite drafts', async () => {
@@ -356,8 +374,11 @@ describe('recruitment communications safety', () => {
 
     expect(result.success).toBe(true)
     expect(slots.eq).toHaveBeenCalledWith('type', 'trial_shift')
-    expect(result.body).toContain('Available trial shift times:')
-    expect(result.body).toContain('17:00-19:00')
+    expect(result.body).toContain('available trial shift times:')
+    expect(result.body).toContain('5pm to 7pm')
+    expect(result.body).toContain('The trial shift is expected to be 2 hours')
+    expect(result.body).toContain('briefing before and a short debrief after')
+    expect(result.body).toContain('Billy, the General Manager')
   })
 
   it('allows reviewed interview invite emails with literal slot times and no booking link', async () => {
