@@ -4,7 +4,7 @@ import { revalidatePath, revalidateTag } from 'next/cache'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
-import { receiptRuleSchema } from '@/lib/validation'
+import { receiptRuleSchema, receiptSourceTypeSchema } from '@/lib/validation'
 import { logger } from '@/lib/logger'
 
 // ---------------------------------------------------------------------------
@@ -432,10 +432,16 @@ export async function importReceiptStatement(formData: FormData) {
   }
 
   const receiptFile = parsedFile.data
+
+  const sourceTypeRaw = formData.get('sourceType')
+  const sourceType = receiptSourceTypeSchema
+    .catch('bank')
+    .parse(typeof sourceTypeRaw === 'string' ? sourceTypeRaw : 'bank')
+
   const buffer = Buffer.from(await receiptFile.arrayBuffer())
   const { user_id, user_email } = await requireCurrentUser()
 
-  const result = await performImportReceiptStatement(user_id, user_email, receiptFile, buffer)
+  const result = await performImportReceiptStatement(user_id, user_email, receiptFile, buffer, sourceType)
 
   if (result.success) {
     await logAuditEvent({
@@ -445,6 +451,7 @@ export async function importReceiptStatement(formData: FormData) {
       operation_status: 'success',
       additional_info: {
         filename: receiptFile.name,
+        source_type: sourceType,
         inserted: result.inserted,
         skipped: result.skipped,
         auto_applied: result.autoApplied,
