@@ -36,6 +36,7 @@ Verified against three real statements: 38 rows → 30 pending, 4 fees → Bank 
 1. `20260714000000_receipts_amex_source.sql` — **additive**: `source_type` (`bank`|`amex`, default `bank`, CHECK), `card_member`, `card_account`, `merchant_category`, `merchant_town`, `external_reference` on `receipt_transactions`; `source_type` on `receipt_batches`; 3 indexes. Existing rows backfill to `bank`.
 2. `20260714000001_receipt_duplicate_source_aware.sql` — recreates the `receipt_duplicate_candidates` materialized view + its index/refresh function/grants, adding `AND t1.source_type = t2.source_type` so a bank and an Amex row of the same date/amount aren't flagged as duplicates. **Reviewer: confirm this view recreation is faithful to the original in `20260701000010_receipts_v2_foundations.sql`** (an independent review found it faithful — please double-check).
 3. `20260714000002_receipt_batches_source_hash_not_null.sql` — backfills any NULL `source_hash` to `'legacy-' || id` then sets the column `NOT NULL`, so the new duplicate-**file** guard is reliable. **Touches existing data (backfill) — review before applying.**
+4. `20260714000003_get_amex_card_members.sql` — adds a `service_role`-only `get_amex_card_members()` function returning the distinct cardholder list for the filter (additive).
 
 > ⚠️ **Deploy sequencing:** the application code reads/writes the new columns, so **migrations 1–3 must be applied before (or together with) the code deploy**, or queries to the new columns will fail. `anchor-management-tools` auto-deploys `main`.
 
@@ -50,7 +51,7 @@ Verified against three real statements: 38 rows → 30 pending, 4 fees → Bank 
 
 ## 5. QA pass (fix-function) already run
 
-An adversarial multi-agent review surfaced **19 verified defects**; **14 safe/low-risk ones were fixed** in commit `487acf63` (e.g. locking `source='import'` against rule/AI override; adding merchant details to the Amex dedup hash; dropping an over-broad `\bFEE\b` rule that hid real "BOOKING FEE" purchases; rounding sub-penny amounts; gating the cardholder filter). FF-017 (above) was then implemented. **Deferred** (in the defect log): FF-008 flexible/aliased bank-CSV headers, FF-012 DB-side `DISTINCT` for the cardholder list (bounded by a `LIMIT 2000` for now), and the structural FF-002 dedup-strategy rethink. None block this change.
+An adversarial multi-agent review surfaced **19 verified defects**; **14 safe/low-risk ones were fixed** in commit `487acf63` (e.g. locking `source='import'` against rule/AI override; adding merchant details to the Amex dedup hash; dropping an over-broad `\bFEE\b` rule that hid real "BOOKING FEE" purchases; rounding sub-penny amounts; gating the cardholder filter). FF-017 and FF-012 (cardholder list now via a DB function) were then implemented. **Deliberately not done:** FF-008 (flexible/aliased bank-CSV headers — YAGNI; the bank export uses fixed `Details`/`In`/`Out` headers, so the guard can't regress anything real) and the structural FF-002 dedup-strategy rethink (already mitigated by adding merchant details to the hash — 0 collisions on real data). Neither is a live defect.
 
 ## 6. Testing done
 
