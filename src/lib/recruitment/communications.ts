@@ -3,14 +3,17 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, type EmailAttachment } from '@/lib/email/emailService'
 import { sendSMS } from '@/lib/twilio'
 import { draftRecruitmentEmail } from '@/lib/recruitment/ai'
+import {
+  RECRUITMENT_EMAIL_SIGNATURE,
+  RECRUITMENT_RIGHT_TO_WORK_WORDING,
+  recruitmentSenderEmail,
+} from '@/lib/recruitment/contact'
 import { formatRecruitmentAppointment } from '@/services/recruitment'
 import type { RecruitmentTemplateType } from '@/types/recruitment'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
 type MergeData = Record<string, string | number | null | undefined>
-
-const RECRUITMENT_FROM_EMAIL = 'peter@orangejelly.co.uk'
 
 const REQUIRED_TEMPLATE_PLACEHOLDERS: Partial<Record<RecruitmentTemplateType, string[]>> = {
   offer: ['offer_terms'],
@@ -26,7 +29,7 @@ function normalizeBodyText(value: string): string {
 }
 
 function recruitmentFromEmail(): string {
-  return RECRUITMENT_FROM_EMAIL
+  return recruitmentSenderEmail()
 }
 
 function mergeTemplate(template: string, data: MergeData): string {
@@ -228,6 +231,27 @@ function ensureTrialShiftDetails(body: string): string {
   return `${body.trim()}\n\n${details}`
 }
 
+function ensureRightToWorkWording(body: string): string {
+  return body.replace(
+    /Please bring proof of your right to work(?: in the UK)?\.?(?: You cannot perform duties without this check\.)?(?:\nAcceptable proof includes:\n(?:-\s*.+\n?)+)?/gi,
+    RECRUITMENT_RIGHT_TO_WORK_WORDING
+  )
+}
+
+function ensureRecruitmentSignature(body: string): string {
+  const trimmed = body.trim()
+  const withoutOldSignature = trimmed.replace(
+    /\n{2,}(?:Best|Thanks|Kind regards|Regards),?[\s\S]*$/i,
+    ''
+  ).trim()
+
+  return `${withoutOldSignature}\n\n${RECRUITMENT_EMAIL_SIGNATURE}`
+}
+
+function finalizeRecruitmentEmailBody(body: string): string {
+  return ensureRecruitmentSignature(ensureRightToWorkWording(body))
+}
+
 function ensureInviteHasAvailableTimes(
   body: string,
   appointmentType: 'interview' | 'trial_shift',
@@ -247,6 +271,7 @@ function ensureInviteHasAvailableTimes(
       .replace(/Choose a time here:\s*\{\{\s*booking_link\s*\}\}/gi, block)
       .replace(/\{\{\s*booking_link\s*\}\}/gi, block)
       .replace(/Please let us know your preferred time from the following options:\s*\n(?:-\s*.+\n?)+/gi, block)
+      .replace(/Please let us know your availability from the following times:\s*\n(?:-\s*.+\n?)+/gi, block)
 
     if (firstSlot && !nextBody.includes(firstSlot)) {
       const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
@@ -305,8 +330,8 @@ function buildMergeData(input: {
     offer_terms: input.offerTerms ?? null,
     pay_hours: input.offerTerms ?? null,
     available_times: input.availableTimes ?? null,
-    right_to_work_wording: 'Please bring proof of your right to work in the UK.',
-    signature: 'The Anchor',
+    right_to_work_wording: RECRUITMENT_RIGHT_TO_WORK_WORDING,
+    signature: RECRUITMENT_EMAIL_SIGNATURE,
     ...input.extra,
   }
 }
@@ -527,13 +552,15 @@ export async function draftRecruitmentEmailForApplication(
     success: true as const,
     runId: draft.runId,
     subject: mergeTemplate(draft.result.subject, deterministicContext),
-    body: inviteAppointmentType
-      ? ensureInviteHasAvailableTimes(
-          mergeTemplate(draft.result.body, deterministicContext),
-          inviteAppointmentType,
-          availableTimes,
-        )
-      : mergeTemplate(draft.result.body, deterministicContext),
+    body: finalizeRecruitmentEmailBody(
+      inviteAppointmentType
+        ? ensureInviteHasAvailableTimes(
+            mergeTemplate(draft.result.body, deterministicContext),
+            inviteAppointmentType,
+            availableTimes,
+          )
+        : mergeTemplate(draft.result.body, deterministicContext)
+    ),
   }
 }
 
@@ -549,7 +576,7 @@ export async function sendRecruitmentApplicationReceivedEmail(
 
   const subject = 'Thank you for applying to The Anchor'
   const closingDate = formatApplicationClosingDate(application.job_posting?.application_closing_date)
-  const body = normalizeBodyText([
+  const body = normalizeBodyText(finalizeRecruitmentEmailBody([
     `Hi ${candidateFirstName(candidate)},`,
     '',
     `Thank you for applying ${applicationRolePhrase(application)}. I really appreciate you taking the time to send over your application and tell us about your experience.`,
@@ -559,10 +586,7 @@ export async function sendRecruitmentApplicationReceivedEmail(
     "We've received it safely, and I'll review it properly. If it looks like a good fit, I'll be in touch about the next step.",
     '',
     'Wishing you the best of luck.',
-    '',
-    'Best,',
-    'Peter',
-  ].join('\n'))
+  ].join('\n')))
   const idempotencyKey = `recruitment_application_received:${applicationId}`
 
   const { data: communication, error: commError } = await supabase
@@ -688,11 +712,11 @@ export async function sendRecruitmentTemplateEmail(
   const inviteAppointmentType = appointmentTypeForInvite(type)
   const subject = mergeTemplate(options.subjectOverride ?? template.subject, mergeData)
   const mergedBody = mergeTemplate(options.bodyOverride ?? template.body, mergeData)
-  const body = normalizeBodyText(
+  const body = normalizeBodyText(finalizeRecruitmentEmailBody(
     inviteAppointmentType
       ? ensureInviteHasAvailableTimes(mergedBody, inviteAppointmentType, null)
       : mergedBody
-  )
+  ))
   assertNoUnresolvedPlaceholders(subject, body)
 
   const { data: communication, error: commError } = await supabase
@@ -847,6 +871,9 @@ export async function retryRecruitmentCommunication(
   if (!original) throw new Error('Communication not found.')
 
   const candidate = original.candidate as any
+  const retryBody = original.channel === 'email' && original.type !== 'manager_alert'
+    ? finalizeRecruitmentEmailBody(original.final_body)
+    : original.final_body
   const metadata = {
     ...(typeof original.metadata === 'object' && original.metadata ? original.metadata : {}),
     retry_of_communication_id: communicationId,
@@ -860,7 +887,7 @@ export async function retryRecruitmentCommunication(
       type: original.type,
       channel: original.channel,
       subject: original.subject,
-      final_body: original.final_body,
+      final_body: retryBody,
       was_ai_assisted: original.was_ai_assisted,
       ai_run_id: original.ai_run_id,
       edited_by: currentUserId ?? null,
@@ -887,7 +914,7 @@ export async function retryRecruitmentCommunication(
     const result = await sendEmail({
       to,
       subject: original.subject || 'Message from The Anchor',
-      text: original.final_body,
+      text: retryBody,
       provider: 'graph',
       from: recruitmentFromEmail(),
       graphSender: recruitmentFromEmail(),
