@@ -12,7 +12,9 @@ import {
   deleteReceiptRule,
   previewReceiptRule,
   approveReceiptRuleSuggestion,
+  approveReceiptRuleSuggestions,
   declineReceiptRuleSuggestion,
+  getReceiptRuleSuggestionsPage,
   type ClassificationRuleSuggestion,
   type RulePreviewResult,
 } from '@/app/actions/receipts'
@@ -25,10 +27,31 @@ interface ReceiptRulesProps {
   rules: ReceiptRule[]
   ruleConflicts: ReceiptRuleConflict[]
   ruleSuggestions: ReceiptRuleSuggestion[]
+  /** Server count of all pending suggestions. Defaults to the loaded page length. */
+  suggestionsTotal?: number
   canGovernRules: boolean
   pendingSuggestion: ClassificationRuleSuggestion | null
   onApplySuggestion: (suggestion: ClassificationRuleSuggestion) => void
   onDismissSuggestion: () => void
+}
+
+const SUGGESTIONS_PAGE_SIZE = 20
+
+function suggestionEvidenceCount(suggestion: ReceiptRuleSuggestion): number {
+  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
+  const count = evidence.transaction_count
+  if (typeof count === 'number') return count
+  return Array.isArray(suggestion.evidence_transaction_ids) ? suggestion.evidence_transaction_ids.length : 0
+}
+
+function suggestionAiConfidence(suggestion: ReceiptRuleSuggestion): number | null {
+  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
+  return typeof evidence.ai_confidence === 'number' ? evidence.ai_confidence : null
+}
+
+function suggestionPreviewCount(suggestion: ReceiptRuleSuggestion): number | null {
+  const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
+  return typeof evidence.preview_match_count === 'number' ? evidence.preview_match_count : null
 }
 
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
@@ -107,6 +130,7 @@ export function ReceiptRules({
   rules,
   ruleConflicts,
   ruleSuggestions,
+  suggestionsTotal,
   canGovernRules,
   pendingSuggestion,
   onApplySuggestion,
@@ -134,11 +158,55 @@ export function ReceiptRules({
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
 
+  // Suggestions: server count + paging. Seed the loaded page from props; fetch more pages
+  // via getReceiptRuleSuggestionsPage. The selection drives the bulk "Approve selected".
+  const [suggestions, setSuggestions] = useState<ReceiptRuleSuggestion[]>(ruleSuggestions)
+  const [suggestionPage, setSuggestionPage] = useState(1)
+  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([])
+  const [isSuggestionsPending, startSuggestionsTransition] = useTransition()
+  const [isBulkApproving, startBulkApproveTransition] = useTransition()
+  const totalSuggestions = suggestionsTotal ?? ruleSuggestions.length
+  const totalSuggestionPages = Math.max(1, Math.ceil(totalSuggestions / SUGGESTIONS_PAGE_SIZE))
+
   useEffect(() => {
     if (pendingSuggestion) {
       setIsSectionOpen(true)
     }
   }, [pendingSuggestion])
+
+  // Keep the loaded suggestions in sync when the server re-supplies the first page
+  // (e.g. after router.refresh()), and reset paging/selection.
+  useEffect(() => {
+    setSuggestions(ruleSuggestions)
+    setSuggestionPage(1)
+    setSelectedSuggestionIds([])
+  }, [ruleSuggestions])
+
+  const allSuggestionsSelected = suggestions.length > 0 && selectedSuggestionIds.length === suggestions.length
+
+  function toggleSuggestionSelected(id: string) {
+    setSelectedSuggestionIds((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+    )
+  }
+
+  function toggleSelectAllSuggestions() {
+    setSelectedSuggestionIds((current) => (current.length === suggestions.length ? [] : suggestions.map((s) => s.id)))
+  }
+
+  function loadSuggestionsPage(nextPage: number) {
+    if (nextPage < 1 || nextPage > totalSuggestionPages) return
+    startSuggestionsTransition(async () => {
+      const result = await getReceiptRuleSuggestionsPage(nextPage, SUGGESTIONS_PAGE_SIZE)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      setSuggestions(result.suggestions)
+      setSuggestionPage(nextPage)
+      setSelectedSuggestionIds([])
+    })
+  }
 
   const filteredRules = useMemo(() => {
     const trimmedQuery = ruleSearch.trim().toLowerCase()
@@ -330,6 +398,27 @@ export function ReceiptRules({
     })
   }
 
+  function handleApproveSelected(active = true) {
+    if (!canGovernRules || selectedSuggestionIds.length === 0) return
+    const ids = [...selectedSuggestionIds]
+    startBulkApproveTransition(async () => {
+      const result = await approveReceiptRuleSuggestions(ids, { active })
+      if (result?.error) {
+        toast.error(result.error)
+        return
+      }
+      const approved = result.approved ?? 0
+      const failed = result.failed ?? 0
+      if (failed > 0) {
+        toast.error(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}, ${failed} failed`)
+      } else {
+        toast.success(`Approved ${approved} suggestion${approved === 1 ? '' : 's'}`)
+      }
+      setSelectedSuggestionIds([])
+      router.refresh()
+    })
+  }
+
   async function handleDeclineSuggestion(suggestionId: string) {
     if (!canGovernRules) return
     setActiveRuleId(suggestionId)
@@ -384,7 +473,7 @@ export function ReceiptRules({
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-gray-900">Automation rules</h2>
             {pendingSuggestion && <Badge tone="success">Suggestion</Badge>}
-            {ruleSuggestions.length > 0 && <Badge tone="success">{ruleSuggestions.length} pending suggestions</Badge>}
+            {totalSuggestions > 0 && <Badge tone="success">{totalSuggestions} pending suggestions</Badge>}
             {ruleConflicts.length > 0 && <Badge tone="warning">{ruleConflicts.length} conflicts</Badge>}
           </div>
           <p className="text-sm text-gray-500">Automatically tick off known transactions (e.g. card settlements).</p>
@@ -432,45 +521,138 @@ export function ReceiptRules({
                     <p className="mt-1">Prefill the form to auto-tag similar transactions next time.</p>
                   </div>
                 )}
-                {ruleSuggestions.length > 0 && (
+                {totalSuggestions > 0 && (
                   <div className="mb-3 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                    <p className="font-semibold">System suggestions</p>
-                    {ruleSuggestions.slice(0, 5).map((suggestion) => (
-                      <div key={suggestion.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0">
-                        <div className="min-w-0">
-                          <p className="font-medium text-amber-900">{suggestion.suggested_name}</p>
-                          <p>
-                            Match {suggestion.match_description ?? suggestion.match_transaction_type ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
-                            onClick={() => handleApproveSuggestion(suggestion.id, true)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
-                            onClick={() => handleApproveSuggestion(suggestion.id, false)}
-                          >
-                            Approve disabled
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
-                            onClick={() => handleDeclineSuggestion(suggestion.id)}
-                          >
-                            Decline
-                          </Button>
-                        </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold">System suggestions ({totalSuggestions})</p>
+                      {canGovernRules && suggestions.length > 0 && (
+                        <label className="flex items-center gap-1.5 text-amber-900">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-amber-300"
+                            checked={allSuggestionsSelected}
+                            onChange={toggleSelectAllSuggestions}
+                            aria-label="Select all suggestions on this page"
+                          />
+                          Select all on page
+                        </label>
+                      )}
+                    </div>
+
+                    {canGovernRules && selectedSuggestionIds.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-100 px-2 py-1.5">
+                        <span className="font-medium text-amber-900">{selectedSuggestionIds.length} selected</span>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={isBulkApproving}
+                          onClick={() => handleApproveSelected(true)}
+                        >
+                          {isBulkApproving && <Spinner className="mr-2 h-3 w-3" />}Approve selected
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={isBulkApproving}
+                          onClick={() => handleApproveSelected(false)}
+                        >
+                          Approve selected as disabled
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={isBulkApproving}
+                          onClick={() => setSelectedSuggestionIds([])}
+                        >
+                          Clear
+                        </Button>
                       </div>
-                    ))}
+                    )}
+
+                    {suggestions.map((suggestion) => {
+                      const evidenceCount = suggestionEvidenceCount(suggestion)
+                      const aiConfidence = suggestionAiConfidence(suggestion)
+                      const previewCount = suggestionPreviewCount(suggestion)
+                      return (
+                        <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0">
+                          <div className="flex min-w-0 items-start gap-2">
+                            {canGovernRules && (
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 h-4 w-4 rounded border-amber-300"
+                                checked={selectedSuggestionIds.includes(suggestion.id)}
+                                onChange={() => toggleSuggestionSelected(suggestion.id)}
+                                aria-label={`Select suggestion ${suggestion.suggested_name}`}
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-amber-900">{suggestion.suggested_name}</p>
+                              <p>
+                                Match {suggestion.match_description ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <Badge tone="neutral">{evidenceCount} evidence</Badge>
+                                {aiConfidence != null && <Badge tone="info">AI {aiConfidence}%</Badge>}
+                                {previewCount != null && (
+                                  <Badge tone="warning">would match {previewCount} transaction{previewCount === 1 ? '' : 's'}</Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
+                              onClick={() => handleApproveSuggestion(suggestion.id, true)}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
+                              onClick={() => handleApproveSuggestion(suggestion.id, false)}
+                            >
+                              Approve disabled
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={!canGovernRules || (isRulePending && activeRuleId === suggestion.id)}
+                              onClick={() => handleDeclineSuggestion(suggestion.id)}
+                            >
+                              Decline
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {totalSuggestionPages > 1 && (
+                      <div className="flex items-center justify-between gap-2 border-t border-amber-200 pt-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={suggestionPage <= 1 || isSuggestionsPending}
+                          onClick={() => loadSuggestionsPage(suggestionPage - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <span className="text-amber-900">
+                          {isSuggestionsPending ? 'Loading…' : `Page ${suggestionPage} of ${totalSuggestionPages}`}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={suggestionPage >= totalSuggestionPages || isSuggestionsPending}
+                          onClick={() => loadSuggestionsPage(suggestionPage + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    )}
+
                     {!canGovernRules && (
                       <p>Super admin approval is required before a suggestion can become a rule.</p>
                     )}

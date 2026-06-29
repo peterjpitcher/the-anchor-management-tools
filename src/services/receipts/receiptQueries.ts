@@ -452,6 +452,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     rules: rules ?? [],
     ruleConflicts: governance.conflicts,
     ruleSuggestions: governance.suggestions,
+    suggestionsTotal: governance.suggestionsTotal,
     summary: enrichedSummary,
     pagination: {
       page,

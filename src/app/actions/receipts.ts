@@ -6,6 +6,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { receiptRuleSchema, receiptSourceTypeSchema } from '@/lib/validation'
 import { logger } from '@/lib/logger'
+import type { ReceiptRuleSuggestion } from '@/types/database'
 
 // ---------------------------------------------------------------------------
 // Re-export types so existing consumers keep working
@@ -83,7 +84,10 @@ import {
   performRequeueUnclassifiedTransactions,
   performSetReceiptVendorWatched,
   performApproveReceiptRuleSuggestion,
+  performApproveReceiptRuleSuggestions,
   performDeclineReceiptRuleSuggestion,
+  queryReceiptGovernanceItems,
+  refreshAutomationForPendingTransactions,
   applyAutomationRules,
   // Helpers
   fileSchema,
@@ -806,6 +810,10 @@ export async function approveReceiptRuleSuggestion(
   const result = await performApproveReceiptRuleSuggestion(user_id, suggestionId, options)
 
   if (result.success) {
+    // Re-run rules over pending rows so the newly approved rule classifies its evidence.
+    // Triggered here (not in the service) to avoid a circular import between
+    // receiptGovernance and receiptMutations.
+    await refreshAutomationForPendingTransactions()
     await logAuditEvent({
       operation_type: 'approve_suggestion',
       resource_type: 'receipt_rule_suggestion',
@@ -817,6 +825,55 @@ export async function approveReceiptRuleSuggestion(
   }
 
   return result
+}
+
+export async function approveReceiptRuleSuggestions(
+  ids: string[],
+  options: { active?: boolean } = {}
+): Promise<{ approved?: number; failed?: number; error?: string }> {
+  const canManage = await checkUserPermission('receipts', 'manage')
+  if (!canManage) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const { user_id } = await requireCurrentUser()
+  const canGovernRules = await currentUserCanGovernReceiptRules()
+  if (!canGovernRules) {
+    return { error: 'Only super admins can approve suggested rules.' }
+  }
+
+  const suggestionIds = Array.from(new Set(ids.filter((id) => typeof id === 'string' && id.length > 0)))
+  if (!suggestionIds.length) {
+    return { error: 'Select at least one suggestion to approve.' }
+  }
+
+  const result = await performApproveReceiptRuleSuggestions(user_id, suggestionIds, options)
+
+  // One refresh after the whole batch so the approved rules re-run over pending rows once.
+  await refreshAutomationForPendingTransactions()
+
+  await logAuditEvent({
+    operation_type: 'approve_suggestions_bulk',
+    resource_type: 'receipt_rule_suggestion',
+    operation_status: 'success',
+    additional_info: { ...result, count: suggestionIds.length },
+  })
+  revalidateReceiptPaths()
+
+  return result
+}
+
+export async function getReceiptRuleSuggestionsPage(
+  page = 1,
+  pageSize = 20
+): Promise<{ suggestions: ReceiptRuleSuggestion[]; suggestionsTotal: number; error?: string }> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { suggestions: [], suggestionsTotal: 0, error: 'Insufficient permissions' }
+  }
+
+  const { suggestions, suggestionsTotal } = await queryReceiptGovernanceItems({ page, pageSize })
+  return { suggestions, suggestionsTotal }
 }
 
 export async function declineReceiptRuleSuggestion(

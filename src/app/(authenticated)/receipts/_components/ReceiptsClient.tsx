@@ -241,6 +241,7 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
         rules={rules}
         ruleConflicts={initialData.ruleConflicts}
         ruleSuggestions={initialData.ruleSuggestions}
+        suggestionsTotal={initialData.suggestionsTotal}
         canGovernRules={canGovernRules}
         pendingSuggestion={pendingRuleSuggestion}
         onApplySuggestion={() => setPendingRuleSuggestion(null)}

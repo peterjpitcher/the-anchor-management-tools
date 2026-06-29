@@ -114,12 +114,23 @@ export async function recordReceiptClassificationSignals(
   }
 }
 
-export async function queryReceiptGovernanceItems(): Promise<{
+const SUGGESTIONS_PAGE_SIZE = 20
+
+export async function queryReceiptGovernanceItems(options: { page?: number; pageSize?: number } = {}): Promise<{
   conflicts: ReceiptRuleConflict[]
   suggestions: ReceiptRuleSuggestion[]
+  suggestionsTotal: number
 }> {
   const supabase = createAdminClient()
-  const [{ data: conflicts, error: conflictsError }, { data: suggestions, error: suggestionsError }] = await Promise.all([
+  const pageSize = options.pageSize && options.pageSize > 0 ? options.pageSize : SUGGESTIONS_PAGE_SIZE
+  const page = options.page && options.page > 0 ? options.page : 1
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  const [
+    { data: conflicts, error: conflictsError },
+    { data: suggestions, error: suggestionsError, count: suggestionsCount },
+  ] = await Promise.all([
     supabase
       .from('receipt_rule_conflicts')
       .select('*')
@@ -129,10 +140,10 @@ export async function queryReceiptGovernanceItems(): Promise<{
       .limit(50),
     supabase
       .from('receipt_rule_suggestions')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
-      .limit(20),
+      .range(from, to),
   ])
 
   if (conflictsError) {
@@ -143,9 +154,28 @@ export async function queryReceiptGovernanceItems(): Promise<{
     console.error('Failed to load receipt rule suggestions', suggestionsError)
   }
 
+  // Attach an impact preview to each suggestion: read evidence.preview_match_count if it
+  // was stored at suggestion time (AI path), otherwise compute it for legacy rows.
+  const suggestionRows = (suggestions ?? []) as ReceiptRuleSuggestion[]
+  const enrichedSuggestions = await Promise.all(
+    suggestionRows.map(async (suggestion) => {
+      const evidence = (suggestion.evidence ?? {}) as Record<string, unknown>
+      const storedPreview = typeof evidence.preview_match_count === 'number' ? evidence.preview_match_count : null
+      const previewMatchCount = storedPreview ?? await previewSuggestionMatchCount(supabase, {
+        match_description: suggestion.match_description,
+        match_direction: suggestion.match_direction,
+      })
+      return {
+        ...suggestion,
+        evidence: { ...evidence, preview_match_count: previewMatchCount },
+      }
+    })
+  )
+
   return {
     conflicts: (conflicts ?? []) as ReceiptRuleConflict[],
-    suggestions: (suggestions ?? []) as ReceiptRuleSuggestion[],
+    suggestions: enrichedSuggestions,
+    suggestionsTotal: suggestionsCount ?? enrichedSuggestions.length,
   }
 }
 
@@ -391,95 +421,99 @@ export async function performApproveReceiptRuleSuggestion(
   options: SuggestionApprovalOptions = {}
 ): Promise<{ success?: boolean; rule?: ReceiptRule; error?: string }> {
   const supabase = createAdminClient()
-  const { data: suggestion, error: suggestionError } = await supabase
-    .from('receipt_rule_suggestions')
-    .select('*')
-    .eq('id', suggestionId)
-    .eq('status', 'pending')
-    .maybeSingle()
 
-  if (suggestionError) {
-    return { error: 'Failed to load suggestion.' }
-  }
+  // Atomic approval: the RPC inserts the rule and marks the suggestion approved in a
+  // single Postgres transaction (it also nulls the bank transaction_type). A failure
+  // can no longer leave a rule with a still-pending suggestion.
+  const { data: ruleId, error: rpcError } = await supabase.rpc('approve_receipt_rule_suggestion', {
+    p_suggestion_id: suggestionId,
+    p_user_id: userId,
+    p_active: options.active ?? true,
+  })
 
-  if (!suggestion) {
-    return { error: 'Suggestion not found or already reviewed.' }
-  }
-
-  const vendorId = suggestion.set_vendor_id ?? await resolveReceiptVendorId(supabase, suggestion.set_vendor_name)
-  const now = new Date().toISOString()
-
-  const { data: rule, error: insertError } = await supabase
-    .from('receipt_rules')
-    .insert({
-      name: suggestion.suggested_name,
-      description: 'Created from receipt rule suggestion evidence.',
-      match_description: suggestion.match_description,
-      match_transaction_type: suggestion.match_transaction_type,
-      match_direction: suggestion.match_direction,
-      match_min_amount: suggestion.match_min_amount,
-      match_max_amount: suggestion.match_max_amount,
-      auto_status: suggestion.auto_status,
-      set_vendor_name: suggestion.set_vendor_name,
-      set_expense_category: suggestion.set_expense_category,
-      vendor_id: vendorId,
-      priority: 1000,
-      kind: 'standard',
-      is_active: options.active ?? true,
-      created_by: userId,
-      updated_by: userId,
-      reviewed_at: now,
-      reviewed_by: userId,
-    })
-    .select('*')
-    .maybeSingle()
-
-  if (insertError || !rule) {
-    console.error('Failed to approve receipt rule suggestion', insertError)
+  if (rpcError || !ruleId) {
+    console.error('Failed to approve receipt rule suggestion', rpcError)
     return { error: 'Failed to create rule from suggestion.' }
   }
 
-  const { error: updateError } = await supabase
-    .from('receipt_rule_suggestions')
-    .update({
-      status: 'approved',
-      approved_rule_id: rule.id,
-      reviewed_at: now,
-      reviewed_by: userId,
-    })
-    .eq('id', suggestion.id)
+  const { data: rule } = await supabase
+    .from('receipt_rules')
+    .select('*')
+    .eq('id', ruleId)
+    .maybeSingle()
 
-  if (updateError) {
-    console.error('Failed to mark receipt rule suggestion approved', updateError)
+  // Re-fetch the suggestion to record signals against its evidence (the RPC has already
+  // transitioned it to approved, so this is read-only).
+  const { data: suggestion } = await supabase
+    .from('receipt_rule_suggestions')
+    .select('*')
+    .eq('id', suggestionId)
+    .maybeSingle()
+
+  if (suggestion) {
+    const now = new Date().toISOString()
+    const vendorId = suggestion.set_vendor_id ?? null
+    const evidenceIds: string[] = Array.isArray(suggestion.evidence_transaction_ids)
+      ? suggestion.evidence_transaction_ids.filter((value: unknown): value is string => typeof value === 'string')
+      : []
+
+    await recordReceiptClassificationSignals(
+      supabase,
+      evidenceIds.map((transactionId) => ({
+        transaction_id: transactionId,
+        source: 'system',
+        signal_type: 'rule_suggestion_approved',
+        prior_vendor_id: null,
+        new_vendor_id: vendorId,
+        prior_vendor_name: null,
+        new_vendor_name: suggestion.set_vendor_name,
+        prior_expense_category: null,
+        new_expense_category: suggestion.set_expense_category,
+        prior_status: null,
+        new_status: null,
+        rule_id: ruleId,
+        ai_confidence: null,
+        performed_by: userId,
+        performed_at: now,
+        payload: { suggestion_id: suggestion.id },
+      }))
+    )
   }
 
-  const evidenceIds: string[] = Array.isArray(suggestion.evidence_transaction_ids)
-    ? suggestion.evidence_transaction_ids.filter((value: unknown): value is string => typeof value === 'string')
-    : []
+  // NOTE: the rule re-run (refreshAutomationForPendingTransactions) is intentionally
+  // triggered from the action layer (src/app/actions/receipts.ts) rather than here.
+  // receiptMutations.ts imports from this file, so importing the refresh here would
+  // create a circular dependency. The action calls it after this returns success.
+  return { success: true, rule: (rule ?? undefined) as ReceiptRule | undefined }
+}
 
-  await recordReceiptClassificationSignals(
-    supabase,
-    evidenceIds.map((transactionId) => ({
-      transaction_id: transactionId,
-      source: 'system',
-      signal_type: 'rule_suggestion_approved',
-      prior_vendor_id: null,
-      new_vendor_id: vendorId,
-      prior_vendor_name: null,
-      new_vendor_name: suggestion.set_vendor_name,
-      prior_expense_category: null,
-      new_expense_category: suggestion.set_expense_category,
-      prior_status: null,
-      new_status: null,
-      rule_id: rule.id,
-      ai_confidence: null,
-      performed_by: userId,
-      performed_at: now,
-      payload: { suggestion_id: suggestion.id },
-    }))
-  )
+export async function performApproveReceiptRuleSuggestions(
+  userId: string,
+  ids: string[],
+  options: SuggestionApprovalOptions = {}
+): Promise<{ approved: number; failed: number }> {
+  const supabase = createAdminClient()
+  let approved = 0
+  let failed = 0
 
-  return { success: true, rule: rule as ReceiptRule }
+  for (const suggestionId of ids) {
+    // Each RPC call is its own atomic transaction; a failing id does not abort the rest.
+    const { data: ruleId, error: rpcError } = await supabase.rpc('approve_receipt_rule_suggestion', {
+      p_suggestion_id: suggestionId,
+      p_user_id: userId,
+      p_active: options.active ?? true,
+    })
+
+    if (rpcError || !ruleId) {
+      console.error('Failed to approve receipt rule suggestion (bulk)', { suggestionId, error: rpcError })
+      failed += 1
+      continue
+    }
+
+    approved += 1
+  }
+
+  return { approved, failed }
 }
 
 export async function performDeclineReceiptRuleSuggestion(
