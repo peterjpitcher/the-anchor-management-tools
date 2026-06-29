@@ -8085,6 +8085,7 @@ export type Database = {
           original_filename: string
           row_count: number
           source_hash: string | null
+          source_type: string
           uploaded_at: string
           uploaded_by: string | null
         }
@@ -8095,6 +8096,7 @@ export type Database = {
           original_filename: string
           row_count?: number
           source_hash?: string | null
+          source_type?: string
           uploaded_at?: string
           uploaded_by?: string | null
         }
@@ -8105,6 +8107,7 @@ export type Database = {
           original_filename?: string
           row_count?: number
           source_hash?: string | null
+          source_type?: string
           uploaded_at?: string
           uploaded_by?: string | null
         }
@@ -8317,6 +8320,8 @@ export type Database = {
           amount_total: number | null
           balance: number | null
           batch_id: string | null
+          card_account: string | null
+          card_member: string | null
           created_at: string
           dedupe_hash: string
           details: string
@@ -8324,15 +8329,19 @@ export type Database = {
           expense_category_source: string | null
           expense_rule_id: string | null
           expense_updated_at: string | null
+          external_reference: string | null
           id: string
           marked_at: string | null
           marked_by: string | null
           marked_by_email: string | null
           marked_by_name: string | null
           marked_method: string | null
+          merchant_category: string | null
+          merchant_town: string | null
           notes: string | null
           receipt_required: boolean
           rule_applied_id: string | null
+          source_type: string
           status: Database["public"]["Enums"]["receipt_transaction_status"]
           transaction_date: string
           transaction_type: string | null
@@ -8350,6 +8359,8 @@ export type Database = {
           amount_total?: number | null
           balance?: number | null
           batch_id?: string | null
+          card_account?: string | null
+          card_member?: string | null
           created_at?: string
           dedupe_hash: string
           details: string
@@ -8357,15 +8368,19 @@ export type Database = {
           expense_category_source?: string | null
           expense_rule_id?: string | null
           expense_updated_at?: string | null
+          external_reference?: string | null
           id?: string
           marked_at?: string | null
           marked_by?: string | null
           marked_by_email?: string | null
           marked_by_name?: string | null
           marked_method?: string | null
+          merchant_category?: string | null
+          merchant_town?: string | null
           notes?: string | null
           receipt_required?: boolean
           rule_applied_id?: string | null
+          source_type?: string
           status?: Database["public"]["Enums"]["receipt_transaction_status"]
           transaction_date: string
           transaction_type?: string | null
@@ -8383,6 +8398,8 @@ export type Database = {
           amount_total?: number | null
           balance?: number | null
           batch_id?: string | null
+          card_account?: string | null
+          card_member?: string | null
           created_at?: string
           dedupe_hash?: string
           details?: string
@@ -8390,15 +8407,19 @@ export type Database = {
           expense_category_source?: string | null
           expense_rule_id?: string | null
           expense_updated_at?: string | null
+          external_reference?: string | null
           id?: string
           marked_at?: string | null
           marked_by?: string | null
           marked_by_email?: string | null
           marked_by_name?: string | null
           marked_method?: string | null
+          merchant_category?: string | null
+          merchant_town?: string | null
           notes?: string | null
           receipt_required?: boolean
           rule_applied_id?: string | null
+          source_type?: string
           status?: Database["public"]["Enums"]["receipt_transaction_status"]
           transaction_date?: string
           transaction_type?: string | null
