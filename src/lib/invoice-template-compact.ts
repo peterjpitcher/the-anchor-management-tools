@@ -5,7 +5,7 @@ import { escapeHtml } from '@/lib/cron/alerting'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
-const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
 export type InvoiceDocumentKind = 'invoice' | 'remittance_advice' | 'credit_note'
 

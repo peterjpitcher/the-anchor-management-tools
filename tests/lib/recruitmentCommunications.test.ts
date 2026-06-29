@@ -224,7 +224,9 @@ describe('recruitment communications safety', () => {
       text: expect.stringContaining('Thank you for applying for Bartender.'),
       commType: 'recruitment_application_received',
     }))
-    expect(sendEmail.mock.calls[0][0].text).toContain('Best,\nPeter')
+    expect(sendEmail.mock.calls[0][0].text).toContain('Thanks,\n\nPeter Pitcher')
+    expect(sendEmail.mock.calls[0][0].text).toContain('The Anchor\nHorton Road\nStanwell Moor Village\nSurrey\nTW19 6AQ')
+    expect(sendEmail.mock.calls[0][0].text).toContain('07990587315\npeter@orangejelly.co.uk')
     expect(sendEmail.mock.calls[0][0].text).toContain('Applications for this role close on 31 July 2026.')
   })
 
@@ -257,6 +259,7 @@ describe('recruitment communications safety', () => {
     })
     expect(communications.insert).toHaveBeenCalledWith(expect.objectContaining({
       delivery_status: 'queued',
+      final_body: expect.stringContaining('Thanks,\n\nPeter Pitcher'),
       metadata: expect.objectContaining({
         retry_of_communication_id: 'comm-original',
       }),
@@ -266,7 +269,7 @@ describe('recruitment communications safety', () => {
       provider: 'graph',
       graphSender: 'peter@orangejelly.co.uk',
       subject: 'Your application',
-      text: 'Thanks again.',
+      text: expect.stringContaining('Thanks again.\n\nThanks,\n\nPeter Pitcher'),
       metadata: expect.objectContaining({
         communication_id: 'comm-retry',
         retry_of_communication_id: 'comm-original',
@@ -279,7 +282,7 @@ describe('recruitment communications safety', () => {
       runId: 'run-1',
       result: {
         subject: 'Interview invitation - The Anchor',
-        body: 'Hi {{first_name}},\n\nThank you for applying for {{role_title}}. We would like to invite you for an interview.\n\nPlease let us know your preferred time from the following options:\n- Wednesday, 1 July 2026, 12:00-13:00\n- Wednesday, 1 July 2026, 13:00-14:00\n- Wednesday, 1 July 2026, 14:00-15:00\n- Wednesday, 1 July 2026, 15:00-16:00\n\nPlease bring proof of your right to work in the UK.\n\nBest,\nThe Anchor',
+        body: 'Hi {{first_name}},\n\nThank you for applying for {{role_title}}. We would like to invite you for an interview. Please let us know your availability from the following times:\n- Wednesday, 1 July 2026, 12pm to 4pm\n- Thursday, 2 July 2026, 12pm to 4pm\n\nPlease bring proof of your right to work in the UK.\n\nBest,\nThe Anchor',
       },
     })
 
@@ -334,7 +337,14 @@ describe('recruitment communications safety', () => {
     expect(result.body).toContain('Wednesday, 1 July 2026 12pm to 4pm')
     expect(result.body).toContain('Thursday, 2 July 2026 12pm to 4pm')
     expect(result.body).toContain('The interview is expected to be no more than 1 hour.')
+    expect(result.body).toContain('Acceptable proof includes:')
+    expect(result.body).toContain('GOV.UK right to work share code')
+    expect(result.body).toContain('UK or Irish birth/adoption certificate')
+    expect(result.body).toContain('Thanks,\n\nPeter Pitcher')
+    expect(result.body).not.toContain('availability from the following times')
+    expect(result.body).not.toContain('Best,\nThe Anchor')
     expect(result.body).not.toContain('12:00-13:00')
+    expect(result.body.match(/Wednesday, 1 July 2026/g)).toHaveLength(1)
     const context = draftRecruitmentEmail.mock.calls[0][1].context
     expect(context.available_times).toContain('Wednesday, 1 July 2026 12pm to 4pm')
   })
@@ -379,6 +389,8 @@ describe('recruitment communications safety', () => {
     expect(result.body).toContain('The trial shift is expected to be 2 hours')
     expect(result.body).toContain('briefing before and a short debrief after')
     expect(result.body).toContain('Billy, the General Manager')
+    expect(result.body).toContain('Acceptable proof includes:')
+    expect(result.body).toContain('Thanks,\n\nPeter Pitcher')
   })
 
   it('allows reviewed interview invite emails with literal slot times and no booking link', async () => {
