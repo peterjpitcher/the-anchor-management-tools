@@ -156,7 +156,7 @@ export async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
     supabase.rpc('count_receipt_statuses'),
     supabase
       .from('receipt_batches')
-      .select('id, uploaded_at, uploaded_by, original_filename, source_hash, row_count, notes, created_at')
+      .select('id, uploaded_at, uploaded_by, original_filename, source_hash, source_type, row_count, notes, created_at')
       .order('uploaded_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -288,6 +288,14 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     }
   }
 
+  if (filters.sourceType && filters.sourceType !== 'all') {
+    baseQuery = baseQuery.eq('source_type', filters.sourceType)
+  }
+
+  if (filters.cardMember) {
+    baseQuery = baseQuery.eq('card_member', filters.cardMember)
+  }
+
   if (filters.missingVendorOnly) {
     baseQuery = baseQuery.or('vendor_name.is.null,vendor_name.eq.')
   }
@@ -318,6 +326,12 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     limit_months: 1000,
   })
 
+  const cardMembersQuery = supabase
+    .from('receipt_transactions')
+    .select('card_member')
+    .eq('source_type', 'amex')
+    .not('card_member', 'is', null)
+
   const [
     { data: transactions, count, error },
     { data: rules },
@@ -325,6 +339,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     { data: vendorRecords, error: vendorError },
     { data: canonicalVendorRecords, error: canonicalVendorError },
     { data: monthSummary, error: monthError },
+    { data: cardMemberRows, error: cardMemberError },
     governance,
   ] = await Promise.all([
     baseQuery,
@@ -337,6 +352,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     vendorQuery,
     canonicalVendorQuery,
     monthsQuery,
+    cardMembersQuery,
     queryReceiptGovernanceItems(),
   ])
 
@@ -355,6 +371,10 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
 
   if (monthError) {
     console.error('Failed to load month list for receipts workspace:', monthError)
+  }
+
+  if (cardMemberError) {
+    console.error('Failed to load card member list for receipts workspace:', cardMemberError)
   }
 
   const shapedTransactions = (transactions ?? []).map((tx: any) => ({
@@ -426,6 +446,14 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     .filter((value) => monthRows.some((row: any) => row?.month_start?.startsWith(value)))
     .sort((a, b) => b.localeCompare(a))
 
+  const availableCardMembers = Array.from(
+    new Set(
+      (cardMemberRows ?? [])
+        .map((row: any) => row.card_member)
+        .filter((value: any): value is string => Boolean(value)),
+    ),
+  ).sort((a: string, b: string) => a.localeCompare(b))
+
   return {
     transactions: shapedTransactions,
     rules: rules ?? [],
@@ -439,6 +467,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     },
     knownVendors,
     availableMonths,
+    availableCardMembers,
   }
 }
 
