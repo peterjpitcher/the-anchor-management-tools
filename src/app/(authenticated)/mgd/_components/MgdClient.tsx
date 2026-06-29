@@ -33,6 +33,7 @@ import {
   getCurrentReturn,
   deleteCollection,
   updateReturnStatus,
+  updateReturnMachineCount,
 } from '@/app/actions/mgd'
 import type { MgdCollection, MgdReturn } from '@/app/actions/mgd'
 import { useSort } from '@/hooks/useSort'
@@ -390,8 +391,9 @@ export function MgdClient({
                 <Stat label="MGD Due (20%)" value={formatCurrency(viewingReturn.total_mgd ?? 0)} />
                 <Stat label="VAT on Supplier" value={formatCurrency(viewingReturn.total_vat_on_supplier ?? 0)} />
               </div>
-              <div className="mt-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Stat label="Collections in Period" value={String(viewingReturn.collection_count ?? collections.length)} />
+                <MachineCountField viewingReturn={viewingReturn} locked={locked} onSaved={refreshData} />
               </div>
             </>
           ) : (
@@ -679,6 +681,83 @@ export function MgdClient({
       >
         {viewingReturn && <HmrcFormatContent viewingReturn={viewingReturn} />}
       </Modal>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Machine count editor (MGD7 Box 1)
+// ---------------------------------------------------------------------------
+
+function MachineCountField({
+  viewingReturn,
+  locked,
+  onSaved,
+}: {
+  viewingReturn: MgdReturn
+  locked: boolean
+  onSaved: () => Promise<void>
+}): React.ReactElement {
+  const [value, setValue] = useState(String(viewingReturn.machine_count ?? 1))
+  const [saving, setSaving] = useState(false)
+
+  // Resync when switching periods or after a data refresh.
+  useEffect(() => {
+    setValue(String(viewingReturn.machine_count ?? 1))
+  }, [viewingReturn.id, viewingReturn.machine_count])
+
+  if (locked) {
+    return <Stat label="Machines (at period end)" value={String(viewingReturn.machine_count ?? 1)} />
+  }
+
+  const parsed = Number(value)
+  const isValid = value.trim() !== '' && Number.isInteger(parsed) && parsed >= 0
+  const isDirty = String(viewingReturn.machine_count ?? 1) !== value.trim()
+
+  async function handleSave(): Promise<void> {
+    if (!isValid) {
+      toast.error('Enter a whole number of machines (0 or more)')
+      return
+    }
+    setSaving(true)
+    try {
+      const result = await updateReturnMachineCount({ id: viewingReturn.id, machine_count: parsed })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Machine count updated')
+      await onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
+        Machines (at period end)
+      </span>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min="0"
+          step="1"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          aria-label="Number of machines available for play at the end of the period"
+          className="max-w-[7rem]"
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleSave}
+          loading={saving}
+          disabled={saving || !isValid || !isDirty}
+        >
+          Save
+        </Button>
+      </div>
     </div>
   )
 }
