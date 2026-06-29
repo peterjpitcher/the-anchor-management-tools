@@ -1426,6 +1426,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 action={scheduleInterviewFormAction}
                                 className="flex flex-wrap items-center gap-2"
                                 successMessage="Interview scheduled."
+                                confirmTitle="Schedule interview"
+                                confirmMessage={`Schedule an interview for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
                                 onSuccess={() => router.refresh()}
                               >
                                 <input type="hidden" name="application_id" value={selectedApplication.id} />
@@ -1460,6 +1462,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 action={scheduleTrialFormAction}
                                 className="flex flex-wrap items-center gap-2"
                                 successMessage="Trial shift scheduled."
+                                confirmTitle="Schedule trial shift"
+                                confirmMessage={`Schedule a trial shift for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
                                 onSuccess={() => router.refresh()}
                               >
                                 <input type="hidden" name="application_id" value={selectedApplication.id} />

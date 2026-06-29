@@ -1035,7 +1035,7 @@ async function scheduleRecruitmentAppointmentForCandidate(
       data: { appointmentId },
       message: emailResult.status === 'fulfilled'
         ? `${titleLabel} scheduled and confirmation sent.`
-        : `${titleLabel} scheduled. Confirmation email was not sent.`,
+        : `${titleLabel} scheduled, but the confirmation email failed to send — resend it from the candidate's Comms tab.`,
     }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : `Failed to schedule ${typeLabel}.` }

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RecruitmentDashboardClient from '@/app/(authenticated)/recruitment/_components/RecruitmentDashboardClient'
+import { scheduleRecruitmentInterviewForCandidateAction } from '@/app/actions/recruitment'
 
 vi.mock('@/app/actions/recruitment', () => {
   const ok = vi.fn().mockResolvedValue({ success: true, message: 'Done.' })
@@ -202,5 +203,37 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(screen.getByText('Schedule interview for candidate')).toBeInTheDocument()
     expect(screen.getByLabelText('Interview slot to schedule')).toHaveValue('slot-1')
     expect(screen.getByRole('button', { name: 'Schedule interview' })).toBeInTheDocument()
+  })
+
+  it('confirms, then submits the schedule interview action with the chosen slot', async () => {
+    const data = makeInitialData()
+    data.applications = [{
+      ...data.applications[0],
+      status: 'interview_invited',
+    }]
+    data.slots = [{
+      id: 'slot-1',
+      type: 'interview',
+      starts_at: '2099-07-02T12:00:00.000Z',
+      ends_at: '2099-07-02T13:00:00.000Z',
+      location: 'The Anchor',
+      status: 'open',
+      archived_at: null,
+    }]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+    fireEvent.click(screen.getByRole('button', { name: /Candidate 1 Test/i }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule interview' }))
+
+    // A confirmation step gates the action (it emails the candidate + books a calendar slot).
+    expect(scheduleRecruitmentInterviewForCandidateAction).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('dialog', { name: 'Schedule interview' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => expect(scheduleRecruitmentInterviewForCandidateAction).toHaveBeenCalledTimes(1))
+    const formData = (scheduleRecruitmentInterviewForCandidateAction as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData
+    expect(formData.get('application_id')).toBe('application-1')
+    expect(formData.get('slot_id')).toBe('slot-1')
   })
 })
