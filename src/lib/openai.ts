@@ -227,7 +227,7 @@ export async function classifyReceiptTransaction(input: {
     'Allowed expense categories:',
     ...categories.map((category) => `- ${category}`),
     '',
-    'Return JSON with keys vendor_name, expense_category, reasoning, confidence (0-100), suggested_rule_keywords (comma-separated keywords for matching this type of transaction). Use null where you are unsure.'
+    'Return JSON with keys vendor_name, expense_category, reasoning, confidence (0-100), suggested_rule_keywords (comma-separated keywords for matching this type of transaction). Base suggested_rule_keywords on the vendor/brand name, not the location or town. Use null where you are unsure.'
   ]
     .filter(Boolean)
     .join('\n')

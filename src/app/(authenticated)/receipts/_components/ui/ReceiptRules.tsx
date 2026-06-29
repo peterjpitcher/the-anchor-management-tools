@@ -27,8 +27,8 @@ interface ReceiptRulesProps {
   rules: ReceiptRule[]
   ruleConflicts: ReceiptRuleConflict[]
   ruleSuggestions: ReceiptRuleSuggestion[]
-  /** Server count of all pending suggestions. Defaults to the loaded page length. */
-  suggestionsTotal?: number
+  /** Server count of all pending suggestions (drives the count badge and pagination). */
+  suggestionsTotal: number
   canGovernRules: boolean
   pendingSuggestion: ClassificationRuleSuggestion | null
   onApplySuggestion: (suggestion: ClassificationRuleSuggestion) => void
@@ -165,8 +165,7 @@ export function ReceiptRules({
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([])
   const [isSuggestionsPending, startSuggestionsTransition] = useTransition()
   const [isBulkApproving, startBulkApproveTransition] = useTransition()
-  const totalSuggestions = suggestionsTotal ?? ruleSuggestions.length
-  const totalSuggestionPages = Math.max(1, Math.ceil(totalSuggestions / SUGGESTIONS_PAGE_SIZE))
+  const totalSuggestionPages = Math.max(1, Math.ceil(suggestionsTotal / SUGGESTIONS_PAGE_SIZE))
 
   useEffect(() => {
     if (pendingSuggestion) {
@@ -473,7 +472,7 @@ export function ReceiptRules({
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-gray-900">Automation rules</h2>
             {pendingSuggestion && <Badge tone="success">Suggestion</Badge>}
-            {totalSuggestions > 0 && <Badge tone="success">{totalSuggestions} pending suggestions</Badge>}
+            {suggestionsTotal > 0 && <Badge tone="success">{suggestionsTotal} pending suggestions</Badge>}
             {ruleConflicts.length > 0 && <Badge tone="warning">{ruleConflicts.length} conflicts</Badge>}
           </div>
           <p className="text-sm text-gray-500">Automatically tick off known transactions (e.g. card settlements).</p>
@@ -521,10 +520,10 @@ export function ReceiptRules({
                     <p className="mt-1">Prefill the form to auto-tag similar transactions next time.</p>
                   </div>
                 )}
-                {totalSuggestions > 0 && (
+                {suggestionsTotal > 0 && (
                   <div className="mb-3 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold">System suggestions ({totalSuggestions})</p>
+                      <p className="font-semibold">System suggestions ({suggestionsTotal})</p>
                       {canGovernRules && suggestions.length > 0 && (
                         <label className="flex items-center gap-1.5 text-amber-900">
                           <input
@@ -532,6 +531,7 @@ export function ReceiptRules({
                             className="h-4 w-4 rounded border-amber-300"
                             checked={allSuggestionsSelected}
                             onChange={toggleSelectAllSuggestions}
+                            disabled={isSuggestionsPending}
                             aria-label="Select all suggestions on this page"
                           />
                           Select all on page

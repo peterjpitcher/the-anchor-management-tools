@@ -336,7 +336,7 @@ export async function previewSuggestionMatchCount(
   criteria: { match_description: string | null; match_direction: string }
 ): Promise<number> {
   if (!criteria.match_description) return 0
-  const needles = criteria.match_description.split(',').map((n) => n.trim()).filter(Boolean)
+  const needles = criteria.match_description.split(',').map((n) => n.trim().replace(/[%_\\]/g, '\\$&')).filter(Boolean)
   if (!needles.length) return 0
   const or = needles.map((n) => `details.ilike.%${n}%`).join(',')
   let q = supabase.from('receipt_transactions').select('id', { count: 'exact', head: true }).or(or)
@@ -436,19 +436,27 @@ export async function performApproveReceiptRuleSuggestion(
     return { error: 'Failed to create rule from suggestion.' }
   }
 
-  const { data: rule } = await supabase
+  const { data: rule, error: ruleError } = await supabase
     .from('receipt_rules')
     .select('*')
     .eq('id', ruleId)
     .maybeSingle()
 
+  if (ruleError || !rule) {
+    console.error('Failed to re-fetch approved receipt rule', ruleError)
+  }
+
   // Re-fetch the suggestion to record signals against its evidence (the RPC has already
   // transitioned it to approved, so this is read-only).
-  const { data: suggestion } = await supabase
+  const { data: suggestion, error: suggestionError } = await supabase
     .from('receipt_rule_suggestions')
     .select('*')
     .eq('id', suggestionId)
     .maybeSingle()
+
+  if (suggestionError) {
+    console.error('Failed to re-fetch approved receipt rule suggestion', suggestionError)
+  }
 
   if (suggestion) {
     const now = new Date().toISOString()

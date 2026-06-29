@@ -812,8 +812,13 @@ export async function approveReceiptRuleSuggestion(
   if (result.success) {
     // Re-run rules over pending rows so the newly approved rule classifies its evidence.
     // Triggered here (not in the service) to avoid a circular import between
-    // receiptGovernance and receiptMutations.
-    await refreshAutomationForPendingTransactions()
+    // receiptGovernance and receiptMutations. The approval has already committed, so a
+    // refresh failure must not fail the action.
+    try {
+      await refreshAutomationForPendingTransactions()
+    } catch (e) {
+      console.error('Failed to refresh rules after approve', e)
+    }
     await logAuditEvent({
       operation_type: 'approve_suggestion',
       resource_type: 'receipt_rule_suggestion',
@@ -842,21 +847,28 @@ export async function approveReceiptRuleSuggestions(
     return { error: 'Only super admins can approve suggested rules.' }
   }
 
-  const suggestionIds = Array.from(new Set(ids.filter((id) => typeof id === 'string' && id.length > 0)))
-  if (!suggestionIds.length) {
+  const validIds = [...new Set(ids)].filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+  if (!validIds.length) {
     return { error: 'Select at least one suggestion to approve.' }
   }
 
-  const result = await performApproveReceiptRuleSuggestions(user_id, suggestionIds, options)
+  const result = await performApproveReceiptRuleSuggestions(user_id, validIds, options)
 
   // One refresh after the whole batch so the approved rules re-run over pending rows once.
-  await refreshAutomationForPendingTransactions()
+  // The approvals have already committed, so a refresh failure must not fail the action.
+  if (result.approved > 0) {
+    try {
+      await refreshAutomationForPendingTransactions()
+    } catch (e) {
+      console.error('Failed to refresh rules after approve', e)
+    }
+  }
 
   await logAuditEvent({
     operation_type: 'approve_suggestions_bulk',
     resource_type: 'receipt_rule_suggestion',
     operation_status: 'success',
-    additional_info: { ...result, count: suggestionIds.length },
+    additional_info: { ...result, count: validIds.length },
   })
   revalidateReceiptPaths()
 

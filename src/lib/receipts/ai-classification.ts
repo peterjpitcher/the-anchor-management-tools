@@ -275,6 +275,7 @@ export async function classifyReceiptTransactionsWithAI(
     const { vendorName, expenseCategory, confidence, suggestedRuleKeywords } = classificationResult
 
     // Only trustworthy results become suggestions, and only when there's something to set.
+    // null confidence (AI didn't report one) is allowed through; the impact preview + human approval still guard it.
     if (confidence != null && confidence < AI_SUGGESTION_MIN_CONFIDENCE) continue
     if (!vendorName && !expenseCategory) continue
 
@@ -317,13 +318,13 @@ export async function classifyReceiptTransactionsWithAI(
   })
 
   // Attach the impact preview ("would match N transactions") to each suggestion.
-  for (const insert of inserts) {
+  await Promise.all(inserts.map(async (insert) => {
     const previewMatchCount = await previewSuggestionMatchCount(supabase, {
       match_description: insert.match_description,
       match_direction: insert.match_direction,
     })
     insert.evidence = { ...insert.evidence, preview_match_count: previewMatchCount }
-  }
+  }))
 
   let createdSuggestions = 0
   if (inserts.length) {
