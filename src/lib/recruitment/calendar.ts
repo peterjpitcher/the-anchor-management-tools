@@ -3,13 +3,14 @@ import { Client } from '@microsoft/microsoft-graph-client'
 import { ClientSecretCredential } from '@azure/identity'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isGraphConfigured } from '@/lib/microsoft-graph'
+import { RECRUITMENT_RIGHT_TO_WORK_WORDING, recruitmentSenderEmail } from '@/lib/recruitment/contact'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
 const VENUE_LOCATION = 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ'
 
 function getRecruitmentGraphSender(): string {
-  return process.env.RECRUITMENT_FROM_EMAIL || 'peter@orangejelly.co.uk'
+  return recruitmentSenderEmail()
 }
 
 function getGraphClient() {
@@ -61,7 +62,7 @@ function appointmentSubject(appointment: any): string {
 function appointmentDescription(appointment: any): string {
   const posting = appointment.application?.job_posting
   const label = appointment.type === 'trial_shift' ? 'trial shift' : 'interview'
-  const rightToWork = 'Please bring proof of your right to work in the UK.'
+  const rightToWork = RECRUITMENT_RIGHT_TO_WORK_WORDING
   const trialText = appointment.type === 'trial_shift'
     ? '\n\nTrial note: short unpaid trial, paired with a team member, with a complimentary meal and soft drink.'
     : ''

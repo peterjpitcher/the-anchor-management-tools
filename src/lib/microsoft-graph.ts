@@ -6,7 +6,7 @@ import type { InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoic
 import { getErrorMessage, getErrorStatusCode } from '@/lib/errors'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
-const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
 // Initialize Microsoft Graph client
 async function getGraphClient() {
