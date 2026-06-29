@@ -326,12 +326,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     limit_months: 1000,
   })
 
-  const cardMembersQuery = supabase
-    .from('receipt_transactions')
-    .select('card_member')
-    .eq('source_type', 'amex')
-    .not('card_member', 'is', null)
-    .limit(2000)
+  const cardMembersQuery = supabase.rpc('get_amex_card_members')
 
   const [
     { data: transactions, count, error },
@@ -447,13 +442,10 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     .filter((value) => monthRows.some((row: any) => row?.month_start?.startsWith(value)))
     .sort((a, b) => b.localeCompare(a))
 
-  const availableCardMembers = Array.from(
-    new Set(
-      (cardMemberRows ?? [])
-        .map((row: any) => row.card_member)
-        .filter((value: any): value is string => Boolean(value)),
-    ),
-  ).sort((a: string, b: string) => a.localeCompare(b))
+  // get_amex_card_members already returns DISTINCT, non-null members in sorted order.
+  const availableCardMembers = (cardMemberRows ?? [])
+    .map((row: any) => row.card_member)
+    .filter((value: any): value is string => Boolean(value))
 
   return {
     transactions: shapedTransactions,
