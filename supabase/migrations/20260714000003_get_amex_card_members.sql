@@ -16,7 +16,8 @@ AS $$
   ORDER BY rt.card_member
 $$;
 
--- Called only from the service layer via the service-role admin client. New functions
--- get EXECUTE granted to PUBLIC (anon + authenticated) by default, so lock it down.
-REVOKE EXECUTE ON FUNCTION public.get_amex_card_members() FROM PUBLIC;
+-- Called only from the service layer via the service-role admin client. Supabase grants
+-- EXECUTE to anon + authenticated by default, and REVOKE FROM PUBLIC does NOT remove
+-- those role-direct grants, so revoke them explicitly to keep this service_role-only.
+REVOKE EXECUTE ON FUNCTION public.get_amex_card_members() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_amex_card_members() TO service_role;
