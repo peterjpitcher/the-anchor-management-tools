@@ -488,6 +488,23 @@ function ActionStateMessage({ state }: { state: any }) {
   )
 }
 
+function ProfileField({
+  label,
+  children,
+  className,
+}: {
+  label: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <label className={['block space-y-1 text-xs font-medium text-text-muted', className].filter(Boolean).join(' ')}>
+      <span>{label}</span>
+      {children}
+    </label>
+  )
+}
+
 function SubmitButton({
   children,
   variant = 'primary',
@@ -1438,41 +1455,63 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       )}
                     </div>
 
-                    <form action={candidateUpdateAction} className="grid grid-cols-1 gap-2">
+                    <form action={candidateUpdateAction} className="space-y-3">
                       <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
                       <p className="text-xs font-semibold uppercase text-text-muted">Candidate profile</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
-                        <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <ProfileField label="First name">
+                          <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
+                        </ProfileField>
+                        <ProfileField label="Last name">
+                          <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
+                        </ProfileField>
                       </div>
-                      <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
-                      <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
-                      <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
-                      <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
-                        <option value="not_checked">Right to work not checked</option>
-                        <option value="pending">Right to work pending</option>
-                        <option value="verified">Right to work verified</option>
-                        <option value="failed">Right to work failed</option>
-                      </Select>
-                      <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
-                        <option value="">Document type</option>
-                        <option value="Passport">Passport</option>
-                        <option value="Biometric Residence Permit">Biometric Residence Permit</option>
-                        <option value="Share Code">Share Code</option>
-                        <option value="List A">List A</option>
-                        <option value="List B">List B</option>
-                        <option value="Other">Other</option>
-                      </Select>
-                      <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
-                      <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
-                        SMS consent
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
-                        Future recruitment consent
-                      </label>
+                      <ProfileField label="Email">
+                        <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
+                      </ProfileField>
+                      <ProfileField label="Phone">
+                        <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
+                      </ProfileField>
+                      <ProfileField label="Location">
+                        <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
+                      </ProfileField>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <ProfileField label="Right to work">
+                          <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
+                            <option value="not_checked">Not checked</option>
+                            <option value="pending">Pending</option>
+                            <option value="verified">Verified</option>
+                            <option value="failed">Failed</option>
+                          </Select>
+                        </ProfileField>
+                        <ProfileField label="Document type">
+                          <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
+                            <option value="">Not set</option>
+                            <option value="Passport">Passport</option>
+                            <option value="Biometric Residence Permit">Biometric Residence Permit</option>
+                            <option value="Share Code">Share Code</option>
+                            <option value="List A">List A</option>
+                            <option value="List B">List B</option>
+                            <option value="Other">Other</option>
+                          </Select>
+                        </ProfileField>
+                      </div>
+                      <ProfileField label="Right to work checked at">
+                        <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
+                      </ProfileField>
+                      <ProfileField label="Recruitment notes">
+                        <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
+                      </ProfileField>
+                      <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
+                          SMS consent
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
+                          Future recruitment consent
+                        </label>
+                      </div>
                       <div className="flex items-center gap-2">
                         <SubmitButton>Save candidate</SubmitButton>
                         <ActionStateMessage state={candidateUpdateState} />
@@ -2388,42 +2427,66 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   )}
                 </div>
 
-                <form action={candidateUpdateAction} className="grid grid-cols-1 gap-2">
+                <form action={candidateUpdateAction} className="space-y-3">
                   <input type="hidden" name="candidate_id" value={selectedTalentCandidate.id} />
                   <p className="text-xs font-semibold uppercase text-text-muted">Profile</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input name="first_name" defaultValue={selectedTalentCandidate.first_name ?? ''} placeholder="First name" />
-                    <Input name="last_name" defaultValue={selectedTalentCandidate.last_name ?? ''} placeholder="Last name" />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <ProfileField label="First name">
+                      <Input name="first_name" defaultValue={selectedTalentCandidate.first_name ?? ''} placeholder="First name" />
+                    </ProfileField>
+                    <ProfileField label="Last name">
+                      <Input name="last_name" defaultValue={selectedTalentCandidate.last_name ?? ''} placeholder="Last name" />
+                    </ProfileField>
                   </div>
-                  <Input name="email" defaultValue={selectedTalentCandidate.email ?? ''} placeholder="Email" />
-                  <Input name="phone" defaultValue={selectedTalentCandidate.phone ?? ''} placeholder="Phone" />
-                  <Input name="phone_e164" defaultValue={selectedTalentCandidate.phone_e164 ?? ''} placeholder="Phone E164" />
-                  <Input name="location" defaultValue={selectedTalentCandidate.location ?? ''} placeholder="Location" />
-                  <Select name="right_to_work_status" defaultValue={selectedTalentCandidate.right_to_work_status ?? 'not_checked'}>
-                    <option value="not_checked">Right to work not checked</option>
-                    <option value="pending">Right to work pending</option>
-                    <option value="verified">Right to work verified</option>
-                    <option value="failed">Right to work failed</option>
-                  </Select>
-                  <Select name="right_to_work_document_type" defaultValue={selectedTalentCandidate.right_to_work_document_type ?? ''}>
-                    <option value="">Document type</option>
-                    <option value="Passport">Passport</option>
-                    <option value="Biometric Residence Permit">Biometric Residence Permit</option>
-                    <option value="Share Code">Share Code</option>
-                    <option value="List A">List A</option>
-                    <option value="List B">List B</option>
-                    <option value="Other">Other</option>
-                  </Select>
-                  <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedTalentCandidate.right_to_work_checked_at)} />
-                  <Textarea name="notes" defaultValue={selectedTalentCandidate.notes ?? ''} placeholder="Recruitment notes" rows={3} />
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="sms_consent" defaultChecked={selectedTalentCandidate.sms_consent === true} />
-                    SMS consent
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedTalentCandidate.future_recruitment_consent === true} />
-                    Future recruitment consent
-                  </label>
+                  <ProfileField label="Email">
+                    <Input name="email" defaultValue={selectedTalentCandidate.email ?? ''} placeholder="Email" />
+                  </ProfileField>
+                  <ProfileField label="Phone">
+                    <Input name="phone" defaultValue={selectedTalentCandidate.phone ?? ''} placeholder="Phone" />
+                  </ProfileField>
+                  <ProfileField label="Phone E164">
+                    <Input name="phone_e164" defaultValue={selectedTalentCandidate.phone_e164 ?? ''} placeholder="Phone E164" />
+                  </ProfileField>
+                  <ProfileField label="Location">
+                    <Input name="location" defaultValue={selectedTalentCandidate.location ?? ''} placeholder="Location" />
+                  </ProfileField>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <ProfileField label="Right to work">
+                      <Select name="right_to_work_status" defaultValue={selectedTalentCandidate.right_to_work_status ?? 'not_checked'}>
+                        <option value="not_checked">Not checked</option>
+                        <option value="pending">Pending</option>
+                        <option value="verified">Verified</option>
+                        <option value="failed">Failed</option>
+                      </Select>
+                    </ProfileField>
+                    <ProfileField label="Document type">
+                      <Select name="right_to_work_document_type" defaultValue={selectedTalentCandidate.right_to_work_document_type ?? ''}>
+                        <option value="">Not set</option>
+                        <option value="Passport">Passport</option>
+                        <option value="Biometric Residence Permit">Biometric Residence Permit</option>
+                        <option value="Share Code">Share Code</option>
+                        <option value="List A">List A</option>
+                        <option value="List B">List B</option>
+                        <option value="Other">Other</option>
+                      </Select>
+                    </ProfileField>
+                  </div>
+                  <ProfileField label="Right to work checked at">
+                    <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedTalentCandidate.right_to_work_checked_at)} />
+                  </ProfileField>
+                  <ProfileField label="Recruitment notes">
+                    <Textarea name="notes" defaultValue={selectedTalentCandidate.notes ?? ''} placeholder="Recruitment notes" rows={3} />
+                  </ProfileField>
+                  <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" name="sms_consent" defaultChecked={selectedTalentCandidate.sms_consent === true} />
+                      SMS consent
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedTalentCandidate.future_recruitment_consent === true} />
+                      Future recruitment consent
+                    </label>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <SubmitButton>Save candidate</SubmitButton>
                     <ActionStateMessage state={candidateUpdateState} />
