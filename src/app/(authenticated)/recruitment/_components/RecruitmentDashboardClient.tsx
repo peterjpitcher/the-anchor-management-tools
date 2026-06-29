@@ -131,6 +131,21 @@ function formatDateTime(value: string | null | undefined) {
   }).format(date)
 }
 
+function formatSlotDateTime(value: string | null | undefined) {
+  if (!value) return 'Not set'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Not set'
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/London',
+  }).format(date)
+}
+
 function toTime(value: string | null | undefined): number {
   if (!value) return 0
   const time = new Date(value).getTime()
@@ -1638,8 +1653,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             {slot.type.replaceAll('_', ' ')}
                           </button>
                         </TableCell>
-                        <TableCell>{formatDateTime(slot.starts_at)}</TableCell>
-                        <TableCell>{formatDateTime(slot.ends_at)}</TableCell>
+                        <TableCell>{formatSlotDateTime(slot.starts_at)}</TableCell>
+                        <TableCell>{formatSlotDateTime(slot.ends_at)}</TableCell>
                         <TableCell>{slot.location}</TableCell>
                         <TableCell>{slot.archived_at ? 'archived' : slot.status}</TableCell>
                       </TableRow>

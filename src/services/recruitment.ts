@@ -43,6 +43,7 @@ const TERMINAL_NON_HIRED_STATUSES = ['rejected', 'withdrawn', 'declined_duplicat
 const AWAITING_BOOKING_STATUSES = ['interview_invited', 'trial_offered'] as const
 const OFFER_STATUSES = ['offered'] as const
 const SLOT_MINUTE_INCREMENT = 15
+const INTERVIEW_SLOT_DURATION_MS = 60 * 60 * 1000
 
 export const RECRUITMENT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
   new: ['ai_screened', 'shortlisted', 'interview_invited', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool', 'declined_duplicate'],
@@ -77,6 +78,40 @@ function assertRecruitmentSlotTimes(startsAt: Date, endsAt: Date) {
   if (!isQuarterHourDate(startsAt) || !isQuarterHourDate(endsAt)) {
     throw new Error('Appointment slot times must use 00, 15, 30 or 45 minutes.')
   }
+}
+
+function buildRecruitmentAppointmentSlotRows(
+  parsed: RecruitmentAppointmentSlotInput,
+  startsAt: Date,
+  endsAt: Date,
+  currentUserId?: string | null,
+) {
+  const baseSlot = {
+    ...parsed,
+    created_by: currentUserId ?? null,
+  }
+
+  if (parsed.type !== 'interview') {
+    return [baseSlot]
+  }
+
+  const durationMs = endsAt.getTime() - startsAt.getTime()
+  if (durationMs < INTERVIEW_SLOT_DURATION_MS) {
+    throw new Error('Interview availability must be at least 1 hour.')
+  }
+  if (durationMs % INTERVIEW_SLOT_DURATION_MS !== 0) {
+    throw new Error('Interview availability must be in whole one-hour blocks.')
+  }
+
+  return Array.from({ length: durationMs / INTERVIEW_SLOT_DURATION_MS }, (_, index) => {
+    const slotStart = new Date(startsAt.getTime() + index * INTERVIEW_SLOT_DURATION_MS)
+    const slotEnd = new Date(slotStart.getTime() + INTERVIEW_SLOT_DURATION_MS)
+    return {
+      ...baseSlot,
+      starts_at: slotStart.toISOString(),
+      ends_at: slotEnd.toISOString(),
+    }
+  })
 }
 
 function normalizeEmail(email: string | null | undefined): string | null {
@@ -1655,23 +1690,31 @@ export async function createRecruitmentAppointmentSlot(
   currentUserId?: string | null,
   supabase: GenericClient = createAdminClient()
 ) {
+  const slots = await createRecruitmentAppointmentSlots(input, currentUserId, supabase)
+  if (!slots[0]) throw new Error('Failed to create appointment slot.')
+  return slots[0]
+}
+
+export async function createRecruitmentAppointmentSlots(
+  input: unknown,
+  currentUserId?: string | null,
+  supabase: GenericClient = createAdminClient()
+) {
   const parsed = RecruitmentAppointmentSlotInputSchema.parse(input)
   const startsAt = new Date(parsed.starts_at)
   const endsAt = new Date(parsed.ends_at)
 
   assertRecruitmentSlotTimes(startsAt, endsAt)
+  const slots = buildRecruitmentAppointmentSlotRows(parsed, startsAt, endsAt, currentUserId)
 
   const { data, error } = await supabase
     .from('recruitment_appointment_slots')
-    .insert({
-      ...parsed,
-      created_by: currentUserId ?? null,
-    })
+    .insert(slots)
     .select('*')
-    .single()
 
   if (error) throw error
-  return data as RecruitmentAppointmentSlotInput & { id: string; status: string }
+  if (!data?.length) throw new Error('Failed to create appointment slot.')
+  return data as Array<RecruitmentAppointmentSlotInput & { id: string; status: string }>
 }
 
 export async function updateRecruitmentAppointmentSlot(

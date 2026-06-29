@@ -14,7 +14,7 @@ import {
   cancelRecruitmentAppointmentSlot,
   completeRecruitmentHireHandoff,
   createRecruitmentApplication,
-  createRecruitmentAppointmentSlot,
+  createRecruitmentAppointmentSlots,
   createRecruitmentInterviewScorecard,
   createRecruitmentJobPosting,
   duplicateRecruitmentJobPosting,
@@ -654,7 +654,7 @@ export async function createRecruitmentSlotAction(_prevState: unknown, formData:
     const user = await requireRecruitmentPermission('create')
     const startsAt = parseDateTimeLocal(formString(formData, 'starts_at'))
     const endsAt = parseDateTimeLocal(formString(formData, 'ends_at'))
-    const slot = await createRecruitmentAppointmentSlot({
+    const slots = await createRecruitmentAppointmentSlots({
       type: formString(formData, 'type'),
       starts_at: startsAt,
       ends_at: endsAt,
@@ -663,21 +663,28 @@ export async function createRecruitmentSlotAction(_prevState: unknown, formData:
       interviewer_user_id: null,
       supervisor_staff_id: formString(formData, 'supervisor_staff_id'),
     }, user.id)
+    const firstSlot = slots[0]
     await auditRecruitmentMutation({
       user,
       operation: 'create',
       resource: 'recruitment_appointment_slot',
-      resourceId: slot.id,
+      resourceId: firstSlot?.id,
       status: 'success',
       newValues: {
-        type: (slot as any).type,
-        starts_at: (slot as any).starts_at,
-        ends_at: (slot as any).ends_at,
-        status: (slot as any).status,
+        count: slots.length,
+        slot_ids: slots.map(slot => (slot as any).id),
+        type: (firstSlot as any)?.type,
+        starts_at: (firstSlot as any)?.starts_at,
+        ends_at: (slots.at(-1) as any)?.ends_at,
+        status: (firstSlot as any)?.status,
       },
     })
     revalidatePath('/recruitment')
-    return { success: true, data: slot, message: 'Appointment slot created.' }
+    return {
+      success: true,
+      data: slots,
+      message: slots.length === 1 ? 'Appointment slot created.' : `${slots.length} appointment slots created.`,
+    }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create appointment slot.' }
   }

@@ -173,7 +173,7 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Opens' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Closes' })).toBeInTheDocument()
-    expect(screen.getByText('1 Jul 2026, 12:00')).toBeInTheDocument()
-    expect(screen.getByText('1 Jul 2026, 14:00')).toBeInTheDocument()
+    expect(screen.getByText('Wed, 1 Jul 2026, 12:00')).toBeInTheDocument()
+    expect(screen.getByText('Wed, 1 Jul 2026, 14:00')).toBeInTheDocument()
   })
 })
