@@ -148,7 +148,13 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
   }
 
   function handleSourceChange(event: ChangeEvent<HTMLSelectElement>) {
-    applyFilters({ ...localFilters, sourceType: event.target.value as LocalFilters['sourceType'] })
+    const newSourceType = event.target.value as LocalFilters['sourceType']
+    const shouldClearCardMember = newSourceType !== 'amex'
+    applyFilters({
+      ...localFilters,
+      sourceType: newSourceType,
+      cardMember: shouldClearCardMember ? '' : localFilters.cardMember,
+    })
   }
 
   function handleCardMemberChange(event: ChangeEvent<HTMLSelectElement>) {
@@ -187,7 +193,7 @@ export function ReceiptFilters({ filters, availableMonths, availableCardMembers 
         <Select value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
         <Select value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
         <Select value={localFilters.sourceType ?? 'all'} onChange={handleSourceChange} className="w-40" options={sourceOptions} />
-        {availableCardMembers.length > 0 && (
+        {availableCardMembers.length > 0 && localFilters.sourceType === 'amex' && (
           <Select value={localFilters.cardMember ?? ''} onChange={handleCardMemberChange} className="w-40" options={cardMemberOptions} />
         )}
       </div>

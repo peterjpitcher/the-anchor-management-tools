@@ -71,7 +71,10 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
         <form onSubmit={handleStatementSubmit} className="space-y-3">
           <Select
             value={sourceType}
-            onChange={(event) => setSourceType(event.target.value as 'bank' | 'amex')}
+            onChange={(event) => {
+              setSourceType(event.target.value as 'bank' | 'amex')
+              setStatementFile(null)
+            }}
             options={[
               { value: 'bank', label: 'Bank statement' },
               { value: 'amex', label: 'American Express statement' },
