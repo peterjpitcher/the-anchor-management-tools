@@ -35,6 +35,7 @@ export interface MgdReturn {
   submitted_at: string | null
   submitted_by: string | null
   date_paid: string | null
+  machine_count: number
   created_at: string
   updated_at: string
   collection_count?: number
@@ -125,6 +126,14 @@ const updateReturnStatusSchema = z.object({
   confirm_reopen_from_paid: z.boolean().optional(),
 })
 
+const updateMachineCountSchema = z.object({
+  id: z.string().uuid(),
+  machine_count: z
+    .number()
+    .int('Machine count must be a whole number')
+    .min(0, 'Machine count must be 0 or more'),
+})
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -193,6 +202,7 @@ export async function getReturns(): ActionResult<MgdReturn[]> {
       submitted_at: r.submitted_at as string | null,
       submitted_by: r.submitted_by as string | null,
       date_paid: r.date_paid as string | null,
+      machine_count: (r.machine_count ?? 1) as number,
       created_at: r.created_at as string,
       updated_at: r.updated_at as string,
       collection_count: count ?? 0,
@@ -244,6 +254,7 @@ export async function getCurrentReturn(): ActionResult<MgdReturn | null> {
       submitted_at: data.submitted_at as string | null,
       submitted_by: data.submitted_by as string | null,
       date_paid: data.date_paid as string | null,
+      machine_count: (data.machine_count ?? 1) as number,
       created_at: data.created_at as string,
       updated_at: data.updated_at as string,
       collection_count: count ?? 0,
@@ -584,6 +595,80 @@ export async function updateReturnStatus(formData: {
 
   revalidatePath('/mgd')
   return { success: true, data: updated as MgdReturn }
+}
+
+/**
+ * Set the number of dutiable machines available for play at the end of the
+ * period (MGD7 Box 1). Editable only while the return is open — a submitted or
+ * paid return must be reopened first, mirroring collection edit rules.
+ */
+export async function updateReturnMachineCount(formData: {
+  id: string
+  machine_count: number
+}): ActionResult<MgdReturn> {
+  const auth = await requireMgdManagePermission()
+  if ('error' in auth) return { error: auth.error }
+
+  const parsed = updateMachineCountSchema.safeParse(formData)
+  if (!parsed.success) {
+    return { error: parsed.error.errors.map((e) => e.message).join(', ') }
+  }
+
+  const { id, machine_count } = parsed.data
+  const db = createAdminClient()
+
+  const { data: existing, error: fetchErr } = await db
+    .from('mgd_returns')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchErr || !existing) return { error: 'Return not found' }
+
+  if (existing.status === 'submitted' || existing.status === 'paid') {
+    return {
+      error: `Cannot change the machine count on a ${existing.status} return. Reopen the return first.`,
+    }
+  }
+
+  const { data: updated, error: updateErr } = await db
+    .from('mgd_returns')
+    .update({ machine_count })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (updateErr) return { error: updateErr.message }
+
+  await logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'update',
+    resource_type: 'mgd_return',
+    resource_id: id,
+    operation_status: 'success',
+    old_values: { machine_count: existing.machine_count },
+    new_values: { machine_count },
+  })
+
+  revalidatePath('/mgd')
+  return {
+    success: true,
+    data: {
+      id: updated.id as string,
+      period_start: updated.period_start as string,
+      period_end: updated.period_end as string,
+      total_net_take: (updated.total_net_take ?? 0) as number,
+      total_mgd: (updated.total_mgd ?? 0) as number,
+      total_vat_on_supplier: (updated.total_vat_on_supplier ?? 0) as number,
+      status: updated.status as MgdReturn['status'],
+      submitted_at: updated.submitted_at as string | null,
+      submitted_by: updated.submitted_by as string | null,
+      date_paid: updated.date_paid as string | null,
+      machine_count: (updated.machine_count ?? 1) as number,
+      created_at: updated.created_at as string,
+      updated_at: updated.updated_at as string,
+    } as MgdReturn,
+  }
 }
 
 /**
