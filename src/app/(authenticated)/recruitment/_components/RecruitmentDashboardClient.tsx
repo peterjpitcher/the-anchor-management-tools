@@ -70,6 +70,8 @@ import {
   retryRecruitmentCvExtractionAction,
   runRecruitmentRetentionAction,
   saveRecruitmentEmailTemplateAction,
+  scheduleRecruitmentInterviewForCandidateAction,
+  scheduleRecruitmentTrialForCandidateAction,
   sendRecruitmentDecisionEmailAction,
   transitionRecruitmentStatusAction,
   updateRecruitmentCandidateAction,
@@ -145,6 +147,25 @@ function formatSlotDateTime(value: string | null | undefined) {
     minute: '2-digit',
     timeZone: 'Europe/London',
   }).format(date)
+}
+
+function formatTimeOnly(value: string | null | undefined) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/London',
+  }).format(date)
+}
+
+// Builds a slot option label: London-pinned start, end time, and location, so two
+// same-day slots of different lengths are distinguishable in the dropdown.
+function formatSlotOptionLabel(slot: { starts_at: string; ends_at?: string | null; location?: string | null }) {
+  const end = formatTimeOnly(slot.ends_at)
+  const window = end ? `${formatSlotDateTime(slot.starts_at)}–${end}` : formatSlotDateTime(slot.starts_at)
+  return `${window} · ${slot.location || 'The Anchor'}`
 }
 
 function toTime(value: string | null | undefined): number {
@@ -576,7 +597,12 @@ function ActionFeedbackForm({
   return (
     <>
       <form onSubmit={handleSubmit} className={className}>
-        {children}
+        {/* Disable all controls while the action is in flight to prevent double-submit.
+            display:contents keeps the fieldset out of the layout so the form's own
+            flex/grid classes still apply to the children. */}
+        <fieldset disabled={pending} className="contents">
+          {children}
+        </fieldset>
         {pending && <p className="text-xs text-text-muted">Working...</p>}
         {state?.error && <p className="text-xs text-danger">{state.error}</p>}
         {state?.success && <p className="text-xs text-success">{state.success}</p>}
@@ -662,6 +688,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const restoreSlotFormAction = restoreRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
   const cancelAppointmentFormAction = cancelRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
   const rescheduleAppointmentFormAction = rescheduleRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
+  const scheduleInterviewFormAction = scheduleRecruitmentInterviewForCandidateAction as unknown as (formData: FormData) => Promise<void>
+  const scheduleTrialFormAction = scheduleRecruitmentTrialForCandidateAction as unknown as (formData: FormData) => Promise<void>
   const archiveAppointmentFormAction = archiveRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
   const restoreAppointmentFormAction = restoreRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
   const retryCommunicationFormAction = retryRecruitmentCommunicationAction as unknown as (formData: FormData) => Promise<void>
@@ -799,6 +827,35 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const selectedApplicationAppointments = appointments.filter((appointment: any) => (
     appointment.application_id === selectedApplication?.id || appointment.candidate_id === selectedCandidate?.id
   )).slice(0, 5)
+  // Duplicate guard is per APPLICATION (a candidate may hold several applications).
+  const applicationHasFutureScheduled = (type: 'interview' | 'trial_shift') => appointments.some((appointment: any) => (
+    appointment.application_id === selectedApplication?.id
+    && appointment.type === type
+    && appointment.status === 'scheduled'
+    && toTime(appointment.scheduled_start) > Date.now()
+  ))
+  const openSlotsOfType = (type: 'interview' | 'trial_shift') => slots.filter((slot: any) => (
+    !slot.archived_at
+    && slot.status === 'open'
+    && slot.type === type
+    && toTime(slot.starts_at) > Date.now()
+  ))
+  const selectedApplicationHasScheduledInterview = applicationHasFutureScheduled('interview')
+  const selectedApplicationHasScheduledTrial = applicationHasFutureScheduled('trial_shift')
+  const selectedApplicationOpenInterviewSlots = openSlotsOfType('interview')
+  const selectedApplicationOpenTrialSlots = openSlotsOfType('trial_shift')
+  const canScheduleInterviewForCandidate = Boolean(selectedApplication && permissions.canEdit && !selectedApplicationHasScheduledInterview && [
+    'new',
+    'ai_screened',
+    'shortlisted',
+    'interview_invited',
+    'on_hold',
+  ].includes(selectedApplicationStatus))
+  const canScheduleTrialForCandidate = Boolean(selectedApplication && permissions.canEdit && !selectedApplicationHasScheduledTrial && [
+    'interviewed',
+    'trial_offered',
+    'on_hold',
+  ].includes(selectedApplicationStatus))
 
   async function draftEmail(applicationId: string, type: string) {
     setClientMessage(null)
@@ -1359,6 +1416,74 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               )}
                             </div>
                           </div>
+                          {canScheduleInterviewForCandidate && (
+                            <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                              <p className="text-xs font-semibold uppercase text-text-muted">Schedule interview for candidate</p>
+                              {selectedApplicationOpenInterviewSlots.length === 0 && (
+                                <p className="text-xs text-text-muted">No open interview slots available.</p>
+                              )}
+                              <ActionFeedbackForm
+                                action={scheduleInterviewFormAction}
+                                className="flex flex-wrap items-center gap-2"
+                                successMessage="Interview scheduled."
+                                onSuccess={() => router.refresh()}
+                              >
+                                <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                <Select
+                                  name="slot_id"
+                                  className="w-72"
+                                  aria-label="Interview slot to schedule"
+                                  disabled={selectedApplicationOpenInterviewSlots.length === 0}
+                                >
+                                  {selectedApplicationOpenInterviewSlots.map((slot: any) => (
+                                    <option key={slot.id} value={slot.id}>
+                                      {formatSlotOptionLabel(slot)}
+                                    </option>
+                                  ))}
+                                </Select>
+                                <SubmitButton
+                                  variant={selectedApplicationStatus === 'interview_invited' ? 'primary' : 'secondary'}
+                                  disabled={selectedApplicationOpenInterviewSlots.length === 0}
+                                >
+                                  Schedule interview
+                                </SubmitButton>
+                              </ActionFeedbackForm>
+                            </div>
+                          )}
+                          {canScheduleTrialForCandidate && (
+                            <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                              <p className="text-xs font-semibold uppercase text-text-muted">Schedule trial shift for candidate</p>
+                              {selectedApplicationOpenTrialSlots.length === 0 && (
+                                <p className="text-xs text-text-muted">No open trial shift slots available.</p>
+                              )}
+                              <ActionFeedbackForm
+                                action={scheduleTrialFormAction}
+                                className="flex flex-wrap items-center gap-2"
+                                successMessage="Trial shift scheduled."
+                                onSuccess={() => router.refresh()}
+                              >
+                                <input type="hidden" name="application_id" value={selectedApplication.id} />
+                                <Select
+                                  name="slot_id"
+                                  className="w-72"
+                                  aria-label="Trial shift slot to schedule"
+                                  disabled={selectedApplicationOpenTrialSlots.length === 0}
+                                >
+                                  {selectedApplicationOpenTrialSlots.map((slot: any) => (
+                                    <option key={slot.id} value={slot.id}>
+                                      {formatSlotOptionLabel(slot)}
+                                    </option>
+                                  ))}
+                                </Select>
+                                <SubmitButton
+                                  variant={selectedApplicationStatus === 'trial_offered' ? 'primary' : 'secondary'}
+                                  disabled={selectedApplicationOpenTrialSlots.length === 0}
+                                >
+                                  Schedule trial shift
+                                </SubmitButton>
+                              </ActionFeedbackForm>
+                            </div>
+                          )}
                           <div className="flex flex-wrap gap-2">
                             {permissions.canManage && selectedApplication.job_posting_id && (
                               <ActionFeedbackForm

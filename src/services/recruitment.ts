@@ -2010,6 +2010,42 @@ export async function issueRecruitmentBookingLink(
   }
 }
 
+export async function scheduleRecruitmentAppointmentByStaff(
+  input: {
+    applicationId: string
+    slotId: string
+    appointmentType?: RecruitmentAppointmentType
+    actorUserId?: string | null
+  },
+  supabase: GenericClient = createAdminClient()
+) {
+  // Everything below — application/slot validation, the per-application duplicate
+  // guard, the slot claim, the booking-token write, and the status transition to
+  // interview_scheduled/trial_scheduled — happens atomically inside the
+  // recruitment_staff_schedule_appointment RPC (force=true so it works from
+  // new/ai_screened/on_hold). A failed claim therefore rolls everything back,
+  // unlike the previous multi-step path which could strand the application.
+  //
+  // A fresh single-use token is recorded on the appointment (so the candidate has
+  // a working self-manage reference) and burned immediately by the RPC, which also
+  // prevents the public booking link being reused to book a second slot.
+  const tokenHash = hashToken(createToken())
+  const tokenExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: appointmentId, error: scheduleError } = await supabase.rpc('recruitment_staff_schedule_appointment', {
+    p_slot_id: input.slotId,
+    p_application_id: input.applicationId,
+    p_booking_token_hash: tokenHash,
+    p_token_expires_at: tokenExpiresAt,
+    p_actor_user_id: input.actorUserId ?? null,
+    p_appointment_type: input.appointmentType ?? null,
+  })
+
+  if (scheduleError) throw scheduleError
+  if (!appointmentId) throw new Error('Failed to schedule appointment.')
+  return appointmentId as string
+}
+
 export async function previewRecruitmentBookingToken(
   token: string,
   supabase: GenericClient = createAdminClient()
@@ -2467,19 +2503,24 @@ export async function eraseRecruitmentCandidate(
   return { success: true, cancelledAppointments: futureAppointments?.length ?? 0 }
 }
 
+export function formatRecruitmentAppointmentTime(appointment: {
+  scheduled_start: string
+  timezone?: string | null
+}) {
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: appointment.timezone || 'Europe/London',
+  }).format(new Date(appointment.scheduled_start))
+}
+
 export function formatRecruitmentAppointment(appointment: {
   scheduled_start: string
   timezone?: string | null
   type?: string | null
 }) {
-  const date = new Date(appointment.scheduled_start)
   const label = appointment.type === 'trial_shift' ? 'trial shift' : 'interview'
-  const time = new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: appointment.timezone || 'Europe/London',
-  }).format(date)
-  return `${label} on ${time}`
+  return `${label} on ${formatRecruitmentAppointmentTime(appointment)}`
 }
 
 export function buildRecruitmentPrintableKit(input: {
