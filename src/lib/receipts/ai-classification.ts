@@ -166,7 +166,7 @@ export async function classifyReceiptTransactionsWithAI(
   // Filter to only transactions that need classification
   // Explicit guard: skip transactions already AI-classified (vendor_source === 'ai') unless they also need expense
   const toClassify = transactionRows.filter((transaction) => {
-    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule'
+    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule' || transaction.vendor_source === 'import'
     const expenseLocked = transaction.expense_category_source === 'manual'
 
     const needsVendor = !vendorLocked && !transaction.vendor_name
@@ -185,7 +185,7 @@ export async function classifyReceiptTransactionsWithAI(
 
   // Build batch items
   const batchItems: BatchClassificationItem[] = toClassify.map((transaction) => {
-    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule'
+    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule' || transaction.vendor_source === 'import'
     // For Amex rows the statement carries the merchant's own category/town,
     // which give the model a stronger vendor/category signal than details alone.
     const merchantHint = transaction.source_type === 'amex'
@@ -245,7 +245,7 @@ export async function classifyReceiptTransactionsWithAI(
   for (const transaction of toClassify) {
     const classificationResult = resultMap.get(transaction.id)
 
-    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule'
+    const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule' || transaction.vendor_source === 'import'
     const expenseLocked = transaction.expense_category_source === 'manual'
 
     const needsVendor = !vendorLocked && !transaction.vendor_name

@@ -285,7 +285,8 @@ export function parseSignedAmount(value: string | null | undefined): number | nu
   if (!cleaned) return null
   const result = Number.parseFloat(cleaned)
   if (!Number.isFinite(result) || result === 0) return null
-  return Number(result.toFixed(2))
+  const rounded = Number(result.toFixed(2))
+  return rounded === 0 ? null : rounded
 }
 
 export function normalizeVendorInput(value: unknown): string | null {
@@ -368,6 +369,7 @@ export function createAmexTransactionHash(input: {
   cardAccount: string | null
   rawCardMember: string | null
   externalReference: string | null
+  details: string
 }): string {
   const hash = createHash('sha256')
   hash.update(
@@ -378,6 +380,7 @@ export function createAmexTransactionHash(input: {
       input.cardAccount ?? '',
       input.rawCardMember ?? '',
       input.externalReference ?? '',
+      input.details,
     ].join('|'),
   )
   return hash.digest('hex')
@@ -555,12 +558,11 @@ type AmexClassification = Pick<
 
 function classifyAmexRow(details: string, signedAmount: number): AmexClassification {
   const upper = details.toUpperCase()
-  const isPayment = upper.includes('PAYMENT RECEIVED') || upper.startsWith('CREDIT FOR')
+  const isPayment = upper.startsWith('PAYMENT RECEIVED') || upper.startsWith('CREDIT FOR')
   const isFee =
     upper.includes('INTEREST CHARGE') ||
     upper.includes('MEMBERSHIP FEE') ||
-    upper.includes('LATE PAYMENT FEE') ||
-    /\bFEE\b/.test(upper)
+    upper.includes('LATE PAYMENT FEE')
 
   if (isPayment) {
     return {
@@ -661,6 +663,7 @@ export function parseAmexCsv(buffer: Buffer): ParsedTransactionRow[] {
         cardAccount,
         rawCardMember,
         externalReference,
+        details,
       }),
       sourceType: 'amex',
       cardMember,

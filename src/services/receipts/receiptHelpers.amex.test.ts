@@ -35,6 +35,7 @@ describe('createAmexTransactionHash', () => {
     cardAccount: '71001',
     rawCardMember: 'MR P PITCHER',
     externalReference: 'AT261060074000010265389',
+    details: 'AMZNMKTPLACE',
   }
 
   it('is stable for identical raw input', () => {
@@ -140,6 +141,18 @@ describe('parseAmexCsv', () => {
     const a = parseAmexCsv(amexBuffer([line]))[0]
     const b = parseAmexCsv(amexBuffer([line]))[0]
     expect(a.dedupeHash).toBe(b.dedupeHash)
+  })
+
+  it('tags every parsed row with sourceType amex', () => {
+    const rows = parseAmexCsv(amexBuffer([
+      "16/04/2026,AMZNMKTPLACE,MR P PITCHER,-71001,261.99,,AMZN,1 PLACE,LONDON,EC2A 2BA,UK,'AT261060074000010265389',General Purchases-Online Purchases",
+      "31/05/2026,PAYMENT RECEIVED - THANK YOU,MR P PITCHER,-71001,-2358.05,,PAYMENT RECEIVED,,,,,'100000',",
+      "19/06/2026,INTEREST CHARGE,MR P PITCHER,-71001,17.02,,INTEREST CHARGE,,,,,'100001',",
+    ]))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      expect(row.sourceType).toBe('amex')
+    }
   })
 })
 

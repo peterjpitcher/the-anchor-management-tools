@@ -53,7 +53,7 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
   const rawSource = typeof resolvedParams?.source === 'string' ? resolvedParams.source : undefined
   const sourceType = rawSource === 'bank' || rawSource === 'amex' ? rawSource : 'all'
 
-  const cardMember = typeof resolvedParams?.cardMember === 'string' ? resolvedParams.cardMember : undefined
+  const cardMember = sourceType === 'amex' && typeof resolvedParams?.cardMember === 'string' ? resolvedParams.cardMember : undefined
 
   const rawSort = typeof resolvedParams?.sort === 'string' ? resolvedParams.sort : undefined
   const sortByFromQuery = rawSort && SORT_COLUMNS.has(rawSort) ? rawSort as ReceiptWorkspaceFilters['sortBy'] : undefined

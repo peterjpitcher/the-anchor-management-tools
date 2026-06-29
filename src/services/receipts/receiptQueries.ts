@@ -292,7 +292,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     baseQuery = baseQuery.eq('source_type', filters.sourceType)
   }
 
-  if (filters.cardMember) {
+  if (filters.cardMember && filters.sourceType === 'amex') {
     baseQuery = baseQuery.eq('card_member', filters.cardMember)
   }
 
@@ -331,6 +331,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     .select('card_member')
     .eq('source_type', 'amex')
     .not('card_member', 'is', null)
+    .limit(2000)
 
   const [
     { data: transactions, count, error },

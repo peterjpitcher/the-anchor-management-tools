@@ -326,7 +326,7 @@ export async function applyAutomationRules(
 
     matchedCount += 1
 
-    const vendorLocked = !overrideManual && transaction.vendor_source === 'manual'
+    const vendorLocked = !overrideManual && (transaction.vendor_source === 'manual' || transaction.vendor_source === 'import')
     const expenseLocked = !overrideManual && transaction.expense_category_source === 'manual'
 
     const shouldUpdateVendor = Boolean(
@@ -651,7 +651,7 @@ export async function performImportReceiptStatement(
       skipped: rows.length,
       autoApplied: 0,
       autoClassified: 0,
-      batch: existingBatch,
+      batch: null,
       warning: 'This file has already been imported.',
     }
   }
@@ -724,6 +724,7 @@ export async function performImportReceiptStatement(
       .eq('id', batch.id)
     if (batchDeleteError) {
       console.error('Failed to clean up orphaned receipt batch after transaction insert failure:', batchDeleteError)
+      return { error: 'Failed to store transactions, and cleanup of the partial import also failed — please contact support to resolve a leftover empty batch.' }
     }
     return { error: 'Failed to store the transactions.' }
   }
@@ -761,13 +762,15 @@ export async function performImportReceiptStatement(
     aiEnqueueWarning = 'AI classification could not be queued — use the re-queue button to retry.'
   }
 
+  let logWarning: string | undefined
+
   if (inserted && inserted.length) {
     const logs = inserted.map<Omit<ReceiptTransactionLog, 'id'>>((row) => ({
       transaction_id: row.id,
       previous_status: null,
       new_status: row.status,
       action_type: 'import',
-      note: `Imported via ${receiptFile.name}`,
+      note: `Imported via ${receiptFile.name} [AI jobs: ${aiJobsQueued}/${insertedIds.length}]`,
       performed_by: userId,
       rule_id: null,
       performed_at: now,
@@ -776,6 +779,7 @@ export async function performImportReceiptStatement(
     const { error: importLogError } = await supabase.from('receipt_transaction_logs').insert(logs)
     if (importLogError) {
       console.error('Failed to record import transaction logs', importLogError)
+      logWarning = 'Audit log for this import could not be written — transactions were still imported.'
     }
   }
 
@@ -786,7 +790,7 @@ export async function performImportReceiptStatement(
     autoApplied,
     autoClassified,
     batch,
-    warning: automationWarning ?? aiEnqueueWarning,
+    warning: [automationWarning, aiEnqueueWarning, logWarning].filter(Boolean).join(' ') || undefined,
   }
 }
 
