@@ -439,6 +439,39 @@ export function normalizeDetailGroupRow(row: RpcDetailGroupRow): NormalizedDetai
   }
 }
 
+// Words too generic to be a useful OR-keyword in a rule's match_description.
+const RULE_KEYWORD_STOPLIST = new Set([
+  'the', 'and', 'ltd', 'limited', 'plc', 'uk', 'gbr', 'gb', 'store', 'stores', 'card',
+  'payment', 'purchase', 'refund', 'london', 'account', 'ref', 'www', 'com', 'co',
+  'shop', 'online', 'services', 'service', 'group', 'holdings', 'retail',
+])
+
+// How many distinctive keywords a sanitized match_description may carry. Keeping this
+// at 1 means a rule keys off the single most-distinctive (first) vendor token and never
+// drags along trailing location/noise tokens (e.g. "TESCO ... STAINES" → "tesco"), which
+// would otherwise broaden or misfire the rule.
+const RULE_KEYWORD_LIMIT = 1
+
+// Produce a comma-separated, de-noised keyword list for a rule's match_description.
+// Prefers AI-suggested keywords, falls back to the transaction details. Returns null
+// if nothing sufficiently distinctive remains (caller should then NOT create a rule).
+export function sanitizeRuleKeywords(details: string, aiKeywords?: string | null): string | null {
+  const raw = (aiKeywords && aiKeywords.trim().length > 0 ? aiKeywords : details) || ''
+  const seen = new Set<string>()
+  const keywords: string[] = []
+  for (const token of raw.split(/[\s,]+/)) {
+    const cleaned = token.replace(/[^a-zA-Z0-9&]/g, '').toLowerCase()
+    if (cleaned.length < 4) continue
+    if (/^\d+$/.test(cleaned)) continue
+    if (RULE_KEYWORD_STOPLIST.has(cleaned)) continue
+    if (seen.has(cleaned)) continue
+    seen.add(cleaned)
+    keywords.push(cleaned)
+    if (keywords.length >= RULE_KEYWORD_LIMIT) break
+  }
+  return keywords.length ? keywords.join(',') : null
+}
+
 export function buildRuleSuggestion(
   transaction: ReceiptTransaction,
   updates: {
@@ -455,19 +488,10 @@ export function buildRuleSuggestion(
   const amountValue = guessAmountValue(transaction)
   const details = transaction.details?.trim() ?? ''
 
-  let matchDescription: string | null = null
-
-  if (updates.suggestedRuleKeywords) {
-    // Prefer AI-suggested keywords
-    matchDescription = updates.suggestedRuleKeywords
-  } else {
-    // Fall back to heuristic: first 3 tokens of 4+ chars
-    const keywords = details
-      .split(/\s+/)
-      .map((token) => token.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
-      .filter((token) => token.length >= 4)
-      .slice(0, 3)
-    matchDescription = keywords.join(',') || null
+  const matchDescription = sanitizeRuleKeywords(details, updates.suggestedRuleKeywords)
+  if (!matchDescription) {
+    // No distinctive keyword → don't propose an over-broad rule.
+    return null
   }
 
   const suggestedNameBase = updates.vendorName ?? updates.expenseCategory ?? 'Receipt rule'
@@ -479,7 +503,6 @@ export function buildRuleSuggestion(
     direction,
     amountValue,
     details,
-    transactionType: transaction.transaction_type,
     setVendorName: updates.vendorName ?? null,
     setExpenseCategory: updates.expenseCategory ?? null,
   }

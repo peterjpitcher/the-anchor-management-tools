@@ -13,13 +13,21 @@ import { receiptExpenseCategorySchema } from '@/lib/validation'
 import type { ReceiptTransaction, ReceiptTransactionLog, ReceiptExpenseCategory } from '@/types/database'
 import { getTransactionDirection as getCanonicalDirection } from './direction'
 import {
+  buildRuleSuggestionInserts,
+  previewSuggestionMatchCount,
   recordReceiptClassificationSignals,
-  resolveReceiptVendorId,
+  suggestionDedupeKey,
 } from '@/services/receipts/receiptGovernance'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
+
+// Below this AI-reported confidence we don't even propose a rule suggestion. Keeps the
+// suggestion queue trustworthy and cheap to review.
+export const AI_SUGGESTION_MIN_CONFIDENCE = 70
+
+type AiSuggestionInput = Parameters<typeof buildRuleSuggestionInserts>[0][number]
 
 function getTransactionDirection(tx: ReceiptTransaction): 'in' | 'out' {
   const dir = getCanonicalDirection(tx.amount_in, tx.amount_out)
@@ -219,7 +227,6 @@ export async function classifyReceiptTransactionsWithAI(
   )
 
   const logs: Array<Omit<ReceiptTransactionLog, 'id'>> = []
-  const signals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
   const now = new Date().toISOString()
 
   if (!batchOutcome) {
@@ -240,7 +247,10 @@ export async function classifyReceiptTransactionsWithAI(
     return
   }
 
-  let actuallyUpdated = 0
+  // The AI no longer writes vendor/expense onto rows. Instead it proposes guarded rule
+  // suggestions: confidence-gated, grouped, deduped, with an impact preview. Rows stay
+  // `pending` until a human approves a suggested rule, which then re-runs over them.
+  const suggestionInputs: AiSuggestionInput[] = []
 
   for (const transaction of toClassify) {
     const classificationResult = resultMap.get(transaction.id)
@@ -265,118 +275,101 @@ export async function classifyReceiptTransactionsWithAI(
       continue
     }
 
-    const { vendorName, expenseCategory, reasoning, confidence, suggestedRuleKeywords } = classificationResult
-    const updatePayload: Record<string, unknown> = {}
-    const changeNotes: string[] = []
+    const { vendorName, expenseCategory, confidence, suggestedRuleKeywords } = classificationResult
 
-    if (needsVendor && vendorName) {
-      const vendorId = await resolveReceiptVendorId(supabase, vendorName)
-      updatePayload.vendor_id = vendorId
-      updatePayload.vendor_name = vendorName
-      updatePayload.vendor_source = 'ai'
-      updatePayload.vendor_rule_id = null
-      updatePayload.vendor_updated_at = now
-      changeNotes.push(`Vendor -> ${vendorName}`)
+    // Only trustworthy results become suggestions, and only when there's something to set.
+    if (confidence != null && confidence < AI_SUGGESTION_MIN_CONFIDENCE) continue
+    if (!vendorName && !expenseCategory) continue
+
+    suggestionInputs.push({
+      transaction,
+      vendorName: needsVendor ? vendorName ?? null : null,
+      expenseCategory: needsExpense ? (expenseCategory as ReceiptExpenseCategory | null) ?? null : null,
+      suggestedRuleKeywords: suggestedRuleKeywords ?? null,
+      confidence: confidence ?? null,
+    })
+  }
+
+  // Dedupe against active rules + pending/approved suggestions (mirrors performSuggestReceiptRules).
+  const [{ data: existingSuggestions }, { data: existingRules }] = await Promise.all([
+    client
+      .from('receipt_rule_suggestions')
+      .select('match_description, match_direction, set_vendor_name, set_expense_category')
+      .in('status', ['pending', 'approved']),
+    client
+      .from('receipt_rules')
+      .select('match_description, match_direction, set_vendor_name, set_expense_category')
+      .eq('is_active', true),
+  ])
+
+  const existingKeys = new Set<string>()
+  ;[...(existingSuggestions ?? []), ...(existingRules ?? [])].forEach((row: any) => {
+    existingKeys.add(suggestionDedupeKey({
+      matchDescription: row.match_description,
+      direction: row.match_direction,
+      vendorName: row.set_vendor_name,
+      expenseCategory: row.set_expense_category,
+    }))
+  })
+
+  const inserts = buildRuleSuggestionInserts(suggestionInputs, {
+    source: 'ai_classification',
+    minOccurrences: 1,
+    existingKeys,
+    cap: 25,
+  })
+
+  // Attach the impact preview ("would match N transactions") to each suggestion.
+  for (const insert of inserts) {
+    const previewMatchCount = await previewSuggestionMatchCount(supabase, {
+      match_description: insert.match_description,
+      match_direction: insert.match_direction,
+    })
+    insert.evidence = { ...insert.evidence, preview_match_count: previewMatchCount }
+  }
+
+  let createdSuggestions = 0
+  if (inserts.length) {
+    const { error: insertError } = await client
+      .from('receipt_rule_suggestions')
+      .insert(inserts)
+
+    if (insertError) {
+      console.error('Failed to create AI receipt rule suggestions', insertError)
+    } else {
+      createdSuggestions = inserts.length
     }
+  }
 
-    if (needsExpense && expenseCategory) {
-      updatePayload.expense_category = expenseCategory
-      updatePayload.expense_category_source = 'ai'
-      updatePayload.expense_rule_id = null
-      updatePayload.expense_updated_at = now
-      changeNotes.push(`Expense -> ${expenseCategory}`)
-    }
-
-    // Always write confidence and keywords if returned
-    if (confidence != null) {
-      updatePayload.ai_confidence = confidence
-    }
-    if (suggestedRuleKeywords) {
-      updatePayload.ai_suggested_keywords = suggestedRuleKeywords
-    }
-
-    if (!Object.keys(updatePayload).length) {
-      continue
-    }
-
-    updatePayload.updated_at = now
-
-    const { data: updatedTransaction, error: updateError } = await client
-      .from('receipt_transactions')
-      .update(updatePayload)
-      .eq('id', transaction.id)
-      .select('id')
-      .maybeSingle()
-
-    if (updateError) {
-      console.error('Failed to persist AI classification', updateError)
-      logs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: transaction.status,
-        action_type: 'ai_classification_failed',
-        note: `DB update failed: ${updateError.message}`,
-        performed_by: null,
-        rule_id: null,
-        performed_at: now,
-      })
-      continue
-    }
-
-    if (!updatedTransaction) {
-      console.error('Failed to persist AI classification: transaction not found', { transactionId: transaction.id })
-      logs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: transaction.status,
-        action_type: 'ai_classification_failed',
-        note: 'Transaction not found during DB update',
-        performed_by: null,
-        rule_id: null,
-        performed_at: now,
-      })
-      continue
-    }
-
-    actuallyUpdated++
-
-    if (changeNotes.length) {
-      logs.push({
-        transaction_id: transaction.id,
-        previous_status: transaction.status,
-        new_status: transaction.status,
-        action_type: 'ai_classification',
-        note: reasoning
-          ? `AI suggestion applied: ${changeNotes.join(' | ')} (Reason: ${reasoning})`
-          : `AI suggestion applied: ${changeNotes.join(' | ')}`,
-        performed_by: null,
-        rule_id: null,
-        performed_at: now,
-      })
+  // Trace which transactions seeded a suggestion (no row mutation, signal only).
+  const signals: Array<Parameters<typeof recordReceiptClassificationSignals>[1][number]> = []
+  for (const insert of inserts) {
+    const evidenceIds: string[] = Array.isArray(insert.evidence_transaction_ids) ? insert.evidence_transaction_ids : []
+    for (const transactionId of evidenceIds) {
       signals.push({
-        transaction_id: transaction.id,
+        transaction_id: transactionId,
         source: 'ai',
-        signal_type: 'ai_classification',
-        prior_vendor_id: transaction.vendor_id ?? null,
-        new_vendor_id: (updatePayload.vendor_id as string | null | undefined) ?? transaction.vendor_id ?? null,
-        prior_vendor_name: transaction.vendor_name,
-        new_vendor_name: (updatePayload.vendor_name as string | null | undefined) ?? transaction.vendor_name,
-        prior_expense_category: transaction.expense_category,
-        new_expense_category: (updatePayload.expense_category as ReceiptExpenseCategory | null | undefined) ?? transaction.expense_category,
-        prior_status: transaction.status,
-        new_status: transaction.status,
+        signal_type: 'ai_suggested_rule',
+        prior_vendor_id: null,
+        new_vendor_id: null,
+        prior_vendor_name: null,
+        new_vendor_name: insert.set_vendor_name,
+        prior_expense_category: null,
+        new_expense_category: insert.set_expense_category,
+        prior_status: null,
+        new_status: null,
         rule_id: null,
-        ai_confidence: confidence ?? null,
+        ai_confidence: (insert.evidence?.ai_confidence as number | null | undefined) ?? null,
         performed_by: null,
         performed_at: now,
-        payload: { reasoning, suggested_rule_keywords: suggestedRuleKeywords ?? null },
+        payload: { suggested_name: insert.suggested_name, match_description: insert.match_description },
       })
     }
   }
 
-  // Record usage after the update loop so the count reflects actually-updated
-  // transactions. Recording before the loop risked double-billing on job retries.
-  await recordAIUsage(supabase, batchOutcome.usage, `receipt_classification_batch:${actuallyUpdated}`)
+  // Record usage after building suggestions so the context reflects what was produced.
+  // Recording before risked double-billing on job retries.
+  await recordAIUsage(supabase, batchOutcome.usage, `receipt_classification_batch:${createdSuggestions}`)
 
   if (logs.length) {
     const { error: logError } = await client.from('receipt_transaction_logs').insert(logs)

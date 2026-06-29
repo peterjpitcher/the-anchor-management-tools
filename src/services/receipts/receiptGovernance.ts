@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
 import type {
   ReceiptClassificationSignal,
+  ReceiptExpenseCategory,
   ReceiptRule,
   ReceiptRuleConflict,
   ReceiptRuleSuggestion,
@@ -248,6 +249,73 @@ export async function performDetectReceiptRuleConflicts(): Promise<{
   }
 }
 
+type SuggestionSource = 'manual_corrections' | 'ai_classification'
+
+export function suggestionDedupeKey(parts: {
+  matchDescription: string | null
+  direction: string
+  vendorName: string | null
+  expenseCategory: string | null
+}): string {
+  return [
+    normalizeReceiptVendorKey(parts.matchDescription),
+    parts.direction ?? 'both',
+    normalizeReceiptVendorKey(parts.vendorName),
+    parts.expenseCategory ?? '',
+  ].join('|')
+}
+
+// Builds receipt_rule_suggestions insert rows from (transaction, vendor, expense) inputs.
+// minOccurrences: manual=2, ai=1. existingKeys must already include active rules + pending/approved suggestions.
+export function buildRuleSuggestionInserts(
+  inputs: Array<{ transaction: ReceiptTransaction; vendorName: string | null; expenseCategory: ReceiptExpenseCategory | null; suggestedRuleKeywords: string | null; confidence: number | null }>,
+  opts: { source: SuggestionSource; minOccurrences: number; existingKeys: Set<string>; cap: number }
+): any[] {
+  const groups = new Map<string, { suggestion: NonNullable<ReturnType<typeof buildRuleSuggestion>>; transactionIds: string[]; confidence: number | null }>()
+  for (const input of inputs) {
+    const suggestion = buildRuleSuggestion(input.transaction, {
+      vendorName: input.vendorName, expenseCategory: input.expenseCategory, suggestedRuleKeywords: input.suggestedRuleKeywords,
+    })
+    if (!suggestion?.matchDescription) continue
+    const key = suggestionDedupeKey({ matchDescription: suggestion.matchDescription, direction: suggestion.direction, vendorName: suggestion.setVendorName, expenseCategory: suggestion.setExpenseCategory })
+    if (opts.existingKeys.has(key)) continue
+    const group = groups.get(key) ?? { suggestion, transactionIds: [], confidence: input.confidence }
+    group.transactionIds.push(input.transaction.id)
+    group.confidence = group.confidence ?? input.confidence
+    groups.set(key, group)
+  }
+  return Array.from(groups.values())
+    .filter((g) => g.transactionIds.length >= opts.minOccurrences)
+    .slice(0, opts.cap)
+    .map((g) => ({
+      suggested_name: g.suggestion.suggestedName,
+      match_description: g.suggestion.matchDescription,
+      match_transaction_type: null,
+      match_direction: g.suggestion.direction,
+      set_vendor_name: g.suggestion.setVendorName,
+      set_expense_category: g.suggestion.setExpenseCategory,
+      auto_status: 'pending',
+      evidence_transaction_ids: g.transactionIds.slice(0, 20),
+      evidence: { source: opts.source, transaction_count: g.transactionIds.length, details_sample: g.suggestion.details, ai_confidence: g.confidence },
+    }))
+}
+
+// Count transactions a proposed rule's criteria would match (impact preview).
+export async function previewSuggestionMatchCount(
+  supabase: AdminClient,
+  criteria: { match_description: string | null; match_direction: string }
+): Promise<number> {
+  if (!criteria.match_description) return 0
+  const needles = criteria.match_description.split(',').map((n) => n.trim()).filter(Boolean)
+  if (!needles.length) return 0
+  const or = needles.map((n) => `details.ilike.%${n}%`).join(',')
+  let q = supabase.from('receipt_transactions').select('id', { count: 'exact', head: true }).or(or)
+  if (criteria.match_direction === 'out') q = q.not('amount_out', 'is', null)
+  else if (criteria.match_direction === 'in') q = q.not('amount_in', 'is', null)
+  const { count } = await q
+  return count ?? 0
+}
+
 export async function performSuggestReceiptRules(): Promise<{
   reviewed: number
   created: number
@@ -276,60 +344,28 @@ export async function performSuggestReceiptRules(): Promise<{
 
   const existingKeys = new Set<string>()
   ;[...(existingSuggestions ?? []), ...(rules ?? [])].forEach((row: any) => {
-    existingKeys.add([
-      normalizeReceiptVendorKey(row.match_description),
-      row.match_direction ?? 'both',
-      normalizeReceiptVendorKey(row.set_vendor_name),
-      row.set_expense_category ?? '',
-    ].join('|'))
+    existingKeys.add(suggestionDedupeKey({
+      matchDescription: row.match_description,
+      direction: row.match_direction,
+      vendorName: row.set_vendor_name,
+      expenseCategory: row.set_expense_category,
+    }))
   })
 
-  const groups = new Map<string, {
-    suggestion: NonNullable<ReturnType<typeof buildRuleSuggestion>>
-    transactionIds: string[]
-  }>()
+  const inputs = ((transactions ?? []) as ReceiptTransaction[]).map((transaction) => ({
+    transaction,
+    vendorName: transaction.vendor_source === 'manual' ? transaction.vendor_name : null,
+    expenseCategory: transaction.expense_category_source === 'manual' ? transaction.expense_category : null,
+    suggestedRuleKeywords: transaction.ai_suggested_keywords,
+    confidence: null,
+  }))
 
-  for (const transaction of (transactions ?? []) as ReceiptTransaction[]) {
-    const suggestion = buildRuleSuggestion(transaction, {
-      vendorName: transaction.vendor_source === 'manual' ? transaction.vendor_name : undefined,
-      expenseCategory: transaction.expense_category_source === 'manual' ? transaction.expense_category : undefined,
-      suggestedRuleKeywords: transaction.ai_suggested_keywords,
-    })
-
-    if (!suggestion?.matchDescription) continue
-
-    const key = [
-      normalizeReceiptVendorKey(suggestion.matchDescription),
-      suggestion.direction,
-      normalizeReceiptVendorKey(suggestion.setVendorName),
-      suggestion.setExpenseCategory ?? '',
-    ].join('|')
-
-    if (existingKeys.has(key)) continue
-
-    const group = groups.get(key) ?? { suggestion, transactionIds: [] }
-    group.transactionIds.push(transaction.id)
-    groups.set(key, group)
-  }
-
-  const inserts = Array.from(groups.values())
-    .filter((group) => group.transactionIds.length >= 2)
-    .slice(0, 10)
-    .map((group) => ({
-      suggested_name: group.suggestion.suggestedName,
-      match_description: group.suggestion.matchDescription,
-      match_transaction_type: group.suggestion.transactionType,
-      match_direction: group.suggestion.direction,
-      set_vendor_name: group.suggestion.setVendorName,
-      set_expense_category: group.suggestion.setExpenseCategory,
-      auto_status: 'pending',
-      evidence_transaction_ids: group.transactionIds.slice(0, 20),
-      evidence: {
-        source: 'manual_corrections',
-        transaction_count: group.transactionIds.length,
-        details_sample: group.suggestion.details,
-      },
-    }))
+  const inserts = buildRuleSuggestionInserts(inputs, {
+    source: 'manual_corrections',
+    minOccurrences: 2,
+    existingKeys,
+    cap: 10,
+  })
 
   if (!inserts.length) {
     return { reviewed: (transactions ?? []).length, created: 0 }

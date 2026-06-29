@@ -222,8 +222,9 @@ export function ReceiptRules({
       matchDescriptionInput.value = suggestion.matchDescription ?? ''
     }
 
+    // Suggestions are description-only now — never prefill a bank transaction type.
     const matchTypeInput = getInput<HTMLInputElement>('match_transaction_type')
-    if (matchTypeInput) matchTypeInput.value = suggestion.transactionType ?? ''
+    if (matchTypeInput) matchTypeInput.value = ''
 
     const matchDirectionSelect = getInput<HTMLSelectElement>('match_direction')
     if (matchDirectionSelect) matchDirectionSelect.value = suggestion.direction
