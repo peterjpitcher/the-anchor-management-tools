@@ -88,4 +88,16 @@ describe('recruitment audit source coverage', () => {
     expect(dashboardClientSource).toContain('Create employee invite')
     expect(dashboardClientSource).toContain("variant={selectedApplication.archived_at ? 'secondary' : 'danger'}")
   })
+
+  it('keeps candidate profile fields labelled and compact', () => {
+    expect(dashboardClientSource).toContain('function ProfileField')
+    expect(dashboardClientSource).toContain('label="First name"')
+    expect(dashboardClientSource).toContain('label="Last name"')
+    expect(dashboardClientSource).toContain('label="Email"')
+    expect(dashboardClientSource).toContain('label="Phone"')
+    expect(dashboardClientSource).toContain('label="Location"')
+    expect(dashboardClientSource).toContain('label="Right to work"')
+    expect(dashboardClientSource).toContain('label="Document type"')
+    expect(dashboardClientSource).toContain('label="Recruitment notes"')
+  })
 })
