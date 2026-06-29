@@ -18,14 +18,11 @@ import {
   recordReceiptClassificationSignals,
   suggestionDedupeKey,
 } from '@/services/receipts/receiptGovernance'
+import { AI_SUGGESTION_MIN_CONFIDENCE } from '@/services/receipts/receiptHelpers'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
 const EXPENSE_CATEGORY_OPTIONS = receiptExpenseCategorySchema.options
-
-// Below this AI-reported confidence we don't even propose a rule suggestion. Keeps the
-// suggestion queue trustworthy and cheap to review.
-export const AI_SUGGESTION_MIN_CONFIDENCE = 70
 
 type AiSuggestionInput = Parameters<typeof buildRuleSuggestionInserts>[0][number]
 
