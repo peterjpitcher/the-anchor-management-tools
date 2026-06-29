@@ -26,7 +26,7 @@ Files in scope:
 - **P3.4 Observability** — `console.error` on calendar/manager-alert rejection.
 - **Tests** — new `recruitmentStaffSchedule.test.ts`; updated atomicity source test; dashboard test mock updated.
 
-**Not done (deferred, low priority):** P3.3 confirm step; P3.5 email-not-sent toast; P4.2 UI submit→action round-trip test.
+**Now also done (2026-06-29):** P3.3 confirm-before-schedule dialog on both interview + trial forms; P3.5 clearer email-failure message pointing to the Comms-tab retry; P4.2 UI submit→confirm→action round-trip test. **Nothing outstanding.**
 
 **⚠️ Deploy prerequisites (NOT done — all local):**
 - Migration `20260716000000_recruitment_staff_schedule_appointment_rpc.sql` must be applied to prod **before/with** deploying this code, or staff scheduling will 404 the missing RPC.
