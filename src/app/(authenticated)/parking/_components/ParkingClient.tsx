@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition, type MouseEvent } from 'react'
-import { formatDateTime } from '@/lib/dateUtils'
+import {
+  formatDateTime,
+  parseLondonDateTimeLocal,
+  parseLondonDateTimeLocalToIso,
+  toLondonDateTimeLocalValue,
+} from '@/lib/dateUtils'
 import { toast } from '@/ds'
 import {
   PageHeader, Card, CardHeader, CardBody, SectionNav,
@@ -237,8 +242,9 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       return
     }
     try {
-      const start = new Date(createForm.start_at)
-      const end = new Date(createForm.end_at)
+      const start = parseLondonDateTimeLocal(createForm.start_at)
+      const end = parseLondonDateTimeLocal(createForm.end_at)
+      if (!start || !end) throw new Error('Start and end times are required')
       const preview = calculateParkingPricing(start, end, activeRates)
       setPricingPreview(preview)
       setPricingError(null)
@@ -272,8 +278,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       vehicle_make: booking.vehicle_make ?? '',
       vehicle_model: booking.vehicle_model ?? '',
       vehicle_colour: booking.vehicle_colour ?? '',
-      start_at: booking.start_at.slice(0, 16),
-      end_at: booking.end_at.slice(0, 16),
+      start_at: toLondonDateTimeLocalValue(booking.start_at),
+      end_at: toLondonDateTimeLocalValue(booking.end_at),
       notes: booking.notes ?? '',
       override_price: booking.override_price == null ? '' : String(booking.override_price),
       override_reason: booking.override_reason ?? '',
@@ -309,8 +315,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
 
   const handleCreateBooking = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const start = createForm.start_at ? new Date(createForm.start_at) : null
-    const end = createForm.end_at ? new Date(createForm.end_at) : null
+    const start = parseLondonDateTimeLocalToIso(createForm.start_at)
+    const end = parseLondonDateTimeLocalToIso(createForm.end_at)
     if (!start || !end) { toast.error('Start and end times are required'); return }
 
     const formData = new FormData()
@@ -323,8 +329,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     if (createForm.vehicle_make) formData.append('vehicle_make', createForm.vehicle_make)
     if (createForm.vehicle_model) formData.append('vehicle_model', createForm.vehicle_model)
     if (createForm.vehicle_colour) formData.append('vehicle_colour', createForm.vehicle_colour)
-    formData.append('start_at', start.toISOString())
-    formData.append('end_at', end.toISOString())
+    formData.append('start_at', start)
+    formData.append('end_at', end)
     if (createForm.notes) formData.append('notes', createForm.notes)
     if (createForm.override_price) formData.append('override_price', createForm.override_price)
     if (createForm.override_reason) formData.append('override_reason', createForm.override_reason)
@@ -351,8 +357,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     event.preventDefault()
     if (!selectedBooking) return
 
-    const start = editForm.start_at ? new Date(editForm.start_at) : null
-    const end = editForm.end_at ? new Date(editForm.end_at) : null
+    const start = parseLondonDateTimeLocalToIso(editForm.start_at)
+    const end = parseLondonDateTimeLocalToIso(editForm.end_at)
     if (!start || !end) { toast.error('Start and end times are required'); return }
 
     const formData = new FormData()
@@ -365,8 +371,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     if (editForm.vehicle_make) formData.append('vehicle_make', editForm.vehicle_make)
     if (editForm.vehicle_model) formData.append('vehicle_model', editForm.vehicle_model)
     if (editForm.vehicle_colour) formData.append('vehicle_colour', editForm.vehicle_colour)
-    formData.append('start_at', start.toISOString())
-    formData.append('end_at', end.toISOString())
+    formData.append('start_at', start)
+    formData.append('end_at', end)
     if (editForm.notes) formData.append('notes', editForm.notes)
     if (editForm.override_price) formData.append('override_price', editForm.override_price)
     if (editForm.override_reason) formData.append('override_reason', editForm.override_reason)

@@ -9,11 +9,23 @@ import {
   formatDateDdMmmmYyyy,
   formatDateTime,
   formatDateWithTimeForSms,
+  parseLondonDateTimeLocalToIso,
   startOfLondonDayUtc,
+  toLondonDateTimeLocalValue,
 } from '../dateUtils'
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('London datetime-local helpers', () => {
+  it('parses offset-less summer local time as Europe/London, not UTC', () => {
+    expect(parseLondonDateTimeLocalToIso('2026-07-01T12:00')).toBe('2026-07-01T11:00:00.000Z')
+  })
+
+  it('formats UTC timestamps back to London datetime-local values', () => {
+    expect(toLondonDateTimeLocalValue('2026-07-01T11:00:00.000Z')).toBe('2026-07-01T12:00')
+  })
 })
 
 // ---------------------------------------------------------------------------

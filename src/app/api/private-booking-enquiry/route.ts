@@ -19,6 +19,7 @@ import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
+import { parseLondonDateTimeLocal } from '@/lib/dateUtils'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -67,14 +68,27 @@ function splitName(name?: string): { firstName: string; lastName?: string } {
 
 function resolveDateAndTime(input: z.infer<typeof EnquirySchema>): { eventDate?: string; startTime?: string } {
   if (input.date_time) {
-    const parsed = new Date(input.date_time)
-    if (Number.isFinite(parsed.getTime())) {
-      const eventDate = parsed.toISOString().slice(0, 10)
-      const hh = String(parsed.getUTCHours()).padStart(2, '0')
-      const mm = String(parsed.getUTCMinutes()).padStart(2, '0')
-      return {
-        eventDate,
-        startTime: `${hh}:${mm}`
+    const parsed = parseLondonDateTimeLocal(input.date_time)
+    if (parsed) {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(parsed)
+      const year = parts.find(part => part.type === 'year')?.value
+      const month = parts.find(part => part.type === 'month')?.value
+      const day = parts.find(part => part.type === 'day')?.value
+      const hh = parts.find(part => part.type === 'hour')?.value
+      const mm = parts.find(part => part.type === 'minute')?.value
+      if (year && month && day && hh && mm) {
+        return {
+          eventDate: `${year}-${month}-${day}`,
+          startTime: `${hh}:${mm}`
+        }
       }
     }
   }

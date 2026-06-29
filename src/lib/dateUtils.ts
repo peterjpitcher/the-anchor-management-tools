@@ -1,7 +1,33 @@
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
+
 const LONDON_TIMEZONE = 'Europe/London'
 
 function toDate(value: string | Date): Date {
   return value instanceof Date ? new Date(value.getTime()) : new Date(value)
+}
+
+const ISO_TIMEZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
+
+export function parseLondonDateTimeLocal(value: string | null | undefined): Date | null {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+
+  const parsed = ISO_TIMEZONE_SUFFIX.test(trimmed)
+    ? new Date(trimmed)
+    : fromZonedTime(trimmed, LONDON_TIMEZONE)
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+export function parseLondonDateTimeLocalToIso(value: string | null | undefined): string | null {
+  return parseLondonDateTimeLocal(value)?.toISOString() ?? null
+}
+
+export function toLondonDateTimeLocalValue(value: string | Date | null | undefined): string {
+  if (!value) return ''
+  const date = toDate(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return formatInTimeZone(date, LONDON_TIMEZONE, "yyyy-MM-dd'T'HH:mm")
 }
 
 export function formatDateInLondon(

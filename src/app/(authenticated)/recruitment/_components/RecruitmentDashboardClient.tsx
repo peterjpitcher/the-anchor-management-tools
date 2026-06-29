@@ -1624,7 +1624,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <TableHeader>
                     <TableRow>
                       <TableHead>Type</TableHead>
-                      <TableHead>When</TableHead>
+                      <TableHead>Opens</TableHead>
+                      <TableHead>Closes</TableHead>
                       <TableHead>Location</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
@@ -1638,6 +1639,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </button>
                         </TableCell>
                         <TableCell>{formatDateTime(slot.starts_at)}</TableCell>
+                        <TableCell>{formatDateTime(slot.ends_at)}</TableCell>
                         <TableCell>{slot.location}</TableCell>
                         <TableCell>{slot.archived_at ? 'archived' : slot.status}</TableCell>
                       </TableRow>
