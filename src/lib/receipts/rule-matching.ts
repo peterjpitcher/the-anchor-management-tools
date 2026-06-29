@@ -113,16 +113,33 @@ export function getRuleMatch(
   let hasTransactionTypeMatch = false
   if (rule.match_transaction_type) {
     const transactionTypeLower = (transaction.transaction_type ?? '').toLowerCase()
-    if (!transactionTypeLower.includes(rule.match_transaction_type.toLowerCase())) {
-      return {
-        matched: false,
-        matchedNeedleLength,
-        hasTransactionTypeMatch: false,
-        isDirectionSpecific: false,
-        amountConstraintCount,
+    if (transactionTypeLower) {
+      // Transaction has a type → it must contain the rule's type, as before.
+      if (!transactionTypeLower.includes(rule.match_transaction_type.toLowerCase())) {
+        return {
+          matched: false,
+          matchedNeedleLength,
+          hasTransactionTypeMatch: false,
+          isDirectionSpecific: false,
+          amountConstraintCount,
+        }
       }
+      hasTransactionTypeMatch = true
+    } else {
+      // Typeless row (e.g. Amex): the type requirement is indeterminate. Allow the
+      // match ONLY if the rule also matched on description; a type-only rule (no
+      // description) must NOT match a typeless row (would over-match every credit).
+      if (!rule.match_description) {
+        return {
+          matched: false,
+          matchedNeedleLength,
+          hasTransactionTypeMatch: false,
+          isDirectionSpecific: false,
+          amountConstraintCount,
+        }
+      }
+      hasTransactionTypeMatch = false
     }
-    hasTransactionTypeMatch = true
   }
 
   return {
