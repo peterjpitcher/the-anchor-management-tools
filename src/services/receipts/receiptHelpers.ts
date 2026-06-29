@@ -18,6 +18,7 @@ import type {
   ReceiptTransaction,
 } from '@/types/database'
 import type {
+  AmexCsvRow,
   CsvRow,
   ParsedTransactionRow,
   GroupSample,
@@ -191,6 +192,15 @@ export function parseCsv(buffer: Buffer): ParsedTransactionRow[] {
     console.warn('CSV parsing encountered issues:', parsed.errors.slice(0, 3))
   }
 
+  const fields = parsed.meta.fields ?? []
+  const hasDetails = fields.includes('Details')
+  const hasAmountColumn = fields.includes('In') || fields.includes('Out')
+  if (!hasDetails || !hasAmountColumn) {
+    throw new Error(
+      "This doesn't look like a bank statement CSV — expected 'Details' and 'In'/'Out' columns.",
+    )
+  }
+
   const records = parsed.data.filter((record) => record && Object.keys(record).length > 0)
   const rows: ParsedTransactionRow[] = []
 
@@ -266,6 +276,18 @@ export function parseCurrency(value: string | null | undefined): number | null {
   return Number(result.toFixed(2))
 }
 
+// Amex statements use a single signed Amount column (positive = spend, negative =
+// payment/credit). Unlike parseCurrency this PRESERVES the sign. parseCurrency is left
+// untouched so the bank path keeps rejecting negatives.
+export function parseSignedAmount(value: string | null | undefined): number | null {
+  if (!value) return null
+  const cleaned = value.replace(/[£,]/g, '').trim()
+  if (!cleaned) return null
+  const result = Number.parseFloat(cleaned)
+  if (!Number.isFinite(result) || result === 0) return null
+  return Number(result.toFixed(2))
+}
+
 export function normalizeVendorInput(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -334,6 +356,30 @@ export function createTransactionHash(input: {
 }): string {
   const hash = createHash('sha256')
   hash.update([input.transactionDate, input.details, input.transactionType ?? '', input.amountIn ?? '', input.amountOut ?? '', input.balance ?? ''].join('|'))
+  return hash.digest('hex')
+}
+
+// Dedup hash for Amex rows. Uses RAW, stable fields only — never the display-normalised
+// `details` or title-cased card member — so formatting changes can't alter dedup identity.
+// The 'amex' prefix guarantees no collision with bank hashes.
+export function createAmexTransactionHash(input: {
+  transactionDate: string
+  signedAmount: number
+  cardAccount: string | null
+  rawCardMember: string | null
+  externalReference: string | null
+}): string {
+  const hash = createHash('sha256')
+  hash.update(
+    [
+      'amex',
+      input.transactionDate,
+      input.signedAmount.toFixed(2),
+      input.cardAccount ?? '',
+      input.rawCardMember ?? '',
+      input.externalReference ?? '',
+    ].join('|'),
+  )
   return hash.digest('hex')
 }
 
@@ -489,4 +535,142 @@ export function toOptionalNumber(input: FormDataEntryValue | null): number | und
   if (!cleaned) return undefined
   const value = Number.parseFloat(cleaned)
   return Number.isFinite(value) ? Number(value.toFixed(2)) : undefined
+}
+
+// ---------------------------------------------------------------------------
+// American Express statement import
+// ---------------------------------------------------------------------------
+
+const AMEX_VENDOR = 'American Express'
+const AMEX_FEE_CATEGORY: ReceiptExpenseCategory = 'Bank Charges/Credit Card Commission'
+
+function toTitleCase(value: string): string {
+  return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+type AmexClassification = Pick<
+  ParsedTransactionRow,
+  'status' | 'receiptRequired' | 'expenseCategory' | 'expenseCategorySource' | 'vendorName' | 'vendorSource'
+>
+
+function classifyAmexRow(details: string, signedAmount: number): AmexClassification {
+  const upper = details.toUpperCase()
+  const isPayment = upper.includes('PAYMENT RECEIVED') || upper.startsWith('CREDIT FOR')
+  const isFee =
+    upper.includes('INTEREST CHARGE') ||
+    upper.includes('MEMBERSHIP FEE') ||
+    upper.includes('LATE PAYMENT FEE') ||
+    /\bFEE\b/.test(upper)
+
+  if (isPayment) {
+    return {
+      status: 'no_receipt_required',
+      receiptRequired: false,
+      expenseCategory: null,
+      expenseCategorySource: null,
+      vendorName: AMEX_VENDOR,
+      vendorSource: 'import',
+    }
+  }
+  if (isFee) {
+    return {
+      status: 'no_receipt_required',
+      receiptRequired: false,
+      expenseCategory: AMEX_FEE_CATEGORY,
+      expenseCategorySource: 'import',
+      vendorName: AMEX_VENDOR,
+      vendorSource: 'import',
+    }
+  }
+  if (signedAmount < 0) {
+    // Merchant refund / other credit — not a purchase to chase.
+    return {
+      status: 'no_receipt_required',
+      receiptRequired: false,
+      expenseCategory: null,
+      expenseCategorySource: null,
+      vendorName: null,
+      vendorSource: null,
+    }
+  }
+  // Genuine spend — vendor/expense left for the rules + AI pass.
+  return {
+    status: 'pending',
+    receiptRequired: true,
+    expenseCategory: null,
+    expenseCategorySource: null,
+    vendorName: null,
+    vendorSource: null,
+  }
+}
+
+export function parseAmexCsv(buffer: Buffer): ParsedTransactionRow[] {
+  const csvText = buffer.toString('utf-8')
+  const parsed = Papa.parse<AmexCsvRow>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim(),
+  })
+
+  if (parsed.errors.length) {
+    console.warn('Amex CSV parsing encountered issues:', parsed.errors.slice(0, 3))
+  }
+
+  const fields = parsed.meta.fields ?? []
+  if (!fields.includes('Card Member') || !fields.includes('Amount')) {
+    throw new Error(
+      "This doesn't look like an American Express statement — expected 'Card Member' and 'Amount' columns.",
+    )
+  }
+
+  const records = parsed.data.filter((record) => record && Object.keys(record).length > 0)
+  const rows: ParsedTransactionRow[] = []
+
+  for (const record of records) {
+    const details = sanitizeText(record.Description || record['Appears On Your Statement As'] || '')
+    if (!details) continue
+
+    const transactionDate = record.Date ? normaliseDate(record.Date) : null
+    if (!transactionDate) continue
+
+    const signedAmount = parseSignedAmount(record.Amount)
+    if (signedAmount == null) continue
+
+    const amountOut = signedAmount > 0 ? Number(signedAmount.toFixed(2)) : null
+    const amountIn = signedAmount < 0 ? Number(Math.abs(signedAmount).toFixed(2)) : null
+
+    const rawCardMember = sanitizeText(record['Card Member'] || '') || null
+    const cardMember = rawCardMember ? toTitleCase(rawCardMember) : null
+    const cardAccount = (record['Account #'] || '').replace(/[^0-9]/g, '') || null
+    const merchantCategory = sanitizeText(record.Category || '') || null
+    const merchantTown = sanitizeText(record['Town/City'] || '') || null
+    const externalReference = (record.Reference || '').replace(/^'+|'+$/g, '').trim() || null
+
+    const classification = classifyAmexRow(details, signedAmount)
+
+    rows.push({
+      transactionDate,
+      details,
+      transactionType: null,
+      amountIn,
+      amountOut,
+      balance: null,
+      dedupeHash: createAmexTransactionHash({
+        transactionDate,
+        signedAmount,
+        cardAccount,
+        rawCardMember,
+        externalReference,
+      }),
+      sourceType: 'amex',
+      cardMember,
+      cardAccount,
+      merchantCategory,
+      merchantTown,
+      externalReference,
+      ...classification,
+    })
+  }
+
+  return rows
 }
