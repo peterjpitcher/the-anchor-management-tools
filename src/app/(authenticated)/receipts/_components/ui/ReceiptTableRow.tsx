@@ -38,6 +38,18 @@ type WorkspaceTransaction = ReceiptTransaction & {
 
 const expenseCategoryOptions = receiptExpenseCategorySchema.options
 
+export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['source_type'] }) {
+  const isAmex = sourceType === 'amex'
+  const className = isAmex
+    ? 'bg-blue-50 text-blue-700 border-blue-100'
+    : 'bg-gray-100 text-gray-600 border-gray-200'
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${className}`}>
+      {isAmex ? 'Amex' : 'Bank'}
+    </span>
+  )
+}
+
 function ClassificationBadge({ source }: { source?: ReceiptClassificationSource | null }) {
   if (!source || source === 'manual') return null
   const labels: Record<string, string> = {
@@ -275,8 +287,14 @@ export function ReceiptTableRow({
     <tr className="align-top hover:bg-surface-hover/50">
       <td className="px-4 py-2 text-text-muted">{formatDate(transaction.transaction_date)}</td>
       <td className="px-4 py-2">
-        <p className="font-medium text-text-strong">{transaction.details}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-text-strong">{transaction.details}</p>
+          <SourceBadge sourceType={transaction.source_type} />
+        </div>
         <p className="text-xs text-text-muted">{transaction.transaction_type ?? '—'}</p>
+        {transaction.source_type === 'amex' && transaction.card_member && (
+          <p className="text-xs text-text-muted">{transaction.card_member}</p>
+        )}
         {transaction.rule_applied_id && (
           <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary-soft-fg">
             <ArrowPathIcon className="h-4 w-4" /> Auto rule

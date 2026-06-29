@@ -21,6 +21,7 @@ import {
 import { usePermissions } from '@/contexts/PermissionContext'
 import { formatCurrency, formatDate, statusLabels, statusToneClasses } from '@/app/(authenticated)/receipts/utils'
 import { RECEIPT_UPLOAD_ACCEPT, receiptUploadErrorMessage, uploadReceiptFile } from './receiptUploadClient'
+import { SourceBadge } from './ReceiptTableRow'
 
 type WorkspaceTransaction = ReceiptTransaction & {
   files: ReceiptFile[]
@@ -228,7 +229,13 @@ export function ReceiptMobileCard({
                 {formatDate(transaction.transaction_date)}
                 {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
                 </p>
-                <h3 className="text-sm font-semibold leading-snug text-gray-900">{transaction.details}</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold leading-snug text-gray-900">{transaction.details}</h3>
+                    <SourceBadge sourceType={transaction.source_type} />
+                </div>
+                {transaction.source_type === 'amex' && transaction.card_member && (
+                <p className="text-[11px] text-gray-500">{transaction.card_member}</p>
+                )}
                 {transaction.rule_applied_id && (
                 <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
                     <ArrowPathIcon className="h-3.5 w-3.5" /> Auto rule

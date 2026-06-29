@@ -10,6 +10,8 @@ interface ReceiptFiltersProps {
   filters: {
     status: ReceiptWorkspaceFilters['status'] | 'all'
     direction: 'in' | 'out' | 'all'
+    sourceType: 'bank' | 'amex' | 'all'
+    cardMember: string
     showOnlyOutstanding: boolean
     groupByVendor: boolean
     missingVendorOnly: boolean
@@ -18,6 +20,7 @@ interface ReceiptFiltersProps {
     month?: string
   }
   availableMonths: string[]
+  availableCardMembers: string[]
 }
 
 type LocalFilters = ReceiptFiltersProps['filters']
@@ -38,7 +41,7 @@ function formatMonthLabel(value: string) {
   })
 }
 
-export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps) {
+export function ReceiptFilters({ filters, availableMonths, availableCardMembers }: ReceiptFiltersProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [localFilters, setLocalFilters] = useState<LocalFilters>(filters)
@@ -48,6 +51,8 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
   }, [
     filters.status,
     filters.direction,
+    filters.sourceType,
+    filters.cardMember,
     filters.showOnlyOutstanding,
     filters.groupByVendor,
     filters.missingVendorOnly,
@@ -89,6 +94,21 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
     ]
   ), [])
 
+  const sourceOptions = useMemo(() => (
+    [
+      { value: 'all', label: 'All sources' },
+      { value: 'bank', label: 'Bank' },
+      { value: 'amex', label: 'Amex' },
+    ]
+  ), [])
+
+  const cardMemberOptions = useMemo(() => (
+    [
+      { value: '', label: 'All cardholders' },
+      ...availableCardMembers.map((name) => ({ value: name, label: name })),
+    ]
+  ), [availableCardMembers])
+
   function updateQuery(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString())
     Object.entries(next).forEach(([key, value]) => {
@@ -108,6 +128,8 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
     updateQuery({
       status: nextFilters.status ?? null,
       direction: nextFilters.direction,
+      source: nextFilters.sourceType,
+      cardMember: nextFilters.cardMember || null,
       outstanding: nextFilters.showOnlyOutstanding ? null : '0',
       groupByVendor: nextFilters.groupByVendor ? null : '0',
       needsVendor: nextFilters.missingVendorOnly ? '1' : null,
@@ -123,6 +145,14 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
 
   function handleDirectionChange(event: ChangeEvent<HTMLSelectElement>) {
     applyFilters({ ...localFilters, direction: event.target.value as LocalFilters['direction'] })
+  }
+
+  function handleSourceChange(event: ChangeEvent<HTMLSelectElement>) {
+    applyFilters({ ...localFilters, sourceType: event.target.value as LocalFilters['sourceType'] })
+  }
+
+  function handleCardMemberChange(event: ChangeEvent<HTMLSelectElement>) {
+    applyFilters({ ...localFilters, cardMember: event.target.value })
   }
 
   function handleMonthSelect(value: string) {
@@ -153,9 +183,13 @@ export function ReceiptFilters({ filters, availableMonths }: ReceiptFiltersProps
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Select value={localFilters.status ?? 'all'} onChange={handleStatusChange} className="w-40" options={statusOptions} />
         <Select value={localFilters.direction ?? 'all'} onChange={handleDirectionChange} className="w-40" options={directionOptions} />
+        <Select value={localFilters.sourceType ?? 'all'} onChange={handleSourceChange} className="w-40" options={sourceOptions} />
+        {availableCardMembers.length > 0 && (
+          <Select value={localFilters.cardMember ?? ''} onChange={handleCardMemberChange} className="w-40" options={cardMemberOptions} />
+        )}
       </div>
 
       {monthOptions.length > 0 && (
