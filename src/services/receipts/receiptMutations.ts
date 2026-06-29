@@ -22,6 +22,7 @@ import type {
   ReceiptTransactionLog,
   ReceiptExpenseCategory,
   ReceiptClassificationSource,
+  ReceiptSourceType,
 } from '@/types/database'
 
 import type {
@@ -39,6 +40,7 @@ import {
 } from './types'
 import {
   parseCsv,
+  parseAmexCsv,
   normalizeVendorInput,
   coerceExpenseCategory,
   hashDetails,
@@ -608,7 +610,8 @@ export async function performImportReceiptStatement(
   userId: string,
   userEmail: string,
   receiptFile: File,
-  buffer: Buffer
+  buffer: Buffer,
+  sourceType: ReceiptSourceType = 'bank'
 ): Promise<{
   success?: boolean
   error?: string
@@ -619,7 +622,14 @@ export async function performImportReceiptStatement(
   batch?: any
   warning?: string
 }> {
-  const rows = parseCsv(buffer)
+  let rows: ParsedTransactionRow[]
+  try {
+    rows = sourceType === 'amex' ? parseAmexCsv(buffer) : parseCsv(buffer)
+  } catch (parseError) {
+    return {
+      error: parseError instanceof Error ? parseError.message : 'Could not read the CSV file.',
+    }
+  }
 
   if (!rows.length) {
     return { error: 'No valid transactions found in the CSV file.' }
@@ -627,11 +637,31 @@ export async function performImportReceiptStatement(
 
   const supabase = createAdminClient()
 
+  const sourceHash = createHash('sha256').update(buffer).digest('hex')
+  const { data: existingBatch } = await supabase
+    .from('receipt_batches')
+    .select('id')
+    .eq('source_hash', sourceHash)
+    .maybeSingle()
+
+  if (existingBatch) {
+    return {
+      success: true,
+      inserted: 0,
+      skipped: rows.length,
+      autoApplied: 0,
+      autoClassified: 0,
+      batch: existingBatch,
+      warning: 'This file has already been imported.',
+    }
+  }
+
   const { data: batch, error: batchError } = await supabase
     .from('receipt_batches')
     .insert({
       original_filename: receiptFile.name,
-      source_hash: createHash('sha256').update(buffer).digest('hex'),
+      source_hash: sourceHash,
+      source_type: sourceType,
       row_count: rows.length,
       uploaded_by: userId,
     })
@@ -647,6 +677,7 @@ export async function performImportReceiptStatement(
 
   const payload = rows.map((row) => ({
     batch_id: batch.id,
+    source_type: row.sourceType ?? 'bank',
     transaction_date: row.transactionDate,
     details: row.details,
     transaction_type: row.transactionType,
@@ -654,8 +685,17 @@ export async function performImportReceiptStatement(
     amount_out: row.amountOut,
     balance: row.balance,
     dedupe_hash: row.dedupeHash,
-    status: 'pending' satisfies ReceiptTransaction['status'],
-    receipt_required: true,
+    status: (row.status ?? 'pending') satisfies ReceiptTransaction['status'],
+    receipt_required: row.receiptRequired ?? true,
+    card_member: row.cardMember ?? null,
+    card_account: row.cardAccount ?? null,
+    merchant_category: row.merchantCategory ?? null,
+    merchant_town: row.merchantTown ?? null,
+    external_reference: row.externalReference ?? null,
+    vendor_name: row.vendorName ?? null,
+    vendor_source: row.vendorSource ?? null,
+    expense_category: row.expenseCategory ?? null,
+    expense_category_source: row.expenseCategorySource ?? null,
     marked_by: null,
     marked_by_email: null,
     marked_by_name: null,
@@ -721,11 +761,11 @@ export async function performImportReceiptStatement(
     aiEnqueueWarning = 'AI classification could not be queued — use the re-queue button to retry.'
   }
 
-  if (insertedIds.length) {
-    const logs = insertedIds.map<Omit<ReceiptTransactionLog, 'id'>>((transactionId) => ({
-      transaction_id: transactionId,
+  if (inserted && inserted.length) {
+    const logs = inserted.map<Omit<ReceiptTransactionLog, 'id'>>((row) => ({
+      transaction_id: row.id,
       previous_status: null,
-      new_status: 'pending',
+      new_status: row.status,
       action_type: 'import',
       note: `Imported via ${receiptFile.name}`,
       performed_by: userId,
