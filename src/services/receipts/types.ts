@@ -445,7 +445,6 @@ export type RuleSuggestion = {
   direction: 'in' | 'out'
   amountValue: number
   details: string
-  transactionType: string | null
   setVendorName: string | null
   setExpenseCategory: ReceiptExpenseCategory | null
 }
