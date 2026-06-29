@@ -33,6 +33,7 @@ import {
   type RotaSummaryPayrollPeriod,
   type RotaSummaryShift,
 } from '@/lib/rota/summary';
+import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1675,7 +1676,7 @@ const PortalShiftDecisionSchema = z.object({
 
 const PortalShiftRejectSchema = z.object({
   shiftId: z.string().uuid(),
-  note: z.string().max(500).nullable().optional(),
+  note: z.string(),
 });
 
 const PortalOpenShiftRequestSchema = z.object({
@@ -1821,7 +1822,18 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
   { success: true; data: RotaShift | null; message?: string } | { success: false; error: string }
 > {
   const parsed = PortalShiftRejectSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: 'Invalid shift' };
+  if (!parsed.success) {
+    const noteIssue = parsed.error.issues.find(issue => issue.path[0] === 'note');
+    if (noteIssue) {
+      return { success: false, error: 'Please add a reason for rejecting this shift.' };
+    }
+    return { success: false, error: 'Invalid shift' };
+  }
+
+  const rejectionReason = validateShiftRejectionReason(parsed.data.note);
+  if (!rejectionReason.valid) {
+    return { success: false, error: rejectionReason.error };
+  }
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1847,7 +1859,7 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
 
   const now = new Date();
   const rejectedAt = now.toISOString();
-  const rejectionNote = parsed.data.note?.trim() || null;
+  const rejectionNote = rejectionReason.reason;
   if (isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now)) {
     const updated = await setPublishedAndLiveAcceptance(parsed.data.shiftId, employee.employee_id, {
       acceptance_status: 'auto_accepted',
@@ -1936,7 +1948,7 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
       reassigned_from_id: employee.employee_id,
       reassigned_at: rejectedAt,
       reassigned_by: user.id,
-      reassignment_reason: rejectionNote ? `Rejected by staff: ${rejectionNote}` : 'Rejected by staff',
+      reassignment_reason: `Rejected by staff: ${rejectionNote}`,
     })
     .eq('id', parsed.data.shiftId);
 

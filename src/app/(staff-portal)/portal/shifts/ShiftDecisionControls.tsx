@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { acceptPortalShift, rejectPortalShift, type ShiftAcceptanceStatus } from '@/app/actions/rota';
+import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
 
 type Props = {
   shiftId: string;
@@ -70,8 +71,14 @@ export default function ShiftDecisionControls({
   }
 
   function onReject() {
+    const validation = validateShiftRejectionReason(note);
+    if (!validation.valid) {
+      toast.error(validation.error);
+      return;
+    }
+
     startTransition(async () => {
-      const result = await rejectPortalShift({ shiftId, note: note.trim() || null });
+      const result = await rejectPortalShift({ shiftId, note: validation.reason });
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -121,13 +128,14 @@ export default function ShiftDecisionControls({
       ) : (
         <div className="rounded-lg border border-red-100 bg-red-50 p-3">
           <label htmlFor={`reject-note-${shiftId}`} className="text-xs font-medium text-red-900">
-            Note for manager (optional)
+            Reason for manager
           </label>
           <textarea
             id={`reject-note-${shiftId}`}
             value={note}
             onChange={event => setNote(event.target.value)}
             maxLength={500}
+            required
             rows={3}
             className="mt-1 w-full rounded-md border border-red-100 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-red-300"
           />
