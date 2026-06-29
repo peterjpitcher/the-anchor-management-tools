@@ -42,6 +42,7 @@ type ParsedRecruitmentCv = Awaited<ReturnType<typeof parseRecruitmentCv>>
 const TERMINAL_NON_HIRED_STATUSES = ['rejected', 'withdrawn', 'declined_duplicate'] as const
 const AWAITING_BOOKING_STATUSES = ['interview_invited', 'trial_offered'] as const
 const OFFER_STATUSES = ['offered'] as const
+const SLOT_MINUTE_INCREMENT = 15
 
 export const RECRUITMENT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
   new: ['ai_screened', 'shortlisted', 'interview_invited', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool', 'declined_duplicate'],
@@ -60,6 +61,22 @@ export const RECRUITMENT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 export function isRecruitmentTransitionAllowed(fromStatus: string, toStatus: string) {
   return fromStatus === toStatus || (RECRUITMENT_ALLOWED_TRANSITIONS[fromStatus] ?? []).includes(toStatus)
+}
+
+function isQuarterHourDate(date: Date) {
+  return date.getUTCMinutes() % SLOT_MINUTE_INCREMENT === 0
+    && date.getUTCSeconds() === 0
+    && date.getUTCMilliseconds() === 0
+}
+
+function assertRecruitmentSlotTimes(startsAt: Date, endsAt: Date) {
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+    throw new Error('Appointment slot must have a valid start and end time.')
+  }
+
+  if (!isQuarterHourDate(startsAt) || !isQuarterHourDate(endsAt)) {
+    throw new Error('Appointment slot times must use 00, 15, 30 or 45 minutes.')
+  }
 }
 
 function normalizeEmail(email: string | null | undefined): string | null {
@@ -1642,9 +1659,7 @@ export async function createRecruitmentAppointmentSlot(
   const startsAt = new Date(parsed.starts_at)
   const endsAt = new Date(parsed.ends_at)
 
-  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
-    throw new Error('Appointment slot must have a valid start and end time.')
-  }
+  assertRecruitmentSlotTimes(startsAt, endsAt)
 
   const { data, error } = await supabase
     .from('recruitment_appointment_slots')
@@ -1668,9 +1683,7 @@ export async function updateRecruitmentAppointmentSlot(
   const startsAt = new Date(parsed.starts_at)
   const endsAt = new Date(parsed.ends_at)
 
-  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
-    throw new Error('Appointment slot must have a valid start and end time.')
-  }
+  assertRecruitmentSlotTimes(startsAt, endsAt)
 
   const { data: existing, error: existingError } = await supabase
     .from('recruitment_appointment_slots')

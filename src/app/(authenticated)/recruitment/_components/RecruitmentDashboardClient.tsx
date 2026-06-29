@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useMemo, useRef, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -105,6 +105,21 @@ const statusOptions = [
   'withdrawn',
   'on_hold',
 ]
+
+const DEFAULT_SLOT_DURATION_MS = 2 * 60 * 60 * 1000
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => ({
+  value: String(index).padStart(2, '0'),
+  label: `${index % 12 || 12}${index < 12 ? 'am' : 'pm'}`,
+}))
+const MINUTE_OPTIONS = ['00', '15', '30', '45']
+
+type SlotDateTimeParts = {
+  date: string
+  hour: string
+  minute: string
+}
+
+const emptySlotDateTime: SlotDateTimeParts = { date: '', hour: '', minute: '' }
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) return 'Not set'
@@ -232,6 +247,27 @@ function todayLocalDateTime(value: string | null | undefined) {
   return local.toISOString().slice(0, 16)
 }
 
+function dateTimeLocalToParts(value: string | null | undefined): SlotDateTimeParts {
+  const localValue = todayLocalDateTime(value)
+  if (!localValue) return emptySlotDateTime
+  const [date, time] = localValue.split('T')
+  const [hour, minute] = (time ?? '').split(':')
+  return { date: date ?? '', hour: hour ?? '', minute: minute ?? '' }
+}
+
+function partsToDateTimeLocal(value: SlotDateTimeParts) {
+  if (!value.date || !value.hour || !value.minute) return ''
+  return `${value.date}T${value.hour}:${value.minute}`
+}
+
+function addDurationToDateTimeParts(value: SlotDateTimeParts, durationMs: number) {
+  const localValue = partsToDateTimeLocal(value)
+  if (!localValue) return emptySlotDateTime
+  const date = new Date(localValue)
+  if (Number.isNaN(date.getTime())) return emptySlotDateTime
+  return dateTimeLocalToParts(new Date(date.getTime() + durationMs).toISOString())
+}
+
 function dateInputValue(value: string | null | undefined) {
   return value ? value.slice(0, 10) : ''
 }
@@ -263,6 +299,74 @@ function Field({ label, help, children }: { label: string; help?: string; childr
       {children}
       {help && <span className="block text-xs text-text-muted">{help}</span>}
     </label>
+  )
+}
+
+function SlotDateTimeInput({
+  label,
+  name,
+  initialValue,
+  value,
+  onChange,
+}: {
+  label: string
+  name: string
+  initialValue?: string | null
+  value?: SlotDateTimeParts
+  onChange?: (value: SlotDateTimeParts) => void
+}) {
+  const [internalValue, setInternalValue] = useState(() => dateTimeLocalToParts(initialValue))
+  const currentValue = value ?? internalValue
+
+  useEffect(() => {
+    if (!value) setInternalValue(dateTimeLocalToParts(initialValue))
+  }, [initialValue, value])
+
+  function update(part: keyof SlotDateTimeParts, nextValue: string) {
+    const next = { ...currentValue, [part]: nextValue }
+    if (onChange) {
+      onChange(next)
+    } else {
+      setInternalValue(next)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <span className="text-[13px] font-medium text-text">{label}</span>
+      <input type="hidden" name={name} value={partsToDateTimeLocal(currentValue)} />
+      <div className="grid grid-cols-[minmax(0,1fr)_86px_86px] gap-2">
+        <Input
+          aria-label={`${label} date`}
+          type="date"
+          value={currentValue.date}
+          onChange={(event) => update('date', event.currentTarget.value)}
+          required
+        />
+        <Select
+          aria-label={`${label} hour`}
+          value={currentValue.hour}
+          onChange={(event) => update('hour', event.currentTarget.value)}
+          required
+        >
+          <option value="" disabled>Hour</option>
+          {HOUR_OPTIONS.map((hour) => (
+            <option key={hour.value} value={hour.value}>{hour.label}</option>
+          ))}
+        </Select>
+        <Select
+          aria-label={`${label} minute`}
+          value={currentValue.minute}
+          onChange={(event) => update('minute', event.currentTarget.value)}
+          required
+        >
+          <option value="" disabled>Minute</option>
+          {MINUTE_OPTIONS.map((minute) => (
+            <option key={minute} value={minute}>{minute}</option>
+          ))}
+        </Select>
+      </div>
+    </div>
   )
 }
 
@@ -392,6 +496,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [emailSendState, setEmailSendState] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [printableText, setPrintableText] = useState<string | null>(null)
   const [clientMessage, setClientMessage] = useState<string | null>(null)
+  const [newSlotStartsAt, setNewSlotStartsAt] = useState<SlotDateTimeParts>(emptySlotDateTime)
+  const [newSlotEndsAt, setNewSlotEndsAt] = useState<SlotDateTimeParts>(emptySlotDateTime)
   const APPLICATION_PAGE_SIZE = 25
   const [applicationPage, setApplicationPage] = useState(1)
   const TALENT_PAGE_SIZE = 25
@@ -1553,10 +1659,22 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <option value="interview">Interview</option>
                       <option value="trial_shift">Trial shift</option>
                     </Select>
-                    <Input name="starts_at" type="datetime-local" required />
-                    <Input name="ends_at" type="datetime-local" required />
+                    <SlotDateTimeInput
+                      name="starts_at"
+                      label="Opens"
+                      value={newSlotStartsAt}
+                      onChange={(value) => {
+                        setNewSlotStartsAt(value)
+                        setNewSlotEndsAt(addDurationToDateTimeParts(value, DEFAULT_SLOT_DURATION_MS))
+                      }}
+                    />
+                    <SlotDateTimeInput
+                      name="ends_at"
+                      label="Closes"
+                      value={newSlotEndsAt}
+                      onChange={setNewSlotEndsAt}
+                    />
                     <Input name="location" defaultValue="The Anchor" />
-                    <Input name="timezone" defaultValue="Europe/London" />
                     <Button type="submit" variant="primary">Create slot</Button>
                     <ActionStateMessage state={slotState} />
                   </form>
@@ -1638,17 +1756,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <option value="trial_shift">Trial shift</option>
                     </Select>
                   </Field>
-                  <Field label="Starts">
-                    <Input name="starts_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedSlot.starts_at)} required />
-                  </Field>
-                  <Field label="Ends">
-                    <Input name="ends_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedSlot.ends_at)} required />
-                  </Field>
+                  <SlotDateTimeInput name="starts_at" label="Starts" initialValue={selectedSlot.starts_at} />
+                  <SlotDateTimeInput name="ends_at" label="Ends" initialValue={selectedSlot.ends_at} />
                   <Field label="Location">
                     <Input name="location" defaultValue={selectedSlot.location} />
-                  </Field>
-                  <Field label="Timezone">
-                    <Input name="timezone" defaultValue={selectedSlot.timezone ?? 'Europe/London'} />
                   </Field>
                   <div className="flex flex-wrap items-center gap-2">
                     <SubmitButton>Save slot</SubmitButton>

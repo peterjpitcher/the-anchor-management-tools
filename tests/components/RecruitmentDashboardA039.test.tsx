@@ -129,4 +129,29 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(screen.getByRole('dialog', { name: 'Erase candidate' })).toBeInTheDocument()
     expect(screen.getByText('This permanently anonymises the candidate record. Continue?')).toBeInTheDocument()
   })
+
+  it('uses explicit quarter-hour slot time controls and defaults close time two hours later', () => {
+    const { container } = render(<RecruitmentDashboardClient initialData={makeInitialData()} permissions={permissions} />)
+
+    fireEvent.click(screen.getByRole('tab', { name: /Schedule/i }))
+
+    const startsAt = container.querySelector<HTMLInputElement>('input[name="starts_at"]')
+    const endsAt = container.querySelector<HTMLInputElement>('input[name="ends_at"]')
+    const opensDate = screen.getByLabelText('Opens date')
+    const opensHour = screen.getByLabelText('Opens hour')
+    const opensMinute = screen.getByLabelText('Opens minute')
+
+    expect(startsAt).not.toBeNull()
+    expect(endsAt).not.toBeNull()
+    expect(Array.from((opensHour as HTMLSelectElement).options).map((option) => option.textContent)).toContain('9am')
+    expect(Array.from((opensHour as HTMLSelectElement).options).map((option) => option.textContent)).toContain('3pm')
+    expect(Array.from((opensMinute as HTMLSelectElement).options).map((option) => option.value)).toEqual(['', '00', '15', '30', '45'])
+
+    fireEvent.change(opensDate, { target: { value: '2099-01-01' } })
+    fireEvent.change(opensHour, { target: { value: '10' } })
+    fireEvent.change(opensMinute, { target: { value: '15' } })
+
+    expect(startsAt?.value).toBe('2099-01-01T10:15')
+    expect(endsAt?.value).toBe('2099-01-01T12:15')
+  })
 })
