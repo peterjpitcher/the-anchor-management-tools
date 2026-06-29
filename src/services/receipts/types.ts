@@ -145,6 +145,7 @@ export type ReceiptWorkspaceData = {
   rules: ReceiptRule[]
   ruleConflicts: ReceiptRuleConflict[]
   ruleSuggestions: ReceiptRuleSuggestion[]
+  suggestionsTotal: number
   summary: ReceiptWorkspaceSummary
   pagination: {
     page: number
