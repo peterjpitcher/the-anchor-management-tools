@@ -39,6 +39,11 @@ const mockedCurrentUser = getCurrentUser as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 
+// Suggestion ids must be valid UUIDs (the action filters out non-UUID input).
+const SUG_A = '11111111-1111-4111-8111-111111111111'
+const SUG_B = '22222222-2222-4222-8222-222222222222'
+const SUG_C = '33333333-3333-4333-8333-333333333333'
+
 type Handles = {
   supabase: unknown
   approveRpcMock: Mock
@@ -122,7 +127,7 @@ describe('approveReceiptRuleSuggestion / approveReceiptRuleSuggestions actions',
     const handles = makeAdmin()
     mockedCreateAdminClient.mockReturnValue(handles.supabase)
 
-    const result = await approveReceiptRuleSuggestions(['a', 'b', 'c'], { active: true })
+    const result = await approveReceiptRuleSuggestions([SUG_A, SUG_B, SUG_C], { active: true })
 
     expect(result).toMatchObject({ approved: 3, failed: 0 })
     expect(handles.approveRpcMock).toHaveBeenCalledTimes(3)
@@ -138,9 +143,18 @@ describe('approveReceiptRuleSuggestion / approveReceiptRuleSuggestions actions',
     expect(empty.error).toBeTruthy()
     expect(handles.approveRpcMock).not.toHaveBeenCalled()
 
-    const deduped = await approveReceiptRuleSuggestions(['a', 'a', 'b'])
+    const deduped = await approveReceiptRuleSuggestions([SUG_A, SUG_A, SUG_B])
     expect(deduped).toMatchObject({ approved: 2, failed: 0 })
     expect(handles.approveRpcMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects ids that are not valid UUIDs', async () => {
+    const handles = makeAdmin()
+    mockedCreateAdminClient.mockReturnValue(handles.supabase)
+
+    const result = await approveReceiptRuleSuggestions(['a', 'not-a-uuid', ''])
+    expect(result.error).toBeTruthy()
+    expect(handles.approveRpcMock).not.toHaveBeenCalled()
   })
 
   it('blocks non-super-admins', async () => {
@@ -151,7 +165,7 @@ describe('approveReceiptRuleSuggestion / approveReceiptRuleSuggestions actions',
     )
     mockedCreateAdminClient.mockReturnValue(handles.supabase)
 
-    const result = await approveReceiptRuleSuggestions(['a'])
+    const result = await approveReceiptRuleSuggestions([SUG_A])
     expect(result.error).toBe('Only super admins can approve suggested rules.')
   })
 })

@@ -451,6 +451,15 @@ const RULE_KEYWORD_STOPLIST = new Set([
   'shop', 'online', 'services', 'service', 'group', 'holdings', 'retail',
 ])
 
+// Local town/place tokens that appear in card descriptions (e.g. "TESCO STAINES").
+// A rule should key off the vendor/brand, never the location — a lone location token
+// would match every merchant in that town, so we drop these and, if a candidate keyword
+// list contains ONLY locations, propose no rule at all.
+const RULE_KEYWORD_LOCATION_STOPLIST = new Set([
+  'staines', 'sunbury', 'camberley', 'london', 'clitheroe', 'waterstock', 'leatherhead',
+  'westfield', 'hanworth', 'ashford', 'feltham',
+])
+
 // How many distinctive keywords a sanitized match_description may carry. Keeping this
 // at 1 means a rule keys off the single most-distinctive (first) vendor token and never
 // drags along trailing location/noise tokens (e.g. "TESCO ... STAINES" → "tesco"), which
@@ -469,6 +478,10 @@ export function sanitizeRuleKeywords(details: string, aiKeywords?: string | null
     if (cleaned.length < 4) continue
     if (/^\d+$/.test(cleaned)) continue
     if (RULE_KEYWORD_STOPLIST.has(cleaned)) continue
+    // A lone location/town token would match every merchant in that town, so drop it.
+    // If the candidate list ends up location-only, no distinctive keyword survives and
+    // we deliberately propose no rule (return null below).
+    if (RULE_KEYWORD_LOCATION_STOPLIST.has(cleaned)) continue
     if (seen.has(cleaned)) continue
     seen.add(cleaned)
     keywords.push(cleaned)
