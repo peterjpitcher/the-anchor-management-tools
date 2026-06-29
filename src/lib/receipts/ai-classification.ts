@@ -150,7 +150,7 @@ export async function classifyReceiptTransactionsWithAI(
   const { data: transactions, error } = await client
     .from('receipt_transactions')
     .select(
-      'id, details, transaction_type, amount_in, amount_out, vendor_id, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, status, ai_confidence, ai_suggested_keywords'
+      'id, details, transaction_type, amount_in, amount_out, vendor_id, vendor_name, vendor_source, vendor_rule_id, expense_category, expense_category_source, expense_rule_id, status, ai_confidence, ai_suggested_keywords, source_type, merchant_category, merchant_town'
     )
     .in('id', transactionIds)
 
@@ -186,6 +186,11 @@ export async function classifyReceiptTransactionsWithAI(
   // Build batch items
   const batchItems: BatchClassificationItem[] = toClassify.map((transaction) => {
     const vendorLocked = transaction.vendor_source === 'manual' || transaction.vendor_source === 'rule'
+    // For Amex rows the statement carries the merchant's own category/town,
+    // which give the model a stronger vendor/category signal than details alone.
+    const merchantHint = transaction.source_type === 'amex'
+      ? [transaction.merchant_category, transaction.merchant_town].filter(Boolean).join(' · ') || undefined
+      : undefined
     return {
       id: transaction.id,
       details: transaction.details,
@@ -196,6 +201,7 @@ export async function classifyReceiptTransactionsWithAI(
       skipVendor: vendorLocked,
       existingVendor: transaction.vendor_name ?? undefined,
       existingExpenseCategory: transaction.expense_category ?? undefined,
+      merchantHint,
     }
   })
 

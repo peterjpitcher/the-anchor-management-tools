@@ -60,6 +60,8 @@ export type BatchClassificationItem = {
   skipVendor?: boolean
   existingVendor?: string | null
   existingExpenseCategory?: ReceiptExpenseCategory | null
+  /** Optional merchant context (category · town) for Amex rows; improves vendor/category accuracy. */
+  merchantHint?: string | null
 }
 
 export type BatchClassificationResult = {
@@ -384,6 +386,7 @@ export async function classifyReceiptTransactionsBatch(input: {
         item.skipVendor ? '  vendor: ALREADY SET (skip)' : null,
         item.existingVendor ? `  existing_vendor: ${item.existingVendor}` : null,
         item.existingExpenseCategory ? `  existing_category: ${item.existingExpenseCategory}` : null,
+        item.merchantHint ? `  merchant_hint: ${item.merchantHint}` : null,
       ].filter(Boolean)
       return lines.join('\n')
     })

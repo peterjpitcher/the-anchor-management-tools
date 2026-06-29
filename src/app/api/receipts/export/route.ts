@@ -265,6 +265,8 @@ async function buildSummaryCsv(
     'Amount out (GBP)',
     'Status',
     'Notes',
+    'Source',
+    'Cardholder',
   ]
 
   const dataRows = transactions.map((tx) => {
@@ -285,6 +287,8 @@ async function buildSummaryCsv(
       amountOut,
       friendlyStatus(tx.status),
       escapeCsvCell(notes),
+      friendlySourceType(tx.source_type),
+      escapeCsvCell(tx.card_member ?? ''),
     ]
   })
 
@@ -316,6 +320,10 @@ function friendlySource(source: string | null | undefined): string {
     case 'import': return 'Import'
     default: return ''
   }
+}
+
+function friendlySourceType(sourceType: ReceiptTransaction['source_type'] | null | undefined): string {
+  return sourceType === 'amex' ? 'Amex' : 'Bank'
 }
 
 function friendlyStatus(status: ReceiptTransaction['status']) {
