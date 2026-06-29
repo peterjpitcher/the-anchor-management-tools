@@ -36,6 +36,8 @@ vi.mock('@/app/actions/recruitment', () => {
     retryRecruitmentCvExtractionAction: ok,
     runRecruitmentRetentionAction: ok,
     saveRecruitmentEmailTemplateAction: ok,
+    scheduleRecruitmentInterviewForCandidateAction: ok,
+    scheduleRecruitmentTrialForCandidateAction: ok,
     sendRecruitmentDecisionEmailAction: ok,
     transitionRecruitmentStatusAction: ok,
     updateRecruitmentCandidateAction: ok,
@@ -175,5 +177,30 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(screen.getByRole('columnheader', { name: 'Closes' })).toBeInTheDocument()
     expect(screen.getByText('Wed, 1 Jul 2026, 12:00')).toBeInTheDocument()
     expect(screen.getByText('Wed, 1 Jul 2026, 14:00')).toBeInTheDocument()
+  })
+
+  it('lets managers schedule an interview from the candidate drawer', () => {
+    const data = makeInitialData()
+    data.applications = [{
+      ...data.applications[0],
+      status: 'interview_invited',
+    }]
+    data.slots = [{
+      id: 'slot-1',
+      type: 'interview',
+      starts_at: '2099-07-02T12:00:00.000Z',
+      ends_at: '2099-07-02T13:00:00.000Z',
+      location: 'The Anchor',
+      status: 'open',
+      archived_at: null,
+    }]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Candidate 1 Test/i }))
+
+    expect(screen.getByText('Schedule interview for candidate')).toBeInTheDocument()
+    expect(screen.getByLabelText('Interview slot to schedule')).toHaveValue('slot-1')
+    expect(screen.getByRole('button', { name: 'Schedule interview' })).toBeInTheDocument()
   })
 })

@@ -82,6 +82,19 @@ export function generateRecruitmentAppointmentIcs(appointment: any): string {
   const description = escapeIcsText(appointmentDescription(appointment))
   const location = escapeIcsText(appointment.location || VENUE_LOCATION)
   const organizerEmail = getRecruitmentGraphSender()
+  // Bump SEQUENCE on each reschedule so an updated invite supersedes the original
+  // event in attendees' calendar clients (the UID is stable per appointment).
+  const sequence = Number.isFinite(appointment.reschedule_count) ? appointment.reschedule_count : 0
+  // Add the candidate as an ATTENDEE so the .ics attachment adds the event to
+  // their calendar with an RSVP, not just as a standalone block.
+  const candidateEmail = appointment.candidate?.email
+  const candidateName = [appointment.candidate?.first_name, appointment.candidate?.last_name]
+    .filter(Boolean)
+    .join(' ')
+  const attendeeCn = (candidateName || candidateEmail || '').replace(/[\\";:,\n]/g, ' ').trim()
+  const attendeeLine = candidateEmail
+    ? `ATTENDEE;CN=${attendeeCn};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${candidateEmail}`
+    : null
 
   return [
     'BEGIN:VCALENDAR',
@@ -98,11 +111,12 @@ export function generateRecruitmentAppointmentIcs(appointment: any): string {
     `LOCATION:${location}`,
     `DESCRIPTION:${description}`,
     `ORGANIZER;CN=The Anchor Recruitment:mailto:${organizerEmail}`,
+    attendeeLine,
     'STATUS:CONFIRMED',
-    'SEQUENCE:0',
+    `SEQUENCE:${sequence}`,
     'END:VEVENT',
     'END:VCALENDAR',
-  ].join('\r\n')
+  ].filter(Boolean).join('\r\n')
 }
 
 export async function loadRecruitmentAppointment(

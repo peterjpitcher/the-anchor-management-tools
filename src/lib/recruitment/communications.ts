@@ -8,7 +8,7 @@ import {
   RECRUITMENT_RIGHT_TO_WORK_WORDING,
   recruitmentSenderEmail,
 } from '@/lib/recruitment/contact'
-import { formatRecruitmentAppointment } from '@/services/recruitment'
+import { formatRecruitmentAppointmentTime } from '@/services/recruitment'
 import type { RecruitmentTemplateType } from '@/types/recruitment'
 
 type GenericClient = SupabaseClient<any, 'public', any>
@@ -24,8 +24,16 @@ const REQUIRED_TEMPLATE_PLACEHOLDERS: Partial<Record<RecruitmentTemplateType, st
 
 const DECLINE_EMAIL_TYPES = new Set<RecruitmentTemplateType>(['rejection', 'already_considered'])
 
+// Some legacy templates were seeded with the two-character sequence backslash+n
+// (a standard SQL string literal) instead of a real newline. Decode those so the
+// body renders with line breaks and the signature-stripping logic (which matches
+// real newlines) works correctly, regardless of how a template was stored or edited.
+function decodeEscapedNewlines(value: string): string {
+  return value.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n')
+}
+
 function normalizeBodyText(value: string): string {
-  return value.replace(/\r\n/g, '\n').trim()
+  return decodeEscapedNewlines(value.replace(/\r\n/g, '\n')).trim()
 }
 
 function recruitmentFromEmail(): string {
@@ -325,7 +333,10 @@ function buildMergeData(input: {
     role_title: roleTitle(input.application),
     booking_link: input.bookingLink ?? null,
     appointment_type: appointment?.type === 'trial_shift' ? 'trial shift' : 'interview',
-    appointment_time: appointment ? formatRecruitmentAppointment(appointment) : null,
+    // appointment_time is a bare date/time only — templates supply their own
+    // "interview"/"trial shift" wording (via {{appointment_type}} or fixed copy),
+    // so prepending the type label here would duplicate it (e.g. "interview ... interview on ...").
+    appointment_time: appointment ? formatRecruitmentAppointmentTime(appointment) : null,
     venue: appointment?.location || 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ',
     offer_terms: input.offerTerms ?? null,
     pay_hours: input.offerTerms ?? null,
@@ -711,7 +722,9 @@ export async function sendRecruitmentTemplateEmail(
 
   const inviteAppointmentType = appointmentTypeForInvite(type)
   const subject = mergeTemplate(options.subjectOverride ?? template.subject, mergeData)
-  const mergedBody = mergeTemplate(options.bodyOverride ?? template.body, mergeData)
+  // Decode any legacy literal "\n" before finalize so signature de-duplication
+  // (which keys off real newlines) runs against a correctly broken-up body.
+  const mergedBody = mergeTemplate(decodeEscapedNewlines(options.bodyOverride ?? template.body), mergeData)
   const body = normalizeBodyText(finalizeRecruitmentEmailBody(
     inviteAppointmentType
       ? ensureInviteHasAvailableTimes(mergedBody, inviteAppointmentType, null)
@@ -1013,7 +1026,7 @@ export async function sendDueRecruitmentAppointmentReminders(
 
     if (!appointment.reminder_sms_sent_at && appointment.candidate?.sms_consent) {
       try {
-        const body = `Reminder: your ${appointment.type === 'trial_shift' ? 'trial shift' : 'interview'} at The Anchor is ${formatRecruitmentAppointment(appointment)}.`
+        const body = `Reminder: your ${appointment.type === 'trial_shift' ? 'trial shift' : 'interview'} at The Anchor is ${formatRecruitmentAppointmentTime(appointment)}.`
         await sendRecruitmentSms(appointment.candidate_id, 'reminder', body, {
           applicationId: appointment.application_id,
         }, supabase)

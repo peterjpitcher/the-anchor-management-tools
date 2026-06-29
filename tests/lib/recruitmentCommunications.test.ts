@@ -414,6 +414,51 @@ describe('recruitment communications safety', () => {
     }))
   })
 
+  it('renders interview confirmation with real line breaks, a single sign-off, and no duplicated appointment type', async () => {
+    sendEmail.mockResolvedValue({ success: true, messageId: 'email-confirm-1' })
+    const communications = insertUpdateChain()
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: application, error: null }),
+      recruitment_candidate_appointments: maybeSingleChain({
+        data: {
+          id: 'appointment-1',
+          type: 'interview',
+          scheduled_start: '2026-07-01T13:00:00.000Z',
+          timezone: 'Europe/London',
+          location: 'The Anchor',
+        },
+        error: null,
+      }),
+      // Simulates the legacy template seeded with literal backslash+n instead of newlines.
+      recruitment_email_templates: maybeSingleChain({
+        data: {
+          subject: 'Interview confirmed - The Anchor',
+          body: 'Hi {{first_name}},\\n\\nYour interview is confirmed for {{appointment_time}} at The Anchor.\\n\\nPlease bring proof of your right to work in the UK.\\n\\nBest,\\nThe Anchor',
+        },
+        error: null,
+      }),
+      recruitment_communications: communications,
+    })
+
+    const result = await sendRecruitmentTemplateEmail('application-1', 'interview_confirmation', {
+      appointmentId: 'appointment-1',
+    }, supabase)
+
+    expect(result.success).toBe(true)
+    const text = sendEmail.mock.calls[0][0].text as string
+    // No literal backslash-n survives into the sent body.
+    expect(text).not.toContain('\\n')
+    // Bug B: appointment_time must not re-state the type ("interview is confirmed for interview on ...").
+    expect(text).toContain('Your interview is confirmed for 1 Jul 2026, 14:00 at The Anchor.')
+    expect(text).not.toContain('for interview on')
+    // Right-to-work wording is expanded.
+    expect(text).toContain('Acceptable proof includes:')
+    // Single sign-off: the template's "Best, The Anchor" is replaced by the standard signature.
+    expect(text).not.toContain('Best,\nThe Anchor')
+    expect(text).toContain('Thanks,\n\nPeter Pitcher')
+    expect(text.match(/Peter Pitcher/g)).toHaveLength(1)
+  })
+
   it.each(['rejection', 'already_considered'] as const)('does not pass internal AI details into %s draft context', async (type) => {
     draftRecruitmentEmail.mockResolvedValue({
       runId: 'run-1',

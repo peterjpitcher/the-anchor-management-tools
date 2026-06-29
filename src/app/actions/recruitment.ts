@@ -19,6 +19,7 @@ import {
   createRecruitmentJobPosting,
   duplicateRecruitmentJobPosting,
   eraseRecruitmentCandidate,
+  formatRecruitmentAppointmentTime,
   getRecruitmentApplicationsForCsv,
   getRecruitmentDashboard,
   getRecruitmentCandidatesPage,
@@ -35,12 +36,18 @@ import {
   rescoreRecruitmentApplication,
   runRecruitmentRetentionCleanup,
   saveRecruitmentEmailTemplate,
+  scheduleRecruitmentAppointmentByStaff,
   setRecruitmentArchiveState,
   transitionRecruitmentApplicationStatus,
   updateRecruitmentCandidateProfile,
   updateRecruitmentAppointmentSlot,
   updateRecruitmentJobPosting,
 } from '@/services/recruitment'
+import {
+  generateRecruitmentAppointmentIcs,
+  loadRecruitmentAppointment,
+  syncRecruitmentAppointmentCalendar,
+} from '@/lib/recruitment/calendar'
 import {
   draftRecruitmentEmailForApplication,
   retryRecruitmentCommunication,
@@ -947,6 +954,100 @@ export async function rescheduleRecruitmentAppointmentAction(formData: FormData)
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to reschedule appointment.' }
   }
+}
+
+async function scheduleRecruitmentAppointmentForCandidate(
+  formData: FormData,
+  appointmentType: RecruitmentAppointmentType,
+): Promise<ActionResult> {
+  const typeLabel = appointmentType === 'trial_shift' ? 'trial shift' : 'interview'
+  const titleLabel = appointmentType === 'trial_shift' ? 'Trial shift' : 'Interview'
+  const templateType: RecruitmentTemplateType = appointmentType === 'trial_shift'
+    ? 'trial_confirmation'
+    : 'interview_confirmation'
+  try {
+    const user = await requireRecruitmentPermission('edit')
+    const applicationId = formString(formData, 'application_id')
+    const slotId = formString(formData, 'slot_id')
+    if (!applicationId || !slotId) throw new Error(`Application and ${typeLabel} slot are required.`)
+
+    const appointmentId = await scheduleRecruitmentAppointmentByStaff({
+      applicationId,
+      slotId,
+      appointmentType,
+      actorUserId: user.id,
+    })
+    const appointment = await loadRecruitmentAppointment(appointmentId)
+    const ics = generateRecruitmentAppointmentIcs(appointment)
+
+    const candidateName = [appointment.candidate?.first_name, appointment.candidate?.last_name]
+      .filter(Boolean)
+      .join(' ') || appointment.candidate?.email || 'A candidate'
+    const roleTitle = appointment.application?.job_posting?.title
+    const whenLabel = formatRecruitmentAppointmentTime(appointment)
+
+    const [calendarResult, emailResult, managerEmailResult] = await Promise.allSettled([
+      syncRecruitmentAppointmentCalendar(appointmentId),
+      sendRecruitmentTemplateEmail(applicationId, templateType, {
+        currentUserId: user.id,
+        appointmentId,
+        attachments: [{
+          name: 'the-anchor-recruitment.ics',
+          content: Buffer.from(ics),
+          contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+        }],
+      }),
+      sendRecruitmentManagerAlert({
+        applicationId,
+        candidateId: appointment.candidate_id,
+        alertType: appointmentType === 'trial_shift' ? 'trial scheduled' : 'interview scheduled',
+        alertBody: `${candidateName}${roleTitle ? ` (${roleTitle})` : ''} — ${typeLabel} booked for ${whenLabel} at ${appointment.location}. Scheduled manually by a manager.`,
+        currentUserId: user.id,
+      }),
+    ])
+
+    if (calendarResult.status === 'rejected') {
+      console.error('Recruitment staff schedule calendar sync failed', calendarResult.reason)
+    }
+    if (managerEmailResult.status === 'rejected') {
+      console.error('Recruitment staff schedule manager alert failed', managerEmailResult.reason)
+    }
+
+    await auditRecruitmentMutation({
+      user,
+      operation: 'schedule',
+      resource: 'recruitment_appointment',
+      resourceId: appointmentId,
+      status: 'success',
+      newValues: {
+        application_id: applicationId,
+        slot_id: slotId,
+        type: appointmentType,
+        scheduled_start: appointment.scheduled_start,
+        calendar_status: calendarResult.status === 'fulfilled' ? calendarResult.value.status : 'failed',
+        confirmation_email_sent: emailResult.status === 'fulfilled',
+        manager_email_sent: managerEmailResult.status === 'fulfilled',
+      },
+    })
+    revalidatePath('/recruitment')
+    return {
+      success: true,
+      data: { appointmentId },
+      message: emailResult.status === 'fulfilled'
+        ? `${titleLabel} scheduled and confirmation sent.`
+        : `${titleLabel} scheduled. Confirmation email was not sent.`,
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : `Failed to schedule ${typeLabel}.` }
+  }
+}
+
+export async function scheduleRecruitmentInterviewForCandidateAction(formData: FormData): Promise<ActionResult> {
+  return scheduleRecruitmentAppointmentForCandidate(formData, 'interview')
+}
+
+export async function scheduleRecruitmentTrialForCandidateAction(formData: FormData): Promise<ActionResult> {
+  return scheduleRecruitmentAppointmentForCandidate(formData, 'trial_shift')
 }
 
 export async function archiveRecruitmentAppointmentAction(formData: FormData): Promise<ActionResult> {
