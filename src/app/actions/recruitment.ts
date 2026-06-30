@@ -8,6 +8,8 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { inviteEmployee } from '@/app/actions/employeeInvite'
 import {
+  addRecruitmentCandidateNote,
+  getRecruitmentCandidateTrail,
   buildRecruitmentPrintableKit,
   bulkUpdateRecruitmentApplications,
   cancelRecruitmentAppointmentByStaff,
@@ -345,6 +347,55 @@ export async function updateRecruitmentPostingAction(_prevState: unknown, formDa
       error,
     })
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update posting.' }
+  }
+}
+
+export async function addRecruitmentCandidateNoteAction(_prevState: unknown, formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireRecruitmentPermission('edit')
+    const candidateId = formString(formData, 'candidate_id')
+    const content = formString(formData, 'content')
+    if (!candidateId) throw new Error('Candidate is required.')
+    if (!content) throw new Error('Write a note before saving.')
+    const note = await addRecruitmentCandidateNote({
+      candidateId,
+      applicationId: formString(formData, 'application_id'),
+      content,
+      kind: 'note',
+      userId: user.id,
+      userEmail: user.email ?? null,
+    })
+    await auditRecruitmentMutation({
+      user,
+      operation: 'create_note',
+      resource: 'recruitment_candidate_note',
+      resourceId: (note as { id?: string } | null)?.id ?? candidateId,
+      status: 'success',
+    })
+    revalidatePath('/recruitment')
+    return { success: true, data: note, message: 'Note added.' }
+  } catch (error) {
+    await auditRecruitmentMutation({
+      operation: 'create_note',
+      resource: 'recruitment_candidate_note',
+      resourceId: formString(formData, 'candidate_id'),
+      status: 'failure',
+      error,
+    })
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to add note.' }
+  }
+}
+
+export async function getRecruitmentCandidateTrailAction(
+  candidateId: string
+): Promise<ActionResult<{ notes: unknown[]; systemChanges: unknown[] }>> {
+  try {
+    await requireRecruitmentPermission('view')
+    if (!candidateId) throw new Error('Candidate is required.')
+    const trail = await getRecruitmentCandidateTrail(candidateId)
+    return { success: true, data: trail }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to load trail.' }
   }
 }
 
