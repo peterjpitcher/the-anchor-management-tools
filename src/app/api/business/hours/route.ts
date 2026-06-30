@@ -81,11 +81,15 @@ export async function GET(_request: NextRequest) {
 
     // Get today's events for capacity information
     const todayStr = format(today, 'yyyy-MM-dd');
-    const { data: todayEvents } = await supabase
+    const { data: todayEvents, error: eventsError } = await supabase
       .from('events')
-      .select('id, title, start_date, start_time, capacity')
-      .eq('start_date', todayStr)
-      .order('start_time', { ascending: true });
+      .select('id, name, date, time, capacity')
+      .eq('date', todayStr)
+      .order('time', { ascending: true });
+
+    if (eventsError) {
+      console.error("Today's events query failed:", eventsError);
+    }
 
     // Table booking functionality removed; omit reservation capacity + slot calculations.
 
@@ -246,8 +250,8 @@ export async function GET(_request: NextRequest) {
       (todayHoursData?.kitchen_opens ? `, Kitchen ${todayHoursData.kitchen_opens} - ${todayHoursData.kitchen_closes}` : ''),
     isSpecialHours: !!todaySpecial,
     events: todayEvents?.map(e => ({
-      title: e.title,
-      time: e.start_time,
+      title: e.name,
+      time: e.time,
       affectsCapacity: !!e.capacity
     })) || [],
   };
