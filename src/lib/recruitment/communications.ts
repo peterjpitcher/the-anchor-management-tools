@@ -256,8 +256,13 @@ function ensureRecruitmentSignature(body: string): string {
   return `${withoutOldSignature}\n\n${RECRUITMENT_EMAIL_SIGNATURE}`
 }
 
-function finalizeRecruitmentEmailBody(body: string): string {
-  return ensureRecruitmentSignature(ensureRightToWorkWording(body))
+export function finalizeRecruitmentEmailBody(body: string): string {
+  // Normalise CRLF/CR to LF first. The signature de-duplication keys off consecutive
+  // newlines (\n{2,}); a textarea-submitted body uses \r\n line endings, so without this
+  // the de-dup misses an existing signature and appends a second one — and the later
+  // normalizeBodyText() strips the \r, hiding the cause. (Producing two footers.)
+  const normalized = body.replace(/\r\n?/g, '\n')
+  return ensureRecruitmentSignature(ensureRightToWorkWording(normalized))
 }
 
 function ensureInviteHasAvailableTimes(
