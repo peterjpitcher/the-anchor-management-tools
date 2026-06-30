@@ -397,6 +397,19 @@ describe('Table-booking mutation row-effect guards', () => {
         if (table === 'tables') {
           return { select: tablesSelect }
         }
+        if (table === 'table_join_links') {
+          return {
+            select: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }
+        }
+        if (table === 'event_communal_seat_allocations') {
+          const communalGt = vi.fn().mockResolvedValue({ data: [], error: null })
+          const communalLt = vi.fn().mockReturnValue({ gt: communalGt })
+          const communalIn = vi.fn().mockReturnValue({ lt: communalLt })
+          return {
+            select: vi.fn().mockReturnValue({ in: communalIn }),
+          }
+        }
         if (table === 'booking_table_assignments') {
           return { select: assignmentSelect, update }
         }

@@ -620,10 +620,14 @@ export async function GET(request: NextRequest) {
 
   for (const group of communalGroupsByTableEvent.values()) {
     const capacity = tableCapacityById.get(group.tableId) || null
+    const freeSeats = capacity ? Math.max(0, capacity - group.seats) : null
+    const capacityLabel = capacity
+      ? `${group.seats}/${capacity} seats used${freeSeats && freeSeats > 0 ? ` · ${freeSeats} free` : ''}`
+      : `${group.seats} seats used`
     const notes = [
       `Event: ${group.eventName}`,
       'Communal seating',
-      capacity ? `${group.seats}/${capacity} seats used` : `${group.seats} seats used`,
+      capacityLabel,
       `${group.bookingIds.size} booking${group.bookingIds.size === 1 ? '' : 's'}`
     ].join(' · ')
 
@@ -651,7 +655,9 @@ export async function GET(request: NextRequest) {
       start_datetime: group.startDatetime,
       end_datetime: group.endDatetime,
       is_private_block: false,
-      event_seating_type: 'seated'
+      event_seating_type: 'seated',
+      capacity_label: capacityLabel,
+      is_communal_event_block: true
     }
 
     const current = communalBookingsByTableId.get(group.tableId) || []

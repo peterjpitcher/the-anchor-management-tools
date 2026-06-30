@@ -3,6 +3,10 @@ import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import {
+  getMoveTableAvailability,
+  moveBookingAssignmentToTables,
+} from '@/lib/table-bookings/move-table'
 
 type SeatUpdateSmsMeta = {
   success: boolean
@@ -21,6 +25,8 @@ export type TableBookingSeatUpdateResult = {
   sms_sent: boolean
   sms: SeatUpdateSmsMeta | null
   event_id: string | null
+  auto_moved_table_ids?: string[] | null
+  auto_moved_table_name?: string | null
 }
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
@@ -83,7 +89,9 @@ export function mapSeatUpdateBlockedReason(reason: string | null | undefined): s
     case 'insufficient_capacity':
       return 'There are not enough seats available for that increase.'
     case 'table_capacity_insufficient':
-      return 'The assigned table is too small for that party size. Move the booking to a larger table first.'
+      return 'No table or joined-table setup has enough spare seats for that party size.'
+    case 'table_move_unavailable':
+      return 'The table setup changed. Refresh and try again.'
     case 'booking_not_found':
       return 'Booking was not found.'
     case 'event_not_found':
@@ -101,10 +109,11 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     actor?: string
     sendSms?: boolean
     appBaseUrl?: string
+    autoMoveTable?: boolean
   }
 ): Promise<TableBookingSeatUpdateResult> {
   const { data: tableBooking, error: tableBookingError } = await supabase.from('table_bookings')
-    .select('id, status, party_size, event_booking_id, event_id')
+    .select('id, status, party_size, event_booking_id, event_id, booking_date, booking_time, start_datetime, end_datetime, duration_minutes')
     .eq('id', input.tableBookingId)
     .maybeSingle()
 
@@ -140,6 +149,8 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
 
   const oldPartySize = Math.max(1, Number(tableBooking.party_size || 1))
   const newPartySize = Math.max(1, Number(input.partySize || 1))
+  let autoMovedTableIds: string[] | null = null
+  let autoMovedTableName: string | null = null
 
   if (!tableBooking.event_booking_id) {
     if (oldPartySize === newPartySize) {
@@ -159,18 +170,72 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     if (newPartySize > oldPartySize) {
       const assignedCapacity = await getAssignedTableCapacity(supabase, tableBooking.id)
       if (assignedCapacity !== null && assignedCapacity < newPartySize) {
-        return {
-          state: 'blocked',
-          reason: 'table_capacity_insufficient',
-          table_booking_id: tableBooking.id,
-          event_booking_id: null,
-          old_party_size: oldPartySize,
-          new_party_size: oldPartySize,
-          delta: 0,
-          sms_sent: false,
-          sms: null,
-          event_id: tableBooking.event_id || null
+        if (!input.autoMoveTable) {
+          return {
+            state: 'blocked',
+            reason: 'table_capacity_insufficient',
+            table_booking_id: tableBooking.id,
+            event_booking_id: null,
+            old_party_size: oldPartySize,
+            new_party_size: oldPartySize,
+            delta: 0,
+            sms_sent: false,
+            sms: null,
+            event_id: tableBooking.event_id || null
+          }
         }
+
+        const availability = await getMoveTableAvailability(supabase, {
+          id: tableBooking.id,
+          booking_date: tableBooking.booking_date,
+          booking_time: tableBooking.booking_time,
+          start_datetime: tableBooking.start_datetime || null,
+          end_datetime: tableBooking.end_datetime || null,
+          duration_minutes: tableBooking.duration_minutes ?? null,
+          party_size: newPartySize,
+        })
+        const target = availability.tables[0] || null
+
+        if (!target) {
+          return {
+            state: 'blocked',
+            reason: 'table_capacity_insufficient',
+            table_booking_id: tableBooking.id,
+            event_booking_id: null,
+            old_party_size: oldPartySize,
+            new_party_size: oldPartySize,
+            delta: 0,
+            sms_sent: false,
+            sms: null,
+            event_id: tableBooking.event_id || null
+          }
+        }
+
+        const moveResult = await moveBookingAssignmentToTables(supabase, {
+          bookingId: tableBooking.id,
+          targetTableIds: target.table_ids,
+          startIso: availability.startIso,
+          endIso: availability.endIso,
+          nowIso: new Date().toISOString(),
+        })
+
+        if (!moveResult.ok) {
+          return {
+            state: 'blocked',
+            reason: moveResult.status === 409 ? 'table_move_unavailable' : 'table_capacity_insufficient',
+            table_booking_id: tableBooking.id,
+            event_booking_id: null,
+            old_party_size: oldPartySize,
+            new_party_size: oldPartySize,
+            delta: 0,
+            sms_sent: false,
+            sms: null,
+            event_id: tableBooking.event_id || null
+          }
+        }
+
+        autoMovedTableIds = target.table_ids
+        autoMovedTableName = target.name || null
       }
     }
 
@@ -213,7 +278,9 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       delta: newPartySize - oldPartySize,
       sms_sent: false,
       sms: null,
-      event_id: tableBooking.event_id || null
+      event_id: tableBooking.event_id || null,
+      auto_moved_table_ids: autoMovedTableIds,
+      auto_moved_table_name: autoMovedTableName
     }
   }
 

@@ -25,6 +25,8 @@ export type FohBooking = {
   private_booking_id?: string | null
   deposit_waived?: boolean | null
   event_seating_type?: 'seated' | 'standing' | null
+  capacity_label?: string | null
+  is_communal_event_block?: boolean
 }
 
 export type FohLane = {

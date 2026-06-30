@@ -70,7 +70,8 @@ export async function POST(
       partySize: newPartySize,
       actor: 'boh',
       sendSms: parsed.data.send_sms,
-      appBaseUrl
+      appBaseUrl,
+      autoMoveTable: true
     })
 
     if (result.state === 'blocked') {
