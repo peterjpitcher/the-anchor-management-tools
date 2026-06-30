@@ -72,14 +72,10 @@ export async function GET(
       }
       event = (slugData as Record<string, any> | null) ?? null;
 
-      // Legacy fallback: if this is not a UUID and slug lookup missed, try id directly.
-      if (!event) {
-        const { data: idData, error: idError } = await lookupById(params.id);
-        if (idError) {
-          return createErrorResponse('Failed to load event details', 'DATABASE_ERROR', 500);
-        }
-        event = (idData as Record<string, any> | null) ?? null;
-      }
+      // A non-UUID that doesn't match a slug is simply not found — fall through to 404.
+      // Don't fall back to an id lookup: events.id is a uuid column, so a slug value
+      // ("bingo-2026-04-29") raises "invalid input syntax for type uuid" and would
+      // surface a wrong 500 for what is really a missing event.
     }
 
     if (!event) {
