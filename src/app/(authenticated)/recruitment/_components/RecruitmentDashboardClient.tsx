@@ -1514,17 +1514,34 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         {selectedApplicationAppointments.length === 0 && (
                           <p className="text-sm text-text-muted">No interview or trial scheduled yet.</p>
                         )}
-                        {selectedApplicationAppointments.map((apt: any) => (
-                          <div key={apt.id} className="space-y-1 rounded border border-border bg-surface-2 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium text-text-strong">{apt.type === 'trial_shift' ? 'Trial shift' : 'Interview'}</span>
-                              <Badge tone="neutral">{String(apt.status).replaceAll('_', ' ')}</Badge>
+                        {selectedApplicationAppointments.map((apt: any) => {
+                          const aptScorecards = scorecards.filter((sc: any) => sc.appointment_id === apt.id)
+                          const interviewerName = apt.supervisor
+                            ? [apt.supervisor.first_name, apt.supervisor.last_name].filter(Boolean).join(' ')
+                            : ''
+                          return (
+                            <div key={apt.id} className="space-y-1 rounded border border-border bg-surface-2 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-text-strong">{apt.type === 'trial_shift' ? 'Trial shift' : 'Interview'}</span>
+                                <Badge tone="neutral">{String(apt.status).replaceAll('_', ' ')}</Badge>
+                              </div>
+                              <p className="text-sm text-text">{formatSlotDateTime(apt.scheduled_start)}</p>
+                              <p className="text-xs text-text-muted">
+                                {apt.location || 'The Anchor'}
+                                {interviewerName ? ` · Interviewer: ${interviewerName}` : ''}
+                                {` · Calendar: ${calendarSyncLabel(apt.calendar_sync_status)}`}
+                              </p>
+                              {apt.outcome && <p className="text-xs text-text-muted">Outcome: {apt.outcome}</p>}
+                              {aptScorecards.map((sc: any) => (
+                                <p key={sc.id} className="text-xs text-text-muted">
+                                  Scorecard: {sc.recommendation?.replaceAll('_', ' ') || 'recorded'}
+                                  {sc.overall_rating ? ` · ${sc.overall_rating}/5` : ''}
+                                  {sc.comments ? ` · ${sc.comments}` : ''}
+                                </p>
+                              ))}
                             </div>
-                            <p className="text-sm text-text">{formatSlotDateTime(apt.scheduled_start)}</p>
-                            <p className="text-xs text-text-muted">{apt.location || 'The Anchor'} · Calendar: {calendarSyncLabel(apt.calendar_sync_status)}</p>
-                            {apt.outcome && <p className="text-xs text-text-muted">Outcome: {apt.outcome}</p>}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
 
                       <div className="space-y-2">
@@ -1726,6 +1743,32 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
                   {drawerTab === 'profile' && (
                     <div className="space-y-4">
+                      {(() => {
+                        const candidate = selectedApplication.candidate
+                        const otherApplications = applications.filter((app: any) => (
+                          app.candidate_id === selectedApplication.candidate_id && app.id !== selectedApplication.id
+                        ))
+                        const isTalentPool = selectedApplication.status === 'talent_pool'
+                        const converted = Boolean(candidate?.converted_employee_id)
+                        if (otherApplications.length === 0 && !isTalentPool && !converted) return null
+                        return (
+                          <div className="space-y-1 rounded border border-border bg-surface-2 p-3">
+                            <p className="text-xs font-semibold uppercase text-text-muted">Candidate status</p>
+                            {converted && <p className="text-sm text-text">Converted to employee</p>}
+                            {isTalentPool && <p className="text-sm text-text">In talent pool</p>}
+                            {otherApplications.length > 0 && (
+                              <div className="text-sm text-text">
+                                <p className="text-xs text-text-muted">Other applications</p>
+                                {otherApplications.map((app: any) => (
+                                  <p key={app.id} className="text-xs text-text-muted">
+                                    {roleTitle(app)} · {statusLabel(app.status)} · {formatDateTime(app.created_at)}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <form action={candidateUpdateAction} className="space-y-3">
                         <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
                         <p className="text-xs font-semibold uppercase text-text-muted">Candidate profile</p>
