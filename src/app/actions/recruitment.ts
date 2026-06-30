@@ -1055,6 +1055,13 @@ export async function cancelRecruitmentAppointmentAction(formData: FormData): Pr
       status: 'success',
       newValues: { status: (appointment as any).status ?? 'cancelled' },
     })
+    await notifyRecruitmentManager({
+      applicationId: (appointment as any).application_id,
+      candidateId: (appointment as any).candidate_id,
+      alertType: 'appointment cancelled',
+      alertBody: 'A recruitment appointment was cancelled by staff. The application is on hold — review and rebook or close it.',
+      currentUserId: user.id,
+    })
     revalidatePath('/recruitment')
     return { success: true, data: appointment, message: 'Appointment cancelled.' }
   } catch (error) {
@@ -1504,6 +1511,13 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
         employee_id: invite.employeeId,
         job_title: jobTitle,
       },
+    })
+    await notifyRecruitmentManager({
+      applicationId,
+      candidateId: application.candidate_id,
+      alertType: 'candidate hired',
+      alertBody: `${application.candidate.first_name ?? 'A candidate'} has been hired and an employee invite was sent (${jobTitle}).`,
+      currentUserId: user.id,
     })
     revalidatePath('/recruitment')
     revalidatePath('/employees')
