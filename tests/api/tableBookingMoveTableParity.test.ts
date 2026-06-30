@@ -56,6 +56,9 @@ function buildMoveTableSupabase() {
     data: [{ table_booking_id: BOOKING_ID, table_id: CURRENT_TABLE_ID }],
     error: null,
   })
+  const communalGt = vi.fn().mockResolvedValue({ data: [], error: null })
+  const communalLt = vi.fn().mockReturnValue({ gt: communalGt })
+  const communalIn = vi.fn().mockReturnValue({ lt: communalLt })
   const overlapGt = vi.fn().mockResolvedValue({ data: [], error: null })
   const overlapLt = vi.fn().mockReturnValue({ gt: overlapGt })
   const overlapNeq = vi.fn().mockReturnValue({ lt: overlapLt })
@@ -76,7 +79,8 @@ function buildMoveTableSupabase() {
 
   const insert = vi.fn().mockResolvedValue({ error: null })
   const deleteNeq = vi.fn().mockResolvedValue({ error: null })
-  const deleteEq = vi.fn().mockReturnValue({ neq: deleteNeq })
+  const deleteIn = vi.fn().mockResolvedValue({ error: null })
+  const deleteEq = vi.fn().mockReturnValue({ neq: deleteNeq, in: deleteIn })
   const del = vi.fn().mockReturnValue({ eq: deleteEq })
 
   return {
@@ -86,6 +90,16 @@ function buildMoveTableSupabase() {
       }
       if (table === 'booking_table_assignments') {
         return { select: assignmentSelect, insert, delete: del }
+      }
+      if (table === 'table_join_links') {
+        return {
+          select: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }
+      }
+      if (table === 'event_communal_seat_allocations') {
+        return {
+          select: vi.fn().mockReturnValue({ in: communalIn }),
+        }
       }
       if (table === 'table_bookings') {
         return {

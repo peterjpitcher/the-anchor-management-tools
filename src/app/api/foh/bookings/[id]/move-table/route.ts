@@ -6,14 +6,18 @@ import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
   getMoveTableAvailability,
-  moveBookingAssignmentToTable,
+  moveBookingAssignmentToTables,
   resolveMoveTableTarget
 } from '@/lib/table-bookings/move-table'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const MoveTableSchema = z.object({
-  table_id: z.string().uuid()
+  table_id: z.string().uuid().optional(),
+  table_ids: z.array(z.string().uuid()).min(1).max(4).optional()
+}).refine((value) => Boolean(value.table_id || value.table_ids?.length), {
+  message: 'Select a table to move this booking',
+  path: ['table_id']
 })
 
 export async function GET(
@@ -58,6 +62,7 @@ export async function GET(
         assigned_table_ids: availability.assignedTableIds,
         tables: availability.tables.map((table) => ({
           id: table.id,
+          table_ids: table.table_ids,
           table_number: table.table_number,
           name: table.name || table.table_number || `Table ${table.id.slice(0, 4)}`,
           capacity: table.capacity
@@ -134,7 +139,8 @@ export async function POST(
     )
   }
 
-  const targetResult = await resolveMoveTableTarget(auth.supabase, availability, parsed.data.table_id)
+  const targetTableIds = parsed.data.table_ids?.length ? parsed.data.table_ids : [parsed.data.table_id as string]
+  const targetResult = await resolveMoveTableTarget(auth.supabase, availability, targetTableIds)
   if (!targetResult.ok) {
     return NextResponse.json({ error: targetResult.error }, { status: targetResult.status })
   }
@@ -148,9 +154,9 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
-  const mutation = await moveBookingAssignmentToTable(auth.supabase, {
+  const mutation = await moveBookingAssignmentToTables(auth.supabase, {
     bookingId: booking.id,
-    targetTableId: targetTable.id,
+    targetTableIds: targetTable.table_ids,
     startIso: availability.startIso,
     endIso: availability.endIso,
     nowIso
@@ -171,6 +177,7 @@ export async function POST(
     },
     new_values: {
       table_id: targetTable.id,
+      table_ids: targetTable.table_ids,
       start_datetime: availability.startIso,
       end_datetime: availability.endIso,
     },
@@ -184,6 +191,7 @@ export async function POST(
     data: {
       booking_id: booking.id,
       table_id: targetTable.id,
+      table_ids: targetTable.table_ids,
       table_name: targetTable.name || targetTable.table_number,
       start_datetime: availability.startIso,
       end_datetime: availability.endIso

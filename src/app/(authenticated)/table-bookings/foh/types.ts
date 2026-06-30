@@ -149,6 +149,7 @@ export type FohUpcomingEventsResponse = {
 
 export type FohMoveTableOption = {
   id: string
+  table_ids?: string[]
   name: string
   table_number?: string | null
   capacity?: number | null

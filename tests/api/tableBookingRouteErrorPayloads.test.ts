@@ -43,6 +43,11 @@ function buildAvailabilityLoadFailureSupabase() {
       if (table === 'booking_table_assignments') {
         return { select: assignmentSelect }
       }
+      if (table === 'table_join_links') {
+        return {
+          select: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }
+      }
       throw new Error(`Unexpected table: ${table}`)
     }),
   }
