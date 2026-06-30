@@ -879,6 +879,11 @@ export async function sendRecruitmentSms(
 
   const result = await sendSMS(to, body, {
     createCustomerIfMissing: false,
+    // Recruitment SMS goes to candidates, who are not customers. messages.customer_id
+    // is NOT NULL, so it can't be logged there; this send is audited in
+    // recruitment_communications above. Skip messages-table logging to avoid a
+    // false "could not resolve customer for logging" error.
+    skipMessageLogging: true,
     allowTransactionalOverride: true,
     metadata: {
       recruitment_candidate_id: candidateId,
@@ -989,6 +994,9 @@ export async function retryRecruitmentCommunication(
 
     const result = await sendSMS(to, original.final_body, {
       createCustomerIfMissing: false,
+      // See sendRecruitmentSms: candidates aren't customers, so skip messages-table
+      // logging (audited in recruitment_communications) to avoid a false error.
+      skipMessageLogging: true,
       allowTransactionalOverride: true,
       metadata: {
         recruitment_candidate_id: original.candidate_id,
