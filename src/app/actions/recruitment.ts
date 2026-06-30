@@ -1574,7 +1574,13 @@ export async function eraseRecruitmentCandidateAction(formData: FormData): Promi
   }
 }
 
-export async function getRecruitmentPrintableKitAction(formData: FormData): Promise<ActionResult<{ text: string }>> {
+export async function getRecruitmentPrintableKitAction(formData: FormData): Promise<ActionResult<{
+  text: string
+  application: any
+  appointment: any | null
+  cvUrl: string | null
+  kind: 'interview' | 'trial'
+}>> {
   try {
     await requireRecruitmentPermission('view')
     const applicationId = formString(formData, 'application_id')
@@ -1598,10 +1604,21 @@ export async function getRecruitmentPrintableKitAction(formData: FormData): Prom
       .limit(1)
       .maybeSingle()
 
+    let cvUrl: string | null = null
+    try {
+      cvUrl = await getRecruitmentCvSignedUrl(application.candidate_id, admin)
+    } catch (cvError) {
+      console.warn('Failed to create recruitment CV link for printable kit', cvError)
+    }
+
     return {
       success: true,
       data: {
         text: buildRecruitmentPrintableKit({ application, appointment, kind }),
+        application,
+        appointment: appointment ?? null,
+        cvUrl,
+        kind,
       },
     }
   } catch (error) {

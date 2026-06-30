@@ -232,6 +232,613 @@ function formatSlotOptionLabel(slot: { starts_at: string; ends_at?: string | nul
   return `${window} · ${slot.location || 'The Anchor'}`
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }[character] ?? character))
+}
+
+type PrintableKitPayload = {
+  text: string
+  application?: any
+  appointment?: any | null
+  cvUrl?: string | null
+  kind?: 'interview' | 'trial'
+}
+
+function plainPrintableHtml(text: string) {
+  const title = text.split('\n')[0] || 'Recruitment printable kit'
+  const escapedTitle = escapeHtml(title)
+  const escapedText = escapeHtml(text)
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapedTitle}</title>
+  <style>
+    @page { margin: 18mm; }
+    body { color: #111827; font-family: Arial, sans-serif; margin: 0; }
+    main { margin: 0 auto; max-width: 760px; padding: 24px; }
+    pre { font: 14px/1.5 Arial, sans-serif; margin: 0; white-space: pre-wrap; }
+    .actions { border-bottom: 1px solid #d1d5db; margin-bottom: 20px; padding-bottom: 12px; }
+    button { background: #0f766e; border: 0; border-radius: 4px; color: white; cursor: pointer; font: inherit; padding: 8px 12px; }
+    @media print {
+      main { max-width: none; padding: 0; }
+      .actions { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="actions"><button type="button" onclick="window.print()">Print</button></div>
+    <pre>${escapedText}</pre>
+  </main>
+  <script>
+    window.addEventListener('load', function () {
+      window.focus();
+      setTimeout(function () { window.print(); }, 100);
+    });
+  </script>
+</body>
+</html>`
+}
+
+function titleCase(value: string | null | undefined) {
+  if (!value) return ''
+  return value
+    .replaceAll('_', ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function textValue(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function recommendationGloss(value: string | null | undefined) {
+  switch (value) {
+    case 'recommend':
+      return 'Strong signs on paper. Confirm availability, attitude and practical fit.'
+    case 'reject':
+      return 'Weak fit on paper. Only continue if new context changes the picture.'
+    default:
+      return 'A promising hospitality background with gaps worth probing. Worth meeting.'
+  }
+}
+
+function htmlList(items: string[], fallback: string) {
+  const safeItems = items.length > 0 ? items : [fallback]
+  return safeItems.map(item => `<li>${escapeHtml(item)}</li>`).join('')
+}
+
+function focusText(flags: string[], concerns: string[], role: string) {
+  const focusItems = [...flags, ...concerns].slice(0, 3)
+  if (focusItems.length === 0) {
+    return `From the screening, steer the conversation around ${role.toLowerCase()} fit, availability and customer handling under pressure.`
+  }
+  return `From the screening, steer the conversation around ${focusItems.join(', ').toLowerCase()}.`
+}
+
+function interviewKitHtml(input: PrintableKitPayload) {
+  const application = input.application ?? {}
+  const candidate = application.candidate ?? {}
+  const posting = application.job_posting ?? {}
+  const appointment = input.appointment ?? null
+  const name = candidateName(candidate)
+  const role = textValue(posting.title, 'General recruitment')
+  const interviewDate = appointment?.scheduled_start ? formatSlotDateTime(appointment.scheduled_start) : 'To be confirmed'
+  const location = textValue(appointment?.location, 'The Anchor')
+  const score = typeof application.ai_score === 'number' ? Math.max(0, Math.min(100, Math.round(application.ai_score))) : null
+  const recommendation = titleCase(application.ai_recommendation) || 'Review'
+  const rationale = textValue(application.ai_rationale, 'No rationale recorded.')
+  const strengths = asStringArray(application.ai_strengths).length > 0
+    ? asStringArray(application.ai_strengths)
+    : profileArray(candidate, 'strengths')
+  const concerns = asStringArray(application.ai_concerns).length > 0
+    ? asStringArray(application.ai_concerns)
+    : profileArray(candidate, 'concerns')
+  const flags = asStringArray(application.ai_flags)
+  const cvUrl = typeof input.cvUrl === 'string' && input.cvUrl.trim() ? input.cvUrl.trim() : null
+  const cvMimeType = textValue(candidate.cv_mime_type, 'application/pdf')
+  const title = `Interview Kit - ${name} - The Anchor`
+  const cvBlock = cvUrl
+    ? `<section class="page-break" data-screen-label="CV">
+          <div class="cv-page cv-embed-page">
+            <p class="kicker" style="margin-bottom:10px;">Appendix</p>
+            <h2 class="cv-title">Candidate CV</h2>
+            <object class="cv-object" data="${escapeHtml(cvUrl)}" type="${escapeHtml(cvMimeType)}">
+              <div class="cv-frame">
+                <div class="cv-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <line x1="9" y1="13" x2="15" y2="13"></line>
+                    <line x1="9" y1="17" x2="13" y2="17"></line>
+                  </svg>
+                </div>
+                <h2>Open candidate CV</h2>
+                <p>The uploaded CV could not be embedded in this browser. Open it and print it behind this kit.</p>
+                <a class="cv-link" href="${escapeHtml(cvUrl)}" target="_blank" rel="noreferrer">Open CV</a>
+              </div>
+            </object>
+          </div>
+        </section>`
+    : `<section class="page-break" data-screen-label="CV placeholder">
+          <div class="cv-page">
+            <p class="kicker" style="margin-bottom:10px;">Appendix</p>
+            <div class="cv-frame">
+              <div class="cv-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                  <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <line x1="9" y1="13" x2="15" y2="13"></line>
+                  <line x1="9" y1="17" x2="13" y2="17"></line>
+                </svg>
+              </div>
+              <h2>Attach candidate CV here</h2>
+              <p>Place a printed copy of the candidate's CV behind this page so it stays with the kit.</p>
+            </div>
+          </div>
+        </section>`
+
+  return `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Clicker+Script&family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --anchor-green: #005131;
+    --anchor-green-light: #006b45;
+    --anchor-green-deep: #0c1d11;
+    --anchor-gold: #a57626;
+    --anchor-gold-dark: #8b6914;
+    --anchor-gold-bright: #c9a020;
+    --anchor-charcoal: #1a1a1a;
+    --anchor-cream: #faf8f3;
+    --anchor-white: #ffffff;
+    --anchor-sand: #f5e6d3;
+    --border: #e2dccf;
+    --border-strong: #d2c9b4;
+    --border-gold: rgba(165,118,38,0.35);
+    --text-muted: #6f6a61;
+    --anchor-danger: #b1372f;
+    --font-display: "DM Serif Display", Georgia, serif;
+    --font-body: "Outfit", Arial, sans-serif;
+    --font-script: "Clicker Script", cursive;
+    --tracking-kicker: 0.18em;
+    --rule: var(--border-strong);
+    --row: 2.15rem;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #ece6da;
+    color: var(--anchor-charcoal);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .doc {
+    box-sizing: border-box;
+    max-width: 8.5in;
+    margin: 24px auto;
+    background: var(--anchor-cream);
+    padding: 0 clamp(20px, 5vw, 0.8in);
+    box-shadow: 0 12px 40px rgba(12, 29, 17, 0.18);
+  }
+  .doc-frame { width: 100%; border-collapse: collapse; }
+  .doc-frame td { padding: 0; }
+  .pad-top, .pad-bottom { display: none; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; max-width: 8.5in; margin: 24px auto -8px;
+    padding: 12px 18px; background: var(--anchor-green-deep);
+    color: var(--anchor-cream); border-radius: 12px;
+  }
+  .toolbar .tb-label {
+    font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--anchor-gold-bright); font-weight: 600;
+  }
+  .btn-print, .cv-link {
+    appearance: none; border: 0; cursor: pointer; text-decoration: none;
+    font-family: var(--font-body); font-weight: 600; font-size: 14px;
+    color: var(--anchor-charcoal); background: var(--anchor-gold);
+    padding: 10px 22px; border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(165,118,38,.4);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn-print:hover, .cv-link:hover { transform: translateY(-2px); }
+  .btn-print:focus-visible, .cv-link:focus-visible { outline: 3px solid var(--anchor-gold-bright); outline-offset: 2px; }
+  .masthead { padding: 8px 0 10px; border-bottom: 2px solid var(--anchor-green); margin-bottom: 10px; }
+  .masthead-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+  .masthead img { height: 42px; width: auto; }
+  .meta-doc { text-align: right; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+  .kicker {
+    font-family: var(--font-body); font-weight: 600; text-transform: uppercase;
+    letter-spacing: var(--tracking-kicker); color: var(--anchor-gold-dark); font-size: 12px;
+  }
+  h1.cover-title {
+    font-family: var(--font-display); font-weight: 400;
+    font-size: clamp(1.8rem, 4.5vw, 2.2rem); line-height: 1.02;
+    letter-spacing: -0.02em; color: var(--anchor-green);
+    margin: 6px 0 2px;
+  }
+  .cover-sub { font-family: var(--font-script); color: var(--anchor-gold-dark); font-size: 1.2rem; line-height: 1; margin: 0; }
+  .facts {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 1px; background: var(--border); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-top: 10px;
+  }
+  .fact { background: var(--anchor-cream); padding: 6px 14px; }
+  .lbl { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 3px; }
+  .val { font-family: var(--font-display); font-size: 1.02rem; color: var(--anchor-green); line-height: 1.15; }
+  h2.sec {
+    font-family: var(--font-display); font-weight: 400; font-size: 1.4rem;
+    color: var(--anchor-green); letter-spacing: -0.01em;
+    margin: 14px 0 2px; display: flex; align-items: baseline; gap: 10px;
+  }
+  h2.sec .num {
+    font-family: var(--font-body); font-weight: 700; font-size: 0.85rem;
+    color: var(--anchor-gold-dark); letter-spacing: 0.1em;
+  }
+  .sec-lead { color: var(--text-muted); font-size: 13.5px; margin: 0 0 8px; }
+  .sec-rule { height: 2px; background: var(--anchor-gold); width: 46px; border-radius: 2px; margin: 8px 0 18px; }
+  .screen {
+    background: var(--anchor-white); color: var(--anchor-charcoal);
+    border: 1px solid var(--border); border-top: 4px solid var(--anchor-gold);
+    border-radius: 12px; padding: 13px 18px; margin-top: 4px;
+  }
+  .screen-head { display: flex; align-items: center; gap: 20px; }
+  .score-ring {
+    flex: none; width: 68px; height: 68px; border-radius: 999px;
+    display: grid; place-items: center; text-align: center;
+    border: 3px solid var(--anchor-gold); background: var(--anchor-cream);
+  }
+  .score-ring .n { font-family: var(--font-display); font-size: 1.35rem; color: var(--anchor-green); line-height: 1; }
+  .score-ring .of { font-size: 9px; letter-spacing: 0.12em; color: var(--text-muted); text-transform: uppercase; }
+  .reco-block { flex: 1; }
+  .reco-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+  .reco-pill {
+    display: inline-block; font-weight: 600; font-size: 13px;
+    padding: 5px 14px; border-radius: 999px;
+    background: var(--anchor-sand); color: var(--anchor-gold-dark);
+    border: 1px solid var(--border-gold); text-transform: capitalize;
+  }
+  .rationale {
+    margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border);
+    font-size: 11.8px; line-height: 1.45; color: var(--anchor-charcoal);
+  }
+  .rl-label {
+    display: block; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--anchor-gold-dark); margin-bottom: 6px; font-weight: 600;
+  }
+  .sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .sc-card { background: var(--anchor-white); border: 1px solid var(--border); border-radius: 10px; padding: 8px 13px; }
+  .sc-card.flags { grid-column: 1 / -1; }
+  .sc-card h3 {
+    margin: 0 0 5px; font-family: var(--font-body); font-size: 12px;
+    letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700;
+  }
+  .sc-card.str h3 { color: var(--anchor-green-light); }
+  .sc-card.con h3 { color: var(--anchor-gold-dark); }
+  .sc-card.flags h3 { color: var(--anchor-danger); }
+  .sc-card ul { margin: 0; padding: 0; list-style: none; }
+  .sc-card li { position: relative; padding-left: 18px; font-size: 12px; margin-bottom: 3px; line-height: 1.3; }
+  .sc-card li:last-child { margin-bottom: 0; }
+  .sc-card li::before {
+    content: ""; position: absolute; left: 0; top: 8px;
+    width: 7px; height: 7px; border-radius: 2px;
+  }
+  .sc-card.str li::before { background: var(--anchor-green-light); }
+  .sc-card.con li::before { background: var(--anchor-gold); }
+  .sc-card.flags li::before { background: var(--anchor-danger); transform: rotate(45deg); border-radius: 1px; }
+  .callout {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--anchor-white); border: 1px solid var(--border-gold);
+    border-radius: 10px; padding: 9px 13px;
+    margin-top: 8px; font-size: 12.5px;
+  }
+  .callout .tag {
+    flex: none; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 700; color: var(--anchor-charcoal);
+    background: var(--anchor-gold); border-radius: 999px; padding: 4px 11px; margin-top: 1px;
+  }
+  .field-label {
+    font-weight: 600; color: var(--anchor-green); font-size: 14.5px;
+    margin: 18px 0 8px; line-height: 1.4;
+  }
+  .field-label .q-no { color: var(--anchor-gold-dark); font-weight: 700; margin-right: 4px; }
+  .sub-note { font-weight: 400; color: var(--text-muted); font-size: 12.5px; }
+  .lines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0, transparent calc(var(--row) - 1px),
+      var(--rule) calc(var(--row) - 1px), var(--rule) var(--row)
+    );
+  }
+  .lines.l2 { height: calc(var(--row) * 2); }
+  .lines.l4 { height: calc(var(--row) * 4); }
+  .inline-fields { display: grid; grid-template-columns: 1.3fr 1fr; gap: 22px; margin: 4px 0 8px; }
+  .ff { display: flex; align-items: flex-end; gap: 10px; }
+  .ff-label { font-weight: 600; color: var(--anchor-green); font-size: 14px; white-space: nowrap; }
+  .ff-line { flex: 1; border-bottom: 1px solid var(--rule); height: 1.9rem; }
+  .cert { background: var(--anchor-white); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; margin-top: 8px; }
+  .cert-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--border); }
+  .cert-row:last-child { border-bottom: 0; }
+  .cert-name { font-weight: 600; font-size: 14px; min-width: 130px; color: var(--anchor-charcoal); }
+  .yn { display: inline-flex; gap: 6px; }
+  .opt {
+    border: 1.5px solid var(--border-strong); border-radius: 999px;
+    min-width: 30px; height: 26px; display: inline-grid; place-items: center;
+    padding: 0 10px; font-size: 12px; font-weight: 600; color: var(--text-muted);
+  }
+  .exp { flex: 1; display: flex; align-items: flex-end; gap: 8px; }
+  .exp .lbl { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+  .ln { flex: 1; border-bottom: 1px solid var(--rule); height: 1.5rem; }
+  .role-pick { display: flex; gap: 8px; margin: 6px 0 8px; flex-wrap: wrap; }
+  .opt-pill {
+    border: 1.5px solid var(--border-strong); border-radius: 999px;
+    padding: 5px 18px; font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  }
+  ol.situational { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  ol.situational > li { counter-increment: s; margin-bottom: 16px; }
+  ol.situational > li .q {
+    display: flex; gap: 10px; font-weight: 500; color: var(--anchor-charcoal);
+    font-size: 14px; margin-bottom: 7px; line-height: 1.4;
+  }
+  ol.situational > li .q::before {
+    content: counter(s); flex: none;
+    width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center;
+    background: var(--anchor-sand); color: var(--anchor-gold-dark); font-weight: 700; font-size: 12px;
+    margin-top: 1px;
+  }
+  .decision {
+    background: var(--anchor-white); color: var(--anchor-charcoal);
+    border: 1px solid var(--border); border-top: 4px solid var(--anchor-gold);
+    border-radius: 12px; padding: 22px 24px; margin-top: 8px;
+  }
+  .decision h2.sec { margin-top: 0; }
+  .signoff { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 28px; margin-top: 20px; }
+  .cv-page { min-height: 8.6in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 20px; }
+  .cv-embed-page { align-items: stretch; justify-content: flex-start; text-align: left; }
+  .cv-title { font-family: var(--font-display); font-weight: 400; color: var(--anchor-green); font-size: 1.9rem; margin: 0 0 12px; text-align: center; }
+  .cv-object { display: block; width: 100%; height: 9in; border: 1px solid var(--border); background: var(--anchor-white); }
+  .cv-frame {
+    border: 2.5px dashed var(--anchor-gold); border-radius: 16px;
+    padding: 60px 44px; width: 100%; max-width: 460px; margin: 0 auto;
+    background: repeating-linear-gradient(45deg, rgba(165,118,38,.04) 0 12px, transparent 12px 24px);
+    text-align: center;
+  }
+  .cv-icon {
+    width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 14px;
+    background: var(--anchor-cream); color: var(--anchor-green);
+    border: 2px solid var(--anchor-gold); display: grid; place-items: center;
+  }
+  .cv-icon svg { width: 32px; height: 32px; }
+  .cv-frame h2 { font-family: var(--font-display); font-weight: 400; color: var(--anchor-green); font-size: 1.9rem; margin: 0 0 8px; }
+  .cv-frame p { color: var(--text-muted); font-size: 14px; margin: 0 auto 22px; max-width: 320px; }
+  .doc-footer-note {
+    margin: 34px 0 4px; padding-top: 14px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; gap: 16px;
+  }
+  @page { size: letter; margin: 0; }
+  @media print {
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 0 0.7in !important; box-shadow: none !important; background: #fff; }
+    .pad-top, .pad-bottom { display: table-cell; height: 0.45in; }
+    .screen-only { display: none !important; }
+    h2.sec, .field-label, h3 { break-after: avoid; }
+    .sc-card, .cert, .callout, .decision, .cv-frame, .cert-row, li { break-inside: avoid; }
+    .page-break { break-before: page; }
+  }
+  @media (max-width: 640px) {
+    .facts, .sc-grid, .inline-fields, .signoff { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar screen-only">
+    <span class="tb-label">The Anchor · Recruitment</span>
+    <button class="btn-print" onclick="window.print()">Download / Print kit</button>
+  </div>
+
+  <main class="doc">
+    <table class="doc-frame" role="presentation">
+      <thead><tr><td class="pad-top"></td></tr></thead>
+      <tbody><tr><td>
+        <header class="masthead" data-screen-label="Cover">
+          <div class="masthead-top">
+            <img src="/booking-confirmation/anchor-logo-black.png" alt="The Anchor, Stanwell Moor Village">
+            <div class="meta-doc">
+              Interview Kit<br>
+              Generated for interview use<br>
+              Confidential - recruitment
+            </div>
+          </div>
+          <p class="kicker" style="margin-top:12px;">Candidate Interview Kit</p>
+          <h1 class="cover-title">${escapeHtml(name)}</h1>
+          <p class="cover-sub">${escapeHtml(role)}</p>
+
+          <div class="facts">
+            <div class="fact"><div class="lbl">Role</div><div class="val">${escapeHtml(role)}</div></div>
+            <div class="fact"><div class="lbl">Interview date</div><div class="val">${escapeHtml(interviewDate)}</div></div>
+            <div class="fact"><div class="lbl">Location</div><div class="val">${escapeHtml(location)}</div></div>
+          </div>
+        </header>
+
+        <section data-screen-label="Screening summary">
+          <h2 class="sec"><span class="num">01</span> Screening summary</h2>
+          <p class="sec-lead">An at-a-glance read of the candidate's application before you meet them. Use it to steer the conversation, not to decide it.</p>
+
+          <div class="screen">
+            <div class="screen-head">
+              <div class="score-ring" aria-label="AI score ${escapeHtml(score === null ? 'not scored' : `${score} out of 100`)}">
+                <div>
+                  <div class="n">${escapeHtml(score === null ? '-' : String(score))}</div>
+                  <div class="of">/ 100</div>
+                </div>
+              </div>
+              <div class="reco-block">
+                <div class="reco-label">AI recommendation</div>
+                <span class="reco-pill">${escapeHtml(recommendation)}</span>
+                <p style="margin:10px 0 0; font-size:12.5px; color:var(--text-muted); line-height:1.5;">
+                  ${escapeHtml(recommendationGloss(application.ai_recommendation))}
+                </p>
+              </div>
+            </div>
+            <p class="rationale">
+              <span class="rl-label">Rationale</span>
+              ${escapeHtml(rationale)}
+            </p>
+          </div>
+
+          <div class="sc-grid">
+            <div class="sc-card str">
+              <h3>Strengths</h3>
+              <ul>${htmlList(strengths, 'None recorded')}</ul>
+            </div>
+            <div class="sc-card con">
+              <h3>Concerns</h3>
+              <ul>${htmlList(concerns, 'None recorded')}</ul>
+            </div>
+            <div class="sc-card flags">
+              <h3>Flags to address</h3>
+              <ul>${htmlList(flags, 'None recorded')}</ul>
+            </div>
+          </div>
+
+          <div class="callout">
+            <span class="tag">Right to work</span>
+            <div>Remind the candidate to bring proof of their right to work in the UK to the interview. Check and record it before any offer.</div>
+          </div>
+        </section>
+
+        <section class="page-break" data-screen-label="Interview">
+          <h2 class="sec"><span class="num">02</span> Interview</h2>
+          <div class="sec-rule"></div>
+
+          <div class="callout" style="margin-top:0; margin-bottom:18px;">
+            <span class="tag">Focus</span>
+            <div>${escapeHtml(focusText(flags, concerns, role))}</div>
+          </div>
+
+          <div class="inline-fields">
+            <div class="ff"><span class="ff-label">Name:</span><span class="ff-line"></span></div>
+            <div class="ff"><span class="ff-label">Date of interview:</span><span class="ff-line"></span></div>
+          </div>
+
+          <p class="field-label">What experience do you have that would be relevant here at The Anchor?</p>
+          <div class="lines l4"></div>
+
+          <p class="field-label" style="margin-top:24px;">Questions</p>
+
+          <p class="field-label"><span class="q-no">1.</span>Are you interested in working the bar, the kitchen, or both? What experience do you have in each?</p>
+          <div class="role-pick"><span class="opt-pill">Bar</span><span class="opt-pill">Kitchen</span><span class="opt-pill">Both</span></div>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">2.</span>What experience do you have with handling cash?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">3.</span>How do you feel about working evenings or weekends?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">4.</span>We are one team here at The Anchor. How well do you work with other people?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">5.</span>Do you have any experience working with food?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">6.</span>Would you be interested in shifts in our kitchen?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">7.</span>Do you have any relevant certification?</p>
+          <div class="cert">
+            <div class="cert-row"><span class="cert-name">Food Hygiene</span><span class="yn"><span class="opt">Yes</span><span class="opt">No</span></span><span class="exp"><span class="lbl">Expiration:</span><span class="ln"></span></span></div>
+            <div class="cert-row"><span class="cert-name">Personal Licence</span><span class="yn"><span class="opt">Yes</span><span class="opt">No</span></span><span class="exp"><span class="lbl">Expiration:</span><span class="ln"></span></span></div>
+            <div class="cert-row"><span class="cert-name">Other</span><span class="exp"><span class="ln"></span></span></div>
+          </div>
+
+          <p class="field-label" style="margin-top:22px;"><span class="q-no">8.</span>What does your availability look like?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">9.</span>Could we contact you about short notice shifts in the event of sickness?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">10.</span>We pay monthly and to the national living wage. Will that cause you any issues?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">11.</span>We understand that our team have other jobs. What hours do you work normally, so that we don't impact on your other job(s)?</p>
+          <div class="lines l2"></div>
+
+          <p class="field-label"><span class="q-no">12.</span>Do you work at any pubs within a 5 mile radius of The Anchor?</p>
+          <div class="lines l2"></div>
+        </section>
+
+        <section class="page-break" data-screen-label="Situational questions">
+          <h2 class="sec"><span class="num">03</span> Optional situational questions</h2>
+          <p class="sec-lead">Use any of these to explore judgement and how the candidate thinks on their feet.</p>
+
+          <ol class="situational">
+            <li><div class="q">A customer drops a glass during service. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">A customer tells you that someone is unwell outside. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">You see a colleague giving away free drinks to a friend. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">You're hungry during service and don't finish for another 3 hours. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">An intoxicated customer pays £20 for a drink and leaves before you can give them their change. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">A customer says that they didn't enjoy their meal. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">You see a customer topping up their soft drinks from a personal flask. What do you do?</div><div class="lines l2"></div></li>
+            <li><div class="q">You're working the bar and see that the kitchen is very busy. What do you do?</div><div class="lines l2"></div></li>
+          </ol>
+
+          <p class="field-label" style="margin-top:26px;">Do you have any questions for me? <span class="sub-note">(list below any that are asked)</span></p>
+          <div class="lines l4"></div>
+        </section>
+
+        <section data-screen-label="Decision">
+          <div class="decision">
+            <h2 class="sec"><span class="num" style="color:var(--anchor-gold-bright);">04</span> Decision notes</h2>
+            <p class="sec-lead">Capture your overall impression, next steps and anything to follow up.</p>
+            <div class="lines l4"></div>
+
+            <div class="signoff">
+              <div class="ff"><span class="ff-label">Interviewer:</span><span class="ff-line"></span></div>
+              <div class="ff"><span class="ff-label">Date:</span><span class="ff-line"></span></div>
+              <div class="ff"><span class="ff-label">Outcome:</span><span class="ff-line"></span></div>
+              <div class="ff"><span class="ff-label">Signature:</span><span class="ff-line"></span></div>
+            </div>
+          </div>
+        </section>
+
+        ${cvBlock}
+
+        <div class="doc-footer-note">
+          <span>The Anchor · Stanwell Moor Village · A village pub since 1751</span>
+          <span>Where Everyone's Welcome</span>
+        </div>
+
+      </td></tr></tbody>
+      <tfoot><tr><td class="pad-bottom"></td></tr></tfoot>
+    </table>
+  </main>
+</body>
+</html>`
+}
+
 function toTime(value: string | null | undefined): number {
   if (!value) return 0
   const time = new Date(value).getTime()
@@ -1010,15 +1617,53 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
   async function buildPrintable(applicationId: string, kind: 'interview' | 'trial') {
     setClientMessage(null)
+    setPrintableText(null)
+    const renderPrintableHtml = kind === 'interview'
+      ? (payload: PrintableKitPayload) => interviewKitHtml(payload)
+      : (payload: PrintableKitPayload) => plainPrintableHtml(payload.text)
+
+    if (kind === 'interview') {
+      const pdfWindow = window.open(`/api/recruitment/applications/${encodeURIComponent(applicationId)}/interview-kit`, '_blank', 'noopener,noreferrer')
+      if (!pdfWindow) {
+        setClientMessage('Pop-up blocked. Allow pop-ups and try Interview kit again.')
+      }
+      return
+    }
+
+    const printableWindow = window.open('', '_blank')
+    if (printableWindow) {
+      printableWindow.opener = null
+      printableWindow.document.write('<!doctype html><title>Building kit</title><body style="font-family: Arial, sans-serif; padding: 24px;">Building printable kit...</body>')
+      printableWindow.document.close()
+    }
+
     const formData = new FormData()
     formData.set('application_id', applicationId)
     formData.set('kind', kind)
     const result = await getRecruitmentPrintableKitAction(formData)
     if (!result.success || !result.data?.text) {
+      printableWindow?.close()
       setClientMessage(result.success ? 'Printable kit could not be built.' : result.error)
       return
     }
-    setPrintableText(result.data.text)
+
+    const text = result.data.text
+    setPrintableText(text)
+    if (!printableWindow) {
+      setClientMessage('Printable kit ready below. Allow pop-ups to open it in a print window.')
+      return
+    }
+
+    printableWindow.document.open()
+    printableWindow.document.write(renderPrintableHtml({
+        text,
+        application: result.data.application,
+        appointment: result.data.appointment,
+        cvUrl: result.data.cvUrl,
+        kind,
+      }))
+    printableWindow.document.close()
+    printableWindow.focus()
   }
 
   async function loadTalent(opts: { page: number; search: string; status: string; source: string }) {
@@ -1495,6 +2140,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <Button type="button" size="sm" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
                       <Button type="button" size="sm" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
                     </div>
+                    {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
+                    {printableText && (
+                      <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-2 p-3 text-xs text-text">
+                        {printableText}
+                      </pre>
+                    )}
                   </div>
 
                   <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
@@ -2091,12 +2742,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         )}
                       </div>
                     </div>
-                  )}
-
-                  {printableText && (
-                    <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-2 p-3 text-xs text-text">
-                      {printableText}
-                    </pre>
                   )}
 
                   {decisionDialog && selectedApplication && (
