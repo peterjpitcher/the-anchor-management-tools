@@ -53,22 +53,23 @@ describe('recruitment candidate notes + trail', () => {
 })
 
 describe('decideRecruitmentApplication', () => {
-  it('reject: transitions to rejected, writes a reason note, sets rejection_reason and retention', async () => {
+  it('reject: transitions, notes the reason on the candidate, sets rejection_reason on the application, and the retention clock on the candidate', async () => {
     const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = []
-    const inserts: unknown[] = []
-    const updates: unknown[] = []
-    const builder: Record<string, unknown> = {}
-    for (const method of ['select', 'insert', 'update', 'eq', 'order', 'limit']) {
-      builder[method] = vi.fn((arg?: unknown) => {
-        if (method === 'insert') inserts.push(arg)
-        if (method === 'update') updates.push(arg)
-        return builder
-      })
+    const inserts: Array<{ table: string; payload: Record<string, unknown> }> = []
+    const updates: Array<{ table: string; payload: Record<string, unknown> }> = []
+    const selects: string[] = []
+    const makeBuilder = (table: string) => {
+      const b: Record<string, unknown> = {}
+      b.select = vi.fn((arg?: unknown) => { if (typeof arg === 'string') selects.push(arg); return b })
+      b.insert = vi.fn((payload: Record<string, unknown>) => { inserts.push({ table, payload }); return b })
+      b.update = vi.fn((payload: Record<string, unknown>) => { updates.push({ table, payload }); return b })
+      for (const method of ['eq', 'order', 'limit']) b[method] = vi.fn(() => b)
+      b.single = vi.fn(() => Promise.resolve({ data: { id: 'a1', candidate_id: 'c1', retention_until: null }, error: null }))
+      ;(b as { then: unknown }).then = (resolve: (value: unknown) => unknown) => resolve({ data: null, error: null })
+      return b
     }
-    builder.single = vi.fn(() => Promise.resolve({ data: { id: 'a1', candidate_id: 'c1', retention_until: null }, error: null }))
-    ;(builder as { then: unknown }).then = (resolve: (value: unknown) => unknown) => resolve({ data: null, error: null })
     const client = {
-      from: vi.fn(() => builder),
+      from: vi.fn((table: string) => makeBuilder(table)),
       rpc: vi.fn((name: string, args: Record<string, unknown>) => {
         rpcCalls.push({ name, args })
         return Promise.resolve({ data: {}, error: null })
@@ -81,10 +82,11 @@ describe('decideRecruitmentApplication', () => {
     )
 
     expect(rpcCalls.some(call => call.args?.p_to_status === 'rejected')).toBe(true)
-    const insertRows = inserts as Array<Record<string, unknown>>
-    expect(insertRows.some(row => row?.kind === 'reject' && row?.content === 'Not enough bar experience')).toBe(true)
-    const updateRows = updates as Array<Record<string, unknown>>
-    expect(updateRows.some(row => row && 'rejection_reason' in row)).toBe(true)
-    expect(updateRows.some(row => row && 'retention_until' in row)).toBe(true)
+    // The application load must NOT request retention_until (it lives on recruitment_candidates).
+    expect(selects).toContain('id, candidate_id')
+    expect(selects).not.toContain('id, candidate_id, retention_until')
+    expect(inserts.some(i => i.table === 'recruitment_candidate_notes' && i.payload?.kind === 'reject' && i.payload?.content === 'Not enough bar experience')).toBe(true)
+    expect(updates.some(u => u.table === 'recruitment_applications' && 'rejection_reason' in u.payload)).toBe(true)
+    expect(updates.some(u => u.table === 'recruitment_candidates' && 'retention_until' in u.payload)).toBe(true)
   })
 })

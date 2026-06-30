@@ -594,7 +594,7 @@ export async function decideRecruitmentApplication(
 
   const { data: app, error: appError } = await supabase
     .from('recruitment_applications')
-    .select('id, candidate_id, retention_until')
+    .select('id, candidate_id')
     .eq('id', input.applicationId)
     .single()
   if (appError) throw appError
@@ -628,13 +628,22 @@ export async function decideRecruitmentApplication(
     }
   }
 
-  if ((TERMINAL_NON_HIRED_STATUSES as readonly string[]).includes(status) && !app.retention_until) {
-    const retentionUntil = addMonths(new Date(), retentionMonths()).toISOString().slice(0, 10)
-    const { error } = await supabase
-      .from('recruitment_applications')
-      .update({ retention_until: retentionUntil })
-      .eq('id', input.applicationId)
-    if (error) throw error
+  // Start the GDPR retention clock on the CANDIDATE — retention_until lives on
+  // recruitment_candidates, not on the application.
+  if ((TERMINAL_NON_HIRED_STATUSES as readonly string[]).includes(status)) {
+    const { data: candidate } = await supabase
+      .from('recruitment_candidates')
+      .select('retention_until')
+      .eq('id', app.candidate_id)
+      .single()
+    if (candidate && !candidate.retention_until) {
+      const retentionUntil = addMonths(new Date(), retentionMonths()).toISOString().slice(0, 10)
+      const { error } = await supabase
+        .from('recruitment_candidates')
+        .update({ retention_until: retentionUntil })
+        .eq('id', app.candidate_id)
+      if (error) throw error
+    }
   }
 
   return { candidateId: app.candidate_id as string, status }
