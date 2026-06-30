@@ -3,9 +3,9 @@ import { formatPhoneForStorage as normalizePhoneForStorage } from '@/lib/utils';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 // Phone number validation
-export const ukPhoneRegex = /^(?:\+44|0)\d{10}$/;
-export const internationalPhoneRegex = /^\+[1-9]\d{7,14}$/;
-export const phoneInputRegex = /^[+0-9()\-\s]{7,25}$/;
+const ukPhoneRegex = /^(?:\+44|0)\d{10}$/;
+const internationalPhoneRegex = /^\+[1-9]\d{7,14}$/;
+const phoneInputRegex = /^[+0-9()\-\s]{7,25}$/;
 
 const basePhoneSchema = z.string()
   .trim()
@@ -23,15 +23,15 @@ const basePhoneSchema = z.string()
     message: 'Please enter a valid phone number'
   });
 
-export const phoneSchema = basePhoneSchema
+const phoneSchema = basePhoneSchema
   .or(z.literal('')) // Allow empty
   .or(z.null())
   .optional();
 
-export const requiredPhoneSchema = basePhoneSchema;
+const requiredPhoneSchema = basePhoneSchema;
 
 // Date validation
-export const futureDateSchema = z.string()
+const futureDateSchema = z.string()
   .refine((date) => {
     const inputDate = new Date(date);
     const today = new Date();
@@ -41,7 +41,7 @@ export const futureDateSchema = z.string()
     message: 'Date must be today or in the future'
   });
 
-export const pastDateSchema = z.string()
+const pastDateSchema = z.string()
   .refine((date) => {
     const inputDate = new Date(date);
     const today = new Date();
@@ -51,11 +51,11 @@ export const pastDateSchema = z.string()
   });
 
 // Email validation
-export const emailSchema = z.string()
+const emailSchema = z.string()
   .email('Please enter a valid email address')
   .min(1, 'Email is required');
 
-export const optionalEmailSchema = z
+const optionalEmailSchema = z
   .string()
   .trim()
   .email('Please enter a valid email address')
@@ -63,7 +63,7 @@ export const optionalEmailSchema = z
   .optional();
 
 // Name validation
-export const nameSchema = z.string()
+const nameSchema = z.string()
   .min(1, 'Name is required')
   .max(100, 'Name is too long')
   .regex(/^[a-zA-Z\s\-']+$/, 'Name contains invalid characters');
@@ -91,7 +91,7 @@ export const customerSchema = z
     { message: 'At least one of first name or last name is required', path: ['first_name'] }
   );
 
-export const eventSchema = z.object({
+const eventSchema = z.object({
   name: z.string().min(1, 'Event name is required'),
   date: futureDateSchema,
   time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format'),
@@ -99,14 +99,14 @@ export const eventSchema = z.object({
   category_id: z.string().uuid().optional(),
 });
 
-export const bookingSchema = z.object({
+const bookingSchema = z.object({
   event_id: z.string().uuid(),
   customer_id: z.string().uuid(),
   seats: z.number().min(1, 'At least 1 ticket required').max(20, 'Maximum 20 tickets per booking'),
 });
 
 // Helper functions
-export function formatPhoneForDisplay(phone: string | null): string {
+function formatPhoneForDisplay(phone: string | null): string {
   if (!phone) return '';
 
   try {
@@ -129,20 +129,20 @@ export function formatPhoneForDisplay(phone: string | null): string {
   }
 }
 
-export function formatPhoneForStorage(phone: string): string {
+function formatPhoneForStorage(phone: string): string {
   if (!phone) return '';
   return normalizePhoneForStorage(phone);
 }
 
 // Sanitization helpers
-export function sanitizeInput(input: string): string {
+function sanitizeInput(input: string): string {
   return input
     .trim()
     .replace(/[<>]/g, '') // Remove potential HTML
     .slice(0, 1000); // Limit length
 }
 
-export function sanitizeName(name: string): string {
+function sanitizeName(name: string): string {
   return name
     .trim()
     .replace(/[^a-zA-Z\s\-']/g, '')
@@ -159,7 +159,7 @@ export const receiptTransactionStatusSchema = z.enum([
   'cant_find',
 ]);
 
-export const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import']);
+const receiptClassificationSourceSchema = z.enum(['ai', 'manual', 'rule', 'import']);
 
 export const receiptExpenseCategorySchema = z.enum([
   'Total Staff',
@@ -190,7 +190,7 @@ export const receiptExpenseCategorySchema = z.enum([
 
 export const receiptSourceTypeSchema = z.enum(['bank', 'amex']);
 
-export const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
+const receiptRuleDirectionSchema = z.enum(['in', 'out', 'both']);
 export const receiptRuleKindSchema = z.enum([
   'standard',
   'payroll',

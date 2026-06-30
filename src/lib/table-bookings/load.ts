@@ -29,19 +29,19 @@ type BookingLoadRow = {
   payment_status: string | null
 }
 
-export const DEFAULT_PACING_SETTINGS: PacingSettings = {
+const DEFAULT_PACING_SETTINGS: PacingSettings = {
   busyThresholdCovers: 30,
   fillingThresholdCovers: 20,
   windowMinutes: 60,
 }
 
-export const PACING_SETTING_KEYS = {
+const PACING_SETTING_KEYS = {
   busyThresholdCovers: 'pacing_busy_threshold_covers',
   fillingThresholdCovers: 'pacing_filling_threshold_covers',
   windowMinutes: 'pacing_window_minutes',
 } as const
 
-export const PACING_SETTING_DESCRIPTIONS: Record<keyof PacingSettings, string> = {
+const PACING_SETTING_DESCRIPTIONS: Record<keyof PacingSettings, string> = {
   busyThresholdCovers: 'Table-booking smoothing: covers at or above this count are shown as busy.',
   fillingThresholdCovers: 'Table-booking smoothing: covers at or above this count are shown as filling up.',
   windowMinutes: 'Table-booking smoothing: rolling arrival window in minutes.',

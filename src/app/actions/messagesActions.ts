@@ -32,7 +32,7 @@ export async function getMessages(): Promise<InboxResponse> {
   }
 }
 
-export async function getUnreadMessageCount() {
+async function getUnreadMessageCount() {
   try {
     const inbox = await CommunicationsService.getInbox()
     return { badge: inbox.totalUnread + inbox.unmatchedCount }

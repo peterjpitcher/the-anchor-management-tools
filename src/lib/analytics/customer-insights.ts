@@ -110,7 +110,7 @@ type CustomerScoreRow = {
 
 export type CustomerInsightsWindow = '30d' | '90d' | '365d'
 
-export type StrategicSignalSeverity = 'positive' | 'watch' | 'risk' | 'info'
+type StrategicSignalSeverity = 'positive' | 'watch' | 'risk' | 'info'
 
 export type StrategicSignal = {
   key: 'acquisition_momentum' | 'repeat_strength' | 'dormant_vip_risk' | 'sms_health_risk' | 'category_concentration' | 'data_quality'

@@ -125,7 +125,7 @@ function monthBucketEstimate(startAt: Date, endAt: Date): number {
   return Math.max(monthDiff, 1)
 }
 
-export function getTimeframePresets(granularity: ShortLinkInsightsGranularity): ShortLinkInsightsPreset[] {
+function getTimeframePresets(granularity: ShortLinkInsightsGranularity): ShortLinkInsightsPreset[] {
   return PRESETS_BY_GRANULARITY[granularity]
 }
 
@@ -155,7 +155,7 @@ export function getDefaultInsightsTimeframe(now: Date = new Date()) {
   }
 }
 
-export function estimateBucketCount(
+function estimateBucketCount(
   startAt: Date,
   endAt: Date,
   granularity: ShortLinkInsightsGranularity
@@ -169,7 +169,7 @@ export function estimateBucketCount(
   return monthBucketEstimate(startAt, endAt)
 }
 
-export function getMaxBucketCount(granularity: ShortLinkInsightsGranularity): number {
+function getMaxBucketCount(granularity: ShortLinkInsightsGranularity): number {
   return MAX_BUCKETS_BY_GRANULARITY[granularity]
 }
 
@@ -199,7 +199,7 @@ export function validateInsightsRange(
   return { valid: true, bucketCount }
 }
 
-export function formatBucketLabel(
+function formatBucketLabel(
   bucketIso: string,
   granularity: ShortLinkInsightsGranularity,
   timezone: string = SHORT_LINK_INSIGHTS_TIMEZONE
@@ -235,7 +235,7 @@ function pad2(value: number): string {
   return String(value).padStart(2, '0')
 }
 
-export function toDateTimeLocalValue(date: Date): string {
+function toDateTimeLocalValue(date: Date): string {
   return [
     date.getFullYear(),
     pad2(date.getMonth() + 1),
@@ -243,7 +243,7 @@ export function toDateTimeLocalValue(date: Date): string {
   ].join('-') + `T${pad2(date.getHours())}:${pad2(date.getMinutes())}`
 }
 
-export function parseDateTimeLocalValue(value: string): Date | null {
+function parseDateTimeLocalValue(value: string): Date | null {
   if (!value) return null
   const parsed = new Date(value)
   if (!Number.isFinite(parsed.getTime())) return null

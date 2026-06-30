@@ -5,7 +5,7 @@ const TARGET_TIMEFRAME: PnlTimeframeKey = '12m'
 
 const GROUP_ORDER: PnlMetricGroup[] = ['sales', 'sales_mix', 'sales_totals', 'expenses', 'occupancy']
 
-export const PNL_REPORT_GROUP_LABELS: Record<PnlMetricGroup, string> = {
+const PNL_REPORT_GROUP_LABELS: Record<PnlMetricGroup, string> = {
   sales: 'Sales',
   sales_mix: 'Sales mix',
   sales_totals: 'Gross profit % targets',
@@ -38,7 +38,7 @@ export type PnlReportRow = {
   detailLines: string[]
 }
 
-export type PnlReportSubtotal = {
+type PnlReportSubtotal = {
   label: string
   format: PnlMetricFormat
   actual: number
@@ -48,14 +48,14 @@ export type PnlReportSubtotal = {
   invertVariance?: boolean
 }
 
-export type PnlReportSection = {
+type PnlReportSection = {
   key: PnlMetricGroup
   label: string
   rows: PnlReportRow[]
   subtotal?: PnlReportSubtotal
 }
 
-export type PnlReportSummary = {
+type PnlReportSummary = {
   revenueActual: number
   revenueTarget: number
   revenueVariance: number

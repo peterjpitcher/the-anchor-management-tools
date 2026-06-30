@@ -2,7 +2,6 @@
 
 import * as dotenv from 'dotenv';
 import path from 'path';
-import fetch from 'node-fetch';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });

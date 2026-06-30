@@ -347,7 +347,7 @@ function buildMergeData(input: {
   }
 }
 
-export async function loadRecruitmentApplicationForComms(
+async function loadRecruitmentApplicationForComms(
   applicationId: string,
   supabase: GenericClient = createAdminClient()
 ) {

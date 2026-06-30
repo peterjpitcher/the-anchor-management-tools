@@ -7,7 +7,7 @@ export interface RubricItem {
   weight: number
 }
 
-export type RubricEvidenceStatus = 'yes' | 'no' | 'unknown'
+type RubricEvidenceStatus = 'yes' | 'no' | 'unknown'
 
 export interface RubricEvidence {
   rubricKey: string

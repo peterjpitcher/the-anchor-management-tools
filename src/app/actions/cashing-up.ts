@@ -8,7 +8,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
 import { getErrorMessage } from '@/lib/errors';
 
-export async function getSessionByIdAction(id: string) {
+async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -95,7 +95,7 @@ export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO,
   }
 }
 
-export async function submitSessionAction(id: string) {
+async function submitSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -301,7 +301,7 @@ export async function setDailyTargetAction(siteId: string, date: string, amount:
   }
 }
 
-export async function updateWeeklyTargetsAction(siteId: string, targets: Record<number, number>, effectiveDate: string) {
+async function updateWeeklyTargetsAction(siteId: string, targets: Record<number, number>, effectiveDate: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };

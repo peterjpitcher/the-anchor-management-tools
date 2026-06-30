@@ -8,7 +8,6 @@
  */
 
 import dotenv from 'dotenv'
-import fetch from 'node-fetch'
 
 // Load environment variables
 dotenv.config({ path: '.env.local' })

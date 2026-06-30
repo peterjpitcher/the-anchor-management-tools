@@ -434,4 +434,4 @@ export class JobQueue {
 }
 
 // Export singleton instance
-export const jobQueue = JobQueue.getInstance()
+const jobQueue = JobQueue.getInstance()

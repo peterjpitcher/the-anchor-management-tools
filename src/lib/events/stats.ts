@@ -1,4 +1,4 @@
-export const ESTIMATED_REVENUE_PER_BOOKED_SEAT = 25
+const ESTIMATED_REVENUE_PER_BOOKED_SEAT = 25
 
 type EventLike = {
   capacity?: number | null

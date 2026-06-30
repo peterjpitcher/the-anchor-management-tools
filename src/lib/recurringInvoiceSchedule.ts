@@ -41,7 +41,7 @@ export function addDaysIsoDate(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10)
 }
 
-export function addMonthsIsoDate(isoDate: string, months: number): string {
+function addMonthsIsoDate(isoDate: string, months: number): string {
   const { year, month, day } = parseIsoDate(isoDate)
   const totalMonths = year * 12 + (month - 1) + months
   const nextYear = Math.floor(totalMonths / 12)
@@ -51,7 +51,7 @@ export function addMonthsIsoDate(isoDate: string, months: number): string {
   return formatIsoDate({ year: nextYear, month: nextMonth, day: clampedDay })
 }
 
-export function addYearsIsoDate(isoDate: string, years: number): string {
+function addYearsIsoDate(isoDate: string, years: number): string {
   const { year, month, day } = parseIsoDate(isoDate)
   const nextYear = year + years
   const clampedDay = Math.min(day, daysInMonth(nextYear, month))

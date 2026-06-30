@@ -35,7 +35,7 @@ export function generatePhoneVariants(
   return buildPhoneVariants(phone, options);
 }
 
-export function generateSlug(text: string): string {
+function generateSlug(text: string): string {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -53,7 +53,7 @@ export function sanitizeMoneyString(value: unknown): string | null {
   return match ? match[0] : null
 }
 
-export function formatDate(date: string | Date | null): string {
+function formatDate(date: string | Date | null): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-GB', {
     day: 'numeric',

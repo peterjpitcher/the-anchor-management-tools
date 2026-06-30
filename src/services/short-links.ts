@@ -41,7 +41,7 @@ export const UpdateShortLinkSchema = z.object({
   expires_at: z.string().nullable().optional()
 });
 
-export const ShortLinkVolumeGranularitySchema = z.enum(['hour', 'day', 'week', 'month']);
+const ShortLinkVolumeGranularitySchema = z.enum(['hour', 'day', 'week', 'month']);
 
 export const GetShortLinkVolumeAdvancedSchema = z.object({
   start_at: z.string().datetime({ offset: true }),

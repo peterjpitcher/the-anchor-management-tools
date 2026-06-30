@@ -32,7 +32,7 @@ export interface MileageTripRow {
   mileage_trip_legs?: MileageTripLegRow[] | null
 }
 
-export interface MileageTripLegRow {
+interface MileageTripLegRow {
   id: string
   leg_order: number
   from_destination: { name: string } | { name: string }[] | null

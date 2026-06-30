@@ -52,7 +52,7 @@ export function getDefaultPayrollPeriodDates(year: number, month: number): {
   };
 }
 
-export function formatPayrollMonthLabel(year: number, month: number): string {
+function formatPayrollMonthLabel(year: number, month: number): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', {
     month: 'long',
     year: 'numeric',

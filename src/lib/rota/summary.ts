@@ -51,9 +51,9 @@ export type RotaRateContext = {
   bandRates: Array<{ band_id: string; hourly_rate: string | number; effective_from: string }>;
 };
 
-export type RotaCostStatus = 'complete' | 'partial' | 'missing_rate' | 'salaried' | 'none';
+type RotaCostStatus = 'complete' | 'partial' | 'missing_rate' | 'salaried' | 'none';
 
-export type RotaEmployeeSummaryTotal = {
+type RotaEmployeeSummaryTotal = {
   periodHours: number;
   estimatedCost: number | null;
   costStatus: RotaCostStatus;
@@ -71,13 +71,13 @@ export type RotaDaySummaryTotal = {
   uncostedShiftCount: number;
 };
 
-export type RotaRoleSummaryTotal = {
+type RotaRoleSummaryTotal = {
   employeeCount: number;
   periodHours: number;
   estimatedCost: number | null;
 };
 
-export type RotaWeekSummaryTotal = {
+type RotaWeekSummaryTotal = {
   estimatedCost: number | null;
   salesTarget: number | null;
   wagePercent: number | null;
@@ -98,7 +98,7 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function roleNameForEmployee(employee: RotaSummaryEmployee): string {
+function roleNameForEmployee(employee: RotaSummaryEmployee): string {
   return employee.job_title?.trim() || 'No role';
 }
 
@@ -166,7 +166,7 @@ export function resolveSalesTargets(
   return targets;
 }
 
-export function resolveHourlyRate(
+function resolveHourlyRate(
   employeeId: string,
   shiftDate: string,
   rateContext: RotaRateContext,

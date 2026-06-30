@@ -38,7 +38,7 @@ async function loadFailedMessage(admin: ReturnType<typeof createAdminClient>, id
   return { message: data as FailedMessageRow }
 }
 
-export async function retrySmsFailure(messageId: string): Promise<{ success?: boolean; error?: string }> {
+async function retrySmsFailure(messageId: string): Promise<{ success?: boolean; error?: string }> {
   const permission = await requireSmsFailureManage()
   if ('error' in permission) return { error: permission.error }
 
@@ -92,7 +92,7 @@ export async function retrySmsFailure(messageId: string): Promise<{ success?: bo
   return { success: true }
 }
 
-export async function dismissSmsFailure(messageId: string): Promise<{ success?: boolean; error?: string }> {
+async function dismissSmsFailure(messageId: string): Promise<{ success?: boolean; error?: string }> {
   const permission = await requireSmsFailureManage()
   if ('error' in permission) return { error: permission.error }
 

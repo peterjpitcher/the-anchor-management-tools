@@ -1,6 +1,6 @@
 import type { PLTimeframe } from '@/types/database'
 
-export type GreeneKingBenchmarkRowSection =
+type GreeneKingBenchmarkRowSection =
   | 'sales'
   | 'income'
   | 'expenses'
@@ -8,7 +8,7 @@ export type GreeneKingBenchmarkRowSection =
   | 'adjustments'
   | 'rent'
 
-export type GreeneKingBenchmarkRow = {
+type GreeneKingBenchmarkRow = {
   section: GreeneKingBenchmarkRowSection
   metricKey: string
   label: string

@@ -41,7 +41,7 @@ export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
   { key: 'send_whatsapp_reminder', label: 'WhatsApp reminder to local group', offsetDays: 0, channel: 'WhatsApp', required: true, order: 10 }
 ]
 
-export const EVENT_CHECKLIST_TOTAL_TASKS = EVENT_CHECKLIST_DEFINITIONS.length
+const EVENT_CHECKLIST_TOTAL_TASKS = EVENT_CHECKLIST_DEFINITIONS.length
 
 function addDays(dateString: string, offsetDays: number): string {
   const date = new Date(`${dateString}T00:00:00Z`)
@@ -109,7 +109,7 @@ export function getOutstandingTodos(
     }))
 }
 
-export function calculateChecklistProgress(
+function calculateChecklistProgress(
   statuses: EventChecklistStatusRecord[] = []
 ): { completed: number; total: number } {
   const completed = statuses.filter((status) => Boolean(status.completed_at)).length

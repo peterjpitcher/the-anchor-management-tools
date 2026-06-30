@@ -98,7 +98,7 @@ export async function updateBusinessHours(formData: FormData) {
   }
 }
 
-export async function getServiceStatuses(serviceCodes?: string[]): Promise<{ data?: ServiceStatus[], error?: string }> {
+async function getServiceStatuses(serviceCodes?: string[]): Promise<{ data?: ServiceStatus[], error?: string }> {
   try {
     const permission = await requireSettingsManagePermission()
     if ('error' in permission) {
@@ -132,7 +132,7 @@ export async function getServiceStatusOverrides(
   }
 }
 
-export async function createServiceStatusOverride(
+async function createServiceStatusOverride(
   serviceCode: string,
   formData: FormData
 ) {
@@ -170,7 +170,7 @@ export async function createServiceStatusOverride(
   }
 }
 
-export async function deleteServiceStatusOverride(
+async function deleteServiceStatusOverride(
   overrideId: string
 ) {
   try {
@@ -207,7 +207,7 @@ export async function deleteServiceStatusOverride(
   }
 }
 
-export async function updateServiceStatus(
+async function updateServiceStatus(
   serviceCode: string,
   payload: { is_enabled: boolean; message?: string | null }
 ) {

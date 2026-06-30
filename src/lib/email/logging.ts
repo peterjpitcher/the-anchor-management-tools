@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 
-export type EmailMessageStatus =
+type EmailMessageStatus =
   | 'queued'
   | 'sent'
   | 'delivered'

@@ -12,38 +12,38 @@ import type { ReceiptRuleSuggestion } from '@/types/database'
 // Re-export types so existing consumers keep working
 // ---------------------------------------------------------------------------
 export type {
-  ReceiptSortColumn,
+  
   ReceiptWorkspaceFilters,
-  AIModelBreakdown,
+  
   AIUsageBreakdown,
   RulePreviewResult,
   ReceiptWorkspaceSummary,
   ReceiptWorkspaceData,
   ReceiptMissingExpenseSummaryItem,
-  ReceiptMonthlySummaryItem,
-  ReceiptMonthlyInsightMonth,
+  
+  
   ReceiptMonthlyInsights,
-  ReceiptVendorTrendMonth,
+  
   ReceiptVendorSummary,
   ReceiptVendorMonthTransaction,
   ReceiptVendorCostSignal,
   ReceiptVendorMovementRange,
   ReceiptVendorMovementComparison,
-  ReceiptVendorMovementDirection,
+  
   ReceiptVendorMovementSignal,
-  ReceiptVendorMovementMonth,
+  
   ReceiptVendorMovementSummary,
-  ReceiptVendorAiReviewItem,
+  
   ReceiptVendorAiReview,
-  ReceiptVendorExpenseBreakdown,
-  ReceiptVendorDetailTransaction,
+  
+  
   ReceiptVendorDetail,
   ReceiptVendorWatchlistItem,
-  ReceiptDetailGroupSuggestion,
-  ReceiptDetailGroup,
+  
+  
   ReceiptBulkReviewData,
   ClassificationRuleSuggestion,
-  AutomationResult,
+  
   BulkStatus,
 } from '@/services/receipts'
 
@@ -248,7 +248,7 @@ export async function getReceiptSignedUrl(fileId: string) {
   return queryReceiptSignedUrl(fileId)
 }
 
-export async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
+async function getMonthlyReceiptSummary(limit = 12): Promise<ReceiptMonthlySummaryItem[]> {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
     throw new Error('Insufficient permissions')
@@ -393,7 +393,7 @@ export async function getReceiptMissingExpenseSummary(): Promise<ReceiptMissingE
   return queryReceiptMissingExpenseSummary()
 }
 
-export async function getAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
+async function getAIUsageBreakdown(): Promise<{ success: boolean; breakdown?: AIUsageBreakdown; error?: string }> {
   const canView = await checkUserPermission('receipts', 'view')
   if (!canView) {
     return { success: false, error: 'Insufficient permissions' }
@@ -765,7 +765,7 @@ export async function deleteReceiptRule(ruleId: string) {
   return result
 }
 
-export async function hardDeleteReceiptRule(ruleId: string) {
+async function hardDeleteReceiptRule(ruleId: string) {
   const canManage = await checkUserPermission('receipts', 'manage')
   if (!canManage) {
     return { error: 'Insufficient permissions' }
@@ -1183,7 +1183,7 @@ export async function finalizeReceiptRuleRetroRun(input: {
   return { success: true }
 }
 
-export async function runReceiptRuleRetroactively(
+async function runReceiptRuleRetroactively(
   ruleId: string,
   scope: 'pending' | 'all' = 'pending'
 ) {

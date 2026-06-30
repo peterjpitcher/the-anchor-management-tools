@@ -127,7 +127,7 @@ export function cleanupRateLimits() {
 }
 
 // Helper to apply rate limiting to server actions
-export async function withRateLimit<T extends (...args: unknown[]) => Promise<unknown>>(
+async function withRateLimit<T extends (...args: unknown[]) => Promise<unknown>>(
   action: T,
   limiter: ReturnType<typeof createRateLimiter>,
   identifier: string

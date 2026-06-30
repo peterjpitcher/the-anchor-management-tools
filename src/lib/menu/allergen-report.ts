@@ -7,7 +7,7 @@ import {
   type MenuPurchaseDepartment,
 } from '@/lib/menu/purchase-departments'
 
-export const INGREDIENT_ALLERGEN_COLUMNS = [
+const INGREDIENT_ALLERGEN_COLUMNS = [
   { key: 'celery', label: 'Celery' },
   { key: 'gluten', label: 'Gluten' },
   { key: 'crustaceans', label: 'Crustaceans' },
@@ -24,15 +24,15 @@ export const INGREDIENT_ALLERGEN_COLUMNS = [
   { key: 'sulphites', label: 'Sulphites' },
 ] as const
 
-export const INGREDIENT_DIETARY_COLUMNS = [
+const INGREDIENT_DIETARY_COLUMNS = [
   { key: 'vegetarian', label: 'Vegetarian' },
   { key: 'vegan', label: 'Vegan' },
   { key: 'gluten_free', label: 'Gluten Free' },
   { key: 'halal', label: 'Halal' },
 ] as const
 
-export type IngredientAllergenColumnKey = typeof INGREDIENT_ALLERGEN_COLUMNS[number]['key']
-export type IngredientDietaryColumnKey = typeof INGREDIENT_DIETARY_COLUMNS[number]['key']
+type IngredientAllergenColumnKey = typeof INGREDIENT_ALLERGEN_COLUMNS[number]['key']
+type IngredientDietaryColumnKey = typeof INGREDIENT_DIETARY_COLUMNS[number]['key']
 
 export interface IngredientAllergenReportRow {
   id: string

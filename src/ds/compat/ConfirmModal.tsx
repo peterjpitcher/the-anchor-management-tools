@@ -46,7 +46,7 @@ export function ConfirmModal(props: ConfirmModalProps) {
   )
 }
 
-export function AlertModal(props: Omit<ConfirmModalProps, 'onConfirm'> & { onConfirm?: () => void }) {
+function AlertModal(props: Omit<ConfirmModalProps, 'onConfirm'> & { onConfirm?: () => void }) {
   return (
     <ConfirmModal
       {...props}

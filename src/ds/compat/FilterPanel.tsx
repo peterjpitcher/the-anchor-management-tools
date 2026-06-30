@@ -24,7 +24,7 @@ export interface FilterDefinition {
   render?: (value: any, onChange: (value: any) => void) => ReactNode
 }
 
-export interface FilterValue {
+interface FilterValue {
    
   [key: string]: any
 }
@@ -156,7 +156,7 @@ export function FilterPanel({
   )
 }
 
-export function QuickFilters({
+function QuickFilters({
   children,
   className,
 }: {

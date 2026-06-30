@@ -51,7 +51,7 @@ export interface EventCategory {
   accessibility_notes?: string | null
 }
 
-export interface CustomerCategoryStats {
+interface CustomerCategoryStats {
   customer_id: string
   category_id: string
   times_attended: number
@@ -81,7 +81,7 @@ export interface CrossCategorySuggestion {
   already_attended_target: boolean
 }
 
-export interface CategoryRecentCheckIn {
+interface CategoryRecentCheckIn {
   customer_id: string
   first_name: string
   last_name: string | null

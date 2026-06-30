@@ -7,7 +7,7 @@ export async function logAuditEvent(params: AuditLogParams) {
 }
 
 // Legacy function for backward compatibility
-export async function logAuditEventLegacy(
+async function logAuditEventLegacy(
   userId: string,
   action: string,
   details: Record<string, any> = {}

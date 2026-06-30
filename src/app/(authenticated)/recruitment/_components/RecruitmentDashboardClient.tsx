@@ -1015,7 +1015,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setEmailSendState(null)
     setPrintableText(null)
     setClientMessage(null)
-    setDrawerTab('overview')
+    setDrawerTab(['interview_invited', 'trial_offered'].includes(application.status) ? 'schedule' : 'overview')
     setDetailDrawerOpen(true)
   }
 

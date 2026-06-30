@@ -144,7 +144,7 @@ function normalizeReliabilityEvent(row: any): EmployeeReliabilityEvent {
   };
 }
 
-export async function recordReliabilityEvent(input: {
+async function recordReliabilityEvent(input: {
   eventType: ReliabilityEventType;
   employeeId: string;
   eventAt?: string;
@@ -204,7 +204,7 @@ export async function recordReliabilityEvent(input: {
   }
 }
 
-export async function recordEmployeeReliabilityAudit(input: {
+async function recordEmployeeReliabilityAudit(input: {
   eventType: ReliabilityEventType;
   employeeId: string;
   userId?: string | null;

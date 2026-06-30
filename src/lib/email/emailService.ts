@@ -35,7 +35,7 @@ export interface EmailAttachment {
   contentType: string;
 }
 
-export type EmailProvider = 'graph' | 'resend';
+type EmailProvider = 'graph' | 'resend';
 type EmailSendResult = { success: boolean; error?: string; messageId?: string };
 
 let cachedResendClient: Resend | null = null;
@@ -362,7 +362,7 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
 /**
  * Send a simple text email
  */
-export async function sendSimpleEmail(
+async function sendSimpleEmail(
   to: string,
   subject: string,
   body: string

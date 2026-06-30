@@ -26,7 +26,7 @@ export function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' })
 }
 
-export function buildReceiptName(details: string, amount: number | null) {
+function buildReceiptName(details: string, amount: number | null) {
   const safeDetails = details
     .trim()
     .replace(/[^a-zA-Z0-9\s-]/g, '')

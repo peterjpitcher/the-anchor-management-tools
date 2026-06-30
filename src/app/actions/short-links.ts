@@ -180,7 +180,7 @@ export async function deleteShortLink(id: string) {
 
 // Create a short link from a server action. Internal system code should call
 // ShortLinkService.createShortLinkInternal directly, not this exposed action.
-export async function createShortLinkInternal(data: {
+async function createShortLinkInternal(data: {
   destination_url: string;
   link_type: string;
   metadata?: Record<string, any>;
@@ -279,7 +279,7 @@ export async function getShortLinkAnalyticsSummary(shortCode: string, days: numb
   }
 }
 
-export async function getShortLinkVolume(days: number = 30) {
+async function getShortLinkVolume(days: number = 30) {
   try {
     const canView = await checkUserPermission('short_links', 'view');
     if (!canView) {

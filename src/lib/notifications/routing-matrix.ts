@@ -67,7 +67,7 @@ export function resolveNotificationRoute(input: {
   }
 }
 
-export function getNotificationRoutingMatrix() {
+function getNotificationRoutingMatrix() {
   return TEMPLATE_ROUTE_RULES.map((rule) => ({
     template: rule.match,
     match: rule.type,

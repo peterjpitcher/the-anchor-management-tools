@@ -209,7 +209,7 @@ export async function getActiveEventCategories(): Promise<{ data?: EventCategory
   }
 }
 
-export async function createEventCategory(formData: CategoryFormData) {
+async function createEventCategory(formData: CategoryFormData) {
   try {
     const permission = await requireEventsManagePermission()
     if ('error' in permission) {
@@ -244,7 +244,7 @@ export async function createEventCategory(formData: CategoryFormData) {
   }
 }
 
-export async function updateEventCategory(id: string, formData: CategoryFormData) {
+async function updateEventCategory(id: string, formData: CategoryFormData) {
   try {
     const permission = await requireEventsManagePermission()
     if ('error' in permission) {
@@ -311,7 +311,7 @@ export async function deleteEventCategory(id: string) {
 }
 
 // ... (Keep getCategoryRegulars, getCategoryRecentCheckIns, getCrossCategorySuggestions, etc. as read-only helpers)
-export async function getCategoryRegulars(categoryId: string, daysBack: number = 90): Promise<{ data?: CategoryRegular[], error?: string }> {
+async function getCategoryRegulars(categoryId: string, daysBack: number = 90): Promise<{ data?: CategoryRegular[], error?: string }> {
   try {
     const supabase = await createClient()
     
@@ -376,7 +376,7 @@ export async function getCategoryRegulars(categoryId: string, daysBack: number =
   }
 }
 
-export async function getCrossCategorySuggestions(
+async function getCrossCategorySuggestions(
   targetCategoryId: string, 
   sourceCategoryId: string, 
   limit: number = 20
@@ -537,7 +537,7 @@ export async function rebuildCustomerCategoryStats() {
   }
 }
 
-export async function getCustomerCategoryPreferences(customerId: string) {
+async function getCustomerCategoryPreferences(customerId: string) {
   try {
     const supabase = await createClient()
     

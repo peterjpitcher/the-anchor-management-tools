@@ -1,8 +1,8 @@
 export type CommunicationChannel = 'sms' | 'whatsapp' | 'email' | 'feedback'
-export type NotificationChannel = 'email' | 'whatsapp' | 'sms'
-export type CommunicationDirection = 'inbound' | 'outbound'
+type NotificationChannel = 'email' | 'whatsapp' | 'sms'
+type CommunicationDirection = 'inbound' | 'outbound'
 
-export type CommunicationAttachment = {
+type CommunicationAttachment = {
   id?: string
   filename?: string
   name?: string
@@ -56,7 +56,7 @@ export type CustomerCommunication = {
   updated_at: string | null
 }
 
-export type EmailMessage = {
+type EmailMessage = {
   id: string
   customer_id: string | null
   direction: CommunicationDirection
@@ -76,7 +76,7 @@ export type EmailMessage = {
   updated_at: string
 }
 
-export type UnmatchedCommunication = {
+type UnmatchedCommunication = {
   id: string
   channel: Exclude<CommunicationChannel, 'feedback'>
   direction: 'inbound'

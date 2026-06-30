@@ -1,7 +1,7 @@
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
 
-export interface StarterPackEmployee {
+interface StarterPackEmployee {
   employee_id: string
   first_name: string
   last_name: string
@@ -17,11 +17,11 @@ export interface StarterPackEmployee {
   mobile_number: string | null
 }
 
-export interface StarterPackNiDetails {
+interface StarterPackNiDetails {
   ni_number: string | null
 }
 
-export interface StarterPackRightToWork {
+interface StarterPackRightToWork {
   document_type: string
   verification_date: string
   document_expiry_date: string | null

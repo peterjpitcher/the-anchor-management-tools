@@ -19,7 +19,7 @@ export type { EmployeeNoteWithAuthor } from '@/services/employees';
 import { EmployeeService, type EmployeeDetailData, type EmployeeEditData } from '@/services/employees'
 import { getErrorMessage } from '@/lib/errors';
 
-export interface EmployeePermissions {
+interface EmployeePermissions {
   canView: boolean
   canEdit: boolean
   canDelete: boolean

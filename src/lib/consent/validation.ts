@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { GUEST_COMMS_CONSENT_TEXT_VERSION } from '@/lib/consent/constants'
 import type { CommunicationConsentPayload } from '@/lib/consent/types'
 
-export const CommunicationConsentSchema = z.object({
+const CommunicationConsentSchema = z.object({
   service_contact_notice_shown: z.boolean().optional(),
   marketing_email_opt_in: z.boolean().optional(),
   marketing_sms_opt_in: z.boolean().optional(),
@@ -13,7 +13,7 @@ export const CommunicationConsentSchema = z.object({
 
 export const OptionalCommunicationConsentSchema = CommunicationConsentSchema.optional()
 
-export function normalizeCommunicationConsent(
+function normalizeCommunicationConsent(
   input: unknown
 ): CommunicationConsentPayload | undefined {
   if (input === undefined || input === null) {

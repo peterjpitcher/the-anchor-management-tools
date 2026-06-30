@@ -24,7 +24,7 @@ export type ClassificationUsage = {
   cost: number
 }
 
-export type ReceiptClassificationResult = {
+type ReceiptClassificationResult = {
   vendorName: string | null
   expenseCategory: ReceiptExpenseCategory | null
   reasoning: string | null
@@ -64,7 +64,7 @@ export type BatchClassificationItem = {
   merchantHint?: string | null
 }
 
-export type BatchClassificationResult = {
+type BatchClassificationResult = {
   id: string
   vendorName: string | null
   expenseCategory: ReceiptExpenseCategory | null

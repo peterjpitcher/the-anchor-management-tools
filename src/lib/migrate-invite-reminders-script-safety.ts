@@ -10,7 +10,7 @@ function isTruthyEnv(value: string | undefined): boolean {
   return TRUTHY.has(value.trim().toLowerCase())
 }
 
-export function isMigrateInviteRemindersRunEnabled(): boolean {
+function isMigrateInviteRemindersRunEnabled(): boolean {
   return isTruthyEnv(process.env.RUN_MIGRATE_INVITE_REMINDERS_MUTATION)
 }
 

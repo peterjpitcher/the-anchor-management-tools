@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { createStripeOffSessionCharge, isStripeConfigured } from '@/lib/payments/stripe'
 
-export const MANAGER_APPROVAL_EMAIL = process.env.MANAGER_APPROVAL_EMAIL || 'manager@the-anchor.pub'
+const MANAGER_APPROVAL_EMAIL = process.env.MANAGER_APPROVAL_EMAIL || 'manager@the-anchor.pub'
 
 type ChargeRequestType = 'late_cancel' | 'no_show' | 'reduction_fee' | 'walkout'
 

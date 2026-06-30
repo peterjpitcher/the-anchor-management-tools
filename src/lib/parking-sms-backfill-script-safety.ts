@@ -33,7 +33,7 @@ function parseOptionalNonNegativeInt(value: string | undefined): number | null {
   return parsed
 }
 
-export function isParkingSmsBackfillRunEnabled(): boolean {
+function isParkingSmsBackfillRunEnabled(): boolean {
   return isTruthyEnv(process.env.RUN_PARKING_SMS_BACKFILL_MUTATION)
 }
 

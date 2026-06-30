@@ -51,7 +51,7 @@ export async function signIn(email: string, password: string) {
 
 // Self-registration is disabled. This application is invite-only.
 // Users must be invited by an administrator via the invite flow.
-export async function signUp(
+async function signUp(
   _email: string,
   _password: string,
   _firstName: string,

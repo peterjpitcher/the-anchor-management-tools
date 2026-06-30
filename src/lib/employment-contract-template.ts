@@ -1,7 +1,7 @@
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 
-export interface EmploymentContractEmployee {
+interface EmploymentContractEmployee {
   employee_id: string
   first_name: string
   last_name: string

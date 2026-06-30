@@ -23,7 +23,7 @@ export async function generateApiKey(): Promise<string> {
   return 'anch_' + Buffer.from(bytes).toString('base64url');
 }
 
-export async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
+async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
   if (!apiKey) {
     return null;
   }
@@ -108,7 +108,7 @@ export async function checkRateLimit(apiKeyId: string, limit: number): Promise<b
   return (count || 0) < limit;
 }
 
-export async function logApiUsage(
+async function logApiUsage(
   apiKeyId: string,
   endpoint: string,
   method: string,

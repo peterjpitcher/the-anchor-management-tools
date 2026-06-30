@@ -4,7 +4,7 @@ import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 
-export type SeatUpdateSmsMeta = {
+type SeatUpdateSmsMeta = {
   success: boolean
   code: string | null
   logFailure: boolean

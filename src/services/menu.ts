@@ -47,7 +47,7 @@ export const IngredientSchema = z.object({
   abv: z.number().nonnegative().nullable().optional(),
 });
 
-export const IngredientPriceSchema = z.object({
+const IngredientPriceSchema = z.object({
   ingredient_id: z.string().uuid(),
   pack_cost: z.number().positive(),
   effective_from: z.coerce.date().optional(),
@@ -82,14 +82,14 @@ function requireOptionGroupForChoices(
   }
 }
 
-export const DishIngredientSchema = BaseIngredientLinkSchema.extend({
+const DishIngredientSchema = BaseIngredientLinkSchema.extend({
   inclusion_type: z.enum(['included', 'removable', 'choice', 'upgrade']).default('included'),
   upgrade_price: z.number().nonnegative().nullable().optional(),
 }).superRefine(requireOptionGroupForChoices);
 
-export const RecipeIngredientSchema = BaseIngredientLinkSchema.extend({});
+const RecipeIngredientSchema = BaseIngredientLinkSchema.extend({});
 
-export const DishRecipeSchema = z.object({
+const DishRecipeSchema = z.object({
   recipe_id: z.string().uuid(),
   quantity: z.number().positive(),
   yield_pct: z.number().min(0).max(100).default(100),
@@ -112,7 +112,7 @@ export const RecipeSchema = z.object({
   ingredients: z.array(RecipeIngredientSchema).default([]),
 });
 
-export const DishAssignmentSchema = z.object({
+const DishAssignmentSchema = z.object({
   menu_code: z.string().min(1),
   category_code: z.string().min(1),
   sort_order: z.number().int().default(0),

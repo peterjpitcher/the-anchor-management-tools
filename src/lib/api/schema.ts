@@ -33,13 +33,13 @@ export interface SchemaEvent {
   refundPolicy?: string;
 }
 
-export interface SchemaPlace {
+interface SchemaPlace {
   '@type': 'Place';
   name: string;
   address: SchemaPostalAddress;
 }
 
-export interface SchemaPostalAddress {
+interface SchemaPostalAddress {
   '@type': 'PostalAddress';
   streetAddress: string;
   addressLocality: string;
@@ -48,18 +48,18 @@ export interface SchemaPostalAddress {
   addressCountry: string;
 }
 
-export interface SchemaPerson {
+interface SchemaPerson {
   '@type': 'Person';
   name: string;
 }
 
-export interface SchemaOrganization {
+interface SchemaOrganization {
   '@type': 'Organization';
   name: string;
   url?: string;
 }
 
-export interface SchemaOffer {
+interface SchemaOffer {
   '@type': 'Offer';
   url?: string;
   price: string;
@@ -79,14 +79,14 @@ export interface SchemaMenu {
   lastUpdated?: string;
 }
 
-export interface SchemaMenuSection {
+interface SchemaMenuSection {
   '@type': 'MenuSection';
   name: string;
   description?: string;
   hasMenuItem: SchemaMenuItem[];
 }
 
-export interface SchemaMenuItem {
+interface SchemaMenuItem {
   '@type': 'MenuItem';
   name: string;
   description?: string;
@@ -95,7 +95,7 @@ export interface SchemaMenuItem {
   suitableForDiet?: string[];
 }
 
-export interface SchemaNutritionInfo {
+interface SchemaNutritionInfo {
   '@type': 'NutritionInformation';
   calories?: string;
   fatContent?: string;
@@ -106,7 +106,7 @@ export interface SchemaNutritionInfo {
   sodiumContent?: string;
 }
 
-export interface SchemaReview {
+interface SchemaReview {
   '@type': 'Review';
   author: string;
   reviewRating: {
@@ -117,7 +117,7 @@ export interface SchemaReview {
   datePublished?: string;
 }
 
-export interface SchemaAggregateRating {
+interface SchemaAggregateRating {
   '@type': 'AggregateRating';
   ratingValue: number;
   reviewCount: number;
@@ -125,7 +125,7 @@ export interface SchemaAggregateRating {
   worstRating?: number;
 }
 
-export interface SchemaFAQ {
+interface SchemaFAQ {
   '@type': 'Question';
   name: string;
   acceptedAnswer: {
@@ -135,14 +135,14 @@ export interface SchemaFAQ {
 }
 
 // Constants for Schema.org URLs
-export const SCHEMA_EVENT_STATUS = {
+const SCHEMA_EVENT_STATUS = {
   SCHEDULED: 'https://schema.org/EventScheduled',
   RESCHEDULED: 'https://schema.org/EventRescheduled',
   CANCELLED: 'https://schema.org/EventCancelled',
   POSTPONED: 'https://schema.org/EventPostponed',
 } as const;
 
-export const SCHEMA_ATTENDANCE_MODE = {
+const SCHEMA_ATTENDANCE_MODE = {
   OFFLINE: 'https://schema.org/OfflineEventAttendanceMode',
   ONLINE: 'https://schema.org/OnlineEventAttendanceMode',
   MIXED: 'https://schema.org/MixedEventAttendanceMode',
@@ -154,7 +154,7 @@ export const SCHEMA_AVAILABILITY = {
   LIMITED: 'https://schema.org/LimitedAvailability',
 } as const;
 
-export const SCHEMA_DIET = {
+const SCHEMA_DIET = {
   VEGETARIAN: 'https://schema.org/VegetarianDiet',
   VEGAN: 'https://schema.org/VeganDiet',
   GLUTEN_FREE: 'https://schema.org/GlutenFreeDiet',
@@ -167,7 +167,7 @@ export const SCHEMA_DIET = {
 } as const;
 
 // Helper to create venue location
-export function createVenueLocation(): SchemaPlace {
+function createVenueLocation(): SchemaPlace {
   return {
     '@type': 'Place',
     name: 'The Anchor Pub',
@@ -183,7 +183,7 @@ export function createVenueLocation(): SchemaPlace {
 }
 
 // Helper to create organizer
-export function createOrganizer(): SchemaOrganization {
+function createOrganizer(): SchemaOrganization {
   return {
     '@type': 'Organization',
     name: 'The Anchor',

@@ -90,7 +90,7 @@ export function getCanonicalDeposit(
  * Convenience helper used by capture surfaces that need to write the lock.
  * Callers pass the actually-captured amount from the payment provider.
  */
-export type LockDepositArgs = {
+type LockDepositArgs = {
   bookingId: string;
   amount: number;
 };

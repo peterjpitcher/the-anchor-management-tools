@@ -58,6 +58,12 @@ Notes:
     assertMigrateInviteRemindersRunEnabled()
     assertMigrateInviteRemindersMutationAllowed()
     assertMigrateInviteRemindersBookingLimit(bookingLimit ?? 0, HARD_CAP)
+
+    if (operations.rescheduleReminders) {
+      throw new Error(
+        'migrate-invite-reminders blocked: --reschedule is no longer available because the old event-sms-scheduler action has been removed.'
+      )
+    }
   }
 
   const supabase = createAdminClient()
@@ -168,36 +174,7 @@ Notes:
     return
   }
 
-  console.log('\n📌 Re-running the scheduler so each booking picks up the new cadence...')
-
-  // We import lazily to avoid loading the entire app unless there is work to do
-  const { scheduleBookingReminders } = await import('../../src/app/actions/event-sms-scheduler')
-
-  let rescheduled = 0
-  const schedulerFailures: string[] = []
-
-  for (const bookingId of bookingIdsToProcess) {
-    try {
-      const result = await scheduleBookingReminders(bookingId)
-      if (!result.success) {
-        const reason = result.error || 'unknown scheduler failure'
-        console.warn(`⚠️ Could not reschedule reminders for booking ${bookingId}: ${reason}`)
-        schedulerFailures.push(`schedule:${bookingId}:${reason}`)
-        continue
-      }
-
-      rescheduled += result.scheduled
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      console.warn(`⚠️ Scheduler threw while rescheduling booking ${bookingId}: ${reason}`)
-      schedulerFailures.push(`schedule:${bookingId}:${reason}`)
-    }
-  }
-
-  console.log(`✨ Scheduler run complete. Created ${rescheduled} new reminders.`)
-  assertInviteReminderMigrationCompletedWithoutFailures(schedulerFailures)
-
-  console.log('🎉 Migration finished.')
+  console.log('\nScheduler reschedule is no longer available from this script.')
 }
 
 main().catch(error => {

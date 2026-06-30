@@ -556,7 +556,7 @@ export async function applyAutomationRules(
 // enqueueReceiptAiClassificationJobs
 // ---------------------------------------------------------------------------
 
-export async function enqueueReceiptAiClassificationJobs(transactionIds: string[], batchId: string): Promise<{ queued: number; failed: number }> {
+async function enqueueReceiptAiClassificationJobs(transactionIds: string[], batchId: string): Promise<{ queued: number; failed: number }> {
   if (!transactionIds.length) {
     return { queued: 0, failed: 0 }
   }

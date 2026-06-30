@@ -8,7 +8,7 @@
 import { forwardRef, useId } from 'react'
 import { cn } from '@/lib/utils'
 
-export interface RadioOption {
+interface RadioOption {
   value: string
   label: string
   description?: string

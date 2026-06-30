@@ -66,7 +66,7 @@ export interface InvoiceLineItemInput {
   vat_rate: number
 }
 
-export interface InvoicePayment {
+interface InvoicePayment {
   id: string
   invoice_id: string
   payment_date: string
@@ -114,7 +114,7 @@ export interface Quote {
   updated_at: string
 }
 
-export interface QuoteLineItem {
+interface QuoteLineItem {
   id: string
   quote_id: string
   catalog_item_id?: string
@@ -136,7 +136,7 @@ export interface QuoteWithDetails extends Quote {
   converted_invoice?: Invoice
 }
 
-export interface RecurringInvoice {
+interface RecurringInvoice {
   id: string
   vendor_id: string
   frequency: RecurringFrequency
@@ -154,7 +154,7 @@ export interface RecurringInvoice {
   updated_at: string
 }
 
-export interface RecurringInvoiceLineItem {
+interface RecurringInvoiceLineItem {
   id: string
   recurring_invoice_id: string
   catalog_item_id?: string
@@ -172,7 +172,7 @@ export interface RecurringInvoiceWithDetails extends RecurringInvoice {
   last_invoice?: Invoice
 }
 
-export interface InvoiceEmailLog {
+interface InvoiceEmailLog {
   id: string
   invoice_id: string
   sent_at: string

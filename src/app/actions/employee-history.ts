@@ -55,7 +55,7 @@ export async function getEmployeeChangesSummary(employeeId: string, startDate?: 
   }
 }
 
-export async function restoreEmployeeVersion(employeeId: string, versionNumber: number) {
+async function restoreEmployeeVersion(employeeId: string, versionNumber: number) {
   try {
     const supabase = await createClient()
     
@@ -84,7 +84,7 @@ export async function restoreEmployeeVersion(employeeId: string, versionNumber: 
   }
 }
 
-export async function compareEmployeeVersions(employeeId: string, version1: number, version2: number) {
+async function compareEmployeeVersions(employeeId: string, version1: number, version2: number) {
   try {
     const supabase = await createClient()
     

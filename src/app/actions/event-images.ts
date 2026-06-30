@@ -372,7 +372,7 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
   }
 }
 
-export async function getEventImages(eventId: string) {
+async function getEventImages(eventId: string) {
   try {
     const supabase = createAdminClient()
 

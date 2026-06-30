@@ -236,7 +236,7 @@ export async function deleteBirthdayCalendarEvent(employeeId: string): Promise<b
 }
 
 // Sync all employee birthdays to calendar
-export async function syncAllBirthdaysToCalendar(): Promise<{
+async function syncAllBirthdaysToCalendar(): Promise<{
   success: boolean;
   synced: number;
   failed: number;

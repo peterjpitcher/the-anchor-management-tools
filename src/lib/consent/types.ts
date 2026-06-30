@@ -33,7 +33,7 @@ export type ConsentCaptureMethod =
   | 'service_notice'
   | 'provider_event'
 
-export type ConsentRelatedEntityType =
+type ConsentRelatedEntityType =
   | 'table_booking'
   | 'event_booking'
   | 'event_waitlist'
@@ -66,4 +66,4 @@ export type ConsentContext = {
   metadata?: Record<string, unknown>
 }
 
-export type CustomerConsentContext = ConsentContext & CommunicationConsentPayload
+type CustomerConsentContext = ConsentContext & CommunicationConsentPayload

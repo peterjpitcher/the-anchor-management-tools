@@ -39,7 +39,7 @@ export function getErrorStatusCode(error: unknown): number | undefined {
 /**
  * Type guard to check if an error is a Zod-like validation error with an `errors` array.
  */
-export function isValidationError(error: unknown): error is { errors: Array<{ message: string }> } {
+function isValidationError(error: unknown): error is { errors: Array<{ message: string }> } {
   return (
     typeof error === 'object' &&
     error !== null &&

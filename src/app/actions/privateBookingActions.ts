@@ -1196,7 +1196,7 @@ export async function applyBookingDiscount(bookingId: string, data: {
 }
 
 // SMS Queue Management (already using SmsQueueService directly, so no change needed here)
-export async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
+async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
   const supabase = await createClient()
   const [{ data: { user } }, canView] = await Promise.all([
     supabase.auth.getUser(),
@@ -1468,7 +1468,7 @@ export async function deleteCateringPackage(id: string) {
 }
 
 // Booking Items Management
-export async function getBookingItems(bookingId: string) {
+async function getBookingItems(bookingId: string) {
   const canView = await checkUserPermission('private_bookings', 'view')
     || await checkUserPermission('private_bookings', 'manage')
   if (!canView) {

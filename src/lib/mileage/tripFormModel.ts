@@ -4,7 +4,7 @@ export interface TripFormStop {
   miles: string
 }
 
-export interface TripFormLeg {
+interface TripFormLeg {
   fromDestinationId: string
   toDestinationId: string
   miles: number
@@ -32,7 +32,7 @@ export function createEmptyStop(): TripFormStop {
   return { key: crypto.randomUUID(), destinationId: '', miles: '' }
 }
 
-export function mileageToInputValue(miles: number): string {
+function mileageToInputValue(miles: number): string {
   return Number.isInteger(miles) ? String(miles) : String(miles)
 }
 
@@ -147,12 +147,12 @@ export function validateAndBuildTripLegs(
   return { legs, stopErrors, returnMilesError: null, formError: null }
 }
 
-export function isValidMileageInput(value: string): boolean {
+function isValidMileageInput(value: string): boolean {
   const miles = parseFloat(value)
   return Number.isFinite(miles) && miles > 0 && hasAtMostOneDecimalPlace(value)
 }
 
-export function roundMiles(miles: number): number {
+function roundMiles(miles: number): number {
   return Math.round(miles * 10) / 10
 }
 

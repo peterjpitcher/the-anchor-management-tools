@@ -4,7 +4,7 @@ export type CustomerWithLoyalty = Customer & {
   isLoyal?: boolean
 }
 
-export function sortCustomersByLoyalty(customers: CustomerWithLoyalty[]): CustomerWithLoyalty[] {
+function sortCustomersByLoyalty(customers: CustomerWithLoyalty[]): CustomerWithLoyalty[] {
   return [...customers].sort((a, b) => {
     if (a.isLoyal && !b.isLoyal) return -1
     if (!a.isLoyal && b.isLoyal) return 1

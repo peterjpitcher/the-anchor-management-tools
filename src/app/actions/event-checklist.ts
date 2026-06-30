@@ -78,7 +78,7 @@ interface ChecklistProgressMap {
   }
 }
 
-export async function getEventChecklistProgress(eventIds: string[]): Promise<{ success: boolean; error?: string; progress?: ChecklistProgressMap }> {
+async function getEventChecklistProgress(eventIds: string[]): Promise<{ success: boolean; error?: string; progress?: ChecklistProgressMap }> {
   const hasPermission = await checkUserPermission('events', 'view')
   if (!hasPermission) {
     return { success: false, error: 'Insufficient permissions' }

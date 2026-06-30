@@ -7,7 +7,7 @@ import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/go
 import type { AuditLogEntry } from '@/app/actions/employeeDetails';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeEmergencyContact, EmployeeRightToWork, AttachmentCategory, EmployeeNote, AuditLog } from '@/types/database';
 
-export type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation';
+type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation';
 export type EmployeeRosterEmployee = Employee & {
   holiday_days_current_year: number;
 };

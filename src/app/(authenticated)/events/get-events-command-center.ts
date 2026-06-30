@@ -27,7 +27,7 @@ export type EventOverview = {
     }
 }
 
-export type EventsOverviewResult = {
+type EventsOverviewResult = {
     kpis: {
         activeEvents: number
         overdueTasks: number

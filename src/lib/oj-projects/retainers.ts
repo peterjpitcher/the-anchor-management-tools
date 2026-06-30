@@ -7,7 +7,7 @@ export function getEntryDatePeriod(entryDate: string): string {
   return entryDate.slice(0, 7)
 }
 
-export function isRetainerProjectForEntryDate(
+function isRetainerProjectForEntryDate(
   project: RetainerProjectLike,
   entryDate: string
 ): boolean {

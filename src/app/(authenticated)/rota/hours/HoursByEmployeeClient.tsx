@@ -41,7 +41,7 @@ export interface WeeklyHolidayDetail {
   days: number;
 }
 
-export interface SickEntry {
+interface SickEntry {
   date: string;
   reason: string | null;
 }

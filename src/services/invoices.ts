@@ -16,7 +16,7 @@ function sanitizeInvoiceSearch(value: string): string {
     .trim()
     .slice(0, 80);
 }
-export { isInvoiceStatusTransitionAllowed } from '@/lib/status-transitions';
+;
 
 // Invoice validation schema
 export const CreateInvoiceSchema = z.object({

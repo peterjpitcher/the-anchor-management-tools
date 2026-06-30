@@ -38,7 +38,7 @@ export type SeoValidationResult = {
 /**
  * Legacy result type kept for backward compatibility.
  */
-export interface ValidationResult {
+interface ValidationResult {
   passed: boolean
   issues: string[]
 }

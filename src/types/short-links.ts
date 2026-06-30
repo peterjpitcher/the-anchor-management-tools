@@ -1,5 +1,5 @@
 /** Short link as returned by getShortLinks — a subset of the full row */
-export interface ShortLinkMetadata {
+interface ShortLinkMetadata {
   channel?: string
   parent_link_id?: string
   utm_variant?: boolean

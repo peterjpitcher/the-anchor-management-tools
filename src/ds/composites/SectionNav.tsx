@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 /*  SectionNav — horizontal tab strip for sub-page navigation         */
 /* ------------------------------------------------------------------ */
 
-export interface SectionNavItem {
+interface SectionNavItem {
   id: string
   label: string
   count?: number

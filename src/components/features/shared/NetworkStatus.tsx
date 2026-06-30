@@ -70,7 +70,7 @@ export function NetworkStatus() {
 }
 
 // Hook to use network status in components
-export function useNetworkStatus() {
+function useNetworkStatus() {
   const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {

@@ -1,10 +1,10 @@
 import { z } from 'zod'
 
-export const recruitmentRoleTypes = ['bar', 'kitchen', 'either', 'management', 'other'] as const
-export const recruitmentEmploymentTypes = ['full_time', 'part_time', 'casual'] as const
-export const recruitmentPostingStatuses = ['draft', 'open', 'closed', 'archived'] as const
-export const recruitmentSources = ['website', 'manual_upload', 'referral', 'job_board', 'other'] as const
-export const recruitmentApplicationStatuses = [
+const recruitmentRoleTypes = ['bar', 'kitchen', 'either', 'management', 'other'] as const
+const recruitmentEmploymentTypes = ['full_time', 'part_time', 'casual'] as const
+const recruitmentPostingStatuses = ['draft', 'open', 'closed', 'archived'] as const
+const recruitmentSources = ['website', 'manual_upload', 'referral', 'job_board', 'other'] as const
+const recruitmentApplicationStatuses = [
   'new',
   'ai_screened',
   'shortlisted',
@@ -22,13 +22,13 @@ export const recruitmentApplicationStatuses = [
   'on_hold',
   'declined_duplicate',
 ] as const
-export const recruitmentRecommendations = ['reject', 'review', 'fast_track'] as const
-export const recruitmentAppointmentTypes = ['interview', 'trial_shift'] as const
-export const recruitmentAppointmentStatuses = ['scheduled', 'completed', 'no_show', 'cancelled', 'rescheduled'] as const
-export const recruitmentCalendarStatuses = ['pending', 'synced', 'failed', 'ics_fallback'] as const
-export const recruitmentCommunicationChannels = ['email', 'sms'] as const
-export const recruitmentDeliveryStatuses = ['queued', 'sent', 'failed', 'bounced', 'suppressed'] as const
-export const recruitmentTemplateTypes = [
+const recruitmentRecommendations = ['reject', 'review', 'fast_track'] as const
+const recruitmentAppointmentTypes = ['interview', 'trial_shift'] as const
+const recruitmentAppointmentStatuses = ['scheduled', 'completed', 'no_show', 'cancelled', 'rescheduled'] as const
+const recruitmentCalendarStatuses = ['pending', 'synced', 'failed', 'ics_fallback'] as const
+const recruitmentCommunicationChannels = ['email', 'sms'] as const
+const recruitmentDeliveryStatuses = ['queued', 'sent', 'failed', 'bounced', 'suppressed'] as const
+const recruitmentTemplateTypes = [
   'interview_invite',
   'rejection',
   'already_considered',
@@ -39,19 +39,19 @@ export const recruitmentTemplateTypes = [
   'reminder',
   'manager_alert',
 ] as const
-export const recruitmentScorecardRecommendations = ['hire', 'hold', 'reject', 'rebook', 'no_decision'] as const
-export const rightToWorkDocumentTypes = ['Passport', 'Biometric Residence Permit', 'Share Code', 'Other', 'List A', 'List B'] as const
+const recruitmentScorecardRecommendations = ['hire', 'hold', 'reject', 'rebook', 'no_decision'] as const
+const rightToWorkDocumentTypes = ['Passport', 'Biometric Residence Permit', 'Share Code', 'Other', 'List A', 'List B'] as const
 
-export type RecruitmentRoleType = typeof recruitmentRoleTypes[number]
-export type RecruitmentEmploymentType = typeof recruitmentEmploymentTypes[number]
-export type RecruitmentPostingStatus = typeof recruitmentPostingStatuses[number]
+type RecruitmentRoleType = typeof recruitmentRoleTypes[number]
+type RecruitmentEmploymentType = typeof recruitmentEmploymentTypes[number]
+type RecruitmentPostingStatus = typeof recruitmentPostingStatuses[number]
 export type RecruitmentSource = typeof recruitmentSources[number]
-export type RecruitmentApplicationStatus = typeof recruitmentApplicationStatuses[number]
-export type RecruitmentRecommendation = typeof recruitmentRecommendations[number]
+type RecruitmentApplicationStatus = typeof recruitmentApplicationStatuses[number]
+type RecruitmentRecommendation = typeof recruitmentRecommendations[number]
 export type RecruitmentAppointmentType = typeof recruitmentAppointmentTypes[number]
-export type RecruitmentAppointmentStatus = typeof recruitmentAppointmentStatuses[number]
+type RecruitmentAppointmentStatus = typeof recruitmentAppointmentStatuses[number]
 export type RecruitmentTemplateType = typeof recruitmentTemplateTypes[number]
-export type RecruitmentScorecardRecommendation = typeof recruitmentScorecardRecommendations[number]
+type RecruitmentScorecardRecommendation = typeof recruitmentScorecardRecommendations[number]
 
 export const RecruitmentJobPostingInputSchema = z.object({
   title: z.string().trim().min(1).max(160),
@@ -67,7 +67,7 @@ export const RecruitmentJobPostingInputSchema = z.object({
   application_closing_date: z.string().date().nullable().optional(),
 })
 
-export const RecruitmentCandidateInputSchema = z.object({
+const RecruitmentCandidateInputSchema = z.object({
   first_name: z.string().trim().max(100).nullable().optional(),
   last_name: z.string().trim().max(100).nullable().optional(),
   email: z.string().trim().email().max(320).nullable().optional(),
@@ -139,9 +139,9 @@ export const RecruitmentInterviewScorecardInputSchema = z.object({
   })).default([]),
 })
 
-export type RecruitmentJobPostingInput = z.infer<typeof RecruitmentJobPostingInputSchema>
+type RecruitmentJobPostingInput = z.infer<typeof RecruitmentJobPostingInputSchema>
 export type RecruitmentApplicationInput = z.infer<typeof RecruitmentApplicationInputSchema>
-export type RecruitmentCandidateInput = z.infer<typeof RecruitmentCandidateInputSchema>
+type RecruitmentCandidateInput = z.infer<typeof RecruitmentCandidateInputSchema>
 export type RecruitmentAppointmentSlotInput = z.infer<typeof RecruitmentAppointmentSlotInputSchema>
 export type RecruitmentCandidateProfileInput = z.infer<typeof RecruitmentCandidateProfileInputSchema>
 export type RecruitmentAppointmentOutcomeInput = z.infer<typeof RecruitmentAppointmentOutcomeInputSchema>
@@ -234,7 +234,7 @@ export type RecruitmentApplication = {
   job_posting?: RecruitmentJobPosting | null
 }
 
-export type RecruitmentAppointmentSlot = RecruitmentAppointmentSlotInput & {
+type RecruitmentAppointmentSlot = RecruitmentAppointmentSlotInput & {
   id: string
   status: 'open' | 'booked' | 'cancelled'
   capacity: number
@@ -245,7 +245,7 @@ export type RecruitmentAppointmentSlot = RecruitmentAppointmentSlotInput & {
   updated_at: string
 }
 
-export type RecruitmentCandidateAppointment = {
+type RecruitmentCandidateAppointment = {
   id: string
   application_id: string
   candidate_id: string
@@ -277,7 +277,7 @@ export type RecruitmentCandidateAppointment = {
   application?: Pick<RecruitmentApplication, 'id' | 'status'> & { job_posting?: Pick<RecruitmentJobPosting, 'title'> | null }
 }
 
-export type RecruitmentInterviewScorecard = {
+type RecruitmentInterviewScorecard = {
   id: string
   appointment_id: string
   application_id: string
@@ -302,7 +302,7 @@ export type RecruitmentEmailTemplate = {
   updated_at: string
 }
 
-export type RecruitmentCommunication = {
+type RecruitmentCommunication = {
   id: string
   application_id: string | null
   candidate_id: string

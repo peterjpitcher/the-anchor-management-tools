@@ -75,7 +75,7 @@ export function formatLifecycleTime(isoValue?: string | null): string | null {
   }
 }
 
-export function parseClockMinutes(clock: string | null | undefined): number | null {
+function parseClockMinutes(clock: string | null | undefined): number | null {
   if (!clock || typeof clock !== 'string') return null
   const [hoursRaw, minutesRaw] = clock.slice(0, 5).split(':')
   const hours = Number(hoursRaw)
@@ -120,7 +120,7 @@ export function getLondonDateKey(date: Date): string | null {
   return `${year}-${month}-${day}`
 }
 
-export function getLondonMinuteOfDay(date: Date): number | null {
+function getLondonMinuteOfDay(date: Date): number | null {
   if (!Number.isFinite(date.getTime())) return null
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
@@ -145,7 +145,7 @@ export function getLondonMinuteOfDay(date: Date): number | null {
   return hour * 60 + minute
 }
 
-export function getDateOffsetDays(baseDateIso: string, candidateDateIso: string): number {
+function getDateOffsetDays(baseDateIso: string, candidateDateIso: string): number {
   const baseMs = Date.parse(`${baseDateIso}T00:00:00Z`)
   const candidateMs = Date.parse(`${candidateDateIso}T00:00:00Z`)
   if (!Number.isFinite(baseMs) || !Number.isFinite(candidateMs)) return 0
@@ -324,7 +324,7 @@ export function getLondonDateIso(now = new Date()): string {
   return `${year}-${month}-${day}`
 }
 
-export function isoDateToUtcDayNumber(isoDate: string): number | null {
+function isoDateToUtcDayNumber(isoDate: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null
   const [yearText, monthText, dayText] = isoDate.split('-')
   const year = Number.parseInt(yearText, 10)
@@ -335,7 +335,7 @@ export function isoDateToUtcDayNumber(isoDate: string): number | null {
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
 }
 
-export function diffCalendarDays(fromIsoDate: string, toIsoDate: string): number | null {
+function diffCalendarDays(fromIsoDate: string, toIsoDate: string): number | null {
   const fromDay = isoDateToUtcDayNumber(fromIsoDate)
   const toDay = isoDateToUtcDayNumber(toIsoDate)
   if (fromDay == null || toDay == null) return null
@@ -384,7 +384,7 @@ export function formatEventBookingMode(mode: FohEventOption['booking_mode']): st
   }
 }
 
-export function getTableDurationMinutes(input: {
+function getTableDurationMinutes(input: {
   purpose: 'food' | 'drinks'
   sundayLunch: boolean
 }): number {
@@ -420,7 +420,7 @@ export function getTableWindowMs(input: {
   }
 }
 
-export function eventPromptWindowLabel(eventOption: FohEventOption): string {
+function eventPromptWindowLabel(eventOption: FohEventOption): string {
   const startMs = Date.parse(eventOption.start_datetime || '')
   const endMs = Date.parse(eventOption.end_datetime || '')
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
@@ -443,14 +443,14 @@ export function shiftIsoDate(dateIso: string, dayDelta: number): string {
   return parsed.toISOString().slice(0, 10)
 }
 
-export function minuteToBookingClock(totalMinutes: number): string {
+function minuteToBookingClock(totalMinutes: number): string {
   const minuteOfDay = ((Math.round(totalMinutes) % 1440) + 1440) % 1440
   const hour = Math.floor(minuteOfDay / 60)
   const minute = minuteOfDay % 60
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
-export function resolvePurposeWindowMinutes(input: {
+function resolvePurposeWindowMinutes(input: {
   serviceWindow: ServiceWindow | null | undefined
   purpose: 'food' | 'drinks'
   fallbackStartMin: number
@@ -517,7 +517,7 @@ export function suggestWalkInTime(input: {
   return minuteToBookingClock(boundedMinute)
 }
 
-export function findCurrentWalkInEventOption(input: {
+function findCurrentWalkInEventOption(input: {
   eventOptions: FohEventOption[]
   serviceDateIso: string
   now: Date

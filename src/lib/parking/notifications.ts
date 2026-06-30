@@ -13,7 +13,7 @@ export function buildPaymentRequestSms(booking: ParkingBooking, paymentUrl: stri
   return `${base}${linkPart} Need help? Call ${CONTACT_NUMBER}.`
 }
 
-export function buildPaymentReminderSms(booking: ParkingBooking, paymentUrl?: string) {
+function buildPaymentReminderSms(booking: ParkingBooking, paymentUrl?: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const base = `The Anchor: Hi ${booking.customer_first_name}, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is still waiting for payment (£${amount.toFixed(2)}).`
   const linkPart = paymentUrl
@@ -43,7 +43,7 @@ export function buildPaymentReminderSmsForStage(
   return `The Anchor: ${booking.customer_first_name}! Your parking offer has now expired for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.${urlPart}`
 }
 
-export function buildPaymentReminderManagerEmail(booking: ParkingBooking, paymentUrl?: string) {
+function buildPaymentReminderManagerEmail(booking: ParkingBooking, paymentUrl?: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const subject = `Parking booking pending payment – ${booking.reference}`
   const html = `
@@ -76,11 +76,11 @@ export function buildPaymentConfirmationManagerEmail(booking: ParkingBooking) {
   return { subject, html, to: MANAGER_EMAIL }
 }
 
-export function buildSessionStartSms(booking: ParkingBooking) {
+function buildSessionStartSms(booking: ParkingBooking) {
   return `The Anchor: Hi ${booking.customer_first_name}, your parking starts today from ${formatDateTime(booking.start_at)}. Registration ${booking.vehicle_registration}. See you soon!`
 }
 
-export function buildSessionEndSms(booking: ParkingBooking) {
+function buildSessionEndSms(booking: ParkingBooking) {
   return `The Anchor: Hi ${booking.customer_first_name}, just a reminder your parking finishes today at ${formatDateTime(booking.end_at)}. Need extra time? Call ${CONTACT_NUMBER}.`
 }
 
@@ -92,7 +92,7 @@ export function buildSessionThreeDayReminderSms(booking: ParkingBooking, type: '
   return `The Anchor: ${booking.customer_first_name}! Heads up — your parking wraps up on ${formatDateTime(booking.end_at)}. Need to extend? Give us a shout on ${CONTACT_NUMBER}.`
 }
 
-export function buildSessionManagerEmail(booking: ParkingBooking, type: 'start' | 'end') {
+function buildSessionManagerEmail(booking: ParkingBooking, type: 'start' | 'end') {
   const subject = type === 'start'
     ? `Parking starts today – ${booking.reference}`
     : `Parking ends today – ${booking.reference}`

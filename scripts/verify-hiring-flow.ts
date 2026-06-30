@@ -3,7 +3,10 @@
 import dotenv from 'dotenv'
 import path from 'path'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createJob, submitApplication, getJobApplications } from '@/lib/hiring/service'
+import {
+  createRecruitmentApplication,
+  createRecruitmentJobPosting,
+} from '@/services/recruitment'
 import {
   assertScriptExpectedRowCount,
   assertScriptMutationAllowed,
@@ -74,11 +77,11 @@ async function main() {
   console.log(`[${SCRIPT_NAME}] ${args.dryRun ? 'DRY RUN' : 'MUTATION'} starting`)
 
   if (args.dryRun) {
-    const { count, error } = await (admin.from('hiring_jobs') as any).select('id', { count: 'exact', head: true })
+    const { count, error } = await (admin.from('recruitment_job_postings') as any).select('id', { count: 'exact', head: true })
     if (error) {
-      throw new Error(`DRY RUN failed: hiring_jobs lookup failed: ${error.message || 'unknown error'}`)
+      throw new Error(`DRY RUN failed: recruitment_job_postings lookup failed: ${error.message || 'unknown error'}`)
     }
-    console.log(`[${SCRIPT_NAME}] DRY RUN ok (hiring_jobs count=${count ?? 0}). No mutations performed.`)
+    console.log(`[${SCRIPT_NAME}] DRY RUN ok (recruitment_job_postings count=${count ?? 0}). No mutations performed.`)
     console.log(`[${SCRIPT_NAME}] To run mutations (dangerous), you must:`)
     console.log(`- Pass --confirm`)
     console.log(`- Set ${RUN_MUTATION_ENV}=true`)
@@ -118,41 +121,51 @@ async function main() {
   const jobSlug = `test-job-${timestamp}`
   const candidateEmail = `test.candidate.${timestamp}@example.com`
 
-  console.log(`[${SCRIPT_NAME}] Creating test job...`)
-  const job = await createJob({
+  console.log(`[${SCRIPT_NAME}] Creating test recruitment posting...`)
+  const job = await createRecruitmentJobPosting({
     title: `Test Job ${timestamp}`,
     slug: jobSlug,
     status: 'open',
-    location: 'The Anchor',
     description: 'A test job for verification',
-    employment_type: 'Full-time',
-  })
+    requirements: 'Basic verification requirements',
+    role_type: 'bar',
+    employment_type: 'part_time',
+    positions_available: 1,
+    is_public: false,
+  }, null, admin)
 
   if (!job?.id) {
     throw new Error('Job creation failed: missing job id')
   }
 
   console.log(`[${SCRIPT_NAME}] Submitting test application...`)
-  const appResult = await submitApplication({
-    jobId: job.id,
+  const appResult = await createRecruitmentApplication({
+    job_posting_id: job.id,
+    source: 'manual_upload',
     candidate: {
-      firstName: 'Test',
-      lastName: 'Candidate',
+      first_name: 'Test',
+      last_name: 'Candidate',
       email: candidateEmail,
       phone: '07700900000',
-      resumeUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      screenerAnswers: { q1: 'answer 1' },
+      source: 'manual_upload',
+      consent_source: SCRIPT_NAME,
+      consent_at: new Date().toISOString(),
+      sms_consent: false,
+      future_recruitment_consent: false,
     },
-  })
-
-  if (!appResult.success || !appResult.applicationId) {
-    throw new Error(`Application submission failed: ${appResult.error || 'unknown error'}`)
-  }
+    cover_note: 'Verification application',
+    relevant_experience_answer: 'Verification experience',
+    travel_answer: 'Can travel to the venue',
+    start_availability: 'Immediately',
+  }, {
+    currentUserId: null,
+    skipAi: true,
+  }, admin)
 
   console.log(`[${SCRIPT_NAME}] Verifying database records...`)
-  const { data: application, error: appError } = await (admin.from('hiring_applications') as any)
-    .select('id, candidate_id, candidate:hiring_candidates(id, email)')
-    .eq('id', appResult.applicationId)
+  const { data: application, error: appError } = await (admin.from('recruitment_applications') as any)
+    .select('id, candidate_id, candidate:recruitment_candidates(id, email)')
+    .eq('id', appResult.application.id)
     .maybeSingle()
 
   if (appError) {
@@ -177,16 +190,22 @@ async function main() {
   }
 
   console.log(`[${SCRIPT_NAME}] Verifying service query...`)
-  const apps = await getJobApplications(job.id)
+  const { data: apps, error: appsError } = await (admin.from('recruitment_applications') as any)
+    .select('id')
+    .eq('job_posting_id', job.id)
+
+  if (appsError) {
+    throw new Error(`Failed to query recruitment applications: ${appsError.message || 'unknown error'}`)
+  }
   if (!Array.isArray(apps) || apps.length !== 1) {
     throw new Error(`Expected 1 application, found ${Array.isArray(apps) ? apps.length : 'non-array result'}`)
   }
 
   console.log(`[${SCRIPT_NAME}] Cleaning up test data...`)
   const cleanupDeletes: Array<{ table: string; id: string }> = [
-    { table: 'hiring_applications', id: application.id },
-    { table: 'hiring_candidates', id: application.candidate_id },
-    { table: 'hiring_jobs', id: job.id },
+    { table: 'recruitment_applications', id: application.id },
+    { table: 'recruitment_candidates', id: application.candidate_id },
+    { table: 'recruitment_job_postings', id: job.id },
   ]
 
   for (const entry of cleanupDeletes) {

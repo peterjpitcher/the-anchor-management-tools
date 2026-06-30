@@ -1,15 +1,15 @@
 export { Button } from './Button'
-export type { ButtonProps } from './Button'
+
 export { Badge } from './Badge'
 export { Avatar, AvatarStack } from './Avatar'
 export { Alert } from './Alert'
 export { Modal } from './Modal'
 export { Skeleton } from './Skeleton'
 export { Empty } from './Empty'
-export { Toast, toast } from './Toast'
+export {  toast } from './Toast'
 export { Stat } from './Stat'
 export { Input } from './Input'
-export type { InputProps } from './Input'
+
 export { Select } from './Select'
 export { Textarea } from './Textarea'
 export { Checkbox } from './Checkbox'
@@ -20,21 +20,21 @@ export { ProgressBar } from './ProgressBar'
 export { Spinner } from './Spinner'
 export { SearchInput } from './SearchInput'
 export { Dropdown, DropdownItem } from './Dropdown'
-export type { DropdownProps } from './Dropdown'
+
 export { Tooltip } from './Tooltip'
 export { ConfirmDialog } from './ConfirmDialog'
-export type { ConfirmDialogProps } from './ConfirmDialog'
+
 export { FileUpload } from './FileUpload'
 export { Drawer } from './Drawer'
-export type { DrawerProps } from './Drawer'
+
 export { Stepper } from './Stepper'
 export { DateTimePicker } from './DateTimePicker'
 export { Popover } from './Popover'
 export { IconButton } from './IconButton'
-export type { IconButtonProps } from './IconButton'
+
 export { LinkButton } from './LinkButton'
-export type { LinkButtonProps } from './LinkButton'
+
 export { Accordion } from './Accordion'
-export type { AccordionProps, AccordionItem } from './Accordion'
+
 export { Pagination } from './Pagination'
-export type { PaginationProps } from './Pagination'
+

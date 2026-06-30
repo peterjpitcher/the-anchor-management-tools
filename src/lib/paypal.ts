@@ -103,7 +103,7 @@ function extractApproveUrl(links?: PayPalLink[]) {
   return candidate?.href;
 }
 
-export function normalizePayPalCurrencyCode(currency?: string | null): string {
+function normalizePayPalCurrencyCode(currency?: string | null): string {
   const normalized = (currency || PAYPAL_DEFAULT_CURRENCY).trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(normalized)) {
     throw new Error(`Invalid PayPal currency code: ${currency || ''}`);

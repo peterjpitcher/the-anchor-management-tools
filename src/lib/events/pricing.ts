@@ -29,7 +29,7 @@ export function resolveEventTicketPriceAmount(event: EventPricingInput): number 
   return 0;
 }
 
-export function normalizeEventOnlineDiscountType(value: unknown): EventOnlineDiscountType | null {
+function normalizeEventOnlineDiscountType(value: unknown): EventOnlineDiscountType | null {
   return value === 'fixed' || value === 'percent' ? value : null;
 }
 

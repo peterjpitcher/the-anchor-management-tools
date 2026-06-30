@@ -431,7 +431,7 @@ export async function captureParkingPayment(
   return updatedBooking
 }
 
-export async function refundParkingPayment(
+async function refundParkingPayment(
   booking: ParkingBooking,
   amount: number,
   options: { reason?: string; client?: SupabaseClient<any, 'public', any> } = {}

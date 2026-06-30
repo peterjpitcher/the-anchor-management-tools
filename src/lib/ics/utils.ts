@@ -92,7 +92,7 @@ export function findMostRecentPublish(shifts: PublishedShiftRow[]): Date | null 
  * Format a shift date + time string into an ICS local datetime string (no Z suffix).
  * Output: YYYYMMDDTHHMMSS
  */
-export function icsDate(dateStr: string, timeStr: string): string {
+function icsDate(dateStr: string, timeStr: string): string {
   const datePart = dateStr.replace(/-/g, '');
   const [h, m] = timeStr.split(':');
   return `${datePart}T${h.padStart(2, '0')}${m.padStart(2, '0')}00`;
@@ -102,7 +102,7 @@ export function icsDate(dateStr: string, timeStr: string): string {
  * Format a Date object or ISO datetime string into an ICS UTC timestamp.
  * Output: YYYYMMDDTHHMMSSZ
  */
-export function icsTimestamp(input: Date | string): string {
+function icsTimestamp(input: Date | string): string {
   const d = typeof input === 'string' ? new Date(input) : input;
   return d.toISOString().replace(/[-:.]/g, '').substring(0, 15) + 'Z';
 }
@@ -111,7 +111,7 @@ export function icsTimestamp(input: Date | string): string {
  * Add one calendar day to a YYYY-MM-DD date string.
  * Used for overnight shifts where the end date is the following day.
  */
-export function addOneDay(dateStr: string): string {
+function addOneDay(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().split('T')[0];
@@ -208,7 +208,7 @@ export const VTIMEZONE_EUROPE_LONDON: string[] = [
  * Epoch: 2025-01-01T00:00:00Z = 1735689600000 ms.
  * For cancelled events, add 1 to ensure SEQUENCE is strictly greater than the last CONFIRMED value.
  */
-export function deriveSequence(publishedAt: string | null, isCancelled = false): number {
+function deriveSequence(publishedAt: string | null, isCancelled = false): number {
   const EPOCH_MS = 1735689600000; // 2025-01-01T00:00:00Z
   if (!publishedAt) return isCancelled ? 1 : 0;
   const ms = new Date(publishedAt).getTime() - EPOCH_MS;

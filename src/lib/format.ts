@@ -11,7 +11,7 @@
  * @param decimals - Number of decimal places (default: 2)
  * @returns Formatted string (e.g., "1.23 MB")
  */
-export function formatBytes(bytes: number, decimals = 2): string {
+function formatBytes(bytes: number, decimals = 2): string {
   if (bytes === 0) return '0 Bytes'
 
   const k = 1024
@@ -28,7 +28,7 @@ export function formatBytes(bytes: number, decimals = 2): string {
  * @param num - Number to format
  * @returns Formatted string (e.g., "1,234,567")
  */
-export function formatNumber(num: number): string {
+function formatNumber(num: number): string {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
@@ -56,7 +56,7 @@ export function formatCurrency(
  * @param decimals - Number of decimal places (default: 0)
  * @returns Formatted percentage string (e.g., "75%")
  */
-export function formatPercentage(value: number, decimals = 0): string {
+function formatPercentage(value: number, decimals = 0): string {
   return `${(value * 100).toFixed(decimals)}%`
 }
 
@@ -65,7 +65,7 @@ export function formatPercentage(value: number, decimals = 0): string {
  * @param ms - Duration in milliseconds
  * @returns Formatted string (e.g., "2h 30m")
  */
-export function formatDuration(ms: number): string {
+function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
   const hours = Math.floor(minutes / 60)
@@ -89,7 +89,7 @@ export function formatDuration(ms: number): string {
  * @param suffix - Suffix to add (default: '...')
  * @returns Truncated text
  */
-export function truncate(text: string, maxLength: number, suffix = '...'): string {
+function truncate(text: string, maxLength: number, suffix = '...'): string {
   if (text.length <= maxLength) return text
   return text.substring(0, maxLength - suffix.length) + suffix
 }
@@ -99,7 +99,7 @@ export function truncate(text: string, maxLength: number, suffix = '...'): strin
  * @param phone - Phone number string
  * @returns Formatted phone number
  */
-export function formatPhoneNumber(phone: string): string {
+function formatPhoneNumber(phone: string): string {
   // Remove all non-digits
   const digits = phone.replace(/\D/g, '')
 
@@ -127,7 +127,7 @@ export function formatPhoneNumber(phone: string): string {
  * @param date - Date to format
  * @returns Relative time string (e.g., "2 hours ago", "in 3 days")
  */
-export function formatRelativeTime(date: Date): string {
+function formatRelativeTime(date: Date): string {
   const now = new Date()
   const diffMs = date.getTime() - now.getTime()
   const diffSec = Math.floor(Math.abs(diffMs) / 1000)
@@ -158,7 +158,7 @@ export function formatRelativeTime(date: Date): string {
  * @param maxSize - Maximum size in bytes
  * @returns Validation message
  */
-export function formatFileSizeLimit(maxSize: number): string {
+function formatFileSizeLimit(maxSize: number): string {
   return `Maximum file size is ${formatBytes(maxSize)}`
 }
 
@@ -168,7 +168,7 @@ export function formatFileSizeLimit(maxSize: number): string {
  * @param conjunction - Conjunction to use (default: 'and')
  * @returns Formatted string (e.g., "item1, item2, and item3")
  */
-export function formatList(items: string[], conjunction = 'and'): string {
+function formatList(items: string[], conjunction = 'and'): string {
   if (items.length === 0) return ''
   if (items.length === 1) return items[0]
   if (items.length === 2) return `${items[0]} ${conjunction} ${items[1]}`

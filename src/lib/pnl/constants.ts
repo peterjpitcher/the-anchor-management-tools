@@ -8,7 +8,7 @@ export const PNL_TIMEFRAMES: Array<{ key: PnlTimeframeKey; label: string; days: 
   { key: '12m', label: 'Last 365 days', days: 365 },
 ]
 
-export type PnlMetricType = 'cashup' | 'manual' | 'expense'
+type PnlMetricType = 'cashup' | 'manual' | 'expense'
 export type PnlMetricFormat = 'currency' | 'percent'
 export type PnlMetricGroup =
   | 'sales'
@@ -28,7 +28,7 @@ export type PnlMetric = {
   baseMetricKey?: string
 }
 
-export const CASHUP_SALES_METRIC_KEYS = ['drinks_sales', 'food_sales'] as const
+const CASHUP_SALES_METRIC_KEYS = ['drinks_sales', 'food_sales'] as const
 
 const EXPENSE_METRIC_DEFS: Array<{ key: string; label: string; category: ReceiptExpenseCategory }> = [
   { key: 'total_staff', label: 'Total Staff', category: 'Total Staff' },

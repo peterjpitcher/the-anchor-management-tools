@@ -10,7 +10,7 @@ function isTruthyEnv(value: string | undefined): boolean {
   return TRUTHY.has(value.trim().toLowerCase())
 }
 
-export function isCleanupPhoneNumbersRunEnabled(): boolean {
+function isCleanupPhoneNumbersRunEnabled(): boolean {
   return isTruthyEnv(process.env.RUN_CLEANUP_PHONE_NUMBERS_MUTATION)
 }
 

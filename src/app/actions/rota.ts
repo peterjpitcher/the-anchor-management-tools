@@ -1527,7 +1527,7 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
 // Reassign a shift to a different employee
 // ---------------------------------------------------------------------------
 
-export async function reassignShift(
+async function reassignShift(
   shiftId: string,
   newEmployeeId: string,
   reason?: string,
@@ -1596,7 +1596,7 @@ export async function reassignShift(
 // Get shifts for a specific employee across published weeks
 // ---------------------------------------------------------------------------
 
-export async function getEmployeeShifts(
+async function getEmployeeShifts(
   employeeId: string,
   fromDate: string,
   toDate: string,
@@ -1638,7 +1638,7 @@ export async function getEmployeeShifts(
 // Open shifts visible to staff on the portal (published weeks only)
 // ---------------------------------------------------------------------------
 
-export async function getOpenShiftsForPortal(
+async function getOpenShiftsForPortal(
   fromDate: string,
   toDate: string,
 ): Promise<{ success: true; data: RotaShift[] } | { success: false; error: string }> {
@@ -2825,7 +2825,7 @@ export async function publishRotaWeek(weekId: string): Promise<
  * Re-sync all currently published rota weeks to the management Google Calendar.
  * Safe to call at any time — creates or updates events without sending staff emails.
  */
-export async function resyncRotaCalendar(): Promise<
+async function resyncRotaCalendar(): Promise<
   { success: true; weeksSynced: number } | { success: false; error: string }
 > {
   const canPublish = await checkUserPermission('rota', 'publish');
