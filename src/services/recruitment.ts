@@ -568,6 +568,78 @@ export async function getRecruitmentCandidateTrail(
   return { notes, systemChanges }
 }
 
+const RECRUITMENT_DECISION_STATUS: Record<string, string> = {
+  reject: 'rejected',
+  offer: 'offered',
+  decline_duplicate: 'declined_duplicate',
+  withdraw: 'withdrawn',
+  hold: 'on_hold',
+}
+
+// Records a candidate-facing decision: transition status, capture an internal
+// reason note, set rejection_reason (reject), and start the retention clock on
+// terminal negatives. The email send is handled by the action layer so the user
+// can approve/edit the proposed copy first.
+export async function decideRecruitmentApplication(
+  input: {
+    applicationId: string
+    decision: 'reject' | 'offer' | 'decline_duplicate' | 'withdraw' | 'hold'
+    reason?: string | null
+    user?: { id: string; email?: string | null } | null
+  },
+  supabase: GenericClient = createAdminClient()
+) {
+  const status = RECRUITMENT_DECISION_STATUS[input.decision]
+  if (!status) throw new Error('Unknown decision.')
+
+  const { data: app, error: appError } = await supabase
+    .from('recruitment_applications')
+    .select('id, candidate_id, retention_until')
+    .eq('id', input.applicationId)
+    .single()
+  if (appError) throw appError
+
+  await transitionRecruitmentApplicationStatus(
+    input.applicationId,
+    status,
+    { note: `Decision: ${input.decision}`, metadata: { decision: input.decision }, actorUserId: input.user?.id ?? null },
+    supabase,
+  )
+
+  const reason = input.reason?.trim()
+  if (reason) {
+    await addRecruitmentCandidateNote(
+      {
+        candidateId: app.candidate_id,
+        applicationId: input.applicationId,
+        content: reason,
+        kind: input.decision,
+        userId: input.user?.id ?? null,
+        userEmail: input.user?.email ?? null,
+      },
+      supabase,
+    )
+    if (input.decision === 'reject') {
+      const { error } = await supabase
+        .from('recruitment_applications')
+        .update({ rejection_reason: reason })
+        .eq('id', input.applicationId)
+      if (error) throw error
+    }
+  }
+
+  if ((TERMINAL_NON_HIRED_STATUSES as readonly string[]).includes(status) && !app.retention_until) {
+    const retentionUntil = addMonths(new Date(), retentionMonths()).toISOString().slice(0, 10)
+    const { error } = await supabase
+      .from('recruitment_applications')
+      .update({ retention_until: retentionUntil })
+      .eq('id', input.applicationId)
+    if (error) throw error
+  }
+
+  return { candidateId: app.candidate_id as string, status }
+}
+
 export async function getRecruitmentDashboard(
   supabase: GenericClient = createAdminClient()
 ): Promise<RecruitmentDashboard> {
