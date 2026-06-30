@@ -98,7 +98,7 @@ export type ReceiptWorkspaceFilters = {
   sortDirection?: 'asc' | 'desc'
 }
 
-export type AIModelBreakdown = {
+type AIModelBreakdown = {
   model: string
   total_cost: number
   total_tokens: number
@@ -227,7 +227,7 @@ export type ReceiptVendorMovementRange = '12m' | '24m' | '36m' | 'all'
 
 export type ReceiptVendorMovementComparison = 'mom' | 'yoy'
 
-export type ReceiptVendorMovementDirection = 'spike' | 'drop' | 'new' | 'resumed'
+type ReceiptVendorMovementDirection = 'spike' | 'drop' | 'new' | 'resumed'
 
 export type ReceiptVendorMovementSignal = {
   vendorLabel: string
@@ -480,9 +480,9 @@ export type BulkStatus = ReceiptTransaction['status']
 // ---------------------------------------------------------------------------
 
 export const RECEIPT_BUCKET = RECEIPT_BUCKET_NAME
-export const MAX_RECEIPT_STATEMENT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_BYTES
-export const MAX_RECEIPT_FILE_UPLOAD_SIZE = MAX_RECEIPT_FILE_UPLOAD_BYTES
-export const MAX_RECEIPT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_SIZE
+const MAX_RECEIPT_STATEMENT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_BYTES
+const MAX_RECEIPT_FILE_UPLOAD_SIZE = MAX_RECEIPT_FILE_UPLOAD_BYTES
+const MAX_RECEIPT_UPLOAD_SIZE = MAX_RECEIPT_STATEMENT_UPLOAD_SIZE
 export const DEFAULT_PAGE_SIZE = 25
 export const MAX_MONTH_PAGE_SIZE = 5000
 export const RECEIPT_AI_JOB_CHUNK_SIZE = 10

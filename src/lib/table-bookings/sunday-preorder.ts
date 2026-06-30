@@ -59,7 +59,7 @@ export type SundayMenuItem = {
   allergens: string[]
 }
 
-export type SundayPreorderExistingItem = {
+type SundayPreorderExistingItem = {
   menu_dish_id: string
   name_snapshot: string
   price_snapshot: number
@@ -67,7 +67,7 @@ export type SundayPreorderExistingItem = {
   item_type: BookingItemType
 }
 
-export type SundayPreorderPageData = {
+type SundayPreorderPageData = {
   state: 'ready' | 'blocked'
   reason?: string
   booking_id?: string
@@ -338,7 +338,7 @@ export async function createSundayPreorderToken(
   }
 }
 
-export async function getSundayPreorderPageDataByRawToken(
+async function getSundayPreorderPageDataByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
   rawToken: string
 ): Promise<SundayPreorderPageData> {
@@ -448,7 +448,7 @@ export async function getSundayPreorderPageDataByRawToken(
   }
 }
 
-export async function getSundayPreorderPageDataByBookingId(
+async function getSundayPreorderPageDataByBookingId(
   supabase: SupabaseClient<any, 'public', any>,
   bookingId: string
 ): Promise<SundayPreorderPageData> {
@@ -682,7 +682,7 @@ async function saveSundayPreorderFromPageData(
   }
 }
 
-export async function saveSundayPreorderByRawToken(
+async function saveSundayPreorderByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
     rawToken: string

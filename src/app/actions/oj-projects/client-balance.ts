@@ -7,7 +7,7 @@ function roundMoney(v: number) {
   return Math.round((v + Number.EPSILON) * 100) / 100
 }
 
-export type ClientInvoiceSummary = {
+type ClientInvoiceSummary = {
   id: string
   invoice_number: string
   invoice_date: string

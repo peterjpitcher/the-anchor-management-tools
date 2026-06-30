@@ -16,7 +16,7 @@ export type TablePaymentGuestTokenRow = {
   consumed_at: string | null
 }
 
-export function parseTablePaymentTokenFromPath(pathname: string): string | null {
+function parseTablePaymentTokenFromPath(pathname: string): string | null {
   const match = pathname.match(TABLE_PAYMENT_PATH_REGEX)
   if (!match?.[1]) {
     return null

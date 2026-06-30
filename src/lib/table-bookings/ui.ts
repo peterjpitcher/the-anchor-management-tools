@@ -252,7 +252,7 @@ export function getTableBookingDepositState(
   };
 }
 
-export function getPaymentMethodLabel(method: string | null | undefined): string | null {
+function getPaymentMethodLabel(method: string | null | undefined): string | null {
   switch (normaliseStatus(method)) {
     case 'paypal':
       return 'PayPal';

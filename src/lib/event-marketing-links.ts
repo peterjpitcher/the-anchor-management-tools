@@ -263,14 +263,14 @@ export function shouldAutoGenerateEventMarketingChannel(channel: EventMarketingC
   return channel.tier === 'always_on' || isEventMarketingQrChannel(channel)
 }
 
-export function buildMarketingCampaignSlug(event: Pick<Event, 'slug' | 'date'>): string {
+function buildMarketingCampaignSlug(event: Pick<Event, 'slug' | 'date'>): string {
   if (!event.slug) {
     return `event-${event.date}`
   }
   return `event-${event.slug}`
 }
 
-export function buildEventBaseUrl(slug: string): string {
+function buildEventBaseUrl(slug: string): string {
   const base = 'https://www.the-anchor.pub'
   const trimmedSlug = slug.startsWith('/') ? slug.slice(1) : slug
   return `${base}/events/${trimmedSlug}`

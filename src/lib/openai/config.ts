@@ -176,7 +176,7 @@ export async function getOpenAIConfig(options: { forceRefresh?: boolean } = {}):
   return cachedConfig;
 }
 
-export async function clearOpenAIConfigCache() {
+async function clearOpenAIConfigCache() {
   cachedConfig = null;
   cacheExpiresAt = 0;
 }

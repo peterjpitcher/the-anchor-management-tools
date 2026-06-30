@@ -503,7 +503,7 @@ export function isCalendarConfigured(): boolean {
   return isConfigured
 }
 
-export function isInterviewCalendarConfigured(): boolean {
+function isInterviewCalendarConfigured(): boolean {
   const hasInterviewCalendarId = !!process.env.GOOGLE_CALENDAR_INTERVIEW_ID
   const calendarId = getSharedOperationsCalendarId()
   const hasCalendarId = !!calendarId
@@ -548,7 +548,7 @@ async function verifyInterviewCalendarAccess(auth: any, calendarId: string): Pro
 
 // Helper function to format a service account JSON for environment variable
 // This is useful for converting a downloaded service account key file
-export function formatServiceAccountForEnv(serviceAccountJson: string | object): string {
+function formatServiceAccountForEnv(serviceAccountJson: string | object): string {
   try {
     // Parse if string, otherwise use as is
     const serviceAccount = typeof serviceAccountJson === 'string'
@@ -697,7 +697,7 @@ function getInterviewEventColor(): string {
   return '3'; // Grape
 }
 
-export interface InterviewEventOptions {
+interface InterviewEventOptions {
   summary?: string
   candidateName?: string
   jobTitle?: string
@@ -709,13 +709,13 @@ export interface InterviewEventOptions {
   attendees?: Array<{ email: string; name?: string }>
 }
 
-export interface InterviewEventResult {
+interface InterviewEventResult {
   id: string | null
   htmlLink: string | null
   warning?: string | null
 }
 
-export async function createInterviewEvent(options: InterviewEventOptions): Promise<InterviewEventResult | null> {
+async function createInterviewEvent(options: InterviewEventOptions): Promise<InterviewEventResult | null> {
   const {
     candidateName,
     jobTitle,

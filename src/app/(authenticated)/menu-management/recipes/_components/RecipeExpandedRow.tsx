@@ -6,7 +6,7 @@ import { Badge } from '@/ds';
 // Types (shared with page and drawer)
 // ---------------------------------------------------------------------------
 
-export interface RecipeUsageDetail {
+interface RecipeUsageDetail {
   dish_id: string;
   dish_name: string;
   quantity: number;
@@ -24,7 +24,7 @@ export interface RecipeUsageDetail {
   }>;
 }
 
-export interface RecipeIngredientDetail {
+interface RecipeIngredientDetail {
   ingredient_id: string;
   ingredient_name: string;
   quantity: number;

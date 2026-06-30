@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
 
-export type RefundTier = 'full' | 'half' | 'none'
+type RefundTier = 'full' | 'half' | 'none'
 
 export type RefundResult =
   | { refunded: false; reason: 'no_deposit' | 'zero_tier' | 'already_refunded' }
@@ -15,7 +15,7 @@ export type RefundResult =
  * - 3–6 days: 50% (half)
  * - <3 days: 0% (none)
  */
-export function calculateRefundTier(bookingDate: Date): { percent: number; tier: RefundTier } {
+function calculateRefundTier(bookingDate: Date): { percent: number; tier: RefundTier } {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diffMs = bookingDate.getTime() - today.getTime()

@@ -5,10 +5,10 @@ type InvoicePdfDownloadTarget = {
   invoiceNumber: string
 }
 
-export const getInvoicePdfDownloadHref = (invoiceId: string) =>
+const getInvoicePdfDownloadHref = (invoiceId: string) =>
   `/api/invoices/${encodeURIComponent(invoiceId)}/pdf?download=1`
 
-export const getInvoicePdfFilename = (invoiceNumber: string) =>
+const getInvoicePdfFilename = (invoiceNumber: string) =>
   `invoice-${invoiceNumber}.pdf`
 
 export async function downloadInvoicePdf({

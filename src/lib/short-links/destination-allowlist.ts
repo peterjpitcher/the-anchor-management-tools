@@ -27,7 +27,7 @@ function getAllowedHosts(): string[] {
   return Array.from(new Set([...DEFAULT_ALLOWED_SHORT_LINK_DESTINATION_HOSTS, ...configuredHosts]))
 }
 
-export function isAllowedShortLinkDestination(value: string): boolean {
+function isAllowedShortLinkDestination(value: string): boolean {
   let parsed: URL
 
   try {

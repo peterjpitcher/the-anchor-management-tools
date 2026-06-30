@@ -25,7 +25,7 @@ export interface ParkingPricingResult {
   durationMinutes: number;
 }
 
-export interface ParkingBookingInput {
+interface ParkingBookingInput {
   customer_id?: string;
   customer_first_name: string;
   customer_last_name?: string;
@@ -122,7 +122,7 @@ export interface ParkingNotificationRecord {
   created_at: string;
 }
 
-export interface ParkingRatesWithCapacity extends ParkingRate {
+interface ParkingRatesWithCapacity extends ParkingRate {
   default_capacity: number;
 }
 

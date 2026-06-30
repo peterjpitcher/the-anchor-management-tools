@@ -12,9 +12,9 @@ import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type EventBookingSource = 'brand_site' | 'admin' | 'walk-in' | 'sms_reply'
+type EventBookingSource = 'brand_site' | 'admin' | 'walk-in' | 'sms_reply'
 
-export type EventBookingAttribution = {
+type EventBookingAttribution = {
   source_url?: string
   landing_path?: string
   utm_source?: string
@@ -34,7 +34,7 @@ export type EventBookingAttribution = {
   food_intent?: string
 } | null
 
-export type EventBookingRpcResult = {
+type EventBookingRpcResult = {
   state: 'confirmed' | 'pending_payment' | 'full_with_waitlist_option' | 'blocked'
   booking_id?: string
   status?: string
@@ -54,7 +54,7 @@ export type EventBookingRpcResult = {
   table_ids?: string[]
 }
 
-export type EventTableReservationRpcResult = {
+type EventTableReservationRpcResult = {
   state?: 'confirmed' | 'blocked'
   reason?: string
   table_booking_id?: string
@@ -64,7 +64,7 @@ export type EventTableReservationRpcResult = {
   end_datetime?: string
 }
 
-export type SmsSafetyMeta =
+type SmsSafetyMeta =
   | {
       success: boolean
       code: string | null

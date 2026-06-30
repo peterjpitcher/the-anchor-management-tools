@@ -5,7 +5,7 @@ import { logger } from './logger'
 /**
  * Wraps Supabase operations with retry logic
  */
-export function withRetry<T>(
+function withRetry<T>(
   operation: () => Promise<T>,
   operationName: string
 ): Promise<T> {
@@ -113,7 +113,7 @@ export class RetryableSupabase {
 /**
  * Helper to execute multiple operations with transaction-like behavior
  */
-export async function withTransaction<T>(
+async function withTransaction<T>(
   supabase: SupabaseClient,
   operations: Array<() => Promise<any>>,
   rollback?: () => Promise<void>

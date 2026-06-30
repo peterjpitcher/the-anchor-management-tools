@@ -5,7 +5,7 @@
  */
 
 // Twilio's possible message statuses
-export type TwilioStatus =
+type TwilioStatus =
   | 'accepted'
   | 'queued'
   | 'sending'
@@ -30,7 +30,7 @@ export type AppStatus =
   | 'delivery_unknown';
 
 // Map Twilio status to our simplified status
-export const STATUS_MAP: Record<TwilioStatus, AppStatus> = {
+const STATUS_MAP: Record<TwilioStatus, AppStatus> = {
   accepted: 'queued',
   queued: 'queued',
   sending: 'sent',
@@ -93,7 +93,7 @@ export function isStatusUpgrade(currentStatus?: string, newStatus?: string): boo
  * Determine if a message should be considered "delivery unknown"
  * Messages stuck in 'sent' for over 6 hours without delivery confirmation
  */
-export function shouldMarkDeliveryUnknown(status: string, sentAt: Date | string): boolean {
+function shouldMarkDeliveryUnknown(status: string, sentAt: Date | string): boolean {
   if (status !== 'sent') return false;
   
   const sentTime = typeof sentAt === 'string' ? new Date(sentAt) : sentAt;

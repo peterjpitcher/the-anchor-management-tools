@@ -190,7 +190,7 @@ function ingredientToFormState(ingredient: Ingredient): IngredientFormState {
 // ---------------------------------------------------------------------------
 
 /** Re-export for page-level usage */
-export type SmartImportData = AiParsedIngredient;
+type SmartImportData = AiParsedIngredient;
 
 interface IngredientDrawerProps {
   open: boolean;

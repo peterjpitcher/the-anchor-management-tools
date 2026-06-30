@@ -417,7 +417,7 @@ export async function applyLabelsRetroactively(): Promise<{
   }
 }
 
-export async function bulkAssignLabel(
+async function bulkAssignLabel(
   labelId: string,
   customerIds: string[]
 ): Promise<{ success?: boolean, error?: string }> {

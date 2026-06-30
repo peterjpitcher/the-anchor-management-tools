@@ -122,7 +122,7 @@ function resolveReferenceMonthStart(vendors: ReceiptVendorSummary[], fallbackDat
   return latestMonth ?? toMonthStart(fallbackDate) ?? new Date().toISOString().slice(0, 10)
 }
 
-export function fillReceiptVendorMonthWindow(
+function fillReceiptVendorMonthWindow(
   months: ReceiptVendorTrendMonth[],
   options: { monthWindow?: number; referenceMonthStart?: string | Date } = {},
 ): ReceiptVendorTrendMonth[] {

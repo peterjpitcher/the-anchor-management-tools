@@ -1,8 +1,8 @@
 import type { Database } from './database';
 
 export type Customer = Database['public']['Tables']['customers']['Row'];
-export type CustomerInsert = Database['public']['Tables']['customers']['Insert'];
-export type CustomerUpdate = Database['public']['Tables']['customers']['Update'];
+type CustomerInsert = Database['public']['Tables']['customers']['Insert'];
+type CustomerUpdate = Database['public']['Tables']['customers']['Update'];
 
 export type CreateCustomerInput = {
   first_name?: string;

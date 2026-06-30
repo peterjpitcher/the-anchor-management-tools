@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/{page,layout,route,loading,error,not-found,template,default}.{js,jsx,ts,tsx}",
+    "scripts/**/*.{js,ts}",
+    "src/scripts/**/*.{js,ts}",
+    "tests/**/*.{ts,tsx}"
+  ],
+  "project": [
+    "src/**/*.{js,jsx,ts,tsx}",
+    "scripts/**/*.{js,ts}",
+    "tests/**/*.{ts,tsx}",
+    "*.{js,cjs,mjs,ts,tsx}"
+  ],
+  "ignoreDependencies": [
+    "eslint-config-next",
+    "supabase",
+    "tailwindcss"
+  ],
+  "ignoreIssues": {
+    "src/types/database.generated.ts": ["exports", "types"]
+  }
+}

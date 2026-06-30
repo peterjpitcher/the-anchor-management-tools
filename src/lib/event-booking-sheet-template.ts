@@ -214,7 +214,7 @@ function renderBookingSheetPage(
   </section>`
 }
 
-export function generateEventBookingSheetHTML(
+function generateEventBookingSheetHTML(
   data: EventBookingSheetData,
   options: TemplateOptions
 ): string {

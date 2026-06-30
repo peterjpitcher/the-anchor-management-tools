@@ -39,7 +39,7 @@ export type PartySizeDepositTransitionResult =
       state: 'unchanged'
     }
 
-export function computeStaffPaymentHoldExpiry(
+function computeStaffPaymentHoldExpiry(
   bookingStartIso: string | null | undefined,
   now: Date = new Date(),
 ): string | null {

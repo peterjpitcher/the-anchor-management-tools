@@ -1,7 +1,7 @@
 export const RELIABILITY_WINDOW_DAYS = 90;
-export const RELIABILITY_MINIMUM_ELIGIBLE_SHIFT_SIGNALS = 5;
+const RELIABILITY_MINIMUM_ELIGIBLE_SHIFT_SIGNALS = 5;
 
-export const RELIABILITY_EVENT_TYPES = [
+const RELIABILITY_EVENT_TYPES = [
   'shift_accepted',
   'shift_auto_accepted',
   'shift_rejected',
@@ -44,7 +44,7 @@ export interface EmployeeReliabilityEvent {
   created_at: string;
 }
 
-export interface ReliabilityCounts {
+interface ReliabilityCounts {
   manualAccepts: number;
   autoAccepts: number;
   rejections: number;

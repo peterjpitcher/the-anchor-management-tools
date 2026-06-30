@@ -24,7 +24,7 @@ export const DIGITAL_CHANNELS: ShortLinkChannel[] = [
   { key: 'linkedin', label: 'LinkedIn', type: 'digital', utmSource: 'linkedin', utmMedium: 'social', utmContent: 'linkedin_main' },
 ]
 
-export const PRINT_CHANNELS: ShortLinkChannel[] = [
+const PRINT_CHANNELS: ShortLinkChannel[] = [
   { key: 'poster', label: 'Poster', type: 'print', utmSource: 'poster', utmMedium: 'print', utmContent: 'poster_qr' },
   { key: 'bar_strut', label: 'Bar Strut', type: 'print', utmSource: 'bar_strut', utmMedium: 'print', utmContent: 'bar_strut_qr' },
   { key: 'table_talker', label: 'Table Talker', type: 'print', utmSource: 'table_talker', utmMedium: 'print', utmContent: 'table_talker_qr' },
@@ -50,7 +50,7 @@ export const PRINT_CHANNELS: ShortLinkChannel[] = [
   { key: 'partner_poster', label: 'Local Partner Poster', type: 'print', utmSource: 'partner_poster', utmMedium: 'print', utmContent: 'partner_poster_qr' },
 ]
 
-export const SCREEN_CHANNELS: ShortLinkChannel[] = [
+const SCREEN_CHANNELS: ShortLinkChannel[] = [
   { key: 'in_game_screen', label: 'In-game Screen', type: 'screen', utmSource: 'in_game_screen', utmMedium: 'screen', utmContent: 'in_game_screen_qr' },
   { key: 'venue_screen', label: 'Venue Screen', type: 'screen', utmSource: 'venue_screen', utmMedium: 'screen', utmContent: 'venue_screen_qr' },
   { key: 'event_host_slide', label: 'Event Host Slide', type: 'screen', utmSource: 'event_host_slide', utmMedium: 'screen', utmContent: 'event_host_slide_qr' },
@@ -65,7 +65,7 @@ export const ALL_CHANNELS: ShortLinkChannel[] = [...DIGITAL_CHANNELS, ...QR_CHAN
 export const CHANNEL_MAP = new Map(ALL_CHANNELS.map((c) => [c.key, c]))
 
 /** Shared colour mapping for channel charts — digital=blue tones, print=amber tones */
-export const CHANNEL_COLOURS: Record<string, string> = {
+const CHANNEL_COLOURS: Record<string, string> = {
   facebook: '#3b82f6',
   facebook_stories: '#2563eb',
   instagram_stories: '#e879f9',
@@ -109,4 +109,4 @@ export const CHANNEL_COLOURS: Record<string, string> = {
 }
 
 /** Fallback colour for unknown channels */
-export const CHANNEL_COLOUR_DEFAULT = '#9ca3af'
+const CHANNEL_COLOUR_DEFAULT = '#9ca3af'

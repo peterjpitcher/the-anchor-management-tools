@@ -14,7 +14,7 @@ export interface ApiKey {
   updated_at: string;
 }
 
-export interface ApiUsage {
+interface ApiUsage {
   id: string;
   api_key_id: string;
   endpoint: string;
@@ -26,7 +26,7 @@ export interface ApiUsage {
   created_at: string;
 }
 
-export interface MenuSection {
+interface MenuSection {
   id: string;
   name: string;
   description?: string | null;
@@ -36,7 +36,7 @@ export interface MenuSection {
   updated_at: string;
 }
 
-export interface MenuItem {
+interface MenuItem {
   id: string;
   section_id: string;
   name: string;
@@ -55,7 +55,7 @@ export interface MenuItem {
   updated_at: string;
 }
 
-export interface BusinessHours {
+interface BusinessHours {
   id: string;
   day_of_week: number; // 0-6, 0=Sunday
   opens?: string | null;
@@ -68,7 +68,7 @@ export interface BusinessHours {
   updated_at: string;
 }
 
-export interface SpecialHours {
+interface SpecialHours {
   id: string;
   date: string;
   opens?: string | null;
@@ -82,7 +82,7 @@ export interface SpecialHours {
   updated_at: string;
 }
 
-export interface BusinessAmenity {
+interface BusinessAmenity {
   id: string;
   type: string;
   available: boolean;
@@ -93,7 +93,7 @@ export interface BusinessAmenity {
   updated_at: string;
 }
 
-export interface Webhook {
+interface Webhook {
   id: string;
   url: string;
   events: string[];
@@ -105,7 +105,7 @@ export interface Webhook {
   updated_at: string;
 }
 
-export interface WebhookDelivery {
+interface WebhookDelivery {
   id: string;
   webhook_id: string;
   event_type: string;

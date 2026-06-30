@@ -169,7 +169,7 @@ export { sendBirthdayRemindersInternal };
 /**
  * Get upcoming birthdays without sending emails (for preview)
  */
-export async function getUpcomingBirthdays(daysAhead: number = 30) {
+async function getUpcomingBirthdays(daysAhead: number = 30) {
   try {
     const supabase = await createClient();
     

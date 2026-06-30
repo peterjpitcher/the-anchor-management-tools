@@ -22,7 +22,7 @@ export function normalizeBulkRecipientIds(customerIds: string[]): string[] {
   return Array.from(new Set(customerIds.filter((id) => typeof id === 'string' && id.length > 0))).sort()
 }
 
-export function getBulkSmsRecipientLimit(): number {
+function getBulkSmsRecipientLimit(): number {
   return parsePositiveInt(process.env.BULK_SMS_MAX_RECIPIENTS, DEFAULT_BULK_SMS_MAX_RECIPIENTS)
 }
 

@@ -24,7 +24,7 @@ export interface CashupSession {
   cashup_sales_breakdowns: CashupSalesBreakdown[];
 }
 
-export interface CashupPaymentBreakdown {
+interface CashupPaymentBreakdown {
   id: string;
   cashup_session_id: string;
   payment_type_code: string;
@@ -34,7 +34,7 @@ export interface CashupPaymentBreakdown {
   variance_amount: number;
 }
 
-export interface CashupCashCount {
+interface CashupCashCount {
   id: string;
   cashup_session_id: string;
   denomination: number;
@@ -42,7 +42,7 @@ export interface CashupCashCount {
   total_amount: number;
 }
 
-export interface CashupSalesBreakdown {
+interface CashupSalesBreakdown {
   id: string;
   cashup_session_id: string;
   sales_category: CashupSalesCategory;
@@ -51,7 +51,7 @@ export interface CashupSalesBreakdown {
   updated_at?: string;
 }
 
-export interface CashupWeeklyView {
+interface CashupWeeklyView {
   site_id: string;
   week_start_date: string;
   session_date: string;
@@ -88,7 +88,7 @@ export interface UpsertCashupSessionDTO {
   }[];
 }
 
-export interface CashupDashboardStats {
+interface CashupDashboardStats {
   totalTakings: number;
   totalTarget: number;
   averageDailyTakings: number;

@@ -10,7 +10,7 @@ function isTruthyEnv(value: string | undefined): boolean {
   return TRUTHY.has(value.trim().toLowerCase())
 }
 
-export function isFinalizeEventRemindersRunEnabled(): boolean {
+function isFinalizeEventRemindersRunEnabled(): boolean {
   return isTruthyEnv(process.env.RUN_FINALIZE_EVENT_REMINDERS_MUTATION)
 }
 

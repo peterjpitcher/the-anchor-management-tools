@@ -1,10 +1,10 @@
 export type BookingStatus = 'draft' | 'confirmed' | 'completed' | 'cancelled'
-export type PaymentMethod = 'cash' | 'card' | 'invoice' | 'paypal'
+type PaymentMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
-export type DiscountType = 'percent' | 'fixed'
-export type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
-export type PricingModel = 'per_head' | 'total_value' | 'variable' | 'per_jar' | 'per_tray' | 'menu_priced' | 'free'
-export type VendorServiceType =
+type DiscountType = 'percent' | 'fixed'
+type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
+type PricingModel = 'per_head' | 'total_value' | 'variable' | 'per_jar' | 'per_tray' | 'menu_priced' | 'free'
+type VendorServiceType =
   | 'dj'
   | 'band'
   | 'photographer'
@@ -15,8 +15,8 @@ export type VendorServiceType =
   | 'transport'
   | 'equipment'
   | 'other'
-export type DocumentType = 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
-export type SmsTriggerType =
+type DocumentType = 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
+type SmsTriggerType =
   | 'status_change'
   | 'deposit_received'
   | 'payment_received'
@@ -39,7 +39,7 @@ export type SmsTriggerType =
   | 'balance_reminder_14day'
   | 'booking_completed'
 
-export type SmsStatus = 'pending' | 'approved' | 'sent' | 'cancelled' | 'failed'
+type SmsStatus = 'pending' | 'approved' | 'sent' | 'cancelled' | 'failed'
 
 export interface PrivateBooking {
   id: string
@@ -185,7 +185,7 @@ export interface PrivateBookingSmsQueue {
   booking?: PrivateBooking
 }
 
-export interface PrivateBookingDocument {
+interface PrivateBookingDocument {
   id: string
   booking_id: string
   document_type: DocumentType
@@ -199,7 +199,7 @@ export interface PrivateBookingDocument {
   metadata?: Record<string, unknown>
 }
 
-export interface PrivateBookingAudit {
+interface PrivateBookingAudit {
   id: string
   booking_id: string
   action: string
@@ -249,7 +249,7 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
 }
 
 // Form types for creating/updating
-export interface PrivateBookingFormData {
+interface PrivateBookingFormData {
   customer_name?: string // Deprecated
   customer_first_name: string
   customer_last_name?: string
@@ -286,7 +286,7 @@ export interface BookingItemFormData {
 }
 
 // SMS Template types
-export interface SmsTemplate {
+interface SmsTemplate {
   key: string
   name: string
   body: string
@@ -295,7 +295,7 @@ export interface SmsTemplate {
 }
 
 // Summary types for dashboard/reporting
-export interface BookingSummaryStats {
+interface BookingSummaryStats {
   total_bookings: number
   bookings_by_status: Record<BookingStatus, number>
   upcoming_events: number

@@ -10,7 +10,7 @@ import { useTablePipeline } from './useTablePipeline';
 // Types
 // ---------------------------------------------------------------------------
 
-export interface DishIngredientForCost {
+interface DishIngredientForCost {
   ingredient_id: string;
   quantity: number;
   unit?: string | null;
@@ -24,7 +24,7 @@ export interface DishIngredientForCost {
   upgrade_price?: number | null;
 }
 
-export interface DishRecipeForCost {
+interface DishRecipeForCost {
   recipe_id: string;
   quantity: number;
   yield_pct?: number | null;

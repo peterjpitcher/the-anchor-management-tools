@@ -16,7 +16,7 @@ import {
   ChartBarIcon,
 } from '@heroicons/react/24/outline'
 
-export const EmptyStateIcons = {
+const EmptyStateIcons = {
   inbox: InboxIcon,
   search: MagnifyingGlassIcon,
   document: DocumentTextIcon,
@@ -27,7 +27,7 @@ export const EmptyStateIcons = {
   chart: ChartBarIcon,
 } as const
 
-export type EmptyStateIcon = keyof typeof EmptyStateIcons
+type EmptyStateIcon = keyof typeof EmptyStateIcons
 
 export interface EmptyStateProps extends HTMLAttributes<HTMLDivElement> {
   title: string
@@ -97,7 +97,7 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(
 
 EmptyState.displayName = 'EmptyState'
 
-export function EmptyStateSearch({
+function EmptyStateSearch({
   title = 'No results found',
   description = 'Try adjusting your search or filter criteria',
   onClear,
@@ -130,7 +130,7 @@ export function EmptyStateSearch({
   )
 }
 
-export function EmptyStateError({
+function EmptyStateError({
   title = 'Something went wrong',
   description = 'An error occurred while loading data',
   onRetry,

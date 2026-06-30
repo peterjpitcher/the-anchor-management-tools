@@ -872,7 +872,7 @@ export async function sendQuoteViaEmail(formData: FormData) {
 }
 
 // Test email configuration
-export async function testEmailConfiguration() {
+async function testEmailConfiguration() {
   try {
     // Check permissions
     const hasPermission = await checkUserPermission('invoices', 'manage')

@@ -72,7 +72,7 @@ function buildRemainingShiftsText(input: SeparationStartedEmailInput): string | 
   ].join('\n');
 }
 
-export function buildWelcomeEmail(email: string, onboardingUrl: string) {
+function buildWelcomeEmail(email: string, onboardingUrl: string) {
   const subject = 'Welcome to The Anchor -- Complete Your Profile';
   const text =
     `Hi there,\n\n` +
@@ -86,7 +86,7 @@ export function buildWelcomeEmail(email: string, onboardingUrl: string) {
   return { subject, text, cc: [MANAGER_EMAIL] };
 }
 
-export function buildChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
+function buildChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
   const subject = 'Reminder: Please Complete Your Profile';
   const text =
     `Hi there,\n\n` +
@@ -98,7 +98,7 @@ export function buildChaseEmail(email: string, onboardingUrl: string, dayNumber:
   return { subject, text, cc: [MANAGER_EMAIL] };
 }
 
-export function buildOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
+function buildOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
   const subject = `${employeeName} has completed their profile`;
   const text =
     `Hi,\n\n` +
@@ -109,7 +109,7 @@ export function buildOnboardingCompleteEmail(employeeName: string, employeeEmail
   return { subject, text };
 }
 
-export function buildPortalInviteEmail(email: string, onboardingUrl: string) {
+function buildPortalInviteEmail(email: string, onboardingUrl: string) {
   const subject = 'Set Up Your Staff Portal Access -- The Anchor';
   const text =
     `Hi there,\n\n` +

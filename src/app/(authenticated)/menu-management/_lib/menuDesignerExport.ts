@@ -93,7 +93,7 @@ function categoryOrderForMenu(menuCode: string, menus: MenuSummary[] | undefined
   return new Map((menu?.categories ?? []).map((category, index) => [category.code, index]));
 }
 
-export function buildDesignerMenuExportRows(
+function buildDesignerMenuExportRows(
   dishes: DishListItem[],
   options: DesignerMenuExportOptions,
 ): DesignerMenuExportRow[] {

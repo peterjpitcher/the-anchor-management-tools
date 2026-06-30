@@ -127,7 +127,7 @@ export function buildPaymentBreakdowns(
   return breakdowns
 }
 
-export function buildProvenanceNote(data: CashupRanData): string {
+function buildProvenanceNote(data: CashupRanData): string {
   const parts: string[] = []
   if (data.id != null) parts.push(`EPOS cash-up #${data.id}`)
   if (data.ran_by) parts.push(`run by ${data.ran_by}`)
@@ -136,7 +136,7 @@ export function buildProvenanceNote(data: CashupRanData): string {
   return `Auto-filled from Tabology EPOS — ${provenance}. Review and approve.`
 }
 
-export type MapCashupReason = 'missing_or_invalid_date' | 'no_payment_methods'
+type MapCashupReason = 'missing_or_invalid_date' | 'no_payment_methods'
 
 export interface MapCashupResult {
   ok: boolean

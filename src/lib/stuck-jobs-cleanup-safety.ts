@@ -1,6 +1,6 @@
 const DEFAULT_STALE_RUNTIME_MS = 60 * 1000
 
-export type StuckProcessingJob = {
+type StuckProcessingJob = {
   id: string
   started_at: string | null
   created_at: string | null

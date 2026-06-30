@@ -15,13 +15,13 @@ export type Permission = {
   created_at: string;
 };
 
-export type RolePermission = {
+type RolePermission = {
   role_id: string;
   permission_id: string;
   created_at: string;
 };
 
-export type UserRole = {
+type UserRole = {
   user_id: string;
   role_id: string;
   assigned_at: string;
@@ -109,11 +109,11 @@ export type UserPermission = {
   action: ActionType;
 };
 
-export type RoleWithPermissions = Role & {
+type RoleWithPermissions = Role & {
   permissions: Permission[];
 };
 
-export type UserWithRoles = {
+type UserWithRoles = {
   id: string;
   email: string;
   roles: Role[];

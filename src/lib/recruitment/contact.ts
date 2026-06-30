@@ -1,4 +1,4 @@
-export const RECRUITMENT_CONTACT_EMAIL = 'peter@orangejelly.co.uk'
+const RECRUITMENT_CONTACT_EMAIL = 'peter@orangejelly.co.uk'
 
 export const RECRUITMENT_EMAIL_SIGNATURE = [
   'Thanks,',

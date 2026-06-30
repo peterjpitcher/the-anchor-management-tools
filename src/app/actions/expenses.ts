@@ -65,14 +65,14 @@ export interface ExpenseFilters {
 
 export type ExpenseGranularity = 'monthly' | 'quarterly' | 'annually' | 'all'
 
-export interface ExpenseInsightBar {
+interface ExpenseInsightBar {
   label: string
   periodStart: string
   amount: number
   vatAmount: number
 }
 
-export interface ExpenseCompanyBreakdown {
+interface ExpenseCompanyBreakdown {
   companyRef: string
   totalAmount: number
   totalVat: number

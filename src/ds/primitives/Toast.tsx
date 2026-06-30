@@ -23,7 +23,7 @@ const dotToneStyles: Record<ToastTone, string> = {
   neutral: 'bg-text-muted',
 }
 
-export function Toast({
+function Toast({
   tone = 'neutral',
   message,
   visible,

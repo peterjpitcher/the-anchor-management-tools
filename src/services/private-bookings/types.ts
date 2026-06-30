@@ -70,8 +70,8 @@ export function sanitizeBookingSearchTerm(value: string): string {
     .slice(0, 80);
 }
 
-export const STANDARD_HOLD_DAYS = 14;
-export const SHORT_NOTICE_HOLD_DAYS = 2;
+const STANDARD_HOLD_DAYS = 14;
+const SHORT_NOTICE_HOLD_DAYS = 2;
 
 /**
  * Compute the automatic hold expiry date for a private booking.
@@ -173,7 +173,7 @@ export const ALLOWED_VENDOR_TYPES = [
   'transport', 'equipment', 'other'
 ] as const;
 
-export const STORAGE_TYPES = ['ambient', 'chilled', 'frozen', 'dry', 'other'] as const;
+const STORAGE_TYPES = ['ambient', 'chilled', 'frozen', 'dry', 'other'] as const;
 
 // ---------------------------------------------------------------------------
 // Input types

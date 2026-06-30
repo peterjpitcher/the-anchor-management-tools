@@ -652,7 +652,7 @@ export async function sendWinBackCampaign(
   }
 }
 
-export async function deleteTestCustomers() {
+async function deleteTestCustomers() {
   try {
     const context = await requireCustomerManageContext()
     if ('error' in context) {

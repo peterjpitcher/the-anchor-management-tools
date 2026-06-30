@@ -188,7 +188,7 @@ export function TabNav({
   )
 }
 
-export function VerticalTabNav({
+function VerticalTabNav({
   tabs,
   activeKey,
   onChange,

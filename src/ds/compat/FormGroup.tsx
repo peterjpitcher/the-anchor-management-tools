@@ -112,7 +112,7 @@ export const FormGroup = forwardRef<HTMLDivElement, FormGroupProps>(
 
 FormGroup.displayName = 'FormGroup'
 
-export function FormGroupSet({
+function FormGroupSet({
   legend,
   description,
   children,
@@ -132,7 +132,7 @@ export function FormGroupSet({
   )
 }
 
-export function InlineFormGroup({
+function InlineFormGroup({
   children,
   className,
 }: {

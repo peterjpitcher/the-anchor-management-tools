@@ -15,7 +15,7 @@ export function extractSmsSafetyInfo(obj: unknown): { code: string | null; logFa
  * Safely extract an error message string from an unknown-shaped object.
  * Useful for Supabase or webhook error objects that may or may not have a `.message` property.
  */
-export function extractErrorMessage(obj: unknown): string {
+function extractErrorMessage(obj: unknown): string {
   if (obj instanceof Error) return obj.message
   if (obj && typeof obj === 'object') {
     const record = obj as Record<string, unknown>

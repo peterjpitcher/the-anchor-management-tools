@@ -11,7 +11,7 @@ export type MoveTableBooking = {
   party_size: number | null
 }
 
-export type MoveTableCandidateTable = {
+type MoveTableCandidateTable = {
   id: string
   table_number: string | null
   name: string | null

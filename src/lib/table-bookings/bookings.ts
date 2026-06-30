@@ -28,7 +28,7 @@ import {
 const DEPOSIT_PER_PERSON_GBP = LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
 const LONDON_TIMEZONE = 'Europe/London'
 
-export type TableBookingState = 'confirmed' | 'pending_payment' | 'blocked'
+type TableBookingState = 'confirmed' | 'pending_payment' | 'blocked'
 
 export type TableBookingRpcResult = {
   state: TableBookingState
@@ -126,7 +126,7 @@ type CustomerNotificationRow = {
   marketing_email_opt_in?: boolean | null
 }
 
-export const MANAGER_TABLE_BOOKING_EMAIL = 'manager@the-anchor.pub'
+const MANAGER_TABLE_BOOKING_EMAIL = 'manager@the-anchor.pub'
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
   const { code: thrownCode, logFailure: thrownLogFailure } = extractSmsSafetyInfo(error)

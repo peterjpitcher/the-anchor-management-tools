@@ -2,7 +2,7 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export type CronRunPersistResult = 'updated' | 'missing' | 'error'
-export type CronRunRecoverResult = 'acquired' | 'already_running' | 'already_completed' | 'missing'
+type CronRunRecoverResult = 'acquired' | 'already_running' | 'already_completed' | 'missing'
 
 type PersistCronRunResultInput = {
   runId: string

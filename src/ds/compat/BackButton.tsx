@@ -99,11 +99,11 @@ export const BackButton = forwardRef<HTMLButtonElement, BackButtonProps>(
 
 BackButton.displayName = 'BackButton'
 
-export function BackLink(props: BackButtonProps) {
+function BackLink(props: BackButtonProps) {
   return <BackButton {...props} />
 }
 
-export function MobileBackButton({
+function MobileBackButton({
   label = 'Back',
   onBack,
   className,

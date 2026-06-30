@@ -11,7 +11,7 @@ const TOKEN_DEFAULT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000
 const TOKEN_MAX_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 
 export const PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY = 'private_booking_feedback_followup'
-export const PRIVATE_BOOKING_FEEDBACK_MANAGER_EMAIL = 'manager@the-anchor.pub'
+const PRIVATE_BOOKING_FEEDBACK_MANAGER_EMAIL = 'manager@the-anchor.pub'
 
 export type PrivateBookingFeedbackPreview = {
   state: 'ready' | 'submitted' | 'blocked'
@@ -174,7 +174,7 @@ async function loadFeedbackTokenContext(
   }
 }
 
-export async function createPrivateBookingFeedbackToken(
+async function createPrivateBookingFeedbackToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
     customerId: string

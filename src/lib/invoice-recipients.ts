@@ -19,7 +19,7 @@ export function parseRecipientList(raw: string | null | undefined): string[] {
   )
 }
 
-export function splitToAndCc(recipients: string[], preferredTo?: string | null): { to: string | null; cc: string[] } {
+function splitToAndCc(recipients: string[], preferredTo?: string | null): { to: string | null; cc: string[] } {
   const deduped = dedupeRecipients(recipients)
 
   if (deduped.length === 0) {

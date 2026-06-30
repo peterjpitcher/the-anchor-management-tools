@@ -1,16 +1,35 @@
 #!/usr/bin/env tsx
 
-import { readFileSync, writeFileSync } from 'fs';
-import { glob } from 'glob';
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
 import * as path from 'path';
+
+const IGNORED_DIRECTORIES = new Set(['.next', 'build', 'dist', 'node_modules']);
+
+function listTypeScriptFiles(directory: string): string[] {
+  const entries = readdirSync(directory, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      if (!IGNORED_DIRECTORIES.has(entry.name)) {
+        files.push(...listTypeScriptFiles(fullPath));
+      }
+      continue;
+    }
+
+    if (entry.isFile() && /\.(ts|tsx)$/.test(entry.name)) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
 
 async function fixAlertMessageProps() {
   console.log('🔧 Fixing Alert message props...');
-  
-  // Find all TypeScript/TSX files
-  const files = await glob('src/**/*.{ts,tsx}', {
-    ignore: ['**/node_modules/**', '**/build/**', '**/dist/**']
-  });
+  const files = listTypeScriptFiles('src');
   
   let totalFixed = 0;
   
@@ -65,10 +84,7 @@ async function fixAlertMessageProps() {
 // Also fix CollapsibleSection props while we're at it
 async function fixCollapsibleSectionProps() {
   console.log('\n🔧 Fixing CollapsibleSection props...');
-  
-  const files = await glob('src/**/*.{ts,tsx}', {
-    ignore: ['**/node_modules/**', '**/build/**', '**/dist/**']
-  });
+  const files = listTypeScriptFiles('src');
   
   let totalFixed = 0;
   

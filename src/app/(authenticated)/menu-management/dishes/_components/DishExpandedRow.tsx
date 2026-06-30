@@ -26,7 +26,7 @@ export interface RecipeSummary {
   is_active: boolean;
 }
 
-export interface MenuCategorySummary {
+interface MenuCategorySummary {
   id: string;
   code: string;
   name: string;
@@ -40,7 +40,7 @@ export interface MenuSummary {
   categories: MenuCategorySummary[];
 }
 
-export interface DishIngredientDetail {
+interface DishIngredientDetail {
   ingredient_id: string;
   ingredient_name: string;
   quantity: number;
@@ -61,7 +61,7 @@ export interface DishIngredientDetail {
   measure_ml?: number | null;
 }
 
-export interface DishRecipeDetail {
+interface DishRecipeDetail {
   recipe_id: string;
   recipe_name: string;
   quantity: number;
@@ -80,7 +80,7 @@ export interface DishRecipeDetail {
   recipe_is_active: boolean;
 }
 
-export interface DishAssignment {
+interface DishAssignment {
   menu_code: string;
   category_code: string;
   sort_order: number;

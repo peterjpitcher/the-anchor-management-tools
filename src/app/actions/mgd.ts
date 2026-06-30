@@ -51,7 +51,7 @@ type ActionResult<T = undefined> = Promise<
 
 export type MgdGranularity = 'quarterly' | 'annually' | 'all'
 
-export interface MgdInsightBar {
+interface MgdInsightBar {
   label: string
   periodStart: string
   netTake: number
@@ -59,7 +59,7 @@ export interface MgdInsightBar {
   vatOnSupplier: number
 }
 
-export interface MgdInsightTotals {
+interface MgdInsightTotals {
   totalNetTake: number
   totalMgd: number
   totalVatOnSupplier: number

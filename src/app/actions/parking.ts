@@ -548,7 +548,7 @@ export async function updateParkingBookingDetails(bookingId: string, formData: F
   }
 }
 
-export async function getParkingBookingById(bookingId: string) {
+async function getParkingBookingById(bookingId: string) {
   try {
     const hasPermission = await checkUserPermission('parking', 'view')
     if (!hasPermission) {

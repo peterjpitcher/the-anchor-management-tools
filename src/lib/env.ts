@@ -74,7 +74,7 @@ function validateEnv(): Env {
 export const env = validateEnv();
 
 // Webhook configuration with smart defaults
-export const WEBHOOK_BASE_URL = 
+const WEBHOOK_BASE_URL = 
   env.WEBHOOK_BASE_URL || 
   env.NEXT_PUBLIC_SITE_URL ||
   env.NEXT_PUBLIC_APP_URL ||
@@ -85,13 +85,13 @@ export const TWILIO_STATUS_CALLBACK = `${WEBHOOK_BASE_URL}/api/webhooks/twilio`;
 export const TWILIO_STATUS_CALLBACK_METHOD = 'POST' as const;
 
 // Export helper functions for optional features
-export const isSmsEnabled = () => {
+const isSmsEnabled = () => {
   const hasTwilioCredentials = Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN);
   const hasSmsSender = Boolean(env.TWILIO_PHONE_NUMBER || env.TWILIO_MESSAGING_SERVICE_SID);
   return hasTwilioCredentials && hasSmsSender;
 };
 
-export const isServerActionEnabled = () => {
+const isServerActionEnabled = () => {
   return !!env.SUPABASE_SERVICE_ROLE_KEY;
 };
 

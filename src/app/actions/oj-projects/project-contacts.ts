@@ -28,7 +28,7 @@ export async function getProjectContacts(projectId: string) {
   return { contacts: data || [] }
 }
 
-export async function addProjectContact(formData: FormData) {
+async function addProjectContact(formData: FormData) {
   const hasPermission = await checkUserPermission('oj_projects', 'edit')
   if (!hasPermission) return { error: 'You do not have permission to edit project contacts' }
 

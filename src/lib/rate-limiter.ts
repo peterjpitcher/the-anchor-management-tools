@@ -18,7 +18,7 @@ interface RateLimitResult {
  * @deprecated Use '@/lib/rate-limit' directly.
  * Compatibility wrapper that delegates to the shared in-memory limiter.
  */
-export async function checkRateLimit(
+async function checkRateLimit(
   identifier: string,
   config: RateLimitConfig
 ): Promise<RateLimitResult> {
@@ -49,7 +49,7 @@ export async function checkRateLimit(
   }
 }
 
-export async function getClientIp(): Promise<string> {
+async function getClientIp(): Promise<string> {
   const headersList = await headers()
 
   const forwardedFor = headersList.get('x-forwarded-for')
@@ -70,7 +70,7 @@ export async function getClientIp(): Promise<string> {
   return 'unknown'
 }
 
-export const rateLimitConfigs = {
+const rateLimitConfigs = {
   publicApi: {
     windowMs: 60 * 1000,
     maxRequests: 30,

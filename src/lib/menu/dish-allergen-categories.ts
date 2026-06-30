@@ -1,4 +1,4 @@
-export const DISH_ALLERGEN_CATEGORIES = ['food', 'drinks'] as const
+const DISH_ALLERGEN_CATEGORIES = ['food', 'drinks'] as const
 
 export type DishAllergenCategory = typeof DISH_ALLERGEN_CATEGORIES[number]
 

@@ -43,7 +43,7 @@ export interface CalendarEntry {
     onClickHref: string | null
 }
 
-export type TooltipData =
+type TooltipData =
     | {
           kind: 'event'
           name: string
@@ -100,7 +100,7 @@ export type TooltipData =
 
 export type ScheduleCalendarView = 'month' | 'week' | 'list'
 
-export interface ScheduleCalendarProps {
+interface ScheduleCalendarProps {
     entries: CalendarEntry[]
     view: ScheduleCalendarView
     onViewChange: (view: ScheduleCalendarView) => void

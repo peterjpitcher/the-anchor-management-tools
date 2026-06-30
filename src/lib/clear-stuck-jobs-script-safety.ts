@@ -10,7 +10,7 @@ function isTruthyEnv(value: string | undefined): boolean {
   return TRUTHY.has(value.trim().toLowerCase())
 }
 
-export function isClearStuckJobsRunEnabled(): boolean {
+function isClearStuckJobsRunEnabled(): boolean {
   return isTruthyEnv(process.env.RUN_CLEAR_STUCK_JOBS_MUTATION)
 }
 

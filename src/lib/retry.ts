@@ -75,7 +75,7 @@ export async function retry<T>(
 /**
  * Retry decorator for class methods
  */
-export function Retryable(options: RetryOptions = {}) {
+function Retryable(options: RetryOptions = {}) {
   return function (
     target: any,
     propertyKey: string,
@@ -188,7 +188,7 @@ export const RetryConfigs = {
 /**
  * Circuit breaker pattern for protecting failing services
  */
-export class CircuitBreaker {
+class CircuitBreaker {
   private failures = 0
   private lastFailTime?: number
   private state: 'closed' | 'open' | 'half-open' = 'closed'

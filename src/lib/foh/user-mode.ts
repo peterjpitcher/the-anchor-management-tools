@@ -1,6 +1,6 @@
 import type { UserPermission } from '@/types/rbac'
 
-export function isPortalOnlyUser(permissions: UserPermission[]): boolean {
+function isPortalOnlyUser(permissions: UserPermission[]): boolean {
   return Array.isArray(permissions) && permissions.length === 0
 }
 

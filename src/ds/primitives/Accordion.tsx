@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import { Transition } from '@headlessui/react'
 
-export interface AccordionItem {
+interface AccordionItem {
   key: string
   title: ReactNode
   content: ReactNode

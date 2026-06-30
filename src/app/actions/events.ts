@@ -598,7 +598,7 @@ export async function deleteEvent(id: string) {
   }
 }
 
-export async function getEventFAQs(eventId: string): Promise<{ data?: EventFAQ[], error?: string }> {
+async function getEventFAQs(eventId: string): Promise<{ data?: EventFAQ[], error?: string }> {
   try {
     const data = await EventService.getEventFAQs(eventId);
     return { data };

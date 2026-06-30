@@ -3,7 +3,7 @@ export type NotificationPolicy = 'email_first' | 'email_only' | 'sms_only' | 'bo
 export type NotificationUrgency = 'standard' | 'time_critical'
 export type NotificationCategory = 'transactional' | 'marketing'
 
-export type ChannelEligibility = {
+type ChannelEligibility = {
   email: boolean
   whatsapp: boolean
   sms: boolean

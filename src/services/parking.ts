@@ -8,7 +8,7 @@ import type { ParkingBooking } from '@/types/parking'
 
 type GenericClient = SupabaseClient<any, 'public', any>
 
-export type ParkingBookingCustomerInput = {
+type ParkingBookingCustomerInput = {
   firstName: string
   lastName?: string
   email?: string
@@ -16,7 +16,7 @@ export type ParkingBookingCustomerInput = {
   defaultCountryCode?: string
 }
 
-export type ParkingBookingVehicleInput = {
+type ParkingBookingVehicleInput = {
   registration: string
   make?: string
   model?: string
@@ -149,7 +149,7 @@ function sanitizeRegistration(registration: string): string {
   return registration.replace(/\s+/g, '').toUpperCase()
 }
 
-export class ParkingService {
+class ParkingService {
   static async createPendingBooking(
     input: CreateParkingBookingCommandInput,
     options: { client?: GenericClient } = {}

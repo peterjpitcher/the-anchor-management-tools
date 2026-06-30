@@ -7,7 +7,7 @@ import type { AuditLog } from '@/types/database'
 const DEFAULT_PAGE_SIZE = 50
 const MAX_PAGE_SIZE = 200
 
-export type AuditLogFilters = {
+type AuditLogFilters = {
   operationType?: string
   resourceType?: string
   status?: string

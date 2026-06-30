@@ -11,17 +11,17 @@ async function testServerActionImport() {
   let hasFailure = false
 
   try {
-    console.log('1. Attempting to import queueBookingConfirmationSMS...')
-    const { queueBookingConfirmationSMS } = await import('../src/app/actions/table-booking-sms')
+    console.log('1. Attempting to import previewTableBookingGuests...')
+    const { previewTableBookingGuests } = await import('../../src/app/actions/table-booking-messages')
     console.log('   ✅ Import successful')
-    console.log('   Type:', typeof queueBookingConfirmationSMS)
+    console.log('   Type:', typeof previewTableBookingGuests)
 
-    if (typeof queueBookingConfirmationSMS === 'function') {
+    if (typeof previewTableBookingGuests === 'function') {
       console.log('   ✅ It is a function')
       console.log('   ℹ️  This script will not call server actions (read-only safety).')
     } else {
       hasFailure = true
-      console.log('   ❌ Not a function, actual type:', typeof queueBookingConfirmationSMS)
+      console.log('   ❌ Not a function, actual type:', typeof previewTableBookingGuests)
     }
   } catch (importError: any) {
     hasFailure = true
@@ -30,13 +30,13 @@ async function testServerActionImport() {
   }
 
   try {
-    console.log('\n2. Attempting to import sendBookingConfirmationEmail...')
-    const { sendBookingConfirmationEmail } = await import('../src/app/actions/table-booking-email')
+    console.log('\n2. Attempting to import getTotalUnreadCount...')
+    const { getTotalUnreadCount } = await import('../../src/app/actions/messageActions')
     console.log('   ✅ Import successful')
-    console.log('   Type:', typeof sendBookingConfirmationEmail)
-    if (typeof sendBookingConfirmationEmail !== 'function') {
+    console.log('   Type:', typeof getTotalUnreadCount)
+    if (typeof getTotalUnreadCount !== 'function') {
       hasFailure = true
-      console.log('   ❌ Not a function, actual type:', typeof sendBookingConfirmationEmail)
+      console.log('   ❌ Not a function, actual type:', typeof getTotalUnreadCount)
     }
   } catch (importError: any) {
     hasFailure = true
@@ -49,7 +49,7 @@ async function testServerActionImport() {
   
   console.log('\n4. Testing direct Twilio import (read-only)...')
   try {
-    const { sendSMS } = await import('../src/lib/twilio')
+    const { sendSMS } = await import('../../src/lib/twilio')
     console.log('   ✅ Twilio import successful')
     console.log('   Type:', typeof sendSMS)
     if (typeof sendSMS !== 'function') {

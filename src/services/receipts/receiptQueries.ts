@@ -150,7 +150,7 @@ async function buildGroupSuggestion(
 // fetchSummary — dashboard summary data
 // ---------------------------------------------------------------------------
 
-export async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
+async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
   const [{ data: statusCounts }, { data: lastBatch }, { data: costData, error: costError }, { data: breakdownData, error: breakdownError }, { count: failedJobCount, error: failedJobsError }] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),

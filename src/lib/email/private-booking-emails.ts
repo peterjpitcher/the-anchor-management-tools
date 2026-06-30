@@ -448,7 +448,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
  * Send a balance reminder email before the event balance due date.
  * Fire-and-forget — never throws; errors are logged only.
  */
-export async function sendBalanceReminderEmail(booking: {
+async function sendBalanceReminderEmail(booking: {
   id: string;
   customer_id?: string | null;
   contact_email?: string | null;
@@ -516,7 +516,7 @@ export async function sendBalanceReminderEmail(booking: {
  * Send a deposit refund email after the event (full refund, no deductions).
  * Fire-and-forget — never throws; errors are logged only.
  */
-export async function sendDepositRefundEmail(booking: {
+async function sendDepositRefundEmail(booking: {
   id: string;
   customer_id?: string | null;
   contact_email?: string | null;
@@ -578,7 +578,7 @@ export async function sendDepositRefundEmail(booking: {
  * Send a deposit refund email with deductions after the event.
  * Fire-and-forget — never throws; errors are logged only.
  */
-export async function sendDepositRefundWithDeductionsEmail(booking: {
+async function sendDepositRefundWithDeductionsEmail(booking: {
   id: string;
   customer_id?: string | null;
   contact_email?: string | null;

@@ -55,7 +55,7 @@ type CreateStripeTableDepositCheckoutSessionInput = {
   metadata?: Record<string, string>
 }
 
-export type StripeCustomer = {
+type StripeCustomer = {
   id: string
 }
 
@@ -132,7 +132,7 @@ function sanitizeProductName(input: string): string {
   return trimmed.slice(0, 120)
 }
 
-export async function createStripeCheckoutSession(
+async function createStripeCheckoutSession(
   input: CreateStripeCheckoutSessionInput
 ): Promise<StripeCheckoutSession> {
   const secretKey = getStripeSecretKey()
@@ -378,7 +378,7 @@ export async function createStripeOffSessionCharge(input: {
   }
 }
 
-export async function createStripeCustomer(input: {
+async function createStripeCustomer(input: {
   idempotencyKey: string
   name?: string | null
   phone?: string | null

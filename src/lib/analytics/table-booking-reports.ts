@@ -1074,7 +1074,7 @@ export async function loadTableBookingReportsSnapshot(input: {
   }
 }
 
-export function summarizeLookbackCounts(snapshot: TableBookingReportsSnapshot) {
+function summarizeLookbackCounts(snapshot: TableBookingReportsSnapshot) {
   const now = Date.now()
   return {
     generatedMinutesAgo: Math.max(0, Math.floor((now - Date.parse(snapshot.generated_at)) / (60 * 1000))),

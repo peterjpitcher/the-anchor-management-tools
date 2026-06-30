@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type GuestTokenActionType =
+type GuestTokenActionType =
   | 'manage'
   | 'sunday_preorder'
   | 'payment'
@@ -22,7 +22,7 @@ export type CreateGuestTokenInput = {
   waitlistOfferId?: string | null
 }
 
-export function generateGuestToken(): string {
+function generateGuestToken(): string {
   return crypto.randomBytes(32).toString('base64url')
 }
 

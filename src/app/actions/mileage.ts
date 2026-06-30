@@ -66,7 +66,7 @@ export interface MileageDestination {
   milesFromAnchor: number | null
 }
 
-export interface MileageTripLeg {
+interface MileageTripLeg {
   id: string
   legOrder: number
   fromDestinationId: string
@@ -112,14 +112,14 @@ export interface MileageDistance {
 
 export type MileageGranularity = 'monthly' | 'quarterly' | 'annually' | 'all'
 
-export interface MileageInsightBar {
+interface MileageInsightBar {
   label: string
   periodStart: string
   totalMiles: number
   amountDue: number
 }
 
-export interface MileageDestinationBreakdown {
+interface MileageDestinationBreakdown {
   destinationName: string
   totalMiles: number
   amountDue: number

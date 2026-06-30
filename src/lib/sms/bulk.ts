@@ -53,9 +53,9 @@ function normalizeNonNegativeInt(value: number | undefined, fallback: number, ma
   return Math.min(normalized, max)
 }
 
-export { getSmartFirstName, buildSmartFullName } from '@/lib/sms/name-utils'
+export { getSmartFirstName,  } from '@/lib/sms/name-utils'
 
-export function applySmartVariables(
+function applySmartVariables(
   base: string,
   customer: { first_name: string; last_name: string | null },
   eventDetails?: { name: string; date: string; time: string | null },

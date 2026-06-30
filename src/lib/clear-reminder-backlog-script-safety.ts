@@ -10,7 +10,7 @@ function isTruthyEnv(value: string | undefined): boolean {
   return TRUTHY.has(value.trim().toLowerCase())
 }
 
-export function isClearReminderBacklogRunEnabled(): boolean {
+function isClearReminderBacklogRunEnabled(): boolean {
   return isTruthyEnv(process.env.RUN_CLEAR_REMINDER_BACKLOG_MUTATION)
 }
 

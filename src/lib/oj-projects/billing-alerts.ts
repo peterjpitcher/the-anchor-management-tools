@@ -4,7 +4,7 @@ import { escapeHtml, redactPii } from '@/lib/cron/alerting'
 /**
  * Failure tier for billing alert categorisation.
  */
-export type BillingFailureTier =
+type BillingFailureTier =
   | 'hard_failure'      // Invoice creation or DB mutation failed
   | 'soft_failure'      // Invoice created but email send failed
   | 'skipped_vendor'    // Vendor skipped (already sent, no items, etc.)
@@ -14,7 +14,7 @@ export type BillingFailureTier =
 /**
  * Per-vendor result from a billing run.
  */
-export interface VendorBillingResult {
+interface VendorBillingResult {
   vendor_id: string
   vendor_name?: string
   status: 'sent' | 'skipped' | 'failed'

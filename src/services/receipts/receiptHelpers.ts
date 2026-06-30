@@ -137,7 +137,7 @@ export const receiptUploadedObjectSchema = receiptUploadMetadataBaseSchema.exten
 // Pure utility functions
 // ---------------------------------------------------------------------------
 
-export function sanitizeText(input: string): string {
+function sanitizeText(input: string): string {
   return input
     .trim()
     .replace(/\s+/g, ' ')
@@ -149,7 +149,7 @@ export function sanitizeReceiptSearchTerm(input: string): string {
     .slice(0, 80)
 }
 
-export function sanitizeForPath(input: string, fallback = 'receipt'): string {
+function sanitizeForPath(input: string, fallback = 'receipt'): string {
   const cleaned = sanitizeText(input)
     .replace(/[^a-zA-Z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
@@ -157,7 +157,7 @@ export function sanitizeForPath(input: string, fallback = 'receipt'): string {
   return cleaned || fallback
 }
 
-export function sanitizeDescriptionForFilenameSegment(value: string): string {
+function sanitizeDescriptionForFilenameSegment(value: string): string {
   return value
     .replace(/[^A-Za-z0-9\s&\-]/g, '')
     .replace(/\s+/g, ' ')
@@ -247,7 +247,7 @@ export function parseCsv(buffer: Buffer): ParsedTransactionRow[] {
   return rows
 }
 
-export function normaliseDate(input: string): string | null {
+function normaliseDate(input: string): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
 
@@ -268,7 +268,7 @@ export function normaliseDate(input: string): string | null {
   return null
 }
 
-export function parseCurrency(value: string | null | undefined): number | null {
+function parseCurrency(value: string | null | undefined): number | null {
   if (!value) return null
   const cleaned = value.replace(/,/g, '').trim()
   if (!cleaned) return null
@@ -324,7 +324,7 @@ export function roundToCurrency(value: number): number {
   return Number(value.toFixed(2))
 }
 
-export function parseSampleTransaction(value: unknown): GroupSample {
+function parseSampleTransaction(value: unknown): GroupSample {
   if (!value || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
   const id = typeof record.id === 'string' ? record.id : null
@@ -400,7 +400,7 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-export function isParsedTransactionRow(tx: ParsedTransactionRow | ReceiptTransaction): tx is ParsedTransactionRow {
+function isParsedTransactionRow(tx: ParsedTransactionRow | ReceiptTransaction): tx is ParsedTransactionRow {
   return 'amountIn' in tx
 }
 

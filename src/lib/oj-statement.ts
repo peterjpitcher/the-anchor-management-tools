@@ -26,7 +26,7 @@ function formatStatementDate(dateStr: string): string {
   })
 }
 
-export function generateStatementHTML(input: StatementPDFInput): string {
+function generateStatementHTML(input: StatementPDFInput): string {
   const vendorName = escapeHtml(input.vendorName)
   const periodFrom = escapeHtml(formatStatementDate(input.periodFrom))
   const periodTo = escapeHtml(formatStatementDate(input.periodTo))

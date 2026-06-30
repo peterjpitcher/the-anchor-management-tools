@@ -163,7 +163,7 @@ function compareCreatedAt(a: string | null | undefined, b: string | null | undef
   return a.localeCompare(b)
 }
 
-export function compareReceiptRuleMatches(
+function compareReceiptRuleMatches(
   candidateRule: ReceiptRuleMatchable,
   candidate: RuleMatchResult,
   currentRule: ReceiptRuleMatchable,

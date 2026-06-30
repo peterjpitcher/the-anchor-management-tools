@@ -142,7 +142,7 @@ function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: b
   }
 }
 
-export type EventPayPalConfirmationState = 'confirmed' | 'already_confirmed' | 'manual_review'
+type EventPayPalConfirmationState = 'confirmed' | 'already_confirmed' | 'manual_review'
 
 export type EventPayPalOrderResult =
   | {
@@ -319,7 +319,7 @@ export async function getEventPaymentPreviewByRawToken(
   }
 }
 
-export async function getEventPaymentPreviewByBookingId(
+async function getEventPaymentPreviewByBookingId(
   supabase: SupabaseClient<any, 'public', any>,
   input: { bookingId: string; allowGraceExpired?: boolean }
 ): Promise<EventPaymentPreviewResult> {

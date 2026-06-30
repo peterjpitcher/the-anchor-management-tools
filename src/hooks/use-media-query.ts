@@ -40,16 +40,16 @@ export function useMediaQuery(query: string): boolean {
 }
 
 // Preset breakpoints matching Tailwind defaults
-export function useIsMobile() {
+function useIsMobile() {
   return !useMediaQuery('(min-width: 640px)')
 }
 
-export function useIsTablet() {
+function useIsTablet() {
   const isAtLeastTablet = useMediaQuery('(min-width: 640px)')
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   return isAtLeastTablet && !isDesktop
 }
 
-export function useIsDesktop() {
+function useIsDesktop() {
   return useMediaQuery('(min-width: 1024px)')
 }

@@ -58,7 +58,7 @@ export type PerformerSubmissionStatus =
   | 'not_a_fit'
   | 'do_not_contact';
 
-export interface PerformerSubmission {
+interface PerformerSubmission {
   id: string;
   created_at: string;
   updated_at: string;
@@ -134,9 +134,9 @@ export type ReceiptExpenseCategory =
   | 'Sundries/Consumables'
   | 'Drinks Gas';
 
-export type ReceiptRuleDirection = 'in' | 'out' | 'both';
+type ReceiptRuleDirection = 'in' | 'out' | 'both';
 
-export type ReceiptRuleKind =
+type ReceiptRuleKind =
   | 'standard'
   | 'payroll'
   | 'tax'
@@ -145,15 +145,15 @@ export type ReceiptRuleKind =
   | 'bank_fee'
   | 'receipt_not_required';
 
-export type ReceiptVendorStatus = 'unconfirmed' | 'confirmed' | 'merged' | 'inactive';
+type ReceiptVendorStatus = 'unconfirmed' | 'confirmed' | 'merged' | 'inactive';
 
-export type ReceiptSignalSource = 'rule' | 'ai' | 'human' | 'migration' | 'system';
+type ReceiptSignalSource = 'rule' | 'ai' | 'human' | 'migration' | 'system';
 
-export type ReceiptRuleSuggestionStatus = 'pending' | 'approved' | 'declined' | 'expired';
+type ReceiptRuleSuggestionStatus = 'pending' | 'approved' | 'declined' | 'expired';
 
-export type ReceiptDuplicateReviewDecision = 'same' | 'different' | 'ignored';
+type ReceiptDuplicateReviewDecision = 'same' | 'different' | 'ignored';
 
-export type ReceiptInvoiceMatchStatus =
+type ReceiptInvoiceMatchStatus =
   | 'matched'
   | 'payment_recorded'
   | 'already_paid'
@@ -267,7 +267,7 @@ export interface ReceiptTransactionLog {
   performed_at: string;
 }
 
-export interface ReceiptVendor {
+interface ReceiptVendor {
   id: string;
   canonical_name: string;
   vendor_key: string;
@@ -280,7 +280,7 @@ export interface ReceiptVendor {
   updated_at: string;
 }
 
-export interface ReceiptVendorAlias {
+interface ReceiptVendorAlias {
   id: string;
   vendor_id: string;
   alias: string;
@@ -343,7 +343,7 @@ export interface ReceiptRuleConflict {
   resolved_at: string | null;
 }
 
-export interface ReceiptDuplicateReview {
+interface ReceiptDuplicateReview {
   id: string;
   transaction_id: string | null;
   duplicate_transaction_id: string | null;
@@ -357,7 +357,7 @@ export interface ReceiptDuplicateReview {
   created_at: string;
 }
 
-export interface ReceiptInvoiceMatch {
+interface ReceiptInvoiceMatch {
   id: string;
   receipt_transaction_id: string;
   invoice_id: string | null;
@@ -374,7 +374,7 @@ export interface ReceiptInvoiceMatch {
   payload: Record<string, unknown>;
 }
 
-export interface ReceiptAnomaly {
+interface ReceiptAnomaly {
   id: string;
   anomaly_type: string;
   severity: 'info' | 'low' | 'medium' | 'high';
@@ -386,7 +386,7 @@ export interface ReceiptAnomaly {
   payload: Record<string, unknown>;
 }
 
-export interface AIUsageEvent {
+interface AIUsageEvent {
   id: number;
   occurred_at: string;
   context: string | null;
@@ -413,7 +413,7 @@ export interface PLManualActual {
   updated_at: string;
 }
 
-export interface GreeneKingPnlBenchmark {
+interface GreeneKingPnlBenchmark {
   id: string;
   benchmark_key: string;
   pub_code: string;
@@ -429,7 +429,7 @@ export interface GreeneKingPnlBenchmark {
   updated_at: string;
 }
 
-export interface GreeneKingPnlBenchmarkRow {
+interface GreeneKingPnlBenchmarkRow {
   id: string;
   benchmark_id: string;
   section: 'sales' | 'income' | 'expenses' | 'profit' | 'adjustments' | 'rent';
@@ -446,7 +446,7 @@ export interface GreeneKingPnlBenchmarkRow {
   updated_at: string;
 }
 
-export interface PnlSalesImport {
+interface PnlSalesImport {
   id: string;
   site_id: string;
   sale_date: string;
@@ -505,7 +505,7 @@ export interface Customer {
   last_failure_type?: string | null;
 }
 
-export interface Booking {
+interface Booking {
   id: string;
   customer_id: string;
   event_id: string;
@@ -518,7 +518,7 @@ export interface Booking {
   event?: Event;
 }
 
-export interface BookingReminder {
+interface BookingReminder {
   id: string;
   booking_id: string;
   reminder_type: '24_hour' | '7_day' | '1_hour' | '12_hour' | 'custom';
@@ -551,7 +551,7 @@ export interface Employee {
   updated_at: string; // Timestamp
 }
 
-export interface EmployeeInviteToken {
+interface EmployeeInviteToken {
   id: string; // UUID
   employee_id: string; // UUID
   email: string;
@@ -641,7 +641,7 @@ export interface EmployeeEmergencyContact {
   created_at: string; // Timestamp
 }
 
-export type EmployeeRightToWorkDocumentType =
+type EmployeeRightToWorkDocumentType =
   | 'Passport'
   | 'Biometric Residence Permit'
   | 'Share Code'
@@ -665,7 +665,7 @@ export interface EmployeeRightToWork {
   updated_at: string; // Timestamp
 }
 
-export interface EmployeeOnboardingChecklist {
+interface EmployeeOnboardingChecklist {
   employee_id: string; // UUID, Primary Key, Foreign Key to Employee
   wheniwork_invite_sent?: boolean | null;
   wheniwork_invite_date?: string | null; // Date
@@ -685,7 +685,7 @@ export interface EmployeeOnboardingChecklist {
   updated_at: string; // Timestamp
 }
 
-export interface Message {
+interface Message {
   id: string;
   customer_id: string;
   direction: 'inbound' | 'outbound';
@@ -711,7 +711,7 @@ export interface Message {
   cost_usd?: number;
 }
 
-export interface MessageDeliveryStatus {
+interface MessageDeliveryStatus {
   id: string;
   message_id: string;
   status: string;
@@ -721,7 +721,7 @@ export interface MessageDeliveryStatus {
   raw_webhook_data: Record<string, unknown>;
 }
 
-export interface WebhookLog {
+interface WebhookLog {
   id: string;
   webhook_type: string;
   status: string;
@@ -756,7 +756,7 @@ export interface AuditLog {
   additional_info?: Record<string, unknown> | null;
 }
 
-export interface MessageTemplate {
+interface MessageTemplate {
   id: string;
   created_at: string;
   updated_at: string;
@@ -774,7 +774,7 @@ export interface MessageTemplate {
   custom_timing_hours?: number | null;
 }
 
-export interface EventMessageTemplate {
+interface EventMessageTemplate {
   id: string;
   event_id: string;
   template_type: string;
@@ -784,7 +784,7 @@ export interface EventMessageTemplate {
   updated_at: string;
 }
 
-export interface Role {
+interface Role {
   id: string;
   name: string;
   description: string | null;
@@ -793,14 +793,14 @@ export interface Role {
   updated_at: string;
 }
 
-export interface UserRole {
+interface UserRole {
   id: string;
   user_id: string;
   role_id: string;
   created_at: string;
 }
 
-export interface CustomerCategoryStats {
+interface CustomerCategoryStats {
   customer_id: string;
   category_id: string;
   booking_badge: number;
@@ -810,7 +810,7 @@ export interface CustomerCategoryStats {
   updated_at: string;
 }
 
-export interface EventCategory {
+interface EventCategory {
   id: string;
   name: string;
   color: string;
@@ -819,7 +819,7 @@ export interface EventCategory {
   updated_at: string;
 }
 
-export interface Profile {
+interface Profile {
   id: string;
   first_name?: string | null;
   last_name?: string | null;
@@ -836,16 +836,16 @@ export type Database = Omit<GeneratedDatabase, 'public'> & {
   };
 };
 
-export type HiringJobStatus = 'draft' | 'open' | 'closed' | 'archived' | 'expired';
-export type HiringApplicationStage = 'new' | 'screening' | 'screened' | 'in_conversation' | 'interview_scheduled' | 'interviewed' | 'offer' | 'hired' | 'rejected' | 'withdrawn';
-export type HiringCandidateSource = 'website' | 'indeed' | 'linkedin' | 'referral' | 'walk_in' | 'agency' | 'other';
-export type HiringApplicationOutcomeStatus = 'hired' | 'rejected' | 'withdrawn' | 'offer_declined' | 'no_show';
-export type HiringApplicationOutcomeCategory = 'experience' | 'skills' | 'availability' | 'right_to_work' | 'culture_fit' | 'communication' | 'compensation' | 'role_closed' | 'other';
-export type HiringMessageDirection = 'outbound' | 'inbound';
-export type HiringMessageStatus = 'draft' | 'sent' | 'failed' | 'cancelled';
-export type HiringInterviewAttendeeRole = 'candidate' | 'interviewer' | 'observer';
+type HiringJobStatus = 'draft' | 'open' | 'closed' | 'archived' | 'expired';
+type HiringApplicationStage = 'new' | 'screening' | 'screened' | 'in_conversation' | 'interview_scheduled' | 'interviewed' | 'offer' | 'hired' | 'rejected' | 'withdrawn';
+type HiringCandidateSource = 'website' | 'indeed' | 'linkedin' | 'referral' | 'walk_in' | 'agency' | 'other';
+type HiringApplicationOutcomeStatus = 'hired' | 'rejected' | 'withdrawn' | 'offer_declined' | 'no_show';
+type HiringApplicationOutcomeCategory = 'experience' | 'skills' | 'availability' | 'right_to_work' | 'culture_fit' | 'communication' | 'compensation' | 'role_closed' | 'other';
+type HiringMessageDirection = 'outbound' | 'inbound';
+type HiringMessageStatus = 'draft' | 'sent' | 'failed' | 'cancelled';
+type HiringInterviewAttendeeRole = 'candidate' | 'interviewer' | 'observer';
 
-export interface HiringJobTemplate {
+interface HiringJobTemplate {
   id: string;
   title: string;
   description: string | null;
@@ -862,7 +862,7 @@ export interface HiringJobTemplate {
   created_by?: string | null;
 }
 
-export interface HiringJob {
+interface HiringJob {
   id: string;
   slug: string | null;
   title: string;
@@ -886,7 +886,7 @@ export interface HiringJob {
   created_by?: string | null;
 }
 
-export interface HiringCandidate {
+interface HiringCandidate {
   id: string;
   first_name: string;
   last_name: string;
@@ -908,7 +908,7 @@ export interface HiringCandidate {
   updated_at: string;
 }
 
-export interface HiringApplication {
+interface HiringApplication {
   id: string;
   job_id: string;
   candidate_id: string;
@@ -938,7 +938,7 @@ export interface HiringApplication {
   updated_at: string;
 }
 
-export interface HiringNote {
+interface HiringNote {
   id: string;
   entity_type: 'candidate' | 'application';
   entity_id: string;
@@ -949,7 +949,7 @@ export interface HiringNote {
   updated_at: string;
 }
 
-export interface HiringCandidateDocument {
+interface HiringCandidateDocument {
   id: string;
   candidate_id: string;
   storage_path: string;
@@ -962,7 +962,7 @@ export interface HiringCandidateDocument {
   updated_at: string;
 }
 
-export interface HiringCandidateProfileVersion {
+interface HiringCandidateProfileVersion {
   id: string;
   candidate_id: string;
   document_id?: string | null;
@@ -975,7 +975,7 @@ export interface HiringCandidateProfileVersion {
   updated_at: string;
 }
 
-export interface HiringCandidateEvent {
+interface HiringCandidateEvent {
   id: string;
   candidate_id: string;
   application_id?: string | null;
@@ -988,7 +988,7 @@ export interface HiringCandidateEvent {
   updated_at: string;
 }
 
-export interface HiringApplicationMessage {
+interface HiringApplicationMessage {
   id: string;
   application_id: string;
   candidate_id: string;
@@ -1008,7 +1008,7 @@ export interface HiringApplicationMessage {
   updated_at: string;
 }
 
-export interface HiringOutreachMessage {
+interface HiringOutreachMessage {
   id: string;
   job_id: string;
   candidate_id: string;
@@ -1028,7 +1028,7 @@ export interface HiringOutreachMessage {
   updated_at: string;
 }
 
-export interface HiringApplicationOverride {
+interface HiringApplicationOverride {
   id: string;
   application_id: string;
   override_type: string;
@@ -1043,7 +1043,7 @@ export interface HiringApplicationOverride {
   updated_at: string;
 }
 
-export interface HiringScreeningRun {
+interface HiringScreeningRun {
   id: string;
   application_id: string;
   candidate_id: string;
@@ -1077,7 +1077,7 @@ export interface HiringScreeningRun {
   updated_at: string;
 }
 
-export interface HiringInterview {
+interface HiringInterview {
   id: string;
   application_id: string;
   scheduled_at: string;
@@ -1091,7 +1091,7 @@ export interface HiringInterview {
   updated_at: string;
 }
 
-export interface HiringInterviewAttendee {
+interface HiringInterviewAttendee {
   id: string;
   interview_id: string;
   role: HiringInterviewAttendeeRole;

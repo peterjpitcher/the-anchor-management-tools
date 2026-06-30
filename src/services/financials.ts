@@ -35,7 +35,7 @@ type CashupSalesSummary = Record<PnlTimeframeKey, {
   latestSessionDate: string | null;
 }>;
 
-export type PnlDataQuality = {
+type PnlDataQuality = {
   warnings: string[];
   receiptAggregationFailed: boolean;
   cashupAggregationFailed: boolean;

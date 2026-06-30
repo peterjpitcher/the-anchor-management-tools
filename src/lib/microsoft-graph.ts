@@ -395,7 +395,7 @@ export async function testEmailConnection(): Promise<{
 }
 
 // Format configuration help
-export function getGraphConfigurationHelp(): string {
+function getGraphConfigurationHelp(): string {
   return `
 Microsoft Graph Email Configuration
 

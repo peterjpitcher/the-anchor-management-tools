@@ -7,13 +7,13 @@
  */
 
 /** Read a CSS custom property value from the document root */
-export function getToken(name: string): string {
+function getToken(name: string): string {
   if (typeof document === 'undefined') return ''
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
 /** Pre-defined token accessors for common use cases */
-export const colors = {
+const colors = {
   brand: {
     50: 'var(--color-brand-50)',
     100: 'var(--color-brand-100)',
@@ -58,7 +58,7 @@ export const colors = {
   infoFg: 'var(--color-info-fg)',
 } as const
 
-export const spacing = {
+const spacing = {
   sidebarExpanded: 'var(--spacing-sidebar-expanded)',
   sidebarCollapsed: 'var(--spacing-sidebar-collapsed)',
   topbar: 'var(--spacing-topbar)',
@@ -71,7 +71,7 @@ export const spacing = {
   btnHLg: 'var(--spacing-btn-h-lg)',
 } as const
 
-export const shadows = {
+const shadows = {
   xs: 'var(--shadow-xs)',
   sm: 'var(--shadow-sm)',
   default: 'var(--shadow-default)',
@@ -79,7 +79,7 @@ export const shadows = {
   ring: 'var(--shadow-ring)',
 } as const
 
-export const radii = {
+const radii = {
   sm: 'var(--radius-sm)',
   default: 'var(--radius-default)',
   md: 'var(--radius-md)',
@@ -88,6 +88,8 @@ export const radii = {
   pill: 'var(--radius-pill)',
 } as const
 
-export const easing = {
+const easing = {
   default: 'var(--ease-default)',
 } as const
+
+export {};

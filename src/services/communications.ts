@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
-export type CustomerSummary = {
+type CustomerSummary = {
   id: string
   first_name: string | null
   last_name: string | null
