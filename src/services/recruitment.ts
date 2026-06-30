@@ -480,6 +480,94 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
   }
 }
 
+export async function addRecruitmentCandidateNote(
+  input: {
+    candidateId: string
+    applicationId?: string | null
+    content: string
+    kind?: string
+    userId?: string | null
+    userEmail?: string | null
+  },
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data, error } = await supabase
+    .from('recruitment_candidate_notes')
+    .insert({
+      candidate_id: input.candidateId,
+      application_id: input.applicationId ?? null,
+      content: input.content,
+      kind: input.kind ?? 'note',
+      created_by: input.userId ?? null,
+      created_by_email: input.userEmail ?? null,
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function listRecruitmentCandidateNotes(
+  candidateId: string,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data, error } = await supabase
+    .from('recruitment_candidate_notes')
+    .select('*')
+    .eq('candidate_id', candidateId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) throw error
+  return data ?? []
+}
+
+// Per-candidate audit trail: the candidate's notes plus the field-level changes
+// recorded in audit_logs for the candidate and its applications/appointments/scorecards.
+export async function getRecruitmentCandidateTrail(
+  candidateId: string,
+  supabase: GenericClient = createAdminClient()
+) {
+  const [apps, appts, cards, notes] = await Promise.all([
+    supabase.from('recruitment_applications').select('id').eq('candidate_id', candidateId),
+    supabase.from('recruitment_candidate_appointments').select('id').eq('candidate_id', candidateId),
+    supabase.from('recruitment_interview_scorecards').select('id').eq('candidate_id', candidateId),
+    listRecruitmentCandidateNotes(candidateId, supabase),
+  ])
+
+  const applicationIds = (apps.data ?? []).map((row: any) => row.id)
+  const appointmentIds = (appts.data ?? []).map((row: any) => row.id)
+  const scorecardIds = (cards.data ?? []).map((row: any) => row.id)
+
+  const orParts = [`and(resource_type.eq.recruitment_candidate,resource_id.eq.${candidateId})`]
+  if (applicationIds.length > 0) {
+    orParts.push(`and(resource_type.eq.recruitment_application,resource_id.in.(${applicationIds.join(',')}))`)
+  }
+  if (appointmentIds.length > 0) {
+    orParts.push(`and(resource_type.eq.recruitment_appointment,resource_id.in.(${appointmentIds.join(',')}))`)
+  }
+  if (scorecardIds.length > 0) {
+    orParts.push(`and(resource_type.eq.recruitment_interview_scorecard,resource_id.in.(${scorecardIds.join(',')}))`)
+  }
+
+  const auditResult = await supabase
+    .from('audit_logs')
+    .select('id, created_at, user_email, operation_type, resource_type, new_values')
+    .or(orParts.join(','))
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  const systemChanges = (auditResult.data ?? []).map((row: any) => ({
+    id: row.id,
+    at: row.created_at,
+    actor: row.user_email ?? null,
+    operation_type: row.operation_type,
+    resource_type: row.resource_type,
+    changed_keys: row.new_values ? Object.keys(row.new_values) : [],
+  }))
+
+  return { notes, systemChanges }
+}
+
 export async function getRecruitmentDashboard(
   supabase: GenericClient = createAdminClient()
 ): Promise<RecruitmentDashboard> {

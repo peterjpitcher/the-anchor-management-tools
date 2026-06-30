@@ -53,6 +53,17 @@ type RecruitmentAppointmentStatus = typeof recruitmentAppointmentStatuses[number
 export type RecruitmentTemplateType = typeof recruitmentTemplateTypes[number]
 type RecruitmentScorecardRecommendation = typeof recruitmentScorecardRecommendations[number]
 
+export type RecruitmentCandidateNote = {
+  id: string
+  candidate_id: string
+  application_id: string | null
+  content: string
+  kind: string
+  created_by: string | null
+  created_by_email: string | null
+  created_at: string
+}
+
 export const RecruitmentJobPostingInputSchema = z.object({
   title: z.string().trim().min(1).max(160),
   slug: z.string().trim().min(1).max(180).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
