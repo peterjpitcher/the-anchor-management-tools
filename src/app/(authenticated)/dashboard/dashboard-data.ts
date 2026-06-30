@@ -316,24 +316,6 @@ function hasModuleAccess(permissions: Map<string, Set<string>>, module: string) 
   return false
 }
 
-function isMissingColumnError(error: unknown, columnName: string): boolean {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-
-  const pgError = error as { code?: string | null; message?: string | null }
-  const message = pgError.message ?? ''
-  const mentionsColumn = new RegExp(`\\b${columnName}\\b`, 'i').test(message)
-
-  if (!mentionsColumn) {
-    return false
-  }
-
-  return pgError.code === '42703' ||
-    pgError.code === 'PGRST204' ||
-    /schema cache|column/i.test(message)
-}
-
 function toLocalIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -1388,42 +1370,16 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           const sumAmounts = (rows: Array<{ total_amount?: number | null }> | null) =>
             (rows ?? []).reduce((acc, r) => acc + Number(r.total_amount ?? 0), 0)
 
-          // Helper: run a query and fall back to the same query without the deleted_at filter
-          // when the column doesn't exist yet.
-          // Using PromiseLike so Supabase's PostgrestFilterBuilder (which is thenable but not
-          // a native Promise) is accepted without wrapping.
-          const withDeletedAtFallback = async <T>(
-            primary: PromiseLike<{ data: T | null; error: unknown; count?: number | null }>,
-            fallback: () => PromiseLike<{ data: T | null; error: unknown; count?: number | null }>
-          ) => {
-            const res = await primary
-            if (res.error && isMissingColumnError(res.error, 'deleted_at')) {
-              return fallback()
-            }
-            return res
-          }
-
           // MED-010: Removed .limit(1000) caps that silently truncated sums.
           // These queries only select total_amount for aggregation so row size
           // is minimal. Ideally these should become a single RPC aggregate, but
           // for now fetching all rows without a cap ensures correct sums.
+          // Note: quotes has no soft-delete column, so no deleted_at filter.
           const [draftRes, pendingRes, expiredRes, acceptedRes] = await Promise.all([
-            withDeletedAtFallback(
-              supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft').is('deleted_at', null),
-              () => supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft')
-            ),
-            withDeletedAtFallback(
-              supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`).is('deleted_at', null),
-              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`)
-            ),
-            withDeletedAtFallback(
-              supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso).is('deleted_at', null),
-              () => supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso)
-            ),
-            withDeletedAtFallback(
-              supabase.from('quotes').select('total_amount').eq('status', 'accepted').is('deleted_at', null),
-              () => supabase.from('quotes').select('total_amount').eq('status', 'accepted')
-            ),
+            supabase.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'draft'),
+            supabase.from('quotes').select('total_amount').eq('status', 'sent').or(`valid_until.is.null,valid_until.gte.${todayIso}`),
+            supabase.from('quotes').select('total_amount').eq('status', 'sent').lt('valid_until', todayIso),
+            supabase.from('quotes').select('total_amount').eq('status', 'accepted'),
           ])
 
           if (draftRes.error) throw draftRes.error
