@@ -17,6 +17,20 @@ export type PayrollPeriodRecord = {
 
 export async function getOrCreatePayrollPeriodRecord(year: number, month: number): Promise<PayrollPeriodRecord> {
   const supabase = createAdminClient();
+
+  // Fast path: the period almost always already exists (and callers fan this out for
+  // several months on every rota page render + cron). Select first so an existing
+  // period does not attempt a guaranteed-failing INSERT, which logged a unique-constraint
+  // violation on every call.
+  const { data: existing } = await supabase
+    .from('payroll_periods')
+    .select('id, year, month, period_start, period_end')
+    .eq('year', year)
+    .eq('month', month)
+    .maybeSingle();
+
+  if (existing) return existing as PayrollPeriodRecord;
+
   const { period_start, period_end } = getDefaultPayrollPeriodDates(year, month);
 
   const { data: created, error: insertError } = await supabase
@@ -27,16 +41,17 @@ export async function getOrCreatePayrollPeriodRecord(year: number, month: number
 
   if (!insertError) return created as PayrollPeriodRecord;
 
+  // Lost a genuine first-creation race — the row now exists, so re-select it.
   if (insertError.code === '23505') {
-    const { data: existing, error: selectError } = await supabase
+    const { data: raced, error: selectError } = await supabase
       .from('payroll_periods')
       .select('id, year, month, period_start, period_end')
       .eq('year', year)
       .eq('month', month)
       .single();
 
-    if (selectError || !existing) throw new Error(selectError?.message ?? 'Failed to fetch existing payroll period');
-    return existing as PayrollPeriodRecord;
+    if (selectError || !raced) throw new Error(selectError?.message ?? 'Failed to fetch existing payroll period');
+    return raced as PayrollPeriodRecord;
   }
 
   throw new Error(insertError.message);
