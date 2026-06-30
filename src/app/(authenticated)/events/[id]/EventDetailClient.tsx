@@ -981,6 +981,18 @@ function AttendeesTab({
           title="Attendees"
           action={
             <div className="flex items-center gap-2">
+              {canManage && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Icon name="check" size={14} />}
+                  onClick={() => {
+                    window.location.href = `/events/${event.id}/check-in`
+                  }}
+                >
+                  Check-In
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 size="sm"
