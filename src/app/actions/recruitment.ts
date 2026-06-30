@@ -10,6 +10,7 @@ import { inviteEmployee } from '@/app/actions/employeeInvite'
 import {
   addRecruitmentCandidateNote,
   getRecruitmentCandidateTrail,
+  decideRecruitmentApplication,
   buildRecruitmentPrintableKit,
   bulkUpdateRecruitmentApplications,
   cancelRecruitmentAppointmentByStaff,
@@ -52,6 +53,7 @@ import {
 } from '@/lib/recruitment/calendar'
 import {
   draftRecruitmentEmailForApplication,
+  previewRecruitmentDecisionEmail,
   retryRecruitmentCommunication,
   sendRecruitmentApplicationReceivedEmail,
   sendRecruitmentManagerAlert,
@@ -347,6 +349,85 @@ export async function updateRecruitmentPostingAction(_prevState: unknown, formDa
       error,
     })
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update posting.' }
+  }
+}
+
+const RECRUITMENT_DECISION_TEMPLATE: Partial<Record<string, RecruitmentTemplateType>> = {
+  reject: 'rejection',
+  offer: 'offer',
+  decline_duplicate: 'already_considered',
+}
+
+const RECRUITMENT_DECISION_PERMISSION: Record<string, ActionType> = {
+  reject: 'edit',
+  withdraw: 'edit',
+  hold: 'edit',
+  offer: 'manage',
+  decline_duplicate: 'manage',
+}
+
+export async function previewRecruitmentDecisionEmailAction(
+  applicationId: string,
+  type: RecruitmentTemplateType,
+): Promise<ActionResult<{ subject: string; body: string }>> {
+  try {
+    await requireRecruitmentPermission('view')
+    if (!applicationId) throw new Error('Application is required.')
+    const preview = await previewRecruitmentDecisionEmail(applicationId, type)
+    return { success: true, data: preview }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to preview email.' }
+  }
+}
+
+export async function decideRecruitmentApplicationAction(_prevState: unknown, formData: FormData): Promise<ActionResult> {
+  const decision = (formString(formData, 'decision') ?? '') as 'reject' | 'offer' | 'decline_duplicate' | 'withdraw' | 'hold'
+  try {
+    if (!(decision in RECRUITMENT_DECISION_PERMISSION)) throw new Error('Unknown decision.')
+    const user = await requireRecruitmentPermission(RECRUITMENT_DECISION_PERMISSION[decision])
+    const applicationId = formString(formData, 'application_id')
+    if (!applicationId) throw new Error('Application is required.')
+    const reason = formString(formData, 'reason')
+    const sendEmail = formBool(formData, 'send_email')
+
+    await decideRecruitmentApplication({ applicationId, decision, reason, user: { id: user.id, email: user.email ?? null } })
+
+    let emailError: string | null = null
+    const templateType = RECRUITMENT_DECISION_TEMPLATE[decision]
+    if (sendEmail && templateType) {
+      try {
+        await sendRecruitmentTemplateEmail(applicationId, templateType, {
+          currentUserId: user.id,
+          subjectOverride: formString(formData, 'email_subject'),
+          bodyOverride: formString(formData, 'email_body'),
+        })
+      } catch (error) {
+        emailError = error instanceof Error ? error.message : 'Failed to send email.'
+      }
+    }
+
+    await auditRecruitmentMutation({
+      user,
+      operation: 'decide',
+      resource: 'recruitment_application',
+      resourceId: applicationId,
+      status: 'success',
+      newValues: { decision, email_sent: Boolean(sendEmail && templateType && !emailError) },
+    })
+    revalidatePath('/recruitment')
+    if (emailError) {
+      return { success: true, message: `Decision saved, but the email did not send: ${emailError}` }
+    }
+    return { success: true, message: 'Decision recorded.' }
+  } catch (error) {
+    await auditRecruitmentMutation({
+      operation: 'decide',
+      resource: 'recruitment_application',
+      resourceId: formString(formData, 'application_id'),
+      status: 'failure',
+      error,
+    })
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to record decision.' }
   }
 }
 

@@ -664,6 +664,39 @@ export async function sendRecruitmentApplicationReceivedEmail(
   return { success: true as const, skipped: false as const, communicationId: communication.id, messageId: result.messageId ?? null }
 }
 
+// Render a decision email from its active template + merge fields WITHOUT sending,
+// so a decision dialog can show a proposal for the user to approve/edit.
+export async function previewRecruitmentDecisionEmail(
+  applicationId: string,
+  type: RecruitmentTemplateType,
+  options: { offerTerms?: string | null } = {},
+  supabase: GenericClient = createAdminClient()
+): Promise<{ subject: string; body: string }> {
+  const application = await loadRecruitmentApplicationForComms(applicationId, supabase)
+  const mergeData = buildMergeData({
+    application,
+    appointment: null,
+    bookingLink: null,
+    offerTerms: options.offerTerms ?? null,
+  })
+
+  const { data: template, error: templateError } = await supabase
+    .from('recruitment_email_templates')
+    .select('*')
+    .eq('type', type)
+    .eq('is_active', true)
+    .maybeSingle()
+  if (templateError) throw templateError
+  if (!template) {
+    throw new Error(`No active ${type} recruitment email template found.`)
+  }
+
+  const subject = mergeTemplate(template.subject, mergeData)
+  const mergedBody = mergeTemplate(decodeEscapedNewlines(template.body), mergeData)
+  const body = normalizeBodyText(finalizeRecruitmentEmailBody(mergedBody))
+  return { subject, body }
+}
+
 export async function sendRecruitmentTemplateEmail(
   applicationId: string,
   type: RecruitmentTemplateType,
