@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback, useTransition } from 'react'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import type { Customer } from '@/types/database'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
@@ -95,7 +95,6 @@ export default function CustomersClient({
 }: CustomersClientProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
 
   const [customers, setCustomers] = useState<Customer[]>(initialData.customers)
   const [totalCount, setTotalCount] = useState(initialData.totalCount)
@@ -129,12 +128,11 @@ export default function CustomersClient({
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
   const [isFetching, setIsFetching] = useState(false)
-  const [, startTransition] = useTransition()
 
   // URL sync
   const pushParams = useCallback(
     (updates: { page?: number; search?: string; deactivated?: boolean; size?: number }) => {
-      const params = new URLSearchParams(searchParams.toString())
+      const params = new URLSearchParams(window.location.search)
       if (updates.page !== undefined) {
         if (updates.page <= 1) params.delete('page')
         else params.set('page', String(updates.page))
@@ -151,11 +149,11 @@ export default function CustomersClient({
         if (updates.size === 50) params.delete('size')
         else params.set('size', String(updates.size))
       }
-      startTransition(() => {
-        router.replace(`${pathname}?${params.toString()}`, { scroll: false })
-      })
+      const query = params.toString()
+      const nextUrl = query ? `${pathname}?${query}` : pathname
+      window.history.replaceState(null, '', nextUrl)
     },
-    [pathname, router, searchParams]
+    [pathname]
   )
 
   // Data fetching
