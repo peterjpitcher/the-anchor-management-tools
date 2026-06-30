@@ -1096,9 +1096,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
         />
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {(dashboard?.actionItems ?? []).map((item: any) => (
-            <Card key={item.id}>
-              <CardBody className="flex items-center justify-between gap-3">
+          {(dashboard?.actionItems ?? []).map((item: any) => {
+            const inner = (
+              <>
                 <div>
                   <p className="text-xs font-medium text-text-muted">{item.label}</p>
                   <p className="mt-1 text-2xl font-semibold text-text-strong">{item.count}</p>
@@ -1111,9 +1111,27 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   {item.id === 'appointments' && <ClockIcon className="h-5 w-5" />}
                   {item.id !== 'new' && item.id !== 'fast_track' && item.id !== 'manual_review' && item.id !== 'awaiting_booking' && item.id !== 'appointments' && <UserPlusIcon className="h-5 w-5" />}
                 </div>
-              </CardBody>
-            </Card>
-          ))}
+              </>
+            )
+            return (
+              <Card key={item.id}>
+                <CardBody>
+                  {item.id === 'appointments' ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('schedule')}
+                      aria-label="View upcoming interviews and trials"
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">{inner}</div>
+                  )}
+                </CardBody>
+              </Card>
+            )
+          })}
         </section>
 
         <SectionNav
@@ -1185,23 +1203,35 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {column.applications.length === 0 && (
                         <p className="rounded-md border border-dashed border-border bg-surface-2 p-3 text-xs text-text-muted">No applications</p>
                       )}
-                      {column.applications.map((application: any) => (
-                        <button
-                          type="button"
-                          key={application.id}
-                          onClick={() => openApplicationDetail(application)}
-                          className="w-full rounded-md border border-border bg-surface-2 p-2 text-left hover:border-primary"
-                        >
-                          <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
-                          <p className="truncate text-xs text-text-muted">{roleTitle(application)}</p>
-                          <div className="mt-1 flex items-center justify-between gap-2">
-                            <Badge tone={scoreTone(application.ai_score)}>
-                              {scoreText(application.ai_score)}
-                            </Badge>
-                            <span className="truncate text-xs text-text-muted">{formatDateTime(application.created_at)}</span>
-                          </div>
-                        </button>
-                      ))}
+                      {column.applications.map((application: any) => {
+                        const upcomingForApp = appointments
+                          .filter((ap: any) => ap.application_id === application.id && ap.status === 'scheduled' && toTime(ap.scheduled_start) > Date.now())
+                          .sort((a: any, b: any) => toTime(a.scheduled_start) - toTime(b.scheduled_start))
+                        const nextAppt = upcomingForApp[0]
+                        return (
+                          <button
+                            type="button"
+                            key={application.id}
+                            onClick={() => openApplicationDetail(application)}
+                            className="w-full rounded-md border border-border bg-surface-2 p-2 text-left hover:border-primary"
+                          >
+                            <p className="truncate text-sm font-medium text-text-strong">{candidateName(application.candidate)}</p>
+                            <p className="truncate text-xs text-text-muted">{roleTitle(application)}</p>
+                            <div className="mt-1 flex items-center justify-between gap-2">
+                              <Badge tone={scoreTone(application.ai_score)}>
+                                {scoreText(application.ai_score)}
+                              </Badge>
+                              <span className="truncate text-xs text-text-muted">{formatDateTime(application.created_at)}</span>
+                            </div>
+                            {nextAppt && (
+                              <p className="mt-1 truncate text-xs text-primary">
+                                <ClockIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                                {nextAppt.type === 'trial_shift' ? 'Trial' : 'Interview'} {formatSlotDateTime(nextAppt.scheduled_start)}
+                              </p>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 ))}
@@ -1519,6 +1549,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           const interviewerName = apt.supervisor
                             ? [apt.supervisor.first_name, apt.supervisor.last_name].filter(Boolean).join(' ')
                             : ''
+                          const rescheduleSlots = slots.filter((slot: any) => (
+                            !slot.archived_at && slot.status === 'open' && slot.type === apt.type
+                          ))
                           return (
                             <div key={apt.id} className="space-y-1 rounded border border-border bg-surface-2 p-3">
                               <div className="flex items-center justify-between gap-2">
@@ -1539,6 +1572,76 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                   {sc.comments ? ` · ${sc.comments}` : ''}
                                 </p>
                               ))}
+                              {permissions.canEdit && !apt.archived_at && (
+                                <details className="mt-1">
+                                  <summary className="cursor-pointer text-xs font-medium text-primary">Manage</summary>
+                                  <div className="mt-2 space-y-3 border-t border-border pt-3">
+                                    <form action={outcomeFormAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                      <input type="hidden" name="appointment_id" value={apt.id} />
+                                      <Field label="Outcome">
+                                        <Select name="status" defaultValue={apt.status}>
+                                          <option value="scheduled">Scheduled</option>
+                                          <option value="completed">Completed</option>
+                                          <option value="no_show">No-show</option>
+                                          <option value="cancelled">Cancelled</option>
+                                        </Select>
+                                      </Field>
+                                      <Field label="Rating">
+                                        <Select name="outcome_rating" defaultValue={apt.outcome_rating ?? ''}>
+                                          <option value="">Rating</option>
+                                          <option value="1">1</option>
+                                          <option value="2">2</option>
+                                          <option value="3">3</option>
+                                          <option value="4">4</option>
+                                          <option value="5">5</option>
+                                        </Select>
+                                      </Field>
+                                      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                                        <input type="checkbox" name="meal_provided" defaultChecked={apt.meal_provided === true} />
+                                        Meal provided
+                                      </label>
+                                      <div className="sm:col-span-2">
+                                        <Field label="Notes">
+                                          <Textarea name="outcome" defaultValue={apt.outcome ?? ''} rows={2} />
+                                        </Field>
+                                      </div>
+                                      <div className="sm:col-span-2">
+                                        <SubmitButton variant="secondary">Save outcome</SubmitButton>
+                                      </div>
+                                    </form>
+                                    <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                                      {rescheduleSlots.length > 0 && (
+                                        <ActionFeedbackForm
+                                          action={rescheduleAppointmentFormAction}
+                                          className="flex flex-wrap gap-2"
+                                          successMessage="Appointment rescheduled."
+                                          onSuccess={() => router.refresh()}
+                                        >
+                                          <input type="hidden" name="appointment_id" value={apt.id} />
+                                          <Select name="slot_id" className="w-48" aria-label="Reschedule slot">
+                                            {rescheduleSlots.map((slot: any) => (
+                                              <option key={slot.id} value={slot.id}>{formatSlotDateTime(slot.starts_at)}</option>
+                                            ))}
+                                          </Select>
+                                          <SubmitButton variant="secondary">Reschedule</SubmitButton>
+                                        </ActionFeedbackForm>
+                                      )}
+                                      <ActionFeedbackForm
+                                        action={cancelAppointmentFormAction}
+                                        className="flex flex-wrap gap-2"
+                                        confirmTitle="Cancel appointment"
+                                        confirmMessage="Cancel this appointment and notify the candidate if configured?"
+                                        successMessage="Appointment cancelled."
+                                        onSuccess={() => router.refresh()}
+                                      >
+                                        <input type="hidden" name="appointment_id" value={apt.id} />
+                                        <Input name="reason" placeholder="Cancel reason" className="w-40" />
+                                        <SubmitButton variant="secondary">Cancel</SubmitButton>
+                                      </ActionFeedbackForm>
+                                    </div>
+                                  </div>
+                                </details>
+                              )}
                             </div>
                           )
                         })}
