@@ -49,6 +49,7 @@ import {
   createManualRecruitmentApplicationAction,
   createRecruitmentPostingAction,
   createRecruitmentSlotAction,
+  decideRecruitmentApplicationAction,
   draftRecruitmentEmailAction,
   duplicateRecruitmentPostingAction,
   eraseRecruitmentCandidateAction,
@@ -60,6 +61,7 @@ import {
   issueRecruitmentBookingInviteAction,
   inviteRecruitmentCandidateAsEmployeeAction,
   matchRecruitmentCandidateAction,
+  previewRecruitmentDecisionEmailAction,
   recordRecruitmentScorecardAction,
   recordRecruitmentAppointmentOutcomeAction,
   rescheduleRecruitmentAppointmentAction,
@@ -110,6 +112,15 @@ const statusOptions = [
   'withdrawn',
   'on_hold',
 ]
+
+const DECISION_CONFIG: Record<'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold', { confirm: string; template: 'rejection'|'offer'|'already_considered' | null; danger?: boolean }> = {
+  reject: { confirm: 'Reject candidate', template: 'rejection', danger: true },
+  offer: { confirm: 'Make offer', template: 'offer' },
+  decline_duplicate: { confirm: 'Decline (already considered)', template: 'already_considered' },
+  withdraw: { confirm: 'Mark withdrawn', template: null },
+  hold: { confirm: 'Put on hold', template: null },
+}
+const DECISION_STATUSES = ['rejected', 'offered', 'declined_duplicate', 'withdrawn', 'on_hold']
 
 const DEFAULT_SLOT_DURATION_MS = 2 * 60 * 60 * 1000
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => ({
@@ -693,6 +704,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
   const [activeTab, setActiveTab] = useState<'pipeline' | 'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('pipeline')
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('overview')
+  const [decisionDialog, setDecisionDialog] = useState<null | { decision: 'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold' }>(null)
+  const [decisionEmail, setDecisionEmail] = useState<{ subject: string; body: string }>({ subject: '', body: '' })
+  const [decisionSendEmail, setDecisionSendEmail] = useState(true)
+  const [decisionLoadingPreview, setDecisionLoadingPreview] = useState(false)
+  const [decisionState, decisionFormAction] = useActionState(decideRecruitmentApplicationAction, null)
   const [candidateTrail, setCandidateTrail] = useState<{ notes: any[]; systemChanges: any[] }>({ notes: [], systemChanges: [] })
   const [addNoteState, addNoteAction] = useActionState(addRecruitmentCandidateNoteAction, null)
   const [search, setSearch] = useState('')
@@ -1047,6 +1063,48 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
   function handleTalentPageChange(page: number) {
     loadTalent({ page, search: talentSearch, status: talentStatusFilter, source: talentSourceFilter })
+  }
+
+  useEffect(() => {
+    if (decisionState?.success) {
+      setDecisionDialog(null)
+      router.refresh()
+    }
+  }, [decisionState, router])
+
+  function openDecision(decision: 'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold') {
+    if (!selectedApplication) return
+    setDecisionDialog({ decision })
+    const template = DECISION_CONFIG[decision].template
+    setDecisionSendEmail(Boolean(template) && candidateHasEmail)
+    setDecisionEmail({ subject: '', body: '' })
+    if (template) {
+      setDecisionLoadingPreview(true)
+      previewRecruitmentDecisionEmailAction(selectedApplication.id, template).then(result => {
+        setDecisionLoadingPreview(false)
+        if (result.success && result.data) setDecisionEmail(result.data)
+      })
+    }
+  }
+
+  async function improveDecisionEmailWithAi() {
+    if (!selectedApplication || !decisionDialog) return
+    const template = DECISION_CONFIG[decisionDialog.decision].template
+    if (!template) return
+    try {
+      const formData = new FormData()
+      formData.set('application_id', selectedApplication.id)
+      formData.set('type', template)
+      const result = await draftRecruitmentEmailAction(formData)
+      if (result?.success) {
+        const data = result.data as { subject?: string; body?: string } | undefined
+        if (data && (data.subject || data.body)) {
+          setDecisionEmail({ subject: data.subject ?? '', body: data.body ?? '' })
+        }
+      }
+    } catch {
+      // best-effort — never block the dialog if the AI draft fails
+    }
   }
 
   function openApplicationDetail(application: any) {
@@ -1450,9 +1508,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       {permissions.canEdit && (
                         <div className="space-y-2">
                           <p className="text-xs font-semibold uppercase text-text-muted">Stage</p>
-                          {quickStatusActions.length > 0 && (
+                          {quickStatusActions.filter(action => !DECISION_STATUSES.includes(action.status)).length > 0 && (
                             <div className="flex flex-wrap gap-2">
-                              {quickStatusActions.map(action => (
+                              {quickStatusActions.filter(action => !DECISION_STATUSES.includes(action.status)).map(action => (
                                 <ActionFeedbackForm
                                   key={action.status}
                                   action={statusFormAction}
@@ -1469,6 +1527,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                               ))}
                             </div>
                           )}
+                          <div className="flex flex-wrap gap-2">
+                            {permissions.canEdit && <Button type="button" size="sm" variant="danger" onClick={() => openDecision('reject')}>Reject</Button>}
+                            {permissions.canManage && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('offer')}>Make offer</Button>}
+                            {permissions.canManage && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('decline_duplicate')}>Already considered</Button>}
+                            {permissions.canEdit && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('withdraw')}>Withdraw</Button>}
+                            {permissions.canEdit && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('hold')}>Hold</Button>}
+                          </div>
                           <ActionFeedbackForm
                             action={statusFormAction}
                             className="flex flex-wrap items-center gap-2"
@@ -2032,6 +2097,48 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-2 p-3 text-xs text-text">
                       {printableText}
                     </pre>
+                  )}
+
+                  {decisionDialog && selectedApplication && (
+                    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDecisionDialog(null)}>
+                      <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>
+                        <p className="text-sm font-semibold text-text-strong">{DECISION_CONFIG[decisionDialog.decision].confirm}</p>
+                        <form action={decisionFormAction} className="mt-3 space-y-3">
+                          <input type="hidden" name="application_id" value={selectedApplication.id} />
+                          <input type="hidden" name="decision" value={decisionDialog.decision} />
+                          <div>
+                            <label className="text-xs font-semibold uppercase text-text-muted">Internal reason</label>
+                            <Textarea name="reason" rows={2} placeholder="Why? (internal only — saved as a note)" />
+                          </div>
+                          {DECISION_CONFIG[decisionDialog.decision].template && (
+                            <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-semibold uppercase text-text-muted">Email to candidate</p>
+                                <label className="flex items-center gap-1 text-xs text-text">
+                                  <input type="checkbox" name="send_email" checked={decisionSendEmail} disabled={!candidateHasEmail} onChange={e => setDecisionSendEmail(e.target.checked)} />
+                                  Send email
+                                </label>
+                              </div>
+                              {!candidateHasEmail && <p className="text-xs text-text-muted">No email on file — the decision will be recorded without emailing.</p>}
+                              {decisionLoadingPreview ? (
+                                <p className="text-xs text-text-muted">Loading proposed email…</p>
+                              ) : (
+                                <>
+                                  <Input name="email_subject" value={decisionEmail.subject} onChange={e => setDecisionEmail(prev => ({ ...prev, subject: e.target.value }))} placeholder="Subject" />
+                                  <Textarea name="email_body" rows={6} value={decisionEmail.body} onChange={e => setDecisionEmail(prev => ({ ...prev, body: e.target.value }))} placeholder="Email body" />
+                                  <Button type="button" size="xs" variant="secondary" icon={<SparklesIcon className="h-4 w-4" />} onClick={improveDecisionEmailWithAi}>Improve with AI</Button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setDecisionDialog(null)}>Cancel</Button>
+                            <SubmitButton variant={DECISION_CONFIG[decisionDialog.decision].danger ? 'danger' : 'primary'}>{DECISION_CONFIG[decisionDialog.decision].confirm}</SubmitButton>
+                          </div>
+                          <ActionStateMessage state={decisionState} />
+                        </form>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
