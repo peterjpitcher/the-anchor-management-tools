@@ -379,6 +379,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditSendSms, setPartySizeEditSendSms] = useState(true)
+  const [partySizeMoveTableId, setPartySizeMoveTableId] = useState('')
   const [bookingEditOpen, setBookingEditOpen] = useState(false)
   const [bookingEdit, setBookingEdit] = useState<BookingEditState | null>(null)
   const [preorderEditOpen, setPreorderEditOpen] = useState(false)
@@ -398,6 +399,20 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           .join(' + ')
       : null
   const assignedCapacity = assignedTables.reduce((sum, table) => sum + Number(table.capacity ?? 0), 0)
+  const partySizeEditNumber = Number.parseInt(partySizeEditValue, 10)
+  const partySizeNeedsLargerTable =
+    Number.isFinite(partySizeEditNumber) &&
+    assignedCapacity > 0 &&
+    partySizeEditNumber > assignedCapacity
+  const partySizeMoveTableOptions = useMemo(
+    () =>
+      Number.isFinite(partySizeEditNumber)
+        ? availableMoveTables.filter((table) => Number(table.capacity ?? 0) >= partySizeEditNumber)
+        : [],
+    [availableMoveTables, partySizeEditNumber],
+  )
+  const partySizeSelectedMoveTable =
+    partySizeMoveTableOptions.find((table) => table.id === partySizeMoveTableId) ?? null
   const guestName = [booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || 'Unknown guest'
   const depositState = getTableBookingDepositState(booking)
   const canonicalDepositAmount = getCanonicalDeposit(
@@ -522,6 +537,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
   function openPartySizeEdit() {
     setPartySizeEditValue(String(booking.party_size ?? ''))
+    setPartySizeMoveTableId('')
     setPartySizeEditOpen(true)
   }
 
@@ -634,13 +650,23 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
   async function handleSubmitPartySize() {
     const nextSize = Number.parseInt(partySizeEditValue, 10)
-    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) {
-      toast.error('Enter a party size between 1 and 50')
+    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 20) {
+      toast.error('Enter a party size between 1 and 20')
+      return
+    }
+    const selectedMoveTable = partySizeNeedsLargerTable ? partySizeSelectedMoveTable : null
+    if (partySizeNeedsLargerTable && !selectedMoveTable) {
+      toast.error(`Select a table with capacity ${nextSize} or more`)
       return
     }
     await runAction(
       'party-size',
       async () => {
+        if (selectedMoveTable) {
+          await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/move-table`, {
+            body: { table_id: selectedMoveTable.id },
+          })
+        }
         const payload = await requestTableBookingAction<{
           depositRequired?: boolean
           depositUrl?: string | null
@@ -649,15 +675,17 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           body: { party_size: nextSize, send_sms: partySizeEditSendSms },
         })
         setPartySizeEditOpen(false)
+        setPartySizeMoveTableId('')
         return payload
       },
       (payload) => {
+        const prefix = selectedMoveTable ? 'Table moved. ' : ''
         if (payload.depositRequired) {
           return payload.smsSent
-            ? 'Party size updated. Deposit link sent by SMS.'
-            : 'Party size updated. Deposit link created.'
+            ? `${prefix}Party size updated. Deposit link sent by SMS.`
+            : `${prefix}Party size updated. Deposit link created.`
         }
-        return 'Party size updated'
+        return `${prefix}Party size updated`
       }
     )
   }
@@ -1408,12 +1436,44 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               id="party-size-input"
               type="number"
               min={1}
-              max={50}
+              max={20}
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
             />
           </div>
+          {partySizeNeedsLargerTable && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm text-amber-900">
+                Current table capacity is {assignedCapacity}. Pick a larger table to save this party size.
+              </p>
+              <label htmlFor="party-size-move-table" className="mt-3 block text-sm font-medium text-amber-950">
+                Larger table
+              </label>
+              <select
+                id="party-size-move-table"
+                value={partySizeMoveTableId}
+                onChange={(event) => setPartySizeMoveTableId(event.target.value)}
+                disabled={loadingMoveTables || partySizeMoveTableOptions.length === 0}
+                className="mt-1 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              >
+                <option value="">
+                  {loadingMoveTables
+                    ? 'Loading tables...'
+                    : partySizeMoveTableOptions.length === 0
+                      ? 'No larger table available'
+                      : 'Select larger table'}
+                </option>
+                {partySizeMoveTableOptions.map((table) => (
+                  <option key={table.id} value={table.id}>
+                    {table.name}
+                    {table.table_number ? ` (${table.table_number})` : ''}
+                    {table.capacity ? ` - cap ${table.capacity}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -1431,7 +1491,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               size="sm"
               onClick={() => void handleSubmitPartySize()}
               loading={actionLoadingKey === 'party-size'}
-              disabled={Boolean(actionLoadingKey) || !partySizeEditValue || Number.parseInt(partySizeEditValue, 10) < 1}
+              disabled={
+                Boolean(actionLoadingKey) ||
+                !partySizeEditValue ||
+                Number.parseInt(partySizeEditValue, 10) < 1 ||
+                (partySizeNeedsLargerTable && !partySizeSelectedMoveTable)
+              }
             >
               Save
             </Button>
