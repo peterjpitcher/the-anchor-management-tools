@@ -45,7 +45,7 @@ const OFFER_STATUSES = ['offered'] as const
 const SLOT_MINUTE_INCREMENT = 15
 const INTERVIEW_SLOT_DURATION_MS = 60 * 60 * 1000
 
-export const RECRUITMENT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
+const RECRUITMENT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
   new: ['ai_screened', 'shortlisted', 'interview_invited', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool', 'declined_duplicate'],
   ai_screened: ['shortlisted', 'interview_invited', 'trial_offered', 'offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool', 'declined_duplicate'],
   shortlisted: ['interview_invited', 'interview_scheduled', 'trial_offered', 'rejected', 'withdrawn', 'on_hold', 'talent_pool'],
@@ -335,7 +335,7 @@ export async function listPublicRecruitmentPostings(supabase: GenericClient = cr
   return data ?? []
 }
 
-export const RECRUITMENT_CANDIDATES_PAGE_SIZE = 25
+const RECRUITMENT_CANDIDATES_PAGE_SIZE = 25
 
 export type RecruitmentCandidatesPageParams = {
   page?: number
@@ -507,7 +507,7 @@ export async function addRecruitmentCandidateNote(
   return data
 }
 
-export async function listRecruitmentCandidateNotes(
+async function listRecruitmentCandidateNotes(
   candidateId: string,
   supabase: GenericClient = createAdminClient()
 ) {
@@ -2402,7 +2402,7 @@ export async function getRecruitmentCvSignedUrl(
   return data.signedUrl
 }
 
-export async function copyRecruitmentCvToEmployee(
+async function copyRecruitmentCvToEmployee(
   candidateId: string,
   employeeId: string,
   supabase: GenericClient = createAdminClient()
@@ -2674,7 +2674,7 @@ export function formatRecruitmentAppointmentTime(appointment: {
   }).format(new Date(appointment.scheduled_start))
 }
 
-export function formatRecruitmentAppointment(appointment: {
+function formatRecruitmentAppointment(appointment: {
   scheduled_start: string
   timezone?: string | null
   type?: string | null
