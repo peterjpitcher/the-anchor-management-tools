@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs'
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database.generated';
 import twilio from 'twilio';
 import { logger } from '@/lib/logger';
 import { mapTwilioStatus, isStatusUpgrade, formatErrorMessage } from '@/lib/sms-status';
@@ -21,32 +19,6 @@ import {
 } from '@/lib/communications/unmatched';
 import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture';
 import { ConsentService } from '@/services/consent';
-
-// Create public Supabase client for logging (no auth required)
-function getPublicSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    logger.warn('Webhook logging client unavailable: missing public Supabase environment variables')
-    return null
-  }
-
-  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-    db: {
-      schema: 'public'
-    },
-    global: {
-      headers: {
-        'x-client-info': 'supabase-anon-webhook'
-      }
-    }
-  })
-}
 
 // Log webhook attempt to database
 function truncate(value: string | null | undefined, maxLength: number): string | null {
@@ -142,7 +114,7 @@ function buildTwilioCostUpdate(params: Record<string, string>): Record<string, u
 }
 
 async function logWebhookAttempt(
-  client: ReturnType<typeof createClient>,
+  client: ReturnType<typeof createAdminClient>,
   status: string,
   headers: Record<string, string>,
   body: string,
@@ -485,11 +457,12 @@ export async function POST(request: NextRequest) {
     // Get headers
     headers = Object.fromEntries(request.headers.entries());
 
-    // Get public client for logging
-    publicClient = getPublicSupabaseClient();
-    if (!publicClient) {
-      logger.warn('Twilio webhook proceeding without webhook_logs writes (public client unavailable)');
-    }
+    // Service-role client for webhook_logs writes and DB operations. A webhook has no
+    // user session, so an anon client is rejected by the webhook_logs RLS policy
+    // (INSERT WITH CHECK auth.uid() IS NOT NULL). All logging below happens only AFTER
+    // signature verification, so service-role cannot persist unverified payloads.
+    adminClient = createAdminClient();
+    publicClient = adminClient;
     
     // Get body
     body = await request.text();
@@ -524,10 +497,7 @@ export async function POST(request: NextRequest) {
     if (publicClient) {
       await logWebhookAttempt(publicClient, 'received', headers, body, params);
     }
-    
-    // Get admin client for database operations
-    adminClient = createAdminClient();
-    
+
     // Determine webhook type and process
     const hasBodyPayload = Boolean(params.Body && params.From && params.To)
     const webhookStatus = (params.MessageStatus || params.SmsStatus || '').toLowerCase()
