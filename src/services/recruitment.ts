@@ -432,7 +432,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .limit(100),
     supabase
       .from('recruitment_candidate_appointments')
-      .select('*, candidate:recruitment_candidates(first_name,last_name,email), application:recruitment_applications(id,status,job_posting:recruitment_job_postings(title))')
+      .select('*, candidate:recruitment_candidates(first_name,last_name,email), application:recruitment_applications(id,status,job_posting:recruitment_job_postings(title)), supervisor:employees!supervisor_staff_id(first_name,last_name)')
       .order('scheduled_start', { ascending: false })
       .limit(150),
     supabase
@@ -533,7 +533,7 @@ export async function getRecruitmentDashboard(
       .eq('status', 'scheduled')
       .gte('scheduled_start', nowIso)
       .order('scheduled_start', { ascending: true })
-      .limit(10),
+      .limit(200),
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
