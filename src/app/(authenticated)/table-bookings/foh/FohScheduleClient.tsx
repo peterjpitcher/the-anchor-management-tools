@@ -190,11 +190,16 @@ export function FohScheduleClient({
   // --- Selected booking move options loader ---
   const selectedBooking = selectedBookingContext?.booking ?? null
   const selectedMoveTarget = selectedBooking ? moveTargets[selectedBooking.id] || '' : ''
+  const selectedBookingIsEventOnly = Boolean(
+    selectedBooking?.is_communal_event_block ||
+      selectedBooking?.id.startsWith('communal-') ||
+      selectedBooking?.id.startsWith('standing-')
+  )
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      if (!selectedBooking || !canEdit || selectedBooking.is_private_block) {
+      if (!selectedBooking || !canEdit || selectedBooking.is_private_block || selectedBookingIsEventOnly) {
         setSelectedMoveOptions([]); setLoadingSelectedMoveOptions(false); return
       }
       setLoadingSelectedMoveOptions(true)
@@ -218,7 +223,7 @@ export function FohScheduleClient({
     }
     void load()
     return () => { cancelled = true }
-  }, [selectedBooking, canEdit, setErrorMessage])
+  }, [selectedBooking, selectedBookingIsEventOnly, canEdit, setErrorMessage])
 
   // --- Booking detail actions ---
   function applyBookingPatch(patch: { id: string; status?: string | null; seated_at?: string | null; left_at?: string | null; no_show_at?: string | null; cancelled_at?: string | null; updated_at?: string | null }) {

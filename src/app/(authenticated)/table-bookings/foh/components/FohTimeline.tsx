@@ -317,6 +317,10 @@ const LaneRow = React.memo(function LaneRow(props: {
           const visualState = getBookingVisualState(booking)
           const visualLabel = getBookingVisualLabel(booking)
           const visualClassName = statusBlockClass(visualState)
+          const isEventOnlyBlock = Boolean(booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-'))
+          const detailLine = booking.capacity_label
+            ? `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.capacity_label}`
+            : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
 
           return (
             <DraggableBookingBlock
@@ -331,14 +335,14 @@ const LaneRow = React.memo(function LaneRow(props: {
               timelineEndMin={timeline.endMin}
               leftPct={leftPct}
               widthPct={widthPct}
-              canEdit={canEdit}
+              canEdit={canEdit && !isEventOnlyBlock}
               status={booking.status}
               isPrivateBlock={Boolean(booking.is_private_block)}
               assignmentCount={booking.assignment_count ?? null}
               styleVariant={styleVariant}
               className={cn(bookingBlockBaseClass, visualClassName)}
               statusClassName={visualClassName}
-              title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${visualLabel}`}
+              title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
               onClick={(event) => {
                 event.stopPropagation()
                 onBookingClick(booking, lane.table_id, lane.table_name)
@@ -350,7 +354,7 @@ const LaneRow = React.memo(function LaneRow(props: {
               <p className="truncate">
                 {booking.is_private_block
                   ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
-                  : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`}
+                  : detailLine}
               </p>
             </DraggableBookingBlock>
           )

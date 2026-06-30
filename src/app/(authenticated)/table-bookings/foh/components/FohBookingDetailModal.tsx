@@ -81,7 +81,9 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   const selectedBookingVisualLabel = getBookingVisualLabel(selectedBooking)
   const selectedBookingDeposit = getTableBookingDepositState(selectedBooking)
   const selectedBookingIsEventOnly =
-    selectedBooking.id.startsWith('communal-') || selectedBooking.id.startsWith('standing-')
+    selectedBooking.is_communal_event_block ||
+    selectedBooking.id.startsWith('communal-') ||
+    selectedBooking.id.startsWith('standing-')
   const selectedBookingSeatedTime = formatLifecycleTime(selectedBooking.seated_at)
   const selectedBookingLeftTime = formatLifecycleTime(selectedBooking.left_at)
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking.no_show_at)
