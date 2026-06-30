@@ -1452,10 +1452,14 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         const pushAnswer = (label: string, value: unknown) => {
                           if (value === null || value === undefined) return
                           const text = typeof value === 'string' ? value : JSON.stringify(value)
-                          if (text.trim().length === 0) return
-                          answerRows.push([label, text])
+                          const trimmed = text.trim()
+                          if (trimmed.length === 0 || trimmed === '{}' || trimmed === '[]' || trimmed === 'null') return
+                          answerRows.push([label, trimmed])
                         }
-                        pushAnswer('Availability', a?.availability)
+                        const availabilityText = a?.availability && typeof a.availability === 'object'
+                          ? (a.availability.raw ?? a.availability.text ?? null)
+                          : a?.availability
+                        pushAnswer('Availability', availabilityText)
                         pushAnswer('Experience', a?.relevant_experience_answer)
                         pushAnswer('Travel', a?.travel_answer)
                         pushAnswer('Can start', a?.start_availability)
