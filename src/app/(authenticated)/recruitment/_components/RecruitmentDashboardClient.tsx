@@ -124,6 +124,57 @@ type SlotDateTimeParts = {
 
 const emptySlotDateTime: SlotDateTimeParts = { date: '', hour: '', minute: '' }
 
+const DRAWER_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'schedule', label: 'Schedule' },
+  { id: 'comms', label: 'Comms' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'profile', label: 'Profile' },
+] as const
+
+type DrawerTab = (typeof DRAWER_TABS)[number]['id']
+
+function calendarSyncLabel(status: string | null | undefined) {
+  switch (status) {
+    case 'synced':
+      return 'synced'
+    case 'ics_fallback':
+      return 'email invite only'
+    case 'failed':
+      return 'sync failed'
+    case 'pending':
+      return 'syncing…'
+    default:
+      return status || 'not synced'
+  }
+}
+
+function rtwLabel(status: string | null | undefined) {
+  switch (status) {
+    case 'verified':
+      return 'verified'
+    case 'pending':
+      return 'pending'
+    case 'failed':
+      return 'failed'
+    default:
+      return 'not checked'
+  }
+}
+
+function rtwTone(status: string | null | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  switch (status) {
+    case 'verified':
+      return 'success'
+    case 'failed':
+      return 'danger'
+    case 'pending':
+      return 'info'
+    default:
+      return 'warning'
+  }
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return 'Not set'
   const date = new Date(value)
@@ -639,6 +690,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
   const [activeTab, setActiveTab] = useState<'pipeline' | 'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('pipeline')
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('overview')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showArchived, setShowArchived] = useState(false)
@@ -963,6 +1015,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setEmailSendState(null)
     setPrintableText(null)
     setClientMessage(null)
+    setDrawerTab('overview')
     setDetailDrawerOpen(true)
   }
 
@@ -1286,255 +1339,110 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
               width="min(980px, 100vw)"
             >
               {selectedApplication && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Candidate</p>
-                        <p className="text-base font-semibold text-text-strong">{candidateName(selectedApplication.candidate)}</p>
-                        <p className="text-sm text-text-muted">{selectedApplication.candidate?.email || 'No email on file'}</p>
-                        <p className="text-sm text-text-muted">{selectedApplication.candidate?.phone || selectedApplication.candidate?.phone_e164 || 'No phone on file'}</p>
+                <div className="space-y-4">
+                  <div className="space-y-3 border-b border-border pb-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold text-text-strong">{candidateName(selectedApplication.candidate)}</p>
+                      <Badge tone="neutral">{statusLabel(selectedApplication.status)}</Badge>
+                      <Badge tone="neutral">AI {selectedApplication.ai_score ?? '-'} · {selectedApplication.ai_recommendation?.replaceAll('_', ' ') || 'review'}</Badge>
+                    </div>
+                    <p className="text-xs text-text-muted">{roleTitle(selectedApplication)} · {selectedApplication.source} · {formatDateTime(selectedApplication.created_at)}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge tone={rtwTone(selectedApplication.candidate?.right_to_work_status)}>RTW: {rtwLabel(selectedApplication.candidate?.right_to_work_status)}</Badge>
+                      {selectedApplication.candidate?.sms_consent === true && <Badge tone="success">SMS ok</Badge>}
+                      {selectedApplication.candidate?.future_recruitment_consent === true && <Badge tone="success">Future ok</Badge>}
+                    </div>
+                    <p className="text-sm text-text-muted">{selectedApplication.candidate?.email || 'No email on file'} · {selectedApplication.candidate?.phone || selectedApplication.candidate?.phone_e164 || 'No phone on file'}</p>
+                    {nextActionHint && (
+                      <div className="rounded border border-border bg-surface-2 p-3">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Next step</p>
+                        <p className="mt-1 text-sm text-text">{nextActionHint}</p>
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">Role</p>
-                        <p className="text-sm text-text">{roleTitle(selectedApplication)}</p>
-                        <p className="text-xs text-text-muted">{selectedApplication.source} · {formatDateTime(selectedApplication.created_at)}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedApplication.candidate?.cv_file_path && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<DocumentTextIcon className="h-4 w-4" />}
-                            onClick={() => openCv(selectedApplication.candidate_id)}
-                          >
-                            Open CV
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          icon={<PrinterIcon className="h-4 w-4" />}
-                          onClick={() => buildPrintable(selectedApplication.id, 'interview')}
-                        >
-                          Interview kit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          icon={<PrinterIcon className="h-4 w-4" />}
-                          onClick={() => buildPrintable(selectedApplication.id, 'trial')}
-                        >
-                          Trial brief
-                        </Button>
-                      </div>
-                      {(permissions.canEdit || permissions.canManage || permissions.canSend) && (
-                        <div className="space-y-3 border-t border-border pt-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Actions</p>
-                          {nextActionHint && (
-                            <div className="rounded border border-border bg-surface-2 p-3">
-                              <p className="text-xs font-semibold uppercase text-text-muted">Next step</p>
-                              <p className="mt-1 text-sm text-text">{nextActionHint}</p>
-                            </div>
-                          )}
-                          {permissions.canEdit && (
-                            <div className="space-y-2">
-                              {quickStatusActions.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                  {quickStatusActions.map(action => (
-                                    <ActionFeedbackForm
-                                      key={action.status}
-                                      action={statusFormAction}
-                                      successMessage={`${statusLabel(action.status)} saved.`}
-                                      confirmTitle={action.confirmTitle}
-                                      confirmMessage={action.confirmMessage}
-                                      onSuccess={() => router.refresh()}
-                                    >
-                                      <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                      <input type="hidden" name="status" value={action.status} />
-                                      <input type="hidden" name="note" value={action.note} />
-                                      <SubmitButton variant={action.variant ?? 'secondary'}>{action.label}</SubmitButton>
-                                    </ActionFeedbackForm>
-                                  ))}
-                                </div>
-                              )}
-                              <ActionFeedbackForm
-                                action={statusFormAction}
-                                className="flex flex-wrap items-center gap-2"
-                                successMessage="Status saved."
-                                onSuccess={() => router.refresh()}
-                              >
-                                <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                <Select name="status" defaultValue={selectedApplication.status} className="w-44" aria-label="Manual status">
-                                  {statusOptions.map(status => (
-                                    <option key={status} value={status}>{statusLabel(status)}</option>
-                                  ))}
-                                </Select>
-                                <input type="hidden" name="note" value="Status changed manually" />
-                                <SubmitButton variant="secondary">Save manual status</SubmitButton>
-                              </ActionFeedbackForm>
-                            </div>
-                          )}
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase text-text-muted">Booking links</p>
-                            {!candidateHasEmail && permissions.canSend && (
-                              <p className="text-xs text-text-muted">Add an email address before sending booking links.</p>
-                            )}
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {selectedApplication.candidate?.cv_file_path && (
+                        <Button type="button" size="sm" variant="secondary" icon={<DocumentTextIcon className="h-4 w-4" />} onClick={() => openCv(selectedApplication.candidate_id)}>Open CV</Button>
+                      )}
+                      <Button type="button" size="sm" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
+                      <Button type="button" size="sm" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
+                    </div>
+                  </div>
+
+                  <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
+                    {DRAWER_TABS.map(tab => (
+                      <button key={tab.id} type="button" role="tab" aria-selected={drawerTab === tab.id} onClick={() => setDrawerTab(tab.id)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${drawerTab === tab.id ? 'border-primary text-text-strong' : 'border-transparent text-text-muted hover:text-text'}`}>{tab.label}</button>
+                    ))}
+                  </div>
+
+                  {drawerTab === 'overview' && (
+                    <div className="space-y-4">
+                      {permissions.canEdit && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Stage</p>
+                          {quickStatusActions.length > 0 && (
                             <div className="flex flex-wrap gap-2">
-                              {permissions.canSend && candidateHasEmail && canSendInterviewBooking && (
+                              {quickStatusActions.map(action => (
                                 <ActionFeedbackForm
-                                  action={bookingInviteFormAction}
-                                  successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
-                                  confirmTitle={interviewInviteSent ? 'Resend interview link' : undefined}
-                                  confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
+                                  key={action.status}
+                                  action={statusFormAction}
+                                  successMessage={`${statusLabel(action.status)} saved.`}
+                                  confirmTitle={action.confirmTitle}
+                                  confirmMessage={action.confirmMessage}
                                   onSuccess={() => router.refresh()}
                                 >
                                   <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                  <input type="hidden" name="type" value="interview" />
-                                  <SubmitButton variant={interviewInviteSent ? 'secondary' : 'primary'}>
-                                    {interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link'}
-                                  </SubmitButton>
+                                  <input type="hidden" name="status" value={action.status} />
+                                  <input type="hidden" name="note" value={action.note} />
+                                  <SubmitButton variant={action.variant ?? 'secondary'}>{action.label}</SubmitButton>
                                 </ActionFeedbackForm>
-                              )}
-                              {permissions.canSend && candidateHasEmail && canSendTrialBooking && (
-                                <ActionFeedbackForm
-                                  action={bookingInviteFormAction}
-                                  successMessage={trialInviteSent ? 'Trial booking link resent.' : 'Trial booking link sent.'}
-                                  confirmTitle={trialInviteSent ? 'Resend trial link' : undefined}
-                                  confirmMessage={trialInviteSent ? 'A trial invite has already been sent. Send another booking link?' : undefined}
-                                  onSuccess={() => router.refresh()}
-                                >
-                                  <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                  <input type="hidden" name="type" value="trial_shift" />
-                                  <SubmitButton variant={trialInviteSent ? 'secondary' : 'primary'}>
-                                    {trialInviteSent ? 'Resend trial booking link' : 'Send trial booking link'}
-                                  </SubmitButton>
-                                </ActionFeedbackForm>
-                              )}
-                            </div>
-                          </div>
-                          {canScheduleInterviewForCandidate && (
-                            <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
-                              <p className="text-xs font-semibold uppercase text-text-muted">Schedule interview for candidate</p>
-                              {selectedApplicationOpenInterviewSlots.length === 0 && (
-                                <p className="text-xs text-text-muted">No open interview slots available.</p>
-                              )}
-                              <ActionFeedbackForm
-                                action={scheduleInterviewFormAction}
-                                className="flex flex-wrap items-center gap-2"
-                                successMessage="Interview scheduled."
-                                confirmTitle="Schedule interview"
-                                confirmMessage={`Schedule an interview for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
-                                onSuccess={() => router.refresh()}
-                              >
-                                <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                <Select
-                                  name="slot_id"
-                                  className="w-72"
-                                  aria-label="Interview slot to schedule"
-                                  disabled={selectedApplicationOpenInterviewSlots.length === 0}
-                                >
-                                  {selectedApplicationOpenInterviewSlots.map((slot: any) => (
-                                    <option key={slot.id} value={slot.id}>
-                                      {formatSlotOptionLabel(slot)}
-                                    </option>
-                                  ))}
-                                </Select>
-                                <SubmitButton
-                                  variant={selectedApplicationStatus === 'interview_invited' ? 'primary' : 'secondary'}
-                                  disabled={selectedApplicationOpenInterviewSlots.length === 0}
-                                >
-                                  Schedule interview
-                                </SubmitButton>
-                              </ActionFeedbackForm>
+                              ))}
                             </div>
                           )}
-                          {canScheduleTrialForCandidate && (
-                            <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
-                              <p className="text-xs font-semibold uppercase text-text-muted">Schedule trial shift for candidate</p>
-                              {selectedApplicationOpenTrialSlots.length === 0 && (
-                                <p className="text-xs text-text-muted">No open trial shift slots available.</p>
-                              )}
-                              <ActionFeedbackForm
-                                action={scheduleTrialFormAction}
-                                className="flex flex-wrap items-center gap-2"
-                                successMessage="Trial shift scheduled."
-                                confirmTitle="Schedule trial shift"
-                                confirmMessage={`Schedule a trial shift for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
-                                onSuccess={() => router.refresh()}
-                              >
-                                <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                <Select
-                                  name="slot_id"
-                                  className="w-72"
-                                  aria-label="Trial shift slot to schedule"
-                                  disabled={selectedApplicationOpenTrialSlots.length === 0}
-                                >
-                                  {selectedApplicationOpenTrialSlots.map((slot: any) => (
-                                    <option key={slot.id} value={slot.id}>
-                                      {formatSlotOptionLabel(slot)}
-                                    </option>
-                                  ))}
-                                </Select>
-                                <SubmitButton
-                                  variant={selectedApplicationStatus === 'trial_offered' ? 'primary' : 'secondary'}
-                                  disabled={selectedApplicationOpenTrialSlots.length === 0}
-                                >
-                                  Schedule trial shift
-                                </SubmitButton>
-                              </ActionFeedbackForm>
-                            </div>
-                          )}
-                          <div className="flex flex-wrap gap-2">
-                            {permissions.canManage && selectedApplication.job_posting_id && (
-                              <ActionFeedbackForm
-                                action={rescoreFormAction}
-                                successMessage="Application queued for re-score."
-                                onSuccess={() => router.refresh()}
-                              >
-                                <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                <SubmitButton variant="secondary">Re-score AI fit</SubmitButton>
-                              </ActionFeedbackForm>
-                            )}
-                          </div>
-                          {permissions.canManage && candidateHasEmail && (
-                            <ActionFeedbackForm
-                              action={hireFormAction}
-                              className="flex flex-wrap items-center gap-2"
-                              confirmTitle="Hire candidate"
-                              confirmMessage="Create an employee invite and link it to this application?"
-                              successMessage="Employee invite created."
-                              onSuccess={() => router.refresh()}
-                            >
-                              <input type="hidden" name="application_id" value={selectedApplication.id} />
-                              <Input name="job_title" placeholder="Job title for employee invite" className="w-56" />
-                              <SubmitButton variant={selectedApplicationStatus === 'offered' ? 'primary' : 'secondary'}>
-                                Create employee invite
-                              </SubmitButton>
-                            </ActionFeedbackForm>
-                          )}
-                          {permissions.canEdit && (
-                            <ActionFeedbackForm
-                              action={selectedApplication.archived_at ? restoreApplicationFormAction : archiveApplicationFormAction}
-                              confirmTitle={selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
-                              confirmMessage={selectedApplication.archived_at ? 'Restore this application?' : 'Archive this application?'}
-                              successMessage={selectedApplication.archived_at ? 'Application restored.' : 'Application archived.'}
-                              onSuccess={() => router.refresh()}
-                            >
-                              <input type="hidden" name="application_id" value={selectedApplication.id} />
-                              <SubmitButton variant={selectedApplication.archived_at ? 'secondary' : 'danger'}>
-                                {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
-                              </SubmitButton>
-                            </ActionFeedbackForm>
-                          )}
+                          <ActionFeedbackForm
+                            action={statusFormAction}
+                            className="flex flex-wrap items-center gap-2"
+                            successMessage="Status saved."
+                            onSuccess={() => router.refresh()}
+                          >
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <Select name="status" defaultValue={selectedApplication.status} className="w-44" aria-label="Manual status">
+                              {statusOptions.map(status => (
+                                <option key={status} value={status}>{statusLabel(status)}</option>
+                              ))}
+                            </Select>
+                            <input type="hidden" name="note" value="Status changed manually" />
+                            <SubmitButton variant="secondary">Save manual status</SubmitButton>
+                          </ActionFeedbackForm>
                         </div>
                       )}
-                    </div>
 
-                    <div className="space-y-3">
+                      {(() => {
+                        const a = selectedApplication
+                        const answerRows: Array<[string, string]> = []
+                        const pushAnswer = (label: string, value: unknown) => {
+                          if (value === null || value === undefined) return
+                          const text = typeof value === 'string' ? value : JSON.stringify(value)
+                          if (text.trim().length === 0) return
+                          answerRows.push([label, text])
+                        }
+                        pushAnswer('Availability', a?.availability)
+                        pushAnswer('Experience', a?.relevant_experience_answer)
+                        pushAnswer('Travel', a?.travel_answer)
+                        pushAnswer('Can start', a?.start_availability)
+                        pushAnswer('Cover note', a?.cover_note)
+                        if (answerRows.length === 0) return null
+                        return (
+                          <div>
+                            <p className="text-xs font-semibold uppercase text-text-muted">Their answers</p>
+                            <dl className="mt-1 space-y-1 text-sm text-text">
+                              {answerRows.map(([label, value]) => (
+                                <div key={label}><span className="text-text-muted">{label}:</span> {value}</div>
+                              ))}
+                            </dl>
+                          </div>
+                        )
+                      })()}
+
                       <div>
                         <p className="text-xs font-semibold uppercase text-text-muted">AI score</p>
                         <p className="text-2xl font-semibold text-text-strong">{selectedApplication.ai_score ?? '-'}</p>
@@ -1582,138 +1490,205 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </p>
                         </div>
                       )}
-                    </div>
 
-                    <form action={candidateUpdateAction} className="space-y-3">
-                      <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
-                      <p className="text-xs font-semibold uppercase text-text-muted">Candidate profile</p>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <ProfileField label="First name">
-                          <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
-                        </ProfileField>
-                        <ProfileField label="Last name">
-                          <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
-                        </ProfileField>
-                      </div>
-                      <ProfileField label="Email">
-                        <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
-                      </ProfileField>
-                      <ProfileField label="Phone">
-                        <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
-                      </ProfileField>
-                      <ProfileField label="Location">
-                        <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
-                      </ProfileField>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <ProfileField label="Right to work">
-                          <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
-                            <option value="not_checked">Not checked</option>
-                            <option value="pending">Pending</option>
-                            <option value="verified">Verified</option>
-                            <option value="failed">Failed</option>
-                          </Select>
-                        </ProfileField>
-                        <ProfileField label="Document type">
-                          <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
-                            <option value="">Not set</option>
-                            <option value="Passport">Passport</option>
-                            <option value="Biometric Residence Permit">Biometric Residence Permit</option>
-                            <option value="Share Code">Share Code</option>
-                            <option value="List A">List A</option>
-                            <option value="List B">List B</option>
-                            <option value="Other">Other</option>
-                          </Select>
-                        </ProfileField>
-                      </div>
-                      <ProfileField label="Right to work checked at">
-                        <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
-                      </ProfileField>
-                      <ProfileField label="Recruitment notes">
-                        <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
-                      </ProfileField>
-                      <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
-                          SMS consent
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
-                          Future recruitment consent
-                        </label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <SubmitButton>Save candidate</SubmitButton>
-                        <ActionStateMessage state={candidateUpdateState} />
-                      </div>
-                    </form>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase text-text-muted">Email composer</p>
-                      {permissions.canSend ? (
-                        <div className="flex flex-wrap gap-2">
-                          {['interview_invite', 'trial_invite', 'rejection', 'already_considered', 'offer'].map(type => (
-                            <Button
-                              key={type}
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              icon={<SparklesIcon className="h-4 w-4" />}
-                              onClick={() => draftEmail(selectedApplication.id, type)}
-                            >
-                              Draft {type.replaceAll('_', ' ')}
-                            </Button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
-                      )}
-                      {emailDraft?.error && <p className="text-xs text-danger">{emailDraft.error}</p>}
-                      <ActionStateMessage state={emailSendState} />
-                      {emailDraft && !emailDraft.error && (
-                        <form action={sendDecisionEmail} className="space-y-2">
-                          <input type="hidden" name="application_id" value={selectedApplication.id} />
-                          <Select name="type" defaultValue={emailDraft.type}>
-                            <option value="interview_invite">Interview invite</option>
-                            <option value="trial_invite">Trial invite</option>
-                            <option value="rejection">Rejection</option>
-                            <option value="already_considered">Already considered</option>
-                            <option value="offer">Offer</option>
-                          </Select>
-                          <Input name="subject" defaultValue={emailDraft.subject} />
-                          <Textarea name="body" defaultValue={emailDraft.body} rows={6} />
-                          <Input name="offer_terms" placeholder="Offer terms if sending an offer" />
-                          {duplicateEmailWarning && (
-                            <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-                              {duplicateEmailWarning}
-                            </p>
+                        <div className="rounded border border-border bg-surface-2 p-3">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Right to work</p>
+                          <p className="mt-1 text-sm text-text">{rtwLabel(selectedApplication.candidate?.right_to_work_status)}{selectedApplication.candidate?.right_to_work_document_type ? ` · ${selectedApplication.candidate.right_to_work_document_type}` : ''}</p>
+                          {selectedApplication.candidate?.right_to_work_checked_at && (
+                            <p className="text-xs text-text-muted">Checked {formatDateTime(selectedApplication.candidate.right_to_work_checked_at)}</p>
                           )}
-                          <SubmitButton>Send reviewed email</SubmitButton>
-                        </form>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase text-text-muted">Timeline</p>
-                      {selectedApplicationEvents.length === 0 && <p className="text-sm text-text-muted">No status events yet.</p>}
-                      {selectedApplicationEvents.map((event: any) => (
-                        <div key={event.id} className="rounded border border-border bg-surface-2 p-2">
-                          <p className="text-sm font-medium text-text-strong">{event.to_status?.replaceAll('_', ' ')}</p>
-                          <p className="text-xs text-text-muted">{formatDateTime(event.created_at)} · {event.note || 'No note'}</p>
                         </div>
-                      ))}
+                        <div className="rounded border border-border bg-surface-2 p-3">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Consent</p>
+                          <p className="mt-1 text-sm text-text">SMS: {selectedApplication.candidate?.sms_consent ? 'yes' : 'no'} · Future: {selectedApplication.candidate?.future_recruitment_consent ? 'yes' : 'no'}</p>
+                        </div>
+                      </div>
                     </div>
+                  )}
 
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase text-text-muted">AI and communications audit</p>
+                  {drawerTab === 'schedule' && (
+                    <div className="space-y-3">
                       <div className="space-y-2">
-                        {selectedApplicationAiRuns.map((run: any) => (
-                          <div key={run.id} className="rounded border border-border bg-surface-2 p-2">
-                            <p className="text-sm font-medium text-text-strong">{run.operation?.replaceAll('_', ' ')} · {run.status}</p>
-                            <p className="text-xs text-text-muted">{run.model} · GBP {Number(run.cost ?? 0).toFixed(4)}</p>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Interviews and trials</p>
+                        {selectedApplicationAppointments.length === 0 && (
+                          <p className="text-sm text-text-muted">No interview or trial scheduled yet.</p>
+                        )}
+                        {selectedApplicationAppointments.map((apt: any) => (
+                          <div key={apt.id} className="space-y-1 rounded border border-border bg-surface-2 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium text-text-strong">{apt.type === 'trial_shift' ? 'Trial shift' : 'Interview'}</span>
+                              <Badge tone="neutral">{String(apt.status).replaceAll('_', ' ')}</Badge>
+                            </div>
+                            <p className="text-sm text-text">{formatSlotDateTime(apt.scheduled_start)}</p>
+                            <p className="text-xs text-text-muted">{apt.location || 'The Anchor'} · Calendar: {calendarSyncLabel(apt.calendar_sync_status)}</p>
+                            {apt.outcome && <p className="text-xs text-text-muted">Outcome: {apt.outcome}</p>}
                           </div>
                         ))}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Booking links</p>
+                        {!candidateHasEmail && permissions.canSend && (
+                          <p className="text-xs text-text-muted">Add an email address before sending booking links.</p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {permissions.canSend && candidateHasEmail && canSendInterviewBooking && (
+                            <ActionFeedbackForm
+                              action={bookingInviteFormAction}
+                              successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
+                              confirmTitle={interviewInviteSent ? 'Resend interview link' : undefined}
+                              confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
+                              onSuccess={() => router.refresh()}
+                            >
+                              <input type="hidden" name="application_id" value={selectedApplication.id} />
+                              <input type="hidden" name="type" value="interview" />
+                              <SubmitButton variant={interviewInviteSent ? 'secondary' : 'primary'}>
+                                {interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link'}
+                              </SubmitButton>
+                            </ActionFeedbackForm>
+                          )}
+                          {permissions.canSend && candidateHasEmail && canSendTrialBooking && (
+                            <ActionFeedbackForm
+                              action={bookingInviteFormAction}
+                              successMessage={trialInviteSent ? 'Trial booking link resent.' : 'Trial booking link sent.'}
+                              confirmTitle={trialInviteSent ? 'Resend trial link' : undefined}
+                              confirmMessage={trialInviteSent ? 'A trial invite has already been sent. Send another booking link?' : undefined}
+                              onSuccess={() => router.refresh()}
+                            >
+                              <input type="hidden" name="application_id" value={selectedApplication.id} />
+                              <input type="hidden" name="type" value="trial_shift" />
+                              <SubmitButton variant={trialInviteSent ? 'secondary' : 'primary'}>
+                                {trialInviteSent ? 'Resend trial booking link' : 'Send trial booking link'}
+                              </SubmitButton>
+                            </ActionFeedbackForm>
+                          )}
+                        </div>
+                      </div>
+                      {canScheduleInterviewForCandidate && (
+                        <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Schedule interview for candidate</p>
+                          {selectedApplicationOpenInterviewSlots.length === 0 && (
+                            <p className="text-xs text-text-muted">No open interview slots available.</p>
+                          )}
+                          <ActionFeedbackForm
+                            action={scheduleInterviewFormAction}
+                            className="flex flex-wrap items-center gap-2"
+                            successMessage="Interview scheduled."
+                            confirmTitle="Schedule interview"
+                            confirmMessage={`Schedule an interview for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
+                            onSuccess={() => router.refresh()}
+                          >
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <Select
+                              name="slot_id"
+                              className="w-72"
+                              aria-label="Interview slot to schedule"
+                              disabled={selectedApplicationOpenInterviewSlots.length === 0}
+                            >
+                              {selectedApplicationOpenInterviewSlots.map((slot: any) => (
+                                <option key={slot.id} value={slot.id}>
+                                  {formatSlotOptionLabel(slot)}
+                                </option>
+                              ))}
+                            </Select>
+                            <SubmitButton
+                              variant={selectedApplicationStatus === 'interview_invited' ? 'primary' : 'secondary'}
+                              disabled={selectedApplicationOpenInterviewSlots.length === 0}
+                            >
+                              Schedule interview
+                            </SubmitButton>
+                          </ActionFeedbackForm>
+                        </div>
+                      )}
+                      {canScheduleTrialForCandidate && (
+                        <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Schedule trial shift for candidate</p>
+                          {selectedApplicationOpenTrialSlots.length === 0 && (
+                            <p className="text-xs text-text-muted">No open trial shift slots available.</p>
+                          )}
+                          <ActionFeedbackForm
+                            action={scheduleTrialFormAction}
+                            className="flex flex-wrap items-center gap-2"
+                            successMessage="Trial shift scheduled."
+                            confirmTitle="Schedule trial shift"
+                            confirmMessage={`Schedule a trial shift for ${candidateName(selectedApplication.candidate)}? They'll get a confirmation email with a calendar invite.`}
+                            onSuccess={() => router.refresh()}
+                          >
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <Select
+                              name="slot_id"
+                              className="w-72"
+                              aria-label="Trial shift slot to schedule"
+                              disabled={selectedApplicationOpenTrialSlots.length === 0}
+                            >
+                              {selectedApplicationOpenTrialSlots.map((slot: any) => (
+                                <option key={slot.id} value={slot.id}>
+                                  {formatSlotOptionLabel(slot)}
+                                </option>
+                              ))}
+                            </Select>
+                            <SubmitButton
+                              variant={selectedApplicationStatus === 'trial_offered' ? 'primary' : 'secondary'}
+                              disabled={selectedApplicationOpenTrialSlots.length === 0}
+                            >
+                              Schedule trial shift
+                            </SubmitButton>
+                          </ActionFeedbackForm>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {drawerTab === 'comms' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Email composer</p>
+                        {permissions.canSend ? (
+                          <div className="flex flex-wrap gap-2">
+                            {['interview_invite', 'trial_invite', 'rejection', 'already_considered', 'offer'].map(type => (
+                              <Button
+                                key={type}
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                icon={<SparklesIcon className="h-4 w-4" />}
+                                onClick={() => draftEmail(selectedApplication.id, type)}
+                              >
+                                Draft {type.replaceAll('_', ' ')}
+                              </Button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
+                        )}
+                        {emailDraft?.error && <p className="text-xs text-danger">{emailDraft.error}</p>}
+                        <ActionStateMessage state={emailSendState} />
+                        {emailDraft && !emailDraft.error && (
+                          <form action={sendDecisionEmail} className="space-y-2">
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <Select name="type" defaultValue={emailDraft.type}>
+                              <option value="interview_invite">Interview invite</option>
+                              <option value="trial_invite">Trial invite</option>
+                              <option value="rejection">Rejection</option>
+                              <option value="already_considered">Already considered</option>
+                              <option value="offer">Offer</option>
+                            </Select>
+                            <Input name="subject" defaultValue={emailDraft.subject} />
+                            <Textarea name="body" defaultValue={emailDraft.body} rows={6} />
+                            <Input name="offer_terms" placeholder="Offer terms if sending an offer" />
+                            {duplicateEmailWarning && (
+                              <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                                {duplicateEmailWarning}
+                              </p>
+                            )}
+                            <SubmitButton>Send reviewed email</SubmitButton>
+                          </form>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Communications</p>
                         {selectedApplicationCommunications.map((communication: any) => (
                           <div key={communication.id} className="rounded border border-border bg-surface-2 p-2">
                             <p className="text-sm font-medium text-text-strong">{communication.type?.replaceAll('_', ' ')} · {communication.delivery_status}</p>
@@ -1722,7 +1697,143 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         ))}
                       </div>
                     </div>
-                  </div>
+                  )}
+
+                  {drawerTab === 'activity' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Timeline</p>
+                        {selectedApplicationEvents.length === 0 && <p className="text-sm text-text-muted">No status events yet.</p>}
+                        {selectedApplicationEvents.map((event: any) => (
+                          <div key={event.id} className="rounded border border-border bg-surface-2 p-2">
+                            <p className="text-sm font-medium text-text-strong">{event.to_status?.replaceAll('_', ' ')}</p>
+                            <p className="text-xs text-text-muted">{formatDateTime(event.created_at)} · {event.note || 'No note'}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">AI runs</p>
+                        {selectedApplicationAiRuns.map((run: any) => (
+                          <div key={run.id} className="rounded border border-border bg-surface-2 p-2">
+                            <p className="text-sm font-medium text-text-strong">{run.operation?.replaceAll('_', ' ')} · {run.status}</p>
+                            <p className="text-xs text-text-muted">{run.model} · GBP {Number(run.cost ?? 0).toFixed(4)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {drawerTab === 'profile' && (
+                    <div className="space-y-4">
+                      <form action={candidateUpdateAction} className="space-y-3">
+                        <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
+                        <p className="text-xs font-semibold uppercase text-text-muted">Candidate profile</p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <ProfileField label="First name">
+                            <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
+                          </ProfileField>
+                          <ProfileField label="Last name">
+                            <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
+                          </ProfileField>
+                        </div>
+                        <ProfileField label="Email">
+                          <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
+                        </ProfileField>
+                        <ProfileField label="Phone">
+                          <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
+                        </ProfileField>
+                        <ProfileField label="Location">
+                          <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
+                        </ProfileField>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <ProfileField label="Right to work">
+                            <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
+                              <option value="not_checked">Not checked</option>
+                              <option value="pending">Pending</option>
+                              <option value="verified">Verified</option>
+                              <option value="failed">Failed</option>
+                            </Select>
+                          </ProfileField>
+                          <ProfileField label="Document type">
+                            <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
+                              <option value="">Not set</option>
+                              <option value="Passport">Passport</option>
+                              <option value="Biometric Residence Permit">Biometric Residence Permit</option>
+                              <option value="Share Code">Share Code</option>
+                              <option value="List A">List A</option>
+                              <option value="List B">List B</option>
+                              <option value="Other">Other</option>
+                            </Select>
+                          </ProfileField>
+                        </div>
+                        <ProfileField label="Right to work checked at">
+                          <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
+                        </ProfileField>
+                        <ProfileField label="Recruitment notes">
+                          <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
+                        </ProfileField>
+                        <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
+                            SMS consent
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
+                            Future recruitment consent
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <SubmitButton>Save candidate</SubmitButton>
+                          <ActionStateMessage state={candidateUpdateState} />
+                        </div>
+                      </form>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Admin</p>
+                        {permissions.canManage && selectedApplication.job_posting_id && (
+                          <ActionFeedbackForm
+                            action={rescoreFormAction}
+                            successMessage="Application queued for re-score."
+                            onSuccess={() => router.refresh()}
+                          >
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <SubmitButton variant="secondary">Re-score AI fit</SubmitButton>
+                          </ActionFeedbackForm>
+                        )}
+                        {permissions.canManage && candidateHasEmail && (
+                          <ActionFeedbackForm
+                            action={hireFormAction}
+                            className="flex flex-wrap items-center gap-2"
+                            confirmTitle="Hire candidate"
+                            confirmMessage="Create an employee invite and link it to this application?"
+                            successMessage="Employee invite created."
+                            onSuccess={() => router.refresh()}
+                          >
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <Input name="job_title" placeholder="Job title for employee invite" className="w-56" />
+                            <SubmitButton variant={selectedApplicationStatus === 'offered' ? 'primary' : 'secondary'}>
+                              Create employee invite
+                            </SubmitButton>
+                          </ActionFeedbackForm>
+                        )}
+                        {permissions.canEdit && (
+                          <ActionFeedbackForm
+                            action={selectedApplication.archived_at ? restoreApplicationFormAction : archiveApplicationFormAction}
+                            confirmTitle={selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
+                            confirmMessage={selectedApplication.archived_at ? 'Restore this application?' : 'Archive this application?'}
+                            successMessage={selectedApplication.archived_at ? 'Application restored.' : 'Application archived.'}
+                            onSuccess={() => router.refresh()}
+                          >
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <SubmitButton variant={selectedApplication.archived_at ? 'secondary' : 'danger'}>
+                              {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
+                            </SubmitButton>
+                          </ActionFeedbackForm>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {printableText && (
                     <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-2 p-3 text-xs text-text">
