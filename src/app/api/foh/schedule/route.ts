@@ -559,17 +559,23 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const communalTableIdsByBookingId = new Map<string, Set<string>>()
-  for (const allocation of communalRows as any[]) {
-    const bookingId = allocation?.event_booking_id
-    const tableId = allocation?.table_id
-    if (!bookingId || !tableId) continue
-    const current = communalTableIdsByBookingId.get(bookingId) || new Set<string>()
-    current.add(tableId)
-    communalTableIdsByBookingId.set(bookingId, current)
+  const tableCapacityById = new Map<string, number>()
+  for (const table of tables) {
+    tableCapacityById.set(table.id, Math.max(0, Number(table.capacity || 0)))
   }
-
   const communalBookingsByTableId = new Map<string, any[]>()
+  const communalGroupsByTableEvent = new Map<string, {
+    eventId: string
+    tableId: string
+    eventName: string
+    startDatetime: string
+    endDatetime: string
+    seats: number
+    bookingIds: Set<string>
+    hasConfirmed: boolean
+    holdExpiresAt: string | null
+  }>()
+
   for (const allocation of communalRows as any[]) {
     const booking = Array.isArray(allocation?.booking) ? allocation.booking[0] : allocation?.booking
     if (!isActiveEventBookingForCapacity(booking)) continue
@@ -578,42 +584,79 @@ export async function GET(request: NextRequest) {
 
     const eventRow = Array.isArray(booking?.event) ? booking.event[0] : booking?.event
     const eventName = eventRow?.name || 'Event'
-    const allTableIds = Array.from(communalTableIdsByBookingId.get(allocation.event_booking_id) || new Set([allocation.table_id]))
+    const eventId = typeof allocation.event_id === 'string' ? allocation.event_id : String(booking?.event_id || '')
+    if (!eventId) continue
+
+    const key = `${eventId}:${allocation.table_id}`
+    const current = communalGroupsByTableEvent.get(key)
+    const seats = Math.max(0, Number(allocation.seats || 0))
+    if (current) {
+      current.seats += seats
+      current.bookingIds.add(String(allocation.event_booking_id))
+      current.hasConfirmed = current.hasConfirmed || booking?.status === 'confirmed'
+      if (!current.holdExpiresAt && typeof booking?.hold_expires_at === 'string') {
+        current.holdExpiresAt = booking.hold_expires_at
+      }
+      if (String(allocation.start_datetime || '') < current.startDatetime) {
+        current.startDatetime = allocation.start_datetime
+      }
+      if (String(allocation.end_datetime || '') > current.endDatetime) {
+        current.endDatetime = allocation.end_datetime
+      }
+    } else {
+      communalGroupsByTableEvent.set(key, {
+        eventId,
+        tableId: allocation.table_id,
+        eventName,
+        startDatetime: allocation.start_datetime,
+        endDatetime: allocation.end_datetime,
+        seats,
+        bookingIds: new Set([String(allocation.event_booking_id)]),
+        hasConfirmed: booking?.status === 'confirmed',
+        holdExpiresAt: typeof booking?.hold_expires_at === 'string' ? booking.hold_expires_at : null
+      })
+    }
+  }
+
+  for (const group of communalGroupsByTableEvent.values()) {
+    const capacity = tableCapacityById.get(group.tableId) || null
     const notes = [
-      `Event: ${eventName}`,
-      `Communal seated`,
-      `${allocation.seats} on this table`
+      `Event: ${group.eventName}`,
+      'Communal seating',
+      capacity ? `${group.seats}/${capacity} seats used` : `${group.seats} seats used`,
+      `${group.bookingIds.size} booking${group.bookingIds.size === 1 ? '' : 's'}`
     ].join(' · ')
+
     const block = {
-      id: `communal-${allocation.id}`,
-      booking_reference: `EV-${String(allocation.event_booking_id).slice(0, 8).toUpperCase()}`,
-      guest_name: buildGuestName(booking?.customer),
-      event_name: eventName,
-      booking_time: formatLondonClockFromIso(allocation.start_datetime),
-      party_size: allocation.seats,
+      id: `communal-event-${group.eventId}-${group.tableId}`,
+      booking_reference: `EV-${String(group.eventId).slice(0, 8).toUpperCase()}`,
+      guest_name: group.eventName,
+      event_name: group.eventName,
+      booking_time: formatLondonClockFromIso(group.startDatetime),
+      party_size: group.seats,
       booking_type: 'event',
       booking_purpose: 'event',
-      status: booking?.status || null,
+      status: group.hasConfirmed ? 'confirmed' : 'pending_payment',
       payment_status: null,
       payment_method: null,
       deposit_amount: null,
       deposit_amount_locked: null,
-      hold_expires_at: booking?.hold_expires_at || null,
+      hold_expires_at: group.holdExpiresAt,
       notes,
       seated_at: null,
       left_at: null,
       no_show_at: null,
-      assigned_table_ids: allTableIds,
-      assignment_count: allTableIds.length,
-      start_datetime: allocation.start_datetime,
-      end_datetime: allocation.end_datetime,
+      assigned_table_ids: [group.tableId],
+      assignment_count: 1,
+      start_datetime: group.startDatetime,
+      end_datetime: group.endDatetime,
       is_private_block: false,
       event_seating_type: 'seated'
     }
 
-    const current = communalBookingsByTableId.get(allocation.table_id) || []
+    const current = communalBookingsByTableId.get(group.tableId) || []
     current.push(block)
-    communalBookingsByTableId.set(allocation.table_id, current)
+    communalBookingsByTableId.set(group.tableId, current)
   }
 
   const lanes = tables.map((table) => {

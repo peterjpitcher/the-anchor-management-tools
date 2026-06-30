@@ -337,6 +337,7 @@ interface Props {
 
 type MoveTableOption = {
   id: string
+  table_ids?: string[]
   name: string
   table_number?: string | null
   capacity?: number | null
@@ -369,9 +370,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
-  const [availableMoveTables, setAvailableMoveTables] = useState<
-    { id: string; name: string; table_number: string | null; capacity: number | null }[]
-  >([])
+  const [availableMoveTables, setAvailableMoveTables] = useState<MoveTableOption[]>([])
   const [loadingMoveTables, setLoadingMoveTables] = useState(false)
   const [noShowConfirmOpen, setNoShowConfirmOpen] = useState(false)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
@@ -640,8 +639,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'move-table',
       async () => {
+        const target = availableMoveTables.find((table) => table.id === moveTableId)
+        if (!target) throw new Error('Select a table to move this booking')
         await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/move-table`, {
-          body: { table_id: moveTableId },
+          body: { table_ids: target.table_ids?.length ? target.table_ids : [target.id] },
         })
       },
       'Table assignment updated'
@@ -664,7 +665,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       async () => {
         if (selectedMoveTable) {
           await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/move-table`, {
-            body: { table_id: selectedMoveTable.id },
+            body: { table_ids: selectedMoveTable.table_ids?.length ? selectedMoveTable.table_ids : [selectedMoveTable.id] },
           })
         }
         const payload = await requestTableBookingAction<{
@@ -760,6 +761,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         setAvailableMoveTables(
           options.map((t) => ({
             id: t.id,
+            table_ids: t.table_ids,
             name: t.name,
             table_number: t.table_number ?? null,
             capacity: t.capacity ?? null,

@@ -115,6 +115,7 @@ describe('BookingDetailClient party size changes', () => {
             tables: [
               {
                 id: LARGE_TABLE_ID,
+                table_ids: [LARGE_TABLE_ID],
                 name: 'High Table',
                 table_number: '9',
                 capacity: 10,
@@ -161,7 +162,7 @@ describe('BookingDetailClient party size changes', () => {
     expect(requestTableBookingActionMock).toHaveBeenNthCalledWith(
       1,
       `/api/boh/table-bookings/${BOOKING_ID}/move-table`,
-      { body: { table_id: LARGE_TABLE_ID } }
+      { body: { table_ids: [LARGE_TABLE_ID] } }
     )
     expect(requestTableBookingActionMock).toHaveBeenNthCalledWith(
       2,

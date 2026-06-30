@@ -13,6 +13,7 @@ export type MoveTableBooking = {
 
 type MoveTableCandidateTable = {
   id: string
+  table_ids: string[]
   table_number: string | null
   name: string | null
   capacity: number | null
@@ -55,6 +56,20 @@ function computeBookingWindow(booking: MoveTableBooking) {
   return { startIso, endIso }
 }
 
+function tableLabel(table: { table_number: string | null; name: string | null; id: string }): string {
+  return table.name || table.table_number || `Table ${table.id.slice(0, 4)}`
+}
+
+function sameIdSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const rightSet = new Set(right)
+  return left.every((id) => rightSet.has(id))
+}
+
+function pairKey(left: string, right: string): string {
+  return [left, right].sort().join(':')
+}
+
 export async function getMoveTableAvailability(
   supabase: SupabaseClient<any, 'public', any>,
   booking: MoveTableBooking
@@ -62,14 +77,16 @@ export async function getMoveTableAvailability(
   const { startIso, endIso } = computeBookingWindow(booking)
   const partySize = Math.max(1, Number(booking.party_size || 1))
 
-  const [tablesResult, existingAssignmentsResult] = await Promise.all([
+  const [tablesResult, existingAssignmentsResult, joinLinksResult] = await Promise.all([
     supabase.from('tables')
       .select('id, table_number, name, capacity, is_bookable')
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
     supabase.from('booking_table_assignments')
       .select('table_id')
-      .eq('table_booking_id', booking.id)
+      .eq('table_booking_id', booking.id),
+    supabase.from('table_join_links')
+      .select('table_id, join_table_id')
   ])
 
   if (tablesResult.error) {
@@ -80,6 +97,10 @@ export async function getMoveTableAvailability(
     throw new Error('Failed to load current table assignment')
   }
 
+  if (joinLinksResult.error) {
+    throw new Error('Failed to load table join groups')
+  }
+
   const assignedTableIds = Array.from(
     new Set(
       (existingAssignmentsResult.data || [])
@@ -88,17 +109,17 @@ export async function getMoveTableAvailability(
     )
   )
 
-  const candidates = (tablesResult.data || [])
+  const bookableTables = (tablesResult.data || [])
     .filter((table) => table.is_bookable !== false)
-    .filter((table) => Number(table.capacity || 0) >= partySize)
     .map((table) => ({
       id: table.id as string,
       table_number: typeof table.table_number === 'string' ? table.table_number : null,
       name: typeof table.name === 'string' ? table.name : null,
       capacity: typeof table.capacity === 'number' ? table.capacity : null
     }))
+    .filter((table) => Number(table.capacity || 0) > 0)
 
-  if (candidates.length === 0) {
+  if (bookableTables.length === 0) {
     return {
       startIso,
       endIso,
@@ -107,20 +128,31 @@ export async function getMoveTableAvailability(
     }
   }
 
-  const candidateTableIds = candidates.map((table) => table.id)
+  const candidateTableIds = bookableTables.map((table) => table.id)
 
-  const { data: overlappingAssignments, error: overlapError } = await supabase.from('booking_table_assignments')
-    .select('table_id, table_booking_id')
-    .in('table_id', candidateTableIds)
-    .neq('table_booking_id', booking.id)
-    .lt('start_datetime', endIso)
-    .gt('end_datetime', startIso)
+  const [overlappingAssignmentsResult, communalAllocationsResult] = await Promise.all([
+    supabase.from('booking_table_assignments')
+      .select('table_id, table_booking_id')
+      .in('table_id', candidateTableIds)
+      .neq('table_booking_id', booking.id)
+      .lt('start_datetime', endIso)
+      .gt('end_datetime', startIso),
+    supabase.from('event_communal_seat_allocations')
+      .select('table_id, seats, booking:bookings!event_communal_seat_allocations_event_booking_id_fkey(status, hold_expires_at)')
+      .in('table_id', candidateTableIds)
+      .lt('start_datetime', endIso)
+      .gt('end_datetime', startIso)
+  ])
 
-  if (overlapError) {
+  if (overlappingAssignmentsResult.error) {
     throw new Error('Failed to check table availability')
   }
 
-  const overlappingRows = (overlappingAssignments || [])
+  if (communalAllocationsResult.error) {
+    throw new Error('Failed to check communal event seating')
+  }
+
+  const overlappingRows = (overlappingAssignmentsResult.data || [])
   const overlappingBookingIds = Array.from(
     new Set(
       overlappingRows
@@ -164,9 +196,29 @@ export async function getMoveTableAvailability(
     }
   }
 
+  const communalSeatsByTableId = new Map<string, number>()
+  for (const row of (communalAllocationsResult.data || [])) {
+    const tableId = typeof row?.table_id === 'string' ? row.table_id : null
+    if (!tableId) continue
+    const bookingRow = Array.isArray(row?.booking) ? row.booking[0] : row?.booking
+    const status = String(bookingRow?.status || '')
+    const holdExpiresAt = typeof bookingRow?.hold_expires_at === 'string' ? bookingRow.hold_expires_at : null
+    const active =
+      status === 'confirmed' ||
+      (
+        status === 'pending_payment' &&
+        (!holdExpiresAt || Date.parse(holdExpiresAt) > Date.now())
+      )
+    if (!active) continue
+    communalSeatsByTableId.set(
+      tableId,
+      (communalSeatsByTableId.get(tableId) || 0) + Math.max(0, Number(row?.seats || 0))
+    )
+  }
+
   const unavailableByPrivateBlocks = new Set<string>()
   await Promise.all(
-    candidates.map(async (table) => {
+    bookableTables.map(async (table) => {
       const { data: privateBlockResult, error: privateBlockError } = await supabase.rpc(
         'is_table_blocked_by_private_booking_v05',
         {
@@ -189,10 +241,15 @@ export async function getMoveTableAvailability(
 
   const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
   const assignedTableSet = new Set(assignedTableIds)
-  const tables = candidates
-    .filter((table) => !assignedTableSet.has(table.id))
+  const availableTables = bookableTables
     .filter((table) => !unavailableByAssignment.has(table.id))
     .filter((table) => !unavailableByPrivateBlocks.has(table.id))
+    .map((table) => ({
+      ...table,
+      remainingCapacity: Math.max(0, Number(table.capacity || 0) - (communalSeatsByTableId.get(table.id) || 0)),
+      label: tableLabel(table)
+    }))
+    .filter((table) => table.remainingCapacity > 0)
     .sort((a, b) => {
       const aNumber = a.table_number || ''
       const bNumber = b.table_number || ''
@@ -207,6 +264,69 @@ export async function getMoveTableAvailability(
       return collator.compare(a.name || '', b.name || '')
     })
 
+  const optionsByKey = new Map<string, MoveTableCandidateTable>()
+  const addOption = (tables: typeof availableTables) => {
+    const tableIds = tables.map((table) => table.id)
+    if (sameIdSet(tableIds, assignedTableIds)) return
+    const capacity = tables.reduce((sum, table) => sum + table.remainingCapacity, 0)
+    if (capacity < partySize) return
+    const key = tableIds.slice().sort().join(':')
+    if (optionsByKey.has(key)) return
+    optionsByKey.set(key, {
+      id: tableIds.length === 1 ? tableIds[0] : key,
+      table_ids: tableIds,
+      table_number: tableIds.length === 1 ? tables[0].table_number : null,
+      name: tables.map((table) => table.label).join(' + '),
+      capacity
+    })
+  }
+
+  availableTables
+    .filter((table) => !assignedTableSet.has(table.id))
+    .forEach((table) => {
+      addOption([table])
+    })
+
+  const linkedPairs = new Set<string>()
+  for (const row of (joinLinksResult.data || [])) {
+    if (typeof row?.table_id === 'string' && typeof row?.join_table_id === 'string') {
+      linkedPairs.add(pairKey(row.table_id, row.join_table_id))
+    }
+  }
+
+  function canJoin(nextTableId: string, existingTableIds: string[]): boolean {
+    return existingTableIds.some((tableId) => linkedPairs.has(pairKey(tableId, nextTableId)))
+  }
+
+  function walk(startIndex: number, chosen: typeof availableTables) {
+    if (chosen.length >= 2) {
+      addOption(chosen)
+    }
+    if (chosen.length >= 4) return
+
+    for (let index = startIndex; index < availableTables.length; index += 1) {
+      const nextTable = availableTables[index]
+      if (chosen.length > 0 && !canJoin(nextTable.id, chosen.map((table) => table.id))) {
+        continue
+      }
+      walk(index + 1, [...chosen, nextTable])
+    }
+  }
+
+  for (let index = 0; index < availableTables.length; index += 1) {
+    walk(index + 1, [availableTables[index]])
+  }
+
+  const tables = Array.from(optionsByKey.values()).sort((a, b) => {
+    const leftCount = a.table_ids.length
+    const rightCount = b.table_ids.length
+    if (leftCount !== rightCount) return leftCount - rightCount
+    const leftCapacity = Number(a.capacity || 0)
+    const rightCapacity = Number(b.capacity || 0)
+    if (leftCapacity !== rightCapacity) return leftCapacity - rightCapacity
+    return collator.compare(a.name || '', b.name || '')
+  })
+
   return {
     startIso,
     endIso,
@@ -218,20 +338,22 @@ export async function getMoveTableAvailability(
 export async function resolveMoveTableTarget(
   supabase: SupabaseClient<any, 'public', any>,
   availability: MoveTableAvailability,
-  tableId: string
+  tableIds: string[]
 ): Promise<ResolveMoveTableTargetResult> {
-  const availableTarget = availability.tables.find((table) => table.id === tableId) || null
+  const normalizedTableIds = Array.from(new Set(tableIds)).filter(Boolean)
+  const availableTarget =
+    availability.tables.find((table) => sameIdSet(table.table_ids, normalizedTableIds)) || null
   if (availableTarget) {
     return { ok: true, target: availableTarget }
   }
 
-  if (!availability.assignedTableIds.includes(tableId)) {
+  if (!sameIdSet(availability.assignedTableIds, normalizedTableIds)) {
     return { ok: true, target: null }
   }
 
   const { data: tableRow, error: tableRowError } = await supabase.from('tables')
     .select('id, table_number, name, capacity')
-    .eq('id', tableId)
+    .eq('id', normalizedTableIds[0])
     .maybeSingle()
 
   if (tableRowError) {
@@ -246,6 +368,7 @@ export async function resolveMoveTableTarget(
     ok: true,
     target: {
       id: tableRow.id as string,
+      table_ids: normalizedTableIds,
       table_number: typeof tableRow.table_number === 'string' ? tableRow.table_number : null,
       name: typeof tableRow.name === 'string' ? tableRow.name : null,
       capacity: typeof tableRow.capacity === 'number' ? tableRow.capacity : null
@@ -263,6 +386,30 @@ export async function moveBookingAssignmentToTable(
     nowIso: string
   }
 ): Promise<MoveTableMutationResult> {
+  return moveBookingAssignmentToTables(supabase, {
+    bookingId: input.bookingId,
+    targetTableIds: [input.targetTableId],
+    startIso: input.startIso,
+    endIso: input.endIso,
+    nowIso: input.nowIso
+  })
+}
+
+export async function moveBookingAssignmentToTables(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    targetTableIds: string[]
+    startIso: string
+    endIso: string
+    nowIso: string
+  }
+): Promise<MoveTableMutationResult> {
+  const targetTableIds = Array.from(new Set(input.targetTableIds)).filter(Boolean)
+  if (targetTableIds.length === 0) {
+    return { ok: false, status: 409, error: 'Select a table to move this booking' }
+  }
+
   const { data: existingAssignments, error: assignmentLookupError } = await supabase.from('booking_table_assignments')
     .select('table_booking_id, table_id')
     .eq('table_booking_id', input.bookingId)
@@ -272,69 +419,79 @@ export async function moveBookingAssignmentToTable(
   }
 
   const assignmentRows = (existingAssignments || [])
-  const alreadyOnlyOnTarget =
-    assignmentRows.length === 1 && assignmentRows[0].table_id === input.targetTableId
-  const hasTargetAssignment = assignmentRows.some((row) => row.table_id === input.targetTableId)
+  const existingTableIds = assignmentRows
+    .map((row) => (typeof row?.table_id === 'string' ? row.table_id : null))
+    .filter((value): value is string => Boolean(value))
+  const alreadyOnTargets = sameIdSet(existingTableIds, targetTableIds)
 
-  if (alreadyOnlyOnTarget) {
+  for (const targetTableId of targetTableIds) {
+    const hasTargetAssignment = assignmentRows.some((row) => row.table_id === targetTableId)
+
+    if (hasTargetAssignment) {
+      const { data: updatedAssignment, error: updateError } = await supabase.from('booking_table_assignments')
+        .update({
+          start_datetime: input.startIso,
+          end_datetime: input.endIso
+        })
+        .eq('table_booking_id', input.bookingId)
+        .eq('table_id', targetTableId)
+        .select('table_booking_id')
+        .maybeSingle()
+
+      if (updateError) {
+        if (isAssignmentConflictError(updateError)) {
+          return {
+            ok: false,
+            status: 409,
+            error: 'That table is no longer available. Please refresh and choose another.'
+          }
+        }
+        return { ok: false, status: 500, error: 'Failed to update target table assignment window' }
+      }
+
+      if (!updatedAssignment) {
+        return {
+          ok: false,
+          status: 409,
+          error: 'Current table assignment changed. Refresh and retry.'
+        }
+      }
+    } else {
+      const { error: insertError } = await supabase.from('booking_table_assignments')
+        .insert({
+          table_booking_id: input.bookingId,
+          table_id: targetTableId,
+          start_datetime: input.startIso,
+          end_datetime: input.endIso,
+          created_at: input.nowIso
+        })
+
+      if (insertError) {
+        if (isAssignmentConflictError(insertError)) {
+          return {
+            ok: false,
+            status: 409,
+            error: 'That table is no longer available. Please refresh and choose another.'
+          }
+        }
+        return { ok: false, status: 500, error: 'Failed to move table assignment' }
+      }
+    }
+  }
+
+  if (alreadyOnTargets) {
     return { ok: true }
   }
 
-  if (hasTargetAssignment) {
-    const { data: updatedAssignment, error: updateError } = await supabase.from('booking_table_assignments')
-      .update({
-        start_datetime: input.startIso,
-        end_datetime: input.endIso
-      })
-      .eq('table_booking_id', input.bookingId)
-      .eq('table_id', input.targetTableId)
-      .select('table_booking_id')
-      .maybeSingle()
-
-    if (updateError) {
-      if (isAssignmentConflictError(updateError)) {
-        return {
-          ok: false,
-          status: 409,
-          error: 'That table is no longer available. Please refresh and choose another.'
-        }
-      }
-      return { ok: false, status: 500, error: 'Failed to update target table assignment window' }
-    }
-
-    if (!updatedAssignment) {
-      return {
-        ok: false,
-        status: 409,
-        error: 'Current table assignment changed. Refresh and retry.'
-      }
-    }
-  } else {
-    const { error: insertError } = await supabase.from('booking_table_assignments')
-      .insert({
-        table_booking_id: input.bookingId,
-        table_id: input.targetTableId,
-        start_datetime: input.startIso,
-        end_datetime: input.endIso,
-        created_at: input.nowIso
-      })
-
-    if (insertError) {
-      if (isAssignmentConflictError(insertError)) {
-        return {
-          ok: false,
-          status: 409,
-          error: 'That table is no longer available. Please refresh and choose another.'
-        }
-      }
-      return { ok: false, status: 500, error: 'Failed to move table assignment' }
-    }
+  const staleTableIds = existingTableIds.filter((tableId) => !targetTableIds.includes(tableId))
+  if (staleTableIds.length === 0) {
+    return { ok: true }
   }
 
   const { error: deleteError } = await supabase.from('booking_table_assignments')
     .delete()
     .eq('table_booking_id', input.bookingId)
-    .neq('table_id', input.targetTableId)
+    .in('table_id', staleTableIds)
 
   if (deleteError) {
     return { ok: false, status: 500, error: 'Failed to clear previous table assignments' }

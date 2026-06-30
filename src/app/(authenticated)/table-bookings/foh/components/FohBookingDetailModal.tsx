@@ -419,11 +419,13 @@ function BookingActions(props: {
           disabled={!selectedMoveTarget || Boolean(bookingActionInFlight) || loadingSelectedMoveOptions}
           onClick={() => {
             if (!selectedMoveTarget) return
+            const target = selectedMoveOptions.find((table) => table.id === selectedMoveTarget)
+            if (!target) return
             void (async () => {
               const ok = await onRunAction(
                 () =>
                   postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
-                    table_id: selectedMoveTarget
+                    table_ids: target.table_ids?.length ? target.table_ids : [target.id]
                   }),
                 'Table assignment moved',
                 'move'
