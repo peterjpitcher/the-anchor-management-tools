@@ -39,6 +39,7 @@ import {
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
 import {
+  addRecruitmentCandidateNoteAction,
   archiveRecruitmentApplicationAction,
   archiveRecruitmentAppointmentAction,
   archiveRecruitmentSlotAction,
@@ -53,6 +54,7 @@ import {
   eraseRecruitmentCandidateAction,
   exportRecruitmentApplicationsCsvAction,
   getRecruitmentCandidates,
+  getRecruitmentCandidateTrailAction,
   getRecruitmentCvUrlAction,
   getRecruitmentPrintableKitAction,
   issueRecruitmentBookingInviteAction,
@@ -691,6 +693,8 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
   const [activeTab, setActiveTab] = useState<'pipeline' | 'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('pipeline')
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('overview')
+  const [candidateTrail, setCandidateTrail] = useState<{ notes: any[]; systemChanges: any[] }>({ notes: [], systemChanges: [] })
+  const [addNoteState, addNoteAction] = useActionState(addRecruitmentCandidateNoteAction, null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showArchived, setShowArchived] = useState(false)
@@ -879,6 +883,43 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const selectedApplicationAppointments = appointments.filter((appointment: any) => (
     appointment.application_id === selectedApplication?.id || appointment.candidate_id === selectedCandidate?.id
   )).slice(0, 5)
+  useEffect(() => {
+    if (!detailDrawerOpen || !selectedCandidateId) {
+      setCandidateTrail({ notes: [], systemChanges: [] })
+      return
+    }
+    let cancelled = false
+    getRecruitmentCandidateTrailAction(selectedCandidateId).then(result => {
+      if (cancelled) return
+      if (result.success && result.data) setCandidateTrail(result.data)
+    })
+    return () => { cancelled = true }
+  }, [detailDrawerOpen, selectedCandidateId, addNoteState])
+  const candidateTrailEvents = useMemo(() => {
+    const events: Array<{ key: string; at: string; kind: string; title: string; detail?: string; actor?: string }> = []
+    for (const note of candidateTrail.notes) {
+      events.push({ key: `note-${note.id}`, at: note.created_at, kind: 'note', title: 'Note', detail: note.content, actor: note.created_by_email ?? undefined })
+    }
+    for (const event of selectedApplicationEvents) {
+      events.push({ key: `status-${event.id}`, at: event.created_at, kind: 'status', title: `Status → ${String(event.to_status ?? '').replaceAll('_', ' ')}`, detail: event.note ?? undefined })
+    }
+    for (const comm of selectedApplicationCommunications) {
+      events.push({ key: `comm-${comm.id}`, at: comm.created_at, kind: 'comms', title: `${String(comm.type ?? comm.channel ?? 'message').replaceAll('_', ' ')} · ${comm.delivery_status ?? ''}`, detail: comm.subject ?? undefined })
+    }
+    for (const apt of selectedApplicationAppointments) {
+      events.push({ key: `appt-${apt.id}`, at: apt.created_at, kind: 'appointment', title: `${apt.type === 'trial_shift' ? 'Trial' : 'Interview'} scheduled`, detail: formatSlotDateTime(apt.scheduled_start) })
+      if (apt.outcome_recorded_at) {
+        events.push({ key: `apt-out-${apt.id}`, at: apt.outcome_recorded_at, kind: 'appointment', title: `Appointment outcome: ${String(apt.status ?? '').replaceAll('_', ' ')}`, detail: apt.outcome ?? undefined })
+      }
+    }
+    for (const run of selectedApplicationAiRuns) {
+      events.push({ key: `ai-${run.id}`, at: run.created_at, kind: 'ai', title: `AI ${String(run.operation ?? '').replaceAll('_', ' ')} · ${run.status ?? ''}`, detail: run.model ?? undefined })
+    }
+    for (const change of candidateTrail.systemChanges) {
+      events.push({ key: `sys-${change.id}`, at: change.at, kind: 'system', title: `${String(change.operation_type ?? '').replaceAll('_', ' ')} ${String(change.resource_type ?? '').replace('recruitment_', '').replaceAll('_', ' ')}`.trim(), detail: (change.changed_keys ?? []).join(', ') || undefined, actor: change.actor ?? undefined })
+    }
+    return events.filter(e => e.at).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+  }, [candidateTrail, selectedApplicationEvents, selectedApplicationCommunications, selectedApplicationAppointments, selectedApplicationAiRuns])
   // Duplicate guard is per APPLICATION (a candidate may hold several applications).
   const applicationHasFutureScheduled = (type: 'interview' | 'trial_shift') => appointments.some((appointment: any) => (
     appointment.application_id === selectedApplication?.id
@@ -1825,23 +1866,25 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
                   {drawerTab === 'activity' && (
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Timeline</p>
-                        {selectedApplicationEvents.length === 0 && <p className="text-sm text-text-muted">No status events yet.</p>}
-                        {selectedApplicationEvents.map((event: any) => (
-                          <div key={event.id} className="rounded border border-border bg-surface-2 p-2">
-                            <p className="text-sm font-medium text-text-strong">{event.to_status?.replaceAll('_', ' ')}</p>
-                            <p className="text-xs text-text-muted">{formatDateTime(event.created_at)} · {event.note || 'No note'}</p>
+                      {permissions.canEdit && (
+                        <form action={addNoteAction} className="space-y-2">
+                          <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
+                          <input type="hidden" name="application_id" value={selectedApplication.id} />
+                          <Textarea name="content" placeholder="Add an internal note — date-stamped, visible to recruitment staff" rows={2} />
+                          <div className="flex items-center gap-2">
+                            <SubmitButton variant="secondary">Add note</SubmitButton>
+                            <ActionStateMessage state={addNoteState} />
                           </div>
-                        ))}
-                      </div>
-
+                        </form>
+                      )}
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">AI runs</p>
-                        {selectedApplicationAiRuns.map((run: any) => (
-                          <div key={run.id} className="rounded border border-border bg-surface-2 p-2">
-                            <p className="text-sm font-medium text-text-strong">{run.operation?.replaceAll('_', ' ')} · {run.status}</p>
-                            <p className="text-xs text-text-muted">{run.model} · GBP {Number(run.cost ?? 0).toFixed(4)}</p>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Audit trail</p>
+                        {candidateTrailEvents.length === 0 && <p className="text-sm text-text-muted">No activity yet.</p>}
+                        {candidateTrailEvents.map(ev => (
+                          <div key={ev.key} className="rounded border border-border bg-surface-2 p-2">
+                            <p className="text-sm font-medium text-text-strong">{ev.title}</p>
+                            {ev.detail && <p className="whitespace-pre-wrap text-xs text-text">{ev.detail}</p>}
+                            <p className="text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
                           </div>
                         ))}
                       </div>
@@ -1920,7 +1963,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <ProfileField label="Right to work checked at">
                           <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
                         </ProfileField>
-                        <ProfileField label="Recruitment notes">
+                        <ProfileField label="Notes for AI context">
                           <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
                         </ProfileField>
                         <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
