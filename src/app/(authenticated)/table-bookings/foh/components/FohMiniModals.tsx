@@ -9,7 +9,7 @@ type FohPartySizeModalProps = {
   partySizeEditValue: string
   onClose: () => void
   onPartySizeChange: (value: string) => void
-  onConfirm: () => void
+  onConfirm: (value: string) => void
 }
 
 export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: FohPartySizeModalProps) {
@@ -21,6 +21,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
     onPartySizeChange,
     onConfirm,
   } = props
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
 
   return (
     <Modal
@@ -40,7 +41,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
           <button
             type="button"
             disabled={Boolean(bookingActionInFlight)}
-            onClick={onConfirm}
+            onClick={() => onConfirm(inputRef.current?.value ?? partySizeEditValue)}
             className="rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-sidebar/90 disabled:opacity-50"
           >
             {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Confirm'}
@@ -51,6 +52,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
       <label className="block text-sm font-medium text-gray-700">
         New party size
         <input
+          ref={inputRef}
           type="number"
           min={1}
           max={50}

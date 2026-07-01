@@ -84,6 +84,26 @@ export async function POST(
       )
     }
 
+    const { data: updatedBooking, error: verifyError } = await auth.supabase.from('table_bookings')
+      .select('id, party_size, committed_party_size, updated_at')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (verifyError || !updatedBooking) {
+      return NextResponse.json({ error: 'Failed to verify booking party size update' }, { status: 500 })
+    }
+
+    if (result.state !== 'unchanged' && Number(updatedBooking.party_size) !== newPartySize) {
+      logger.error('BOH table-booking party-size update verification failed', {
+        metadata: {
+          tableBookingId: id,
+          requestedPartySize: newPartySize,
+          savedPartySize: updatedBooking.party_size,
+        },
+      })
+      return NextResponse.json({ error: 'Booking party size was not saved. Please refresh and try again.' }, { status: 409 })
+    }
+
     const depositTransition = await applyPartySizeDepositTransition(auth.supabase, {
       booking: currentBooking,
       previousPartySize,
@@ -95,6 +115,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       data: result,
+      booking: updatedBooking,
       depositTransition,
       depositRequired: depositTransition.state === 'deposit_required',
       depositUrl: depositTransition.state === 'deposit_required' ? depositTransition.depositUrl : null,

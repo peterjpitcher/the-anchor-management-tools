@@ -226,7 +226,7 @@ export function FohScheduleClient({
   }, [selectedBooking, selectedBookingIsEventOnly, canEdit, setErrorMessage])
 
   // --- Booking detail actions ---
-  function applyBookingPatch(patch: { id: string; status?: string | null; seated_at?: string | null; left_at?: string | null; no_show_at?: string | null; cancelled_at?: string | null; updated_at?: string | null }) {
+  function applyBookingPatch(patch: Partial<FohBooking> & { id: string; cancelled_at?: string | null; updated_at?: string | null }) {
     setSchedule((cur) => {
       if (!cur) return cur
       const p = (bs: FohBooking[]) => bs.map((b) => b.id === patch.id ? { ...b, ...patch } : b)
@@ -240,6 +240,14 @@ export function FohScheduleClient({
 
   function buildActionSuccessMessage(successMessage: string, result: unknown): string {
     const payload = result as Record<string, unknown> | null
+    const data = payload && typeof payload.data === 'object' && payload.data !== null
+      ? payload.data as Record<string, unknown>
+      : null
+
+    if (data?.state === 'unchanged') {
+      return 'No change was made.'
+    }
+
     const transition = payload && typeof payload.depositTransition === 'object' && payload.depositTransition !== null
       ? payload.depositTransition as Record<string, unknown>
       : null
@@ -423,8 +431,8 @@ export function FohScheduleClient({
         partySizeEditValue={partySizeEditValue}
         onClose={() => setPartySizeEditOpen(false)}
         onPartySizeChange={setPartySizeEditValue}
-        onConfirm={() => {
-          const nextSize = Number.parseInt(partySizeEditValue, 10)
+        onConfirm={(submittedValue) => {
+          const nextSize = Number.parseInt(submittedValue, 10)
           if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) { setErrorMessage('Enter a party size between 1 and 50.'); return }
           const bid = partySizeEditBookingId
           if (!bid) return
