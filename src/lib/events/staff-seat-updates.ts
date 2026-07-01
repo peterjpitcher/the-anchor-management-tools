@@ -89,7 +89,7 @@ export function mapSeatUpdateBlockedReason(reason: string | null | undefined): s
     case 'insufficient_capacity':
       return 'There are not enough seats available for that increase.'
     case 'table_capacity_insufficient':
-      return 'No table or joined-table setup has enough spare seats for that party size.'
+      return 'No available table or joined-table setup can seat that party — tables in use for an event can’t be shared.'
     case 'table_move_unavailable':
       return 'The table setup changed. Refresh and try again.'
     case 'booking_not_found':

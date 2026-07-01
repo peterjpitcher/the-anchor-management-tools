@@ -244,9 +244,14 @@ export async function getMoveTableAvailability(
   const availableTables = bookableTables
     .filter((table) => !unavailableByAssignment.has(table.id))
     .filter((table) => !unavailableByPrivateBlocks.has(table.id))
+    // A table used for a communal event cannot be shared with a food booking at all — the DB
+    // trigger enforce_booking_table_assignment_integrity_v05 rejects any food assignment on a
+    // table with active communal seats. Exclude such tables entirely (no partial-capacity
+    // sharing) so the picker never offers a combo the database will refuse.
+    .filter((table) => (communalSeatsByTableId.get(table.id) || 0) === 0)
     .map((table) => ({
       ...table,
-      remainingCapacity: Math.max(0, Number(table.capacity || 0) - (communalSeatsByTableId.get(table.id) || 0)),
+      remainingCapacity: Number(table.capacity || 0),
       label: tableLabel(table)
     }))
     .filter((table) => table.remainingCapacity > 0)

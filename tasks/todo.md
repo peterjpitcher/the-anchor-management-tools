@@ -20,10 +20,29 @@ adversarial-verify workflow and live DB/prod checks (prod already on latest code
 **Notes:** FOH path unchanged (already auto-moves). Edit path's communal-net + private-booking
 checks preserved (newer/more correct than create RPC — see allow_communal_partial_table_sharing).
 
-**Review:** Client-only change to `BookingDetailClient.tsx` (verified it's the live component
-rendered by `page.tsx`, not a dead duplicate). Server, RPC, migrations untouched. Not committed
-— awaiting go-ahead to commit/merge. Files: `BookingDetailClient.tsx`,
-`tests/components/BookingDetailClientPartySize.test.tsx`.
+**Review (part 1 — modal auto-select):** shipped main d4866c13, deployed. Client-only change to
+`BookingDetailClient.tsx` (verified live component via `page.tsx`).
+
+## Part 2: communal-event tables must not be shared with food bookings (2026-07-01)
+
+**Real root cause of the FOH 409** (owner tested Benjamin via FOH after part 1): the picker
+`getMoveTableAvailability` used partial-sharing maths (`remaining = capacity − communal`), so it
+OFFERED a table with communal seats (e.g. Dining Room 6b, 1 Cash Bingo seat). The prod DB trigger
+`enforce_booking_table_assignment_integrity_v05` correctly forbids ANY food-on-communal-table, so
+the move insert 409'd with a misleading "table setup changed". Owner policy: communal tables can't
+be shared with food, ever.
+
+- [x] `move-table.ts` getMoveTableAvailability: exclude ANY table with active communal seats; use raw capacity
+- [x] `staff-seat-updates.ts`: clearer blocked message (mentions event tables can't be shared)
+- [x] Remove unapplied repo migration `20260701000002_allow_communal_partial_table_sharing.sql`
+      (contradicts policy; never applied to prod — prod's trigger already strict via 20260611000000)
+- [x] New test `tests/lib/moveTableCommunalExclusion.test.ts` (excludes communal, still offers valid combo)
+- [x] Verify: tests 11/11, tsc 0, eslint 0; build pending
+- [ ] Follow-up (separate change): make create_table_booking_v05 skip communal tables in enumeration
+
+**Not done here:** the create-booking RPC still enumerates without a communal check (a new large
+booking could be allocated onto a communal table and fail at insert). Deferred to a separate,
+isolated change per owner recommendation.
 
 ---
 
