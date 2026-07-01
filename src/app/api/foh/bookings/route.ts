@@ -903,7 +903,7 @@ export async function POST(request: NextRequest) {
     try {
       const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString()
       const { data: recentDuplicate } = await (auth.supabase.from('table_bookings') as any)
-        .select('id, booking_reference, status, table_name')
+        .select('id, booking_reference, status')
         .eq('customer_id', customerId)
         .eq('booking_date', payload.date)
         .eq('booking_time', bookingTime)
@@ -929,7 +929,7 @@ export async function POST(request: NextRequest) {
               blocked_reason: null,
               next_step_url: null,
               hold_expires_at: null,
-              table_name: recentDuplicate.table_name || null,
+              table_name: null,
               sunday_preorder_state: 'not_applicable',
               sunday_preorder_reason: null
             } satisfies FohCreateBookingResponseData
