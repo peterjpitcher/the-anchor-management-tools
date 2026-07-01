@@ -38,11 +38,15 @@ be shared with food, ever.
       (contradicts policy; never applied to prod — prod's trigger already strict via 20260611000000)
 - [x] New test `tests/lib/moveTableCommunalExclusion.test.ts` (excludes communal, still offers valid combo)
 - [x] Verify: tests 11/11, tsc 0, eslint 0; build pending
-- [ ] Follow-up (separate change): make create_table_booking_v05 skip communal tables in enumeration
+- [x] Follow-up: make create_table_booking_v05 skip communal tables in enumeration
+      — SHIPPED main 886be62c; applied to PROD via Supabase MCP apply_migration
+      (repo file 20260719000000). Added communal NOT EXISTS to Step 1 + Step 2.
+      Verified: deployed fn byte-identical to original except the 2 communal blocks
+      (comment/ws-stripped md5 match), and behaviourally excludes communal tables.
+      DB-only change — no app deploy needed.
 
-**Not done here:** the create-booking RPC still enumerates without a communal check (a new large
-booking could be allocated onto a communal table and fail at insert). Deferred to a separate,
-isolated change per owner recommendation.
+**Whole communal gap now closed** across all three surfaces: modal auto-select (d4866c13),
+move-picker exclusion (1eac3f1a), and new-booking allocator (886be62c).
 
 ---
 
