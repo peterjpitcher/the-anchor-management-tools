@@ -1,6 +1,33 @@
 # Task Tracker
 
-## Current Task: Harden recruitment application pipeline (2026-06-12)
+## Current Task: Party-size edit auto-splits across tables (2026-07-01)
+
+**Context:** Editing a booking to a party bigger than any single table (6→9) didn't split
+across two tables, while NEW bookings did. Root cause was NOT the server allocator (FOH
+timeline already auto-moves via `getMoveTableAvailability`), but the management "Edit party
+size" modal (`BookingDetailClient.tsx`) which forced staff to manually pick a combined
+"Larger table" and **disabled Save** until they did. Discovery cross-checked by a 4-reader +
+adversarial-verify workflow and live DB/prod checks (prod already on latest code).
+
+**Fix (scope: unify + auto-select), create RPC left untouched:**
+- [x] Auto-pick smallest sufficient table setup in the modal (new `useEffect`)
+- [x] Keep dropdown as optional override; stop disabling Save
+- [x] Remove hard pre-submit block; fall back to server `autoMoveTable:true` when nothing fits
+- [x] Reword amber notice to reflect auto behaviour
+- [x] Update `tests/components/BookingDetailClientPartySize.test.tsx` (auto-select + no-capacity fallback)
+- [x] Verify: lint (0 warnings), typecheck (0 errors), targeted tests (2/2), build (exit 0, 117/117 pages)
+
+**Notes:** FOH path unchanged (already auto-moves). Edit path's communal-net + private-booking
+checks preserved (newer/more correct than create RPC — see allow_communal_partial_table_sharing).
+
+**Review:** Client-only change to `BookingDetailClient.tsx` (verified it's the live component
+rendered by `page.tsx`, not a dead duplicate). Server, RPC, migrations untouched. Not committed
+— awaiting go-ahead to commit/merge. Files: `BookingDetailClient.tsx`,
+`tests/components/BookingDetailClientPartySize.test.tsx`.
+
+---
+
+## Previous Task: Harden recruitment application pipeline (2026-06-12)
 
 **Context:** Application from Chloe Rogers (12 Jun 07:04) arrived only as a fallback email — never
 reached the DB. Root cause: management intake does AI work inline and blew the website proxy's 15s
