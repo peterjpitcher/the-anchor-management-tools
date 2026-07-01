@@ -412,6 +412,20 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   )
   const partySizeSelectedMoveTable =
     partySizeMoveTableOptions.find((table) => table.id === partySizeMoveTableId) ?? null
+
+  // Auto-pick the smallest sufficient table setup when the new party size outgrows the
+  // current table, so staff never have to hand-pick one for a routine increase (this is
+  // what made 6->9 feel "stuck"). Staff can still override via the dropdown; when nothing
+  // fits, we leave the selection empty and let the server auto-move report why on save.
+  useEffect(() => {
+    if (!partySizeEditOpen || !partySizeNeedsLargerTable) return
+    if (partySizeMoveTableOptions.length === 0) return
+    const alreadyValid = partySizeMoveTableOptions.some((table) => table.id === partySizeMoveTableId)
+    if (!alreadyValid) {
+      setPartySizeMoveTableId(partySizeMoveTableOptions[0].id)
+    }
+  }, [partySizeEditOpen, partySizeNeedsLargerTable, partySizeMoveTableOptions, partySizeMoveTableId])
+
   const guestName = [booking.customer?.first_name, booking.customer?.last_name].filter(Boolean).join(' ') || 'Unknown guest'
   const depositState = getTableBookingDepositState(booking)
   const canonicalDepositAmount = getCanonicalDeposit(
@@ -655,11 +669,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       toast.error('Enter a party size between 1 and 20')
       return
     }
+    // When the party outgrows the current table we prefer an explicit move to the selected
+    // (auto-picked) table setup. If none is available we still submit and let the server
+    // auto-move try — it returns a clear message when nothing large enough is free.
     const selectedMoveTable = partySizeNeedsLargerTable ? partySizeSelectedMoveTable : null
-    if (partySizeNeedsLargerTable && !selectedMoveTable) {
-      toast.error(`Select a table with capacity ${nextSize} or more`)
-      return
-    }
     await runAction(
       'party-size',
       async () => {
@@ -1447,7 +1460,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           {partySizeNeedsLargerTable && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm text-amber-900">
-                Current table capacity is {assignedCapacity}. Pick a larger table to save this party size.
+                This party is larger than the current {assignedCapacity} seats. Saving will move it
+                to a larger table setup automatically — pick specific tables below if you&rsquo;d prefer.
               </p>
               <label htmlFor="party-size-move-table" className="mt-3 block text-sm font-medium text-amber-950">
                 Larger table
@@ -1496,8 +1510,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               disabled={
                 Boolean(actionLoadingKey) ||
                 !partySizeEditValue ||
-                Number.parseInt(partySizeEditValue, 10) < 1 ||
-                (partySizeNeedsLargerTable && !partySizeSelectedMoveTable)
+                Number.parseInt(partySizeEditValue, 10) < 1
               }
             >
               Save

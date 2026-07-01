@@ -128,7 +128,7 @@ describe('BookingDetailClient party size changes', () => {
     requestTableBookingActionMock.mockResolvedValue({ success: true })
   })
 
-  it('moves to a larger table before saving an oversized party size', async () => {
+  it('auto-picks a larger table setup and saves an oversized party size without manual selection', async () => {
     const user = userEvent.setup()
 
     render(
@@ -151,9 +151,10 @@ describe('BookingDetailClient party size changes', () => {
     await user.clear(screen.getByLabelText('New party size'))
     await user.type(screen.getByLabelText('New party size'), '9')
 
-    expect(screen.getByText('Current table capacity is 6. Pick a larger table to save this party size.')).toBeInTheDocument()
-
-    await user.selectOptions(screen.getByLabelText('Larger table'), LARGE_TABLE_ID)
+    // The larger table is auto-selected, so Save is enabled with no manual pick required.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
@@ -166,6 +167,54 @@ describe('BookingDetailClient party size changes', () => {
     )
     expect(requestTableBookingActionMock).toHaveBeenNthCalledWith(
       2,
+      `/api/boh/table-bookings/${BOOKING_ID}/party-size`,
+      { body: { party_size: 9, send_sms: true } }
+    )
+  })
+
+  it('still saves (letting the server auto-move) when no larger table setup is offered', async () => {
+    // Availability returns no options — Save must remain usable so the server can try the
+    // auto-move and surface a clear reason, rather than dead-ending on a disabled button.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { booking_id: BOOKING_ID, tables: [] } }),
+      })
+    )
+
+    const user = userEvent.setup()
+
+    render(
+      <BookingDetailClient
+        booking={makeBooking()}
+        canEdit
+        canManage
+        canRefund={false}
+      />
+    )
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        `/api/boh/table-bookings/${BOOKING_ID}/move-table`,
+        { cache: 'no-store' }
+      )
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    await user.clear(screen.getByLabelText('New party size'))
+    await user.type(screen.getByLabelText('New party size'), '9')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    // Only the party-size call is made; the server handles (or rejects) the move.
+    await waitFor(() => {
+      expect(requestTableBookingActionMock).toHaveBeenCalledTimes(1)
+    })
+    expect(requestTableBookingActionMock).toHaveBeenCalledWith(
       `/api/boh/table-bookings/${BOOKING_ID}/party-size`,
       { body: { party_size: 9, send_sms: true } }
     )
