@@ -18,6 +18,7 @@ import {
   updateEventBookingSeatsById,
   type EventRefundResult
 } from '@/lib/events/manage-booking'
+import { canIssueEventRefund } from '@/lib/events/refund-permissions'
 import {
   sendEventBookingSeatUpdateSms,
   sendEventPaymentConfirmationSms,
@@ -954,7 +955,11 @@ export async function createEventManualBooking(input: {
 
 const cancelEventManualBookingSchema = z.object({
   bookingId: z.string().uuid(),
-  sendSms: z.boolean().optional().default(true)
+  sendSms: z.boolean().optional().default(true),
+  // Manager-only: whether to refund and how much. 'full' refunds everything still
+  // refundable; 'partial' uses refundAmount. Defaults to no refund.
+  refundDecision: z.enum(['none', 'full', 'partial']).optional().default('none'),
+  refundAmount: z.number().min(0).max(100000).optional()
 })
 
 const updateEventManualBookingSeatsSchema = z.object({
@@ -1295,9 +1300,55 @@ export async function updateEventManualBookingSeats(input: {
   }
 }
 
+async function resolveEventRefundActor(
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<{ userId: string | null; email: string | null; mayRefund: boolean }> {
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  let roleNames: string[] = []
+  if (user?.id) {
+    const { data: roleRows } = await supabase.rpc('get_user_roles', { p_user_id: user.id })
+    roleNames = ((roleRows as Array<{ role_name?: string }> | null) ?? [])
+      .map((row) => row.role_name)
+      .filter((name): name is string => typeof name === 'string')
+  }
+  return {
+    userId: user?.id ?? null,
+    email: user?.email ?? null,
+    mayRefund: canIssueEventRefund({ email: user?.email, roleNames })
+  }
+}
+
+async function computeEventBookingRefundable(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string
+): Promise<{ amountPaid: number; alreadyRefunded: number; maxRefundable: number }> {
+  const [paidResult, refundResult] = await Promise.all([
+    supabase.from('payments').select('amount')
+      .eq('event_booking_id', bookingId)
+      .in('charge_type', ['prepaid_event', 'seat_increase'])
+      .in('status', ['succeeded', 'partially_refunded']),
+    supabase.from('payments').select('amount')
+      .eq('event_booking_id', bookingId)
+      .eq('charge_type', 'refund')
+      .in('status', ['refunded', 'pending', 'succeeded'])
+  ])
+  if (paidResult.error) throw paidResult.error
+  if (refundResult.error) throw refundResult.error
+  const amountPaid = (paidResult.data || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+  const alreadyRefunded = (refundResult.data || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+  return {
+    amountPaid: toMoney(amountPaid),
+    alreadyRefunded: toMoney(alreadyRefunded),
+    maxRefundable: toMoney(Math.max(0, amountPaid - alreadyRefunded))
+  }
+}
+
 export async function cancelEventManualBooking(input: {
   bookingId: string
   sendSms?: boolean
+  refundDecision?: 'none' | 'full' | 'partial'
+  refundAmount?: number
 }): Promise<CancelEventManualBookingResult> {
   try {
     const canManageEvents = await checkUserPermission('events', 'manage')
@@ -1356,6 +1407,45 @@ export async function cancelEventManualBooking(input: {
           refund_amount: 0
         }
       }
+    }
+
+    // ── Manager refund decision (money actions are manager-only) ───────────────
+    const eventForRefund = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const isPrepaidConfirmed =
+      bookingStatus === 'confirmed' &&
+      bookingRow.is_reminder_only !== true &&
+      Boolean(bookingRow.customer_id) &&
+      Boolean(bookingRow.event_id) &&
+      Boolean(eventForRefund) &&
+      (eventForRefund as any).payment_mode === 'prepaid'
+
+    const { maxRefundable } = isPrepaidConfirmed
+      ? await computeEventBookingRefundable(supabase, bookingRow.id)
+      : { maxRefundable: 0 }
+
+    const { userId: actingUserId, mayRefund } = await resolveEventRefundActor(supabase)
+    const refundDecision = parsed.data.refundDecision ?? 'none'
+
+    // A paid booking can only be cancelled by a manager — it entails a refund decision.
+    if (maxRefundable > 0 && !mayRefund) {
+      return { error: 'Only a manager can cancel a paid booking. Please ask a manager to do this.' }
+    }
+    if (refundDecision !== 'none' && !mayRefund) {
+      return { error: 'Only a manager can issue refunds.' }
+    }
+
+    let resolvedRefundAmount = 0
+    if (refundDecision === 'full') {
+      resolvedRefundAmount = maxRefundable
+    } else if (refundDecision === 'partial') {
+      const requested = toMoney(Math.max(0, Number(parsed.data.refundAmount ?? 0)))
+      if (requested <= 0) {
+        return { error: 'Enter a refund amount, or choose “No refund”.' }
+      }
+      if (requested > maxRefundable) {
+        return { error: `Refund cannot exceed the amount paid (£${maxRefundable.toFixed(2)}).` }
+      }
+      resolvedRefundAmount = requested
     }
 
     const nowIso = new Date().toISOString()
@@ -1527,68 +1617,36 @@ export async function cancelEventManualBooking(input: {
     let refundStatus: EventRefundResult['status'] = 'none'
     let refundAmount = 0
 
-    if (
-      bookingStatus === 'confirmed' &&
-      bookingRow.is_reminder_only !== true &&
-      bookingRow.customer_id &&
-      bookingRow.event_id &&
-      eventRecord &&
-      (eventRecord as any).payment_mode === 'prepaid'
-    ) {
-      const eventStartIso =
-        (eventRecord as any).start_datetime ||
-        ((eventRecord as any).date ? `${(eventRecord as any).date}T${((eventRecord as any).time || '00:00').slice(0, 5)}:00` : null)
-      const policy = eventStartIso
-        ? getEventRefundPolicy(eventStartIso)
-        : { refundRate: 0, policyBand: 'none' as const }
-      const seatCount = Math.max(1, Number(bookingRow.seats || 1))
-      const { data: paidRows, error: paidRowsError } = await supabase
-        .from('payments')
-        .select('id, amount, status, charge_type')
-        .eq('event_booking_id', bookingRow.id)
-        .in('charge_type', ['prepaid_event', 'seat_increase'])
-        .in('status', ['succeeded', 'partially_refunded'])
-
-      if (paidRowsError) {
-        throw paidRowsError
-      }
-
-      const amountPaid = (paidRows || []).reduce(
-        (sum, row) => sum + Math.max(0, Number(row.amount || 0)),
-        0,
-      )
-      const candidateRefundAmount = toMoney(amountPaid * policy.refundRate)
-
-      if (candidateRefundAmount > 0) {
-        try {
-          const refundResult = await processEventRefund(supabase, {
+    if (resolvedRefundAmount > 0 && bookingRow.customer_id && bookingRow.event_id) {
+      try {
+        const refundResult = await processEventRefund(supabase, {
+          bookingId: bookingRow.id,
+          customerId: bookingRow.customer_id,
+          eventId: bookingRow.event_id,
+          amount: resolvedRefundAmount,
+          reason: 'staff_cancel_refund',
+          metadata: {
+            idempotency_key: `staff-cancel-refund:${bookingRow.id}`,
+            cancelled_by: 'admin',
+            initiated_by: actingUserId,
+            decision: refundDecision,
+            max_refundable: maxRefundable
+          }
+        })
+        refundStatus = refundResult.status
+        refundAmount = refundResult.amount
+      } catch (refundError) {
+        refundStatus = 'manual_required'
+        refundAmount = resolvedRefundAmount
+        logger.error('Failed to process event refund during staff cancellation', {
+          error: refundError instanceof Error ? refundError : new Error(String(refundError)),
+          metadata: {
             bookingId: bookingRow.id,
             customerId: bookingRow.customer_id,
             eventId: bookingRow.event_id,
-            amount: candidateRefundAmount,
-            reason: `staff_cancel_${policy.policyBand}`,
-            metadata: {
-              cancelled_by: 'admin',
-              policy_band: policy.policyBand,
-              amount_paid: toMoney(amountPaid),
-              seats: seatCount
-            }
-          })
-          refundStatus = refundResult.status
-          refundAmount = refundResult.amount
-        } catch (refundError) {
-          refundStatus = 'manual_required'
-          refundAmount = candidateRefundAmount
-          logger.error('Failed to process event refund during staff cancellation', {
-            error: refundError instanceof Error ? refundError : new Error(String(refundError)),
-            metadata: {
-              bookingId: bookingRow.id,
-              customerId: bookingRow.customer_id,
-              eventId: bookingRow.event_id,
-              refundAmount: candidateRefundAmount
-            }
-          })
-        }
+            refundAmount: resolvedRefundAmount
+          }
+        })
       }
     }
 
@@ -1664,6 +1722,21 @@ export async function cancelEventManualBooking(input: {
       reason: 'staff_cancel'
     })
 
+    await logAuditEvent({
+      user_id: actingUserId ?? undefined,
+      operation_type: 'update',
+      resource_type: 'event_booking',
+      resource_id: bookingRow.id,
+      operation_status: 'success',
+      additional_info: {
+        action: 'cancel',
+        refund_decision: refundDecision,
+        refund_status: refundStatus,
+        refund_amount: refundAmount,
+        max_refundable: maxRefundable
+      }
+    })
+
     if (bookingRow.customer_id) {
       await recordEventAnalyticsSafe(supabase, {
         customerId: bookingRow.customer_id,
@@ -1709,6 +1782,78 @@ export async function cancelEventManualBooking(input: {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to cancel booking.') }
+  }
+}
+
+type EventBookingRefundInfo =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        canRefund: boolean
+        amountPaid: number
+        alreadyRefunded: number
+        maxRefundable: number
+        policySuggestion: number
+      }
+    }
+
+/** Refund context for the staff cancel dialog: how much is refundable, a policy
+ *  suggestion, and whether the current user may issue refunds. */
+export async function getEventBookingRefundInfo(bookingId: string): Promise<EventBookingRefundInfo> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to view this.' }
+    }
+    const parsedId = z.string().uuid().safeParse(bookingId)
+    if (!parsedId.success) {
+      return { error: 'Invalid booking id.' }
+    }
+
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
+      .select('id, status, is_reminder_only, event:events(payment_mode, start_datetime, date, time)')
+      .eq('id', parsedId.data)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+
+    const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const isPrepaidConfirmed =
+      bookingRow.status === 'confirmed' &&
+      bookingRow.is_reminder_only !== true &&
+      Boolean(eventRecord) &&
+      (eventRecord as any).payment_mode === 'prepaid'
+
+    const { amountPaid, alreadyRefunded, maxRefundable } = isPrepaidConfirmed
+      ? await computeEventBookingRefundable(supabase, bookingRow.id)
+      : { amountPaid: 0, alreadyRefunded: 0, maxRefundable: 0 }
+
+    let policySuggestion = 0
+    if (maxRefundable > 0 && eventRecord) {
+      const startIso =
+        (eventRecord as any).start_datetime ||
+        ((eventRecord as any).date
+          ? `${(eventRecord as any).date}T${(((eventRecord as any).time || '00:00') as string).slice(0, 5)}:00`
+          : null)
+      const policy = startIso ? getEventRefundPolicy(startIso) : { refundRate: 0 }
+      policySuggestion = toMoney(maxRefundable * policy.refundRate)
+    }
+
+    const { mayRefund } = await resolveEventRefundActor(supabase)
+
+    return {
+      success: true,
+      data: { canRefund: mayRefund, amountPaid, alreadyRefunded, maxRefundable, policySuggestion }
+    }
+  } catch (error) {
+    logger.error('Failed to load event booking refund info', {
+      error: error instanceof Error ? error : new Error(String(error))
+    })
+    return { error: getErrorMessage(error, 'Failed to load refund details.') }
   }
 }
 
