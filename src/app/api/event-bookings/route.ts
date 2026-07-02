@@ -91,16 +91,15 @@ function buildBookingAttribution(data: z.infer<typeof CreateEventBookingSchema>)
 }
 
 export async function POST(request: NextRequest) {
-  // Turnstile CAPTCHA verification.
-  // The website proxy skips its own Turnstile check and forwards the customer's
-  // single-use token as `x-turnstile-token` (alongside its API key), expecting
-  // the management API to validate it. The sibling public endpoints only verify
-  // when no API key is present, which would skip the website-proxied path
-  // entirely — so here we verify whenever a token is supplied, regardless of the
-  // API key. Token-less requests still fall through to API-key auth, and
-  // verifyTurnstileToken no-ops when TURNSTILE_SECRET_KEY is unset (dev/test).
-  const turnstileToken = request.headers.get('x-turnstile-token')
-  if (turnstileToken) {
+  // Turnstile CAPTCHA verification — only for direct browser requests.
+  // API-key-authenticated requests (the website proxy) skip Turnstile here: the
+  // website uses its own Turnstile widget with a *different* secret key, so its
+  // single-use token cannot be validated with this app's secret (attempting to
+  // always fails with "Turnstile verification failed"). The website verifies the
+  // token itself before proxying. Mirrors the established table-bookings route.
+  const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
+  if (!hasApiKey) {
+    const turnstileToken = request.headers.get('x-turnstile-token')
     const turnstile = await verifyTurnstileToken(turnstileToken, getClientIp(request))
     if (!turnstile.success) {
       return createErrorResponse(
