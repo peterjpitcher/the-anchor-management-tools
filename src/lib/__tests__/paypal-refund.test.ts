@@ -138,3 +138,75 @@ describe('capturePayPalPayment', () => {
     )
   })
 })
+
+describe('isPayPalOrderAlreadyCapturedError', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    process.env.PAYPAL_CLIENT_ID = 'test-client-id'
+    process.env.PAYPAL_CLIENT_SECRET = 'test-secret'
+    process.env.PAYPAL_ENVIRONMENT = 'sandbox'
+    // capturePayPalPayment logs the raw PayPal error on failure — silence it.
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  it('recognises a 422 ORDER_ALREADY_CAPTURED capture failure (the race case)', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'test-token', expires_in: 3600 }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          name: 'UNPROCESSABLE_ENTITY',
+          message: 'The requested action could not be performed, semantically incorrect, or failed business validation.',
+          details: [{ issue: 'ORDER_ALREADY_CAPTURED', description: 'Order already captured.' }],
+        }), { status: 422 })
+      )
+
+    const { capturePayPalPayment, isPayPalOrderAlreadyCapturedError, isPayPalOrderNotFoundError } =
+      await import('../paypal')
+
+    let thrown: unknown
+    try {
+      await capturePayPalPayment('ORDER-DUP', 'GBP')
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isPayPalOrderAlreadyCapturedError(thrown)).toBe(true)
+    // Must not be misclassified as a "not found" error.
+    expect(isPayPalOrderNotFoundError(thrown)).toBe(false)
+  })
+
+  it('does not flag an unrelated capture failure as already-captured', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'test-token', expires_in: 3600 }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          name: 'INTERNAL_SERVER_ERROR',
+          message: 'An internal server error occurred.',
+        }), { status: 500 })
+      )
+
+    const { capturePayPalPayment, isPayPalOrderAlreadyCapturedError } = await import('../paypal')
+
+    let thrown: unknown
+    try {
+      await capturePayPalPayment('ORDER-ERR', 'GBP')
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isPayPalOrderAlreadyCapturedError(thrown)).toBe(false)
+  })
+
+  it('returns false for non-PayPal errors', async () => {
+    const { isPayPalOrderAlreadyCapturedError } = await import('../paypal')
+    expect(isPayPalOrderAlreadyCapturedError(new Error('network down'))).toBe(false)
+    expect(isPayPalOrderAlreadyCapturedError(null)).toBe(false)
+  })
+})
