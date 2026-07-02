@@ -21,6 +21,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/booking-confirmation',
   '/booking-portal',
   '/booking-success',
+  '/feedback',
   '/table-booking',
   '/parking/guest',
   '/onboarding',
