@@ -245,26 +245,14 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
           </form>
         )}
 
-        {preview.can_cancel && (
-          <form method="post" action={`/g/${token}/manage-booking/action`} className="mt-4">
-            <input type="hidden" name="intent" value="cancel" />
-            <button
-              type="submit"
-              className="inline-flex w-full items-center justify-center rounded-md border border-rose-500 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
-            >
-              Cancel booking
-            </button>
-          </form>
-        )}
-
-        {!preview.can_change_seats && !preview.can_cancel && (
+        {!preview.can_change_seats && (
           <p className="mt-5 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700">
             This booking can no longer be changed online.
           </p>
         )}
 
         <p className="mt-4 text-xs text-slate-600">
-          Need help? Call {contactPhone}.
+          Need to cancel or need help? Call {contactPhone}.
         </p>
       </div>
     </GuestPageShell>
