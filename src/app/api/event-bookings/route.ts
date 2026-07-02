@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
       seats: parsed.data.seats,
       seating_preference: parsed.data.seating_preference || 'seated',
       expected_event_date: parsed.data.expected_event_date || null,
-      attendee_names: attendeeNames.length > 0 ? attendeeNames : null,
+      ...(attendeeNames.length > 0 ? { attendee_names: attendeeNames } : {}),
       communication_consent: consentHashPayload(parsed.data.communication_consent),
     })
     const attribution = buildBookingAttribution(parsed.data)
