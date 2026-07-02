@@ -98,10 +98,11 @@ async function loadEventTicketEmailContext(
   eventStartIso: string | null
   bookingUrl: string | null
   seats: number
+  attendeeNames: string[]
 } | null> {
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('id, customer_id, seats, customers!inner(id, first_name, email), events!inner(id, name, start_datetime, date, time, booking_url)')
+    .select('id, customer_id, seats, attendee_names, customers!inner(id, first_name, email), events!inner(id, name, start_datetime, date, time, booking_url)')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -130,6 +131,11 @@ async function loadEventTicketEmailContext(
     eventStartIso,
     bookingUrl: typeof event?.booking_url === 'string' && event.booking_url.trim() ? event.booking_url.trim() : null,
     seats: Math.max(1, Number((booking as any).seats || 1)),
+    attendeeNames: Array.isArray((booking as any).attendee_names)
+      ? ((booking as any).attendee_names as unknown[])
+          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+          .map((name) => name.trim())
+      : [],
   }
 }
 
@@ -262,10 +268,19 @@ export async function sendEventPaymentConfirmationEmail(
   const paidLine = amountText
     ? `We have received your ${amountText} payment.`
     : 'We have received your payment.'
+  const hasAttendeeNames = context.attendeeNames.length > 0
+  const namesText = hasAttendeeNames
+    ? `\nTickets:\n${context.attendeeNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`
+    : ''
+  const namesHtml = hasAttendeeNames
+    ? `<p style="margin-bottom: 4px;"><strong>Tickets</strong></p>
+  <ol style="margin-top: 0;">${context.attendeeNames.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ol>`
+    : ''
   const text = [
     `Hi ${context.firstName},`,
     '',
     `${paidLine} Your booking for ${context.eventName} on ${context.eventStart} is confirmed for ${context.seats} ${seatWord}.`,
+    namesText || null,
     manageLink ? `Manage your booking here: ${manageLink}` : null,
     '',
     'The Anchor',
@@ -276,6 +291,7 @@ export async function sendEventPaymentConfirmationEmail(
   <h2 style="font-family: Arial, Helvetica, sans-serif;">Your booking is confirmed</h2>
   <p>Hi ${safeName},</p>
   <p>${escapeHtml(paidLine)} Your booking for <strong>${safeEventName}</strong> on ${escapeHtml(context.eventStart)} is confirmed for ${context.seats} ${seatWord}.</p>
+  ${namesHtml}
   ${safeManageLink ? `<p><a href="${safeManageLink}" style="display: inline-block; padding: 10px 14px; background: #111827; color: #ffffff; text-decoration: none; border-radius: 6px;">Manage booking</a></p>` : ''}
   <p style="font-size: 13px; color: #6b7280;">This is a service message about your booking.</p>
   <p>The Anchor</p>

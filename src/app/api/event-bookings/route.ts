@@ -23,6 +23,7 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
+import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 
 const CreateEventBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -55,6 +56,9 @@ const CreateEventBookingSchema = z.object({
   event_value: z.number().min(0).optional(),
   food_intent: z.string().trim().min(1).max(80).optional(),
   communication_consent: OptionalCommunicationConsentSchema,
+  // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
+  // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
+  attendee_names: z.array(z.string().max(200)).max(20).optional(),
 })
 
 const ATTRIBUTION_KEYS = [
@@ -123,6 +127,14 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
     }
 
+    // Per-ticket attendee names are optional here (the website enforces them for
+    // paid events); when provided, they must be non-empty and match the seat count.
+    const attendeeNamesResult = normalizeAttendeeNames(parsed.data.attendee_names, parsed.data.seats)
+    if (!attendeeNamesResult.ok) {
+      return createErrorResponse(attendeeNamesResult.error, 'VALIDATION_ERROR', 400)
+    }
+    const attendeeNames = attendeeNamesResult.names
+
     const requestHash = computeIdempotencyRequestHash({
       event_id: parsed.data.event_id,
       phone: normalizedPhone,
@@ -132,6 +144,7 @@ export async function POST(request: NextRequest) {
       seats: parsed.data.seats,
       seating_preference: parsed.data.seating_preference || 'seated',
       expected_event_date: parsed.data.expected_event_date || null,
+      attendee_names: attendeeNames.length > 0 ? attendeeNames : null,
       communication_consent: consentHashPayload(parsed.data.communication_consent),
     })
     const attribution = buildBookingAttribution(parsed.data)
@@ -256,6 +269,7 @@ export async function POST(request: NextRequest) {
         appBaseUrl,
         shouldSendSms: true,
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
+        attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
         attribution
       })
 

@@ -112,6 +112,12 @@ export type CreateBookingParams = {
    */
   firstName?: string
   /**
+   * Per-ticket attendee names (ordered; index 0 = lead booker). Persisted to
+   * bookings.attendee_names once the booking row exists. Optional — staff, FOH
+   * and SMS bookings don't supply them, and legacy rows stay NULL.
+   */
+  attendeeNames?: string[]
+  /**
    * First-party attribution forwarded by the brand site. Stored in analytics
    * metadata so paid-booking truth survives browser pixel failures.
    */
@@ -411,6 +417,24 @@ async function cancelBookingAfterTableReservationFailure(
   }
 }
 
+async function persistAttendeeNames(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  attendeeNames: string[]
+): Promise<void> {
+  const { error } = await supabase
+    .from('bookings')
+    .update({ attendee_names: attendeeNames })
+    .eq('id', bookingId)
+
+  if (error) {
+    // Attendee names are non-critical metadata — never fail the booking over them.
+    logger.warn('Failed to persist event booking attendee names', {
+      metadata: { bookingId, error: error.message }
+    })
+  }
+}
+
 async function recordAnalyticsSafe(
   supabase: ReturnType<typeof createAdminClient>,
   payload: Parameters<typeof recordAnalyticsEvent>[1],
@@ -465,6 +489,7 @@ export class EventBookingService {
       supabaseClient,
       logTag = 'event booking',
       firstName,
+      attendeeNames,
       attribution = null,
       paymentHoldMinutes
     } = params
@@ -704,6 +729,13 @@ export class EventBookingService {
           })
         }
       ]
+
+      if (attendeeNames && attendeeNames.length > 0 && rpcResult.booking_id) {
+        tasks.push({
+          label: 'store:attendee_names',
+          promise: persistAttendeeNames(supabase, rpcResult.booking_id, attendeeNames)
+        })
+      }
 
       if (shouldSendSms && normalizedPhone) {
         tasks.push({
