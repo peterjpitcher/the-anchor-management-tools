@@ -9,6 +9,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
 import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
+import type { TicketSelectionInput } from '@/lib/events/ticket-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,15 @@ export type CreateBookingParams = {
    * links use 24 hours, capped inside the RPC by event start.
    */
   paymentHoldMinutes?: number
+  /**
+   * Multiple-ticket-options basket. When present (and referencing more than one
+   * type or a non-default type), the booking is created via
+   * create_event_booking_v07, which inserts real per-line booking_items and sets
+   * the aggregate attendee_names in the same transaction. Omit for the legacy
+   * single-type path. The caller (booking API) is responsible for the feature-flag
+   * gate — when the flag is off it must not pass multi/non-default selections here.
+   */
+  ticketSelections?: TicketSelectionInput[]
 }
 
 export type CreateBookingResult = {
@@ -491,29 +501,43 @@ export class EventBookingService {
       firstName,
       attendeeNames,
       attribution = null,
-      paymentHoldMinutes
+      paymentHoldMinutes,
+      ticketSelections
     } = params
+
+    // A multi-type basket (more than one line, or any line whose ticket_type_id is
+    // supplied) is created through create_event_booking_v07, which writes the real
+    // per-line booking_items + aggregate attendee_names atomically. When we take
+    // this path the separate attendee_names update below is skipped (v07 sets it).
+    const useTicketSelections = Array.isArray(ticketSelections) && ticketSelections.length > 0
 
     // Capitalised form used when logTag starts a log message.
     const logTagCap = logTag.charAt(0).toUpperCase() + logTag.slice(1)
 
     const supabase = supabaseClient ?? createAdminClient()
 
-    // ── 1. Call create_event_booking_v06 RPC ──────────────────────────────────
-    const { data: rpcResultRaw, error: rpcError } = await supabase.rpc(
-      'create_event_booking_v06',
-      {
-        p_event_id: eventId,
-        p_customer_id: customerId,
-        p_seats: seats,
-        p_source: source,
-        p_seating_preference: normalizeSeatingPreference(seatingPreference),
-        p_payment_hold_minutes: paymentHoldMinutes ?? (source === 'brand_site' ? 15 : 24 * 60)
-      }
-    )
+    // ── 1. Call the create RPC (v06 legacy single-type, or v07 multi-type) ─────
+    const holdMinutes = paymentHoldMinutes ?? (source === 'brand_site' ? 15 : 24 * 60)
+    const { data: rpcResultRaw, error: rpcError } = useTicketSelections
+      ? await supabase.rpc('create_event_booking_v07', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes,
+          p_ticket_selections: ticketSelections as unknown as object
+        })
+      : await supabase.rpc('create_event_booking_v06', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_seats: seats,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes
+        })
 
     if (rpcError) {
-      logger.error('create_event_booking_v06 RPC failed', {
+      logger.error(`${useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
         error: new Error(rpcError.message),
         metadata: { eventId, customerId, source }
       })
@@ -730,7 +754,9 @@ export class EventBookingService {
         }
       ]
 
-      if (attendeeNames && attendeeNames.length > 0 && rpcResult.booking_id) {
+      // v07 writes the aggregate attendee_names inside its transaction, so only the
+      // legacy single-type path needs the separate update.
+      if (!useTicketSelections && attendeeNames && attendeeNames.length > 0 && rpcResult.booking_id) {
         tasks.push({
           label: 'store:attendee_names',
           promise: persistAttendeeNames(supabase, rpcResult.booking_id, attendeeNames)
