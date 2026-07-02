@@ -41,6 +41,7 @@ type BookingRow = {
   seats: number | null
   event_seating_type: string | null
   notes: string | null
+  attendee_names: string[] | null
   status: string | null
   is_reminder_only: boolean | null
   customer: {
@@ -215,6 +216,7 @@ function toSheetData(input: {
     customerName: customerName(booking),
     seats: String(seats),
     seatingType,
+    attendeeNames: (booking.attendee_names ?? []).filter((name) => typeof name === 'string' && name.trim().length > 0),
     tableNumber: seatingType === 'Standing' ? null : tableName || null,
     price: isFree ? 'Free' : formatCurrency(pricePerSeat * seats),
     priceNote: isFree ? 'Event price: Free' : `Event price: ${formatCurrency(pricePerSeat)} per person · ${seats} guests`,
@@ -248,7 +250,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const { data: bookings, error: bookingsError } = await admin
       .from('bookings')
-      .select('id, seats, event_seating_type, notes, status, is_reminder_only, customer:customers(first_name, last_name, mobile_number)')
+      .select('id, seats, event_seating_type, notes, attendee_names, status, is_reminder_only, customer:customers(first_name, last_name, mobile_number)')
       .eq('event_id', eventId)
       .neq('status', 'cancelled')
       .eq('is_reminder_only', false)

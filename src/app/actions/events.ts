@@ -54,6 +54,7 @@ export type EventBookingRow = {
   source?: string | null
   hold_expires_at?: string | null
   event_seating_type?: 'seated' | 'standing' | null
+  attendee_names?: string[] | null
   paid_amount?: number | null
   payment_status_summary?: string | null
   payment_method_summary?: string | null
@@ -656,7 +657,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 

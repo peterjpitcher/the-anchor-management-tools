@@ -1049,6 +1049,19 @@ function AttendeesTab({
                             fallback="-"
                             className="text-blue-600 hover:text-blue-700"
                           />
+                          {(() => {
+                            const attendeeNames = (booking.attendee_names ?? []).filter(
+                              (name) => typeof name === 'string' && name.trim().length > 0
+                            )
+                            if (attendeeNames.length === 0) return null
+                            return (
+                              <ol className="mt-1 list-decimal pl-4 text-xs text-gray-500">
+                                {attendeeNames.map((name, index) => (
+                                  <li key={index}>{name}</li>
+                                ))}
+                              </ol>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>

@@ -7,6 +7,8 @@ export interface EventBookingSheetData {
   customerName: string
   seats: string
   seatingType: string
+  /** Ordered per-ticket attendee names (index 0 = lead booker); empty when unknown. */
+  attendeeNames: string[]
   tableNumber: string | null
   price: string
   priceNote: string
@@ -138,6 +140,8 @@ function renderBookingSheetPage(
 ): string {
   const hasTable = Boolean(data.tableNumber?.trim())
   const hasNotes = Boolean(data.bookingNotes?.trim())
+  const attendeeNames = data.attendeeNames.filter((name) => name.trim().length > 0)
+  const hasAttendees = attendeeNames.length > 0
   const menuItems = options.sundayRoastItems.length > 0
     ? options.sundayRoastItems
     : [{ name: 'Ask the team for this Sunday\'s roast menu', price: '', badge: null }]
@@ -186,6 +190,8 @@ function renderBookingSheetPage(
           <p class="pay-method">${escapeHtml(data.paymentMethod)}</p>
         </div>
       </div>
+
+      ${hasAttendees ? `<div class="notes" style="margin-bottom:5mm;"><p class="notes-label">Guests</p><p class="notes-text">${attendeeNames.map((name, index) => `${index + 1}. ${escapeHtml(name)}`).join('<br>')}</p></div>` : ''}
 
       ${hasNotes ? `<div class="notes"><p class="notes-label">Booking notes</p><p class="notes-text">${escapeHtml(data.bookingNotes || '')}</p></div>` : ''}
 
