@@ -30,6 +30,7 @@ import {
   createEventManualBooking,
   updateEventManualBookingSeats,
   cancelEventManualBooking,
+  getEventBookingRefundInfo,
   markEventBookingPaidManually,
   transferEventBooking,
   deleteEvent,
@@ -190,6 +191,16 @@ export default function EventDetailClient({
 
   // Cancel confirmation state
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
+  const [cancelRefundInfo, setCancelRefundInfo] = useState<{
+    canRefund: boolean
+    maxRefundable: number
+    policySuggestion: number
+    amountPaid: number
+  } | null>(null)
+  const [cancelRefundLoading, setCancelRefundLoading] = useState(false)
+  const [cancelRefundOn, setCancelRefundOn] = useState(false)
+  const [cancelRefundMode, setCancelRefundMode] = useState<'full' | 'partial'>('full')
+  const [cancelRefundAmount, setCancelRefundAmount] = useState('')
   const [transferringBookingId, setTransferringBookingId] = useState<string | null>(null)
   const [transferTargetEventId, setTransferTargetEventId] = useState('')
 
@@ -299,11 +310,49 @@ export default function EventDetailClient({
 
   /* ---- Cancel booking ---- */
 
+  // Load refund context (max refundable, policy suggestion, permission) when the
+  // cancel dialog opens, and reset the refund choice when it closes.
+  useEffect(() => {
+    if (!cancellingBookingId) {
+      setCancelRefundInfo(null)
+      setCancelRefundLoading(false)
+      setCancelRefundOn(false)
+      setCancelRefundMode('full')
+      setCancelRefundAmount('')
+      return
+    }
+    let cancelled = false
+    setCancelRefundLoading(true)
+    setCancelRefundInfo(null)
+    getEventBookingRefundInfo(cancellingBookingId)
+      .then((res) => {
+        if (cancelled || 'error' in res) return
+        setCancelRefundInfo(res.data)
+        if (res.data.maxRefundable > 0 && res.data.canRefund) {
+          setCancelRefundOn(true)
+          setCancelRefundMode('full')
+          setCancelRefundAmount(res.data.maxRefundable.toFixed(2))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCancelRefundLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cancellingBookingId])
+
   const handleConfirmCancel = useCallback(() => {
     if (!cancellingBookingId || !event) return
+    const refundDecision: 'none' | 'full' | 'partial' =
+      cancelRefundInfo && cancelRefundInfo.canRefund && cancelRefundInfo.maxRefundable > 0 && cancelRefundOn
+        ? cancelRefundMode
+        : 'none'
     startTransition(async () => {
       const result = await cancelEventManualBooking({
         bookingId: cancellingBookingId,
+        refundDecision,
+        ...(refundDecision === 'partial' ? { refundAmount: Number(cancelRefundAmount) || 0 } : {}),
       })
       if ('error' in result) {
         toast.error(result.error)
@@ -322,7 +371,7 @@ export default function EventDetailClient({
         await refreshBookings()
       }
     })
-  }, [cancellingBookingId, event, refreshBookings])
+  }, [cancellingBookingId, event, refreshBookings, cancelRefundInfo, cancelRefundOn, cancelRefundMode, cancelRefundAmount])
 
   const handleMarkPaid = useCallback((bookingId: string, method: 'cash' | 'card_terminal' | 'comp') => {
     startTransition(async () => {
@@ -595,7 +644,68 @@ export default function EventDetailClient({
         onClose={() => setCancellingBookingId(null)}
         onConfirm={handleConfirmCancel}
         title="Cancel Booking"
-        message="Are you sure you want to cancel this booking? This action cannot be undone."
+        message={
+          <div className="space-y-3">
+            <p className="text-sm text-text-muted">
+              Are you sure you want to cancel this booking? This action cannot be undone.
+            </p>
+            {cancelRefundLoading ? (
+              <p className="text-sm text-text-muted">Checking payment…</p>
+            ) : cancelRefundInfo && cancelRefundInfo.maxRefundable > 0 ? (
+              cancelRefundInfo.canRefund ? (
+                <div className="space-y-2 rounded-md border border-line bg-surface-sunk p-3">
+                  <label className="flex items-center gap-2 text-sm font-medium text-text">
+                    <input
+                      type="checkbox"
+                      checked={cancelRefundOn}
+                      onChange={(e) => setCancelRefundOn(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Issue a refund (paid {formatCurrency(cancelRefundInfo.amountPaid)})
+                  </label>
+                  {cancelRefundOn && (
+                    <div className="space-y-2 pl-6">
+                      <Select
+                        value={cancelRefundMode}
+                        onChange={(e) => {
+                          const mode = e.target.value === 'partial' ? 'partial' : 'full'
+                          setCancelRefundMode(mode)
+                          if (mode === 'full' && cancelRefundInfo) {
+                            setCancelRefundAmount(cancelRefundInfo.maxRefundable.toFixed(2))
+                          }
+                        }}
+                        options={[
+                          { value: 'full', label: `Full refund (${formatCurrency(cancelRefundInfo.maxRefundable)})` },
+                          { value: 'partial', label: 'Partial refund' },
+                        ]}
+                      />
+                      {cancelRefundMode === 'partial' && (
+                        <Input
+                          type="number"
+                          min={0}
+                          max={cancelRefundInfo.maxRefundable}
+                          step="0.01"
+                          value={cancelRefundAmount}
+                          onChange={(e) => setCancelRefundAmount(e.target.value)}
+                          placeholder="Refund amount"
+                        />
+                      )}
+                      <p className="text-xs text-text-muted">
+                        Up to {formatCurrency(cancelRefundInfo.maxRefundable)}. Policy suggests{' '}
+                        {formatCurrency(cancelRefundInfo.policySuggestion)}.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-amber-700">
+                  This booking is paid ({formatCurrency(cancelRefundInfo.amountPaid)}). Only a manager can
+                  cancel a paid booking, so the refund can be decided.
+                </p>
+              )
+            ) : null}
+          </div>
+        }
         confirmLabel="Cancel Booking"
         tone="danger"
       />

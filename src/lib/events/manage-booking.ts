@@ -251,6 +251,46 @@ export async function processEventRefund(
     }
   }
 
+  // Idempotency: when the caller supplies a stable metadata.idempotency_key,
+  // return any prior refund carrying that key instead of issuing a new one.
+  // Guards against double-refund on retries / concurrent cancels regardless of
+  // the (per-reason) dedup below.
+  const idempotencyKey =
+    input.metadata && typeof input.metadata['idempotency_key'] === 'string'
+      ? (input.metadata['idempotency_key'] as string)
+      : null
+  if (idempotencyKey) {
+    const { data: priorRefunds, error: priorRefundError } = await supabase.from('payments')
+      .select('id, amount, currency, status, metadata')
+      .eq('charge_type', 'refund')
+      .contains('metadata', { idempotency_key: idempotencyKey })
+      .in('status', ['refunded', 'pending', 'succeeded'])
+      .order('created_at', { ascending: false })
+
+    if (priorRefundError) {
+      throw priorRefundError
+    }
+
+    if (Array.isArray(priorRefunds) && priorRefunds.length > 0) {
+      const totalPrior = priorRefunds.reduce(
+        (sum, row) => sum + Math.max(0, Number(row.amount || 0)),
+        0
+      )
+      const anyPending = priorRefunds.some((row) => row.status === 'pending')
+      const refundIds = priorRefunds
+        .map((row) => (row.metadata as Record<string, unknown> | null)?.['paypal_refund_id'])
+        .filter((id): id is string => typeof id === 'string')
+      return {
+        status: anyPending ? 'pending' : 'succeeded',
+        amount: roundCurrencyAmount(totalPrior),
+        currency: (priorRefunds[0]?.currency || 'GBP').toUpperCase(),
+        paypalRefundId: refundIds[0],
+        paypalRefundIds: refundIds.length > 0 ? refundIds : undefined,
+        reason: 'idempotent_replay'
+      }
+    }
+  }
+
   let paymentQuery = supabase
     .from('payments')
     .select('id, amount, currency, paypal_capture_id')
