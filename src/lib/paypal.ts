@@ -83,6 +83,22 @@ export function isPayPalOrderNotFoundError(error: unknown): error is PayPalApiEr
     issues.includes('ORDER_NOT_FOUND');
 }
 
+/**
+ * Detect a capture failure that means the PayPal order was already captured —
+ * e.g. a duplicate browser onApprove submit, or a capture racing another
+ * capture/confirmation for the same order. PayPal returns HTTP 422 with an
+ * ORDER_ALREADY_CAPTURED issue in that case. Callers should recover by
+ * re-reading their own payment record instead of surfacing a 500 to a customer
+ * whose payment has in fact gone through.
+ */
+export function isPayPalOrderAlreadyCapturedError(error: unknown): error is PayPalApiError {
+  if (!(error instanceof PayPalApiError)) {
+    return false;
+  }
+
+  return getPayPalErrorIssues(error.details).includes('ORDER_ALREADY_CAPTURED');
+}
+
 function getPayPalConfig(): PayPalConfig {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
