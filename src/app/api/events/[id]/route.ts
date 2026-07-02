@@ -5,6 +5,8 @@ import { eventToSchema } from '@/lib/api/schema';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { EVENT_MARKETING_CHANNEL_MAP, isEventMarketingQrChannel, type EventMarketingChannelKey } from '@/lib/event-marketing-links';
+import { eventTicketTypesEnabled, type EventTicketTypeDTO } from '@/lib/events/ticket-types';
+import { loadEventTicketTypeDTOs } from '@/lib/events/ticket-type-queries';
 
 type EventFaqRow = {
   sort_order: number | null;
@@ -173,6 +175,19 @@ export async function GET(
 
     const price = resolveEventPriceAmount(event)
     const paymentMode = resolveEventPaymentMode(event)
+
+    // Multiple ticket options (feature-flagged). Omit the field entirely when the
+    // flag is off so the website contract is byte-for-byte unchanged pre-launch.
+    let ticketTypes: EventTicketTypeDTO[] | null = null
+    if (eventTicketTypesEnabled() && event.id) {
+      try {
+        const dtos = await loadEventTicketTypeDTOs(supabase, event.id, event)
+        if (dtos.length > 0) ticketTypes = dtos
+      } catch (ticketTypesError) {
+        console.error('[events:id] failed to load ticket types', ticketTypesError)
+      }
+    }
+
     const facebookShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'facebook');
     const linkInBioShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'lnk_bio');
     const googleBusinessProfileShortLinkRow = resolveMarketingShortLinkRow(marketingShortLinks, 'google_business_profile');
@@ -244,6 +259,8 @@ export async function GET(
         : 'table',
       payment_mode: paymentMode,
       price,
+      // Only present when the flag is on AND the event has active types (else omitted).
+      ...(ticketTypes ? { ticket_types: ticketTypes } : {}),
       ticket_price: event.price ?? null,
       price_per_seat: event.price_per_seat ?? null,
       online_discount_type: event.online_discount_type ?? null,

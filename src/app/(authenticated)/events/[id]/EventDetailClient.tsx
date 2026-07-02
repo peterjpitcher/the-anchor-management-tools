@@ -38,6 +38,8 @@ import {
 import {
   regenerateEventMarketingLinks,
 } from '@/app/actions/event-marketing-links'
+import { EventTicketTypesCard } from './EventTicketTypesCard'
+import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
@@ -61,6 +63,8 @@ interface EventDetailClientProps {
   categories: EventCategory[]
   transferEvents: Event[]
   permissions: { canEdit: boolean; canDelete: boolean; canManage: boolean }
+  ticketTypesEnabled: boolean
+  initialTicketTypes: EventTicketTypeRow[]
   initialError: string | null
 }
 
@@ -165,11 +169,19 @@ export default function EventDetailClient({
   categories,
   transferEvents,
   permissions,
+  ticketTypesEnabled,
+  initialTicketTypes,
   initialError,
 }: EventDetailClientProps) {
   const router = useRouter()
   const [event, setEvent] = useState<Event | null>(initialEvent)
   const [activeTab, setActiveTab] = useState('overview')
+  // Ticket types apply to standard (table/general) events only; communal/mixed
+  // events stay single-price. Gated by the server-resolved feature flag.
+  const showTicketTypesTab =
+    ticketTypesEnabled &&
+    event?.booking_mode !== 'communal' &&
+    event?.booking_mode !== 'mixed'
   const [bookings, setBookings] = useState<EventBookingRow[]>(initialBookings)
   const [links, setLinks] = useState<EventMarketingLink[]>(initialLinks)
   const [showCancelled, setShowCancelled] = useState(false)
@@ -541,6 +553,7 @@ export default function EventDetailClient({
       <Tabs
         tabs={[
           { id: 'overview', label: 'Overview', count: activeBookings.length },
+          ...(showTicketTypesTab ? [{ id: 'ticket-types', label: 'Ticket types' }] : []),
           { id: 'short-links', label: 'Short Links', count: totalLinkClicks || undefined },
           { id: 'marketing', label: 'Marketing' },
         ]}
@@ -613,6 +626,14 @@ export default function EventDetailClient({
               />
               <MarketingMessagesCard messages={marketingMessages} />
             </div>
+          )}
+
+          {activeTab === 'ticket-types' && showTicketTypesTab && event && (
+            <EventTicketTypesCard
+              eventId={event.id}
+              initialTicketTypes={initialTicketTypes}
+              canManage={permissions.canManage}
+            />
           )}
 
           {activeTab === 'short-links' && (
