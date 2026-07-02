@@ -489,6 +489,49 @@ export async function sendEventBookingCancelledEmail(
   })
 }
 
+export async function sendEventRefundStatusUpdateEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    outcome: 'completed' | 'failed'
+    amount?: number | null
+    currency?: string | null
+  }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const amountText = formatCurrency(input.amount ?? null, input.currency || 'GBP')
+  const heading = input.outcome === 'completed' ? 'Refund processed' : 'Refund update'
+  const line = input.outcome === 'completed'
+    ? `Your refund${amountText ? ` of ${amountText}` : ''} for ${context.eventName} has now been processed to your original payment method.`
+    : `We hit a snag processing your refund${amountText ? ` of ${amountText}` : ''} for ${context.eventName}. Our team is sorting it and will be in touch.`
+  const body = [
+    `Hi ${context.firstName},`,
+    line,
+    'Reply to this email or contact us if you need help.',
+  ]
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject: input.outcome === 'completed'
+      ? `Refund processed: ${context.eventName}`
+      : `Refund update: ${context.eventName}`,
+    text: [...body, '', 'The Anchor'].join('\n'),
+    html: buildServiceMessageHtml({ heading, body }),
+    commType: 'event_refund_update',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_refund_update_email',
+      refund_outcome: input.outcome,
+      refund_amount: input.amount ?? null,
+      currency: input.currency || 'GBP',
+    },
+  })
+}
+
 export async function sendEventTicketTransferredEmail(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
