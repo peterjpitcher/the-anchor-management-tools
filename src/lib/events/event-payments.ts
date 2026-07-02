@@ -5,6 +5,7 @@ import {
   capturePayPalPayment,
   createInlinePayPalOrder,
   getPayPalOrder,
+  isPayPalOrderAlreadyCapturedError,
   isPayPalOrderNotFoundError,
 } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
@@ -519,6 +520,51 @@ export async function createEventPayPalOrderByBookingId(
   return createEventPayPalOrderFromPreview(supabase, preview, 'booking_id')
 }
 
+/**
+ * Recover from a "capture failed because the order was already captured" race.
+ * Re-reads the payment row for this booking/order:
+ *  - status === 'succeeded' → the concurrent capture or the idempotent
+ *    PAYMENT.CAPTURE.COMPLETED webhook already confirmed the booking, so report
+ *    already_confirmed (the caller sends the confirmation email, no SMS).
+ *  - otherwise → the money is captured at PayPal but our booking is not yet
+ *    confirmed (tight race with the webhook's confirm RPC). Soft-fail to
+ *    manual_review: the route responds 202 and alerts staff, and the idempotent
+ *    webhook still confirms the booking when it lands.
+ * Either way the customer never sees a 500 for a payment that went through.
+ */
+async function resolveAlreadyCapturedEventPayment(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; orderId: string; fallbackAmount: number; fallbackCurrency: string }
+): Promise<EventPayPalCaptureResult> {
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, amount, currency, status')
+    .eq('event_booking_id', input.bookingId)
+    .eq('paypal_order_id', input.orderId)
+    .eq('payment_provider', 'paypal')
+    .eq('charge_type', 'prepaid_event')
+    .maybeSingle()
+
+  if (payment?.status === 'succeeded') {
+    return {
+      state: 'already_confirmed',
+      bookingId: input.bookingId,
+      amount: Number(payment.amount),
+      currency: payment.currency || input.fallbackCurrency,
+      paymentId: payment.id,
+    }
+  }
+
+  return {
+    state: 'manual_review',
+    bookingId: input.bookingId,
+    amount: input.fallbackAmount,
+    currency: input.fallbackCurrency,
+    paymentId: payment?.id ?? null,
+    reason: 'capture_already_captured_pending_confirmation',
+  }
+}
+
 async function captureEventPayPalOrderFromPreview(
   supabase: SupabaseClient<any, 'public', any>,
   preview: Extract<EventPaymentPreviewResult, { state: 'ready' }>,
@@ -556,7 +602,28 @@ async function captureEventPayPalOrderFromPreview(
   let capturedCurrency = (payment.currency || preview.currency).toUpperCase()
 
   if (!captureId) {
-    const capture = await capturePayPalPayment(input.orderId, preview.currency)
+    let capture: Awaited<ReturnType<typeof capturePayPalPayment>>
+    try {
+      capture = await capturePayPalPayment(input.orderId, preview.currency)
+    } catch (error) {
+      // The order was already captured — almost always a duplicate onApprove
+      // submit, or this capture racing the PAYMENT.CAPTURE.COMPLETED webhook
+      // confirmation for the same order. The money has been taken, so we must
+      // never surface a 500 to a paying customer. Recover by re-reading our own
+      // payment row.
+      if (
+        isPayPalOrderAlreadyCapturedError(error) ||
+        isPayPalOrderNotFoundError(error)
+      ) {
+        return resolveAlreadyCapturedEventPayment(supabase, {
+          bookingId: preview.bookingId,
+          orderId: input.orderId,
+          fallbackAmount: preview.totalAmount,
+          fallbackCurrency: preview.currency,
+        })
+      }
+      throw error
+    }
     captureId = capture.transactionId
     capturedAmount = Number(capture.amount)
     capturedCurrency = (capture.currency || preview.currency).toUpperCase()
