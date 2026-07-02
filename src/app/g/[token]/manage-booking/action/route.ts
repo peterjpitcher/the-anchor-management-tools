@@ -2,22 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import {
-  cancelEventBookingByRawToken,
   createSeatIncreaseCheckoutByManageToken,
   getEventManagePreviewByRawToken,
   getEventRefundPolicy,
   processEventRefund,
   updateEventBookingSeatsByRawToken,
-  type EventManageCancelResult,
-  type EventRefundResult,
 } from '@/lib/events/manage-booking'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
-import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   syncPubOpsEventCalendarByBookingId,
   syncPubOpsEventCalendarByEventId,
 } from '@/lib/google-calendar-events'
-import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails'
 import { logger } from '@/lib/logger'
 
 type RouteContext = {
@@ -40,104 +35,6 @@ function redirectToState(request: NextRequest, token: string, params: Record<str
     redirectUrl.searchParams.set(key, value)
   }
   return NextResponse.redirect(redirectUrl, { status: 303 })
-}
-
-async function recordGuestManageBookingAnalyticsSafe(
-  supabase: ReturnType<typeof createAdminClient>,
-  payload: Parameters<typeof recordAnalyticsEvent>[1],
-  context: Record<string, unknown>
-) {
-  try {
-    await recordAnalyticsEvent(supabase, payload)
-  } catch (analyticsError) {
-    logger.warn('Failed to record guest manage-booking analytics event', {
-      metadata: {
-        ...context,
-        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-      }
-    })
-  }
-}
-
-async function processGuestCancellationRefundSafe(
-  supabase: ReturnType<typeof createAdminClient>,
-  cancelResult: EventManageCancelResult
-): Promise<{ refundStatus: EventRefundResult['status']; refundAmount: number }> {
-  if (
-    cancelResult.payment_mode !== 'prepaid' ||
-    cancelResult.previous_status !== 'confirmed' ||
-    !cancelResult.booking_id ||
-    !cancelResult.customer_id ||
-    !cancelResult.event_id ||
-    !cancelResult.event_start_datetime
-  ) {
-    return { refundStatus: 'none', refundAmount: 0 }
-  }
-
-  const seatCount = Math.max(1, Number(cancelResult.seats ?? 1))
-  const pricePerSeat = Math.max(0, Number(cancelResult.price_per_seat ?? 0))
-  const policy = getEventRefundPolicy(cancelResult.event_start_datetime)
-  const candidateRefundAmount = toMoney(seatCount * pricePerSeat * policy.refundRate)
-
-  if (candidateRefundAmount <= 0) {
-    return { refundStatus: 'none', refundAmount: 0 }
-  }
-
-  try {
-    const refundResult = await processEventRefund(supabase, {
-      bookingId: cancelResult.booking_id,
-      customerId: cancelResult.customer_id,
-      eventId: cancelResult.event_id,
-      amount: candidateRefundAmount,
-      reason: `event_cancel_${policy.policyBand}`
-    })
-
-    return {
-      refundStatus: refundResult.status,
-      refundAmount: refundResult.amount
-    }
-  } catch (refundError) {
-    logger.error('Failed to process refund after guest event booking cancellation', {
-      error: refundError instanceof Error ? refundError : new Error(String(refundError)),
-      metadata: {
-        bookingId: cancelResult.booking_id,
-        customerId: cancelResult.customer_id,
-        eventId: cancelResult.event_id,
-        refundAmount: candidateRefundAmount
-      }
-    })
-
-    return {
-      refundStatus: 'manual_required',
-      refundAmount: candidateRefundAmount
-    }
-  }
-}
-
-async function syncGuestCancellationCalendarSafe(
-  supabase: ReturnType<typeof createAdminClient>,
-  cancelResult: EventManageCancelResult
-): Promise<void> {
-  try {
-    if (cancelResult.event_id) {
-      await syncPubOpsEventCalendarByEventId(supabase, cancelResult.event_id, {
-        bookingId: cancelResult.booking_id ?? null,
-        context: 'guest_event_booking_cancelled',
-      })
-    } else if (cancelResult.booking_id) {
-      await syncPubOpsEventCalendarByBookingId(supabase, cancelResult.booking_id, {
-        context: 'guest_event_booking_cancelled',
-      })
-    }
-  } catch (calendarError) {
-    logger.warn('Failed to sync calendar after guest event booking cancellation', {
-      metadata: {
-        bookingId: cancelResult.booking_id ?? null,
-        eventId: cancelResult.event_id ?? null,
-        error: calendarError instanceof Error ? calendarError.message : String(calendarError)
-      }
-    })
-  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -170,56 +67,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       })
     }
 
+    // Guest self-cancel has been removed — cancellations are handled by staff in
+    // AMS so a manager can make the refund decision. Guests can still change seats.
     if (intent === 'cancel') {
-      const cancelResult = await cancelEventBookingByRawToken(supabase, {
-        rawToken: token,
-        cancelledBy: 'guest'
-      })
-
-      if (cancelResult.state !== 'cancelled') {
-        return redirectToState(request, token, {
-          state: 'blocked',
-          reason: cancelResult.reason || (cancelResult.state === 'already_cancelled' ? 'already_cancelled' : 'unavailable')
-        })
-      }
-
-      const { refundStatus, refundAmount } = await processGuestCancellationRefundSafe(supabase, cancelResult)
-
-      if (cancelResult.booking_id) {
-        await sendEventBookingCancelledEmail(supabase, {
-          bookingId: cancelResult.booking_id,
-          refundStatus,
-          refundAmount,
-          currency: 'GBP',
-          reason: 'guest_cancel',
-        })
-      }
-
-      if (cancelResult.customer_id && cancelResult.booking_id) {
-        await recordGuestManageBookingAnalyticsSafe(supabase, {
-          customerId: cancelResult.customer_id,
-          eventBookingId: cancelResult.booking_id,
-          eventType: 'event_booking_cancelled',
-          metadata: {
-            event_id: cancelResult.event_id ?? null,
-            seats: cancelResult.seats ?? null,
-            payment_mode: cancelResult.payment_mode ?? null,
-            refund_status: refundStatus,
-            refund_amount: refundAmount
-          }
-        }, {
-          customerId: cancelResult.customer_id,
-          eventBookingId: cancelResult.booking_id,
-          eventType: 'event_booking_cancelled'
-        })
-      }
-
-      await syncGuestCancellationCalendarSafe(supabase, cancelResult)
-
       return redirectToState(request, token, {
-        state: 'cancelled',
-        refund_status: refundStatus,
-        refund_amount: String(refundAmount)
+        state: 'blocked',
+        reason: 'cancel_not_available'
       })
     }
 
