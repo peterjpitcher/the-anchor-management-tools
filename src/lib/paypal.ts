@@ -463,6 +463,48 @@ export async function refundPayPalPayment(
   };
 }
 
+// Fetch the current status of a PayPal refund (used to reconcile refunds that
+// PayPal accepted as PENDING and later completed/failed asynchronously).
+export async function getPayPalRefund(refundId: string): Promise<{
+  refundId: string;
+  status: string;
+  statusDetails?: string;
+  amount: string | null;
+  currency: string | null;
+}> {
+  const accessToken = await getAccessToken();
+  const { baseUrl } = getPayPalConfig();
+
+  const response = await retry(
+    async () => fetch(`${baseUrl}/v2/payments/refunds/${refundId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }),
+    RetryConfigs.api
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error?.details?.[0]?.description || error?.message || `Failed to fetch PayPal refund ${refundId}`
+    );
+  }
+
+  const data = await response.json();
+  return {
+    refundId: data.id ?? refundId,
+    status: data.status,
+    statusDetails: data.status_details?.reason,
+    amount: typeof data.amount?.value === 'string' ? data.amount.value : null,
+    currency: typeof data.amount?.currency_code === 'string'
+      ? data.amount.currency_code.trim().toUpperCase()
+      : null,
+  };
+}
+
 // Verify webhook signature
 const PAYPAL_WEBHOOK_TRANSMISSION_TOLERANCE_MS = 5 * 60 * 1000
 
