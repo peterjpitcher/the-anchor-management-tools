@@ -80,10 +80,28 @@ default-type line for every non-reminder single-type booking. Result:
 - [x] `src/app/actions/eventTicketTypes.ts` — CRUD (flag-gated, RBAC, audit, dedicated-cap validation).
 - [x] `npx tsc --noEmit` → 0 errors (whole repo).
 - [~] Website layer — background agent building (booking form, price displays, JSON-LD).
-- [ ] REMAINING AMS: event serializer expose `ticket_types`; booking API accept `ticket_selections`→v07;
-      charge path sum items (multi-type); admin editor UI in EventDetailClient; email/door-list/staff
-      breakdowns.
-- [ ] Tests (pricing/capacity/flag). Full verify (lint+build). Commit/merge/push. Apply migration. Deploy.
+
+### PROGRESS (turn 2 — AMS app code, flag OFF, NOT committed)
+- [x] Event serializer exposes `ticket_types` (flag-gated, omitted when off): `src/app/api/events/[id]/route.ts`
+      + new fetch helper `src/lib/events/ticket-type-queries.ts` (loadEventTicketTypeDTOs).
+- [x] Booking API accepts `ticket_selections`, flag-off rejection of multi/non-default, per-line
+      attendee-name validation for paid events, routes to v07: `src/app/api/event-bookings/route.ts`.
+      Pure decision helper `decideTicketSelectionHandling` (unit-tested).
+- [x] Service v06/v07 branch + skip separate attendee_names update on v07: `src/services/event-bookings.ts`.
+- [x] Charge path sums booking_items for multi-type bookings (else legacy event-price):
+      `src/lib/events/event-payments.ts` (both PayPal previews). PayPal create/capture logic untouched.
+- [x] Admin editor: `src/app/(authenticated)/events/[id]/EventTicketTypesCard.tsx` (list/add/edit/
+      activate/deactivate/remove) wired into EventDetailClient tab (hidden for communal/mixed); flag +
+      initial types passed from page.tsx.
+- [x] Tests: `src/lib/events/ticket-types.test.ts` (sell-price discount-once/prepaid-only/floor,
+      charge sum, flag-off decision) + `src/services/__tests__/event-bookings-ticket-selections.test.ts`
+      (v06 vs v07 routing). 72 event tests pass.
+- [x] Verify: `npx tsc --noEmit` clean, `npm run lint` 0 warnings, `npm run build` succeeds.
+- [ ] SKIPPED (item 5, lower priority): per-type breakdown blocks in confirmation email/SMS, door-list
+      PDF, and staff booking detail. NOTE: attendee names already flow end-to-end (v07 writes the flat
+      bookings.attendee_names aggregate; email + door-list already render it). Only the per-type
+      price/name grouped breakdown UI is outstanding.
+- [ ] Not done (out of task scope): commit/merge/push, apply migration, deploy.
 
 ## Stage 1 — Migration: schema + invariants (additive, no behaviour change yet)
 - [ ] 1.1 `event_ticket_types` + `booking_items` (with `attendee_names text[]`), indexes,

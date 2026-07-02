@@ -114,6 +114,6 @@ create constraint trigger booking_items_seat_sum
 
 drop trigger if exists bookings_seat_sum on public.bookings;
 create constraint trigger bookings_seat_sum
-  after insert or update of seats on public.bookings
+  after insert or update on public.bookings
   deferrable initially deferred for each row
   execute function public.trg_check_bookings_sum();
