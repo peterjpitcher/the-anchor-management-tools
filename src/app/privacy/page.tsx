@@ -79,6 +79,9 @@ export default function PrivacyPolicy() {
             <li>Prevent fraud and ensure security</li>
             <li>Manage employee records and payroll</li>
           </ul>
+          <p>
+            If you choose to leave your name, email or phone number with feedback, we&apos;ll only use it to contact you about that feedback.
+          </p>
 
           <h2>5. Data Sharing</h2>
           <p>We may share your data with:</p>
