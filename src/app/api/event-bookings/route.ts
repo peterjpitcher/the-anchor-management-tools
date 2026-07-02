@@ -25,6 +25,8 @@ import {
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
+import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
+import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
 
 const CreateEventBookingSchema = z.object({
   event_id: z.string().uuid(),
@@ -60,6 +62,19 @@ const CreateEventBookingSchema = z.object({
   // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
   // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
   attendee_names: z.array(z.string().max(200)).max(20).optional(),
+  // Multiple ticket options basket (feature-flagged). Each line has its own
+  // attendee_names (length must equal quantity for paid events). Shape guard only;
+  // type-membership + flag rules are enforced in the handler.
+  ticket_selections: z
+    .array(
+      z.object({
+        ticket_type_id: z.string().uuid(),
+        quantity: z.number().int().min(1).max(20),
+        attendee_names: z.array(z.string().max(200)).max(20).optional(),
+      })
+    )
+    .max(20)
+    .optional(),
 })
 
 const ATTRIBUTION_KEYS = [
@@ -202,7 +217,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode, bookings_enabled')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, payment_mode, is_free, price, price_per_seat')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -278,6 +293,61 @@ export async function POST(request: NextRequest) {
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
       const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)
 
+      // ── Multiple ticket options resolution ──────────────────────────────────
+      // Decide whether to route this booking through the v07 multi-type path. The
+      // feature flag is load-bearing at this charge boundary: with the flag OFF we
+      // reject any selection that references more than one type or a non-default
+      // type; single/default selections are ignored and fall through to the legacy
+      // seats path (byte-for-byte unchanged behaviour).
+      let ticketSelections: TicketSelectionInput[] | undefined
+      const rawSelections = parsed.data.ticket_selections
+      if (rawSelections && rawSelections.length > 0) {
+        let defaultTypeId: string | null = null
+        try {
+          defaultTypeId = await getDefaultTicketTypeId(supabase, parsed.data.event_id)
+        } catch {
+          return createErrorResponse('Failed to load event ticket types', 'DATABASE_ERROR', 500)
+        }
+        const decision = decideTicketSelectionHandling({
+          selections: rawSelections,
+          flagEnabled: eventTicketTypesEnabled(),
+          defaultTypeId,
+        })
+
+        if (decision.kind === 'reject') {
+          return createErrorResponse(decision.error, 'VALIDATION_ERROR', 400)
+        }
+
+        if (decision.kind === 'apply') {
+          // Validate the basket and build the v07 payload.
+          const selectionSeatTotal = rawSelections.reduce((sum, line) => sum + line.quantity, 0)
+          if (selectionSeatTotal !== parsed.data.seats) {
+            return createErrorResponse(
+              `Ticket quantities (${selectionSeatTotal}) must match the total seats (${parsed.data.seats})`,
+              'VALIDATION_ERROR',
+              400
+            )
+          }
+          // Paid events require a name per seat on every line (mirrors the flat
+          // attendee_names rule via normalizeAttendeeNames semantics).
+          const isPaidEvent =
+            eventRow.payment_mode === 'prepaid' || eventRow.payment_mode === 'cash_only'
+          const lineSelections: TicketSelectionInput[] = []
+          for (const line of rawSelections) {
+            const namesResult = normalizeAttendeeNames(line.attendee_names, line.quantity)
+            if (isPaidEvent && !namesResult.ok) {
+              return createErrorResponse(namesResult.error, 'VALIDATION_ERROR', 400)
+            }
+            lineSelections.push({
+              ticket_type_id: line.ticket_type_id,
+              quantity: line.quantity,
+              attendee_names: namesResult.ok ? namesResult.names : undefined,
+            })
+          }
+          ticketSelections = lineSelections
+        }
+      }
+
       const result = await EventBookingService.createBooking({
         eventId: parsed.data.event_id,
         customerId: customerResolution.customerId,
@@ -290,7 +360,8 @@ export async function POST(request: NextRequest) {
         shouldSendSms: true,
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
         attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
-        attribution
+        attribution,
+        ticketSelections
       })
 
       if (result.rpcFailed) {

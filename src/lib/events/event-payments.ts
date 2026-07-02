@@ -15,6 +15,12 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveEventPriceAmount } from '@/lib/events/pricing'
+import { eventTicketTypesEnabled, resolveBookingChargeAmount } from '@/lib/events/ticket-types'
+import {
+  loadBookingItems,
+  getDefaultTicketTypeId,
+  bookingItemsAreMultiType,
+} from '@/lib/events/ticket-type-queries'
 
 export type EventPaymentTokenResult = {
   rawToken: string
@@ -66,6 +72,32 @@ function resolveBaseUrl(appBaseUrl?: string): string {
 
 function amountsMatch(left: number, right: number): boolean {
   return Math.abs(Number(left.toFixed(2)) - Number(right.toFixed(2))) < 0.01
+}
+
+/**
+ * Resolve the authoritative charge for a booking.
+ *
+ * When the feature is on and the booking has a real multi-type / non-default
+ * basket, the charge is the sum of its `booking_items` (post-discount snapshots).
+ * Otherwise the legacy event-price × seats total is returned unchanged, so
+ * single-type bookings are byte-for-byte identical to before this feature.
+ */
+async function resolveBookingChargeTotal(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; eventId: string; fallbackTotal: number },
+): Promise<number> {
+  if (!eventTicketTypesEnabled()) return input.fallbackTotal
+  try {
+    const items = await loadBookingItems(supabase, input.bookingId)
+    if (items.length === 0) return input.fallbackTotal
+    const defaultTypeId = await getDefaultTicketTypeId(supabase, input.eventId)
+    if (!bookingItemsAreMultiType(items, defaultTypeId)) return input.fallbackTotal
+    return resolveBookingChargeAmount(items)
+  } catch {
+    // Never fail a payment preview over the ticket-type read — fall back to the
+    // legacy total (which equals the line-item sum for single-type bookings).
+    return input.fallbackTotal
+  }
 }
 
 function extractOrderAmount(order: any): number | null {
@@ -299,7 +331,12 @@ export async function getEventPaymentPreviewByRawToken(
 
   const seats = Math.max(1, Number(booking.seats ?? 1))
   const unitPrice = resolveEventPriceAmount(eventRow)
-  const totalAmount = Number((unitPrice * seats).toFixed(2))
+  const fallbackTotal = Number((unitPrice * seats).toFixed(2))
+  const totalAmount = await resolveBookingChargeTotal(supabase, {
+    bookingId: booking.id,
+    eventId: eventRow.id,
+    fallbackTotal,
+  })
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     return { state: 'blocked', reason: 'invalid_amount' }
@@ -365,7 +402,12 @@ async function getEventPaymentPreviewByBookingId(
 
   const seats = Math.max(1, Number(booking.seats ?? 1))
   const unitPrice = resolveEventPriceAmount(eventRow)
-  const totalAmount = Number((unitPrice * seats).toFixed(2))
+  const fallbackTotal = Number((unitPrice * seats).toFixed(2))
+  const totalAmount = await resolveBookingChargeTotal(supabase, {
+    bookingId: booking.id,
+    eventId: eventRow.id,
+    fallbackTotal,
+  })
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     return { state: 'blocked', reason: 'invalid_amount' }
   }

@@ -1,6 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getEventById, getEventBookings, getEvents } from '@/app/actions/events'
+import { getEventTicketTypes } from '@/app/actions/eventTicketTypes'
+import { eventTicketTypesEnabled, type EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { getEventMarketingLinks } from '@/app/actions/event-marketing-links'
 import type { EventMarketingLink } from '@/app/actions/event-marketing-links'
@@ -136,6 +138,15 @@ export default async function EventDetailPage({ params }: PageProps) {
 
   const initialError = errors.length > 0 ? errors.join(' ') : null
 
+  const ticketTypesEnabled = eventTicketTypesEnabled()
+  let ticketTypes: EventTicketTypeRow[] = []
+  if (ticketTypesEnabled && canView && eventData) {
+    const ticketTypesResult = await getEventTicketTypes(eventId)
+    if (ticketTypesResult.data) {
+      ticketTypes = ticketTypesResult.data
+    }
+  }
+
   return (
     <EventDetailClient
       event={eventData}
@@ -145,6 +156,8 @@ export default async function EventDetailPage({ params }: PageProps) {
       categories={categories}
       transferEvents={transferEvents}
       permissions={{ canEdit, canDelete, canManage }}
+      ticketTypesEnabled={ticketTypesEnabled}
+      initialTicketTypes={ticketTypes}
       initialError={initialError}
     />
   )
