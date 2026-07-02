@@ -16,10 +16,18 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
+import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
 
 export const dynamic = 'force-dynamic'
 
 const IDEMPOTENCY_TTL_HOURS = 24 * 30
+
+const REFUND_EVENT_TYPES = new Set([
+  'PAYMENT.CAPTURE.REFUNDED',
+  'PAYMENT.REFUND.COMPLETED',
+  'PAYMENT.REFUND.FAILED',
+  'PAYMENT.REFUND.CANCELLED',
+])
 
 function getCaptureOrderId(resource: any): string | null {
   const raw = resource?.supplementary_data?.related_ids?.order_id
@@ -110,6 +118,44 @@ export async function POST(request: NextRequest): Promise<Response> {
     const eventType = typeof event?.event_type === 'string' ? event.event_type : 'unknown'
     if (!eventId) {
       return NextResponse.json({ error: 'Missing event id' }, { status: 400 })
+    }
+
+    // Refund lifecycle events → reconcile the local refund row + notify.
+    if (REFUND_EVENT_TYPES.has(eventType)) {
+      idempotencyKey = `webhook:paypal:event-bookings:${eventId}`
+      requestHash = computeIdempotencyRequestHash(event)
+      const refundClaim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash, IDEMPOTENCY_TTL_HOURS)
+      if (refundClaim.state === 'conflict') {
+        return NextResponse.json({ error: 'Conflict' }, { status: 409 })
+      }
+      if (refundClaim.state === 'in_progress') {
+        return NextResponse.json({ error: 'Event is currently being processed' }, { status: 409 })
+      }
+      if (refundClaim.state === 'replay') {
+        return NextResponse.json({ received: true, duplicate: true })
+      }
+      claimHeld = true
+
+      const refundResource = event.resource || {}
+      const refundId = typeof refundResource?.id === 'string' ? refundResource.id.trim() : ''
+      const refundStatus = typeof refundResource?.status === 'string' ? refundResource.status : null
+
+      let reconcileState: Record<string, unknown> = { state: 'ignored', reason: 'missing_refund_id', event_id: eventId }
+      if (refundId) {
+        const reconciled = await reconcileEventRefund(supabase, { paypalRefundId: refundId, paypalStatus: refundStatus })
+        reconcileState = {
+          state: 'refund_reconciled',
+          matched: reconciled.matched,
+          changed: reconciled.changed,
+          outcome: reconciled.outcome,
+          event_id: eventId,
+          booking_id: reconciled.bookingId,
+        }
+      }
+
+      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, reconcileState, IDEMPOTENCY_TTL_HOURS)
+      claimHeld = false
+      return NextResponse.json({ received: true, ...reconcileState })
     }
 
     if (eventType !== 'PAYMENT.CAPTURE.COMPLETED') {

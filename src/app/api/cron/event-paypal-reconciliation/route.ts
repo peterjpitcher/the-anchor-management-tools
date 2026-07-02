@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPayPalOrder } from '@/lib/paypal'
+import { getPayPalOrder, getPayPalRefund } from '@/lib/paypal'
 import { logger } from '@/lib/logger'
 import {
   sendEventPaymentConfirmationSms,
@@ -11,6 +11,7 @@ import {
   sendEventPaymentConfirmationEmail,
   sendEventPaymentManualReviewEmail,
 } from '@/lib/email/event-ticket-emails'
+import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
 
 function extractCapture(order: any): { id: string; amount: number; currency: string } | null {
   const capture = order?.purchase_units?.[0]?.payments?.captures?.[0]
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
     manualReview: 0,
     skipped: 0,
     failed: 0,
+    refundsChecked: 0,
+    refundsResolved: 0,
+    refundsFailed: 0,
   }
 
   const { data: rows, error } = await supabase
@@ -118,6 +122,49 @@ export async function GET(request: NextRequest) {
           orderId: row.paypal_order_id,
         },
       })
+    }
+  }
+
+  // Sweep pending refunds that PayPal accepted but hasn't reported terminal yet
+  // (backstop for a missed PAYMENT.REFUND.* webhook).
+  const { data: refundRows, error: refundError } = await supabase
+    .from('payments')
+    .select('id, event_booking_id, metadata')
+    .eq('payment_provider', 'paypal')
+    .eq('charge_type', 'refund')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(100)
+
+  if (refundError) {
+    logger.error('Failed to load pending event refunds for reconciliation', {
+      error: new Error(refundError.message),
+    })
+  } else {
+    for (const row of refundRows || []) {
+      const refundId = (row.metadata as Record<string, unknown> | null)?.['paypal_refund_id']
+      if (typeof refundId !== 'string' || !refundId) {
+        result.skipped++
+        continue
+      }
+      result.refundsChecked++
+      try {
+        const refund = await getPayPalRefund(refundId)
+        const reconciled = await reconcileEventRefund(supabase, {
+          paypalRefundId: refundId,
+          paypalStatus: refund.status,
+        })
+        if (reconciled.changed) {
+          if (reconciled.outcome === 'failed') result.refundsFailed++
+          else result.refundsResolved++
+        }
+      } catch (err) {
+        result.refundsFailed++
+        logger.error('Failed to reconcile event PayPal refund', {
+          error: err instanceof Error ? err : new Error(String(err)),
+          metadata: { paymentId: row.id, bookingId: row.event_booking_id, refundId },
+        })
+      }
     }
   }
 
