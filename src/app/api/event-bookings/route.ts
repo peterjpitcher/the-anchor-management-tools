@@ -16,6 +16,7 @@ import {
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
+import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 import {
@@ -90,6 +91,26 @@ function buildBookingAttribution(data: z.infer<typeof CreateEventBookingSchema>)
 }
 
 export async function POST(request: NextRequest) {
+  // Turnstile CAPTCHA verification.
+  // The website proxy skips its own Turnstile check and forwards the customer's
+  // single-use token as `x-turnstile-token` (alongside its API key), expecting
+  // the management API to validate it. The sibling public endpoints only verify
+  // when no API key is present, which would skip the website-proxied path
+  // entirely — so here we verify whenever a token is supplied, regardless of the
+  // API key. Token-less requests still fall through to API-key auth, and
+  // verifyTurnstileToken no-ops when TURNSTILE_SECRET_KEY is unset (dev/test).
+  const turnstileToken = request.headers.get('x-turnstile-token')
+  if (turnstileToken) {
+    const turnstile = await verifyTurnstileToken(turnstileToken, getClientIp(request))
+    if (!turnstile.success) {
+      return createErrorResponse(
+        turnstile.error || 'Bot verification failed',
+        'TURNSTILE_FAILED',
+        403
+      )
+    }
+  }
+
   return withApiAuth(async (req) => {
     const idempotencyKey = getIdempotencyKey(req)
 
