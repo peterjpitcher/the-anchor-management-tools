@@ -31,7 +31,7 @@ export function Sidebar({ navGroups, userName, userRole, onSignOut, isSigningOut
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 py-3 overflow-hidden">
+      <div className="ds-sidebar-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-3">
         {navGroups ? (
           <SidebarNav items={navGroups} onNavigate={onNavigate} />
         ) : (
