@@ -49,6 +49,7 @@ export type ModuleName =
   | 'quotes'
   | 'parking'
   | 'short_links'
+  | 'feedback'
   | 'menu_management'
   | 'cashing_up'
   | 'rota'
