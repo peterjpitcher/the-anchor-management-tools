@@ -95,3 +95,4 @@ tasks/ai-seo-content-quality/
 
 # graphify knowledge-graph tool output (generated, ~18MB) — do not commit
 graphify-out/
+tmp/
