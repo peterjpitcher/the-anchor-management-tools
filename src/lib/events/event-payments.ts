@@ -15,9 +15,15 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveEventPriceAmount } from '@/lib/events/pricing'
-import { eventTicketTypesEnabled, resolveBookingChargeAmount } from '@/lib/events/ticket-types'
+import {
+  eventTicketTypesEnabled,
+  resolveBookingChargeAmount,
+  buildTicketBreakdownLines,
+  formatTicketBreakdownCompact,
+} from '@/lib/events/ticket-types'
 import {
   loadBookingItems,
+  loadBookingItemsWithTypes,
   getDefaultTicketTypeId,
   bookingItemsAreMultiType,
 } from '@/lib/events/ticket-type-queries'
@@ -865,8 +871,30 @@ export async function sendEventPaymentConfirmationSms(
   const seats = Math.max(1, Number((booking as any).seats ?? input.seats))
   const seatLabel = seats === 1 ? 'seat' : 'seats'
   const datePart = eventDateFormatted ? ` on ${eventDateFormatted}` : ''
+
+  // Multi-type bookings get a compact per-type note (e.g. " (1x Regular, 1x Non-Alcohol)").
+  // Single-type bookings keep the exact legacy body. Display-only — never block the SMS.
+  let breakdownPart = ''
+  if (eventTicketTypesEnabled() && (booking as any).event_id) {
+    try {
+      const itemsByBooking = await loadBookingItemsWithTypes(supabase, [booking.id])
+      const items = itemsByBooking.get(booking.id) ?? []
+      if (items.length > 0) {
+        const defaultTypeId = await getDefaultTicketTypeId(supabase, (booking as any).event_id)
+        if (bookingItemsAreMultiType(items, defaultTypeId)) {
+          // Plain "x" keeps the SMS within the GSM-7 character set (no UCS-2 penalty).
+          const compact = formatTicketBreakdownCompact(buildTicketBreakdownLines(items))
+            .replace(/×/g, 'x')
+          if (compact && compact.length <= 90) breakdownPart = ` (${compact})`
+        }
+      }
+    } catch {
+      breakdownPart = ''
+    }
+  }
+
   const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, payment received. Your booking for ${eventName}${datePart} is confirmed for ${seats} ${seatLabel}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    `The Anchor: Hi ${firstName}, payment received. Your booking for ${eventName}${datePart} is confirmed for ${seats} ${seatLabel}${breakdownPart}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
     supportPhone
   )
 

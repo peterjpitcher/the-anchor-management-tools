@@ -1,6 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendEmail } from '@/lib/email/emailService'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import {
+  buildTicketBreakdownLines,
+  eventTicketTypesEnabled,
+  type TicketBreakdownLine,
+} from '@/lib/events/ticket-types'
+import {
+  bookingItemsAreMultiType,
+  getDefaultTicketTypeId,
+  loadBookingItemsWithTypes,
+} from '@/lib/events/ticket-type-queries'
 import { logger } from '@/lib/logger'
 
 type EventEmailResult = { success: boolean; error?: string; messageId?: string; skipped?: boolean }
@@ -87,7 +97,8 @@ async function createManageLink(
 
 async function loadEventTicketEmailContext(
   supabase: SupabaseClient<any, 'public', any>,
-  bookingId: string
+  bookingId: string,
+  options?: { includeTicketLines?: boolean }
 ): Promise<{
   bookingId: string
   customerId: string
@@ -99,6 +110,8 @@ async function loadEventTicketEmailContext(
   bookingUrl: string | null
   seats: number
   attendeeNames: string[]
+  /** Per-type lines, populated only for genuinely multi-type bookings (else empty → legacy display). */
+  ticketLines: TicketBreakdownLine[]
 } | null> {
   const { data: booking, error } = await supabase
     .from('bookings')
@@ -121,6 +134,23 @@ async function loadEventTicketEmailContext(
   if (!email) return null
   const eventStartIso = event?.start_datetime || (event?.date ? `${event.date}T${event.time || '00:00'}:00` : null)
 
+  let ticketLines: TicketBreakdownLine[] = []
+  if (options?.includeTicketLines && eventTicketTypesEnabled() && event?.id) {
+    try {
+      const itemsByBooking = await loadBookingItemsWithTypes(supabase, [booking.id])
+      const items = itemsByBooking.get(booking.id) ?? []
+      if (items.length > 0) {
+        const defaultTypeId = await getDefaultTicketTypeId(supabase, event.id)
+        if (bookingItemsAreMultiType(items, defaultTypeId)) {
+          ticketLines = buildTicketBreakdownLines(items)
+        }
+      }
+    } catch {
+      // Display-only enrichment — fall back to the legacy flat attendee list.
+      ticketLines = []
+    }
+  }
+
   return {
     bookingId: booking.id,
     customerId: customer.id,
@@ -136,6 +166,7 @@ async function loadEventTicketEmailContext(
           .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
           .map((name) => name.trim())
       : [],
+    ticketLines,
   }
 }
 
@@ -248,7 +279,7 @@ export async function sendEventPaymentConfirmationEmail(
     appBaseUrl?: string
   }
 ): Promise<EventEmailResult> {
-  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId, { includeTicketLines: true })
   if (!context) return { success: false, skipped: true }
 
   const alreadySent = await hasSuccessfulEventEmail(supabase, {
@@ -268,14 +299,36 @@ export async function sendEventPaymentConfirmationEmail(
   const paidLine = amountText
     ? `We have received your ${amountText} payment.`
     : 'We have received your payment.'
+  const hasTicketBreakdown = context.ticketLines.length > 0
   const hasAttendeeNames = context.attendeeNames.length > 0
-  const namesText = hasAttendeeNames
-    ? `\nTickets:\n${context.attendeeNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`
-    : ''
-  const namesHtml = hasAttendeeNames
+  const namesText = hasTicketBreakdown
+    ? `\nTickets:\n${context.ticketLines
+        .map((line) => {
+          const priceText = line.unitPrice > 0 ? ` — ${formatCurrency(line.unitPrice)} each` : ''
+          return [
+            `${line.quantity} × ${line.typeName}${priceText}`,
+            ...line.attendeeNames.map((name) => `  - ${name}`),
+          ].join('\n')
+        })
+        .join('\n')}`
+    : hasAttendeeNames
+      ? `\nTickets:\n${context.attendeeNames.map((name, index) => `${index + 1}. ${name}`).join('\n')}`
+      : ''
+  const namesHtml = hasTicketBreakdown
     ? `<p style="margin-bottom: 4px;"><strong>Tickets</strong></p>
+  ${context.ticketLines
+    .map((line) => {
+      const priceText = line.unitPrice > 0 ? ` — ${formatCurrency(line.unitPrice)} each` : ''
+      const names = line.attendeeNames.length > 0
+        ? `<ul style="margin: 2px 0 8px;">${line.attendeeNames.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
+        : ''
+      return `<p style="margin: 0 0 2px;">${escapeHtml(`${line.quantity} × ${line.typeName}${priceText}`)}</p>${names}`
+    })
+    .join('\n  ')}`
+    : hasAttendeeNames
+      ? `<p style="margin-bottom: 4px;"><strong>Tickets</strong></p>
   <ol style="margin-top: 0;">${context.attendeeNames.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ol>`
-    : ''
+      : ''
   const text = [
     `Hi ${context.firstName},`,
     '',

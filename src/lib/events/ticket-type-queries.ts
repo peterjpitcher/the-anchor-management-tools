@@ -12,6 +12,7 @@ import {
   type EventTicketTypeDTO,
   type EventTicketTypeRow,
   type BookingItemRow,
+  type BookingItemWithTypeRow,
   type TicketSelectionInput,
 } from './ticket-types'
 
@@ -122,6 +123,53 @@ export async function loadBookingItems(
 
   if (error) throw error
   return (data ?? []) as BookingItemRow[]
+}
+
+/**
+ * Batch-load the `booking_items` rows for a set of bookings, joined with each
+ * line's ticket type name/sort order for display (one query, no N+1). Returns a
+ * map keyed by booking id; bookings without items are absent from the map.
+ */
+export async function loadBookingItemsWithTypes(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingIds: string[],
+): Promise<Map<string, BookingItemWithTypeRow[]>> {
+  const itemsByBooking = new Map<string, BookingItemWithTypeRow[]>()
+  if (bookingIds.length === 0) return itemsByBooking
+
+  const { data, error } = await supabase
+    .from('booking_items')
+    .select('id, booking_id, ticket_type_id, quantity, unit_price, attendee_names, ticket_type:event_ticket_types(name, sort_order)')
+    .in('booking_id', bookingIds)
+
+  if (error) throw error
+
+  type JoinedRow = BookingItemRow & {
+    ticket_type:
+      | { name: string | null; sort_order: number | null }
+      | { name: string | null; sort_order: number | null }[]
+      | null
+  }
+
+  for (const raw of (data ?? []) as unknown as JoinedRow[]) {
+    const typeRaw = raw.ticket_type
+    const ticketType = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    const row: BookingItemWithTypeRow = {
+      id: raw.id,
+      booking_id: raw.booking_id,
+      ticket_type_id: raw.ticket_type_id,
+      quantity: raw.quantity,
+      unit_price: raw.unit_price,
+      attendee_names: raw.attendee_names ?? null,
+      ticket_type_name: ticketType?.name || 'Ticket',
+      ticket_type_sort_order: Number(ticketType?.sort_order ?? 0),
+    }
+    const current = itemsByBooking.get(row.booking_id) ?? []
+    current.push(row)
+    itemsByBooking.set(row.booking_id, current)
+  }
+
+  return itemsByBooking
 }
 
 /**

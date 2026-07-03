@@ -1214,7 +1214,12 @@ function AttendeesTab({
                               </Button>
                             </div>
                           ) : (
-                            booking.seats ?? '-'
+                            <>
+                              {booking.seats ?? '-'}
+                              {booking.ticket_breakdown && (
+                                <div className="mt-0.5 text-xs text-gray-500">{booking.ticket_breakdown}</div>
+                              )}
+                            </>
                           )}
                         </TableCell>
                         {event.booking_mode === 'communal' && (
