@@ -8,7 +8,7 @@ This file provides project-specific guidance. See the workspace-level `CLAUDE.md
 framework: Next.js 15 App Router + React 19
 test_runner: Vitest (config: vitest.config.ts)
 database: Supabase (PostgreSQL + Auth + RLS)
-integrations: Twilio (SMS), Microsoft Graph or Resend (email, switched by EMAIL_PROVIDER), Stripe, PayPal
+integrations: Twilio (SMS), Microsoft Graph (email), Stripe, PayPal
 styling: Tailwind CSS v4
 hosting: Vercel
 size: ~600 files, large multi-module management system
@@ -18,7 +18,14 @@ size: ~600 files, large multi-module management system
 
 ## Workflow Orchestration
 
-(Plan-mode default, subagent strategy and the lessons loop are defined in the workspace CLAUDE.md — not repeated here.)
+### Plan Mode Default
+Enter plan mode for any non-trivial task (3+ steps or architectural decisions). If something goes sideways, STOP and re-plan immediately — don't keep pushing. Use plan mode for verification steps, not just building. Write detailed specs upfront to reduce ambiguity.
+
+### Subagent Strategy
+Use subagents liberally to keep the main context window clean. Offload research, exploration, and parallel analysis to subagents. For complex problems, throw more compute at it via subagents. One task per subagent for focused execution. When exploring the codebase, use subagents to read multiple sections in parallel.
+
+### Self-Improvement Loop
+After ANY correction from the user, update `tasks/lessons.md` with the pattern. Write rules for yourself that prevent the same mistake. Review `tasks/lessons.md` at session start.
 
 ### Verification Before Done
 Never mark a task complete without proving it works. Diff behaviour between main and your changes when relevant. Ask yourself: "Would a staff engineer approve this?" Run tests, check logs, demonstrate correctness.
@@ -44,7 +51,10 @@ When given a bug report, just fix it. Don't ask for hand-holding. Check Supabase
 
 ## Core Principles
 
-(See workspace CLAUDE.md. Project-specific addition: **Test Against Reality** — don't assume code is correct because it exists; trace the actual logic.)
+- **Simplicity First**: Make every change as simple as possible. Minimal code impact.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+- **Test Against Reality**: Don't assume code is correct because it exists. Trace the actual logic.
 
 ---
 
@@ -83,7 +93,7 @@ npx supabase db push   # Apply pending migrations
 
 ## Architecture
 
-**Additional integrations**: Twilio (SMS), Microsoft Graph/Resend (email), Stripe, PayPal.
+**Additional integrations**: Twilio (SMS), Microsoft Graph (email), Stripe, PayPal.
 
 **Route groups**:
 - `(authenticated)/` — all staff-facing pages, auth enforced at layout level
@@ -114,13 +124,13 @@ Roles: `super_admin`, `manager`, `staff`. Defined in `src/types/rbac.ts`.
 ## Key Libraries & Utilities
 
 - **`src/lib/dateUtils.ts`** — `getTodayIsoDate()`, `toLocalIsoDate()`, `formatDateInLondon()` etc. London timezone hardcoded.
-- **`src/lib/email/emailService.ts`** — `sendEmail(to, subject, html, cc?, attachments?)`; dual transport (Microsoft Graph or Resend) switched by `EMAIL_PROVIDER` (falls back to Resend when `RESEND_API_KEY` is set)
+- **`src/lib/email/emailService.ts`** — `sendEmail(to, subject, html, cc?, attachments?)` via Microsoft Graph
 - **`src/lib/sms/`** — Twilio wrapper with safety guards (hourly/daily rate limits, idempotency)
 - **`src/services/`** — business logic services (CustomerService, EmployeeService, PermissionService, etc.)
 
 ## UI Components
 
-All UI components are imported from the unified design system barrel at `@/ds` (source: `src/ds/`). This includes primitives (Button, Input, Modal, etc.), composites (Card, Section, Tabs), shell components (Sidebar, Topbar, AppShell), and a compatibility layer (`src/ds/compat/`) for legacy wrapper components. Navigation defined in `src/ds/shell/SidebarNav.tsx` (`NAV_GROUPS`), consumed by `AppShell`, `Sidebar` and `MobileChrome`.
+All UI components are imported from the unified design system barrel at `@/ds` (source: `src/ds/`). This includes primitives (Button, Input, Modal, etc.), composites (Card, Section, Tabs), shell components (Sidebar, Topbar, AppShell), and a compatibility layer (`src/ds/compat/`) for legacy wrapper components. Navigation defined in `src/components/features/shared/AppNavigation.tsx`.
 
 ## Data Conventions
 
@@ -128,12 +138,15 @@ All UI components are imported from the unified design system barrel at `@/ds` (
 - Dashboard data cached via `loadDashboardSnapshot()` in `src/app/(authenticated)/dashboard/`
 - Date/holiday pre-computation: `buildConfirmedUKDates()` in calendar-notes actions
 
-### Before editing any *Client.tsx or page component
-Several sections have a dead duplicate `*Client.tsx`. Before fixing or testing a component, confirm which file the route's `page.tsx` actually imports — fixes and tests repeatedly land on the dead copy.
+## Scheduled Jobs (vercel.json crons)
 
-## Scheduled Jobs
-
-38 crons are defined in `vercel.json` (41 route dirs under `src/app/api/cron/`). **`vercel.json` is the source of truth** — do not rely on any list in docs. All cron routes require `Authorization: Bearer CRON_SECRET`.
+| Route | Schedule |
+|---|---|
+| `/api/cron/parking-notifications` | 0 5 * * * |
+| `/api/cron/rota-auto-close` | 0 5 * * * |
+| `/api/cron/rota-manager-alert` | 0 18 * * 0 |
+| `/api/cron/rota-staff-email` | 0 21 * * 0 |
+| `/api/cron/private-bookings-weekly-summary` | 0 * * * * |
 
 ## Key Environment Variables
 
@@ -166,7 +179,7 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - **Tech stack**: Next.js 15 App Router, React 19, Tailwind CSS v4, Supabase — no changes
 - **Backwards compatible**: App is in production; each phase must be independently deployable without breaking existing functionality
 - **No auth changes**: Existing Supabase Auth + RBAC system stays as-is
-- **Existing patterns**: Server actions, manual snake_case→camelCase field mapping (this project has no `fromDb<T>()` helper), audit logging — all preserved
+- **Existing patterns**: Server actions, `fromDb<T>()` conversion, audit logging — all preserved
 - **Node version**: 20 LTS as pinned in `.nvmrc`
 <!-- GSD:project-end -->
 
@@ -193,7 +206,7 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - tsx ^4.21.0 — for running utility scripts directly (e.g., `scripts/`)
 - patch-package ^8.0.1 — postinstall patches to `node_modules`
 ## Key Dependencies
-- Tailwind CSS ^4.3.0 — CSS-first config via `@theme` in `src/app/globals.css` (no tailwind.config file); processed by `@tailwindcss/postcss`. Plus tailwindcss-animate ^1.0.7
+- Tailwind CSS ^3.4.0 (config: `tailwind.config.js`) + tailwindcss-animate ^1.0.7
 - tailwind-merge ^3.3.1 — merging class names without conflicts
 - lucide-react ^0.522.0 — icon library
 - @heroicons/react ^2.2.0 — additional icons
@@ -235,7 +248,7 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - Path alias: `@/*` → `./src/*` (tsconfig.json)
 - `next.config.mjs` — Next.js configuration
 - `postcss.config.mjs` — PostCSS/Tailwind pipeline
-- Tailwind v4 theme tokens live in `src/app/globals.css` under `@theme`
+- `tailwind.config.js` — Tailwind theme (v3; NOT v4 inline theme)
 - `vitest.config.ts` — test runner configuration
 - `eslint.config.js` — ESLint flat config
 ## Platform Requirements
@@ -282,12 +295,15 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - Zero warnings enforced via `--max-warnings=0` in `npm run lint`
 ## Import Organization
 - `@/` maps to `src/` (configured in `vitest.config.ts` and `tsconfig.json`)
+## Server Action Pattern
 ## Error Handling
 - Permission failures: throw `new Error('Insufficient permissions')` or `new Error('Unauthorized')` inside permission helper
 - Validation failures: return `{ error: parsed.error.issues[0]?.message }` immediately (no throw)
 - DB errors: `if (dbError) throw dbError` — caught by outer try/catch
 - Catch block always extracts message: `error instanceof Error ? error.message : 'Fallback message'`
 - Service layer (non-action) functions may throw directly (caller handles)
+## Logging
+## Comments
 ## Component Design
 - Default to server components for page-level data fetching
 - `'use client'` added for interactivity, hooks, and browser APIs
@@ -302,6 +318,7 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - Default exports used only for Next.js page/layout components
 - `src/ds/index.ts` is the single export point for the UI library (re-exports primitives, composites, shell, compat)
 - Service and action files do not use barrel exports — import directly from specific files
+## Form Validation
 ## Date Handling
 - Always use `src/lib/dateUtils.ts` utilities for user-facing dates
 - Key functions: `getTodayIsoDate()`, `toLocalIsoDate()`, `formatDateInLondon()`, `formatTime12Hour()`
@@ -372,7 +389,23 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - Examples: `src/lib/rota/`, `src/lib/mileage/`, `src/lib/private-bookings/`, `src/lib/invoices/`, `src/lib/menu/`
 - Pattern: Flat function exports or small focused files
 ## Entry Points
-(See the Route groups list under Architecture above — same information. Root `src/app/layout.tsx` holds global providers, PWA manifest, SEO robot blocking, service-worker registration.)
+- Location: `src/app/(authenticated)/layout.tsx`
+- Triggers: Any request under `/` (authenticated paths)
+- Responsibilities: Auth guard (`supabase.auth.getUser()`), permission loading (`getUserPermissions()`), portal redirect for non-management staff
+- Location: `src/app/table-booking/`
+- Triggers: Customer visits booking URL
+- Responsibilities: Public form, token-based confirmation, no auth required
+- Location: `src/app/parking/guest/`
+- Triggers: Guest visits parking link
+- Responsibilities: Public parking registration flow
+- Location: `src/app/(staff-portal)/portal/`
+- Triggers: Staff-only employees log in
+- Responsibilities: Shift view, leave requests, payroll — no management access
+- Location: `src/app/(timeclock)/timeclock/`
+- Triggers: Kiosk device access (no auth)
+- Responsibilities: Clock in/out for employees
+- Location: `src/app/layout.tsx`
+- Responsibilities: Global providers (Supabase session, Toaster), PWA manifest, SEO robot blocking, service worker registration
 ## Error Handling
 - Server actions return `{ error: string }` for expected failures (validation, permission denied, not found)
 - Server actions throw for unexpected failures (let Next.js error boundary catch)
@@ -381,12 +414,20 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - `src/lib/retry.ts` wraps flaky external calls (SMS, email) with retry logic
 - `src/lib/supabase-retry.ts` adds retry wrapper for Supabase queries
 - `error.tsx` files at route group level catch rendering errors
+## Cross-Cutting Concerns
 <!-- GSD:architecture-end -->
 
 <!-- GSD:workflow-start source:GSD defaults -->
-## GSD (optional)
+## GSD Workflow Enforcement
 
-GSD planning artifacts live in `.planning/`. Use `/gsd:*` commands only when explicitly working a planned phase; direct edits are otherwise fine.
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd:debug` for investigation and bug fixing
+- `/gsd:execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
 <!-- GSD:workflow-end -->
 
 <!-- GSD:profile-start -->
@@ -396,3 +437,65 @@ GSD planning artifacts live in `.planning/`. Use `/gsd:*` commands only when exp
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
 
+# context-mode — MANDATORY routing rules
+
+You have context-mode MCP tools available. These rules are NOT optional — they protect your context window from flooding. A single unrouted command can dump 56 KB into context and waste the entire session.
+
+## BLOCKED commands — do NOT attempt these
+
+### curl / wget — BLOCKED
+Any Bash command containing `curl` or `wget` is intercepted and replaced with an error message. Do NOT retry.
+Instead use:
+- `ctx_fetch_and_index(url, source)` to fetch and index web pages
+- `ctx_execute(language: "javascript", code: "const r = await fetch(...)")` to run HTTP calls in sandbox
+
+### Inline HTTP — BLOCKED
+Any Bash command containing `fetch('http`, `requests.get(`, `requests.post(`, `http.get(`, or `http.request(` is intercepted and replaced with an error message. Do NOT retry with Bash.
+Instead use:
+- `ctx_execute(language, code)` to run HTTP calls in sandbox — only stdout enters context
+
+### WebFetch — BLOCKED
+WebFetch calls are denied entirely. The URL is extracted and you are told to use `ctx_fetch_and_index` instead.
+Instead use:
+- `ctx_fetch_and_index(url, source)` then `ctx_search(queries)` to query the indexed content
+
+## REDIRECTED tools — use sandbox equivalents
+
+### Bash (>20 lines output)
+Bash is ONLY for: `git`, `mkdir`, `rm`, `mv`, `cd`, `ls`, `npm install`, `pip install`, and other short-output commands.
+For everything else, use:
+- `ctx_batch_execute(commands, queries)` — run multiple commands + search in ONE call
+- `ctx_execute(language: "shell", code: "...")` — run in sandbox, only stdout enters context
+
+### Read (for analysis)
+If you are reading a file to **Edit** it → Read is correct (Edit needs content in context).
+If you are reading to **analyze, explore, or summarize** → use `ctx_execute_file(path, language, code)` instead. Only your printed summary enters context. The raw file content stays in the sandbox.
+
+### Grep (large results)
+Grep results can flood context. Use `ctx_execute(language: "shell", code: "grep ...")` to run searches in sandbox. Only your printed summary enters context.
+
+## Tool selection hierarchy
+
+1. **GATHER**: `ctx_batch_execute(commands, queries)` — Primary tool. Runs all commands, auto-indexes output, returns search results. ONE call replaces 30+ individual calls.
+2. **FOLLOW-UP**: `ctx_search(queries: ["q1", "q2", ...])` — Query indexed content. Pass ALL questions as array in ONE call.
+3. **PROCESSING**: `ctx_execute(language, code)` | `ctx_execute_file(path, language, code)` — Sandbox execution. Only stdout enters context.
+4. **WEB**: `ctx_fetch_and_index(url, source)` then `ctx_search(queries)` — Fetch, chunk, index, query. Raw HTML never enters context.
+5. **INDEX**: `ctx_index(content, source)` — Store content in FTS5 knowledge base for later search.
+
+## Subagent routing
+
+When spawning subagents (Agent/Task tool), the routing block is automatically injected into their prompt. Bash-type subagents are upgraded to general-purpose so they have access to MCP tools. You do NOT need to manually instruct subagents about context-mode.
+
+## Output constraints
+
+- Keep responses under 500 words.
+- Write artifacts (code, configs, PRDs) to FILES — never return them as inline text. Return only: file path + 1-line description.
+- When indexing content, use descriptive source labels so others can `ctx_search(source: "label")` later.
+
+## ctx commands
+
+| Command | Action |
+|---------|--------|
+| `ctx stats` | Call the `ctx_stats` MCP tool and display the full output verbatim |
+| `ctx doctor` | Call the `ctx_doctor` MCP tool, run the returned shell command, display as checklist |
+| `ctx upgrade` | Call the `ctx_upgrade` MCP tool, run the returned shell command, display as checklist |

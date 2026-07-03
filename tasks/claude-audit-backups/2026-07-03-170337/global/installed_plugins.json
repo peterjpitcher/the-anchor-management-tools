@@ -1,0 +1,214 @@
+{
+  "version": 2,
+  "plugins": {
+    "github@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/github/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:44:52.717Z",
+        "lastUpdated": "2026-03-04T18:54:38.740Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "frontend-design@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/frontend-design/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:45:07.232Z",
+        "lastUpdated": "2026-03-04T18:54:38.739Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      },
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown",
+        "version": "unknown",
+        "installedAt": "2026-03-08T08:11:53.164Z",
+        "lastUpdated": "2026-04-04T10:29:19.728Z",
+        "gitCommitSha": "205b6e0b30366a969412d9aab7b99bea99d58db1"
+      }
+    ],
+    "feature-dev@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/feature-dev/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:45:32.655Z",
+        "lastUpdated": "2026-03-04T18:54:38.740Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "ralph-loop@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/ralph-loop/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:45:48.003Z",
+        "lastUpdated": "2026-03-04T18:54:38.741Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "playwright@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/playwright/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:45:54.924Z",
+        "lastUpdated": "2026-03-04T18:54:38.741Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "commit-commands@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/commit-commands/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:46:05.313Z",
+        "lastUpdated": "2026-03-04T18:54:38.740Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "context7@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/context7/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:46:14.829Z",
+        "lastUpdated": "2026-03-04T18:54:38.741Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "typescript-lsp@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-03-02T21:46:24.934Z",
+        "lastUpdated": "2026-03-02T21:46:24.934Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "code-simplifier@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/code-simplifier/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-03-02T21:46:39.044Z",
+        "lastUpdated": "2026-03-02T21:46:39.044Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "serena@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/serena/205b6e0b3036",
+        "version": "205b6e0b3036",
+        "installedAt": "2026-03-02T21:46:51.636Z",
+        "lastUpdated": "2026-03-04T18:54:38.740Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "claude-md-management@claude-plugins-official": [
+      {
+        "scope": "project",
+        "projectPath": "/Users/peterpitcher/Cursor/anchor-management-tools",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/claude-md-management/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-03-02T21:47:04.921Z",
+        "lastUpdated": "2026-03-02T21:47:04.921Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "supabase@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/supabase/0.1.5",
+        "version": "0.1.5",
+        "installedAt": "2026-03-02T21:47:29.348Z",
+        "lastUpdated": "2026-04-23T09:45:02.204Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "claude-code-setup@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/claude-code-setup/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-03-02T21:47:46.716Z",
+        "lastUpdated": "2026-03-02T21:47:46.716Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "vercel@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/vercel/0.40.0",
+        "version": "0.40.0",
+        "installedAt": "2026-03-02T21:47:58.531Z",
+        "lastUpdated": "2026-04-13T08:30:45.867Z",
+        "gitCommitSha": "ae067751b4f42c97d13054211657275029ca8b6d"
+      }
+    ],
+    "stripe@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/stripe/0.1.0",
+        "version": "0.1.0",
+        "installedAt": "2026-03-02T21:48:32.068Z",
+        "lastUpdated": "2026-03-02T21:48:32.068Z",
+        "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      }
+    ],
+    "plugin-dev@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/plugin-dev/unknown",
+        "version": "unknown",
+        "installedAt": "2026-03-05T07:37:07.852Z",
+        "lastUpdated": "2026-04-04T10:29:19.747Z",
+        "gitCommitSha": "205b6e0b30366a969412d9aab7b99bea99d58db1"
+      }
+    ],
+    "superpowers@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7",
+        "version": "5.0.7",
+        "installedAt": "2026-03-05T07:38:37.926Z",
+        "lastUpdated": "2026-04-04T10:29:20.563Z",
+        "gitCommitSha": "e4a2375cb705ca5800f0833528ce36a3faf9017a"
+      }
+    ],
+    "context-mode@context-mode": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/context-mode/context-mode/1.0.168",
+        "version": "1.0.168",
+        "installedAt": "2026-03-14T18:39:54.907Z",
+        "lastUpdated": "2026-06-29T16:02:36.370Z",
+        "gitCommitSha": "bf3600f41eddc873fdb2da31b886eee820304ec8"
+      }
+    ],
+    "andrej-karpathy-skills@karpathy-skills": [
+      {
+        "scope": "user",
+        "installPath": "/Users/peterpitcher/.claude/plugins/cache/karpathy-skills/andrej-karpathy-skills/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-07-03T11:26:57.968Z",
+        "lastUpdated": "2026-07-03T11:26:57.968Z",
+        "gitCommitSha": "2c606141936f1eeef17fa3043a72095b4765b9c2"
+      }
+    ]
+  }
+}

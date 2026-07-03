@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(/Users/peterpitcher/Library/Python/3.12/bin/it2:*)",
+      "Bash(done)",
+      "Bash(gh api:*)",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index"
+    ]
+  }
+}

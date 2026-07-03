@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node /Users/peterpitcher/.claude/hooks/session-setup.js)",
+      "Bash(node:*)",
+      "Read(//private/tmp/**)",
+      "Bash(echo \"EXIT CODE: $?\")"
+    ]
+  }
+}
