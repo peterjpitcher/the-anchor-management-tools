@@ -15,107 +15,71 @@ export interface ContractData {
   }
 }
 
+// The "Bring Your Own Food" catering package (see
+// supabase/migrations/20260405120000_standardise_catering_options.sql). When a booking
+// includes this package, the optional self-catering food release & indemnity waiver
+// annex is appended to the contract. Matched by fixed id first, with a name fallback so
+// a re-seeded package (different id, same name) still triggers the annex.
+const BYO_FOOD_PACKAGE_ID = '9fdbf82b-6717-4bff-8af6-8865cb5bfe21'
+
 export function generateContractHTML(data: ContractData): string {
-  const { booking, logoUrl, companyDetails } = data
+  const { booking, logoUrl } = data
 
-  // Helper functions
-  const formatDate = (date: string | null) => {
-    return formatDateFull(date)
-  }
-
-  const formatTime = (time: string | null) => {
-    return formatTime12Hour(time)
-  }
-
-  const formatCurrency = (amount: number) => {
-    return `£${amount.toFixed(2)}`
-  }
-
-  const escapeHtml = (value: string) => {
-    return value
+  // ---- helpers ----
+  const formatDate = (date: string | null) => formatDateFull(date)
+  const formatTime = (time: string | null) => formatTime12Hour(time)
+  const formatCurrency = (amount: number) => `£${amount.toFixed(2)}`
+  const escapeHtml = (value: string) =>
+    value
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;')
-  }
 
-  const formatPlainText = (value?: string | null) => {
-    if (!value) {
-      return null
-    }
-    const trimmed = value.trim()
-    return trimmed.length > 0 ? escapeHtml(trimmed) : null
-  }
-
-  // Calculate totals including discounts
-  const calculateSubtotal = () => {
-    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
-      // Use line_total directly since it's a database-generated column
+  // ---- financial calculations ----
+  const calculateSubtotal = () =>
+    booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
+      // line_total is a database-generated column
       const lineTotal = typeof item.line_total === 'string' ? parseFloat(item.line_total) : item.line_total
       return sum + (lineTotal || 0)
     }, 0) || 0
-  }
 
-  // Calculate the original price before any item-level discounts
-  const calculateOriginalTotal = () => {
-    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
+  // Original price before any item-level discounts
+  const calculateOriginalTotal = () =>
+    booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
       const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
       const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
       return sum + (qty * price)
     }, 0) || 0
-  }
-
-  // Calculate total item-level discounts
-  const calculateItemDiscounts = () => {
-    return booking.items?.reduce((sum: number, item: PrivateBookingItem) => {
-      if (item.discount_value && item.discount_value > 0) {
-        const qty = typeof item.quantity === 'string' ? parseFloat(item.quantity) : item.quantity
-        const price = typeof item.unit_price === 'string' ? parseFloat(item.unit_price) : item.unit_price
-        const originalPrice = qty * price
-
-        if (item.discount_type === 'percent') {
-          return sum + (originalPrice * (item.discount_value / 100))
-        } else {
-          return sum + item.discount_value
-        }
-      }
-      return sum
-    }, 0) || 0
-  }
 
   const calculateDiscountAmount = () => {
     const subtotal = calculateSubtotal()
     if (!booking.discount_amount || booking.discount_amount === 0) return 0
-
-    if (booking.discount_type === 'percent') {
-      return subtotal * (booking.discount_amount / 100)
-    } else {
-      return booking.discount_amount
-    }
+    return booking.discount_type === 'percent'
+      ? subtotal * (booking.discount_amount / 100)
+      : booking.discount_amount
   }
 
-  const calculateTotal = () => {
-    return calculateSubtotal() - calculateDiscountAmount()
-  }
+  const calculateTotal = () => calculateSubtotal() - calculateDiscountAmount()
 
-  // Extract details
+  // ---- extract details ----
+  const ref = `PB-${booking.id.slice(0, 8).toUpperCase()}`
   const customerName = booking.customer_full_name || booking.customer_name || 'To be confirmed'
   const isTbd = isBookingDateTbd(booking)
   const eventDate = isTbd ? 'Date to be confirmed' : formatDate(booking.event_date)
   const startTime = isTbd ? 'To be confirmed' : formatTime(booking.start_time)
   const rawEndTime = formatTime(booking.end_time || null)
-  const endTime = booking.end_time && booking.end_time_next_day
-    ? `${rawEndTime} (+1 day)`
-    : rawEndTime
+  const endTime = booking.end_time && booking.end_time_next_day ? `${rawEndTime} (+1 day)` : rawEndTime
   const eventType = booking.event_type || 'To be confirmed'
   const guestCount = booking.guest_count || 'To be confirmed'
   const depositAmount = booking.deposit_amount ?? 250
   const subtotal = calculateSubtotal()
-  const discountAmount = calculateDiscountAmount()
+  const originalTotal = calculateOriginalTotal()
   const total = calculateTotal()
+
   // The deposit is separate from the event balance and cannot be used towards it.
-  // Only event-balance payments (stored in private_booking_payments) reduce the balance.
+  // Only event-balance payments (private_booking_payments) reduce the balance.
   const totalPaid = booking.final_payment_date
     ? total
     : ((booking.payments || []) as Array<{ amount: number | string }>).reduce((sum, p) => {
@@ -123,822 +87,585 @@ export function generateContractHTML(data: ContractData): string {
         return sum + (Number.isFinite(paid) ? paid : 0)
       }, 0)
   const balanceDue = Math.max(0, total - totalPaid)
-  const contractNote = formatPlainText(booking.contract_note)
 
-  // Pre-escaped variables for safe HTML interpolation
-  const safeCustomerName = escapeHtml(customerName)
-  const safeEventType = escapeHtml(eventType)
-  const safeSpecialRequirements = booking.special_requirements
-    ? escapeHtml(booking.special_requirements)
-    : null
-  const safeAccessibilityNeeds = booking.accessibility_needs
-    ? escapeHtml(booking.accessibility_needs)
-    : null
-
-  // Calculate balance due date — prefer explicit field, fall back to 14 days before event
+  // Balance-due date — prefer explicit field, else 14 days before the event
   let balanceDueDate = 'To be confirmed'
-  let finalDetailsDate = 'To be confirmed'
   if (isTbd) {
     balanceDueDate = 'To be confirmed (date TBD)'
-    finalDetailsDate = 'To be confirmed (date TBD)'
   } else if (booking.balance_due_date) {
     balanceDueDate = formatDate(booking.balance_due_date)
-    finalDetailsDate = balanceDueDate
   } else if (booking.event_date) {
     const eventDateObj = new Date(booking.event_date)
-    const dueDate = new Date(eventDateObj.getTime() - (14 * 24 * 60 * 60 * 1000))
+    const dueDate = new Date(eventDateObj.getTime() - 14 * 24 * 60 * 60 * 1000)
     balanceDueDate = formatDate(dueDate.toISOString())
-    finalDetailsDate = balanceDueDate
   }
 
-  // Group items by type
-  const spaceItems = booking.items?.filter((i: PrivateBookingItem) => i.item_type === 'space') || []
-  const cateringItems = booking.items?.filter((i: PrivateBookingItem) => i.item_type === 'catering') || []
-  const vendorItems = booking.items?.filter((i: PrivateBookingItem) => i.item_type === 'vendor') || []
-  const otherItems = booking.items?.filter((i: PrivateBookingItem) => i.item_type === 'other') || []
+  // ---- pre-escaped / composed values ----
+  const clean = (value?: string | null) => {
+    const trimmed = (value || '').trim()
+    return trimmed ? escapeHtml(trimmed) : null
+  }
+  const safeCustomerName = escapeHtml(customerName)
+  const safeEventType = escapeHtml(eventType)
+  const safePhone = booking.contact_phone ? escapeHtml(booking.contact_phone) : '&mdash;'
+  const safeEmail = booking.contact_email ? escapeHtml(booking.contact_email) : '&mdash;'
+  // Operational details carried over from the booking — rendered only when present so the
+  // fixed-height page fill is unaffected for bookings that have none.
+  const safeSpecialRequirements = clean(booking.special_requirements)
+  const safeAccessibilityNeeds = clean(booking.accessibility_needs)
+  const safeContractNote = clean(booking.contract_note)
+  const generatedDate = formatDate(new Date().toISOString())
+  const eventDateTime = isTbd
+    ? 'Date to be confirmed'
+    : `${eventDate}${startTime && startTime !== 'TBC' ? `, ${startTime}&ndash;${endTime}` : ''}`
+  const depositStatus = booking.deposit_paid_date ? `paid ${formatDate(booking.deposit_paid_date)}` : 'due'
+  const logo = logoUrl ? encodeURI(logoUrl) : '/logo-black.png'
+  const venue = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ'
 
-  return `
-<!DOCTYPE html>
-<html lang="en">
+  // ---- self-catering (bring your own food) detection ----
+  const hasOwnFood = (booking.items || []).some((item: PrivateBookingItem) => {
+    if (item.item_type !== 'catering') return false
+    if (item.package?.id === BYO_FOOD_PACKAGE_ID) return true
+    return (item.package?.name || '').toLowerCase().includes('bring your own')
+  })
+
+  const waiverEventDetails =
+    typeof booking.guest_count === 'number' && booking.guest_count > 0
+      ? `${safeEventType} &middot; approx. ${booking.guest_count} guests`
+      : safeEventType
+
+  // ---- shared shell fragments ----
+  const runHead = (kind: string, refHtml: string) => `
+        <header class="run-head">
+          <img class="run-head-logo" src="${logo}" alt="The Anchor">
+          <div class="run-head-meta">
+            <span class="doc-kind">${kind}</span>
+            <span class="doc-ref">${refHtml}</span>
+          </div>
+        </header>`
+
+  const runFoot = (reg: string, pageLabel: string) => `
+        <footer class="run-foot">
+          <p class="foot-reg">${reg}</p>
+          <div class="foot-right">
+            <span class="foot-init">Initials <span class="init-box"></span> <span class="init-box"></span></span>
+            <span class="foot-page">${pageLabel} <b class="pageno">1</b> of <b class="pagetot">1</b></span>
+          </div>
+        </footer>`
+
+  const regFull = `<b>Orange Jelly Limited</b> trading as The Anchor &middot; The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ &middot; Registered in England &amp; Wales no. 10537179 &middot; VAT 315 2036 47`
+  const regShort = `<b>Orange Jelly Limited</b> trading as The Anchor &middot; Registered in England &amp; Wales no. 10537179 &middot; VAT 315 2036 47`
+  const regWaiver = `<b>Orange Jelly Limited</b> trading as The Anchor &middot; Self-catering food waiver &middot; Registered in England &amp; Wales no. 10537179 &middot; VAT 315 2036 47`
+
+  return `<!DOCTYPE html>
+<html lang="en-GB">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Private Booking Contract - ${safeCustomerName}</title>
-  <style>
-    @page {
-      size: A4;
-      margin: 15mm;
-    }
-    
-    @media print {
-      body { margin: 0; }
-      .no-print { display: none !important; }
-      .page-break { page-break-before: always; }
-    }
-    
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.4;
-      color: #333;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      font-size: 9pt;
-    }
-    
-    .header {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    
-    .logo {
-      max-width: 150px;
-      height: auto;
-      margin-bottom: 10px;
-    }
-    
-    h1 {
-      color: #005131;
-      margin: 5px 0;
-      font-size: 18pt;
-    }
-    
-    h2 {
-      color: #005131;
-      margin-top: 15px;
-      margin-bottom: 10px;
-      font-size: 12pt;
-      border-bottom: 1px solid #005131;
-      padding-bottom: 3px;
-    }
-    
-    h3 {
-      color: #005131;
-      margin-top: 10px;
-      margin-bottom: 5px;
-      font-size: 10pt;
-    }
-    
-    .contract-info {
-      text-align: center;
-      margin-bottom: 15px;
-      font-size: 8pt;
-      color: #666;
-    }
-    
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    
-    .info-section {
-      background: #f9f9f9;
-      padding: 10px;
-      border-radius: 3px;
-      border: 1px solid #e0e0e0;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    
-    .info-section h3 {
-      margin-top: 0;
-      color: #005131;
-    }
-    
-    .info-section p {
-      margin: 3px 0;
-      font-size: 8pt;
-    }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Anchor — Private Booking Contract — ${safeCustomerName}</title>
 
-    .plain-text {
-      white-space: pre-wrap;
-    }
-    
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 10px;
-      font-size: 8pt;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    
-    th, td {
-      text-align: left;
-      padding: 5px;
-      border-bottom: 1px solid #ddd;
-    }
-    
-    th {
-      background-color: #005131;
-      color: white;
-      font-weight: bold;
-    }
-    
-    .total-row {
-      font-weight: bold;
-      background-color: #f0f0f0;
-    }
-    
-    .discount-row {
-      color: #10b981;
-      font-style: italic;
-      background-color: #f0fdf4;
-      font-weight: 500;
-    }
-    
-    .discount-row td {
-      padding: 8px 5px;
-    }
-    
-    .discount-note {
-      color: #10b981;
-      font-style: italic;
-      font-weight: normal;
-      display: inline-block;
-      margin-top: 2px;
-    }
-    
-    .deposit-section {
-      background: #fffbeb;
-      border: 1px solid #f59e0b;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 3px;
-      font-size: 8pt;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    
-    .deposit-section h3 {
-      color: #d97706;
-      margin-top: 0;
-    }
-    
-    .agreement-section {
-      background: #f3f4f6;
-      padding: 10px;
-      margin: 15px 0;
-      border: 1px solid #d1d5db;
-      border-radius: 3px;
-      font-size: 8pt;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    
-    .terms-section {
-      margin-top: 20px;
-      font-size: 7pt;
-      line-height: 1.3;
-    }
-    
-    .terms-section h3 {
-      background: #005131;
-      color: white;
-      padding: 5px;
-      margin: 10px 0 5px 0;
-      font-size: 9pt;
-    }
-    
-    .terms-section ul, .terms-section ol {
-      margin-left: 15px;
-      margin-bottom: 8px;
-    }
-    
-    .terms-section li {
-      margin-bottom: 3px;
-    }
-    
-    .signature-section {
-      margin-top: 20px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      font-size: 8pt;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    
-    .signature-box {
-      text-align: center;
-    }
-    
-    .signature-line {
-      border-bottom: 1px solid #333;
-      margin: 30px 0 5px 0;
-    }
-    
-    .footer {
-      margin-top: 20px;
-      padding-top: 10px;
-      border-top: 1px solid #ddd;
-      text-align: center;
-      font-size: 7pt;
-      color: #666;
-    }
-    
-    .print-button {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 10px 20px;
-      background-color: #005131;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 16px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    }
-    
-    .print-button:hover {
-      background-color: #003d24;
-    }
-    
-    .back-button {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      padding: 10px 20px;
-      background-color: #6b7280;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 16px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    
-    .back-button:hover {
-      background-color: #4b5563;
-    }
-    
-    .keep-together {
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    
-    /* Ensure financial summary section stays together */
-    .financial-summary-wrapper {
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-  </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&family=Clicker+Script&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#ffffff;
+    --ink:#161616;
+    --ink-soft:#363636;
+    --ink-mute:#6b6b6b;
+    --rule:#cfcfcf;
+    --font-display:'DM Serif Display', Georgia, serif;
+    --font-body:'Outfit', system-ui, -apple-system, sans-serif;
+    --font-script:'Clicker Script', cursive;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:#3a3a3a;
+    font-family:var(--font-body);
+    color:var(--ink);
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+
+  /* ---------- screen scaffolding ---------- */
+  .screen-note{ color:#e9e4d8; font-size:13.5px; text-align:center; padding:24px 16px 4px; line-height:1.6; }
+  .screen-note strong{ color:#fff; font-weight:600; }
+  .screen-note .sub{ display:block; color:#b3ada1; font-size:12px; margin-top:5px; }
+  .toolbar{ display:flex; align-items:center; justify-content:center; gap:14px; padding:6px 0 2px; }
+  .print-btn{ font-family:var(--font-body); font-weight:600; font-size:13px; color:#161616; background:#e9e4d8; border:0; border-radius:999px; padding:9px 22px; cursor:pointer; }
+  .print-btn:hover{ background:#fff; }
+  .back-link{ font-family:var(--font-body); font-weight:600; font-size:13px; color:#e9e4d8; text-decoration:none; border:1px solid #6f6a61; border-radius:999px; padding:8px 18px; }
+  .back-link:hover{ color:#fff; border-color:#e9e4d8; }
+  .stage{ display:flex; flex-direction:column; align-items:center; gap:10mm; padding:22px 0 70px; }
+
+  .doc-divider{ width:210mm; max-width:92vw; color:#e9e4d8; text-align:center; font-size:12px; letter-spacing:.18em; text-transform:uppercase; display:flex; align-items:center; gap:14px; opacity:.75; }
+  .doc-divider::before,.doc-divider::after{ content:""; flex:1; height:1px; background:#6f6a61; }
+
+  /* ---------- A4 sheet ---------- */
+  .sheet{ width:210mm; height:297mm; background:var(--paper); padding:11mm 12mm; position:relative; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 16px 46px rgba(0,0,0,.42); }
+  .sheet::after{ content:""; position:absolute; inset:5.5mm; border:1px solid var(--ink); pointer-events:none; z-index:1; }
+  .sheet-inner{ position:relative; z-index:2; display:flex; flex-direction:column; height:100%; }
+
+  /* ---------- running header ---------- */
+  .run-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:8mm; padding-bottom:2.4mm; border-bottom:1px solid var(--ink); }
+  .run-head-logo{ height:8mm; width:auto; display:block; }
+  .run-head-meta{ text-align:right; line-height:1.3; }
+  .doc-kind{ display:block; font-family:var(--font-display); font-size:14px; color:var(--ink); line-height:1; letter-spacing:-.01em; }
+  .doc-ref{ display:block; font-size:8px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-mute); margin-top:1.2mm; }
+  .doc-ref b{ color:var(--ink-soft); font-weight:600; }
+
+  /* ---------- body ---------- */
+  .body{ flex:1 1 auto; padding-top:3.4mm; min-height:0; }
+
+  /* ---------- cover ---------- */
+  .cover-kicker{ font-weight:600; font-size:8.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 2mm; }
+  .cover-title{ font-family:var(--font-display); font-weight:400; font-size:34px; line-height:1.02; color:var(--ink); letter-spacing:-.02em; margin:0 0 2mm; }
+  .cover-script{ font-family:var(--font-script); font-size:19px; color:var(--ink-soft); line-height:1; margin:0 0 4mm; }
+  .meta{ display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--ink); margin:0 0 4mm; }
+  .meta-cell{ padding:2.8mm 4mm; border-right:1px solid var(--rule); }
+  .meta-cell:last-child{ border-right:0; }
+  .meta-label{ font-weight:600; font-size:8px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 1.4mm; }
+  .meta-value{ font-size:12.5px; font-weight:500; color:var(--ink); margin:0; line-height:1.25; }
+
+  .section-label{ font-weight:700; font-size:9.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink); margin:0 0 2.4mm; padding-bottom:1.4mm; border-bottom:1px solid var(--rule); }
+  .section-label.gap{ margin-top:4mm; }
+
+  /* detail rows (customer / event) */
+  .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:1.6mm 8mm; margin:0 0 4mm; }
+  .drow{ display:flex; gap:3mm; font-size:11.5px; line-height:1.4; align-items:baseline; }
+  .drow .dk{ font-size:8px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-mute); font-weight:600; min-width:24mm; flex-shrink:0; }
+  .drow .dv{ color:var(--ink); font-weight:500; }
+
+  /* financial summary + deposit side by side */
+  .money{ display:grid; grid-template-columns:1fr 1fr; gap:6mm; margin:0 0 4mm; align-items:start; }
+  .fin{ border:1px solid var(--ink); }
+  .fin-row{ display:flex; justify-content:space-between; align-items:baseline; padding:2.2mm 3.6mm; border-bottom:1px solid var(--rule); font-size:11px; color:var(--ink-soft); }
+  .fin-row:last-child{ border-bottom:0; }
+  .fin-row .fv{ font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .fin-row.total{ background:#f4f1ea; }
+  .fin-row.total .fk{ font-weight:700; color:var(--ink); text-transform:uppercase; letter-spacing:.06em; font-size:9.5px; }
+  .fin-row.total .fv{ font-size:13px; }
+  .deposit-box{ border:1.4px solid var(--ink); padding:3mm 4mm; background:#f4f1ea; display:flex; flex-direction:column; justify-content:center; height:100%; }
+  .deposit-box .db-l{ font-weight:700; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); }
+  .deposit-box .db-r{ font-family:var(--font-display); font-size:26px; color:var(--ink); line-height:1; margin:1.4mm 0; }
+  .deposit-box small{ font-weight:500; font-size:9px; color:var(--ink-mute); line-height:1.35; }
+  .callout{ font-size:10px; line-height:1.45; color:var(--ink-soft); border-left:2px solid var(--ink); padding:0.6mm 0 0.6mm 3.6mm; margin:0 0 4mm; }
+  .callout b{ color:var(--ink); font-weight:700; }
+
+  /* ---------- numbered clauses (waiver) ---------- */
+  ol.contract{ list-style:none; margin:0; padding:0; counter-reset:l1; }
+  ol.contract > li{ counter-increment:l1; margin:0 0 2.6mm; break-inside:avoid; }
+  ol.contract > li:last-child{ margin-bottom:0; }
+  .clause-h{ position:relative; padding-left:7mm; font-weight:700; font-size:11.5px; color:var(--ink); margin:0 0 1.2mm; line-height:1.2; }
+  .clause-h::before{ content:counter(l1) "."; position:absolute; left:0; top:0; width:6mm; font-weight:700; }
+  ol.sub{ list-style:none; margin:0; padding:0; counter-reset:l2; }
+  ol.sub > li{ counter-increment:l2; position:relative; padding-left:9mm; font-size:9.6px; line-height:1.38; color:var(--ink-soft); margin:0 0 0.9mm; }
+  ol.sub > li::before{ content:counter(l1) "." counter(l2); position:absolute; left:0; top:0; font-weight:600; color:var(--ink); font-size:9px; }
+  ol.sub > li:last-child{ margin-bottom:0; }
+  ol.sub b{ color:var(--ink); font-weight:600; }
+
+  /* ---------- prose (deposit info, agreement) ---------- */
+  .tc > p{ font-size:10.4px; line-height:1.44; color:var(--ink-soft); margin:0 0 1.5mm; }
+  .tc > p:last-child{ margin-bottom:0; }
+  .tc b{ color:var(--ink); font-weight:600; }
+
+  /* ---------- two-column terms ---------- */
+  .tc-cols{ columns:2; column-gap:7mm; }
+  .tc-sec{ break-inside:avoid; margin:0 0 2.8mm; }
+  .tc-h{ font-weight:700; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink); margin:0 0 1.3mm; padding-bottom:1mm; border-bottom:1px solid var(--rule); }
+  .tc-sec p{ font-size:9.1px; line-height:1.38; color:var(--ink-soft); margin:0 0 1.1mm; }
+  .tc-sec p:last-child{ margin-bottom:0; }
+  .tc-sec b{ color:var(--ink); font-weight:600; }
+
+  /* bullet points */
+  ul.points{ list-style:none; margin:0; padding:0; columns:2; column-gap:7mm; }
+  ul.points > li{ position:relative; padding-left:4.6mm; font-size:10px; line-height:1.34; color:var(--ink-soft); margin:0 0 1.2mm; break-inside:avoid; }
+  ul.points > li::before{ content:""; position:absolute; left:0; top:1.8mm; width:2.2mm; border-top:1px solid var(--ink); }
+  ul.points > li b{ color:var(--ink); font-weight:600; }
+
+  .addr{ font-size:10.5px; line-height:1.5; color:var(--ink); font-weight:500; border-left:2px solid var(--ink); padding-left:4mm; margin:2mm 0 0; }
+
+  /* ---------- signatures ---------- */
+  .sign-intro{ font-size:10.4px; line-height:1.5; color:var(--ink-soft); margin:0 0 3.4mm; }
+  .sign-intro b{ color:var(--ink); font-weight:600; }
+  .sign-grid{ display:grid; grid-template-columns:1fr 1fr; gap:7mm; }
+  .sign-card{ border:1px solid var(--ink); padding:4mm 4.4mm; }
+  .sign-card-h{ font-weight:700; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink); margin:0 0 0.8mm; line-height:1.35; }
+  .sign-card-sub{ font-size:10px; color:var(--ink-mute); line-height:1.4; margin:0 0 5mm; }
+  .sf{ margin:0 0 4.6mm; }
+  .sf:last-child{ margin-bottom:0; }
+  .sf-rule{ border-bottom:1px solid var(--ink); height:7mm; position:relative; }
+  .sf-rule.tall{ height:11mm; }
+  .sf-v{ position:absolute; left:1mm; bottom:1.2mm; font-size:12px; color:var(--ink); font-weight:500; }
+  .sf-cap{ font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-mute); margin:1mm 0 0; display:block; }
+  .sf-row{ display:grid; grid-template-columns:1fr 1fr; gap:4.4mm; }
+
+  .fill{ color:var(--ink-mute); border-bottom:1px dotted var(--ink-mute); padding:0 2px; font-style:normal; }
+
+  /* ---------- running footer ---------- */
+  .run-foot{ margin-top:auto; padding-top:2.4mm; border-top:1px solid var(--ink); display:flex; align-items:center; justify-content:space-between; gap:6mm; }
+  .foot-reg{ font-size:8px; line-height:1.4; color:var(--ink-mute); max-width:120mm; }
+  .foot-reg b{ color:var(--ink-soft); font-weight:600; }
+  .foot-right{ display:flex; align-items:center; gap:6mm; flex-shrink:0; }
+  .foot-init{ font-size:8px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-mute); display:flex; align-items:center; gap:2.2mm; white-space:nowrap; }
+  .init-box{ display:inline-block; width:11mm; height:5.4mm; border:1px solid var(--ink); vertical-align:middle; }
+  .foot-page{ font-size:8.5px; letter-spacing:.06em; color:var(--ink-soft); white-space:nowrap; }
+  .foot-page b{ color:var(--ink); font-weight:600; }
+
+  @media print{
+    @page{ size:A4 portrait; margin:0; }
+    body{ background:#fff; }
+    .screen-note,.toolbar,.doc-divider{ display:none !important; }
+    .stage{ display:block; padding:0; gap:0; }
+    .sheet{ box-shadow:none; break-after:page; }
+    .sheet:last-child{ break-after:auto; }
+  }
+</style>
 </head>
 <body>
-  <a href="/private-bookings/${booking.id}" class="back-button no-print">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width: 20px; height: 20px;">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-    </svg>
-    Back to Booking
-  </a>
-  <button class="print-button no-print" onclick="window.print()">Print Contract</button>
-  
-  <div class="header">
-    ${logoUrl ? `<img src="${encodeURI(logoUrl)}" alt="The Anchor Logo" class="logo">` : ''}
-    <h1>PRIVATE BOOKING CONTRACT</h1>
+
+  <div class="screen-note">
+    <strong>The Anchor — Private booking contract.</strong> ${safeCustomerName} &middot; ${safeEventType} &middot; ${eventDate} &middot; ref ${ref}.${hasOwnFood ? ' Followed by an <strong>optional self-catering food waiver</strong> (separate annex, separate signature).' : ''}
+    <span class="sub">Each sheet is one printed page. Print &middot; A4 &middot; Portrait &middot; margins &ldquo;None&rdquo;.</span>
+  </div>
+  <div class="toolbar">
+    <a class="back-link" href="/private-bookings/${booking.id}">&larr; Back to booking</a>
+    <button class="print-btn" onclick="window.print()">Print / save as PDF</button>
   </div>
 
-  <div class="contract-info">
-    <p><strong>Contract Reference:</strong> PB-${booking.id.slice(0, 8).toUpperCase()}</p>
-    <p><strong>Date Generated:</strong> ${formatDate(new Date().toISOString())}</p>
+  <div class="stage">
+
+    <!-- ===== CONTRACT PAGE 1 — cover, details, financial & inclusions ===== -->
+    <section class="sheet" data-doc="contract">
+      <div class="sheet-inner">
+        ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
+        <div class="body">
+          <p class="cover-kicker">This agreement</p>
+          <h1 class="cover-title">Private booking contract</h1>
+          <p class="cover-script">Your event, secured with us</p>
+
+          <div class="meta">
+            <div class="meta-cell"><p class="meta-label">Date generated</p><p class="meta-value">${generatedDate}</p></div>
+            <div class="meta-cell"><p class="meta-label">Event date</p><p class="meta-value">${eventDateTime}</p></div>
+            <div class="meta-cell"><p class="meta-label">Event type</p><p class="meta-value">${safeEventType}</p></div>
+          </div>
+
+          <p class="section-label">Customer &amp; event details</p>
+          <div class="detail-grid">
+            <div class="drow"><span class="dk">Name</span><span class="dv">${safeCustomerName}</span></div>
+            <div class="drow"><span class="dk">Phone</span><span class="dv">${safePhone}</span></div>
+            <div class="drow"><span class="dk">Email</span><span class="dv">${safeEmail}</span></div>
+            <div class="drow"><span class="dk">Expected guests</span><span class="dv">${guestCount}</span></div>
+            <div class="drow" style="grid-column:1 / -1;"><span class="dk">Venue</span><span class="dv">${venue}</span></div>
+            ${safeSpecialRequirements ? `<div class="drow" style="grid-column:1 / -1;"><span class="dk">Special requirements</span><span class="dv">${safeSpecialRequirements}</span></div>` : ''}
+            ${safeAccessibilityNeeds ? `<div class="drow" style="grid-column:1 / -1;"><span class="dk">Accessibility</span><span class="dv">${safeAccessibilityNeeds}</span></div>` : ''}
+            ${safeContractNote ? `<div class="drow" style="grid-column:1 / -1;"><span class="dk">Note</span><span class="dv">${safeContractNote}</span></div>` : ''}
+          </div>
+
+          <p class="section-label">Financial summary</p>
+          <div class="money">
+            <div class="fin">
+              <div class="fin-row"><span class="fk">Original price (before discounts)</span><span class="fv">${formatCurrency(originalTotal)}</span></div>
+              <div class="fin-row"><span class="fk">Subtotal</span><span class="fv">${formatCurrency(subtotal)}</span></div>
+              <div class="fin-row"><span class="fk">Event balance due</span><span class="fv">${formatCurrency(balanceDue)}</span></div>
+              <div class="fin-row total"><span class="fk">Total event cost</span><span class="fv">${formatCurrency(total)}</span></div>
+            </div>
+            <div class="deposit-box">
+              <span class="db-l">Booking &amp; damage deposit</span>
+              <span class="db-r">${formatCurrency(depositAmount)}</span>
+              <small>Status: ${depositStatus}. Payable to confirm the booking. Separate from and additional to the event balance.</small>
+            </div>
+          </div>
+          <p class="callout"><b>Important:</b> the deposit is separate from the event balance and cannot be used towards payment of it. The full event balance remains payable separately by the due date.</p>
+
+          <p class="section-label">Important: services not included</p>
+          <p style="font-size:10px; line-height:1.44; color:var(--ink-soft); margin:0 0 2.4mm;">This contract covers <b>only</b> the specific items and services itemised in the booking details. The following are <b>not</b> included unless explicitly itemised:</p>
+          <ul class="points">
+            <li><b>Bar service</b> &mdash; drinks purchased separately at standard prices.</li>
+            <li><b>Waiting staff</b> &mdash; no table service unless listed.</li>
+            <li><b>Linens &amp; decorations</b> &mdash; cloths, centrepieces, etc.</li>
+            <li><b>Audio/visual</b> &mdash; PA, projectors, screens, mics.</li>
+            <li><b>Set-up / clear-down</b> &mdash; basic prep only.</li>
+            <li><b>Music / entertainment</b> &mdash; no DJ or band unless listed.</li>
+            <li><b>Photography / videography</b> &mdash; unless contracted.</li>
+            <li><b>Security</b> &mdash; not provided as standard.</li>
+            <li><b>Additional hours</b> &mdash; extensions charged separately.</li>
+          </ul>
+          <p class="callout" style="margin-top:2.4mm; margin-bottom:0;"><b>Note:</b> basic tables and chairs are included with venue hire. Any service not listed must be arranged and paid for separately. Please contact us if you believe a service you need is missing.</p>
+        </div>
+        ${runFoot(regFull, 'Page')}
+      </div>
+    </section>
+
+    <!-- ===== CONTRACT PAGE 2 — deposit info, agreement & signatures ===== -->
+    <section class="sheet" data-doc="contract">
+      <div class="sheet-inner">
+        ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
+        <div class="body">
+          <p class="section-label">Deposit information</p>
+          <div class="tc">
+            <p>A booking and damage deposit is required to secure the desired date and time. The deposit secures the booking, removes the date and time from general availability, and protects Orange Jelly Limited, trading as The Anchor, against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</p>
+            <p>The booking is not confirmed until the deposit has been received in cleared funds. Before payment, Orange Jelly Limited may place a temporary hold on the date and time; a temporary hold is provisional only and may be released if the deposit is not received in cleared funds within <b>14 calendar days</b>, unless agreed otherwise in writing. The deposit may be paid by cash, card, bank transfer or PayPal, and payment of the deposit constitutes acceptance of this Agreement and these Terms and Conditions in full.</p>
+            <p>The deposit is separate from and additional to the total event cost, and cannot be used as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. If the event proceeds as booked, the deposit will be refunded within <b>48 hours</b> after the event, provided the full balance has been paid, all charges settled, and no deductions required.</p>
+            <p>The Host remains responsible for significant or malicious damage, excessive or specialist cleaning, unauthorised overtime, unpaid bar tabs, missing items, supplier and staffing costs, special-order items and other costs arising from the event. Ordinary incidental wear and minor glass breakages are not charged. Where sums owed exceed the deposit, the Host must pay the balance on demand.</p>
+          </div>
+
+          <p class="section-label gap">Agreement</p>
+          <div class="tc">
+            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b>, and commit to paying the total event cost of <b>${formatCurrency(total)}</b>. To secure the booking I will pay the booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>.</p>
+            <p>I understand the deposit is separate from and additional to the event cost and cannot be used towards the event balance or any other charge. I understand the full event balance of <b>${formatCurrency(total)}</b> and final guest numbers are due no later than <b>${balanceDueDate}</b> (14 calendar days before the event), and that failure to pay by the due date may result in cancellation and forfeiture of the deposit, except where a refund is required by law.</p>
+            <p>I understand that if I cancel <b>less than 30 calendar days</b> before the event, fail to attend, or fail to pay the balance by the due date, the deposit will be retained in full, except where a refund is required by law. If I cancel <b>30 calendar days or more</b> before the event, the deposit may be refunded less a 5% administration deduction and any direct costs already incurred or committed. By signing below, paying the deposit, or otherwise confirming in writing, I confirm I have read, understood and agree to be bound by this Agreement and its Terms and Conditions.</p>
+          </div>
+
+          <div class="sign-grid" style="margin-top:5mm;">
+            <div class="sign-card">
+              <p class="sign-card-h">Signed by the Host</p>
+              <p class="sign-card-sub">The person booking the event</p>
+              <div class="sf"><div class="sf-rule"><span class="sf-v">${safeCustomerName}</span></div><span class="sf-cap">Host name</span></div>
+              <div class="sf-row">
+                <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
+                <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
+              </div>
+            </div>
+            <div class="sign-card">
+              <p class="sign-card-h">For The Anchor Pub</p>
+              <p class="sign-card-sub">Orange Jelly Limited</p>
+              <div class="sf"><div class="sf-rule"></div><span class="sf-cap">Name &amp; position</span></div>
+              <div class="sf-row">
+                <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
+                <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${runFoot(regShort, 'Page')}
+      </div>
+    </section>
+
+    <!-- ===== CONTRACT PAGE 3 — terms (1 of 2) ===== -->
+    <section class="sheet" data-doc="contract">
+      <div class="sheet-inner">
+        ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
+        <div class="body">
+          <p class="section-label">Terms &amp; conditions</p>
+          <div class="tc-cols">
+            <div class="tc-sec">
+              <p class="tc-h">Reservation and deposit</p>
+              <p>All event bookings require a booking and damage deposit as specified above. Before payment, Orange Jelly Limited may place a provisional temporary hold, which may be released if the deposit is not received in cleared funds within 14 calendar days unless agreed otherwise in writing.</p>
+              <p>The booking is confirmed only when the deposit is received in cleared funds. Once received, Orange Jelly Limited may remove the date and time from availability and decline other enquiries for it. The deposit is separate from and additional to the event cost and may not be used towards the balance or any other charge.</p>
+              <p>If the event proceeds as booked, the deposit is refunded within 48 hours, provided the balance is paid, charges settled and no deductions required. Orange Jelly Limited may deduct any sums owed, including damage, specialist cleaning, missing items, unpaid balances or bar tabs, overtime, supplier and staffing costs, special-order items and cancellation costs. Any shortfall is payable on demand.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Cancellation policy</p>
+              <p>The Host may cancel only by written notice; the cancellation date is the date Orange Jelly Limited receives it.</p>
+              <p>Cancelling <b>30 calendar days or more</b> before the event: the deposit may be refunded, less a 5% administration deduction and any direct costs, supplier charges, payment processing, staffing, special-order or other charges already incurred or committed.</p>
+              <p>Cancelling <b>less than 30 calendar days</b> before the event: the deposit is retained in full, except where a refund is required by law, as the date may have been removed from availability and costs committed.</p>
+              <p>Failure to attend, to pay the balance, or to confirm final numbers by the due date may be treated as cancellation by the Host, with the deposit retained in full except where a refund is required by law. Cancellation does not release the Host from sums already due or incurred. Where required by law, Orange Jelly Limited will take reasonable steps to reduce its losses, including re-selling the date where practical.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Date changes</p>
+              <p>Date changes may be requested in writing and are subject to availability; they are not guaranteed unless confirmed in writing. Requests made at least 14 calendar days before the event will be accommodated with reasonable efforts where a suitable date is available.</p>
+              <p>Any financial impact of a date change is payable by the Host, including supplier, entertainer, staffing and stock costs, special-order items, administration and price increases. Such costs may be deducted from the deposit, with any shortfall payable on demand. A request less than 14 calendar days before the event may be refused and treated as a cancellation.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Payment</p>
+              <p>The full event balance must be paid no later than <b>14 calendar days</b> before the event, unless agreed otherwise in writing. Final guest numbers, catering, dietary and accessibility requirements and other final details must also be confirmed by then.</p>
+              <p>Payment of the deposit constitutes acceptance of this Agreement in full. The deposit is separate from the balance and may not be used towards it. If the balance is not paid by the due date, Orange Jelly Limited may treat the booking as cancelled by the Host, retain the deposit in full except where a refund is required by law, and recover any further losses.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Final numbers, catering &amp; details</p>
+              <p>Final guest numbers must be confirmed no later than 14 calendar days before the event, after which Orange Jelly Limited may commit staffing, catering, stock and suppliers on that basis. Reductions after the deadline do not oblige a reduction in the balance; increases are subject to availability and may incur additional charges.</p>
+              <p>All allergies, dietary and accessibility requirements must be provided as early as possible and no later than 14 calendar days before the event. Requirements notified late cannot be guaranteed.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Age restrictions</p>
+              <p>We adhere to the <b>Challenge 25</b> policy. Those appearing under 25 will be asked for valid ID to purchase alcohol, and those unable to provide adequate proof of age will be denied service in compliance with the law.</p>
+            </div>
+          </div>
+        </div>
+        ${runFoot(regShort, 'Page')}
+      </div>
+    </section>
+
+    <!-- ===== CONTRACT PAGE 4 — terms (2 of 2) + company ===== -->
+    <section class="sheet" data-doc="contract">
+      <div class="sheet-inner">
+        ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
+        <div class="body">
+          <p class="section-label">Terms &amp; conditions (continued)</p>
+          <div class="tc-cols">
+            <div class="tc-sec">
+              <p class="tc-h">Liability</p>
+              <p>Nothing in this Agreement limits or excludes Orange Jelly Limited's liability for death or personal injury caused by its negligence, fraud or fraudulent misrepresentation, or any other liability that cannot lawfully be limited or excluded. Subject to that, Orange Jelly Limited is not responsible for loss, damage, injury, delay or disruption caused by the Host, their guests, external suppliers, entertainers or contractors, or by any matter outside its reasonable control.</p>
+              <p>The Host is responsible for the conduct of their guests, suppliers, entertainers and contractors, and indemnifies Orange Jelly Limited against claims, losses, damages, liabilities, costs and expenses arising from any act or omission by them.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">What's included</p>
+              <p>Only the items, services and vendors explicitly listed in the booking are included. The venue provides the physical space only unless additional services are itemised. All drinks must be purchased from the bar at standard prices. The Host is responsible for arranging any services not listed.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">External catering &amp; provisions</p>
+              <p>External caterers must be pre-approved and provide evidence of public liability insurance and relevant certifications, and conform to our hygiene standards; non-compliance may result in denial of entry. We provide no catering facilities and no fridge or freezer storage, so all provisions, equipment and storage must be arranged by the caterer or host. Allergies and dietary requirements should be communicated at booking; specific dietary options may incur additional costs.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Entertainment &amp; equipment</p>
+              <p>Entertainers must be pre-approved and provide evidence of public liability insurance where requested. Any equipment requiring electricity (DJ and band equipment, lighting, sound, bouncy castles) must be approved in advance, be PAT tested where applicable, and be safe and well maintained. Powered equipment may incur a standing charge for power use.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Decoration and setup</p>
+              <p>Decoration plans must be agreed in advance; unapproved furniture, gear or decorations are not permitted. Open flames, nails, thumbtacks and cello tape on paint or wallpaper are strictly prohibited. Set-up and decoration must be completed within the allocated one hour before and after the booking; extra time or unapproved deviations incur additional hourly charges.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Licensing and conduct</p>
+              <p><b>Alcohol:</b> 11.00&ndash;00.00 Mon&ndash;Thu; 11.00&ndash;01.00 Fri&ndash;Sat; 12.00&ndash;23.30 Sun. <b>Live music/dancing:</b> 19.30&ndash;00.00 Mon&ndash;Sat; 19.30&ndash;23.30 Sun. <b>Recorded music:</b> 11.00&ndash;00.00 Mon&ndash;Sat; 12.00&ndash;23.30 Sun. <b>Late night refreshment:</b> 23.00&ndash;00.30 Mon&ndash;Thu; 23.00&ndash;01.30 Fri&ndash;Sat; 23.00&ndash;00.00 Sun.</p>
+              <p>Guests are expected to conduct themselves respectfully and be considerate of our neighbours, given our location within a village.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Additional charges &amp; overtime</p>
+              <p>Events running beyond the agreed timeframe incur additional hourly rates payable on demand. Services or provisions outside our standard offerings may incur additional charges.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Intellectual property</p>
+              <p>Hosts may not use the logo or any branding of Orange Jelly Limited or The Anchor without explicit written permission. All intellectual property rights remain with Orange Jelly Limited.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Force majeure</p>
+              <p>Neither party is liable for failure or delay caused by events beyond its reasonable control, including fire, flood, war, acts of terrorism, riots, strikes, acts of God or governmental acts. Where the event cannot proceed due to force majeure, Orange Jelly Limited may offer an alternative date where possible; if none can be agreed, any refund is assessed in accordance with applicable law.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Indemnity &amp; insurance</p>
+              <p>The Host indemnifies Orange Jelly Limited, its affiliates and their directors, officers, employees and agents against claims, losses, damages, liabilities, judgements, fees, costs and expenses arising from any act or omission by the Host, their guests, suppliers, entertainers or contractors. Orange Jelly Limited's total liability for any claim is limited to the amount paid by the Host for the event. Hosts are encouraged, though not required, to consider event insurance.</p>
+            </div>
+            <div class="tc-sec">
+              <p class="tc-h">Governing law</p>
+              <p>This Agreement is governed by the laws of <b>England and Wales</b>. Disputes are resolved through good faith negotiation and, failing that, submitted to a competent court in England and Wales.</p>
+            </div>
+          </div>
+
+          <p class="addr" style="margin-top:4mm;"><b>Orange Jelly Limited</b>, trading as The Anchor Pub &middot; Company Registration No. 10537179 &middot; VAT No. GB 315 203 647<br>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ &middot; 01753 682 707 &middot; manager@the-anchor.pub &middot; management.orangejelly.co.uk</p>
+        </div>
+        ${runFoot(regShort, 'Page')}
+      </div>
+    </section>
+${hasOwnFood ? `
+    <div class="doc-divider">Optional annex &middot; self-catering food waiver</div>
+
+    <!-- ===== WAIVER — self-catering food release & indemnity (separate signature) ===== -->
+    <section class="sheet" data-doc="waiver">
+      <div class="sheet-inner">
+        ${runHead('Self-catering food waiver', `Optional annex &middot; Ref <b>${ref}/W</b>`)}
+        <div class="body">
+          <p class="cover-kicker">Optional annex &middot; complete only if food is self-catered</p>
+          <h1 class="cover-title" style="font-size:26px; margin-bottom:1.6mm;">Self-catering food release &amp; indemnity waiver</h1>
+          <p class="cover-script" style="font-size:17px; margin-bottom:3mm;">Signed separately from the booking contract</p>
+
+          <div class="tc" style="margin-bottom:3mm;">
+            <p>This Waiver is entered into between the undersigned Event Organiser (<b>&ldquo;Event Organiser&rdquo;</b>) and <b>Orange Jelly Limited</b> (<b>&ldquo;the Company&rdquo;</b>), operating The Anchor pub. It governs the provision and consumption of any self-catered food at events held at The Anchor. By signing below, the Event Organiser confirms they have read, understood and agree to be bound by the following terms.</p>
+          </div>
+
+          <ol class="contract" style="columns:2; column-gap:7mm;">
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Responsibility for food</h2>
+              <ol class="sub">
+                <li>The Event Organiser has sole responsibility for the purchase, preparation, storage, transport, presentation and service of all food provided at the event.</li>
+                <li>The Event Organiser is responsible for ensuring the food is safe for consumption and handled in accordance with best practice and all applicable legal requirements.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Release of liability and indemnity</h2>
+              <ol class="sub">
+                <li>The Event Organiser releases, indemnifies and holds harmless Orange Jelly Limited, its directors, employees, agents and representatives from any and all claims, liabilities, losses, damages, injuries or expenses (including legal costs) arising out of or in connection with the consumption or handling of any self-catered food at the event.</li>
+                <li>This release applies to any claims, including those arising from foodborne illness, allergic reactions, injury or, in the worst case, death.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Compliance with legislation</h2>
+              <ol class="sub">
+                <li>The Event Organiser shall ensure all provision of food complies with the <b>Food Safety Act 1990</b> and any other relevant legislation (available at legislation.gov.uk).</li>
+                <li>The Event Organiser is responsible for any inspections or regulatory requirements arising in connection with the event.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Food safety and allergens</h2>
+              <ol class="sub">
+                <li>The Event Organiser will take all necessary precautions to maintain food safety, including ensuring no food remains at room temperature for more than <b>two (2) hours</b>; food left beyond this is deemed unsafe and must be disposed of appropriately.</li>
+                <li>In accordance with the Food Information Regulations, the Event Organiser will provide accurate details of any of the 14 major allergens (celery, gluten, crustaceans, eggs, fish, lupin, milk, molluscs, mustard, nuts, peanuts, sesame, soya and sulphur dioxide/sulphites) present in any food served.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Notification to attendees</h2>
+              <ol class="sub">
+                <li>The Event Organiser will ensure all attendees are clearly informed the event is self-catered and that Orange Jelly Limited provides no catering services, food preparation or storage facilities.</li>
+                <li>Any external catering providers used must be fully self-sufficient.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Storage and cleanliness</h2>
+              <ol class="sub">
+                <li>No storage facilities, including refrigeration or freezer storage, are available at The Anchor. All food must be transported to the venue at the start of the event and stored safely in compliance with food safety regulations.</li>
+                <li>The Event Organiser is responsible for the cleanliness of the area used for food preparation and consumption, including proper disposal of unused food and rubbish.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Insurance</h2>
+              <ol class="sub">
+                <li>Orange Jelly Limited does not extend any insurance coverage to the event or the self-catered food provided.</li>
+                <li>Any claims arising from the event, including those related to food safety or consumption, are the sole responsibility of the Event Organiser.</li>
+              </ol>
+            </li>
+            <li style="break-inside:avoid;">
+              <h2 class="clause-h">Entire agreement &amp; governing law</h2>
+              <ol class="sub">
+                <li>This Waiver represents the entire agreement regarding self-catered food provision and supersedes all prior discussions or agreements.</li>
+                <li>Any amendments must be in writing and signed by both parties.</li>
+                <li>This Waiver is governed by the laws of England and Wales, with disputes subject to the exclusive jurisdiction of its courts.</li>
+              </ol>
+            </li>
+          </ol>
+
+          <p class="sign-intro" style="margin:4mm 0 3mm;">By signing below, the Event Organiser confirms agreement to all the above terms and acknowledges they have had the opportunity to seek independent advice if desired. <b>This signature is separate from, and additional to, the signature on the private booking contract.</b></p>
+
+          <div class="sign-grid">
+            <div class="sign-card">
+              <p class="sign-card-h">Event details</p>
+              <p class="sign-card-sub">Completed by the Event Organiser</p>
+              <div class="sf"><div class="sf-rule"><span class="sf-v">${eventDate}</span></div><span class="sf-cap">Event date</span></div>
+              <div class="sf" style="margin-bottom:0;"><div class="sf-rule"><span class="sf-v">${waiverEventDetails}</span></div><span class="sf-cap">Event details</span></div>
+            </div>
+            <div class="sign-card">
+              <p class="sign-card-h">Signed by the Event Organiser</p>
+              <p class="sign-card-sub">Self-catering food waiver</p>
+              <div class="sf"><div class="sf-rule"><span class="sf-v">${safeCustomerName}</span></div><span class="sf-cap">Event organiser's name</span></div>
+              <div class="sf-row">
+                <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
+                <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${runFoot(regWaiver, 'Waiver page')}
+      </div>
+    </section>
+` : ''}
   </div>
 
-  <div class="info-grid">
-    <div class="info-section">
-      <h3>Customer Details</h3>
-      <p><strong>Name:</strong> ${safeCustomerName}</p>
-      ${booking.contact_phone ? `<p><strong>Phone:</strong> ${escapeHtml(booking.contact_phone)}</p>` : ''}
-      ${booking.contact_email ? `<p><strong>Email:</strong> ${escapeHtml(booking.contact_email)}</p>` : ''}
-    </div>
-    
-    <div class="info-section">
-      <h3>Event Details</h3>
-      <p><strong>Date:</strong> ${eventDate}</p>
-      <p><strong>Time:</strong> ${startTime} to ${endTime}</p>
-      ${booking.setup_time ? `<p><strong>Setup Time:</strong> ${formatTime(booking.setup_time)}</p>` : ''}
-      <p><strong>Expected Guests:</strong> ${guestCount}</p>
-      <p><strong>Event Type:</strong> ${safeEventType}</p>
-    </div>
-  </div>
+  <script>
+    (function(){
+      ['contract','waiver'].forEach(function(doc){
+        var sheets = document.querySelectorAll('.sheet[data-doc="' + doc + '"]');
+        var total = sheets.length;
+        sheets.forEach(function(sheet, i){
+          var no = sheet.querySelector('.pageno');
+          var tot = sheet.querySelector('.pagetot');
+          if (no) no.textContent = i + 1;
+          if (tot) tot.textContent = total;
+        });
+      });
+    })();
+  </script>
 
-  ${safeSpecialRequirements || safeAccessibilityNeeds ? `
-  <div class="info-section" style="margin-bottom: 30px;">
-    <h3>Special Requirements</h3>
-    ${safeSpecialRequirements ? `<p><strong>Event Requirements:</strong> ${safeSpecialRequirements}</p>` : ''}
-    ${safeAccessibilityNeeds ? `<p><strong>Accessibility Needs:</strong> ${safeAccessibilityNeeds}</p>` : ''}
-  </div>
-  ` : ''}
-
-  ${contractNote ? `
-  <div class="info-section" style="margin-bottom: 30px;">
-    <h3>Contract Note</h3>
-    <p class="plain-text">${contractNote}</p>
-  </div>
-  ` : ''}
-
-  <h2>Booking Items</h2>
-
-  ${spaceItems.length > 0 ? `
-    <h3>Venue Spaces</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Space</th>
-          <th>Hours</th>
-          <th>Rate</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${spaceItems.map((item: PrivateBookingItem) => {
-    const originalPrice = item.quantity * item.unit_price;
-    const hasDiscount = item.discount_value && item.discount_value > 0;
-
-    return `
-          <tr>
-            <td>
-              ${escapeHtml(item.description || '')}
-              ${hasDiscount ? `
-                <br/><small class="discount-note">
-                  <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
-                  ${item.notes ? ` - ${escapeHtml(item.notes || '')}` : ''}
-                </small>
-              ` : ''}
-            </td>
-            <td>${item.quantity}</td>
-            <td>
-              ${hasDiscount && item.discount_type === 'percent' && item.discount_value === 100 ?
-        `<s style="color: #999;">${formatCurrency(item.unit_price)}/hour</s><br/><strong>FREE</strong>` :
-        `${formatCurrency(item.unit_price)}/hour`
-      }
-            </td>
-            <td>
-              ${hasDiscount && originalPrice !== item.line_total ?
-        `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` :
-        formatCurrency(item.line_total)
-      }
-            </td>
-          </tr>
-        `}).join('')}
-      </tbody>
-    </table>
-  ` : ''}
-
-  ${cateringItems.length > 0 ? `
-    <h3>Catering</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Package</th>
-          <th>Details</th>
-          <th>Price</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${cateringItems.map((item: PrivateBookingItem) => {
-        const originalPrice = item.quantity * item.unit_price;
-        const hasDiscount = item.discount_value && item.discount_value > 0;
-
-        return `
-          <tr>
-            <td>
-              ${escapeHtml(item.description || '')}
-              ${item.package?.guest_description ? `
-                <br/><small style="color: #666; font-weight: normal;">${escapeHtml(item.package.guest_description)}</small>
-              ` : ''}
-              ${hasDiscount ? `
-                <br/><small class="discount-note">
-                  <strong>✓ Discount: ${item.discount_type === 'percent' ? `${item.discount_value}% off` : `£${item.discount_value} off`}</strong>
-                  ${item.notes ? ` - ${escapeHtml(item.notes || '')}` : ''}
-                </small>
-              ` : ''}
-            </td>
-            <td>
-              ${item.package?.pricing_model === 'total_value'
-            ? 'Total Package'
-            : `${item.quantity} guests`
-          }
-            </td>
-            <td>
-              ${item.package?.pricing_model === 'total_value'
-            ? 'See total'
-            : `${formatCurrency(item.unit_price)} per head`
-          }
-            </td>
-            <td>
-              ${hasDiscount && originalPrice !== item.line_total ?
-            `<s style="color: #999;">${formatCurrency(originalPrice)}</s><br/><strong>${formatCurrency(item.line_total)}</strong>` :
-            formatCurrency(item.line_total)
-          }
-            </td>
-          </tr>
-        `}).join('')}
-      </tbody>
-    </table>
-  ` : ''}
-
-  ${vendorItems.length > 0 ? `
-    <h3>External Vendors</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Vendor/Service</th>
-          <th>Cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${vendorItems.map((item: PrivateBookingItem) => `
-          <tr>
-            <td>${escapeHtml(item.description || '')}</td>
-            <td>${formatCurrency(item.line_total)}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  ` : ''}
-
-  ${otherItems.length > 0 ? `
-    <h3>Additional Items</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th>Quantity</th>
-          <th>Unit Price</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${otherItems.map((item: PrivateBookingItem) => `
-          <tr>
-            <td>${escapeHtml(item.description || '')}</td>
-            <td>${item.quantity}</td>
-            <td>${formatCurrency(item.unit_price)}</td>
-            <td>${formatCurrency(item.line_total)}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  ` : ''}
-
-  <div class="financial-summary-wrapper">
-  <h2>Financial Summary</h2>
-  <table>
-    <tbody>
-      <tr>
-        <td><strong>Original Price (before discounts)</strong></td>
-        <td style="text-align: right;">${formatCurrency(calculateOriginalTotal())}</td>
-      </tr>
-      ${calculateItemDiscounts() > 0 ? `
-        <tr style="color: #10b981;">
-          <td><strong>Item Discounts</strong></td>
-          <td style="text-align: right;"><strong>-${formatCurrency(calculateItemDiscounts())}</strong></td>
-        </tr>
-      ` : ''}
-      <tr>
-        <td><strong>Subtotal</strong></td>
-        <td style="text-align: right;">${formatCurrency(subtotal)}</td>
-      </tr>
-      ${booking.discount_amount && booking.discount_amount > 0 ? `
-        <tr class="discount-row">
-          <td>
-            <strong>✓ Booking Discount</strong>
-            ${booking.discount_type === 'percent' ? ` (${booking.discount_amount}% off)` : ` (£${booking.discount_amount} off)`}
-            ${booking.discount_reason ? `<br/><small style="font-weight: normal; color: #059669;">Reason: ${escapeHtml(booking.discount_reason)}</small>` : ''}
-          </td>
-          <td style="text-align: right; vertical-align: middle;">
-            <strong>-${formatCurrency(discountAmount)}</strong>
-          </td>
-        </tr>
-      ` : ''}
-      ${(calculateItemDiscounts() > 0 || (booking.discount_amount && booking.discount_amount > 0)) ? `
-        <tr>
-          <td colspan="2" style="text-align: center; padding: 8px; background-color: #f0fdf4; color: #059669; font-weight: bold;">
-            Total Savings: ${formatCurrency(calculateOriginalTotal() - total)}
-          </td>
-        </tr>
-      ` : ''}
-      <tr class="total-row">
-        <td><strong>Total Event Cost</strong></td>
-        <td style="text-align: right;"><strong>${formatCurrency(total)}</strong></td>
-      </tr>
-    </tbody>
-  </table>
-  
-  <table style="margin-top: 15px;">
-    <tbody>
-      <tr style="background: #fef3c7;">
-        <td style="padding: 10px; border: 1px solid #d97706;">
-          <strong style="color: #92400e;">Booking and Damage Deposit</strong>
-          <br/><small style="color: #b45309;">Deposit status: ${booking.deposit_paid_date ? `Paid ${formatDate(booking.deposit_paid_date)}` : 'Due'}</small>
-        </td>
-        <td style="text-align: right; padding: 10px; border: 1px solid #d97706; color: #92400e;">
-          <strong>${formatCurrency(depositAmount)}</strong>
-        </td>
-      </tr>
-      <tr class="total-row">
-        <td><strong>Event Balance Due</strong></td>
-        <td style="text-align: right;"><strong>${formatCurrency(balanceDue)}</strong></td>
-      </tr>
-      ${!booking.final_payment_date && total > 0 ? `
-      <tr>
-        <td style="color: #666;">Balance due by:</td>
-        <td style="text-align: right; color: #666;">${balanceDueDate} (14 days before event)</td>
-      </tr>
-      <tr>
-        <td style="color: #666;">Final guest numbers due by:</td>
-        <td style="text-align: right; color: #666;">${finalDetailsDate} (14 days before event)</td>
-      </tr>
-      ` : ''}
-      ${booking.final_payment_date ? `
-      <tr>
-        <td colspan="2" style="text-align: center; color: #10b981; font-weight: bold; padding: 10px;">
-          ✓ EVENT BALANCE FULLY PAID
-        </td>
-      </tr>
-      ` : ''}
-    </tbody>
-  </table>
-  <p style="font-size: 8pt; color: #92400e; margin-top: 8px; padding: 6px; background: #fef3c7; border-radius: 2px;">
-    <strong>Important:</strong> The deposit is separate from the event balance and cannot be used towards payment of the event balance. The full event balance remains payable separately.
-  </p>
-  </div>
-
-  <div class="deposit-section">
-    <h3>DEPOSIT INFORMATION</h3>
-    <p>To secure the desired date and time for the event, a booking and damage deposit is required. The deposit is paid to secure the booking, remove the agreed date and time from general availability, and protect Orange Jelly Limited, trading as The Anchor, against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</p>
-
-    <p>The booking is not confirmed until the deposit has been received in cleared funds by Orange Jelly Limited. Before the deposit is paid, Orange Jelly Limited may place a temporary hold on the requested date and time. A temporary hold is provisional only and may be released if the deposit is not received in cleared funds within 14 calendar days, unless Orange Jelly Limited agrees otherwise in writing.</p>
-
-    <p>The deposit may be paid by cash, card, bank transfer or PayPal. Payment of the deposit constitutes acceptance of this Agreement and these Terms and Conditions in full.</p>
-
-    <p>The deposit is separate from and additional to the total event cost. The deposit cannot be used by the Host as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. The full event balance must be paid separately by the due date stated in this Agreement.</p>
-
-    <p>If the event proceeds as booked, Orange Jelly Limited will refund the deposit within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required.</p>
-
-    <p>The Host remains fully responsible for any significant damage, excessive cleaning, unauthorised overtime, unpaid bar tabs, supplier charges, staffing costs, special-order items or other costs arising from the event. Orange Jelly Limited will not charge for ordinary incidental wear and minor glass breakages that are reasonably expected during normal event use. However, significant damage, malicious or accidental damage, specialist cleaning, missing items, unpaid balances, overtime, or costs caused by the Host, their guests, suppliers or entertainers may be deducted from the deposit. If the deposit is not enough to cover the full amount owed, the Host must pay the remaining balance on demand.</p>
-  </div>
-
-  <div style="background: #fee2e2; border: 1px solid #dc2626; padding: 10px; margin: 10px 0; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
-    <h3 style="color: #dc2626; margin-top: 0; font-size: 10pt;">IMPORTANT: SERVICES NOT INCLUDED</h3>
-    <p style="margin-bottom: 5px;"><strong>This contract covers ONLY the specific items and services listed above. The following are NOT included unless explicitly itemised in the booking details:</strong></p>
-    <ul style="margin-left: 15px; color: #7f1d1d; margin-bottom: 5px;">
-      <li><strong>Bar Service:</strong> Drinks must be purchased separately at standard bar prices during your event</li>
-      <li><strong>Waiting Staff:</strong> No table service staff are provided unless specifically listed above</li>
-      <li><strong>Linens &amp; Decorations:</strong> Table cloths, centrepieces, decorations, etc. are NOT included</li>
-      <li><strong>Audio/Visual Equipment:</strong> PA systems, projectors, screens, microphones, etc. must be arranged separately</li>
-      <li><strong>Set-up/Clear-down:</strong> Basic venue preparation only - detailed decoration or set-up services are not included</li>
-      <li><strong>Music/Entertainment:</strong> No DJ, band, or entertainment provided unless listed as a vendor item above</li>
-      <li><strong>Photography/Videography:</strong> No photo or video services included unless contracted separately</li>
-      <li><strong>Security:</strong> Additional security staff are not provided as standard</li>
-      <li><strong>Additional Hours:</strong> Strictly limited to booked times - extensions charged separately</li>
-    </ul>
-    <p style="margin-top: 5px; font-weight: bold;">Note: Basic tables and chairs are included with venue hire. If you require any additional services not listed in your booking details above, these must be arranged and paid for separately. Please contact us immediately if you believe any service you require is missing from this contract.</p>
-  </div>
-
-  <div class="agreement-section">
-    <h3>AGREEMENT</h3>
-    <p>I, <strong>${safeCustomerName}</strong>, hereby agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as "<strong>${safeEventType}</strong>" on <strong>${eventDate}</strong> from <strong>${startTime}</strong> to <strong>${endTime}</strong>. In accordance with the terms of this agreement, I commit to paying the total cost of the event, amounting to <strong>${formatCurrency(total)}</strong>.</p>
-    
-    <p>To secure this booking, I will pay the booking and damage deposit of <strong>${formatCurrency(depositAmount)}</strong> shown in the booking summary. I understand and agree that the deposit is paid to secure the agreed event date and time, remove that date and time from general availability, and protect Orange Jelly Limited against cancellation, damage, additional cleaning, overtime, unpaid charges, supplier costs and other sums arising from the event.</p>
-
-    <p>I understand that the deposit is separate from and additional to the total event cost. I understand that the deposit cannot be used by me as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. I must pay the full event balance separately by the due date stated in this Agreement.</p>
-
-    <p>I understand that the full event balance of <strong>${formatCurrency(total)}</strong> and final guest numbers are due no later than <strong>${balanceDueDate}</strong>, which is 14 calendar days before the event date. I understand that failure to pay the full event balance by the due date may result in cancellation of the booking and forfeiture of the deposit, except only where a refund is required by law.</p>
-
-    <p>I understand that if the event proceeds as booked, the deposit will be refunded within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required for damage, additional cleaning, overtime, unpaid charges, supplier costs or any other sums owed by me.</p>
-
-    <p>I understand that if I cancel the booking less than 30 calendar days before the event date, fail to attend, fail to pay the full event balance by the due date, or otherwise do not proceed with the event, the deposit will be retained in full, except only where a refund is required by law.</p>
-
-    <p>I understand that if I cancel the booking 30 calendar days or more before the event date, the deposit may be refunded, less a 5% cancellation administration deduction and any direct costs, supplier charges, payment processing costs, staffing costs, special-order items or other charges already incurred or committed by Orange Jelly Limited in connection with the booking.</p>
-
-    <p>By signing below, I, <strong>${safeCustomerName}</strong>, confirm my understanding and agreement to these terms, and commit to upholding my responsibilities as outlined in this agreement.</p>
-  </div>
-
-  <div style="background: #f9fafb; border: 1px solid #d1d5db; padding: 10px; margin: 15px 0 10px 0; border-radius: 3px; font-size: 8pt; page-break-inside: avoid; break-inside: avoid;">
-    <p>By signing below, paying the deposit, or otherwise confirming the booking in writing, I confirm that I have read, understood and agree to be bound by this Agreement and these Terms and Conditions. I understand that payment of the deposit creates a confirmed booking and that the deposit is subject to the cancellation, payment, damage and deduction terms set out in this Agreement.</p>
-  </div>
-
-  <div class="signature-section">
-    <div class="signature-box">
-      <div class="signature-line"></div>
-      <p><strong>Host Name:</strong> ${safeCustomerName}</p>
-      <p><strong>Date:</strong> ${formatDate(new Date().toISOString())}</p>
-    </div>
-    <div class="signature-box">
-      <div class="signature-line"></div>
-      <p><strong>For The Anchor Pub (Orange Jelly Limited)</strong></p>
-      <p><strong>Date:</strong> ${formatDate(new Date().toISOString())}</p>
-    </div>
-  </div>
-
-  <div class="page-break"></div>
-
-  <div class="terms-section">
-    <h2>TERMS & CONDITIONS</h2>
-    
-    <h3>Reservation and Deposit</h3>
-    <ul>
-      <li>All event bookings require a booking and damage deposit, as specified in the booking details above.</li>
-      <li>Before the deposit is paid, Orange Jelly Limited may place a temporary hold on the requested date and time. A temporary hold is provisional only and does not create a confirmed booking. Unless Orange Jelly Limited agrees otherwise in writing, a temporary hold may be released if the deposit is not received in cleared funds within 14 calendar days.</li>
-      <li>The booking is confirmed only when Orange Jelly Limited has received the deposit in cleared funds. Once the deposit has been received, Orange Jelly Limited may remove the agreed date and time from general availability and may decline other enquiries or bookings for that date and time.</li>
-      <li>The deposit is paid to secure the agreed event date and time and to protect Orange Jelly Limited against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</li>
-      <li>The deposit is separate from and additional to the total event cost. The Host may not use the deposit as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. The full event balance remains payable separately by the due date stated in this Agreement.</li>
-      <li>If the event proceeds as booked, the deposit will be refunded within 48 hours after the event, provided that the full event balance has been paid, all charges have been settled, and no deductions are required.</li>
-      <li>Orange Jelly Limited may deduct from the deposit any sums owed by the Host, including but not limited to damage, specialist cleaning, missing items, unpaid balances, unpaid bar tabs, overtime, supplier costs, staffing costs, special-order items, cancellation costs and any other charges arising from the event. If the deposit is not enough to cover the sums owed, the Host must pay the remaining balance on demand.</li>
-    </ul>
-
-    <h3>Cancellation Policy</h3>
-    <ul>
-      <li>The Host may cancel the event only by giving written notice to Orange Jelly Limited. The cancellation date will be the date on which Orange Jelly Limited receives the written notice.</li>
-      <li>If the Host cancels the booking 30 calendar days or more before the event date, the deposit may be refunded, less a 5% cancellation administration deduction and any direct costs, supplier charges, payment processing costs, staffing costs, special-order items or other charges already incurred or committed by Orange Jelly Limited in connection with the booking.</li>
-      <li>If the Host cancels the booking less than 30 calendar days before the event date, the deposit will be retained in full, except only where a refund is required by law. This is because Orange Jelly Limited may have removed the date from availability, declined other enquiries, committed staff, ordered stock, arranged suppliers, incurred administrative time, or suffered loss of opportunity.</li>
-      <li>If the Host fails to attend, fails to pay the full event balance by the due date, fails to confirm final guest numbers by the due date, or otherwise does not proceed with the event, Orange Jelly Limited may treat the booking as cancelled by the Host and may retain the deposit in full, except only where a refund is required by law.</li>
-      <li>Cancellation by the Host does not release the Host from responsibility for any other sums that are already due or have already been incurred in connection with the event, including third-party supplier costs, entertainer costs, special-order items, staffing costs, stock ordered specifically for the event, or any other costs committed to by Orange Jelly Limited or its suppliers.</li>
-      <li>If Orange Jelly Limited is able to secure another booking for the same date following the Host's cancellation, Orange Jelly Limited may refund an appropriate additional amount of the deposit after deducting any costs, losses, charges or administration arising from the cancellation or change. The Host acknowledges that a replacement booking may not be possible, particularly where cancellation is close to the event date.</li>
-      <li>Where required by law, Orange Jelly Limited will take reasonable steps to reduce its losses, including attempting to re-sell the date where reasonably practical.</li>
-    </ul>
-
-    <h3>Date Changes</h3>
-    <ul>
-      <li>The Host may request a change of event date by giving written notice to Orange Jelly Limited.</li>
-      <li>Date changes are subject to availability and are not guaranteed. Orange Jelly Limited is under no obligation to agree to a date change unless it confirms the change in writing.</li>
-      <li>Where the Host requests a date change at least 14 calendar days before the event date, Orange Jelly Limited will use reasonable efforts to accommodate the request where a suitable alternative date is available.</li>
-      <li>Any financial impact arising from a date change will be payable by the Host. This includes but is not limited to supplier charges, entertainer charges, staffing costs, stock costs, special-order items, administration, price increases and any other costs incurred or committed by Orange Jelly Limited as a result of the change.</li>
-      <li>Orange Jelly Limited may deduct any such costs from the deposit. If the deposit is not enough to cover the costs, the Host must pay the remaining balance on demand.</li>
-      <li>A request to change the date less than 14 calendar days before the event date may be refused and may be treated as a cancellation by the Host. In that case, the cancellation policy will apply.</li>
-    </ul>
-
-    <h3>Payment</h3>
-    <ul>
-      <li>The full event balance must be paid no later than 14 calendar days before the scheduled event date, unless Orange Jelly Limited agrees otherwise in writing.</li>
-      <li>Final guest numbers, catering requirements, dietary requirements, accessibility requirements and any other final event details must also be confirmed no later than 14 calendar days before the scheduled event date.</li>
-      <li>The deposit is payable to secure the booking. Payment of the deposit constitutes acceptance of this Agreement and these Terms and Conditions in full.</li>
-      <li>The deposit is separate from and additional to the event balance. The Host may not use the deposit as payment towards the event balance or any other event charge. The full event balance must be paid separately by the due date.</li>
-      <li>If the full event balance is not paid by the due date, Orange Jelly Limited may treat the booking as cancelled by the Host. In that case, the deposit may be retained in full, except only where a refund is required by law. Orange Jelly Limited may also recover any further losses, costs or charges arising from the non-payment or cancellation.</li>
-    </ul>
-
-    <h3>Final Guest Numbers, Catering and Event Details</h3>
-    <ul>
-      <li>Final guest numbers must be confirmed no later than 14 calendar days before the event date.</li>
-      <li>Once final guest numbers have been confirmed, Orange Jelly Limited may commit to staffing, catering, stock, suppliers and other event arrangements on the basis of those numbers.</li>
-      <li>If guest numbers reduce after the 14 calendar day deadline, Orange Jelly Limited is not obliged to reduce the event balance, particularly where catering, staffing, stock or supplier commitments have already been made.</li>
-      <li>Any increase in guest numbers after the 14 calendar day deadline is subject to availability and may result in additional charges. Orange Jelly Limited is not obliged to accommodate late increases.</li>
-      <li>All allergies, dietary requirements and accessibility requirements must be provided as early as possible and no later than 14 calendar days before the event date. Orange Jelly Limited will use reasonable efforts to accommodate requirements notified by the deadline, but cannot guarantee accommodation of requirements notified late.</li>
-    </ul>
-
-    <h3>Age Restrictions</h3>
-    <ul>
-      <li>We adhere to the Challenge25 policy. Those appearing under 25 will be asked to present valid ID to purchase alcohol. Those unable to provide adequate proof of age will be denied service in compliance with the law.</li>
-    </ul>
-
-    <h3>Liability</h3>
-    <ul>
-      <li>Nothing in this Agreement limits or excludes Orange Jelly Limited's liability for death or personal injury caused by its negligence, fraud or fraudulent misrepresentation, or any other liability that cannot lawfully be limited or excluded.</li>
-      <li>Subject to the above, Orange Jelly Limited will not be responsible for loss, damage, injury, delay or disruption caused by the Host, their guests, external suppliers, entertainers, contractors, or any matter outside Orange Jelly Limited's reasonable control.</li>
-      <li>The Host is responsible for the conduct of their guests, suppliers, entertainers and contractors during the event. The Host agrees to indemnify Orange Jelly Limited against claims, losses, damages, liabilities, costs and expenses arising from any act or omission by the Host, their guests, suppliers, entertainers or contractors.</li>
-    </ul>
-
-    <h3>What's Included and Not Included</h3>
-    <ul>
-      <li>Only the specific items, services, and vendors explicitly listed in the "Booking Items" section of this contract are included in your booking.</li>
-      <li>The venue provides the physical space only, unless additional services are itemized above.</li>
-      <li>All drinks must be purchased from the bar at standard prices - no drinks are included unless specifically contracted.</li>
-      <li>Clients are responsible for arranging any services not explicitly listed in this contract.</li>
-    </ul>
-
-    <h3>External Catering & Provisions</h3>
-    <ul>
-      <li>Any external caterers must be pre-approved by Orange Jelly Limited prior to the event. External caterers must provide evidence of their own public liability insurance and all relevant certifications. They should also conform to our set hygiene standards. Any non-compliance may result in denial of entry to the premises.</li>
-      <li>We do not provide any catering facilities, nor do we have fridge or freezer storage for external caterers. All necessary provisions, including equipment and storage, should be arranged by the external caterer or host.</li>
-      <li>Any allergies or dietary requirements should be communicated to us at the point of event booking. Please be aware that there may be additional costs to provide specific dietary catering options beyond those advertised.</li>
-    </ul>
-
-    <h3>Entertainment & Equipment</h3>
-    <ul>
-      <li>All entertainers brought in by the Host must be pre-approved by Orange Jelly Limited and must provide evidence of public liability insurance where requested.</li>
-      <li>Any equipment that requires electricity, including but not limited to DJ equipment, live band equipment, lighting, sound systems and bouncy castles, must be approved by Orange Jelly Limited in advance.</li>
-      <li>Electrical equipment must be PAT tested where applicable and must be safe, suitable and properly maintained.</li>
-      <li>Any equipment requiring electricity may incur a standing charge for power use, as specified by Orange Jelly Limited.</li>
-    </ul>
-
-    <h3>Decoration and Setup</h3>
-    <ul>
-      <li>Any plans to decorate the premises must be agreed upon in advance with Orange Jelly Limited. Unapproved items such as certain furniture, entertainment gear, or decorations are not permitted.</li>
-      <li>The use of open flames, nails, thumbtacks, and cello tape on paint or wallpaper is strictly prohibited.</li>
-      <li>All set-up and decoration must be completed within the allocated one hour before and after the event booking. Any extra time or unapproved deviations will result in additional hourly charges.</li>
-    </ul>
-
-    <h3>Licensing and Conduct</h3>
-    <ul>
-      <li>Supply of alcohol: 11.00 to 00.00 Monday to Thursday; 11.00 to 01.00 Fridays and Saturdays; 12.00 to 23.30 on Sundays.</li>
-      <li>Live music/provision of facilities for dancing: 19.30 to 00.00 Monday to Saturday; 19.30 to 23.30 on Sundays.</li>
-      <li>Recorded music: 11.00 to 00.00 Monday to Saturday; 12.00 to 23.30 on Sundays.</li>
-      <li>Late night Refreshment: 23.00 to 00.30 Monday to Thursday; 23.00 to 01.30 Friday and Saturday, and 23.00 to 00.00 on Sundays.</li>
-      <li>Guests are expected to conduct themselves respectfully and be considerate of our neighbours, given our location within a village.</li>
-    </ul>
-
-    <h3>Additional Charges & Overtime</h3>
-    <ul>
-      <li>If an event goes beyond the agreed-upon timeframe, additional hourly rates will apply and will be payable by the Host on demand.</li>
-      <li>In cases where specific services or provisions are required outside of our standard offerings, additional charges may apply.</li>
-    </ul>
-
-    <h3>Allergies & Dietary Restrictions</h3>
-    <ul>
-      <li>We endeavour to cater to a wide range of dietary requirements. However, any allergies or specific dietary needs must be communicated to us at the time of event booking.</li>
-      <li>While we strive to accommodate all guests, there may be additional costs associated with providing specific dietary catering options beyond those advertised. It's always best to discuss these needs in advance to ensure a smooth and satisfactory service on the day of the event.</li>
-    </ul>
-
-    <h3>Intellectual Property</h3>
-    <ul>
-      <li>Organisations and hosts are not permitted to use the logo or any branding associated with Orange Jelly Limited or The Anchor without explicit written permission. All intellectual property rights remain with Orange Jelly Limited.</li>
-    </ul>
-
-    <h3>Force Majeure</h3>
-    <ul>
-      <li>Neither party shall be held liable or responsible to the other party nor be deemed to have defaulted under or breached this Agreement for failure or delay in fulfilling or performing any term of this Agreement to the extent, and for so long as, such failure or delay is caused by or results from causes beyond the reasonable control of the affected party including but not limited to fire, floods, embargoes, war, acts of war (whether war is declared or not), acts of terrorism, insurrections, riots, civil commotions, strikes, lockouts or other labour disturbances, acts of God or acts, omissions or delays in acting by any governmental authority or the other party.</li>
-      <li>In the event that the event cannot proceed due to force majeure, Orange Jelly Limited may, where reasonably possible, offer the Host an alternative date. If an alternative date cannot reasonably be agreed, any refund will be assessed in accordance with applicable law, taking into account any costs already incurred, work already carried out, third-party commitments, supplier costs, staffing costs, special-order items and the status of the booking deposit.</li>
-    </ul>
-
-    <h3>Indemnification & Liability</h3>
-    <ul>
-      <li>The Host agrees to indemnify and hold harmless Orange Jelly Limited, its affiliates, and their respective directors, officers, employees and agents from and against any claims, losses, damages, liabilities, judgements, fees, costs and expenses related to or arising out of any act or omission by the Host, their guests, suppliers, entertainers or contractors.</li>
-      <li>Nothing in this Agreement limits or excludes Orange Jelly Limited's liability for death or personal injury caused by its negligence, fraud or fraudulent misrepresentation, or any other liability that cannot lawfully be limited or excluded.</li>
-      <li>Subject to the above, Orange Jelly Limited's total liability for any claim arising out of or in connection with the organisation or hosting of an event shall be limited to the amount paid by the Host for the event.</li>
-    </ul>
-
-    <h3>Event Insurance</h3>
-    <ul>
-      <li>While not mandatory, hosts are encouraged to consider securing event insurance to cover potential unforeseen costs or damages. This can provide additional peace of mind and protection for both the host and their guests.</li>
-    </ul>
-
-    <h3>Dispute Resolution & Governing Law</h3>
-    <ul>
-      <li>This Agreement shall be governed by and construed in accordance with the laws of England and Wales.</li>
-      <li>Any dispute arising under or in connection with this Agreement shall be resolved through good faith negotiations between the parties. If the dispute cannot be resolved through negotiations, it shall be submitted to a competent court in England and Wales.</li>
-    </ul>
-  </div>
-
-  <div class="footer">
-    <p><strong>${escapeHtml(companyDetails?.name || 'Orange Jelly Limited')}</strong></p>
-    <p>Trading as The Anchor Pub</p>
-    ${companyDetails?.registrationNumber ? `<p>Company Registration No: ${escapeHtml(companyDetails.registrationNumber)}</p>` : ''}
-    ${companyDetails?.vatNumber ? `<p>VAT Registration No: ${escapeHtml(companyDetails.vatNumber)}</p>` : ''}
-    <p>${escapeHtml(companyDetails?.address || 'High Street, Location')}</p>
-    <p>Phone: ${escapeHtml(companyDetails?.phone || process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682 707')}</p>
-    <p>${escapeHtml(companyDetails?.email || 'manager@the-anchor.pub')}</p>
-    <p>Website: management.orangejelly.co.uk</p>
-  </div>
 </body>
-</html>
-  `
+</html>`
 }
