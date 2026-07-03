@@ -84,18 +84,16 @@ export function TellUsClient() {
         onSubmit={handleSubmit}
         className="mx-auto w-full max-w-[600px] rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
       >
-        {/* Identity row — neutral, no Google marks */}
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-200 text-lg font-semibold text-gray-600"
-            aria-hidden="true"
-          >
-            A
-          </div>
-          <div className="min-w-0">
-            <p className="text-[15px] font-medium text-gray-900">The Anchor</p>
-            <p className="text-[13px] text-gray-500">Rate your visit</p>
-          </div>
+        {/* Warm, empathetic header */}
+        <div>
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">The Anchor</p>
+          <h1 className="mt-1 text-xl font-semibold text-gray-900 sm:text-[22px]">
+            We&apos;re sorry it wasn&apos;t quite right
+          </h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-gray-600">
+            Thank you for telling us. We care when something has not gone as it should, and your
+            feedback helps us understand what happened and improve.
+          </p>
         </div>
 
         {/* Honeypot — visually hidden, still submitted */}
@@ -117,11 +115,11 @@ export function TellUsClient() {
         </div>
 
         {/* Star rating */}
-        <div className="mt-5">
-          <span id="rating-label" className="sr-only">
-            Choose a star rating
-          </span>
-          <div aria-labelledby="rating-label">
+        <div className="mt-6">
+          <label id="rating-label" className="block text-[15px] font-medium text-gray-800">
+            How would you rate your visit?
+          </label>
+          <div className="mt-2" aria-labelledby="rating-label">
             <StarRating value={rating} onChange={setRating} />
           </div>
         </div>
@@ -129,7 +127,7 @@ export function TellUsClient() {
         {/* Comments */}
         <div className="mt-4">
           <label htmlFor="comments" className="sr-only">
-            Share details of your own experience at this place
+            Tell us what happened
           </label>
           <textarea
             id="comments"
@@ -137,7 +135,7 @@ export function TellUsClient() {
             rows={5}
             value={comments}
             onChange={(e) => setComments(e.target.value)}
-            placeholder="Share details of your own experience at this place"
+            placeholder="Tell us what happened, what could have been better, or anything you'd like us to understand."
             className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-[15px] text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           />
         </div>
@@ -151,7 +149,7 @@ export function TellUsClient() {
             aria-controls="contact-details"
             className="text-[14px] font-medium text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
           >
-            {showContact ? 'Hide contact details' : 'Add your contact details (optional)'}
+            {showContact ? 'Hide contact details' : 'Add your contact details if you\'d like us to follow up'}
           </button>
 
           {showContact && (
@@ -243,7 +241,7 @@ export function TellUsClient() {
                 />
               </svg>
             )}
-            {submitting ? 'Posting…' : 'Post'}
+            {submitting ? 'Sending…' : 'Send feedback'}
           </button>
         </div>
       </form>
