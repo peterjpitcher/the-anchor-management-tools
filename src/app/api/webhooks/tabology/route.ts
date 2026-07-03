@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   claimIdempotencyKey,
@@ -7,11 +6,8 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
-import { CashingUpService } from '@/services/cashing-up.service'
-import { SYSTEM_USER_ID } from '@/lib/system-user'
 import {
   verifyTabologySignature,
-  mapCashupRanToDto,
   type TabologyWebhookEnvelope,
   type CashupRanData,
 } from '@/lib/webhooks/tabology'
@@ -136,8 +132,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const eventType = typeof event.type === 'string' ? event.type : 'unknown'
   const deliveryId = typeof event.id === 'string' ? event.id : undefined
 
-  // 4. Only cashup.ran is handled. Acknowledge everything else (member.*, booking.*)
-  //    with 200 so Tabology stops retrying, even if those events are enabled.
+  // 4. Only cashup.ran has special handling. Acknowledge everything else
+  //    (member.*, booking.*) with 200 so Tabology stops retrying.
   if (eventType !== 'cashup.ran') {
     await logDelivery(supabase, { status: 'ignored', body, headers, eventId: deliveryId, eventType })
     return NextResponse.json({ received: true, ignored: true, type: eventType })
@@ -217,77 +213,21 @@ async function handleCashupRan(
 ): Promise<HandleResult> {
   const data = (event.data ?? {}) as CashupRanData
 
-  // Resolve the AMS site. Single-site venue: default to the only site (matches the
-  // CSV importer). TODO: map data.venue_id -> sites.id when multi-site.
-  const { data: sites, error: sitesError } = await supabase.from('sites').select('id, name')
-  if (sitesError) throw sitesError
-  if (!sites || sites.length === 0) {
-    return { response: { received: true, skipped: 'no_site' }, logStatus: 'skipped_no_site' }
-  }
-  const siteId = sites[0].id as string
-
-  const mapped = mapCashupRanToDto(data, siteId)
-  if (!mapped.ok || !mapped.dto) {
-    return {
-      response: { received: true, skipped: mapped.reason },
-      logStatus: `skipped_${mapped.reason}`,
-    }
-  }
-
-  // Resolve any existing session for this site + date. Never clobber a manager's
-  // sign-off: approved/locked sessions are left untouched.
-  const { data: existing, error: existingError } = await supabase
-    .from('cashup_sessions')
-    .select('id, status')
-    .eq('site_id', siteId)
-    .eq('session_date', mapped.dto.sessionDate)
-    .maybeSingle()
-  if (existingError) throw existingError
-
-  if (existing && (existing.status === 'approved' || existing.status === 'locked')) {
-    await recordAudit(supabase, {
-      operation_type: 'cashup.webhook_skipped',
-      operation_status: 'success',
-      resource_id: existing.id as string,
-      additional_info: {
-        event_id: event.id,
-        reason: 'already_signed_off',
-        status: existing.status,
-        session_date: mapped.dto.sessionDate,
-      },
-    })
-    return {
-      response: { received: true, skipped: 'already_signed_off', status: existing.status },
-      logStatus: 'skipped_signed_off',
-    }
-  }
-
-  const session = await CashingUpService.upsertSession(
-    supabase as unknown as SupabaseClient,
-    mapped.dto,
-    SYSTEM_USER_ID,
-    existing?.id as string | undefined
-  )
-
   await recordAudit(supabase, {
-    operation_type: existing ? 'cashup.webhook_updated' : 'cashup.webhook_created',
+    operation_type: 'cashup.webhook_skipped',
     operation_status: 'success',
-    resource_id: session.id,
     additional_info: {
-      event_id: event.id,
+      event_id: event.id ?? null,
       epos_cashup_id: data.id ?? null,
-      session_date: mapped.dto.sessionDate,
-      ran_by: data.ran_by ?? null,
+      reason: 'cashup_prefill_disabled',
     },
   })
 
   return {
     response: {
       received: true,
-      session_id: session.id,
-      session_date: mapped.dto.sessionDate,
-      action: existing ? 'updated' : 'created',
+      skipped: 'cashup_prefill_disabled',
     },
-    logStatus: existing ? 'updated' : 'created',
+    logStatus: 'skipped_prefill_disabled',
   }
 }
