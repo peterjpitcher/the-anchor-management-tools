@@ -33,3 +33,17 @@
 **Mistake:** Pushed the recruitment fix to both apps' `main` and reported the work shipped. The management app auto-deployed (Ready), but the-anchor.pub does NOT auto-deploy `main`, so the website fix sat undeployed and not live. A redesign branch I had published also produced a failing preview build I never checked. The user had to tell me "always verify deployments".
 
 **Rule:** After any push expected to deploy, verify before claiming done. For Vercel: `vercel ls <project> --scope <team>` then `vercel inspect <url>` — confirm a NEW deployment exists, state is Ready (not Error/Building/Canceled), and the production / `git-main` alias points to the new commit (not an older one). Learn each project's deploy model: `anchor-management-tools` auto-deploys `main`; `the-anchor-pub` (website) is a manual production deploy by the user. Never equate `git push` with "live".
+
+## 2026-07-03 — Multi-ticket prod incident (first live booking failed)
+- **PL/pgSQL `RETURN QUERY` needs explicit casts**: `sum()` returns bigint; a declared
+  `integer` column raises 42804 on EVERY call at runtime, not at migration time. Always
+  cast computed columns (`::integer`, `::text`) in RETURNS TABLE functions, and SMOKE-TEST
+  each new function with a real `select *` after applying — "migration applied" ≠ "function runs".
+- **Gate RPC wrappers on `state`, never on payload presence**: v05's blocked
+  `customer_conflict` response CARRIES the existing booking_id. v07 null-checked booking_id
+  and mutated a live booking. Wrappers around multi-state RPCs must whitelist success states.
+- **Test the retry/conflict path before shipping a booking flow**: happy-path E2E passed;
+  the crash only appeared on "customer already holds an active booking" — the single most
+  common real-world retry scenario.
+- **Browser screenshots are downscaled**: click coordinates read from a 1512px screenshot
+  need rescaling to the real 1800px viewport (×1/0.84) or use in-viewport ref clicks.
