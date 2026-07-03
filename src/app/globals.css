@@ -413,7 +413,6 @@ nav[aria-label="Mobile navigation"],
 .ds-sidebar:focus-within {
   width: var(--spacing-sidebar-expanded);
   box-shadow: var(--shadow-lg);
-  overflow-y: auto;
 }
 .ds-sidebar .ds-label {
   opacity: 0;

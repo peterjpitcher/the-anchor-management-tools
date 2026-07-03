@@ -12,7 +12,7 @@ interface UserFooterProps {
 
 export function UserFooter({ userName, userRole, onSignOut, isSigningOut }: UserFooterProps) {
   return (
-    <div className="flex items-center gap-3 px-3 py-3 border-t border-sidebar-border">
+    <div className="ds-sidebar-footer flex shrink-0 items-center gap-3 px-3 py-3 border-t border-sidebar-border">
       <Avatar name={userName} size="sm" />
       <div className="ds-label flex-1 min-w-0">
         <div className="text-[13px] font-medium text-sidebar-fg truncate">{userName}</div>
