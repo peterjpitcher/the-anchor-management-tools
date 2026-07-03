@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const FALLBACK_REVIEW_URL = 'https://l.the-anchor.pub/jls0mu'
+// Public review funnel short link — asks "How was your visit?" then routes happy
+// guests to Google and unhappy guests to a private feedback form. All review asks
+// point here so we catch problems before they become public reviews.
+export const FEEDBACK_FUNNEL_URL = 'https://l.the-anchor.pub/feedback'
+
+const FALLBACK_REVIEW_URL = FEEDBACK_FUNNEL_URL
 
 function pickStringValue(value: unknown): string | null {
   if (typeof value === 'string') {
