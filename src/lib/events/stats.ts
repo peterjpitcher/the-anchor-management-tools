@@ -21,6 +21,13 @@ type LinkLike = {
   clickCount?: number | null
 }
 
+const BOOKED_BOOKING_STATUSES = new Set([
+  'confirmed',
+  'visited_waiting_for_review',
+  'review_clicked',
+  'completed',
+])
+
 export type EventBookingStats = {
   activeBookings: number
   totalSeats: number
@@ -31,7 +38,7 @@ export type EventBookingStats = {
 }
 
 function isActiveBooking(booking: BookingLike): boolean {
-  return booking.status !== 'cancelled' && booking.is_reminder_only !== true
+  return BOOKED_BOOKING_STATUSES.has(String(booking.status || '').toLowerCase()) && booking.is_reminder_only !== true
 }
 
 export function resolveEventCapacity(event: EventLike): number | null {
