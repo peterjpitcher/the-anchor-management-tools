@@ -15,6 +15,7 @@ import {
   getFirstVisitReviewEligibleCandidateKeys,
   reviewVisitCandidateKey,
 } from '@/lib/sms/review-once'
+import { FEEDBACK_FUNNEL_URL } from '@/lib/events/review-link'
 
 /**
  * Reason a scheduled reminder won't actually be sent in its normal window.
@@ -323,9 +324,7 @@ export async function getBookingScheduledSms(
     // Event happened 0-14 days ago.
     if (daysSinceEvent >= 0 && daysSinceEvent <= 14) {
       const triggerType = 'review_request'
-      const reviewLink =
-        process.env.NEXT_PUBLIC_GOOGLE_REVIEW_URL ||
-        `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/review`
+      const reviewLink = FEEDBACK_FUNNEL_URL
       const body = reviewRequestMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
         eventDate: eventDateReadable,
