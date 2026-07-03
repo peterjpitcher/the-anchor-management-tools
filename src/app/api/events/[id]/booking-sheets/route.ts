@@ -15,6 +15,17 @@ import {
   type EventBookingSheetMenuItem,
 } from '@/lib/event-booking-sheet-template'
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import {
+  buildTicketBreakdownLines,
+  eventTicketTypesEnabled,
+  resolveBookingChargeAmount,
+  type BookingItemWithTypeRow,
+} from '@/lib/events/ticket-types'
+import {
+  bookingItemsAreMultiType,
+  getDefaultTicketTypeId,
+  loadBookingItemsWithTypes,
+} from '@/lib/events/ticket-type-queries'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -185,12 +196,17 @@ function toSheetData(input: {
   booking: BookingRow
   tableBooking?: TableBookingRow
   tableName?: string | null
+  /** Present only when the booking is genuinely multi-type — drives the per-type breakdown. */
+  multiTypeItems?: BookingItemWithTypeRow[]
 }): EventBookingSheetData {
-  const { event, booking, tableBooking, tableName } = input
+  const { event, booking, tableBooking, tableName, multiTypeItems } = input
   const seats = Math.max(1, Number(booking.seats || 1))
   const pricePerSeat = resolveEventPriceAmount(event)
   const paymentMode = resolveEventPaymentMode(event)
   const isFree = pricePerSeat === 0 && paymentMode === 'free'
+  const breakdownLines = multiTypeItems && multiTypeItems.length > 0
+    ? buildTicketBreakdownLines(multiTypeItems)
+    : null
   const seatingType = booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'
   const specialRequirements = tableBooking?.special_requirements?.trim()
   const bookingNotes = [booking.notes?.trim(), specialRequirements]
@@ -207,6 +223,22 @@ function toSheetData(input: {
     paymentMethod = 'Cash on arrival'
   }
 
+  // Multi-type bookings: annotate each attendee with their ticket type (names are
+  // stored per line in booking_items, so the mapping is exact) and show the
+  // per-type price breakdown. Single-type bookings keep the legacy output.
+  const legacyAttendeeNames = (booking.attendee_names ?? []).filter((name) => typeof name === 'string' && name.trim().length > 0)
+  const annotatedAttendeeNames = breakdownLines
+    ? breakdownLines.flatMap((line) => line.attendeeNames.map((name) => `${name} (${line.typeName})`))
+    : []
+  // Fall back to the flat aggregate list if the line items carry no names.
+  const attendeeNames = annotatedAttendeeNames.length > 0 ? annotatedAttendeeNames : legacyAttendeeNames
+  const price = breakdownLines && !isFree
+    ? formatCurrency(resolveBookingChargeAmount(multiTypeItems ?? []))
+    : isFree ? 'Free' : formatCurrency(pricePerSeat * seats)
+  const priceNote = breakdownLines && !isFree
+    ? `Event price: ${breakdownLines.map((line) => `${line.quantity} × ${line.typeName} at ${formatCurrency(line.unitPrice)}`).join(' · ')}`
+    : isFree ? 'Event price: Free' : `Event price: ${formatCurrency(pricePerSeat)} per person · ${seats} guests`
+
   return {
     bookingRef: bookingRef(booking, tableBooking),
     eventName: event.name,
@@ -216,10 +248,10 @@ function toSheetData(input: {
     customerName: customerName(booking),
     seats: String(seats),
     seatingType,
-    attendeeNames: (booking.attendee_names ?? []).filter((name) => typeof name === 'string' && name.trim().length > 0),
+    attendeeNames,
     tableNumber: seatingType === 'Standing' ? null : tableName || null,
-    price: isFree ? 'Free' : formatCurrency(pricePerSeat * seats),
-    priceNote: isFree ? 'Event price: Free' : `Event price: ${formatCurrency(pricePerSeat)} per person · ${seats} guests`,
+    price,
+    priceNote,
     paymentMethod,
     bookingNotes: bookingNotes || null,
   }
@@ -264,6 +296,26 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const bookingIds = bookingRows.map((booking) => booking.id)
+
+    // Per-type line items for genuinely multi-type bookings (one batched query).
+    // Display-only — a failure here must never block the booking sheets.
+    const multiTypeItemsByBooking = new Map<string, BookingItemWithTypeRow[]>()
+    if (eventTicketTypesEnabled()) {
+      try {
+        const itemsByBooking = await loadBookingItemsWithTypes(admin, bookingIds)
+        if (itemsByBooking.size > 0) {
+          const defaultTypeId = await getDefaultTicketTypeId(admin, eventId)
+          for (const [bookingId, items] of itemsByBooking) {
+            if (bookingItemsAreMultiType(items, defaultTypeId)) {
+              multiTypeItemsByBooking.set(bookingId, items)
+            }
+          }
+        }
+      } catch (breakdownError) {
+        console.warn('Failed to load ticket-type breakdown for booking sheets:', breakdownError)
+      }
+    }
+
     const { data: tableBookings, error: tableBookingsError } = await admin
       .from('table_bookings')
       .select('id, event_booking_id, booking_reference, special_requirements')
@@ -324,6 +376,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         booking,
         tableBooking,
         tableName: tableNamesByEventBooking.get(booking.id),
+        multiTypeItems: multiTypeItemsByBooking.get(booking.id),
       })
     })
 

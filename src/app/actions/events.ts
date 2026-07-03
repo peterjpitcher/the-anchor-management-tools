@@ -41,6 +41,16 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing'
+import {
+  eventTicketTypesEnabled,
+  buildTicketBreakdownLines,
+  formatTicketBreakdownCompact,
+} from '@/lib/events/ticket-types'
+import {
+  loadBookingItemsWithTypes,
+  getDefaultTicketTypeId,
+  bookingItemsAreMultiType,
+} from '@/lib/events/ticket-type-queries'
 import { jobQueue } from '@/lib/unified-job-queue'
 
 export type EventBookingRow = {
@@ -59,6 +69,8 @@ export type EventBookingRow = {
   paid_amount?: number | null
   payment_status_summary?: string | null
   payment_method_summary?: string | null
+  /** Compact per-type summary (e.g. "1× Regular, 1× Non-Alcohol"); null for single-type bookings. */
+  ticket_breakdown?: string | null
   customer?: {
     id: string
     first_name: string | null
@@ -694,6 +706,29 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
       paymentsByBooking.set(payment.event_booking_id, current)
     }
 
+    // Per-type breakdown (display-only) for genuinely multi-type bookings.
+    // One batched query for all bookings — never blocks the listing on failure.
+    const breakdownByBooking = new Map<string, string>()
+    if (eventTicketTypesEnabled()) {
+      try {
+        const itemsByBooking = await loadBookingItemsWithTypes(supabase, bookingIds)
+        if (itemsByBooking.size > 0) {
+          const defaultTypeId = await getDefaultTicketTypeId(supabase, eventId)
+          for (const [bookingId, items] of itemsByBooking) {
+            if (!bookingItemsAreMultiType(items, defaultTypeId)) continue
+            breakdownByBooking.set(bookingId, formatTicketBreakdownCompact(buildTicketBreakdownLines(items)))
+          }
+        }
+      } catch (breakdownError) {
+        logger.warn('Failed to load ticket-type breakdown for event bookings', {
+          metadata: {
+            eventId,
+            error: breakdownError instanceof Error ? breakdownError.message : String(breakdownError),
+          },
+        })
+      }
+    }
+
     const paidStatuses = new Set(['succeeded', 'paid', 'partially_refunded', 'refunded'])
     const withPayments = bookings.map((booking) => {
       const payments = paymentsByBooking.get(booking.id) ?? []
@@ -727,6 +762,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
         paid_amount: Number(paidAmount.toFixed(2)),
         payment_status_summary: paymentStatusSummary,
         payment_method_summary: paymentMethodSummary,
+        ticket_breakdown: breakdownByBooking.get(booking.id) ?? null,
       }
     })
 

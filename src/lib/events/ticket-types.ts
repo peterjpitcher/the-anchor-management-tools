@@ -38,6 +38,48 @@ export interface BookingItemRow {
   attendee_names: string[] | null
 }
 
+/** A `booking_items` row joined with its ticket type's display fields. */
+export interface BookingItemWithTypeRow extends BookingItemRow {
+  ticket_type_name: string
+  ticket_type_sort_order: number
+}
+
+/** One display line of a booking's per-type breakdown (customer/staff surfaces). */
+export interface TicketBreakdownLine {
+  typeName: string
+  quantity: number
+  unitPrice: number
+  attendeeNames: string[]
+}
+
+/**
+ * Turn a booking's joined line items into ordered display lines. Pure so the
+ * breakdown formatting is unit-testable without a DB. Callers only invoke this
+ * for genuinely multi-type bookings (see `bookingItemsAreMultiType`); an empty
+ * input yields an empty array, which callers treat as "use the legacy display".
+ */
+export function buildTicketBreakdownLines(items: BookingItemWithTypeRow[]): TicketBreakdownLine[] {
+  return [...items]
+    .sort(
+      (a, b) =>
+        a.ticket_type_sort_order - b.ticket_type_sort_order ||
+        a.ticket_type_name.localeCompare(b.ticket_type_name),
+    )
+    .map((item) => ({
+      typeName: item.ticket_type_name,
+      quantity: Math.max(1, Number(item.quantity) || 1),
+      unitPrice: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : 0,
+      attendeeNames: (item.attendee_names ?? [])
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+        .map((name) => name.trim()),
+    }))
+}
+
+/** Compact one-line breakdown, e.g. "1× Regular, 1× Non-Alcohol" (SMS, staff table). */
+export function formatTicketBreakdownCompact(lines: TicketBreakdownLine[]): string {
+  return lines.map((line) => `${line.quantity}× ${line.typeName}`).join(', ')
+}
+
 /** Public shape returned by the event API for a ticket type. */
 export interface EventTicketTypeDTO {
   id: string
