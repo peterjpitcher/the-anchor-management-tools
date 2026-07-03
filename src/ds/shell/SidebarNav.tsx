@@ -31,6 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'events', label: 'Events', icon: 'calendar', href: '/events', permission: { module: 'events', action: 'view' } },
       { id: 'customers', label: 'Customers', icon: 'users', href: '/customers', permission: { module: 'customers', action: 'view' } },
       { id: 'messages', label: 'Messages', icon: 'message', href: '/messages', permission: { module: 'messages', action: 'view' } },
+      { id: 'feedback', label: 'Feedback', icon: 'message', href: '/feedback-inbox', permission: { module: 'feedback', action: 'view' } },
     ],
   },
   {
