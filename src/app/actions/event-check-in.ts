@@ -12,6 +12,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
+import { EventBookingService } from '@/services/event-bookings'
 
 const LONDON_TZ = 'Europe/London'
 const ACTIVE_BOOKING_STATUSES = ['pending_payment', 'confirmed']
@@ -297,19 +298,16 @@ async function hasCheckIn(eventId: string, customerId: string): Promise<{ checke
   return { checkedIn: Boolean(data) }
 }
 
-async function ensureBooking(eventId: string, customerId: string): Promise<
+/**
+ * Direct insert used ONLY once the event has started: the booking-engine RPC
+ * refuses post-start bookings (reason `event_started`), but walk-ins mostly
+ * arrive after doors open and the kiosk must keep working. Before start, all
+ * walk-in bookings go through the capacity-enforcing service path.
+ */
+async function createWalkInBookingDirect(eventId: string, customerId: string): Promise<
   | { ok: true; bookingId: string }
   | { ok: false; error: string }
 > {
-  const active = await getActiveBooking(eventId, customerId)
-  if (active.error) {
-    return { ok: false, error: active.error }
-  }
-
-  if (active.booking?.id) {
-    return { ok: true, bookingId: active.booking.id }
-  }
-
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('bookings')
@@ -318,7 +316,7 @@ async function ensureBooking(eventId: string, customerId: string): Promise<
       customer_id: customerId,
       seats: 1,
       status: 'confirmed',
-      source: 'admin',
+      source: 'walk-in',
       booking_source: 'bulk_add',
       notes: 'Created via event check-in',
     })
@@ -334,6 +332,107 @@ async function ensureBooking(eventId: string, customerId: string): Promise<
   }
 
   return { ok: true, bookingId: data.id }
+}
+
+function mapWalkInBlockedReason(reason: string | null): string {
+  switch (reason) {
+    case 'event_full':
+    case 'sold_out':
+    case 'insufficient_capacity':
+    case 'no_table':
+    case 'table_capacity_insufficient':
+      return 'This event is fully booked, so a walk-in booking could not be created.'
+    case 'customer_conflict':
+      return 'This guest already has a booking for this event. Refresh and try again.'
+    case 'event_not_bookable':
+    case 'bookings_disabled':
+      return 'Bookings are closed for this event, so a walk-in booking could not be created.'
+    default:
+      return 'Could not create a booking for this guest.'
+  }
+}
+
+async function ensureBooking(eventId: string, customerId: string): Promise<
+  | { ok: true; bookingId: string }
+  | { ok: false; error: string }
+> {
+  const active = await getActiveBooking(eventId, customerId)
+  if (active.error) {
+    return { ok: false, error: active.error }
+  }
+
+  if (active.booking?.id) {
+    return { ok: true, bookingId: active.booking.id }
+  }
+
+  const admin = createAdminClient()
+
+  const { data: eventRow, error: eventError } = await admin
+    .from('events')
+    .select('id, booking_mode')
+    .eq('id', eventId)
+    .maybeSingle()
+
+  if (eventError || !eventRow) {
+    logger.error('Failed to load event for walk-in booking', {
+      error: new Error(eventError?.message || 'event_not_found'),
+      metadata: { eventId, customerId },
+    })
+    return { ok: false, error: 'Failed to create booking for guest.' }
+  }
+
+  // Walk-ins go through the shared booking service so per-event capacity is
+  // enforced like every other booking path. No SMS — the guest is at the venue.
+  const result = await EventBookingService.createBooking({
+    eventId,
+    customerId,
+    normalizedPhone: '',
+    seats: 1,
+    source: 'walk-in',
+    bookingMode: EventBookingService.normalizeBookingMode(eventRow.booking_mode),
+    appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    shouldSendSms: false,
+    supabaseClient: admin,
+    logTag: 'event check-in booking',
+  })
+
+  if (result.rpcFailed || result.rollbackFailed || result.paymentLinkFailed) {
+    return { ok: false, error: 'Failed to create booking for guest.' }
+  }
+
+  if (
+    (result.resolvedState === 'confirmed' || result.resolvedState === 'pending_payment') &&
+    result.bookingId
+  ) {
+    const { error: notesError } = await admin
+      .from('bookings')
+      .update({ notes: 'Created via event check-in' })
+      .eq('id', result.bookingId)
+
+    if (notesError) {
+      logger.warn('Failed to note walk-in booking source', {
+        metadata: { bookingId: result.bookingId, error: notesError.message },
+      })
+    }
+
+    return { ok: true, bookingId: result.bookingId }
+  }
+
+  // The booking engine refuses post-start bookings, but walk-ins mostly arrive
+  // after doors open — keep the kiosk working with the legacy direct insert.
+  if (result.resolvedReason === 'event_started') {
+    return createWalkInBookingDirect(eventId, customerId)
+  }
+
+  logger.warn('Walk-in booking blocked at event check-in', {
+    metadata: { eventId, customerId, state: result.resolvedState, reason: result.resolvedReason },
+  })
+
+  if (result.resolvedState === 'full_with_waitlist_option') {
+    return { ok: false, error: 'This event is fully booked, so a walk-in booking could not be created.' }
+  }
+
+  return { ok: false, error: mapWalkInBlockedReason(result.resolvedReason) }
 }
 
 async function ensureEventLabels() {

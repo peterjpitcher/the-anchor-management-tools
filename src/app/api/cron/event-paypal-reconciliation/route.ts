@@ -142,9 +142,46 @@ export async function GET(request: NextRequest) {
     })
   } else {
     for (const row of refundRows || []) {
-      const refundId = (row.metadata as Record<string, unknown> | null)?.['paypal_refund_id']
+      const metadata = (row.metadata ?? {}) as Record<string, unknown>
+      const refundId = metadata['paypal_refund_id']
       if (typeof refundId !== 'string' || !refundId) {
+        // A pending refund with no PayPal refund id can never reconcile itself.
+        // Count the skips on the row and raise a staff exception after 3, so it
+        // stops being invisible.
         result.skipped++
+        const skipCount = Math.max(0, Number(metadata['reconciliation_skip_count'] ?? 0)) + 1
+        const { error: skipUpdateError } = await supabase
+          .from('payments')
+          .update({
+            metadata: { ...metadata, reconciliation_skip_count: skipCount },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+
+        if (skipUpdateError) {
+          logger.warn('Failed to record reconciliation skip on pending refund', {
+            metadata: { paymentId: row.id, error: skipUpdateError.message },
+          })
+        }
+
+        if (skipCount >= 3 && row.event_booking_id) {
+          const { error: exceptionError } = await supabase.from('event_payment_exceptions').insert({
+            event_booking_id: row.event_booking_id,
+            payment_id: row.id,
+            reason: 'manual_refund_required',
+            metadata: {
+              source: 'event_paypal_reconciliation',
+              detail: 'pending_refund_missing_paypal_refund_id',
+              reconciliation_skip_count: skipCount,
+            },
+          })
+          // 23505 = the open exception already exists for this booking — fine.
+          if (exceptionError && exceptionError.code !== '23505') {
+            logger.error('Failed to raise exception for unreconcilable pending refund', {
+              metadata: { paymentId: row.id, bookingId: row.event_booking_id, error: exceptionError.message },
+            })
+          }
+        }
         continue
       }
       result.refundsChecked++

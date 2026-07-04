@@ -162,6 +162,12 @@ export type CreateBookingResult = {
    */
   rpcFailed?: boolean
   /**
+   * Set alongside rpcFailed when the failure is a recognised business condition
+   * (per-type sell-out / unknown ticket type) rather than a genuine database
+   * error. Callers should map these to a 409 payload, not a 500.
+   */
+  rpcErrorCode?: 'ticket_type_sold_out' | 'invalid_ticket_type' | null
+  /**
    * Callers should return HTTP 500 when this is true — the table-reservation rollback
    * could not be completed, leaving the system in a partially inconsistent state.
    */
@@ -175,6 +181,18 @@ function normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' | '
     return value
   }
   return 'table'
+}
+
+/**
+ * Recognise business-condition exceptions raised by create_event_booking_v07
+ * (per-type sell-out / unknown ticket type) so callers can answer 409 instead of
+ * a generic 500 — a type selling out is a normal state, not a database error.
+ */
+function classifyBookingRpcError(message: string | null | undefined): 'ticket_type_sold_out' | 'invalid_ticket_type' | null {
+  const text = String(message || '')
+  if (text.includes('ticket_type_capacity_exceeded')) return 'ticket_type_sold_out'
+  if (text.includes('invalid_ticket_type')) return 'invalid_ticket_type'
+  return null
 }
 
 function normalizeSeatingPreference(value: unknown): 'seated' | 'standing' {
@@ -537,9 +555,10 @@ export class EventBookingService {
         })
 
     if (rpcError) {
+      const rpcErrorCode = classifyBookingRpcError(rpcError.message)
       logger.error(`${useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
         error: new Error(rpcError.message),
-        metadata: { eventId, customerId, source }
+        metadata: { eventId, customerId, source, rpcErrorCode }
       })
       return {
         resolvedState: 'blocked',
@@ -553,7 +572,8 @@ export class EventBookingService {
         tableName: null,
         eventSeatingType: null,
         rpcResult: {} as EventBookingRpcResult,
-        rpcFailed: true
+        rpcFailed: true,
+        rpcErrorCode
       }
     }
 

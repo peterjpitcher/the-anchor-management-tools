@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   resolveTicketTypeSellPrice,
   resolveBookingChargeAmount,
+  resolveDoorChargeAmount,
   buildTicketBreakdownLines,
   formatTicketBreakdownCompact,
   type BookingItemWithTypeRow,
@@ -88,6 +89,66 @@ describe('resolveBookingChargeAmount', () => {
         { quantity: 1, unit_price: '7.25' },
       ]),
     ).toBe(32.25)
+  })
+})
+
+describe('resolveDoorChargeAmount', () => {
+  it('sums the booking composition at FULL per-type price (base_price, not the discounted snapshot)', () => {
+    // 1× Regular £15 + 1× Under-18 £8 = £23 at the door, whatever was quoted online
+    expect(
+      resolveDoorChargeAmount({
+        items: [
+          { quantity: 1, base_price: 15 },
+          { quantity: 1, base_price: 8 },
+        ],
+        eventFullUnitPrice: 15,
+        seats: 2,
+      }),
+    ).toBe(23)
+  })
+
+  it('handles string-typed base prices from numeric columns', () => {
+    expect(
+      resolveDoorChargeAmount({
+        items: [{ quantity: 2, base_price: '12.50' }],
+        eventFullUnitPrice: 12.5,
+        seats: 2,
+      }),
+    ).toBe(25)
+  })
+
+  it('falls back to the event full price × seats when the booking has no line items', () => {
+    expect(
+      resolveDoorChargeAmount({ items: [], eventFullUnitPrice: 15, seats: 3 }),
+    ).toBe(45)
+  })
+
+  it('never applies the online discount at the door (full price fallback)', () => {
+    // Event price £20 with a £5 online discount → door still charges £20/seat
+    expect(
+      resolveDoorChargeAmount({ items: [], eventFullUnitPrice: 20, seats: 2 }),
+    ).toBe(40)
+  })
+
+  it('charges £0 for free events', () => {
+    expect(resolveDoorChargeAmount({ items: [], eventFullUnitPrice: 0, seats: 4 })).toBe(0)
+    expect(
+      resolveDoorChargeAmount({
+        items: [{ quantity: 4, base_price: 0 }],
+        eventFullUnitPrice: 0,
+        seats: 4,
+      }),
+    ).toBe(0)
+  })
+
+  it('coerces invalid quantities and prices to 0 rather than NaN', () => {
+    expect(
+      resolveDoorChargeAmount({
+        items: [{ quantity: Number.NaN, base_price: 10 }],
+        eventFullUnitPrice: 10,
+        seats: 1,
+      }),
+    ).toBe(0)
   })
 })
 

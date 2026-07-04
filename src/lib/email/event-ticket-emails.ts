@@ -593,6 +593,7 @@ export async function sendEventTicketTransferredEmail(
     toEventName: string
     eventStartIso?: string | null
     appBaseUrl?: string
+    overpayment?: number
   }
 ): Promise<EventEmailResult> {
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
@@ -613,6 +614,9 @@ export async function sendEventTicketTransferredEmail(
     `Hi ${context.firstName},`,
     `Your tickets have been transferred from ${input.fromEventName} to ${input.toEventName}.`,
     `The new event is on ${eventStart}.`,
+    typeof input.overpayment === 'number' && input.overpayment > 0
+      ? `We owe you £${input.overpayment.toFixed(2)} — we'll be in touch about your refund.`
+      : null,
     manageLink ? 'You can manage the booking using the link below.' : null,
   ].filter(Boolean) as string[]
 
@@ -639,6 +643,7 @@ export async function sendEventTicketTransferredEmail(
       from_event_name: input.fromEventName,
       to_event_name: input.toEventName,
       manage_link_included: Boolean(manageLink),
+      overpayment: typeof input.overpayment === 'number' && input.overpayment > 0 ? input.overpayment : undefined,
     },
   })
 }

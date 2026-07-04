@@ -122,6 +122,40 @@ export function resolveBookingChargeAmount(
   return Number(total.toFixed(2))
 }
 
+/** A booking_items line joined with its type's full (undiscounted) base price. */
+export interface BookingItemWithBasePrice {
+  quantity: number
+  base_price: number | string
+}
+
+/**
+ * The amount to charge at the door (staff cash/card "mark paid").
+ *
+ * Door payments are charged at the FULL per-type price — the online discount is
+ * an online-only incentive and never applies at the venue. When the booking has
+ * real line items their composition is authoritative (sum of quantity × the
+ * type's base price); legacy/single-type bookings fall back to the event's full
+ * ticket price × seats. Free events resolve to £0 either way.
+ */
+export function resolveDoorChargeAmount(input: {
+  items: BookingItemWithBasePrice[]
+  eventFullUnitPrice: number
+  seats: number
+}): number {
+  if (input.items.length > 0) {
+    const total = input.items.reduce((sum, item) => {
+      const quantity = Math.max(0, Number(item.quantity) || 0)
+      const basePrice = Math.max(0, Number(item.base_price) || 0)
+      return sum + quantity * basePrice
+    }, 0)
+    return Number(total.toFixed(2))
+  }
+
+  const unit = Math.max(0, Number(input.eventFullUnitPrice) || 0)
+  const seats = Math.max(1, Number(input.seats) || 1)
+  return Number((unit * seats).toFixed(2))
+}
+
 /** Serialise a ticket type row for the public event API. */
 export function serializeTicketType(
   row: EventTicketTypeRow,

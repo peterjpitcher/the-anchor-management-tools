@@ -3,6 +3,11 @@ import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { refundPayPalPayment } from '@/lib/paypal'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
+import {
+  bookingItemsAreMultiType,
+  getDefaultTicketTypeId,
+  loadBookingItems
+} from '@/lib/events/ticket-type-queries'
 
 export type EventManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -197,6 +202,70 @@ export async function updateEventBookingSeatsById(
     actor?: string
   }
 ): Promise<EventManageSeatsUpdateResult> {
+  // Guards shared by every caller (staff event UI, linked table-booking party
+  // size): prepaid confirmed bookings must not change size without money
+  // moving, and multi-ticket-type bookings derive their seat count from the
+  // ticket lines — editing seats directly desyncs line items, charge and
+  // door lists.
+  const { data: bookingRow, error: bookingLookupError } = await supabase.from('bookings')
+    .select('id, event_id, status, seats, is_reminder_only, event:events(id, payment_mode)')
+    .eq('id', input.bookingId)
+    .maybeSingle()
+
+  if (bookingLookupError) {
+    throw bookingLookupError
+  }
+
+  if (!bookingRow?.id) {
+    return { state: 'blocked', reason: 'booking_not_found', booking_id: input.bookingId }
+  }
+
+  const currentSeats = Math.max(1, Number(bookingRow.seats ?? 1))
+  if (input.newSeats !== currentSeats) {
+    const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const isPrepaidConfirmed =
+      bookingRow.status === 'confirmed' &&
+      bookingRow.is_reminder_only !== true &&
+      (eventRecord as { payment_mode?: string | null } | null)?.payment_mode === 'prepaid'
+
+    if (isPrepaidConfirmed) {
+      return {
+        state: 'blocked',
+        reason: 'prepaid_paid_booking',
+        booking_id: bookingRow.id,
+        event_id: bookingRow.event_id ?? undefined,
+        old_seats: currentSeats,
+        new_seats: currentSeats,
+        delta: 0
+      }
+    }
+
+    try {
+      const bookingItems = await loadBookingItems(supabase, input.bookingId)
+      if (bookingItems.length > 0 && bookingRow.event_id) {
+        const defaultTypeId = await getDefaultTicketTypeId(supabase, bookingRow.event_id)
+        if (bookingItemsAreMultiType(bookingItems, defaultTypeId)) {
+          return {
+            state: 'blocked',
+            reason: 'multi_ticket_type_booking',
+            booking_id: bookingRow.id,
+            event_id: bookingRow.event_id ?? undefined,
+            old_seats: currentSeats,
+            new_seats: currentSeats,
+            delta: 0
+          }
+        }
+      }
+    } catch (itemsError) {
+      logger.warn('Failed to check booking items before seat update', {
+        metadata: {
+          bookingId: input.bookingId,
+          error: itemsError instanceof Error ? itemsError.message : String(itemsError)
+        }
+      })
+    }
+  }
+
   const { data, error } = await supabase.rpc('update_event_booking_seats_staff_v05', {
     p_booking_id: input.bookingId,
     p_new_seats: input.newSeats,

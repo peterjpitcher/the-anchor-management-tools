@@ -92,7 +92,10 @@ async function resolveBookingChargeTotal(
   supabase: SupabaseClient<any, 'public', any>,
   input: { bookingId: string; eventId: string; fallbackTotal: number },
 ): Promise<number> {
-  if (!eventTicketTypesEnabled()) return input.fallbackTotal
+  // Deliberately NOT gated on eventTicketTypesEnabled(): a multi-type booking's
+  // charge must always come from its booking_items, even if the flag is later
+  // switched off — otherwise pending payment links revert to flat-price × seats
+  // and mis-charge existing multi-type bookings. Data presence is the gate.
   try {
     const items = await loadBookingItems(supabase, input.bookingId)
     if (items.length === 0) return input.fallbackTotal
