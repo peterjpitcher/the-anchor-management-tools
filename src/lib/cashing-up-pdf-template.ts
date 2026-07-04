@@ -29,12 +29,13 @@ interface TemplateProps {
   logoUrl?: string;
 }
 
+// ISO week number computed entirely in UTC on the plain YYYY-MM-DD business
+// date, so the result never shifts with the server timezone.
 function getWeekNumber(d: string) {
-  const date = new Date(`${d}T12:00:00`);
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-  const week1 = new Date(date.getFullYear(), 0, 4);
-  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  const date = new Date(`${d}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 3 - (date.getUTCDay() + 6) % 7);
+  const week1 = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getUTCDay() + 6) % 7) / 7);
 }
 
 function formatDate(d: string) {

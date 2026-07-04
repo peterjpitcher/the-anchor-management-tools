@@ -6,7 +6,7 @@ import {
   Card, CardHeader, CardBody,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
-import { ConfirmDialog, Field, Input, Button, Badge, Alert, Stat } from '@/ds'
+import { ConfirmDialog, Field, Input, Button, Badge, Alert, Stat, Modal, Textarea } from '@/ds'
 import { Icon } from '@/ds/icons'
 import {
   approveSessionAction,
@@ -16,6 +16,7 @@ import {
   unlockSessionAction,
   upsertAndSubmitSessionAction,
   upsertSessionAction,
+  voidCashupSession,
 } from '@/app/actions/cashing-up'
 import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
@@ -38,6 +39,13 @@ const DENOMINATIONS = [
   { value: 0.01, label: '1p' },
 ]
 
+/** cashup_sessions void columns (migration 20260725030000) — not yet on the shared type. */
+type CashupSessionWithVoid = CashupSession & {
+  voided_at?: string | null
+  voided_by?: string | null
+  void_reason?: string | null
+}
+
 interface WeeklyRow {
   session_date: string
   status: string
@@ -56,7 +64,7 @@ interface Props {
   dailySummary: string | null
   dailyTarget: number
   weeklyData: WeeklyRow[]
-  existingSession: CashupSession | null
+  existingSession: CashupSessionWithVoid | null
   missingDates: string[]
   initialEditMode: boolean
 }
@@ -121,8 +129,9 @@ const getCashValuesFromSession = (session: CashupSession | null): Record<string,
   return values
 }
 
-const shouldStartInEditMode = (session: CashupSession | null, requestedEditMode: boolean): boolean =>
-  !session || session.status === 'draft' || (requestedEditMode && session.status !== 'locked')
+const shouldStartInEditMode = (session: CashupSessionWithVoid | null, requestedEditMode: boolean): boolean =>
+  !session?.voided_at &&
+  (!session || session.status === 'draft' || (requestedEditMode && session.status !== 'locked'))
 
 export function DailyClient({
   siteId,
@@ -154,9 +163,15 @@ export function DailyClient({
   const [targetAmount, setTargetAmount] = useState(() => dailyTarget.toString())
   const [savingTarget, setSavingTarget] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [voidedAt, setVoidedAt] = useState<string | null>(existingSession?.voided_at ?? null)
+  const [voidReason, setVoidReason] = useState<string | null>(existingSession?.void_reason ?? null)
+  const [showVoidConfirm, setShowVoidConfirm] = useState(false)
+  const [voidReasonInput, setVoidReasonInput] = useState('')
+  const [voiding, setVoiding] = useState(false)
+  const isVoided = Boolean(voidedAt)
   const isReadOnlyStatus = currentStatus !== null && currentStatus !== 'draft'
   const isLockedStatus = currentStatus === 'locked'
-  const fieldsDisabled = isLockedStatus || (isReadOnlyStatus && !editMode)
+  const fieldsDisabled = isLockedStatus || isVoided || (isReadOnlyStatus && !editMode)
 
   useEffect(() => {
     setMissingDates(initialMissingDates)
@@ -175,6 +190,8 @@ export function DailyClient({
     setLastSaved(null)
     setSessionId(null)
     setCurrentStatus(null)
+    setVoidedAt(null)
+    setVoidReason(null)
     setEditMode(true)
   }, [])
 
@@ -191,6 +208,8 @@ export function DailyClient({
     setLastSaved(null)
     setSessionId(existingSession?.id ?? null)
     setCurrentStatus(existingSession?.status ?? null)
+    setVoidedAt(existingSession?.voided_at ?? null)
+    setVoidReason(existingSession?.void_reason ?? null)
     setEditMode(shouldStartInEditMode(existingSession, initialEditMode))
     setTargetAmount(dailyTarget.toString())
   }, [dailySummary, dailyTarget, existingSession, initialEditMode, sessionDate])
@@ -324,8 +343,12 @@ export function DailyClient({
       toast.error('Locked sessions cannot be edited')
       return
     }
+    if (isVoided) {
+      toast.error('Voided sessions cannot be edited')
+      return
+    }
     setEditMode(true)
-  }, [isLockedStatus])
+  }, [isLockedStatus, isVoided])
 
   const handleStatusAction = useCallback(async (
     action: 'approve' | 'lock' | 'unlock'
@@ -387,6 +410,36 @@ export function DailyClient({
       setSavingTarget(false)
     }
   }, [router, sessionDate, siteId, targetAmount])
+
+  const handleVoidSession = useCallback(async () => {
+    if (!sessionId) return
+
+    const reason = voidReasonInput.trim()
+    if (!reason) {
+      toast.error('Please give a reason for voiding this session')
+      return
+    }
+
+    setVoiding(true)
+    try {
+      const result = await voidCashupSession({ sessionId, reason })
+      if (result.success) {
+        toast.success('Session voided')
+        setShowVoidConfirm(false)
+        setVoidReasonInput('')
+        setVoidedAt(new Date().toISOString())
+        setVoidReason(reason)
+        setEditMode(false)
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Failed to void session')
+      }
+    } catch {
+      toast.error('Failed to void session')
+    } finally {
+      setVoiding(false)
+    }
+  }, [router, sessionId, voidReasonInput])
 
   const handleDeleteSession = useCallback(async () => {
     if (!sessionId) return
@@ -457,6 +510,11 @@ export function DailyClient({
                 {currentStatus}
               </Badge>
             )}
+            {isVoided && (
+              <Badge tone="neutral" dot>
+                Voided
+              </Badge>
+            )}
             <div className="ml-auto flex items-end gap-1.5 text-xs">
               <Field label="Target" className="mb-0">
                 <Input
@@ -483,7 +541,7 @@ export function DailyClient({
                 </div>
               )}
             </div>
-            {currentStatus === 'submitted' && (
+            {!isVoided && currentStatus === 'submitted' && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="primary"
@@ -495,7 +553,7 @@ export function DailyClient({
                 </Button>
               </div>
             )}
-            {currentStatus === 'approved' && (
+            {!isVoided && currentStatus === 'approved' && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
@@ -507,7 +565,7 @@ export function DailyClient({
                 </Button>
               </div>
             )}
-            {currentStatus === 'locked' && (
+            {!isVoided && currentStatus === 'locked' && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
@@ -518,6 +576,16 @@ export function DailyClient({
                   Unlock
                 </Button>
               </div>
+            )}
+            {sessionId && !isVoided && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setShowVoidConfirm(true)}
+                loading={voiding}
+              >
+                Void…
+              </Button>
             )}
             {sessionId && currentStatus !== 'locked' && (
               <Button
@@ -532,6 +600,14 @@ export function DailyClient({
           </div>
         </CardBody>
       </Card>
+
+      {/* Voided session notice */}
+      {isVoided && (
+        <Alert tone="warning" className="p-3">
+          This cash-up session has been voided — it is kept for audit but excluded from totals.
+          {voidReason ? ` Reason: ${voidReason}` : ''}
+        </Alert>
+      )}
 
       {/* Missing dates alert */}
       {missingDates.length > 0 && (
@@ -568,7 +644,7 @@ export function DailyClient({
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className={isVoided ? 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 opacity-60' : 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3'}>
         {/* Column 1 — Cash and payment totals */}
         <Card>
           <CardHeader
@@ -769,7 +845,7 @@ export function DailyClient({
 
             {/* Action buttons */}
             <div className="flex gap-2 pt-1">
-              {isReadOnlyStatus && !editMode ? (
+              {isVoided ? null : isReadOnlyStatus && !editMode ? (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -892,6 +968,55 @@ export function DailyClient({
         onConfirm={handleDeleteSession}
         onClose={() => setShowDeleteConfirm(false)}
       />
+      {/* Void dialog — ConfirmDialog pattern with a required reason field */}
+      <Modal
+        open={showVoidConfirm}
+        onClose={() => {
+          if (!voiding) {
+            setShowVoidConfirm(false)
+            setVoidReasonInput('')
+          }
+        }}
+        title="Void Cash-Up Session"
+        width="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowVoidConfirm(false)
+                setVoidReasonInput('')
+              }}
+              disabled={voiding}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={voiding}
+              disabled={!voidReasonInput.trim()}
+              onClick={handleVoidSession}
+            >
+              Void session
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-text-muted">
+            The session stays on record for audit but is excluded from totals and reports.
+          </p>
+          <Field label="Reason" required>
+            <Textarea
+              value={voidReasonInput}
+              onChange={(e) => setVoidReasonInput(e.target.value)}
+              rows={3}
+              placeholder="Why is this session being voided?"
+              disabled={voiding}
+            />
+          </Field>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -15,6 +15,9 @@ export interface CashupSession {
   total_counted_amount: number;
   total_variance_amount: number;
   notes: string | null;
+  voided_at?: string | null;
+  voided_by?: string | null;
+  void_reason?: string | null;
   created_at: string;
   created_by_user_id: string;
   updated_at: string;

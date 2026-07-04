@@ -153,6 +153,7 @@ export class CashingUpService {
         .from('cashup_sessions')
         .select('session_date, total_counted_amount, total_variance_amount')
         .eq('site_id', siteId)
+        .is('voided_at', null)
         .gte('session_date', startDateStr)
         .lte('session_date', endDateStr),
       supabase
@@ -630,7 +631,8 @@ export class CashingUpService {
     // DEF-S01–S05: replaced stub values with real aggregations; fetch sites in parallel
     let sessionQuery = supabase
       .from('cashup_sessions')
-      .select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)');
+      .select('total_counted_amount, total_variance_amount, session_date, site_id, status, notes, cashup_payment_breakdowns(payment_type_code, counted_amount)')
+      .is('voided_at', null);
     if (siteId) sessionQuery = sessionQuery.eq('site_id', siteId);
     if (fromDate) sessionQuery = sessionQuery.gte('session_date', fromDate);
     if (toDate) sessionQuery = sessionQuery.lte('session_date', toDate);
@@ -901,6 +903,7 @@ export class CashingUpService {
         .from('cashup_sessions')
         .select('session_date, total_counted_amount')
         .eq('site_id', siteId)
+        .is('voided_at', null)
         .gte('session_date', fromStr)
         .lte('session_date', weekEndDate),
     ]);
@@ -964,6 +967,7 @@ export class CashingUpService {
           )
         `)
         .eq('site_id', siteId)
+        .is('voided_at', null)
         .gte('session_date', weekStartDate)
         .lte('session_date', endDate)
         .order('session_date', { ascending: true }),
