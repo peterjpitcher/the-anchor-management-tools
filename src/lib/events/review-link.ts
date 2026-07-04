@@ -27,6 +27,10 @@ function pickStringValue(value: unknown): string | null {
   return null
 }
 
+// Single source of truth for the review-ask destination used in SMS and
+// redirects. Despite the legacy setting name, `system_settings.google_review_link`
+// currently points at the feedback funnel above — do not "correct" it back to a
+// Google URL, or the funnel is silently bypassed for every consumer.
 export async function getGoogleReviewLink(
   supabase: SupabaseClient<any, 'public', any>
 ): Promise<string> {

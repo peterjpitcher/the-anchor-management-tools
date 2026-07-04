@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getReviewFeedbackList } from '@/app/actions/feedback'
-import type { ReviewFeedbackItem } from '@/app/actions/feedback'
 import { FeedbackInboxClient } from './FeedbackInboxClient'
 
 export default async function FeedbackInboxPage() {
@@ -11,17 +10,15 @@ export default async function FeedbackInboxPage() {
   const canManage = await checkUserPermission('feedback', 'manage')
 
   const result = await getReviewFeedbackList()
-
-  const initialItems: ReviewFeedbackItem[] =
-    result && 'success' in result && Array.isArray(result.data) ? result.data : []
-
-  const loadError = result && 'error' in result ? result.error : null
+  const loaded = result && 'success' in result ? result.data : null
 
   return (
     <FeedbackInboxClient
-      initialItems={initialItems}
+      initialItems={loaded?.items ?? []}
+      initialHasMore={loaded?.hasMore ?? false}
+      initialNewCount={loaded?.newCount ?? 0}
       canManage={!!canManage}
-      loadError={loadError}
+      loadError={result && 'error' in result ? result.error : null}
     />
   )
 }

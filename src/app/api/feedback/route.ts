@@ -11,9 +11,11 @@ import {
 import { applyDistributedRateLimit } from '@/lib/distributed-rate-limit'
 import { getClientIp } from '@/lib/turnstile'
 import { sendEmail } from '@/lib/email/emailService'
+import { retry } from '@/lib/retry'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { feedbackSubmissionSchema } from '@/lib/feedback/schema'
 import { buildManagerFeedbackEmail } from '@/lib/feedback/manager-email'
+import { DEFAULT_FEEDBACK_SOURCE, sanitizeFeedbackSource } from './source'
 
 const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub'
 
@@ -52,11 +54,25 @@ export async function POST(request: NextRequest) {
 
   // 5. Honeypot — silently accept without persisting or emailing
   if (typeof parsed.honeypot === 'string' && parsed.honeypot.trim().length > 0) {
-    return createApiResponse({ ok: true }, 201)
+    return createApiResponse({ ok: true }, 201, {}, 'POST')
   }
 
-  // 6. Consent strip — never trust the client
+  // 6. Contact details without consent are rejected outright — silently
+  // stripping them would leave the guest waiting for a follow-up that can
+  // never come.
   const hasConsent = parsed.contactConsent === true
+  const hasContactDetails = Boolean(
+    parsed.customerName?.trim() || parsed.customerEmail?.trim() || parsed.customerPhone?.trim()
+  )
+  if (hasContactDetails && !hasConsent) {
+    return createErrorResponse(
+      'Tick the box so we can contact you, or clear your details',
+      'VALIDATION_ERROR',
+      400
+    )
+  }
+
+  // Consent strip — defence in depth; never trust the client
   const customerName: string | null = hasConsent ? parsed.customerName?.trim() || null : null
   const customerEmail: string | null = hasConsent ? parsed.customerEmail?.trim() || null : null
   let customerPhone: string | null = hasConsent ? parsed.customerPhone?.trim() || null : null
@@ -90,8 +106,13 @@ export async function POST(request: NextRequest) {
     )
   }
   if (claim.state === 'replay') {
-    return createApiResponse(claim.response ?? { ok: true }, 201)
+    return createApiResponse(claim.response ?? { ok: true }, 201, {}, 'POST')
   }
+
+  // Provenance — carried from the landing page's ?src= query param. Validated
+  // server-side; anything unexpected falls back to the default.
+  const source =
+    sanitizeFeedbackSource((body as Record<string, unknown>).src) ?? DEFAULT_FEEDBACK_SOURCE
 
   // 9. Insert the row
   const { data: inserted, error: insertError } = await supabase
@@ -103,7 +124,7 @@ export async function POST(request: NextRequest) {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       contact_consent: hasConsent,
-      source: 'review-funnel',
+      source,
       submitted_ip: getClientIp(request),
       user_agent: request.headers.get('user-agent')
     })
@@ -117,26 +138,30 @@ export async function POST(request: NextRequest) {
 
   const id = inserted.id
 
-  // 10. Best-effort manager email — must NOT fail the request
+  // 10. Best-effort manager email — retried on transient failure, but must
+  // NOT fail the request (the submission is already saved to the inbox).
   try {
-    const emailResult = await sendEmail({
-      to: MANAGER_EMAIL,
-      ...buildManagerFeedbackEmail({
-        rating: parsed.rating,
-        comments: parsed.comments,
-        customerName,
-        customerEmail,
-        customerPhone,
-        contactConsent: hasConsent
-      })
-    })
-    if (!emailResult.success) {
-      console.error('[Feedback] Manager notification email failed', {
-        error: emailResult.error
-      })
-    }
+    await retry(
+      async () => {
+        const emailResult = await sendEmail({
+          to: MANAGER_EMAIL,
+          ...buildManagerFeedbackEmail({
+            rating: parsed.rating,
+            comments: parsed.comments,
+            customerName,
+            customerEmail,
+            customerPhone,
+            contactConsent: hasConsent
+          })
+        })
+        if (!emailResult.success) {
+          throw new Error(emailResult.error || 'Manager notification email failed')
+        }
+      },
+      { maxAttempts: 3, delay: 500, backoff: 'exponential', factor: 2 }
+    )
   } catch (emailError) {
-    console.error('[Feedback] Manager notification email threw', {
+    console.error('[Feedback] Manager notification email failed after retries', {
       error: emailError instanceof Error ? emailError.message : String(emailError)
     })
   }
@@ -150,8 +175,8 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // 12. Success
-  return createApiResponse({ ok: true }, 201)
+  // 12. Success — pass the method so the 201 is sent with no-store
+  return createApiResponse({ ok: true }, 201, {}, 'POST')
 }
 
 export async function OPTIONS() {

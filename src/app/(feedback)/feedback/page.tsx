@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import { sanitizeFeedbackSource } from '@/app/api/feedback/source'
 
 export const metadata = {
   title: 'How was your visit? - The Anchor',
@@ -7,7 +8,16 @@ export const metadata = {
 
 const GOOGLE_REVIEW_URL = 'https://g.page/r/CXmhY3UO3834EBM/review'
 
-export default function FeedbackLandingPage() {
+interface FeedbackLandingPageProps {
+  searchParams: Promise<{ src?: string }>
+}
+
+export default async function FeedbackLandingPage({ searchParams }: FeedbackLandingPageProps) {
+  const params = await searchParams
+  const src = sanitizeFeedbackSource(params.src)
+  const tellUsHref = src
+    ? `/feedback/tell-us?src=${encodeURIComponent(src)}`
+    : '/feedback/tell-us'
   return (
     <GuestPageShell>
       <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
@@ -27,7 +37,7 @@ export default function FeedbackLandingPage() {
           </a>
 
           <Link
-            href="/feedback/tell-us"
+            href={tellUsHref}
             className="inline-flex min-h-[48px] w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           >
             It could have been better

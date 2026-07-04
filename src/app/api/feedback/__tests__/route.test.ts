@@ -18,6 +18,11 @@ vi.mock('@/lib/email/emailService', () => ({
   sendEmail: vi.fn().mockResolvedValue({ success: true })
 }))
 
+// Retry wrapper — pass through without real backoff delays so failure tests stay fast.
+vi.mock('@/lib/retry', () => ({
+  retry: vi.fn(async <T,>(fn: () => Promise<T>) => fn())
+}))
+
 // Idempotency — keep the REAL helpers (getIdempotencyKey, computeIdempotencyRequestHash)
 // but stub the DB-touching claim/persist/release functions.
 vi.mock('@/lib/api/idempotency', async () => {
@@ -120,6 +125,13 @@ describe('POST /api/feedback', () => {
       expect(json.data.ok).toBe(true)
       expect(insert).toHaveBeenCalledTimes(1)
     })
+
+    it('should send the 201 with Cache-Control no-store', async () => {
+      const res = await POST(buildRequest({ rating: 5 }))
+
+      expect(res.status).toBe(201)
+      expect(res.headers.get('cache-control')).toBe('no-store')
+    })
   })
 
   describe('honeypot', () => {
@@ -161,8 +173,8 @@ describe('POST /api/feedback', () => {
     })
   })
 
-  describe('consent stripping', () => {
-    it('should null contact fields and set contact_consent false when consent is not given', async () => {
+  describe('contact details and consent', () => {
+    it('should return 400 and not insert when contact details are provided without consent', async () => {
       const { client, insert } = makeAdminMock()
       vi.mocked(createAdminClient).mockReturnValue(
         client as unknown as ReturnType<typeof createAdminClient>
@@ -177,6 +189,47 @@ describe('POST /api/feedback', () => {
           contactConsent: false
         })
       )
+      const json = await res.json()
+
+      expect(res.status).toBe(400)
+      expect(json.success).toBe(false)
+      expect(json.error.code).toBe('VALIDATION_ERROR')
+      expect(json.error.message).toBe('Tick the box so we can contact you, or clear your details')
+      expect(insert).not.toHaveBeenCalled()
+    })
+
+    it('should store contact fields when consent is given', async () => {
+      const { client, insert } = makeAdminMock()
+      vi.mocked(createAdminClient).mockReturnValue(
+        client as unknown as ReturnType<typeof createAdminClient>
+      )
+
+      const res = await POST(
+        buildRequest({
+          rating: 4,
+          customerName: 'Jo',
+          customerEmail: 'jo@x.com',
+          customerPhone: '+447700900123',
+          contactConsent: true
+        })
+      )
+
+      expect(res.status).toBe(201)
+      expect(insert).toHaveBeenCalledTimes(1)
+      const payload = insert.mock.calls[0][0] as Record<string, unknown>
+      expect(payload.customer_name).toBe('Jo')
+      expect(payload.customer_email).toBe('jo@x.com')
+      expect(payload.customer_phone).toBe('+447700900123')
+      expect(payload.contact_consent).toBe(true)
+    })
+
+    it('should store null contact fields when no details are given without consent', async () => {
+      const { client, insert } = makeAdminMock()
+      vi.mocked(createAdminClient).mockReturnValue(
+        client as unknown as ReturnType<typeof createAdminClient>
+      )
+
+      const res = await POST(buildRequest({ rating: 4, contactConsent: false }))
 
       expect(res.status).toBe(201)
       expect(insert).toHaveBeenCalledTimes(1)
@@ -185,6 +238,37 @@ describe('POST /api/feedback', () => {
       expect(payload.customer_email).toBeNull()
       expect(payload.customer_phone).toBeNull()
       expect(payload.contact_consent).toBe(false)
+    })
+  })
+
+  describe('source provenance', () => {
+    it('should store a valid src as the source', async () => {
+      const { client, insert } = makeAdminMock()
+      vi.mocked(createAdminClient).mockReturnValue(
+        client as unknown as ReturnType<typeof createAdminClient>
+      )
+
+      const res = await POST(buildRequest({ rating: 3, src: 'private-booking-sms' }))
+
+      expect(res.status).toBe(201)
+      const payload = insert.mock.calls[0][0] as Record<string, unknown>
+      expect(payload.source).toBe('private-booking-sms')
+    })
+
+    it('should fall back to review-funnel when src is missing or invalid', async () => {
+      const { client, insert } = makeAdminMock()
+      vi.mocked(createAdminClient).mockReturnValue(
+        client as unknown as ReturnType<typeof createAdminClient>
+      )
+
+      await POST(buildRequest({ rating: 3 }))
+      await POST(
+        buildRequest({ rating: 3, src: 'https://evil.example/inject' }, { 'Idempotency-Key': 'test-key-2' })
+      )
+
+      expect(insert).toHaveBeenCalledTimes(2)
+      expect((insert.mock.calls[0][0] as Record<string, unknown>).source).toBe('review-funnel')
+      expect((insert.mock.calls[1][0] as Record<string, unknown>).source).toBe('review-funnel')
     })
   })
 

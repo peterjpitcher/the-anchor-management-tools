@@ -37,9 +37,11 @@ const PUBLIC_FILE_EXTENSIONS = [
 
 function isPublicPath(pathname: string) {
   if (pathname === '/') return true;
-  
-  // Check for specific public prefixes
-  if (PUBLIC_PATH_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
+
+  // Check for specific public prefixes. Matching is segment-bounded (exact
+  // match or prefix followed by '/') so e.g. '/feedback' does not also
+  // whitelist '/feedback-inbox', and '/m' does not whitelist '/messages'.
+  if (PUBLIC_PATH_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return true;
   }
 
