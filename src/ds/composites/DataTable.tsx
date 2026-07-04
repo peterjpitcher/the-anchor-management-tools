@@ -4,7 +4,7 @@ import { ReactNode, HTMLAttributes, useState, useEffect, Fragment } from 'react'
 import { cn } from '@/lib/utils'
 import { ChevronUpIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
 import { Checkbox } from '@/ds/primitives/Checkbox'
-import { Skeleton } from '@/ds/primitives/Skeleton'
+import { Spinner } from '@/ds/primitives/Spinner'
 import { Empty } from '@/ds/primitives/Empty'
 
 const ROW_CLICK_IGNORE_SELECTOR = [
@@ -40,7 +40,6 @@ export interface DataTableProps<T = unknown> extends HTMLAttributes<HTMLDivEleme
   columns: Column<T>[]
   getRowKey: (row: T) => string | number
   loading?: boolean
-  skeletonRows?: number
   emptyMessage?: string
   emptyDescription?: string
   emptyAction?: ReactNode
@@ -66,7 +65,6 @@ export function DataTable<T = unknown>({
   columns,
   getRowKey,
   loading = false,
-  skeletonRows = 5,
   emptyMessage = 'No data found',
   emptyDescription,
   emptyAction,
@@ -181,60 +179,60 @@ export function DataTable<T = unknown>({
     })
   }
 
-  // Loading state
+  // Loading state — minimal centred spinner
   if (loading) {
+    const loadingIndicator = (
+      <div className="flex items-center justify-center py-12" role="status">
+        <Spinner size="lg" />
+        <span className="sr-only">Loading…</span>
+      </div>
+    )
+
     return (
       <div className={cn('w-full', className)} {...props}>
         {isMobile ? (
-          <div className="space-y-4">
-            {Array.from({ length: skeletonRows }).map((_, i) => (
-              <div key={i} className="bg-white shadow rounded-lg p-4 space-y-3">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
-            ))}
-          </div>
+          loadingIndicator
         ) : (
           <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black ring-opacity-5')}>
             <table className="min-w-full divide-y divide-gray-300">
               <thead className="bg-gray-50">
                 <tr>
                   {selectable && (
-                    <th scope="col" className={cn('text-left', sizeClasses[size].header)}>
-                      <Skeleton className="h-4 w-4" />
-                    </th>
+                    <th scope="col" className={cn('text-left', sizeClasses[size].header)} />
                   )}
                   {expandable && renderExpandedContent && (
                     <th scope="col" className={cn(sizeClasses[size].header)} />
                   )}
                   {columns.map((column) => (
-                    <th scope="col" key={column.key} className={cn('text-left', sizeClasses[size].header)}>
-                      <Skeleton className="h-4 w-24" />
+                    <th
+                      scope="col"
+                      key={column.key}
+                      className={cn(
+                        'text-left font-semibold text-gray-900',
+                        sizeClasses[size].header,
+                        column.align === 'center' && 'text-center',
+                        column.align === 'right' && 'text-right',
+                        column.className,
+                      )}
+                      style={{ width: column.width }}
+                    >
+                      {column.header}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {Array.from({ length: skeletonRows }).map((_, i) => (
-                  <tr key={i}>
-                    {selectable && (
-                      <td className={sizeClasses[size].cell}>
-                        <Skeleton className="h-4 w-4" />
-                      </td>
-                    )}
-                    {expandable && renderExpandedContent && (
-                      <td className={sizeClasses[size].cell}>
-                        <Skeleton className="h-4 w-4" />
-                      </td>
-                    )}
-                    {columns.map((column) => (
-                      <td key={column.key} className={sizeClasses[size].cell}>
-                        <Skeleton className="h-4 w-full" />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                <tr>
+                  <td
+                    colSpan={
+                      columns.length +
+                      (selectable ? 1 : 0) +
+                      (expandable && renderExpandedContent ? 1 : 0)
+                    }
+                  >
+                    {loadingIndicator}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>

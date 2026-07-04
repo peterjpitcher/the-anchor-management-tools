@@ -7,6 +7,8 @@
 
 export * from './primitives'
 export * from './composites'
+export { PageLoading } from './composites/PageLoading'
+export type { PageLoadingProps } from './composites/PageLoading'
 export * from './icons'
 export * from './tokens'
 export * from './shell'

@@ -88,7 +88,7 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 // Design system components
 import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
-import { Button, LinkButton, Input, Select, Textarea, Badge, Modal, ConfirmDialog, Skeleton, Empty, EmptyState, Alert, toast } from '@/ds'
+import { Button, LinkButton, Input, Select, Textarea, Badge, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { formatCurrency } from '@/lib/format'

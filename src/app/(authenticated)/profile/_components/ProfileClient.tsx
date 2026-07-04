@@ -15,7 +15,7 @@ import {
   Field,
   Input,
   Switch,
-  Skeleton,
+  PageLoading,
   Empty,
   Badge,
   ConfirmDialog,
@@ -207,13 +207,7 @@ export function ProfileClient() {
           title="My Profile"
           subtitle="Manage your account details"
         />
-        <div className="grid grid-cols-[1fr_320px] gap-6">
-          <div className="space-y-6">
-            <Card><CardBody><Skeleton className="h-40" /></CardBody></Card>
-            <Card><CardBody><Skeleton className="h-24" /></CardBody></Card>
-          </div>
-          <Card><CardBody><Skeleton className="h-60" /></CardBody></Card>
-        </div>
+        <PageLoading className="min-h-0 py-16" />
       </div>
     )
   }
