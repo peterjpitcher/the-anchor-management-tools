@@ -3,10 +3,14 @@ import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
+  PartySizeUpdateFailedAfterMoveError,
   mapSeatUpdateBlockedReason,
   updateTableBookingPartySizeWithLinkedEventSeats
 } from '@/lib/events/staff-seat-updates'
-import { applyPartySizeDepositTransition } from '@/lib/table-bookings/staff-deposit-transitions'
+import {
+  applyPartySizeDepositTransition,
+  type PartySizeDepositTransitionResult
+} from '@/lib/table-bookings/staff-deposit-transitions'
 
 const UpdatePartySizeSchema = z.object({
   party_size: z.preprocess(
@@ -80,45 +84,72 @@ export async function POST(
       )
     }
 
-    const { data: updatedBooking, error: verifyError } = await auth.supabase.from('table_bookings')
-      .select('id, party_size, committed_party_size, updated_at')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (verifyError || !updatedBooking) {
-      return NextResponse.json({ error: 'Failed to verify booking party size update' }, { status: 500 })
+    // Verify from the row returned by the update itself — a re-read here was
+    // a TOCTOU false negative under concurrent edits. On 'unchanged' there is
+    // no updated row, so fall back to the pre-read values.
+    const updatedBooking = result.updated_booking ?? {
+      id,
+      party_size: result.new_party_size,
+      committed_party_size: null,
+      updated_at: null
     }
 
-    if (result.state !== 'unchanged' && Number(updatedBooking.party_size) !== newPartySize) {
-      logger.error('FOH table-booking party-size update verification failed', {
+    if (result.state === 'updated' && !result.event_booking_id && !result.updated_booking) {
+      logger.error('FOH table-booking party-size update returned no updated row', {
         metadata: {
           tableBookingId: id,
           requestedPartySize: newPartySize,
-          savedPartySize: updatedBooking.party_size,
         },
       })
       return NextResponse.json({ error: 'Booking party size was not saved. Please refresh and try again.' }, { status: 409 })
     }
 
-    const depositTransition = await applyPartySizeDepositTransition(auth.supabase, {
-      booking: currentBooking,
-      previousPartySize,
-      newPartySize,
-      sendSms: parsed.data.send_sms,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
-    })
+    if (result.updated_booking && Number(result.updated_booking.party_size) !== result.new_party_size) {
+      logger.error('FOH table-booking party-size update verification failed', {
+        metadata: {
+          tableBookingId: id,
+          requestedPartySize: newPartySize,
+          savedPartySize: result.updated_booking.party_size,
+        },
+      })
+      return NextResponse.json({ error: 'Booking party size was not saved. Please refresh and try again.' }, { status: 409 })
+    }
+
+    // The size is saved at this point. A deposit-transition failure must not
+    // be reported as a failed update — return 200 with a separate warning.
+    let depositTransition: PartySizeDepositTransitionResult | null = null
+    let depositWarning: string | null = null
+    try {
+      depositTransition = await applyPartySizeDepositTransition(auth.supabase, {
+        booking: currentBooking,
+        previousPartySize,
+        newPartySize,
+        sendSms: parsed.data.send_sms,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
+      })
+    } catch (depositError) {
+      logger.error('FOH party-size deposit transition failed after party size saved', {
+        error: depositError instanceof Error ? depositError : new Error(String(depositError)),
+        metadata: { tableBookingId: id, previousPartySize, newPartySize },
+      })
+      depositWarning = 'Party size saved, but the deposit link could not be updated. Please retry from the booking page.'
+    }
 
     return NextResponse.json({
       success: true,
       data: result,
       booking: updatedBooking,
       depositTransition,
+      warning: depositWarning,
     })
   } catch (error) {
     logger.error('FOH table-booking party-size update failed', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { tableBookingId: id },
     })
+    if (error instanceof PartySizeUpdateFailedAfterMoveError) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json(
       {
         error: 'Failed to update booking party size'

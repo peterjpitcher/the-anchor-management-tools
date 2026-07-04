@@ -14,6 +14,7 @@ vi.mock('@/lib/foh/bookings', () => ({
 vi.mock('@/lib/events/staff-seat-updates', () => ({
   mapSeatUpdateBlockedReason: vi.fn((reason?: string) => reason || 'blocked'),
   updateTableBookingPartySizeWithLinkedEventSeats: vi.fn(),
+  PartySizeUpdateFailedAfterMoveError: class PartySizeUpdateFailedAfterMoveError extends Error {},
 }))
 
 import { requireFohPermission } from '@/lib/foh/api-auth'

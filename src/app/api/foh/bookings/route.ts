@@ -20,6 +20,7 @@ import {
   computeDepositAmount,
   requiresDeposit as requiresDepositForParty,
 } from '@/lib/table-bookings/deposit'
+import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 
 const CreateFohTableBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -321,9 +322,44 @@ async function createManualWalkInBookingOverride(params: {
       })
     )
 
+    // A table used for a communal event cannot be shared with a food booking at all —
+    // the DB trigger enforce_booking_table_assignment_integrity_v05 rejects any
+    // assignment on a table with active communal seats. Mirror the same "active
+    // allocation" definition as getMoveTableAvailability (confirmed, or
+    // pending_payment with an unexpired hold, overlapping the booking window) so
+    // the override never selects a combo the database will refuse.
+    const { data: communalAllocations, error: communalError } = await (params.supabase.from('event_communal_seat_allocations') as any)
+      .select('table_id, booking:bookings!event_communal_seat_allocations_event_booking_id_fkey(status, hold_expires_at)')
+      .in('table_id', candidateTableIds)
+      .lt('start_datetime', endIso)
+      .gt('end_datetime', startIso)
+
+    if (communalError) {
+      throw new Error('Failed to check communal event seating for walk-in override')
+    }
+
+    const unavailableByCommunal = new Set<string>()
+    for (const row of (communalAllocations || []) as any[]) {
+      const tableId = typeof row?.table_id === 'string' ? row.table_id : null
+      if (!tableId) continue
+      const bookingRow = Array.isArray(row?.booking) ? row.booking[0] : row?.booking
+      const status = String(bookingRow?.status || '')
+      const holdExpiresAt = typeof bookingRow?.hold_expires_at === 'string' ? bookingRow.hold_expires_at : null
+      const active =
+        status === 'confirmed' ||
+        (
+          status === 'pending_payment' &&
+          (!holdExpiresAt || Date.parse(holdExpiresAt) > Date.now())
+        )
+      if (active) {
+        unavailableByCommunal.add(tableId)
+      }
+    }
+
     const availableTables: TableCandidate[] = candidates
       .filter((table) => !unavailableByAssignment.has(table.id))
       .filter((table) => !unavailableByPrivateBlocks.has(table.id))
+      .filter((table) => !unavailableByCommunal.has(table.id))
       .map((table) => ({
         id: table.id,
         displayName: table.name || table.table_number || `Table ${table.id.slice(0, 4)}`,
@@ -474,6 +510,7 @@ async function createManualWalkInBookingOverride(params: {
 
     if (!error && data?.id) {
       const tableBookingId = data.id as string
+      let unknownAssignmentError: { code?: string; message?: string } | null = null
 
       for (const combo of combos) {
         const assignmentPayload = combo.tableIds.map((tableId) => ({
@@ -508,11 +545,15 @@ async function createManualWalkInBookingOverride(params: {
           }
         }
 
-        if (isAssignmentConflictRpcError(assignmentError)) {
+        if (isAssignmentConflictError(assignmentError)) {
           continue
         }
 
-        throw assignmentError
+        // Unknown failure: stop trying combos and fall through to the cleanup
+        // below so the just-inserted booking row is never stranded without a
+        // table assignment. Re-raised (as a friendly error) after cleanup.
+        unknownAssignmentError = assignmentError as { code?: string; message?: string }
+        break
       }
 
       // If we couldn't assign any table combo (race condition), clean up the inserted booking.
@@ -581,6 +622,17 @@ async function createManualWalkInBookingOverride(params: {
         })
       }
 
+      if (unknownAssignmentError) {
+        logger.error('Walk-in override table assignment failed with unexpected error', {
+          metadata: {
+            tableBookingId,
+            code: unknownAssignmentError.code || null,
+            error: unknownAssignmentError.message || String(unknownAssignmentError)
+          }
+        })
+        throw new Error('Failed to assign a table for this booking')
+      }
+
       return {
         state: 'blocked',
         reason: 'no_table'
@@ -646,16 +698,6 @@ type FohCreateBookingResponseData = {
     | 'link_sent'
     | 'link_not_sent'
   sunday_preorder_reason: string | null
-}
-
-function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
-  const code = typeof error?.code === 'string' ? error.code : ''
-  const message = typeof error?.message === 'string' ? error.message : ''
-  return (
-    code === '23P01'
-    || message.includes('table_assignment_overlap')
-    || message.includes('table_assignment_private_blocked')
-  )
 }
 
 async function recordFohTableBookingAnalyticsSafe(
@@ -937,8 +979,18 @@ export async function POST(request: NextRequest) {
           { status: 200 }
         )
       }
-    } catch {
-      // Deduplication check failed non-fatally; proceed with normal booking creation.
+    } catch (dedupError) {
+      // Deduplication check failed non-fatally; proceed with normal booking
+      // creation — but log it, otherwise a permanently broken guard is invisible.
+      logger.warn('FOH booking dedup pre-check failed; proceeding without dedup', {
+        metadata: {
+          userId: auth.userId,
+          customerId,
+          bookingDate: payload.date,
+          bookingTime,
+          error: dedupError instanceof Error ? dedupError.message : String(dedupError)
+        }
+      })
     }
   }
 
@@ -989,7 +1041,7 @@ export async function POST(request: NextRequest) {
 
   let bookingResult: TableBookingRpcResult
   if (rpcError) {
-    if (isAssignmentConflictRpcError(rpcError)) {
+    if (isAssignmentConflictError(rpcError)) {
       bookingResult = {
         state: 'blocked',
         reason: rpcError.message?.includes('table_assignment_private_blocked')

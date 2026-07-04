@@ -3,6 +3,7 @@ import { updateEventBookingSeatsById } from '@/lib/events/manage-booking'
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import { logger } from '@/lib/logger'
 import {
   getMoveTableAvailability,
   moveBookingAssignmentToTables,
@@ -12,6 +13,13 @@ type SeatUpdateSmsMeta = {
   success: boolean
   code: string | null
   logFailure: boolean
+}
+
+export type UpdatedTableBookingRow = {
+  id: string
+  party_size: number | null
+  committed_party_size: number | null
+  updated_at: string | null
 }
 
 export type TableBookingSeatUpdateResult = {
@@ -27,6 +35,29 @@ export type TableBookingSeatUpdateResult = {
   event_id: string | null
   auto_moved_table_ids?: string[] | null
   auto_moved_table_name?: string | null
+  /** Row returned by the party-size UPDATE itself — callers should verify from this, not a re-read. */
+  updated_booking?: UpdatedTableBookingRow | null
+}
+
+/**
+ * Thrown when the party-size write fails AFTER an auto table move has already
+ * committed. The message says whether the move was reverted so callers can
+ * surface exactly what state the booking is in.
+ */
+export class PartySizeUpdateFailedAfterMoveError extends Error {
+  readonly movedBack: boolean
+
+  constructor(message: string, movedBack: boolean) {
+    super(message)
+    this.name = 'PartySizeUpdateFailedAfterMoveError'
+    this.movedBack = movedBack
+  }
+}
+
+function sameIdSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const rightSet = new Set(right)
+  return left.every((id) => rightSet.has(id))
 }
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
@@ -96,6 +127,10 @@ export function mapSeatUpdateBlockedReason(reason: string | null | undefined): s
       return 'Booking was not found.'
     case 'event_not_found':
       return 'Event was not found.'
+    case 'prepaid_paid_booking':
+      return 'This booking has already been paid, so its size cannot be changed here. Cancel it with a refund or take payment for the extra seats from the event page.'
+    case 'multi_ticket_type_booking':
+      return 'This booking has multiple ticket options, so its size cannot be edited here. Edit the ticket lines from the event page.'
     default:
       return reason ? reason.replace(/_/g, ' ') : 'Booking could not be updated.'
   }
@@ -110,6 +145,12 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     sendSms?: boolean
     appBaseUrl?: string
     autoMoveTable?: boolean
+    /**
+     * Optional staff-picked table setup for the auto-move (single-step
+     * grow+move). Used when it matches an available option; otherwise the
+     * smallest sufficient setup is chosen as before.
+     */
+    preferredTableIds?: string[]
   }
 ): Promise<TableBookingSeatUpdateResult> {
   const { data: tableBooking, error: tableBookingError } = await supabase.from('table_bookings')
@@ -151,6 +192,8 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const newPartySize = Math.max(1, Number(input.partySize || 1))
   let autoMovedTableIds: string[] | null = null
   let autoMovedTableName: string | null = null
+  let autoMovedFromTableIds: string[] | null = null
+  let autoMoveWindow: { startIso: string; endIso: string } | null = null
 
   if (!tableBooking.event_booking_id) {
     if (oldPartySize === newPartySize) {
@@ -194,7 +237,14 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
           duration_minutes: tableBooking.duration_minutes ?? null,
           party_size: newPartySize,
         })
-        const target = availability.tables[0] || null
+
+        // Honour a staff-picked table setup when it is still available;
+        // otherwise fall back to the smallest sufficient option as before.
+        const preferredIds = Array.from(new Set(input.preferredTableIds || [])).filter(Boolean)
+        const preferredTarget = preferredIds.length > 0
+          ? availability.tables.find((table) => sameIdSet(table.table_ids, preferredIds)) || null
+          : null
+        const target = preferredTarget || availability.tables[0] || null
 
         if (!target) {
           return {
@@ -236,6 +286,8 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
 
         autoMovedTableIds = target.table_ids
         autoMovedTableName = target.name || null
+        autoMovedFromTableIds = availability.assignedTableIds
+        autoMoveWindow = { startIso: availability.startIso, endIso: availability.endIso }
       }
     }
 
@@ -247,14 +299,57 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
         updated_at: nowIso
       })
       .eq('id', tableBooking.id)
-      .select('id')
+      .select('id, party_size, committed_party_size, updated_at')
       .maybeSingle()
 
-    if (tableUpdateError) {
-      throw tableUpdateError
-    }
+    if (tableUpdateError || !updatedTableBooking) {
+      // The size write failed after an auto-move already committed: try to
+      // move the booking back to its original tables so it is not left on a
+      // bigger setup with the old party size, and say what happened.
+      if (autoMovedTableIds && autoMovedFromTableIds && autoMovedFromTableIds.length > 0 && autoMoveWindow) {
+        let movedBack = false
+        try {
+          const compensation = await moveBookingAssignmentToTables(supabase, {
+            bookingId: tableBooking.id,
+            targetTableIds: autoMovedFromTableIds,
+            startIso: autoMoveWindow.startIso,
+            endIso: autoMoveWindow.endIso,
+            nowIso: new Date().toISOString(),
+          })
+          movedBack = compensation.ok
+          if (!compensation.ok) {
+            logger.warn('Failed to revert auto table move after party-size update failure', {
+              metadata: {
+                tableBookingId: tableBooking.id,
+                movedToTableIds: autoMovedTableIds,
+                originalTableIds: autoMovedFromTableIds,
+                error: compensation.error,
+              },
+            })
+          }
+        } catch (compensationError) {
+          logger.warn('Reverting auto table move threw after party-size update failure', {
+            metadata: {
+              tableBookingId: tableBooking.id,
+              movedToTableIds: autoMovedTableIds,
+              originalTableIds: autoMovedFromTableIds,
+              error: compensationError instanceof Error ? compensationError.message : String(compensationError),
+            },
+          })
+        }
 
-    if (!updatedTableBooking) {
+        throw new PartySizeUpdateFailedAfterMoveError(
+          movedBack
+            ? 'The party size could not be saved, so the table move has been reverted. Please try again.'
+            : 'The party size could not be saved, but the booking has already moved to the new tables. Please check the table assignment and try again.',
+          movedBack
+        )
+      }
+
+      if (tableUpdateError) {
+        throw tableUpdateError
+      }
+
       return {
         state: 'blocked',
         reason: 'booking_not_found',
@@ -280,7 +375,13 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       sms: null,
       event_id: tableBooking.event_id || null,
       auto_moved_table_ids: autoMovedTableIds,
-      auto_moved_table_name: autoMovedTableName
+      auto_moved_table_name: autoMovedTableName,
+      updated_booking: {
+        id: String(updatedTableBooking.id),
+        party_size: updatedTableBooking.party_size ?? null,
+        committed_party_size: updatedTableBooking.committed_party_size ?? null,
+        updated_at: updatedTableBooking.updated_at ?? null
+      }
     }
   }
 
@@ -309,6 +410,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const updatedSeats = Math.max(1, Number(bookingUpdate.new_seats ?? newPartySize))
   const delta = Number(bookingUpdate.delta ?? (updatedSeats - oldSeats))
 
+  let syncedBookingRow: UpdatedTableBookingRow | null = null
   if (delta !== 0 || oldPartySize !== updatedSeats) {
     const nowIso = new Date().toISOString()
     const { data: syncedTableRows, error: tableUpdateError } = await supabase.from('table_bookings')
@@ -319,7 +421,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       })
       .eq('event_booking_id', tableBooking.event_booking_id)
       .not('status', 'in', '(cancelled,no_show)')
-      .select('id')
+      .select('id, party_size, committed_party_size, updated_at')
 
     if (tableUpdateError) {
       throw tableUpdateError
@@ -327,6 +429,16 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
 
     if (!Array.isArray(syncedTableRows) || syncedTableRows.length === 0) {
       throw new Error('Linked table-booking seat sync affected no rows')
+    }
+
+    const matchedRow = syncedTableRows.find((row) => row?.id === tableBooking.id) || null
+    if (matchedRow) {
+      syncedBookingRow = {
+        id: String(matchedRow.id),
+        party_size: matchedRow.party_size ?? null,
+        committed_party_size: matchedRow.committed_party_size ?? null,
+        updated_at: matchedRow.updated_at ?? null
+      }
     }
   }
 
@@ -378,6 +490,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     delta,
     sms_sent: smsSent,
     sms,
-    event_id: bookingUpdate.event_id || tableBooking.event_id || null
+    event_id: bookingUpdate.event_id || tableBooking.event_id || null,
+    updated_booking: syncedBookingRow
   }
 }
