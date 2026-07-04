@@ -301,6 +301,7 @@ describe('CashingUpService.getWeeklyData', () => {
     const chain: Record<string, ReturnType<typeof vi.fn>> = {};
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
+    chain.is = vi.fn(() => chain);
     chain.gte = vi.fn(() => chain);
     chain.lte = vi.fn(() => (terminalMethod === 'lte' ? response : chain));
     chain.order = vi.fn(() => (terminalMethod === 'order' ? response : chain));
@@ -356,6 +357,7 @@ describe('CashingUpService.getWeeklyReportData', () => {
     const chain: Record<string, ReturnType<typeof vi.fn>> = {};
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
+    chain.is = vi.fn(() => chain);
     chain.gte = vi.fn(() => chain);
     chain.lte = vi.fn(() => chain);
     chain.in = vi.fn(() => chain);
@@ -428,6 +430,7 @@ describe('CashingUpService.getInsightsData', () => {
     const chain: Record<string, ReturnType<typeof vi.fn>> = {};
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
+    chain.is = vi.fn(() => chain);
     chain.gte = vi.fn(() => chain);
     chain.lte = vi.fn(() => (terminalMethod === 'lte' ? response : chain));
     chain.order = vi.fn(() => (terminalMethod === 'order' ? response : chain));

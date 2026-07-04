@@ -175,6 +175,79 @@ export async function unlockSessionAction(id: string) {
   }
 }
 
+/**
+ * Void a cash-up session: the record is kept for audit (greyed out in the UI)
+ * but excluded from weekly totals. Requires cashing_up/manage; voiding an
+ * approved session additionally requires approve, and a locked session unlock —
+ * mirroring the approve/lock gating on those states.
+ */
+export async function voidCashupSession(
+  { sessionId, reason }: { sessionId: string; reason: string }
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const hasManagePermission = await PermissionService.checkUserPermission('cashing_up', 'manage', user.id);
+  if (!hasManagePermission) return { success: false, error: 'Forbidden' };
+
+  const trimmedReason = reason?.trim();
+  if (!trimmedReason) return { success: false, error: 'A reason is required to void a session' };
+
+  try {
+    const { data: session, error: fetchError } = await supabase
+      .from('cashup_sessions')
+      .select('id, status, voided_at')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!session) return { success: false, error: 'Session not found' };
+    if (session.voided_at) return { success: false, error: 'Session is already voided' };
+
+    if (session.status === 'approved') {
+      const canApprove = await PermissionService.checkUserPermission('cashing_up', 'approve', user.id);
+      if (!canApprove) return { success: false, error: 'Approved sessions can only be voided by users with approve permission' };
+    }
+    if (session.status === 'locked') {
+      const canUnlock = await PermissionService.checkUserPermission('cashing_up', 'unlock', user.id);
+      if (!canUnlock) return { success: false, error: 'Locked sessions can only be voided by users with unlock permission' };
+    }
+
+    const { data: voidedRow, error: updateError } = await supabase
+      .from('cashup_sessions')
+      .update({
+        voided_at: new Date().toISOString(),
+        voided_by: user.id,
+        void_reason: trimmedReason,
+        updated_by_user_id: user.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+      .is('voided_at', null)
+      .select('id')
+      .maybeSingle();
+
+    if (updateError) throw updateError;
+    if (!voidedRow) return { success: false, error: 'Session not found or already voided' };
+
+    revalidatePath('/cashing-up');
+    revalidateTag('dashboard');
+    void logAuditEvent({
+      operation_type: 'void',
+      resource_type: 'cashup_session',
+      resource_id: sessionId,
+      operation_status: 'success',
+      additional_info: { reason: trimmedReason, previous_status: session.status },
+    });
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('Void cashup error:', error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
 export async function deleteSessionAction(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
