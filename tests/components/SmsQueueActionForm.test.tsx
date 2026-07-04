@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SmsQueueActionForm, type SmsQueueActionState } from '@/components/private-bookings/SmsQueueActionForm'
 
@@ -23,14 +23,8 @@ vi.mock('@/ds', async (importOriginal) => {
 })
 
 describe('SmsQueueActionForm', () => {
-  const confirmSpy = () => vi.spyOn(window, 'confirm')
-
   beforeEach(() => {
     vi.clearAllMocks()
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
   })
 
   it('shows a success toast when the action completes', async () => {
@@ -38,8 +32,6 @@ describe('SmsQueueActionForm', () => {
       expect(formData.get('smsId')).toBe('sms-123')
       return { status: 'success', changedAt: Date.now() }
     })
-
-    const confirm = confirmSpy().mockReturnValue(true)
 
     render(
       <SmsQueueActionForm
@@ -54,10 +46,15 @@ describe('SmsQueueActionForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
+    // First click opens the ConfirmDialog instead of submitting.
+    expect(await screen.findByText('Approve?')).toBeInTheDocument()
+    expect(action).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
     await waitFor(() => {
       expect(action).toHaveBeenCalledTimes(1)
     })
-    expect(confirm).toHaveBeenCalledTimes(1)
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Approved!')
     })
@@ -69,8 +66,6 @@ describe('SmsQueueActionForm', () => {
       message: 'Permission denied',
       changedAt: Date.now(),
     }))
-
-    confirmSpy().mockReturnValue(true)
 
     render(
       <SmsQueueActionForm
@@ -84,6 +79,8 @@ describe('SmsQueueActionForm', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(await screen.findByText('Reject?')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() => {
       expect(action).toHaveBeenCalledTimes(1)
@@ -95,7 +92,6 @@ describe('SmsQueueActionForm', () => {
 
   it('prevents submission when disabled', () => {
     const action = vi.fn()
-    const confirm = confirmSpy().mockReturnValue(true)
 
     render(
       <SmsQueueActionForm
@@ -115,6 +111,6 @@ describe('SmsQueueActionForm', () => {
     fireEvent.click(button)
 
     expect(action).not.toHaveBeenCalled()
-    expect(confirm).not.toHaveBeenCalled()
+    expect(screen.queryByText('Send?')).not.toBeInTheDocument()
   })
 })

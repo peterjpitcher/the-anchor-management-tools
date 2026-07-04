@@ -8,7 +8,7 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline'
 import type { BookingStatus } from '@/types/private-bookings'
-import { formatTime12Hour } from '@/lib/dateUtils'
+import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { Select } from '@/ds'
 import { Button } from '@/ds'
 
@@ -76,8 +76,9 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
   
   // Group bookings by date
   const filteredBookings = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    // Compare plain YYYY-MM-DD strings against today's London date so the
+    // upcoming/past split never shifts with the viewer's machine timezone.
+    const todayIso = getTodayIsoDate()
 
     return bookings.filter((booking) => {
       if (statusFilter !== 'all' && booking.status !== statusFilter) {
@@ -88,14 +89,11 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
         return true
       }
 
-      const bookingDate = new Date(booking.event_date)
-      bookingDate.setHours(0, 0, 0, 0)
-
       if (timeFilter === 'upcoming') {
-        return bookingDate >= today
+        return booking.event_date >= todayIso
       }
 
-      return bookingDate < today
+      return booking.event_date < todayIso
     })
   }, [bookings, statusFilter, timeFilter])
 

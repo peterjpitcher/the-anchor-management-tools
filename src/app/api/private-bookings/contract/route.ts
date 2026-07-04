@@ -71,44 +71,55 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Failed to generate contract', { status: 500 })
   }
 
-  // Audit log + version increment — best-effort: failure does NOT block HTML delivery
-  const newVersion = (booking.contract_version ?? 0) + 1
+  // Version increment — atomic SQL-side increment via the admin client, so concurrent
+  // generates can never mint the same version and RLS can never silently block the
+  // update. A failed increment surfaces as an error rather than serving a contract
+  // whose stored version diverges from the audit trail.
+  let newVersion: number | null = null
   try {
     const admin = createAdminClient()
-    const { error: auditError } = await admin.from('private_booking_audit').insert({
-      booking_id: bookingId,
-      action: 'contract_generated',
-      performed_by: user.id,
-      metadata: {
-        contract_version: newVersion,
-        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
-      }
-    })
-    if (auditError) {
-      logger.error('Contract audit log failed (non-blocking)', {
-        error: new Error(auditError.message),
-        metadata: { bookingId, newVersion }
-      })
+    const { data: incrementedVersion, error: versionError } = await admin.rpc(
+      'increment_private_booking_contract_version',
+      { p_booking_id: bookingId }
+    )
+    if (versionError) {
+      throw new Error(versionError.message)
+    }
+    if (typeof incrementedVersion === 'number') {
+      newVersion = incrementedVersion
     }
 
-    const { error: versionError } = await supabase
-      .from('private_bookings')
-      .update({ contract_version: newVersion })
-      .eq('id', bookingId)
-    if (versionError) {
-      logger.error('Contract version update failed (non-blocking)', {
-        error: new Error(versionError.message),
-        metadata: { bookingId, newVersion }
+    if (newVersion !== null) {
+      // Audit log — best-effort: failure does NOT block HTML delivery
+      const { error: auditError } = await admin.from('private_booking_audit').insert({
+        booking_id: bookingId,
+        action: 'contract_generated',
+        performed_by: user.id,
+        metadata: {
+          contract_version: newVersion,
+          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+        }
       })
+      if (auditError) {
+        logger.error('Contract audit log failed (non-blocking)', {
+          error: new Error(auditError.message),
+          metadata: { bookingId, newVersion }
+        })
+      }
     }
-  } catch (sideEffectError) {
-    logger.error('Contract side-effects failed (non-blocking)', {
-      error: sideEffectError instanceof Error ? sideEffectError : new Error(String(sideEffectError)),
+  } catch (versionIncrementError) {
+    logger.error('Contract version increment failed', {
+      error: versionIncrementError instanceof Error ? versionIncrementError : new Error(String(versionIncrementError)),
       metadata: { bookingId }
     })
+    newVersion = null
   }
 
-  // Return HTML regardless of audit/version update outcome
+  if (newVersion === null) {
+    return new NextResponse('Failed to record contract version', { status: 500 })
+  }
+
+  // Return HTML — version recorded; audit failure alone does not block delivery
   return new NextResponse(html, {
     headers: {
       'Content-Type': 'text/html',
