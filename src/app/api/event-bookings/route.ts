@@ -365,6 +365,22 @@ export async function POST(request: NextRequest) {
       })
 
       if (result.rpcFailed) {
+        // A per-type sell-out (or an unknown type id) is a normal business
+        // condition the website should render, not a server failure.
+        if (result.rpcErrorCode === 'ticket_type_sold_out') {
+          return createErrorResponse(
+            'One of the selected ticket options has sold out',
+            'TICKET_TYPE_SOLD_OUT',
+            409
+          )
+        }
+        if (result.rpcErrorCode === 'invalid_ticket_type') {
+          return createErrorResponse(
+            'One of the selected ticket options is no longer available for this event',
+            'TICKET_TYPE_INVALID',
+            409
+          )
+        }
         return createErrorResponse('Failed to create event booking', 'DATABASE_ERROR', 500)
       }
 

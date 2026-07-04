@@ -126,6 +126,40 @@ export async function loadBookingItems(
 }
 
 /**
+ * A booking's line items joined with each type's full (undiscounted) base price.
+ * Used for door pricing — staff cash/card payments charge the full per-type
+ * price, never the online-discounted snapshot in `booking_items.unit_price`.
+ */
+export async function loadBookingItemsWithBasePrices(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string,
+): Promise<Array<{ quantity: number; base_price: number | string }>> {
+  const { data, error } = await supabase
+    .from('booking_items')
+    .select('quantity, ticket_type:event_ticket_types(base_price)')
+    .eq('booking_id', bookingId)
+
+  if (error) throw error
+
+  type JoinedRow = {
+    quantity: number
+    ticket_type:
+      | { base_price: number | string | null }
+      | { base_price: number | string | null }[]
+      | null
+  }
+
+  return ((data ?? []) as unknown as JoinedRow[]).map((raw) => {
+    const typeRaw = raw.ticket_type
+    const ticketType = Array.isArray(typeRaw) ? typeRaw[0] : typeRaw
+    return {
+      quantity: Number(raw.quantity) || 0,
+      base_price: ticketType?.base_price ?? 0,
+    }
+  })
+}
+
+/**
  * Batch-load the `booking_items` rows for a set of bookings, joined with each
  * line's ticket type name/sort order for display (one query, no N+1). Returns a
  * map keyed by booking id; bookings without items are absent from the map.

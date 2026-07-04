@@ -68,6 +68,13 @@ vi.mock('@/lib/events/event-payments', () => ({
   sendEventBookingSeatUpdateSms: vi.fn(),
 }))
 
+vi.mock('@/lib/email/event-ticket-emails', () => ({
+  sendEventBookingCancelledEmail: vi.fn(),
+  sendEventPaymentConfirmationEmail: vi.fn(),
+  sendEventPaymentManualReviewEmail: vi.fn(),
+  sendEventTicketTransferredEmail: vi.fn(),
+}))
+
 vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn(),
 }))
@@ -107,6 +114,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
+import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cancelEventManualBooking, createEventManualBooking, updateEventManualBookingSeats } from '@/app/actions/events'
@@ -115,6 +123,7 @@ import { createEventManageToken, processEventRefund, updateEventBookingSeatsById
 import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { sendSMS } from '@/lib/twilio'
+import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails'
 import { formatPhoneForStorage } from '@/lib/utils'
 
 const mockedPermission = checkUserPermission as unknown as Mock
@@ -126,6 +135,8 @@ const mockedUpdateEventBookingSeatsById = updateEventBookingSeatsById as unknown
 const mockedSendEventBookingSeatUpdateSms = sendEventBookingSeatUpdateSms as unknown as Mock
 const mockedFormatPhoneForStorage = formatPhoneForStorage as unknown as Mock
 const mockedSyncPubOpsEventCalendarByEventId = syncPubOpsEventCalendarByEventId as unknown as Mock
+const mockedLogAuditEvent = logAuditEvent as unknown as Mock
+const mockedSendEventBookingCancelledEmail = sendEventBookingCancelledEmail as unknown as Mock
 
 describe('Event manual booking seat-update guards', () => {
   beforeEach(() => {
@@ -411,6 +422,7 @@ describe('Event manual booking cancellation guards', () => {
     const cancelEq = vi.fn().mockReturnValue({ select: cancelSelect })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
       from: vi.fn((table: string) => {
         if (table !== 'bookings') {
           throw new Error(`Unexpected table: ${table}`)
@@ -431,7 +443,7 @@ describe('Event manual booking cancellation guards', () => {
     expect(result).toEqual({ error: 'Booking not found.' })
   })
 
-  it('fails closed when booking-hold release update errors', async () => {
+  it('warns but completes when booking-hold release update errors', async () => {
     const bookingId = '550e8400-e29b-41d4-a716-446655440012'
 
     const loadMaybeSingle = vi.fn().mockResolvedValue({
@@ -466,6 +478,7 @@ describe('Event manual booking cancellation guards', () => {
     const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return {
@@ -491,13 +504,34 @@ describe('Event manual booking cancellation guards', () => {
       sendSms: false,
     })
 
-    expect(result).toEqual({
-      error:
-        'Booking cancelled but failed to release booking holds. Please refresh and contact engineering.',
+    expect(result).not.toHaveProperty('error')
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        state: 'cancelled',
+        booking_id: bookingId,
+        sms_sent: false,
+        refund_status: 'none',
+        refund_amount: 0,
+        warning: expect.stringContaining('booking holds could not be released'),
+      },
     })
+    expect(mockedSendEventBookingCancelledEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bookingId })
+    )
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation_status: 'success',
+        additional_info: expect.objectContaining({
+          action: 'cancel',
+          followup_failures: ['booking_holds_release'],
+        }),
+      })
+    )
   })
 
-  it('fails closed when linked table booking cancellation update errors', async () => {
+  it('warns but completes when linked table booking cancellation update errors', async () => {
     const bookingId = '550e8400-e29b-41d4-a716-446655440014'
 
     const loadMaybeSingle = vi.fn().mockResolvedValue({
@@ -532,6 +566,7 @@ describe('Event manual booking cancellation guards', () => {
     const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return {
@@ -557,13 +592,34 @@ describe('Event manual booking cancellation guards', () => {
       sendSms: false,
     })
 
-    expect(result).toEqual({
-      error:
-        'Booking cancelled but failed to cancel linked table bookings. Please refresh and contact engineering.',
+    expect(result).not.toHaveProperty('error')
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        state: 'cancelled',
+        booking_id: bookingId,
+        sms_sent: false,
+        refund_status: 'none',
+        refund_amount: 0,
+        warning: expect.stringContaining('linked table bookings could not be cancelled'),
+      },
     })
+    expect(mockedSendEventBookingCancelledEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bookingId })
+    )
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation_status: 'success',
+        additional_info: expect.objectContaining({
+          action: 'cancel',
+          followup_failures: ['table_bookings_cancel'],
+        }),
+      })
+    )
   })
 
-  it('fails closed when linked table booking cancellation leaves active rows after a zero-row update', async () => {
+  it('warns but completes when linked table booking cancellation leaves active rows after a zero-row update', async () => {
     const bookingId = '550e8400-e29b-41d4-a716-446655440016'
 
     const loadMaybeSingle = vi.fn().mockResolvedValue({
@@ -602,6 +658,7 @@ describe('Event manual booking cancellation guards', () => {
     const tableVerificationSelect = vi.fn().mockReturnValue({ eq: tableVerificationEq })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return {
@@ -630,10 +687,31 @@ describe('Event manual booking cancellation guards', () => {
       sendSms: false,
     })
 
-    expect(result).toEqual({
-      error:
-        'Booking cancelled but failed to cancel linked table bookings. Please refresh and contact engineering.',
+    expect(result).not.toHaveProperty('error')
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        state: 'cancelled',
+        booking_id: bookingId,
+        sms_sent: false,
+        refund_status: 'none',
+        refund_amount: 0,
+        warning: expect.stringContaining('linked table bookings could not be cancelled'),
+      },
     })
+    expect(mockedSendEventBookingCancelledEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bookingId })
+    )
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation_status: 'success',
+        additional_info: expect.objectContaining({
+          action: 'cancel',
+          followup_failures: ['table_bookings_cancel'],
+        }),
+      })
+    )
     expect(warn).toHaveBeenCalledWith(
       'Event booking cancellation follow-up updates failed',
       expect.objectContaining({
@@ -702,6 +780,7 @@ describe('Event manual booking cancellation guards', () => {
     const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return {
@@ -818,6 +897,7 @@ describe('Event manual booking cancellation guards', () => {
     const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return {
@@ -910,15 +990,23 @@ describe('Event manual booking cancellation guards', () => {
     const tableEq = vi.fn().mockReturnValue({ not: tableNot })
     const tableUpdate = vi.fn().mockReturnValue({ eq: tableEq })
 
-    const paymentsInStatus = vi.fn().mockResolvedValue({
+    // Paid query: select('amount').eq(event_booking_id).in(charge_type).in(status)
+    const paidPaymentsStatusIn = vi.fn().mockResolvedValue({
       data: [{ id: 'pay-1', amount: 80, status: 'succeeded', charge_type: 'prepaid_event' }],
       error: null,
     })
-    const paymentsInChargeType = vi.fn().mockReturnValue({ in: paymentsInStatus })
-    const paymentsEq = vi.fn().mockReturnValue({ in: paymentsInChargeType })
+    const paidPaymentsChargeTypeIn = vi.fn().mockReturnValue({ in: paidPaymentsStatusIn })
+    // Refund query: select('amount').eq(event_booking_id).eq(charge_type).in(status)
+    const refundPaymentsStatusIn = vi.fn().mockResolvedValue({ data: [], error: null })
+    const refundPaymentsChargeTypeEq = vi.fn().mockReturnValue({ in: refundPaymentsStatusIn })
+    const paymentsEq = vi.fn().mockReturnValue({
+      in: paidPaymentsChargeTypeIn,
+      eq: refundPaymentsChargeTypeEq,
+    })
     const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
 
     mockedCreateAdminClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: [{ role_name: 'manager' }], error: null }),
       from: vi.fn((table: string) => {
         if (table === 'bookings') {
           return {
@@ -946,6 +1034,8 @@ describe('Event manual booking cancellation guards', () => {
     const result = await cancelEventManualBooking({
       bookingId,
       sendSms: false,
+      refundDecision: 'partial',
+      refundAmount: 40,
     })
 
     expect(result).toMatchObject({
@@ -962,10 +1052,11 @@ describe('Event manual booking cancellation guards', () => {
         customerId,
         eventId,
         amount: 40,
-        reason: 'staff_cancel_partial',
+        reason: 'staff_cancel_refund',
         metadata: expect.objectContaining({
-          amount_paid: 80,
-          seats: 2,
+          decision: 'partial',
+          // Cap derives from the £80 actually paid, not the £999 event price
+          max_refundable: 80,
         }),
       }),
     )

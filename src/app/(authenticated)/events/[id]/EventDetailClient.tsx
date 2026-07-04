@@ -15,7 +15,6 @@ import {
   ConfirmDialog,
   CustomerLink,
   toast,
-  Spinner,
 } from '@/ds'
 import { EmptyState } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -27,7 +26,6 @@ import type { EventCategory } from '@/types/event-categories'
 import {
   getEventById,
   getEventBookings,
-  createEventManualBooking,
   updateEventManualBookingSeats,
   cancelEventManualBooking,
   getEventBookingRefundInfo,
@@ -41,11 +39,14 @@ import {
 import { EventTicketTypesCard } from './EventTicketTypesCard'
 import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
-import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
+import { AddManualBookingForm } from './AddManualBookingForm'
+import { RefundBookingDialog } from './RefundBookingDialog'
+import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
+import { validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
-import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
+import { formatDateInLondon, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
 
@@ -189,17 +190,15 @@ export default function EventDetailClient({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
-  // Manual booking form state
-  const [newPhone, setNewPhone] = useState('')
-  const [newFirstName, setNewFirstName] = useState('')
-  const [newLastName, setNewLastName] = useState('')
-  const [newSeats, setNewSeats] = useState('')
-  const [newSeatingPreference, setNewSeatingPreference] = useState<'seated' | 'standing'>('seated')
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
-
   // Edit seats state
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null)
   const [editSeatsValue, setEditSeatsValue] = useState('')
+  const [editSeatsError, setEditSeatsError] = useState<string | null>(null)
+
+  // Row action dialogs
+  const [refundingBooking, setRefundingBooking] = useState<EventBookingRow | null>(null)
+  const [editNamesBooking, setEditNamesBooking] = useState<EventBookingRow | null>(null)
+  const [compBookingId, setCompBookingId] = useState<string | null>(null)
 
   // Cancel confirmation state
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null)
@@ -218,8 +217,10 @@ export default function EventDetailClient({
 
   /* ---- Derived data ---- */
 
+  // Expired payment holds are dead bookings too — counting them inflates the
+  // Overview tab count and "Active Bookings" card relative to totalSeats.
   const activeBookings = useMemo(
-    () => bookings.filter((b) => b.status !== 'cancelled' && b.is_reminder_only !== true),
+    () => bookings.filter((b) => b.status !== 'cancelled' && b.status !== 'expired' && b.is_reminder_only !== true),
     [bookings],
   )
 
@@ -268,53 +269,39 @@ export default function EventDetailClient({
     await refreshBookings()
   }, [event, refreshBookings])
 
-  /* ---- Manual booking ---- */
-
-  const handleCreateBooking = useCallback(() => {
-    if (!event || !newPhone.trim()) return
-    startTransition(async () => {
-      const result = await createEventManualBooking({
-        eventId: event.id,
-        phone: newPhone.trim(),
-        seats: Math.max(1, Math.min(20, Number(newSeats) || 1)),
-        seatingPreference: event.booking_mode === 'communal' ? newSeatingPreference : undefined,
-        firstName: newFirstName.trim() || undefined,
-        lastName: newLastName.trim() || undefined,
-      })
-      if ('error' in result) {
-        toast.error(result.error)
-      } else {
-        toast.success('Booking created successfully')
-        setNewPhone('')
-        setNewFirstName('')
-        setNewLastName('')
-        setNewSeats('')
-        setNewSeatingPreference('seated')
-        setSelectedCustomerId(null)
-        await refreshBookings()
-      }
-    })
-  }, [event, newPhone, newSeats, newSeatingPreference, newFirstName, newLastName, refreshBookings])
-
   /* ---- Edit seats ---- */
 
   const handleStartEditSeats = useCallback((booking: EventBookingRow) => {
     setEditingBookingId(booking.id)
     setEditSeatsValue(String(booking.seats ?? 1))
+    setEditSeatsError(null)
+  }, [])
+
+  const handleEditSeatsValueChange = useCallback((value: string) => {
+    setEditSeatsValue(value)
+    setEditSeatsError(null)
   }, [])
 
   const handleSaveSeats = useCallback(() => {
     if (!editingBookingId || !event) return
+    // Out-of-range input gets an inline error rather than being silently clamped.
+    const seatsCheck = validateSeatsInput(editSeatsValue)
+    if (seatsCheck.error || seatsCheck.seats === null) {
+      setEditSeatsError(seatsCheck.error ?? 'Enter the number of seats.')
+      return
+    }
+    const seatsToSave = seatsCheck.seats
     startTransition(async () => {
       const result = await updateEventManualBookingSeats({
         bookingId: editingBookingId,
-        seats: Math.max(1, Math.min(20, Number(editSeatsValue) || 1)),
+        seats: seatsToSave,
       })
       if ('error' in result) {
         toast.error(result.error)
       } else {
         toast.success('Seats updated')
         setEditingBookingId(null)
+        setEditSeatsError(null)
         await refreshBookings()
       }
     })
@@ -580,35 +567,24 @@ export default function EventDetailClient({
                 estimatedRevenue={estimatedRevenue}
                 totalPaidAmount={totalPaidAmount}
                 totalLinkClicks={totalLinkClicks}
-                selectedCustomerId={selectedCustomerId}
-                onCustomerSelect={(customer) => {
-                  if (customer) {
-                    setSelectedCustomerId(customer.id)
-                    setNewPhone(customer.mobile_number || '')
-                    setNewFirstName(customer.first_name || '')
-                    setNewLastName(customer.last_name || '')
-                  } else {
-                    setSelectedCustomerId(null)
-                    setNewPhone('')
-                    setNewFirstName('')
-                    setNewLastName('')
-                  }
-                }}
-                newPhone={newPhone}
-                onNewPhoneChange={setNewPhone}
-                newSeats={newSeats}
-                onNewSeatsChange={setNewSeats}
-                newSeatingPreference={newSeatingPreference}
-                onNewSeatingPreferenceChange={setNewSeatingPreference}
-                onCreateBooking={handleCreateBooking}
+                ticketTypes={initialTicketTypes}
+                basketEligible={showTicketTypesTab}
+                onBookingCreated={refreshBookings}
                 editingBookingId={editingBookingId}
                 editSeatsValue={editSeatsValue}
-                onEditSeatsValueChange={setEditSeatsValue}
+                editSeatsError={editSeatsError}
+                onEditSeatsValueChange={handleEditSeatsValueChange}
                 onStartEditSeats={handleStartEditSeats}
                 onSaveSeats={handleSaveSeats}
-                onCancelEdit={() => setEditingBookingId(null)}
+                onCancelEdit={() => {
+                  setEditingBookingId(null)
+                  setEditSeatsError(null)
+                }}
                 onCancelBooking={setCancellingBookingId}
                 onMarkPaid={handleMarkPaid}
+                onRequestComp={setCompBookingId}
+                onRefundBooking={setRefundingBooking}
+                onEditNames={setEditNamesBooking}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
                 transferEvents={transferEvents}
@@ -729,6 +705,37 @@ export default function EventDetailClient({
         }
         confirmLabel="Cancel Booking"
         tone="danger"
+        loading={cancelRefundLoading || isPending}
+      />
+
+      {/* Comp confirmation dialog */}
+      <ConfirmDialog
+        open={compBookingId !== null}
+        onClose={() => setCompBookingId(null)}
+        onConfirm={() => {
+          if (compBookingId) {
+            handleMarkPaid(compBookingId, 'comp')
+          }
+        }}
+        title="Comp Booking"
+        message="Mark this booking as complimentary? It will be confirmed with no payment taken."
+        confirmLabel="Comp Booking"
+        tone="warning"
+        loading={isPending}
+      />
+
+      {/* After-the-fact refund dialog */}
+      <RefundBookingDialog
+        booking={refundingBooking}
+        onClose={() => setRefundingBooking(null)}
+        onDone={refreshBookings}
+      />
+
+      {/* Edit attendee names modal */}
+      <EditAttendeeNamesModal
+        booking={editNamesBooking}
+        onClose={() => setEditNamesBooking(null)}
+        onSaved={refreshBookings}
       />
 
       {/* Delete event confirmation dialog */}
@@ -923,23 +930,21 @@ function AttendeesTab({
   estimatedRevenue,
   totalPaidAmount,
   totalLinkClicks,
-  selectedCustomerId,
-  onCustomerSelect,
-  newPhone,
-  onNewPhoneChange,
-  newSeats,
-  onNewSeatsChange,
-  newSeatingPreference,
-  onNewSeatingPreferenceChange,
-  onCreateBooking,
+  ticketTypes,
+  basketEligible,
+  onBookingCreated,
   editingBookingId,
   editSeatsValue,
+  editSeatsError,
   onEditSeatsValueChange,
   onStartEditSeats,
   onSaveSeats,
   onCancelEdit,
   onCancelBooking,
   onMarkPaid,
+  onRequestComp,
+  onRefundBooking,
+  onEditNames,
   transferringBookingId,
   transferTargetEventId,
   transferEvents,
@@ -960,23 +965,21 @@ function AttendeesTab({
   estimatedRevenue: number | null
   totalPaidAmount: number
   totalLinkClicks: number
-  selectedCustomerId: string | null
-  onCustomerSelect: (customer: { id: string; first_name: string; last_name: string | null; mobile_number: string | null; email: string | null } | null) => void
-  newPhone: string
-  onNewPhoneChange: (v: string) => void
-  newSeats: string
-  onNewSeatsChange: (v: string) => void
-  newSeatingPreference: 'seated' | 'standing'
-  onNewSeatingPreferenceChange: (v: 'seated' | 'standing') => void
-  onCreateBooking: () => void
+  ticketTypes: EventTicketTypeRow[]
+  basketEligible: boolean
+  onBookingCreated: () => Promise<void> | void
   editingBookingId: string | null
   editSeatsValue: string
+  editSeatsError: string | null
   onEditSeatsValueChange: (v: string) => void
   onStartEditSeats: (booking: EventBookingRow) => void
   onSaveSeats: () => void
   onCancelEdit: () => void
   onCancelBooking: (id: string) => void
   onMarkPaid: (id: string, method: 'cash' | 'card_terminal' | 'comp') => void
+  onRequestComp: (id: string) => void
+  onRefundBooking: (booking: EventBookingRow) => void
+  onEditNames: (booking: EventBookingRow) => void
   transferringBookingId: string | null
   transferTargetEventId: string
   transferEvents: Event[]
@@ -993,21 +996,24 @@ function AttendeesTab({
     () => visibleBookings.slice((attendeePage - 1) * pageSize, attendeePage * pageSize),
     [visibleBookings, attendeePage],
   )
-  const transferOptions = useMemo(
-    () => [
+  const transferOptions = useMemo(() => {
+    // Past events are never valid transfer targets (the RPC would bounce them
+    // with event_started anyway) — only offer today-or-future events.
+    const todayIso = getTodayIsoDate()
+    return [
       { value: '', label: 'Select event' },
       ...transferEvents
         .filter((candidate) => {
           if (candidate.id === event.id) return false
-          return !['cancelled', 'draft'].includes(String(candidate.event_status || ''))
+          if (['cancelled', 'draft'].includes(String(candidate.event_status || ''))) return false
+          return String(candidate.date || '') >= todayIso
         })
         .map((candidate) => ({
           value: candidate.id,
           label: `${candidate.name} · ${formatDateInLondon(candidate.date)}${candidate.time ? ` ${formatTime12Hour(candidate.time)}` : ''}`,
         })),
-    ],
-    [event.id, transferEvents],
-  )
+    ]
+  }, [event.id, transferEvents])
 
   useEffect(() => {
     setAttendeePage((current) => Math.min(current, totalAttendeePages))
@@ -1045,65 +1051,12 @@ function AttendeesTab({
 
       {/* Manual booking form */}
       {canManage && (
-        <Card>
-          <CardHeader title="Add Manual Booking" />
-          <CardBody>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">Customer</label>
-                <CustomerSearchInput
-                  onCustomerSelect={onCustomerSelect}
-                  selectedCustomerId={selectedCustomerId}
-                  placeholder="Search by name or phone..."
-                />
-              </div>
-              {!selectedCustomerId && (
-                <div>
-                  <label className="block text-xs font-medium text-text-muted mb-1">Or enter phone number for new customer</label>
-                  <Input
-                    value={newPhone}
-                    onChange={(e) => onNewPhoneChange(e.target.value)}
-                    placeholder="07700 900000"
-                  />
-                </div>
-              )}
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="w-24">
-                  <label className="block text-xs font-medium text-text-muted mb-1">Seats</label>
-                  <Input
-                    type="number"
-                    value={newSeats}
-                    onChange={(e) => onNewSeatsChange(e.target.value.replace(/\D/g, ''))}
-                    min={1}
-                    max={20}
-                    placeholder="1"
-                  />
-                </div>
-                {event.booking_mode === 'communal' && (
-                  <div>
-                    <label className="block text-xs font-medium text-text-muted mb-1">Ticket type</label>
-                    <select
-                      value={newSeatingPreference}
-                      onChange={(e) => onNewSeatingPreferenceChange(e.target.value === 'standing' ? 'standing' : 'seated')}
-                      className="h-10 rounded-md border border-border bg-surface px-3 text-sm"
-                    >
-                      <option value="seated">Seated</option>
-                      <option value="standing">Standing</option>
-                    </select>
-                  </div>
-                )}
-                <Button
-                  variant="primary"
-                  onClick={onCreateBooking}
-                  disabled={(!newPhone.trim() && !selectedCustomerId) || isPending}
-                  icon={isPending ? <Spinner className="h-4 w-4" /> : <Icon name="plus" size={14} />}
-                >
-                  Add Booking
-                </Button>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+        <AddManualBookingForm
+          event={event}
+          ticketTypes={ticketTypes}
+          basketEligible={basketEligible}
+          onCreated={onBookingCreated}
+        />
       )}
 
       {/* Bookings table */}
@@ -1197,21 +1150,27 @@ function AttendeesTab({
                         <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>
                           {isEditing ? (
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                value={editSeatsValue}
-                                onChange={(e) => onEditSeatsValueChange(e.target.value.replace(/\D/g, ''))}
-                                min={1}
-                                max={20}
-                                className="w-16"
-                              />
-                              <Button size="sm" variant="primary" onClick={onSaveSeats} disabled={isPending}>
-                                Save
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={onCancelEdit}>
-                                Cancel
-                              </Button>
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  inputMode="numeric"
+                                  value={editSeatsValue}
+                                  onChange={(e) => onEditSeatsValueChange(e.target.value.replace(/\D/g, ''))}
+                                  min={1}
+                                  max={20}
+                                  className="w-16"
+                                  aria-label="Seats"
+                                />
+                                <Button size="sm" variant="primary" onClick={onSaveSeats} disabled={isPending}>
+                                  Save
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={onCancelEdit}>
+                                  Cancel
+                                </Button>
+                              </div>
+                              {editSeatsError && (
+                                <p className="mt-1 text-xs text-danger" role="alert">{editSeatsError}</p>
+                              )}
                             </div>
                           ) : (
                             <>
@@ -1247,23 +1206,48 @@ function AttendeesTab({
                         </TableCell>
                         {canManage && (
                           <TableCell>
-                            {!isCancelled && !isEditing && (
-                              isTransferring ? (
-                                <div className="flex flex-wrap items-center gap-1">
-                                  <Select
-                                    value={transferTargetEventId}
-                                    onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
-                                    options={transferOptions}
-                                    className="w-44"
-                                  />
-                                  <Button size="sm" variant="primary" onClick={onConfirmTransfer} disabled={!transferTargetEventId.trim() || isPending}>
-                                    Transfer
+                            {(() => {
+                              // Paid (confirmed or cancelled) bookings can be refunded
+                              // after the fact — cancelling with "no refund" is no
+                              // longer a one-shot decision.
+                              const canShowRefund =
+                                booking.is_reminder_only !== true &&
+                                Number(booking.paid_amount ?? 0) > 0 &&
+                                (booking.status === 'confirmed' || booking.status === 'cancelled')
+
+                              if (isCancelled) {
+                                return canShowRefund ? (
+                                  <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
+                                    Refund…
                                   </Button>
-                                  <Button size="sm" variant="ghost" onClick={onCancelTransfer}>
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : (
+                                ) : null
+                              }
+
+                              if (isEditing) return null
+
+                              if (isTransferring) {
+                                return (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <Select
+                                      value={transferTargetEventId}
+                                      onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
+                                      options={transferOptions}
+                                      className="w-44"
+                                    />
+                                    <Button size="sm" variant="primary" onClick={onConfirmTransfer} disabled={!transferTargetEventId.trim() || isPending}>
+                                      Transfer
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={onCancelTransfer}>
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                )
+                              }
+
+                              const canEditNames =
+                                booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1
+
+                              return (
                                 <div className="flex flex-wrap items-center gap-1">
                                   {booking.status === 'pending_payment' && (
                                     <>
@@ -1273,7 +1257,7 @@ function AttendeesTab({
                                       <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'card_terminal')}>
                                         Card paid
                                       </Button>
-                                      <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'comp')}>
+                                      <Button size="sm" variant="ghost" onClick={() => onRequestComp(booking.id)}>
                                         Comp
                                       </Button>
                                     </>
@@ -1286,6 +1270,11 @@ function AttendeesTab({
                                   >
                                     Edit
                                   </Button>
+                                  {canEditNames && (
+                                    <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
+                                      Edit names
+                                    </Button>
+                                  )}
                                   {booking.status === 'confirmed' && (
                                     <Button
                                       size="sm"
@@ -1293,6 +1282,11 @@ function AttendeesTab({
                                       onClick={() => onStartTransfer(booking.id)}
                                     >
                                       Transfer
+                                    </Button>
+                                  )}
+                                  {canShowRefund && (
+                                    <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
+                                      Refund…
                                     </Button>
                                   )}
                                   <Button
@@ -1305,7 +1299,7 @@ function AttendeesTab({
                                   </Button>
                                 </div>
                               )
-                            )}
+                            })()}
                           </TableCell>
                         )}
                       </TableRow>

@@ -92,10 +92,9 @@ describe('guest event manage-booking cancellation route', () => {
     mocks.recordAnalyticsEvent.mockResolvedValue(undefined)
   })
 
-  it('redirects to cancelled after core cancellation even when refund and calendar side effects fail', async () => {
-    mocks.processEventRefund.mockRejectedValue(new Error('payments lookup failed'))
-    mocks.syncPubOpsEventCalendarByEventId.mockRejectedValue(new Error('calendar unavailable'))
-
+  // Guest self-cancel was deliberately removed from the manage-booking route:
+  // cancellations are staff-only so a manager can make the refund decision.
+  it('blocks guest cancel intent without running cancellation or refund side effects', async () => {
     const response = await POST(buildCancelRequest(), {
       params: Promise.resolve({ token: 'raw-token' }),
     })
@@ -104,12 +103,11 @@ describe('guest event manage-booking cancellation route', () => {
 
     const redirectUrl = new URL(response.headers.get('location') || '')
     expect(redirectUrl.pathname).toBe('/g/raw-token/manage-booking')
-    expect(redirectUrl.searchParams.get('state')).toBe('cancelled')
-    expect(redirectUrl.searchParams.get('refund_status')).toBe('manual_required')
-    expect(redirectUrl.searchParams.get('refund_amount')).toBe('50')
+    expect(redirectUrl.searchParams.get('state')).toBe('blocked')
+    expect(redirectUrl.searchParams.get('reason')).toBe('cancel_not_available')
 
-    expect(mocks.cancelEventBookingByRawToken).toHaveBeenCalled()
-    expect(mocks.processEventRefund).toHaveBeenCalled()
-    expect(mocks.syncPubOpsEventCalendarByEventId).toHaveBeenCalled()
+    expect(mocks.cancelEventBookingByRawToken).not.toHaveBeenCalled()
+    expect(mocks.processEventRefund).not.toHaveBeenCalled()
+    expect(mocks.syncPubOpsEventCalendarByEventId).not.toHaveBeenCalled()
   })
 })

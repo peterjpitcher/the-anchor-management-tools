@@ -40,17 +40,26 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
-import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { normalizeEventPricingFields, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import {
   eventTicketTypesEnabled,
   buildTicketBreakdownLines,
   formatTicketBreakdownCompact,
+  resolveBookingChargeAmount,
+  resolveDoorChargeAmount,
+  type BookingItemWithBasePrice,
+  type BookingItemWithTypeRow,
+  type TicketSelectionInput,
 } from '@/lib/events/ticket-types'
 import {
+  loadBookingItems,
   loadBookingItemsWithTypes,
+  loadBookingItemsWithBasePrices,
   getDefaultTicketTypeId,
   bookingItemsAreMultiType,
+  decideTicketSelectionHandling,
 } from '@/lib/events/ticket-type-queries'
+import { normalizeAttendeeNames, MAX_ATTENDEE_NAME_LENGTH } from '@/lib/events/attendee-names'
 import { jobQueue } from '@/lib/unified-job-queue'
 
 export type EventBookingRow = {
@@ -71,6 +80,8 @@ export type EventBookingRow = {
   payment_method_summary?: string | null
   /** Compact per-type summary (e.g. "1× Regular, 1× Non-Alcohol"); null for single-type bookings. */
   ticket_breakdown?: string | null
+  /** Sum of the booking's line items (post-discount snapshots); null when it has none. */
+  charge_total?: number | null
   customer?: {
     id: string
     first_name: string | null
@@ -685,7 +696,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('payments')
-      .select('event_booking_id, amount, status, payment_method, payment_provider')
+      .select('event_booking_id, amount, status, charge_type, payment_method, payment_provider')
       .in('event_booking_id', bookingIds)
 
     if (paymentsError) throw paymentsError
@@ -694,6 +705,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
       event_booking_id: string | null
       amount: number | null
       status: string | null
+      charge_type: string | null
       payment_method: string | null
       payment_provider: string | null
     }
@@ -706,36 +718,58 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
       paymentsByBooking.set(payment.event_booking_id, current)
     }
 
-    // Per-type breakdown (display-only) for genuinely multi-type bookings.
-    // One batched query for all bookings — never blocks the listing on failure.
+    // Per-type breakdown (display-only) for genuinely multi-type bookings, plus
+    // each booking's line-item charge total (feeds the revenue stat). One batched
+    // query for all bookings — never blocks the listing on failure.
     const breakdownByBooking = new Map<string, string>()
-    if (eventTicketTypesEnabled()) {
-      try {
-        const itemsByBooking = await loadBookingItemsWithTypes(supabase, bookingIds)
-        if (itemsByBooking.size > 0) {
-          const defaultTypeId = await getDefaultTicketTypeId(supabase, eventId)
-          for (const [bookingId, items] of itemsByBooking) {
-            if (!bookingItemsAreMultiType(items, defaultTypeId)) continue
-            breakdownByBooking.set(bookingId, formatTicketBreakdownCompact(buildTicketBreakdownLines(items)))
-          }
+    const chargeTotalByBooking = new Map<string, number>()
+    try {
+      const itemsByBooking = await loadBookingItemsWithTypes(supabase, bookingIds)
+      if (itemsByBooking.size > 0) {
+        const defaultTypeId = await getDefaultTicketTypeId(supabase, eventId)
+        const ticketTypesOn = eventTicketTypesEnabled()
+        for (const [bookingId, items] of itemsByBooking) {
+          chargeTotalByBooking.set(bookingId, resolveBookingChargeAmount(items))
+          if (!ticketTypesOn) continue
+          if (!bookingItemsAreMultiType(items, defaultTypeId)) continue
+          breakdownByBooking.set(bookingId, formatTicketBreakdownCompact(buildTicketBreakdownLines(items)))
         }
-      } catch (breakdownError) {
-        logger.warn('Failed to load ticket-type breakdown for event bookings', {
-          metadata: {
-            eventId,
-            error: breakdownError instanceof Error ? breakdownError.message : String(breakdownError),
-          },
-        })
       }
+    } catch (breakdownError) {
+      logger.warn('Failed to load ticket-type breakdown for event bookings', {
+        metadata: {
+          eventId,
+          error: breakdownError instanceof Error ? breakdownError.message : String(breakdownError),
+        },
+      })
     }
 
     const paidStatuses = new Set(['succeeded', 'paid', 'partially_refunded', 'refunded'])
+    const refundStatuses = new Set(['refunded', 'succeeded', 'pending'])
     const withPayments = bookings.map((booking) => {
       const payments = paymentsByBooking.get(booking.id) ?? []
-      const paidRows = payments.filter((payment) => paidStatuses.has(String(payment.status || '').toLowerCase()))
-      const paidAmount = paidRows.reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0)
-      const statuses = new Set(payments.map((payment) => String(payment.status || '').toLowerCase()).filter(Boolean))
-      const methods = new Set(payments.map((payment) => String(payment.payment_method || payment.payment_provider || '').toLowerCase()).filter(Boolean))
+      // Refund rows are money OUT — they must never be counted as paid.
+      const chargeRows = payments.filter((payment) => String(payment.charge_type || '').toLowerCase() !== 'refund')
+      const refundRows = payments.filter((payment) => String(payment.charge_type || '').toLowerCase() === 'refund')
+      const paidRows = chargeRows.filter((payment) => paidStatuses.has(String(payment.status || '').toLowerCase()))
+      const chargePaid = paidRows.reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0)
+      const refundedAmount = refundRows
+        .filter((payment) => refundStatuses.has(String(payment.status || '').toLowerCase()))
+        .reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0)
+      const paidAmount = Math.max(0, chargePaid - refundedAmount)
+      const statuses = new Set(chargeRows.map((payment) => String(payment.status || '').toLowerCase()).filter(Boolean))
+      // £0 comp confirmations (e.g. transfer credits) must not mask the method
+      // that actually paid for the booking.
+      const hasRealCharge = paidRows.some((payment) => Number(payment.amount || 0) > 0)
+      const methods = new Set(
+        chargeRows
+          .filter((payment) => {
+            const method = String(payment.payment_method || payment.payment_provider || '').toLowerCase()
+            return !(method === 'comp' && Number(payment.amount || 0) <= 0 && hasRealCharge)
+          })
+          .map((payment) => String(payment.payment_method || payment.payment_provider || '').toLowerCase())
+          .filter(Boolean)
+      )
       const paymentStatusSummary =
         statuses.has('refunded')
           ? 'Refunded'
@@ -763,6 +797,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
         payment_status_summary: paymentStatusSummary,
         payment_method_summary: paymentMethodSummary,
         ticket_breakdown: breakdownByBooking.get(booking.id) ?? null,
+        charge_total: chargeTotalByBooking.get(booking.id) ?? null,
       }
     })
 
@@ -783,7 +818,16 @@ const createEventManualBookingSchema = z.object({
   seats: z.number().int().min(1).max(20),
   seatingPreference: z.enum(['seated', 'standing']).optional(),
   firstName: z.string().trim().max(80).optional(),
-  lastName: z.string().trim().max(80).optional()
+  lastName: z.string().trim().max(80).optional(),
+  // Optional per-seat names (index 0 = lead booker). When provided the count
+  // must equal seats — enforced below via normalizeAttendeeNames.
+  attendeeNames: z.array(z.string().trim().min(1).max(MAX_ATTENDEE_NAME_LENGTH)).max(20).optional(),
+  // Optional multi-ticket-type basket (staff parity with the website).
+  // Quantities must sum to seats — enforced below.
+  ticketSelections: z.array(z.object({
+    ticketTypeId: z.string().uuid(),
+    quantity: z.number().int().min(1).max(20)
+  })).min(1).max(20).optional()
 })
 
 type EventManualBookingResult =
@@ -815,6 +859,8 @@ export async function createEventManualBooking(input: {
   defaultCountryCode?: string
   firstName?: string
   lastName?: string
+  attendeeNames?: string[]
+  ticketSelections?: Array<{ ticketTypeId: string; quantity: number }>
 }): Promise<EventManualBookingResult> {
   try {
     // ── Admin-specific pre-checks ────────────────────────────────────────────
@@ -887,6 +933,58 @@ export async function createEventManualBooking(input: {
       }
     }
 
+    // ── Optional per-seat names + multi-ticket-type basket ──────────────────
+    // Staff parity with the website booking path: the service already accepts
+    // both, this action just validates and maps them through.
+    let attendeeNames: string[] | undefined
+    if (parsed.data.attendeeNames && parsed.data.attendeeNames.length > 0) {
+      const namesResult = normalizeAttendeeNames(parsed.data.attendeeNames, parsed.data.seats)
+      if (!namesResult.ok) {
+        return { error: namesResult.error }
+      }
+      attendeeNames = namesResult.names.length > 0 ? namesResult.names : undefined
+    }
+
+    let ticketSelections: TicketSelectionInput[] | undefined
+    if (parsed.data.ticketSelections && parsed.data.ticketSelections.length > 0) {
+      const selectionSeatTotal = parsed.data.ticketSelections.reduce((sum, line) => sum + line.quantity, 0)
+      if (selectionSeatTotal !== parsed.data.seats) {
+        return { error: `Ticket quantities (${selectionSeatTotal}) must match the total seats (${parsed.data.seats}).` }
+      }
+
+      let defaultTypeId: string | null = null
+      try {
+        defaultTypeId = await getDefaultTicketTypeId(supabase, parsed.data.eventId)
+      } catch {
+        return { error: 'Failed to load event ticket types.' }
+      }
+
+      // Distribute the flat per-seat names across the basket lines in order so
+      // the v07 RPC stores per-line names and the aggregate list stays intact.
+      let nameCursor = 0
+      const mappedSelections: TicketSelectionInput[] = parsed.data.ticketSelections.map((line) => {
+        const lineNames = attendeeNames ? attendeeNames.slice(nameCursor, nameCursor + line.quantity) : []
+        nameCursor += line.quantity
+        return {
+          ticket_type_id: line.ticketTypeId,
+          quantity: line.quantity,
+          ...(lineNames.length === line.quantity ? { attendee_names: lineNames } : {})
+        }
+      })
+
+      const decision = decideTicketSelectionHandling({
+        selections: mappedSelections,
+        flagEnabled: eventTicketTypesEnabled(),
+        defaultTypeId
+      })
+      if (decision.kind === 'reject') {
+        return { error: decision.error }
+      }
+      if (decision.kind === 'apply') {
+        ticketSelections = mappedSelections
+      }
+    }
+
     // ── Delegate to shared service ───────────────────────────────────────────
     const result = await EventBookingService.createBooking({
       eventId: parsed.data.eventId,
@@ -900,7 +998,9 @@ export async function createEventManualBooking(input: {
       shouldSendSms: true,
       supabaseClient: supabase,
       logTag: 'admin event booking',
-      firstName: customerResolution.resolvedFirstName || parsed.data.firstName
+      firstName: customerResolution.resolvedFirstName || parsed.data.firstName,
+      attendeeNames,
+      ticketSelections
     })
 
     // ── Handle the result ────────────────────────────────────────────────────
@@ -955,7 +1055,12 @@ export async function createEventManualBooking(input: {
           seats: parsed.data.seats,
           event_seating_type: eventSeatingType,
           state: resolvedState,
-          source: 'admin'
+          source: 'admin',
+          attendee_names_provided: (attendeeNames?.length ?? 0) > 0,
+          ticket_selections: ticketSelections?.map((line) => ({
+            ticket_type_id: line.ticket_type_id,
+            quantity: line.quantity
+          })) ?? null
         }
       })
     }
@@ -1017,6 +1122,8 @@ type CancelEventManualBookingResult =
       sms_sent: boolean
       refund_status: EventRefundResult['status']
       refund_amount: number
+      /** Set when the booking was cancelled but a follow-up update failed. */
+      warning?: string | null
     }
     meta?: {
       sms: SmsSafetyMeta
@@ -1131,12 +1238,50 @@ export async function updateEventManualBookingSeats(input: {
     const supabase = createAdminClient()
 
     const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
-      .select('id, event_id')
+      .select('id, event_id, customer_id, status, seats, is_reminder_only, attendee_names, event:events(id, payment_mode)')
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
 
     if (bookingError || !bookingRow?.id) {
       return { error: 'Booking not found.' }
+    }
+
+    // Paid (prepaid + confirmed) bookings must not change size without money
+    // moving — route staff to the refund/charge flows instead.
+    const seatEditEventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
+    const isPrepaidConfirmedBooking =
+      bookingRow.status === 'confirmed' &&
+      bookingRow.is_reminder_only !== true &&
+      (seatEditEventRecord as { payment_mode?: string | null } | null)?.payment_mode === 'prepaid'
+
+    if (isPrepaidConfirmedBooking) {
+      return {
+        error:
+          'This booking has already been paid, so the seat count cannot be changed here. Cancel it with a refund to reduce seats, or take a payment for the extra seats instead.'
+      }
+    }
+
+    // Multi-type bookings: the overall seat count is derived from the ticket
+    // lines, and the default-item sync deliberately leaves them alone — editing
+    // seats here would desync line items, charge and door lists.
+    try {
+      const bookingItems = await loadBookingItems(supabase, parsed.data.bookingId)
+      if (bookingItems.length > 0 && bookingRow.event_id) {
+        const defaultTypeId = await getDefaultTicketTypeId(supabase, bookingRow.event_id)
+        if (bookingItemsAreMultiType(bookingItems, defaultTypeId)) {
+          return {
+            error:
+              'This booking has multiple ticket options, so the overall seat count cannot be edited. Edit the ticket lines instead.'
+          }
+        }
+      }
+    } catch (itemsError) {
+      logger.warn('Failed to check booking items before staff seat update', {
+        metadata: {
+          bookingId: parsed.data.bookingId,
+          error: itemsError instanceof Error ? itemsError.message : String(itemsError),
+        },
+      })
     }
 
     const updateResult = await updateEventBookingSeatsById(supabase, {
@@ -1167,6 +1312,54 @@ export async function updateEventManualBookingSeats(input: {
     const oldSeats = Math.max(1, Number(updateResult.old_seats ?? parsed.data.seats))
     const newSeats = Math.max(1, Number(updateResult.new_seats ?? parsed.data.seats))
     const delta = Number(updateResult.delta ?? (newSeats - oldSeats))
+
+    // Keep the attendee-name list no longer than the booking — a stale longer
+    // list would put ghosts on door lists and confirmation emails.
+    const existingAttendeeNames = Array.isArray(bookingRow.attendee_names)
+      ? (bookingRow.attendee_names as string[])
+      : null
+    if (
+      updateResult.state === 'updated' &&
+      existingAttendeeNames &&
+      existingAttendeeNames.length > newSeats
+    ) {
+      const { error: attendeeTrimError } = await supabase.from('bookings')
+        .update({
+          attendee_names: existingAttendeeNames.slice(0, newSeats),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', updateResult.booking_id)
+
+      if (attendeeTrimError) {
+        logger.warn('Failed to trim attendee names after staff seat update', {
+          metadata: {
+            bookingId: updateResult.booking_id,
+            error: attendeeTrimError.message,
+          },
+        })
+      }
+    }
+
+    if (updateResult.state === 'updated' && delta !== 0) {
+      const authSupabase = await createClient()
+      const { data: { user: actingUser } } = await authSupabase.auth.getUser()
+      await logAuditEvent({
+        user_id: actingUser?.id,
+        user_email: actingUser?.email ?? undefined,
+        operation_type: 'update',
+        resource_type: 'event_booking',
+        resource_id: updateResult.booking_id,
+        operation_status: 'success',
+        additional_info: {
+          action: 'update_seats',
+          event_id: bookingRow.event_id,
+          customer_id: bookingRow.customer_id,
+          old_seats: oldSeats,
+          new_seats: newSeats,
+          delta
+        }
+      })
+    }
 
     const tableSyncPromise = supabase.from('table_bookings')
       .update({
@@ -1333,6 +1526,116 @@ export async function updateEventManualBookingSeats(input: {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to update booking seats.') }
+  }
+}
+
+const updateEventBookingAttendeeNamesSchema = z.object({
+  bookingId: z.string().uuid(),
+  attendeeNames: z.array(z.string().trim().max(MAX_ATTENDEE_NAME_LENGTH)).max(50)
+})
+
+type UpdateEventBookingAttendeeNamesResult =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        booking_id: string
+        attendee_names: string[]
+      }
+    }
+
+/**
+ * Staff edit of a booking's per-ticket attendee names (aggregate list on
+ * `bookings.attendee_names`, index 0 = lead booker). Blank entries are dropped;
+ * the stored list can never be longer than the booking's seats.
+ */
+export async function updateEventBookingAttendeeNames(input: {
+  bookingId: string
+  attendeeNames: string[]
+}): Promise<UpdateEventBookingAttendeeNamesResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to edit event bookings.' }
+    }
+
+    const parsed = updateEventBookingAttendeeNamesSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid attendee names.' }
+    }
+
+    const names = parsed.data.attendeeNames
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0)
+
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
+      .select('id, event_id, seats, status, is_reminder_only, attendee_names')
+      .eq('id', parsed.data.bookingId)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+
+    if (bookingRow.is_reminder_only === true) {
+      return { error: 'Reminder-only entries have no tickets to name.' }
+    }
+
+    const seats = Math.max(0, Number(bookingRow.seats) || 0)
+    if (names.length > seats) {
+      return { error: `This booking has ${seats} seat${seats === 1 ? '' : 's'}, so you can enter at most ${seats} name${seats === 1 ? '' : 's'}.` }
+    }
+
+    const previousNames = Array.isArray(bookingRow.attendee_names)
+      ? (bookingRow.attendee_names as string[]).filter((name) => typeof name === 'string' && name.trim().length > 0)
+      : []
+
+    const { error: updateError } = await supabase.from('bookings')
+      .update({ attendee_names: names })
+      .eq('id', bookingRow.id)
+
+    if (updateError) {
+      logger.error('Failed to update event booking attendee names', {
+        error: new Error(updateError.message || 'Failed to update attendee names'),
+        metadata: { bookingId: bookingRow.id }
+      })
+      return { error: 'Failed to update attendee names.' }
+    }
+
+    const authSupabase = await createClient()
+    const { data: { user } } = await authSupabase.auth.getUser()
+    await logAuditEvent({
+      user_id: user?.id ?? undefined,
+      operation_type: 'update',
+      resource_type: 'event_booking',
+      resource_id: bookingRow.id,
+      operation_status: 'success',
+      additional_info: {
+        event_id: bookingRow.event_id,
+        field: 'attendee_names',
+        old_count: previousNames.length,
+        new_count: names.length,
+        seats
+      }
+    })
+
+    if (bookingRow.event_id) {
+      revalidatePath(`/events/${bookingRow.event_id}`)
+    }
+
+    return {
+      success: true,
+      data: {
+        booking_id: bookingRow.id,
+        attendee_names: names
+      }
+    }
+  } catch (error) {
+    logger.error('Unexpected updateEventBookingAttendeeNames error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to update attendee names.') }
   }
 }
 
@@ -1608,6 +1911,10 @@ export async function cancelEventManualBooking(input: {
       })
     }
 
+    // The booking is already cancelled at this point, so follow-up failures must
+    // NOT abort the flow — the manager's refund decision, customer notifications
+    // and the audit trail still have to happen. Surface a warning instead.
+    let followupWarning: string | null = null
     if (followupFailures.length > 0) {
       logger.warn('Event booking cancellation follow-up updates failed', {
         metadata: {
@@ -1622,30 +1929,14 @@ export async function cancelEventManualBooking(input: {
         }
       })
 
-      if (
-        followupFailures.length === 1 &&
-        followupFailures[0] === 'booking_holds_release'
-      ) {
-        return {
-          error:
-            'Booking cancelled but failed to release booking holds. Please refresh and contact engineering.'
-        }
+      const warningParts: string[] = []
+      if (followupFailureSet.has('booking_holds_release')) {
+        warningParts.push('booking holds could not be released')
       }
-
-      if (
-        followupFailures.length === 1 &&
-        followupFailures[0] === 'table_bookings_cancel'
-      ) {
-        return {
-          error:
-            'Booking cancelled but failed to cancel linked table bookings. Please refresh and contact engineering.'
-        }
+      if (followupFailureSet.has('table_bookings_cancel')) {
+        warningParts.push('linked table bookings could not be cancelled')
       }
-
-      return {
-        error:
-          'Booking cancelled but follow-up updates failed. Please refresh and contact engineering.'
-      }
+      followupWarning = `Booking cancelled, but ${warningParts.join(' and ')}. Please refresh and contact engineering if this persists.`
     }
 
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
@@ -1769,7 +2060,8 @@ export async function cancelEventManualBooking(input: {
         refund_decision: refundDecision,
         refund_status: refundStatus,
         refund_amount: refundAmount,
-        max_refundable: maxRefundable
+        max_refundable: maxRefundable,
+        followup_failures: followupFailures.length > 0 ? followupFailures : undefined
       }
     })
 
@@ -1807,7 +2099,8 @@ export async function cancelEventManualBooking(input: {
         booking_id: bookingRow.id,
         sms_sent: smsSent,
         refund_status: refundStatus,
-        refund_amount: refundAmount
+        refund_amount: refundAmount,
+        warning: followupWarning
       },
       meta: {
         sms: smsMeta,
@@ -1893,6 +2186,161 @@ export async function getEventBookingRefundInfo(bookingId: string): Promise<Even
   }
 }
 
+const refundEventBookingManualSchema = z.object({
+  bookingId: z.string().uuid(),
+  // Omitted → refund everything still refundable.
+  amount: z.number().min(0.01).max(100000).optional(),
+  reason: z.string().trim().max(200).optional()
+})
+
+type RefundEventBookingManualResult =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        booking_id: string
+        refund_status: EventRefundResult['status']
+        refund_amount: number
+        max_refundable: number
+      }
+    }
+
+/**
+ * After-the-fact refund for an event booking (cancelled OR still-confirmed paid
+ * bookings). Managers only — reuses the cancel flow's refund machinery with a
+ * stable idempotency key so retries never double-refund.
+ */
+export async function refundEventBookingManual(input: {
+  bookingId: string
+  amount?: number
+  reason?: string
+}): Promise<RefundEventBookingManualResult> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to refund event bookings.' }
+    }
+
+    const parsed = refundEventBookingManualSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid refund details.' }
+    }
+
+    const supabase = createAdminClient()
+    const { userId: actingUserId, email: actingUserEmail, mayRefund } = await resolveEventRefundActor(supabase)
+    if (!mayRefund) {
+      return { error: 'Only a manager can issue refunds.' }
+    }
+
+    const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
+      .select('id, event_id, customer_id, status, is_reminder_only')
+      .eq('id', parsed.data.bookingId)
+      .maybeSingle()
+
+    if (bookingError || !bookingRow) {
+      return { error: 'Booking not found.' }
+    }
+
+    if (bookingRow.is_reminder_only === true) {
+      return { error: 'Reminder-only entries have no payments to refund.' }
+    }
+
+    const bookingStatus = typeof bookingRow.status === 'string' ? bookingRow.status : null
+    if (bookingStatus !== 'confirmed' && bookingStatus !== 'cancelled') {
+      return { error: 'Only paid or cancelled bookings can be refunded.' }
+    }
+
+    if (!bookingRow.customer_id || !bookingRow.event_id) {
+      return { error: 'This booking is missing customer or event details, so it cannot be refunded here.' }
+    }
+
+    const { maxRefundable } = await computeEventBookingRefundable(supabase, bookingRow.id)
+    if (maxRefundable <= 0) {
+      return { error: 'There is nothing left to refund on this booking.' }
+    }
+
+    let resolvedAmount = maxRefundable
+    if (typeof parsed.data.amount === 'number') {
+      const requested = toMoney(Math.max(0, parsed.data.amount))
+      if (requested <= 0) {
+        return { error: 'Enter a refund amount greater than zero.' }
+      }
+      if (requested > maxRefundable) {
+        return { error: `Refund cannot exceed the amount paid (£${maxRefundable.toFixed(2)}).` }
+      }
+      resolvedAmount = requested
+    }
+
+    let refundResult: EventRefundResult
+    try {
+      refundResult = await processEventRefund(supabase, {
+        bookingId: bookingRow.id,
+        customerId: bookingRow.customer_id,
+        eventId: bookingRow.event_id,
+        amount: resolvedAmount,
+        reason: 'staff_manual_refund',
+        metadata: {
+          idempotency_key: `staff-manual-refund:${bookingRow.id}`,
+          initiated_by: actingUserId,
+          note: parsed.data.reason || null,
+          max_refundable: maxRefundable
+        }
+      })
+    } catch (refundError) {
+      logger.error('Failed to process manual event refund', {
+        error: refundError instanceof Error ? refundError : new Error(String(refundError)),
+        metadata: {
+          bookingId: bookingRow.id,
+          customerId: bookingRow.customer_id,
+          eventId: bookingRow.event_id,
+          refundAmount: resolvedAmount
+        }
+      })
+      return { error: 'The refund could not be processed. Please try again, or handle it in PayPal.' }
+    }
+
+    await logAuditEvent({
+      user_id: actingUserId ?? undefined,
+      user_email: actingUserEmail ?? undefined,
+      operation_type: 'refund_event_booking',
+      resource_type: 'event_booking',
+      resource_id: bookingRow.id,
+      operation_status: 'success',
+      additional_info: {
+        event_id: bookingRow.event_id,
+        customer_id: bookingRow.customer_id,
+        booking_status: bookingStatus,
+        requested_amount: resolvedAmount,
+        refund_status: refundResult.status,
+        refund_amount: refundResult.amount,
+        max_refundable: maxRefundable,
+        reason: parsed.data.reason || null
+      }
+    })
+
+    if (bookingRow.event_id) {
+      revalidatePath(`/events/${bookingRow.event_id}`)
+    }
+    revalidatePath('/events')
+    revalidateTag('dashboard')
+
+    return {
+      success: true,
+      data: {
+        booking_id: bookingRow.id,
+        refund_status: refundResult.status,
+        refund_amount: refundResult.amount,
+        max_refundable: maxRefundable
+      }
+    }
+  } catch (error) {
+    logger.error('Unexpected refundEventBookingManual error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to refund booking.') }
+  }
+}
+
 const markEventBookingPaidSchema = z.object({
   bookingId: z.string().uuid(),
   method: z.enum(['cash', 'card_terminal', 'comp']),
@@ -1954,9 +2402,30 @@ export async function markEventBookingPaidManually(input: {
 
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seatCount = Math.max(1, Number(bookingRow.seats || 1))
+
+    // Door payments charge the booking's real composition at FULL per-type price
+    // — the online discount never applies at the venue. Legacy bookings without
+    // line items fall back to the event's full ticket price × seats.
+    let doorItems: BookingItemWithBasePrice[] = []
+    if (parsed.data.method !== 'comp') {
+      try {
+        doorItems = await loadBookingItemsWithBasePrices(supabase, parsed.data.bookingId)
+      } catch (itemsError) {
+        logger.warn('Failed to load booking items for door charge; falling back to event price', {
+          metadata: {
+            bookingId: parsed.data.bookingId,
+            error: itemsError instanceof Error ? itemsError.message : String(itemsError),
+          },
+        })
+      }
+    }
     const expectedAmount = parsed.data.method === 'comp'
       ? 0
-      : toMoney(resolveEventPriceAmount(eventRecord as unknown as Event) * seatCount)
+      : resolveDoorChargeAmount({
+        items: doorItems,
+        eventFullUnitPrice: resolveEventTicketPriceAmount(eventRecord as unknown as Event),
+        seats: seatCount
+      })
 
     const { data: confirmRaw, error: confirmError } = await supabase.rpc(
       'confirm_event_manual_payment_v01',
@@ -2084,6 +2553,8 @@ async function sendEventTransferSms(input: {
   toEventName: string
   eventStartIso?: string | null
   appBaseUrl?: string
+  /** Amount the customer overpaid vs the new event; mentioned calmly when > 0. */
+  overpayment?: number
 }): Promise<RequiredSmsSafetyMeta> {
   const { data: customer, error: customerError } = await input.supabase
     .from('customers')
@@ -2109,8 +2580,12 @@ async function sendEventTransferSms(input: {
   }
 
   const firstName = getSmartFirstName(customer.first_name)
+  const overpaymentPart =
+    typeof input.overpayment === 'number' && input.overpayment > 0
+      ? ` We owe you £${input.overpayment.toFixed(2)} — we'll be in touch about your refund.`
+      : ''
   const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, your tickets have been transferred from ${input.fromEventName} to ${input.toEventName}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    `The Anchor: Hi ${firstName}, your tickets have been transferred from ${input.fromEventName} to ${input.toEventName}.${overpaymentPart}${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
     process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   )
 
@@ -2135,6 +2610,78 @@ async function sendEventTransferSms(input: {
     })
     return { success: false, code: 'unexpected_exception', logFailure: false }
   }
+}
+
+/**
+ * Copy a multi-type booking's ticket-line composition onto its transfer
+ * replacement by matching ticket-type names on the target event. Preserves the
+ * original unit-price snapshots (they are what the customer actually paid) and
+ * per-line attendee names. Best-effort: when the target has no matching types,
+ * the replacement keeps its default line and we report `copied: false`.
+ */
+async function copyTransferComposition(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: {
+    originalItems: BookingItemWithTypeRow[]
+    newBookingId: string
+    targetEventId: string
+  }
+): Promise<{ copied: boolean; reason: string | null }> {
+  if (input.originalItems.length === 0) {
+    return { copied: false, reason: 'no_original_items' }
+  }
+
+  const { data: targetTypes, error: targetTypesError } = await supabase
+    .from('event_ticket_types')
+    .select('id, name')
+    .eq('event_id', input.targetEventId)
+    .eq('is_active', true)
+
+  if (targetTypesError) {
+    return { copied: false, reason: targetTypesError.message || 'target_types_unavailable' }
+  }
+
+  const typeIdByName = new Map(
+    ((targetTypes ?? []) as Array<{ id: string; name: string | null }>)
+      .filter((row) => typeof row.name === 'string' && row.name.trim())
+      .map((row) => [String(row.name).trim().toLowerCase(), row.id])
+  )
+
+  const mappedLines = input.originalItems.map((item) => ({
+    targetTypeId: typeIdByName.get(item.ticket_type_name.trim().toLowerCase()) ?? null,
+    quantity: Math.max(1, Number(item.quantity) || 1),
+    unitPrice: Number.isFinite(Number(item.unit_price)) ? Number(item.unit_price) : 0,
+    attendeeNames: item.attendee_names ?? null
+  }))
+
+  if (mappedLines.some((line) => !line.targetTypeId)) {
+    return { copied: false, reason: 'ticket_types_not_matched_on_target' }
+  }
+
+  const { error: deleteError } = await supabase
+    .from('booking_items')
+    .delete()
+    .eq('booking_id', input.newBookingId)
+
+  if (deleteError) {
+    return { copied: false, reason: deleteError.message || 'existing_items_delete_failed' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('booking_items')
+    .insert(mappedLines.map((line) => ({
+      booking_id: input.newBookingId,
+      ticket_type_id: line.targetTypeId,
+      quantity: line.quantity,
+      unit_price: line.unitPrice,
+      attendee_names: line.attendeeNames
+    })))
+
+  if (insertError) {
+    return { copied: false, reason: insertError.message || 'items_insert_failed' }
+  }
+
+  return { copied: true, reason: null }
 }
 
 const transferEventBookingSchema = z.object({
@@ -2193,6 +2740,7 @@ export async function transferEventBooking(input: {
         seats,
         status,
         event_seating_type,
+        attendee_names,
         customer:customers(id, first_name, mobile_number, sms_status),
         event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free)
       `)
@@ -2269,6 +2817,29 @@ export async function transferEventBooking(input: {
     const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
     const fromEvent = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seats = Math.max(1, Number(bookingRow.seats || 1))
+    const originalAttendeeNames = Array.isArray(bookingRow.attendee_names)
+      ? (bookingRow.attendee_names as string[]).filter((name) => typeof name === 'string' && name.trim())
+      : []
+
+    // Snapshot the original ticket-line composition so per-type door lists and
+    // name lists survive the transfer (best-effort — see copyTransferComposition).
+    let originalItems: BookingItemWithTypeRow[] = []
+    let originalItemsMultiType = false
+    try {
+      const itemsMap = await loadBookingItemsWithTypes(supabase, [parsed.data.bookingId])
+      originalItems = itemsMap.get(parsed.data.bookingId) ?? []
+      if (originalItems.length > 0 && bookingRow.event_id) {
+        const originalDefaultTypeId = await getDefaultTicketTypeId(supabase, bookingRow.event_id)
+        originalItemsMultiType = bookingItemsAreMultiType(originalItems, originalDefaultTypeId)
+      }
+    } catch (itemsError) {
+      logger.warn('Failed to load original booking items for transfer', {
+        metadata: {
+          bookingId: parsed.data.bookingId,
+          error: itemsError instanceof Error ? itemsError.message : String(itemsError),
+        },
+      })
+    }
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('payments')
@@ -2283,6 +2854,9 @@ export async function transferEventBooking(input: {
 
     const paidTotal = (paymentRows || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
     const targetAmount = toMoney(resolveEventPriceAmount(targetEvent as unknown as Event) * seats)
+    // Money the customer has paid beyond what the new event costs — owed back.
+    const targetChargeable = targetEvent.payment_mode === 'prepaid' ? targetAmount : 0
+    const overpayment = toMoney(Math.max(0, paidTotal - targetChargeable))
 
     if (targetEvent.payment_mode === 'prepaid' && paidTotal + 0.004 < targetAmount) {
       return {
@@ -2362,19 +2936,75 @@ export async function transferEventBooking(input: {
       }
     }
 
+    // Carry the composition + attendee names over to the replacement booking so
+    // door lists and per-type breakdowns stay correct.
+    let compositionCopied: boolean | null = null
+    let compositionCopyReason: string | null = null
+    if (originalItemsMultiType) {
+      const copyResult = await copyTransferComposition(supabase, {
+        originalItems,
+        newBookingId: createResult.bookingId,
+        targetEventId: parsed.data.targetEventId
+      })
+      compositionCopied = copyResult.copied
+      compositionCopyReason = copyResult.reason
+      if (!copyResult.copied) {
+        logger.warn('Transfer could not copy ticket-line composition to the new booking', {
+          metadata: {
+            bookingId: parsed.data.bookingId,
+            newBookingId: createResult.bookingId,
+            reason: copyResult.reason,
+          },
+        })
+      }
+    }
+
+    if (originalAttendeeNames.length > 0) {
+      const { error: attendeeCopyError } = await supabase
+        .from('bookings')
+        .update({ attendee_names: originalAttendeeNames })
+        .eq('id', createResult.bookingId)
+
+      if (attendeeCopyError) {
+        logger.warn('Transfer could not copy attendee names to the new booking', {
+          metadata: {
+            bookingId: parsed.data.bookingId,
+            newBookingId: createResult.bookingId,
+            error: attendeeCopyError.message,
+          },
+        })
+      }
+    }
+
     const nowIso = new Date().toISOString()
 
-    const { error: movePaymentsError } = await supabase
+    // Capture exactly which payment rows are moved so a failed step can move
+    // them back — without touching rows created on the new booking (e.g. the £0
+    // comp confirmation above).
+    const { data: paymentsToMove, error: paymentsToMoveError } = await supabase
       .from('payments')
-      .update({
-        event_booking_id: createResult.bookingId,
-        updated_at: nowIso
-      })
+      .select('id')
       .eq('event_booking_id', parsed.data.bookingId)
       .in('charge_type', ['prepaid_event', 'seat_increase', 'refund'])
 
-    if (movePaymentsError) {
-      throw movePaymentsError
+    if (paymentsToMoveError) {
+      throw paymentsToMoveError
+    }
+
+    const movedPaymentIds = ((paymentsToMove ?? []) as Array<{ id: string }>).map((row) => row.id)
+
+    if (movedPaymentIds.length > 0) {
+      const { error: movePaymentsError } = await supabase
+        .from('payments')
+        .update({
+          event_booking_id: createResult.bookingId,
+          updated_at: nowIso
+        })
+        .in('id', movedPaymentIds)
+
+      if (movePaymentsError) {
+        throw movePaymentsError
+      }
     }
 
     const { error: cancelOriginalError } = await supabase
@@ -2388,7 +3018,84 @@ export async function transferEventBooking(input: {
       .eq('id', parsed.data.bookingId)
 
     if (cancelOriginalError) {
-      throw cancelOriginalError
+      // Compensate: put the payments back on the original and withdraw the
+      // replacement so the customer never holds two live bookings.
+      logger.error('Transfer failed to cancel the original booking; compensating', {
+        error: new Error(cancelOriginalError.message || 'cancel_original_failed'),
+        metadata: {
+          bookingId: parsed.data.bookingId,
+          newBookingId: createResult.bookingId,
+        },
+      })
+
+      const compensationErrors: string[] = []
+
+      if (movedPaymentIds.length > 0) {
+        const { error: restorePaymentsError } = await supabase
+          .from('payments')
+          .update({
+            event_booking_id: parsed.data.bookingId,
+            updated_at: new Date().toISOString()
+          })
+          .in('id', movedPaymentIds)
+
+        if (restorePaymentsError) {
+          compensationErrors.push(`restore_payments: ${restorePaymentsError.message}`)
+        }
+      }
+
+      const [revertNewBookingResult, releaseNewHoldsResult, cancelNewTablesResult] = await Promise.all([
+        supabase.from('bookings')
+          .update({
+            status: 'cancelled',
+            cancelled_at: nowIso,
+            cancelled_by: 'system',
+            updated_at: nowIso
+          })
+          .eq('id', createResult.bookingId),
+        supabase.from('booking_holds')
+          .update({ status: 'released', released_at: nowIso, updated_at: nowIso })
+          .eq('event_booking_id', createResult.bookingId)
+          .eq('status', 'active'),
+        supabase.from('table_bookings')
+          .update({
+            status: 'cancelled',
+            cancellation_reason: 'event_booking_transfer_reverted',
+            cancelled_at: nowIso,
+            updated_at: nowIso
+          })
+          .eq('event_booking_id', createResult.bookingId)
+          .not('status', 'in', '(cancelled,no_show)')
+      ])
+
+      if (revertNewBookingResult.error) {
+        compensationErrors.push(`revert_new_booking: ${revertNewBookingResult.error.message}`)
+      }
+      if (releaseNewHoldsResult.error) {
+        compensationErrors.push(`release_new_holds: ${releaseNewHoldsResult.error.message}`)
+      }
+      if (cancelNewTablesResult.error) {
+        compensationErrors.push(`cancel_new_tables: ${cancelNewTablesResult.error.message}`)
+      }
+
+      if (compensationErrors.length > 0) {
+        logger.error('Transfer compensation incomplete', {
+          metadata: {
+            bookingId: parsed.data.bookingId,
+            newBookingId: createResult.bookingId,
+            compensationErrors,
+          },
+        })
+        return {
+          error:
+            'The transfer failed part-way and could not be fully reverted. Please contact engineering before retrying.'
+        }
+      }
+
+      return {
+        error:
+          'The original booking could not be cancelled, so the transfer was reverted. Nothing has changed — please try again.'
+      }
     }
 
     const [releaseHoldsResult, cancelTablesResult] = await Promise.all([
@@ -2426,7 +3133,11 @@ export async function transferEventBooking(input: {
         metadata: {
           seats,
           paid_total: paidTotal,
-          target_amount: targetAmount
+          target_amount: targetAmount,
+          overpayment,
+          composition_copied: compositionCopied,
+          composition_copy_reason: compositionCopyReason,
+          attendee_names_copied: originalAttendeeNames.length > 0
         },
         completed_at: nowIso
       })
@@ -2445,7 +3156,8 @@ export async function transferEventBooking(input: {
         fromEventName: fromEvent?.name || 'your original event',
         toEventName: targetEvent.name || 'your new event',
         eventStartIso: targetEvent.start_datetime || null,
-        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        overpayment
       })
       smsMeta = transferSmsMeta
       smsSent = transferSmsMeta.success === true || transferSmsMeta.logFailure === true
@@ -2456,7 +3168,8 @@ export async function transferEventBooking(input: {
       fromEventName: fromEvent?.name || 'your original event',
       toEventName: targetEvent.name || 'your new event',
       eventStartIso: targetEvent.start_datetime || null,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      overpayment
     })
 
     await logAuditEvent({
@@ -2471,7 +3184,10 @@ export async function transferEventBooking(input: {
         from_event_id: bookingRow.event_id,
         to_event_id: parsed.data.targetEventId,
         paid_total: paidTotal,
-        target_amount: targetAmount
+        target_amount: targetAmount,
+        overpayment,
+        composition_copied: compositionCopied,
+        composition_copy_reason: compositionCopyReason
       }
     })
 
