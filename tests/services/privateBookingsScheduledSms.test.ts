@@ -48,6 +48,12 @@ function mockSupabase(opts: {
   })
   const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
 
+  // getGoogleReviewLink (review-request preview) reads system_settings and
+  // falls back to the feedback funnel URL when the row is absent.
+  const settingsMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+  const settingsEq = vi.fn().mockReturnValue({ maybeSingle: settingsMaybeSingle })
+  const settingsSelect = vi.fn().mockReturnValue({ eq: settingsEq })
+
   mockedCreateAdminClient.mockReturnValue({
     from: vi.fn((table: string) => {
       if (table === 'private_bookings' || table === 'private_bookings_with_details') {
@@ -56,6 +62,7 @@ function mockSupabase(opts: {
       if (table === 'private_booking_send_idempotency')
         return { select: idempSelect }
       if (table === 'private_booking_payments') return { select: paymentsSelect }
+      if (table === 'system_settings') return { select: settingsSelect }
       throw new Error(`Unexpected table in test: ${table}`)
     }),
   })

@@ -39,6 +39,17 @@ const RESERVED_TOP_LEVEL_ROUTES = new Set([
   'l',
 ])
 
+// Short-link slugs that back critical customer-facing flows. They resolve like
+// any other short code, but must never be deleted or repointed from the
+// short-links UI — every review-request SMS relies on the 'feedback' slug
+// reaching the review funnel landing page.
+const PROTECTED_SHORT_LINK_SLUGS = new Set(['feedback'])
+
+export function isProtectedShortLinkSlug(code: string | null | undefined): boolean {
+  if (!code) return false
+  return PROTECTED_SHORT_LINK_SLUGS.has(code.trim().toLowerCase())
+}
+
 const SHORT_CODE_REGEX = /^[a-z0-9-]{3,20}$/i
 
 function normalizeHostname(hostname: string): string {

@@ -1,17 +1,37 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { z } from 'zod'
 import { getErrorMessage } from '@/lib/errors';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
+import { isProtectedShortLinkSlug } from '@/lib/short-links/routing';
 import {
   ShortLinkService,
   CreateShortLinkSchema,
   UpdateShortLinkSchema,
   GetShortLinkVolumeAdvancedSchema,
 } from '@/services/short-links';
+
+// Returns a friendly error message when the short link backs a critical
+// customer-facing flow (e.g. the 'feedback' review funnel) and must not be
+// edited or deleted from the UI; null when the link is safe to change.
+async function getProtectedShortLinkError(id: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('short_links')
+    .select('short_code')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data && isProtectedShortLinkSlug(data.short_code)) {
+    return `The "${data.short_code}" link powers the guest review funnel, so it can't be changed or removed here.`;
+  }
+  return null;
+}
 
 // Create a short link
 export async function createShortLink(data: z.infer<typeof CreateShortLinkSchema>) {
@@ -111,6 +131,12 @@ export async function updateShortLink(input: z.infer<typeof UpdateShortLinkSchem
     }
 
     const validated = UpdateShortLinkSchema.parse(input);
+
+    const protectedError = await getProtectedShortLinkError(validated.id);
+    if (protectedError) {
+      return { error: protectedError };
+    }
+
     const updated = await ShortLinkService.updateShortLink(validated);
 
     await logAuditEvent({
@@ -152,6 +178,11 @@ export async function deleteShortLink(id: string) {
 
     if (!canManage) {
       return { error: 'You do not have permission to manage short links' };
+    }
+
+    const protectedError = await getProtectedShortLinkError(id);
+    if (protectedError) {
+      return { error: protectedError };
     }
 
     const existing = await ShortLinkService.deleteShortLink(id);

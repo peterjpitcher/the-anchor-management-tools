@@ -27,6 +27,9 @@ const PASSTHROUGH_TRACKING_PARAMS = [
   'utm_content',
   'utm_term',
   'utm_id',
+  // Feedback-funnel provenance: lets review SMS carry ?src= through
+  // l.the-anchor.pub/feedback to the landing page and into submissions.
+  'src',
 ]
 
 type ShortLinkRow = {

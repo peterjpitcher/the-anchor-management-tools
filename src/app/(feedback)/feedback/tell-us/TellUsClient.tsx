@@ -6,7 +6,11 @@ import { StarRating } from '@/components/features/feedback/StarRating'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export function TellUsClient() {
+interface TellUsClientProps {
+  src?: string | null
+}
+
+export function TellUsClient({ src }: TellUsClientProps) {
   const router = useRouter()
   const [idempotencyKey] = useState(() => crypto.randomUUID())
 
@@ -36,6 +40,12 @@ export function TellUsClient() {
       return
     }
 
+    const hasContactDetails = Boolean(name.trim() || email.trim() || phone.trim())
+    if (hasContactDetails && !consent) {
+      setError('Tick the box so we can contact you, or clear your details.')
+      return
+    }
+
     const payload: Record<string, unknown> = {
       rating,
       contactConsent: consent,
@@ -45,6 +55,7 @@ export function TellUsClient() {
     if (name.trim()) payload.customerName = name.trim()
     if (email.trim()) payload.customerEmail = email.trim()
     if (phone.trim()) payload.customerPhone = phone.trim()
+    if (src) payload.src = src
 
     setSubmitting(true)
     try {

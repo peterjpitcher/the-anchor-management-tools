@@ -11,6 +11,7 @@ import { Badge, Select, Textarea, Button, Alert } from '@/ds'
 import { Icon } from '@/ds/icons'
 import toast from 'react-hot-toast'
 import {
+  getReviewFeedbackList,
   updateReviewFeedbackStatus,
   type ReviewFeedbackItem,
 } from '@/app/actions/feedback'
@@ -18,6 +19,8 @@ import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface Props {
   initialItems: ReviewFeedbackItem[]
+  initialHasMore: boolean
+  initialNewCount: number
   canManage: boolean
   loadError?: string | null
 }
@@ -99,32 +102,31 @@ function ContactCell({ item }: { item: ReviewFeedbackItem }) {
 interface RowProps {
   item: ReviewFeedbackItem
   canManage: boolean
-  onUpdated: (id: string, status: FeedbackStatus, staffNotes: string) => void
+  onUpdated: (id: string, status: FeedbackStatus, staffNotes: string | null) => void
 }
 
 function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
   const [status, setStatus] = useState<FeedbackStatus>(item.status)
-  const [notes, setNotes] = useState<string>(item.staffNotes ?? '')
+  const [noteDraft, setNoteDraft] = useState('')
   const [savingStatus, setSavingStatus] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
 
-  const notesDirty = notes !== (item.staffNotes ?? '')
-
-  async function persist(nextStatus: FeedbackStatus, nextNotes: string, kind: 'status' | 'notes') {
+  async function persist(nextStatus: FeedbackStatus, note: string | undefined, kind: 'status' | 'notes') {
     if (kind === 'status') setSavingStatus(true)
     else setSavingNotes(true)
     try {
       const result = await updateReviewFeedbackStatus({
         id: item.id,
         status: nextStatus,
-        staffNotes: nextNotes,
+        ...(note ? { staffNotes: note } : {}),
       })
-      if (result && 'error' in result) {
+      if ('error' in result) {
         toast.error(result.error || 'Failed to update feedback')
         return false
       }
-      toast.success(kind === 'status' ? 'Status updated' : 'Notes saved')
-      onUpdated(item.id, nextStatus, nextNotes)
+      toast.success(kind === 'status' ? 'Status updated' : 'Note added')
+      onUpdated(item.id, result.data.status, result.data.staffNotes)
+      if (kind === 'notes') setNoteDraft('')
       return true
     } catch {
       toast.error('Failed to update feedback')
@@ -139,7 +141,7 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
     const nextStatus = event.target.value as FeedbackStatus
     const previous = status
     setStatus(nextStatus)
-    const ok = await persist(nextStatus, notes, 'status')
+    const ok = await persist(nextStatus, undefined, 'status')
     if (!ok) setStatus(previous)
   }
 
@@ -173,14 +175,19 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
               aria-label={`Status for feedback from ${formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}`}
             />
             <div className="flex flex-col gap-1">
+              {item.staffNotes && (
+                <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
+                  {item.staffNotes}
+                </p>
+              )}
               <Textarea
-                label="Staff notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
+                label="Add a note"
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
                 rows={2}
                 placeholder="Add a note..."
                 disabled={savingNotes}
-                aria-label="Staff notes"
+                aria-label="Add a note"
               />
               <div className="flex justify-end">
                 <Button
@@ -188,20 +195,20 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
                   variant="secondary"
                   size="sm"
                   loading={savingNotes}
-                  disabled={savingNotes || !notesDirty}
-                  onClick={() => persist(status, notes, 'notes')}
+                  disabled={savingNotes || !noteDraft.trim()}
+                  onClick={() => persist(status, noteDraft.trim(), 'notes')}
                 >
-                  Save notes
+                  Add note
                 </Button>
               </div>
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            <Badge tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Badge>
-            {notes && (
-              <p className="whitespace-normal break-words text-xs text-text-muted [overflow-wrap:anywhere]">
-                {notes}
+            <Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>
+            {item.staffNotes && (
+              <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
+                {item.staffNotes}
               </p>
             )}
           </div>
@@ -211,18 +218,80 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
   )
 }
 
-export function FeedbackInboxClient({ initialItems, canManage, loadError }: Props) {
+export function FeedbackInboxClient({
+  initialItems,
+  initialHasMore,
+  initialNewCount,
+  canManage,
+  loadError,
+}: Props) {
   const router = useRouter()
   const [items, setItems] = useState<ReviewFeedbackItem[]>(initialItems)
+  const [hasMore, setHasMore] = useState(initialHasMore)
+  const [newCount, setNewCount] = useState(initialNewCount)
+  const [showResolved, setShowResolved] = useState(false)
+  const [loadingList, setLoadingList] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  function handleUpdated(id: string, status: FeedbackStatus, staffNotes: string) {
+  function handleUpdated(id: string, status: FeedbackStatus, staffNotes: string | null) {
+    // Keep the local "new" count in step with status transitions.
+    const previous = items.find((item) => item.id === id)
+    if (previous) {
+      if (previous.status === 'new' && status !== 'new') {
+        setNewCount((count) => Math.max(0, count - 1))
+      } else if (previous.status !== 'new' && status === 'new') {
+        setNewCount((count) => count + 1)
+      }
+    }
     setItems((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, status, staffNotes: staffNotes || null } : item,
-      ),
+      current.map((item) => (item.id === id ? { ...item, status, staffNotes } : item)),
     )
     // Keep server-rendered data in sync for a future full refresh.
     router.refresh()
+  }
+
+  async function toggleResolved() {
+    const next = !showResolved
+    setLoadingList(true)
+    try {
+      const result = await getReviewFeedbackList({ includeResolved: next, offset: 0 })
+      if ('error' in result) {
+        toast.error(result.error || 'Failed to load feedback')
+        return
+      }
+      setShowResolved(next)
+      setItems(result.data.items)
+      setHasMore(result.data.hasMore)
+      setNewCount(result.data.newCount)
+    } catch {
+      toast.error('Failed to load feedback')
+    } finally {
+      setLoadingList(false)
+    }
+  }
+
+  async function loadMore() {
+    setLoadingMore(true)
+    try {
+      const result = await getReviewFeedbackList({
+        includeResolved: showResolved,
+        offset: items.length,
+      })
+      if ('error' in result) {
+        toast.error(result.error || 'Failed to load more feedback')
+        return
+      }
+      setItems((current) => {
+        const seen = new Set(current.map((item) => item.id))
+        return [...current, ...result.data.items.filter((item) => !seen.has(item.id))]
+      })
+      setHasMore(result.data.hasMore)
+      setNewCount(result.data.newCount)
+    } catch {
+      toast.error('Failed to load more feedback')
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   return (
@@ -231,6 +300,22 @@ export function FeedbackInboxClient({ initialItems, canManage, loadError }: Prop
         title="Feedback"
         subtitle="Guest review feedback that needs following up"
         className="mb-3 pb-3"
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge tone="info">{newCount} new</Badge>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={toggleResolved}
+              loading={loadingList}
+              disabled={loadingList}
+              aria-pressed={showResolved}
+            >
+              {showResolved ? 'Hide resolved' : 'Show resolved'}
+            </Button>
+          </div>
+        }
       />
 
       {loadError && (
@@ -256,9 +341,13 @@ export function FeedbackInboxClient({ initialItems, canManage, loadError }: Prop
                 <TableCell colSpan={5} align="center" className="py-10 text-center">
                   <div className="flex flex-col items-center gap-1 text-text-muted">
                     <Icon name="message" size={24} className="text-text-subtle" />
-                    <span className="text-sm font-medium">No feedback yet</span>
+                    <span className="text-sm font-medium">
+                      {showResolved ? 'No feedback yet' : 'No open feedback'}
+                    </span>
                     <span className="text-xs text-text-subtle">
-                      Guest feedback submitted through the review funnel will appear here.
+                      {showResolved
+                        ? 'Guest feedback submitted through the review funnel will appear here.'
+                        : 'Resolved and dismissed items are hidden — use "Show resolved" to see them.'}
                     </span>
                   </div>
                 </TableCell>
@@ -275,6 +364,20 @@ export function FeedbackInboxClient({ initialItems, canManage, loadError }: Prop
             )}
           </TableBody>
         </Table>
+        {hasMore && (
+          <div className="flex justify-center border-t border-border py-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={loadMore}
+              loading={loadingMore}
+              disabled={loadingMore}
+            >
+              Load more
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   )
