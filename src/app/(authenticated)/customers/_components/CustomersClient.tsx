@@ -35,7 +35,7 @@ import {
   Checkbox,
   SearchInput,
   Select,
-  Skeleton,
+  PageLoading,
   Empty,
   ConfirmDialog,
   IconButton,
@@ -465,11 +465,7 @@ export default function CustomersClient({
 
         {isFetching ? (
           <CardBody>
-            <div className="flex flex-col gap-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))}
-            </div>
+            <PageLoading className="min-h-0 py-12" />
           </CardBody>
         ) : customers.length === 0 ? (
           <CardBody>

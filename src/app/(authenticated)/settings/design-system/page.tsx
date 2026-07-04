@@ -33,7 +33,6 @@ import {
   ProgressBar,
   Spinner,
   SearchInput,
-  Skeleton,
   Empty,
   IconButton,
 } from '@/ds/primitives'
@@ -839,21 +838,6 @@ export default function DesignSystemPage() {
                   <span>Danger (100%)</span>
                 </div>
                 <ProgressBar value={100} tone="danger" />
-              </div>
-            </div>
-          </SubSection>
-
-          <SubSection title="Skeleton Loading">
-            <div className="space-y-3 max-w-md">
-              <Skeleton width="100%" height="20px" />
-              <Skeleton width="80%" height="20px" />
-              <Skeleton width="60%" height="20px" />
-              <div className="flex gap-3">
-                <Skeleton width="40px" height="40px" rounded="full" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton width="60%" height="14px" />
-                  <Skeleton width="40%" height="14px" />
-                </div>
               </div>
             </div>
           </SubSection>

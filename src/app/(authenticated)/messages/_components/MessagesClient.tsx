@@ -18,7 +18,7 @@ import {
   Avatar,
   SearchInput,
   Textarea,
-  Skeleton,
+  PageLoading,
   Empty,
   Spinner,
   Alert,
@@ -433,11 +433,7 @@ export function MessagesClient() {
           }
         />
         <Card>
-          <div className="p-4 space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-16" />
-            ))}
-          </div>
+          <PageLoading className="min-h-0 py-12" />
         </Card>
       </div>
     )
