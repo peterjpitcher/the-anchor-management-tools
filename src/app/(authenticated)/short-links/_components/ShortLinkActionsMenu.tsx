@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   Edit3,
@@ -24,6 +26,7 @@ import { downloadQrPng, safeQrFilename } from './qr-download'
 import { PortalMenu, type PortalMenuEntry } from './PortalMenu'
 
 type VariantMode = 'copy' | 'qr'
+type ExpandedSection = 'digital' | 'qr' | null
 
 interface Props {
   link: ShortLink
@@ -45,6 +48,7 @@ async function copyText(value: string, successMessage: string) {
 
 export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onDelete, onVariantReady }: Props) {
   const [loadingKey, setLoadingKey] = useState<string | null>(null)
+  const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null)
   const isParent = !link.parent_link_id
   const shortUrl = buildShortLinkUrl(link.short_code)
 
@@ -145,39 +149,38 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
       }
     })
 
-  const entries: PortalMenuEntry[] = [
-    { type: 'section', key: 'link-section', label: 'Link' },
-    {
-      key: 'copy-short',
-      label: 'Copy short URL',
-      icon: <Copy />,
-      onClick: () => copyText(shortUrl, 'Short URL copied'),
-    },
-    {
-      key: 'copy-destination',
-      label: 'Copy destination URL',
-      icon: <Link2 />,
-      onClick: () => copyText(link.destination_url, 'Destination URL copied'),
-    },
-    {
-      key: 'download-qr',
-      label: 'Download QR',
-      icon: loadingKey === 'base-qr' ? <Loader2 className="animate-spin" /> : <Download />,
-      disabled: Boolean(loadingKey),
-      onClick: handleBaseQr,
-    },
-    {
-      key: 'analytics',
-      label: 'Analytics',
-      icon: <BarChart3 />,
-      onClick: () => onAnalytics(link),
-    },
-  ]
+  const backEntry: PortalMenuEntry = {
+    key: 'back',
+    label: 'Back',
+    icon: <ChevronLeft />,
+    keepOpen: true,
+    onClick: () => setExpandedSection(null),
+  }
 
-  if (canManage && isParent) {
-    entries.push(
+  const expandableEntry = (section: Exclude<ExpandedSection, null>, label: string, icon: ReactNode): PortalMenuEntry => ({
+    key: `expand-${section}`,
+    label: (
+      <span className="flex items-center gap-2">
+        <span>{label}</span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
+      </span>
+    ),
+    icon,
+    keepOpen: true,
+    onClick: () => setExpandedSection(section),
+  })
+
+  let entries: PortalMenuEntry[]
+
+  if (expandedSection === 'digital') {
+    entries = [
+      backEntry,
       { type: 'section', key: 'digital-section', label: 'Digital UTM links' },
       ...channelEntries(DIGITAL_CHANNELS, 'copy'),
+    ]
+  } else if (expandedSection === 'qr') {
+    entries = [
+      backEntry,
       { type: 'section', key: 'qr-section', label: 'QR codes' },
       {
         key: 'qr:all',
@@ -186,27 +189,67 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
         disabled: Boolean(loadingKey),
         onClick: handleAllQrs,
       },
-      ...channelEntries(QR_CHANNELS, 'qr')
-    )
-  }
-
-  if (canManage) {
-    entries.push(
-      { type: 'section', key: 'manage-section', label: 'Manage' },
+      ...channelEntries(QR_CHANNELS, 'qr'),
+    ]
+  } else {
+    entries = [
       {
-        key: 'edit',
-        label: 'Edit',
-        icon: <Edit3 />,
-        onClick: () => onEdit(link),
+        key: 'analytics',
+        label: 'Analytics',
+        icon: <BarChart3 />,
+        onClick: () => onAnalytics(link),
+      },
+    ]
+
+    if (canManage) {
+      entries.push(
+        { type: 'section', key: 'manage-section', label: 'Manage' },
+        {
+          key: 'edit',
+          label: 'Edit',
+          icon: <Edit3 />,
+          onClick: () => onEdit(link),
+        },
+        {
+          key: 'delete',
+          label: 'Delete',
+          icon: <Trash2 />,
+          danger: true,
+          onClick: () => onDelete(link),
+        }
+      )
+    }
+
+    entries.push(
+      { type: 'section', key: 'link-section', label: 'Link' },
+      {
+        key: 'copy-short',
+        label: 'Copy short URL',
+        icon: <Copy />,
+        onClick: () => copyText(shortUrl, 'Short URL copied'),
       },
       {
-        key: 'delete',
-        label: 'Delete',
-        icon: <Trash2 />,
-        danger: true,
-        onClick: () => onDelete(link),
+        key: 'copy-destination',
+        label: 'Copy destination URL',
+        icon: <Link2 />,
+        onClick: () => copyText(link.destination_url, 'Destination URL copied'),
+      },
+      {
+        key: 'download-qr',
+        label: 'Download QR',
+        icon: loadingKey === 'base-qr' ? <Loader2 className="animate-spin" /> : <Download />,
+        disabled: Boolean(loadingKey),
+        onClick: handleBaseQr,
       }
     )
+
+    if (canManage && isParent) {
+      entries.push(
+        { type: 'section', key: 'campaign-section', label: 'Campaign links' },
+        expandableEntry('digital', `Digital UTM links (${DIGITAL_CHANNELS.length})`, <Share2 />),
+        expandableEntry('qr', `QR codes (${QR_CHANNELS.length})`, <QrCode />)
+      )
+    }
   }
 
   return (
@@ -215,6 +258,9 @@ export function ShortLinkActionsMenu({ link, canManage, onAnalytics, onEdit, onD
       width={260}
       maxHeight={560}
       disabled={Boolean(loadingKey)}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setExpandedSection(null)
+      }}
       trigger={({ ref, onClick, 'aria-expanded': expanded }) => (
         <IconButton
           ref={ref}

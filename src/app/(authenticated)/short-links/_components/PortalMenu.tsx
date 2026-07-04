@@ -20,6 +20,8 @@ export type PortalMenuEntry =
       icon?: ReactNode
       danger?: boolean
       disabled?: boolean
+      /** Keep the menu open after this entry is clicked (e.g. expandable sub-lists) */
+      keepOpen?: boolean
       onClick?: () => void | Promise<void>
     }
 
@@ -29,14 +31,20 @@ interface PortalMenuProps {
   width?: number
   maxHeight?: number
   disabled?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, disabled }: PortalMenuProps) {
+export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, disabled, onOpenChange }: PortalMenuProps) {
   const [open, setOpen] = useState(false)
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [mounted, setMounted] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const setOpenState = (next: boolean) => {
+    setOpen(next)
+    onOpenChange?.(next)
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -45,7 +53,7 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
   useEffect(() => {
     if (!open) return
 
-    const close = () => setOpen(false)
+    const close = () => setOpenState(false)
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node
       if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) return
@@ -54,16 +62,23 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
     }
+    // Capture phase so scrolls inside nested overflow wrappers (e.g. the
+    // horizontally scrolling table) also close the menu — but ignore the
+    // menu's own internal scrolling.
+    const handleScroll = (event: Event) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
+      close()
+    }
 
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('scroll', close, { passive: true })
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
     window.addEventListener('resize', close)
 
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('scroll', close)
+      window.removeEventListener('scroll', handleScroll, { capture: true })
       window.removeEventListener('resize', close)
     }
   }, [open])
@@ -71,7 +86,7 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
   const toggle = () => {
     if (disabled || !buttonRef.current) return
     setRect(buttonRef.current.getBoundingClientRect())
-    setOpen((current) => !current)
+    setOpenState(!open)
   }
 
   const position = open && rect && mounted && typeof window !== 'undefined'
@@ -114,7 +129,7 @@ export function PortalMenu({ trigger, entries, width = 224, maxHeight = 420, dis
                 )}
                 disabled={entry.disabled}
                 onClick={() => {
-                  setOpen(false)
+                  if (!entry.keepOpen) setOpenState(false)
                   void entry.onClick?.()
                 }}
               >

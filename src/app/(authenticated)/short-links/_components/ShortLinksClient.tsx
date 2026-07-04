@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   PageHeader, SectionNav,
   Card,
@@ -20,6 +20,7 @@ import { SHORT_LINKS_NAV } from '../nav'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { CHANNEL_MAP } from '@/lib/short-links/channels'
 import { formatDate } from '@/lib/dateUtils'
+import { cn } from '@/lib/utils'
 import type { ShortLink } from '@/types/short-links'
 
 interface Props {
@@ -181,6 +182,7 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
   const [activeLink, setActiveLink] = useState<ShortLink | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ShortLink | null>(null)
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -188,16 +190,21 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
   }, [search])
 
   const refreshLinks = useCallback(async (page: number = currentPage) => {
-    const searchStr = debouncedSearch.trim() || undefined
-    const result = await getShortLinks(page, pageSize, false, searchStr)
-    if (!result || 'error' in result) {
-      toast.error(result?.error || 'Failed to load short links')
-      return
+    setIsRefreshing(true)
+    try {
+      const searchStr = debouncedSearch.trim() || undefined
+      const result = await getShortLinks(page, pageSize, false, searchStr)
+      if (!result || 'error' in result) {
+        toast.error(result?.error || 'Failed to load short links')
+        return
+      }
+      setLinks(Array.isArray(result.data) ? (result.data as ShortLink[]) : [])
+      setTotalLinks(result.total ?? 0)
+      setLinkTotal(result.linkTotal ?? 0)
+      setCurrentPage(result.page ?? page)
+    } finally {
+      setIsRefreshing(false)
     }
-    setLinks(Array.isArray(result.data) ? (result.data as ShortLink[]) : [])
-    setTotalLinks(result.total ?? 0)
-    setLinkTotal(result.linkTotal ?? 0)
-    setCurrentPage(result.page ?? page)
   }, [currentPage, debouncedSearch])
 
   const displayLinks = useMemo<DisplayLink[]>(() => {
@@ -236,7 +243,14 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
     await refreshLinks()
   }
 
+  // Skip the first run — page 1 is already rendered from the server-fetched
+  // initial props, so refetching on mount is redundant.
+  const hasMountedRef = useRef(false)
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      return
+    }
     refreshLinks(1)
   }, [debouncedSearch])
 
@@ -315,17 +329,82 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
         />
       </div>
 
-      {/* Table */}
+      {/* Links */}
       <Card>
-        <Table className="[&>table]:table-fixed">
+        <div className={cn('transition-opacity', isRefreshing && 'pointer-events-none opacity-50')} aria-busy={isRefreshing}>
+          {/* Mobile card list */}
+          <div className="divide-y divide-border sm:hidden">
+            {displayLinks.length === 0 ? (
+              <div className="py-8 text-center text-sm text-text-muted">No short links found</div>
+            ) : (
+              displayLinks.map((link) => (
+                <div key={link.id} className={cn('space-y-2 p-4', link.isVariant && 'bg-surface-2/40 pl-7')}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <button
+                        type="button"
+                        className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 rounded bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
+                        onClick={() => handleCopyLink(link)}
+                        title="Copy short URL"
+                      >
+                        <Icon name="copy" size={12} className="shrink-0 text-text-muted" />
+                        <code className="min-w-0 truncate">{buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}</code>
+                      </button>
+                      {link.isVariant ? (
+                        <div><Badge tone="neutral">{getVariantLabel(link)}</Badge></div>
+                      ) : (
+                        link.name && <div className="truncate text-xs text-text-muted">{link.name}</div>
+                      )}
+                    </div>
+                    <ShortLinkActionsMenu
+                      link={link}
+                      canManage={canManage}
+                      onVariantReady={handleVariantReady}
+                      onAnalytics={(target) => { setActiveLink(target); setAnalyticsModalOpen(true) }}
+                      onEdit={(target) => { setActiveLink(target); setFormModalOpen(true) }}
+                      onDelete={setDeleteTarget}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="flex min-h-[34px] w-full items-start gap-1.5 text-left text-xs text-text-muted hover:text-text"
+                    title="Copy destination URL"
+                    onClick={() => handleCopyDestination(link.destination_url)}
+                  >
+                    <Icon name="copy" size={12} className="mt-0.5 shrink-0" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{formatUrlForDisplay(link.destination_url)}</span>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+                    <Badge tone={link.isVariant ? 'neutral' : 'info'}>{link.isVariant ? 'variant' : link.link_type}</Badge>
+                    <span className="font-mono">{(link.click_count ?? 0).toLocaleString('en-GB')} clicks</span>
+                    <span>{formatDate(link.created_at)}</span>
+                    {!link.isVariant && (link.variantCount ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        className="inline-flex min-h-[34px] items-center"
+                        onClick={() => toggleExpanded(link.id)}
+                      >
+                        <Badge tone="neutral">
+                          {expandedParents.has(link.id) ? 'Hide' : 'Show'} {link.variantCount} variants
+                        </Badge>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <Table className="hidden sm:block sm:[&>table]:table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[32%] py-1.5">Short URL</TableHead>
-              <TableHead className="w-[42%] py-1.5">Destination</TableHead>
-              <TableHead align="right" className="w-[7%] py-1.5">Clicks</TableHead>
-              <TableHead className="w-[10%] py-1.5">Created</TableHead>
-              <TableHead className="w-[5%] py-1.5">Type</TableHead>
-              <TableHead align="right" className="w-[4%] py-1.5">Actions</TableHead>
+              <TableHead className="sm:w-[32%] py-1.5">Short URL</TableHead>
+              <TableHead className="sm:w-[42%] py-1.5">Destination</TableHead>
+              <TableHead align="right" className="sm:w-[7%] py-1.5">Clicks</TableHead>
+              <TableHead className="sm:w-[10%] py-1.5">Created</TableHead>
+              <TableHead className="sm:w-[5%] py-1.5">Type</TableHead>
+              <TableHead align="right" className="sm:w-[4%] py-1.5">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -351,10 +430,11 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                         )}
                         <button
                           type="button"
-                          className="min-w-0 flex-shrink-0 rounded bg-surface-2 px-2 py-0.5 text-left font-mono text-xs hover:bg-surface-hover"
+                          className="inline-flex min-h-[34px] min-w-0 flex-shrink-0 items-center gap-1.5 rounded bg-surface-2 px-2 text-left font-mono text-xs hover:bg-surface-hover"
                           onClick={() => handleCopyLink(link)}
                           title="Click to copy short URL"
                         >
+                          <Icon name="copy" size={12} className="shrink-0 text-text-muted" />
                           <code>{buildShortLinkUrl(link.short_code).replace(/^https?:\/\//, '')}</code>
                         </button>
                         {link.isVariant ? (
@@ -375,11 +455,12 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
                   <TableCell className="min-w-0 py-2 align-middle">
                     <button
                       type="button"
-                      className="block max-w-full truncate text-left text-xs text-text-muted hover:text-text"
+                      className="inline-flex min-h-[34px] max-w-full items-center gap-1.5 text-left text-xs text-text-muted hover:text-text"
                       title={`${link.destination_url}\nClick to copy destination URL`}
                       onClick={() => handleCopyDestination(link.destination_url)}
                     >
-                      {formatUrlForDisplay(link.destination_url)}
+                      <Icon name="copy" size={12} className="shrink-0" />
+                      <span className="min-w-0 truncate">{formatUrlForDisplay(link.destination_url)}</span>
                     </button>
                   </TableCell>
                   <TableCell align="right" className="py-2 font-mono align-middle">
@@ -407,7 +488,8 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
               ))
             )}
           </TableBody>
-        </Table>
+          </Table>
+        </div>
         {totalPages > 1 && (
           <TablePagination
             page={currentPage}

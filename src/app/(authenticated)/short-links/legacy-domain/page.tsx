@@ -149,20 +149,20 @@ function LinkUsageCard({
         <TableHeader>
           <TableRow>
             <TableHead>Link</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Source</TableHead>
+            <TableHead className="hidden md:table-cell">Name</TableHead>
+            <TableHead className="hidden md:table-cell">Source</TableHead>
             <TableHead>Destination</TableHead>
             <TableHead align="right">Human</TableHead>
-            <TableHead align="right">Total</TableHead>
-            <TableHead>Last Click</TableHead>
+            <TableHead align="right" className="hidden md:table-cell">Total</TableHead>
+            <TableHead className="hidden md:table-cell">Last Click</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {links.length === 0 ? (
             <TableRow>
-              <td colSpan={7} className="px-4 py-8 text-center text-[13px] text-text-muted">
+              <TableCell colSpan={7} align="center" className="py-8 text-text-muted">
                 {emptyMessage}
-              </td>
+              </TableCell>
             </TableRow>
           ) : (
             links.map((link) => (
@@ -170,20 +170,20 @@ function LinkUsageCard({
                 <TableCell>
                   <code className="font-mono text-xs">/{link.shortCode}</code>
                 </TableCell>
-                <TableCell className="max-w-xs truncate">{link.name || '-'}</TableCell>
-                <TableCell>
+                <TableCell className="hidden max-w-xs truncate md:table-cell">{link.name || '-'}</TableCell>
+                <TableCell className="hidden md:table-cell">
                   <Badge tone="info">{sourceLabel(link.channel, link.source)}</Badge>
                 </TableCell>
-                <TableCell className="max-w-sm truncate">
+                <TableCell className="max-w-[180px] truncate sm:max-w-sm">
                   {formatDestination(link.destinationHost, link.destinationPath)}
                 </TableCell>
                 <TableCell align="right" className="font-mono font-semibold">
                   {formatNumber(link.humanClicks)}
                 </TableCell>
-                <TableCell align="right" className="font-mono">
+                <TableCell align="right" className="hidden font-mono md:table-cell">
                   {formatNumber(link.totalClicks)}
                 </TableCell>
-                <TableCell>{formatDateTime(link.lastClickedAt)}</TableCell>
+                <TableCell className="hidden md:table-cell">{formatDateTime(link.lastClickedAt)}</TableCell>
               </TableRow>
             ))
           )}
@@ -237,33 +237,33 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>When</TableHead>
-                  <TableHead>Host</TableHead>
+                  <TableHead className="hidden md:table-cell">Host</TableHead>
                   <TableHead>Link</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden md:table-cell">Name</TableHead>
                   <TableHead>Destination</TableHead>
-                  <TableHead>Device</TableHead>
+                  <TableHead className="hidden md:table-cell">Device</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {usage.recentLegacyClicks.length === 0 ? (
                   <TableRow>
-                    <td colSpan={6} className="px-4 py-8 text-center text-[13px] text-text-muted">
+                    <TableCell colSpan={6} align="center" className="py-8 text-text-muted">
                       No recent legacy-domain clicks
-                    </td>
+                    </TableCell>
                   </TableRow>
                 ) : (
                   usage.recentLegacyClicks.map((click, index) => (
                     <TableRow key={`${click.shortCode}-${click.clickedAt}-${index}`}>
                       <TableCell>{formatDateTime(click.clickedAt)}</TableCell>
-                      <TableCell>{click.requestHost}</TableCell>
+                      <TableCell className="hidden md:table-cell">{click.requestHost}</TableCell>
                       <TableCell>
                         <code className="font-mono text-xs">/{click.shortCode}</code>
                       </TableCell>
-                      <TableCell className="max-w-xs truncate">{click.name || '-'}</TableCell>
-                      <TableCell className="max-w-sm truncate">
+                      <TableCell className="hidden max-w-xs truncate md:table-cell">{click.name || '-'}</TableCell>
+                      <TableCell className="max-w-[180px] truncate sm:max-w-sm">
                         {formatDestination(click.destinationHost, click.destinationPath)}
                       </TableCell>
-                      <TableCell>{click.deviceType || '-'}</TableCell>
+                      <TableCell className="hidden md:table-cell">{click.deviceType || '-'}</TableCell>
                     </TableRow>
                   ))
                 )}

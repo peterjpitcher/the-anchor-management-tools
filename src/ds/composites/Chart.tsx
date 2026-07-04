@@ -16,7 +16,11 @@ import {
 
 interface RevenueChartProps {
   data: { day: string; amount: number; target?: number }[]
+  /** Formats tooltip values. Defaults to pounds, e.g. £1,234. */
+  valueFormatter?: (value: number) => string
 }
+
+const defaultValueFormatter = (value: number): string => `£${value.toLocaleString()}`
 
 const GREEN = 'var(--color-primary)'
 const RED = '#ef4444'
@@ -89,10 +93,11 @@ function BarWithTargetLine(props: {
   )
 }
 
-function ChartTooltipContent({ active, payload, label }: {
+function ChartTooltipContent({ active, payload, label, valueFormatter = defaultValueFormatter }: {
   active?: boolean
   payload?: Array<{ value: number; dataKey: string; payload?: { amount: number; target?: number } }>
   label?: string
+  valueFormatter?: (value: number) => string
 }) {
   if (!active || !payload?.length) return null
   const entry = payload[0]
@@ -106,14 +111,14 @@ function ChartTooltipContent({ active, payload, label }: {
       <div className="flex items-center gap-1.5">
         <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: missedTarget ? RED : GREEN }} />
         <span className="text-text-strong font-semibold">
-          {'£'}{amount.toLocaleString()}
+          {valueFormatter(amount)}
         </span>
       </div>
       {target > 0 && (
         <div className="flex items-center gap-1.5 mt-1">
           <span className="inline-block w-2 shrink-0 border-t-2 border-dashed border-slate-700 opacity-60" />
           <span className="text-text-muted">
-            Target: {'£'}{target.toLocaleString()}
+            Target: {valueFormatter(target)}
             {metTarget && <span className="text-green-600 ml-1">✓</span>}
           </span>
         </div>
@@ -122,7 +127,7 @@ function ChartTooltipContent({ active, payload, label }: {
   )
 }
 
-export function RevenueChart({ data }: RevenueChartProps) {
+export function RevenueChart({ data, valueFormatter = defaultValueFormatter }: RevenueChartProps) {
   const hasTargets = data.some(d => (d.target ?? 0) > 0)
   // Domain must include target values so bars that missed target still have room above
   const maxValue = Math.max(...data.map(d => Math.max(d.amount, d.target ?? 0)))
@@ -138,7 +143,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
         />
         <YAxis hide domain={[0, maxValue * 1.1]} />
         <RechartsTooltip
-          content={<ChartTooltipContent />}
+          content={<ChartTooltipContent valueFormatter={valueFormatter} />}
           cursor={{ fill: 'var(--color-surface-hover)' }}
         />
         {hasTargets ? (
