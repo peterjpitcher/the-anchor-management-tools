@@ -7,6 +7,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/ds'
 import { getShortLinkAnalytics, getShortLinkAnalyticsSummary } from '@/app/actions/short-links'
+import { formatDateInLondon } from '@/lib/dateUtils'
 
 interface AnalyticsData {
   totalClicks: number
@@ -95,7 +96,7 @@ export function ShortLinkAnalyticsModal({ open, onClose, shortCode }: Props) {
             </Card>
             <Card>
               <CardBody>
-                <Stat label="Last Clicked" value={data.lastClickedAt ? new Date(data.lastClickedAt).toLocaleDateString('en-GB') : 'Never'} />
+                <Stat label="Last Clicked" value={data.lastClickedAt ? formatDateInLondon(data.lastClickedAt) : 'Never'} />
               </CardBody>
             </Card>
           </div>

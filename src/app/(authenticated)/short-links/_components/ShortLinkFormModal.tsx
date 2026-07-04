@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Modal, Button, Field, Input, Select, Alert } from '@/ds'
 import { createShortLink, updateShortLink } from '@/app/actions/short-links'
 import toast from 'react-hot-toast'
+import { applyUtmParams } from './utm-url'
 import type { ShortLink } from '@/types/short-links'
 
 const LINK_TYPE_OPTIONS = [
@@ -52,16 +53,8 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
     }
   }
 
-  const buildSubmittedDestinationUrl = () => {
-    const hasUtmValue = [utmSource, utmMedium, utmCampaign].some((value) => value.trim())
-    if (!showUtm || !hasUtmValue) return destinationUrl
-
-    const parsed = new URL(destinationUrl)
-    if (utmSource.trim()) parsed.searchParams.set('utm_source', utmSource.trim())
-    if (utmMedium.trim()) parsed.searchParams.set('utm_medium', utmMedium.trim())
-    if (utmCampaign.trim()) parsed.searchParams.set('utm_campaign', utmCampaign.trim())
-    return parsed.toString()
-  }
+  const buildSubmittedDestinationUrl = () =>
+    applyUtmParams(destinationUrl, { source: utmSource, medium: utmMedium, campaign: utmCampaign }, showUtm)
 
   useEffect(() => {
     if (open) {
@@ -87,6 +80,16 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // The footer submit button sits outside the <form>, so the input's own
+    // type="url" validation never runs — validate here instead.
+    try {
+      new URL(destinationUrl)
+    } catch {
+      setFormError('Enter a full URL starting with https://')
+      return
+    }
+
     setSubmitting(true)
     setFormError(null)
 
@@ -115,14 +118,16 @@ export function ShortLinkFormModal({ open, onClose, link, onSave }: Props) {
           setFormError(result?.error || 'Failed to create')
           return
         }
+        let successMessage = 'Short link created'
         if (result.data?.full_url) {
           try {
             await navigator.clipboard.writeText(result.data.full_url)
-            toast.success('Link created and copied!')
+            successMessage = 'Link created and copied!'
           } catch {
-            toast.success('Short link created')
+            // Clipboard access is best-effort — the link was still created
           }
         }
+        toast.success(successMessage)
       }
       onSave()
       onClose()

@@ -172,7 +172,7 @@ export function InsightsClient() {
             <CardHeader title="Click Volume" subtitle={`Last ${days} days`} />
             <CardBody>
               {chartData.length > 0 ? (
-                <RevenueChart data={chartData} />
+                <RevenueChart data={chartData} valueFormatter={(value) => value.toLocaleString('en-GB')} />
               ) : (
                 <p className="text-text-muted text-center py-8">No data for this period</p>
               )}
