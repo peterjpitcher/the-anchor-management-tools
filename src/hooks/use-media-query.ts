@@ -1,55 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 /**
  * Custom hook for responsive design with media queries
+ *
+ * Implemented with useSyncExternalStore so the real match value is read
+ * synchronously on the client: the hydration render uses the server snapshot
+ * (false) to match server HTML (no hydration mismatch), then React's
+ * commit-phase snapshot check re-renders before paint — avoiding the flash
+ * of the wrong layout that a useState(false) + useEffect approach causes.
+ *
  * @param query - Media query string (e.g., '(min-width: 768px)')
  * @returns boolean indicating if the media query matches
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState<boolean>(false)
-
-  useEffect(() => {
-    const media = window.matchMedia(query)
-    
-    // Set initial value
-    setMatches(media.matches)
-
-    // Create event listener
-    const listener = (event: MediaQueryListEvent) => {
-      setMatches(event.matches)
-    }
-
-    // Add event listener
-    if (media.addListener) {
-      media.addListener(listener)
-    } else {
-      media.addEventListener('change', listener)
-    }
-
-    // Clean up
-    return () => {
-      if (media.removeListener) {
-        media.removeListener(listener)
-      } else {
-        media.removeEventListener('change', listener)
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      const media = window.matchMedia(query)
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', onStoreChange)
+        return () => media.removeEventListener('change', onStoreChange)
       }
-    }
-  }, [query])
+      // Legacy fallback (older Safari)
+      media.addListener(onStoreChange)
+      return () => media.removeListener(onStoreChange)
+    },
+    [query]
+  )
 
-  return matches
-}
-
-// Preset breakpoints matching Tailwind defaults
-function useIsMobile() {
-  return !useMediaQuery('(min-width: 640px)')
-}
-
-function useIsTablet() {
-  const isAtLeastTablet = useMediaQuery('(min-width: 640px)')
-  const isDesktop = useMediaQuery('(min-width: 1024px)')
-  return isAtLeastTablet && !isDesktop
-}
-
-function useIsDesktop() {
-  return useMediaQuery('(min-width: 1024px)')
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false
+  )
 }
