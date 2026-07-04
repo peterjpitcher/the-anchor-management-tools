@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
@@ -31,9 +32,7 @@ interface EmployeeWithBirthday {
  */
 async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
   const supabase = createAdminClient();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const runDateKey = today.toISOString().slice(0, 10);
+  const runDateKey = getTodayIsoDate();
   const idempotencyKey = `cron:employee-birthday-reminder:${runDateKey}:${daysAhead}`;
   const requestHash = computeIdempotencyRequestHash({
     run_date: runDateKey,

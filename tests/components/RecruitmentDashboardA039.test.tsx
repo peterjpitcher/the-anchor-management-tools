@@ -6,6 +6,7 @@ import { scheduleRecruitmentInterviewForCandidateAction } from '@/app/actions/re
 vi.mock('@/app/actions/recruitment', () => {
   const ok = vi.fn().mockResolvedValue({ success: true, message: 'Done.' })
   return {
+    addRecruitmentCandidateNoteAction: ok,
     archiveRecruitmentApplicationAction: ok,
     archiveRecruitmentAppointmentAction: ok,
     archiveRecruitmentSlotAction: ok,
@@ -15,16 +16,19 @@ vi.mock('@/app/actions/recruitment', () => {
     createManualRecruitmentApplicationAction: ok,
     createRecruitmentPostingAction: ok,
     createRecruitmentSlotAction: ok,
+    decideRecruitmentApplicationAction: ok,
     draftRecruitmentEmailAction: ok,
     duplicateRecruitmentPostingAction: ok,
     eraseRecruitmentCandidateAction: ok,
     exportRecruitmentApplicationsCsvAction: ok,
     getRecruitmentCandidates: vi.fn().mockResolvedValue({ success: true, candidates: [], total: 0 }),
+    getRecruitmentCandidateTrailAction: vi.fn().mockResolvedValue({ success: true, data: { notes: [], systemChanges: [] } }),
     getRecruitmentCvUrlAction: ok,
     getRecruitmentPrintableKitAction: ok,
     issueRecruitmentBookingInviteAction: ok,
     inviteRecruitmentCandidateAsEmployeeAction: ok,
     matchRecruitmentCandidateAction: ok,
+    previewRecruitmentDecisionEmailAction: vi.fn().mockResolvedValue({ success: true, data: { subject: '', body: '' } }),
     recordRecruitmentScorecardAction: ok,
     recordRecruitmentAppointmentOutcomeAction: ok,
     rescheduleRecruitmentAppointmentAction: ok,

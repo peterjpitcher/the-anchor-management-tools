@@ -7,19 +7,21 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDepartmentBudgets } from '@/app/actions/budgets';
 import { startOfMonth, endOfMonth, format, differenceInYears, parseISO } from 'date-fns';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 import { rotaNavItems } from '../nav';
 
 const gbpFormatter = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
 
 export const dynamic = 'force-dynamic';
 
-function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
+/** Monday of the week containing the given YYYY-MM-DD date. Works on the plain
+ *  date in UTC so the result never shifts with the server timezone. */
+function getMondayIsoOfWeek(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  const day = d.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().split('T')[0];
 }
 
 function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
@@ -155,9 +157,9 @@ export default async function RotaDashboardPage() {
   if (!canView) redirect('/');
 
   const today = new Date();
-  const weekStart = getMondayOfWeek(today).toISOString().split('T')[0];
-  const weekEnd = new Date(weekStart + 'T00:00:00');
-  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekStart = getMondayIsoOfWeek(getTodayIsoDate());
+  const weekEnd = new Date(`${weekStart}T00:00:00Z`);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
   const weekEndStr = weekEnd.toISOString().split('T')[0];
 
   const monthStart = format(startOfMonth(today), 'yyyy-MM-dd');

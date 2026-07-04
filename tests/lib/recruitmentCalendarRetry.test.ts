@@ -1,30 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const graphDelete = vi.fn()
-const graphApi = vi.fn(() => ({
-  delete: graphDelete,
-  post: vi.fn(),
-  patch: vi.fn(),
+const { eventsDelete } = vi.hoisted(() => ({
+  eventsDelete: vi.fn(),
 }))
 
-vi.mock('@microsoft/microsoft-graph-client', () => ({
-  Client: {
-    initWithMiddleware: vi.fn(() => ({
-      api: graphApi,
+vi.mock('googleapis', () => ({
+  google: {
+    calendar: vi.fn(() => ({
+      events: {
+        insert: vi.fn(),
+        update: vi.fn(),
+        delete: eventsDelete,
+      },
     })),
   },
 }))
 
-vi.mock('@azure/identity', () => ({
-  ClientSecretCredential: vi.fn(function ClientSecretCredential() {
-    return {
-    getToken: vi.fn().mockResolvedValue({ token: 'token' }),
-    }
-  }),
+vi.mock('@/lib/google-calendar', () => ({
+  getOAuth2Client: vi.fn().mockResolvedValue({}),
 }))
 
-vi.mock('@/lib/microsoft-graph', () => ({
-  isGraphConfigured: vi.fn(() => true),
+vi.mock('@/lib/google-calendar-targets', () => ({
+  getSharedOperationsCalendarId: vi.fn(() => 'ops-calendar'),
 }))
 
 import { retryRecruitmentCalendarSync } from '@/lib/recruitment/calendar'
@@ -44,12 +41,24 @@ function createBuilder(response: { data: unknown; error: unknown }) {
 }
 
 describe('recruitment calendar retry', () => {
+  const originalServiceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  const originalInterviewCalendarId = process.env.GOOGLE_CALENDAR_INTERVIEW_ID
+
   beforeEach(() => {
     vi.clearAllMocks()
-    graphDelete.mockResolvedValue(undefined)
+    eventsDelete.mockResolvedValue({})
+    process.env.GOOGLE_SERVICE_ACCOUNT_KEY = 'service-account-key'
+    process.env.GOOGLE_CALENDAR_INTERVIEW_ID = 'interview-calendar'
   })
 
-  it('retries Outlook deletion for cancelled appointments with a remaining calendar event', async () => {
+  afterEach(() => {
+    if (originalServiceAccountKey === undefined) delete process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    else process.env.GOOGLE_SERVICE_ACCOUNT_KEY = originalServiceAccountKey
+    if (originalInterviewCalendarId === undefined) delete process.env.GOOGLE_CALENDAR_INTERVIEW_ID
+    else process.env.GOOGLE_CALENDAR_INTERVIEW_ID = originalInterviewCalendarId
+  })
+
+  it('retries Google Calendar deletion for cancelled appointments with a remaining calendar event', async () => {
     const scheduledRetryBuilder = createBuilder({ data: [], error: null })
     const cancelledRetryBuilder = createBuilder({ data: [{ id: 'appointment-1' }], error: null })
     const appointmentLoadBuilder = createBuilder({
@@ -85,12 +94,57 @@ describe('recruitment calendar retry', () => {
     })
     expect(cancelledRetryBuilder.eq).toHaveBeenCalledWith('status', 'cancelled')
     expect(cancelledRetryBuilder.not).toHaveBeenCalledWith('calendar_event_id', 'is', null)
-    expect(graphApi).toHaveBeenCalledWith('/users/peter@orangejelly.co.uk/events/event-1')
-    expect(graphDelete).toHaveBeenCalledTimes(1)
+    expect(eventsDelete).toHaveBeenCalledTimes(1)
+    expect(eventsDelete).toHaveBeenCalledWith(expect.objectContaining({
+      calendarId: 'interview-calendar',
+      eventId: 'event-1',
+    }))
     expect(appointmentUpdateBuilder.update).toHaveBeenCalledWith({
       calendar_event_id: null,
       calendar_sync_status: 'pending',
       calendar_last_error: null,
+    })
+  })
+
+  it('keeps the event id and marks sync failed when the Google deletion errors', async () => {
+    eventsDelete.mockRejectedValue(new Error('rate limited'))
+
+    const scheduledRetryBuilder = createBuilder({ data: [], error: null })
+    const cancelledRetryBuilder = createBuilder({ data: [{ id: 'appointment-1' }], error: null })
+    const appointmentLoadBuilder = createBuilder({
+      data: {
+        id: 'appointment-1',
+        status: 'cancelled',
+        calendar_event_id: 'event-1',
+      },
+      error: null,
+    })
+    const appointmentUpdateBuilder = createBuilder({ data: null, error: null })
+    const builders = [
+      scheduledRetryBuilder,
+      cancelledRetryBuilder,
+      appointmentLoadBuilder,
+      appointmentUpdateBuilder,
+    ]
+    const supabase = {
+      from: vi.fn(() => {
+        const next = builders.shift()
+        if (!next) throw new Error('Unexpected query')
+        return next
+      }),
+    }
+
+    const result = await retryRecruitmentCalendarSync(25, supabase as any)
+
+    expect(result).toMatchObject({
+      processed: 0,
+      deletionProcessed: 1,
+      deleted: 0,
+      deletionFailed: 1,
+    })
+    expect(appointmentUpdateBuilder.update).toHaveBeenCalledWith({
+      calendar_sync_status: 'failed',
+      calendar_last_error: 'rate limited',
     })
   })
 })

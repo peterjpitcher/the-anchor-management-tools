@@ -66,6 +66,20 @@ export async function getCustomerList(params: {
 }): Promise<CustomerListResult> {
   const { page, pageSize, searchTerm, showDeactivated } = params
 
+  const hasViewPermission = await checkUserPermission('customers', 'view')
+  if (!hasViewPermission) {
+    return {
+      customers: [],
+      totalCount: 0,
+      smsActiveCount: 0,
+      smsDeactivatedCount: 0,
+      customerPreferences: {},
+      customerLabels: {},
+      unreadCounts: {},
+      error: 'Insufficient permissions'
+    }
+  }
+
   const supabase = await createClient()
 
   // Build the base query for counting
