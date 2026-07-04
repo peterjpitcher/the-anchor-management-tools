@@ -157,18 +157,14 @@ describe('BookingDetailClient party size changes', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
+    // Single-step grow+move: one party-size call carrying the auto-picked
+    // setup — the server performs the move and reverts it if the size fails.
     await waitFor(() => {
-      expect(requestTableBookingActionMock).toHaveBeenCalledTimes(2)
+      expect(requestTableBookingActionMock).toHaveBeenCalledTimes(1)
     })
-    expect(requestTableBookingActionMock).toHaveBeenNthCalledWith(
-      1,
-      `/api/boh/table-bookings/${BOOKING_ID}/move-table`,
-      { body: { table_ids: [LARGE_TABLE_ID] } }
-    )
-    expect(requestTableBookingActionMock).toHaveBeenNthCalledWith(
-      2,
+    expect(requestTableBookingActionMock).toHaveBeenCalledWith(
       `/api/boh/table-bookings/${BOOKING_ID}/party-size`,
-      { body: { party_size: 9, send_sms: true } }
+      { body: { party_size: 9, send_sms: true, move_table_ids: [LARGE_TABLE_ID] } }
     )
   })
 

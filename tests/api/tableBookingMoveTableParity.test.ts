@@ -110,7 +110,15 @@ function buildMoveTableSupabase() {
       }
       throw new Error(`Unexpected table: ${table}`)
     }),
-    rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+    rpc: vi.fn((fn: string) => {
+      if (fn === 'move_table_booking_assignments_v05') {
+        return Promise.resolve({
+          data: { state: 'moved', table_booking_id: BOOKING_ID, table_ids: [TARGET_TABLE_ID] },
+          error: null,
+        })
+      }
+      return Promise.resolve({ data: false, error: null })
+    }),
   }
 }
 

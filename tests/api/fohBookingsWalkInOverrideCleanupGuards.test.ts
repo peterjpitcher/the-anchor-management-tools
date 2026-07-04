@@ -92,6 +92,11 @@ describe('FOH bookings walk-in override cleanup guards', () => {
           return makeThenable({ data: [], error: null })
         }
 
+        if (table === 'event_communal_seat_allocations') {
+          // TP-01: the override allocator now excludes communal-event tables.
+          return makeThenable({ data: [], error: null })
+        }
+
         if (table === 'booking_table_assignments') {
           return {
             select: vi.fn(() =>

@@ -34,6 +34,13 @@ type MoveTableMutationResult =
   | { ok: true }
   | { ok: false; status: 409 | 500; error: string }
 
+/**
+ * Recognises the row-conflict errors raised by the DB trigger
+ * enforce_booking_table_assignment_integrity_v05 (overlap, private-booking
+ * block, communal-event overlap) so callers can map them to a friendly 409
+ * instead of a raw 500. Single source of truth — import this rather than
+ * copying it into route files.
+ */
 export function isAssignmentConflictError(error: { code?: string; message?: string } | null | undefined): boolean {
   const code = typeof error?.code === 'string' ? error.code : ''
   const message = typeof error?.message === 'string' ? error.message : ''
@@ -41,6 +48,7 @@ export function isAssignmentConflictError(error: { code?: string; message?: stri
     code === '23P01'
     || message.includes('table_assignment_overlap')
     || message.includes('table_assignment_private_blocked')
+    || message.includes('table_assignment_communal_overlap')
   )
 }
 
@@ -415,91 +423,38 @@ export async function moveBookingAssignmentToTables(
     return { ok: false, status: 409, error: 'Select a table to move this booking' }
   }
 
-  const { data: existingAssignments, error: assignmentLookupError } = await supabase.from('booking_table_assignments')
-    .select('table_booking_id, table_id')
-    .eq('table_booking_id', input.bookingId)
+  // Atomic move: the RPC deletes stale assignments and inserts/re-windows the
+  // target rows in one transaction, so a mid-move conflict can never leave the
+  // booking holding old + partial new tables. Conflicts surface as the same
+  // trigger errors the direct writes produced (23P01 / table_assignment_*).
+  const { data, error } = await supabase.rpc('move_table_booking_assignments_v05', {
+    p_table_booking_id: input.bookingId,
+    p_table_ids: targetTableIds,
+    p_start_datetime: input.startIso,
+    p_end_datetime: input.endIso
+  })
 
-  if (assignmentLookupError) {
-    return { ok: false, status: 500, error: 'Failed to load current table assignment' }
-  }
-
-  const assignmentRows = (existingAssignments || [])
-  const existingTableIds = assignmentRows
-    .map((row) => (typeof row?.table_id === 'string' ? row.table_id : null))
-    .filter((value): value is string => Boolean(value))
-  const alreadyOnTargets = sameIdSet(existingTableIds, targetTableIds)
-
-  for (const targetTableId of targetTableIds) {
-    const hasTargetAssignment = assignmentRows.some((row) => row.table_id === targetTableId)
-
-    if (hasTargetAssignment) {
-      const { data: updatedAssignment, error: updateError } = await supabase.from('booking_table_assignments')
-        .update({
-          start_datetime: input.startIso,
-          end_datetime: input.endIso
-        })
-        .eq('table_booking_id', input.bookingId)
-        .eq('table_id', targetTableId)
-        .select('table_booking_id')
-        .maybeSingle()
-
-      if (updateError) {
-        if (isAssignmentConflictError(updateError)) {
-          return {
-            ok: false,
-            status: 409,
-            error: 'That table is no longer available. Please refresh and choose another.'
-          }
-        }
-        return { ok: false, status: 500, error: 'Failed to update target table assignment window' }
-      }
-
-      if (!updatedAssignment) {
-        return {
-          ok: false,
-          status: 409,
-          error: 'Current table assignment changed. Refresh and retry.'
-        }
-      }
-    } else {
-      const { error: insertError } = await supabase.from('booking_table_assignments')
-        .insert({
-          table_booking_id: input.bookingId,
-          table_id: targetTableId,
-          start_datetime: input.startIso,
-          end_datetime: input.endIso,
-          created_at: input.nowIso
-        })
-
-      if (insertError) {
-        if (isAssignmentConflictError(insertError)) {
-          return {
-            ok: false,
-            status: 409,
-            error: 'That table is no longer available. Please refresh and choose another.'
-          }
-        }
-        return { ok: false, status: 500, error: 'Failed to move table assignment' }
+  if (error) {
+    if (isAssignmentConflictError(error)) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'That table is no longer available. Please refresh and choose another.'
       }
     }
+    return { ok: false, status: 500, error: 'Failed to move table assignment' }
   }
 
-  if (alreadyOnTargets) {
-    return { ok: true }
-  }
-
-  const staleTableIds = existingTableIds.filter((tableId) => !targetTableIds.includes(tableId))
-  if (staleTableIds.length === 0) {
-    return { ok: true }
-  }
-
-  const { error: deleteError } = await supabase.from('booking_table_assignments')
-    .delete()
-    .eq('table_booking_id', input.bookingId)
-    .in('table_id', staleTableIds)
-
-  if (deleteError) {
-    return { ok: false, status: 500, error: 'Failed to clear previous table assignments' }
+  const result = (data ?? {}) as { state?: string; reason?: string }
+  if (result.state !== 'moved') {
+    if (result.reason === 'booking_not_found') {
+      return {
+        ok: false,
+        status: 409,
+        error: 'Current table assignment changed. Refresh and retry.'
+      }
+    }
+    return { ok: false, status: 409, error: 'Select a table to move this booking' }
   }
 
   return { ok: true }

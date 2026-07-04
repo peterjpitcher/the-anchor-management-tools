@@ -2,6 +2,7 @@ import { createStripeRefund } from '@/lib/payments/stripe'
 import { createClient } from '@/lib/supabase/server'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 
 type RefundTier = 'full' | 'half' | 'none'
 
@@ -16,10 +17,12 @@ export type RefundResult =
  * - <3 days: 0% (none)
  */
 function calculateRefundTier(bookingDate: Date): { percent: number; tier: RefundTier } {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffMs = bookingDate.getTime() - today.getTime()
-  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  // Compare Europe/London calendar days — server-local midnight maths shifts
+  // this money threshold by a day around BST/UTC boundaries.
+  const MS_PER_DAY = 24 * 60 * 60 * 1000
+  const todayUtcMs = Date.parse(`${getTodayIsoDate()}T00:00:00Z`)
+  const bookingUtcMs = Date.parse(`${toLocalIsoDate(bookingDate)}T00:00:00Z`)
+  const days = Math.round((bookingUtcMs - todayUtcMs) / MS_PER_DAY)
   if (days >= 7) return { percent: 100, tier: 'full' }
   if (days >= 3) return { percent: 50, tier: 'half' }
   return { percent: 0, tier: 'none' }

@@ -669,31 +669,43 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       toast.error('Enter a party size between 1 and 20')
       return
     }
-    // When the party outgrows the current table we prefer an explicit move to the selected
-    // (auto-picked) table setup. If none is available we still submit and let the server
-    // auto-move try — it returns a clear message when nothing large enough is free.
+    // Grow+move is a single server-side step: the party-size endpoint auto-moves
+    // the booking when it outgrows the current table (honouring the selected
+    // setup below when one is picked) and reverts the move if the size change
+    // fails — so the two can never end up out of step.
     const selectedMoveTable = partySizeNeedsLargerTable ? partySizeSelectedMoveTable : null
     await runAction(
       'party-size',
       async () => {
-        if (selectedMoveTable) {
-          await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/move-table`, {
-            body: { table_ids: selectedMoveTable.table_ids?.length ? selectedMoveTable.table_ids : [selectedMoveTable.id] },
-          })
-        }
         const payload = await requestTableBookingAction<{
           depositRequired?: boolean
           depositUrl?: string | null
           smsSent?: boolean
+          warning?: string | null
+          data?: { auto_moved_table_name?: string | null }
         }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
-          body: { party_size: nextSize, send_sms: partySizeEditSendSms },
+          body: {
+            party_size: nextSize,
+            send_sms: partySizeEditSendSms,
+            ...(selectedMoveTable
+              ? {
+                  move_table_ids: selectedMoveTable.table_ids?.length
+                    ? selectedMoveTable.table_ids
+                    : [selectedMoveTable.id],
+                }
+              : {}),
+          },
         })
         setPartySizeEditOpen(false)
         setPartySizeMoveTableId('')
         return payload
       },
       (payload) => {
-        const prefix = selectedMoveTable ? 'Table moved. ' : ''
+        const movedTableName = payload.data?.auto_moved_table_name
+        const prefix = movedTableName ? `Moved to ${movedTableName}. ` : ''
+        if (payload.warning) {
+          return `${prefix}${payload.warning}`
+        }
         if (payload.depositRequired) {
           return payload.smsSent
             ? `${prefix}Party size updated. Deposit link sent by SMS.`

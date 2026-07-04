@@ -339,7 +339,10 @@ describe('Table-booking mutation row-effect guards', () => {
     expect(createChargeRequestForBooking).not.toHaveBeenCalled()
   })
 
-  it('returns 409 when FOH move-table target assignment update affects no rows', async () => {
+  // Updated (TP-03): the per-table update loop was replaced by the atomic
+  // move_table_booking_assignments_v05 RPC, so "update affected no rows" is now
+  // signalled by the RPC reporting the booking no longer exists.
+  it('returns 409 when FOH move-table RPC reports the booking no longer exists', async () => {
     const targetTableId = '11111111-1111-4111-8111-111111111111'
 
     const tablesOrderSecond = vi.fn().mockResolvedValue({
@@ -415,7 +418,15 @@ describe('Table-booking mutation row-effect guards', () => {
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
-      rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+      rpc: vi.fn((fn: string) => {
+        if (fn === 'move_table_booking_assignments_v05') {
+          return Promise.resolve({
+            data: { state: 'blocked', reason: 'booking_not_found' },
+            error: null,
+          })
+        }
+        return Promise.resolve({ data: false, error: null })
+      }),
     }
 
     ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({

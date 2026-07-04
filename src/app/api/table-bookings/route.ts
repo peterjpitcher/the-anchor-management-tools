@@ -26,6 +26,7 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
+import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -87,16 +88,6 @@ type TableBookingResponseData = {
   deposit_amount: number | null
   fallback_payment_url: string | null
   notification_channel: NotificationChannelMeta
-}
-
-function isAssignmentConflictRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
-  const code = typeof error?.code === 'string' ? error.code : ''
-  const message = typeof error?.message === 'string' ? error.message : ''
-  return (
-    code === '23P01'
-    || message.includes('table_assignment_overlap')
-    || message.includes('table_assignment_private_blocked')
-  )
 }
 
 async function recordTableBookingAnalyticsSafe(
@@ -251,7 +242,7 @@ export async function POST(request: NextRequest) {
 
       let bookingResult: TableBookingRpcResult
       if (rpcError) {
-        if (isAssignmentConflictRpcError(rpcError)) {
+        if (isAssignmentConflictError(rpcError)) {
           bookingResult = {
             state: 'blocked',
             reason: rpcError.message?.includes('table_assignment_private_blocked')
