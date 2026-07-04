@@ -1,6 +1,20 @@
-import { describe, it, expect } from 'vitest'
-import { generateContractHTML, type ContractData } from '@/lib/contract-template'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { generateContractHTML, matchesSelfCateringPackageName, type ContractData } from '@/lib/contract-template'
+import { logger } from '@/lib/logger'
 import type { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
+
+vi.mock('@/lib/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 const BYO_FOOD_PACKAGE_ID = '9fdbf82b-6717-4bff-8af6-8865cb5bfe21'
 
@@ -79,11 +93,29 @@ describe('generateContractHTML', () => {
     expect(html).toContain('This signature is separate from, and additional to')
   })
 
-  it('appends the waiver via the package-name fallback when the id differs', () => {
+  it('appends the waiver via the package-name fallback when the id differs, and warns about id drift', () => {
     const html = generateContractHTML(
       baseData(makeBooking([makeItem({ package: { id: 'some-other-uuid', name: 'BRING YOUR OWN Food (client supplied)' } as never })])),
     )
     expect(html).toContain('data-doc="waiver"')
+    expect(logger.warn).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(logger.warn).mock.calls[0][0]).toContain('not by known package id')
+  })
+
+  it('appends the waiver for re-seeded packages named self-catering or BYO', () => {
+    for (const name of ['Self-Catering', 'Self catered buffet', 'BYO Buffet']) {
+      const html = generateContractHTML(
+        baseData(makeBooking([makeItem({ package: { id: 'reseeded-uuid', name } as never })])),
+      )
+      expect(html, `expected waiver for package named "${name}"`).toContain('data-doc="waiver"')
+    }
+  })
+
+  it('does not warn when the waiver is matched by the known package id', () => {
+    generateContractHTML(
+      baseData(makeBooking([makeItem({ package: { id: BYO_FOOD_PACKAGE_ID, name: 'Bring Your Own Food' } as never })])),
+    )
+    expect(logger.warn).not.toHaveBeenCalled()
   })
 
   it('does not treat a non-catering item named similarly as self-catered', () => {
@@ -123,5 +155,77 @@ describe('generateContractHTML', () => {
     expect(html).not.toContain('undefined')
     expect(html).not.toContain('NaN')
     expect(html).not.toContain('[object Object]')
+  })
+})
+
+describe('deposit rendering', () => {
+  it('renders the stored deposit amount with a due status', () => {
+    const html = generateContractHTML(baseData(makeBooking([], { deposit_amount: 100 })))
+    expect(html).toContain('£100.00')
+    expect(html).toContain('Status: due')
+    expect(html).toContain('booking and damage deposit of <b>£100.00</b>')
+    expect(html).not.toContain('No deposit required')
+  })
+
+  it('renders a paid status when the deposit has a paid date', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { deposit_amount: 250, deposit_paid_date: '2026-07-01' } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toContain('£250.00')
+    expect(html).toContain('Status: paid')
+    expect(html).not.toContain('Status: due')
+  })
+
+  it('renders "No deposit required" when deposit_amount is null — never a fabricated £250', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { deposit_amount: null } as unknown as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toContain('No deposit required')
+    expect(html).toContain('No booking deposit is required for this event')
+    expect(html).not.toContain('£250.00')
+    expect(html).not.toContain('Status: due')
+    expect(html).not.toContain('deposit of <b>£0.00</b>')
+    expect(html).not.toContain('forfeiture of the deposit')
+  })
+
+  it('renders "No deposit required" when deposit_amount is 0', () => {
+    const html = generateContractHTML(baseData(makeBooking([], { deposit_amount: 0 })))
+    expect(html).toContain('No deposit required')
+    expect(html).not.toContain('Status: due')
+    expect(html).not.toContain('deposit of <b>£0.00</b>')
+  })
+
+  it('notes a recorded deposit payment calmly when no deposit amount is stored', () => {
+    const html = generateContractHTML(
+      baseData(
+        makeBooking([], { deposit_amount: null, deposit_paid_date: '2026-07-01' } as unknown as Partial<PrivateBookingWithDetails>),
+      ),
+    )
+    expect(html).toContain('No deposit required')
+    expect(html).toContain('A deposit payment was recorded on')
+  })
+})
+
+describe('matchesSelfCateringPackageName', () => {
+  it('matches bring your own, self-catering and BYO variants case-insensitively', () => {
+    expect(matchesSelfCateringPackageName('Bring Your Own Food')).toBe(true)
+    expect(matchesSelfCateringPackageName('bring your own buffet')).toBe(true)
+    expect(matchesSelfCateringPackageName('Self-Catering')).toBe(true)
+    expect(matchesSelfCateringPackageName('Self catered spread')).toBe(true)
+    expect(matchesSelfCateringPackageName('BYO Buffet')).toBe(true)
+    expect(matchesSelfCateringPackageName('byo')).toBe(true)
+  })
+
+  it('does not match ordinary catering names or byo inside another word', () => {
+    expect(matchesSelfCateringPackageName('Hot Buffet')).toBe(false)
+    expect(matchesSelfCateringPackageName('Classic Sunday Lunch')).toBe(false)
+    expect(matchesSelfCateringPackageName('Abyorm Platter')).toBe(false)
+  })
+
+  it('handles empty and missing names', () => {
+    expect(matchesSelfCateringPackageName('')).toBe(false)
+    expect(matchesSelfCateringPackageName('   ')).toBe(false)
+    expect(matchesSelfCateringPackageName(null)).toBe(false)
+    expect(matchesSelfCateringPackageName(undefined)).toBe(false)
   })
 })

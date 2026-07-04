@@ -1,8 +1,8 @@
 'use client'
 
-import React, { type ReactNode, type ComponentProps, useEffect, useRef } from 'react'
+import React, { type ReactNode, type ComponentProps, useEffect, useRef, useState } from 'react'
 import { useFormState as useFormStateLegacy, useFormStatus } from 'react-dom'
-import { Button } from '@/ds'
+import { Button, ConfirmDialog } from '@/ds'
 import { toast } from '@/ds'
 
 export type SmsQueueActionState = {
@@ -42,6 +42,9 @@ export function SmsQueueActionForm({
 }: SmsQueueActionFormProps) {
   const [state, formAction] = useFormStateCompat(action, initialState)
   const lastChangeRef = useRef<number>(0)
+  const formRef = useRef<HTMLFormElement>(null)
+  const confirmedRef = useRef(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   useEffect(() => {
     if (state.changedAt === lastChangeRef.current || state.status === 'idle') {
@@ -58,31 +61,48 @@ export function SmsQueueActionForm({
   }, [state, successMessage])
 
   return (
-    <form
-      action={formAction}
-      className="inline"
-      onSubmit={(event) => {
-        if (disabled) {
-          event.preventDefault()
-          return
-        }
-        if (typeof window !== 'undefined') {
-          const confirmed = window.confirm(confirmMessage)
-          if (!confirmed) {
+    <>
+      <form
+        ref={formRef}
+        action={formAction}
+        className="inline"
+        onSubmit={(event) => {
+          if (disabled) {
             event.preventDefault()
+            return
           }
-        }
-      }}
-    >
-      <input type="hidden" name="smsId" value={smsId} />
-      <SubmitButton
-        variant={variant}
-        leftIcon={leftIcon}
-        disabled={disabled}
+          // First submit opens the confirmation dialog; the dialog re-submits
+          // with confirmedRef set so the server action actually runs.
+          if (!confirmedRef.current) {
+            event.preventDefault()
+            setShowConfirm(true)
+            return
+          }
+          confirmedRef.current = false
+        }}
       >
-        {children}
-      </SubmitButton>
-    </form>
+        <input type="hidden" name="smsId" value={smsId} />
+        <SubmitButton
+          variant={variant}
+          leftIcon={leftIcon}
+          disabled={disabled}
+        >
+          {children}
+        </SubmitButton>
+      </form>
+      <ConfirmDialog
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={() => {
+          confirmedRef.current = true
+          formRef.current?.requestSubmit()
+        }}
+        title="Please confirm"
+        message={confirmMessage}
+        confirmLabel="Confirm"
+        tone={variant === 'danger' ? 'danger' : 'warning'}
+      />
+    </>
   )
 }
 

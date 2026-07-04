@@ -1,6 +1,7 @@
 import { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { logger } from '@/lib/logger'
 
 export interface ContractData {
   booking: PrivateBookingWithDetails
@@ -19,8 +20,23 @@ export interface ContractData {
 // supabase/migrations/20260405120000_standardise_catering_options.sql). When a booking
 // includes this package, the optional self-catering food release & indemnity waiver
 // annex is appended to the contract. Matched by fixed id first, with a name fallback so
-// a re-seeded package (different id, same name) still triggers the annex.
+// a re-seeded or renamed package (different id, similar name) still triggers the annex.
 const BYO_FOOD_PACKAGE_ID = '9fdbf82b-6717-4bff-8af6-8865cb5bfe21'
+
+// Name patterns that indicate a self-catered event. Deliberately broad: a re-seeded
+// package renamed to e.g. "Self-Catering" or "BYO Buffet" must still append the waiver.
+const SELF_CATERING_NAME_PATTERNS: readonly RegExp[] = [
+  /bring your own/,
+  /self[\s-]?cater/,
+  /\bbyo\b/
+]
+
+// Exported for unit tests. True when a catering package name reads as self-catering.
+export function matchesSelfCateringPackageName(name: string | null | undefined): boolean {
+  const normalised = (name || '').trim().toLowerCase()
+  if (!normalised) return false
+  return SELF_CATERING_NAME_PATTERNS.some((pattern) => pattern.test(normalised))
+}
 
 export function generateContractHTML(data: ContractData): string {
   const { booking, logoUrl } = data
@@ -73,7 +89,13 @@ export function generateContractHTML(data: ContractData): string {
   const endTime = booking.end_time && booking.end_time_next_day ? `${rawEndTime} (+1 day)` : rawEndTime
   const eventType = booking.event_type || 'To be confirmed'
   const guestCount = booking.guest_count || 'To be confirmed'
-  const depositAmount = booking.deposit_amount ?? 250
+  // deposit_amount can be NULL in the database (e.g. venue-hosted events that are
+  // exempt from deposit rules). Never invent an amount here — a NULL/0 deposit renders
+  // as "No deposit required". The £250 default belongs on the booking form only.
+  const rawDepositAmount =
+    typeof booking.deposit_amount === 'string' ? parseFloat(booking.deposit_amount) : booking.deposit_amount
+  const depositAmount = Number.isFinite(rawDepositAmount) ? Number(rawDepositAmount) : 0
+  const depositRequired = depositAmount > 0
   const subtotal = calculateSubtotal()
   const originalTotal = calculateOriginalTotal()
   const total = calculateTotal()
@@ -122,11 +144,40 @@ export function generateContractHTML(data: ContractData): string {
   const logo = logoUrl ? encodeURI(logoUrl) : '/logo-black.png'
   const venue = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ'
 
+  // ---- deposit-dependent fragments ----
+  // When no deposit is stored the contract must not demand one; wording stays calm.
+  const depositBoxHtml = depositRequired
+    ? `<div class="deposit-box">
+              <span class="db-l">Booking &amp; damage deposit</span>
+              <span class="db-r">${formatCurrency(depositAmount)}</span>
+              <small>Status: ${depositStatus}. Payable to confirm the booking. Separate from and additional to the event balance.</small>
+            </div>`
+    : `<div class="deposit-box">
+              <span class="db-l">Booking &amp; damage deposit</span>
+              <span class="db-r" style="font-size:17px;">No deposit required</span>
+              <small>No booking deposit is payable for this event.${booking.deposit_paid_date ? ` A deposit payment was recorded on ${formatDate(booking.deposit_paid_date)}.` : ''}</small>
+            </div>`
+  const depositCalloutHtml = depositRequired
+    ? `<p class="callout"><b>Important:</b> the deposit is separate from the event balance and cannot be used towards payment of it. The full event balance remains payable separately by the due date.</p>`
+    : `<p class="callout"><b>Note:</b> no booking deposit is required for this event. The full event balance remains payable by the due date.</p>`
+
   // ---- self-catering (bring your own food) detection ----
   const hasOwnFood = (booking.items || []).some((item: PrivateBookingItem) => {
     if (item.item_type !== 'catering') return false
     if (item.package?.id === BYO_FOOD_PACKAGE_ID) return true
-    return (item.package?.name || '').toLowerCase().includes('bring your own')
+    if (matchesSelfCateringPackageName(item.package?.name)) {
+      // The name reads as self-catering but the known package id didn't match —
+      // the seeded id has probably drifted. Warn so BYO_FOOD_PACKAGE_ID gets updated.
+      logger.warn('Self-catering waiver matched by package name, not by known package id', {
+        metadata: {
+          bookingId: booking.id,
+          packageId: item.package?.id || null,
+          packageName: item.package?.name || null
+        }
+      })
+      return true
+    }
+    return false
   })
 
   const waiverEventDetails =
@@ -372,13 +423,9 @@ export function generateContractHTML(data: ContractData): string {
               <div class="fin-row"><span class="fk">Event balance due</span><span class="fv">${formatCurrency(balanceDue)}</span></div>
               <div class="fin-row total"><span class="fk">Total event cost</span><span class="fv">${formatCurrency(total)}</span></div>
             </div>
-            <div class="deposit-box">
-              <span class="db-l">Booking &amp; damage deposit</span>
-              <span class="db-r">${formatCurrency(depositAmount)}</span>
-              <small>Status: ${depositStatus}. Payable to confirm the booking. Separate from and additional to the event balance.</small>
-            </div>
+            ${depositBoxHtml}
           </div>
-          <p class="callout"><b>Important:</b> the deposit is separate from the event balance and cannot be used towards payment of it. The full event balance remains payable separately by the due date.</p>
+          ${depositCalloutHtml}
 
           <p class="section-label">Important: services not included</p>
           <p style="font-size:10px; line-height:1.44; color:var(--ink-soft); margin:0 0 2.4mm;">This contract covers <b>only</b> the specific items and services itemised in the booking details. The following are <b>not</b> included unless explicitly itemised:</p>
@@ -406,17 +453,20 @@ export function generateContractHTML(data: ContractData): string {
         <div class="body">
           <p class="section-label">Deposit information</p>
           <div class="tc">
-            <p>A booking and damage deposit is required to secure the desired date and time. The deposit secures the booking, removes the date and time from general availability, and protects Orange Jelly Limited, trading as The Anchor, against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</p>
+${depositRequired ? `            <p>A booking and damage deposit is required to secure the desired date and time. The deposit secures the booking, removes the date and time from general availability, and protects Orange Jelly Limited, trading as The Anchor, against cancellation, damage, additional cleaning, overtime, unpaid charges, third-party supplier costs and other sums arising from the event.</p>
             <p>The booking is not confirmed until the deposit has been received in cleared funds. Before payment, Orange Jelly Limited may place a temporary hold on the date and time; a temporary hold is provisional only and may be released if the deposit is not received in cleared funds within <b>14 calendar days</b>, unless agreed otherwise in writing. The deposit may be paid by cash, card, bank transfer or PayPal, and payment of the deposit constitutes acceptance of this Agreement and these Terms and Conditions in full.</p>
             <p>The deposit is separate from and additional to the total event cost, and cannot be used as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. If the event proceeds as booked, the deposit will be refunded within <b>48 hours</b> after the event, provided the full balance has been paid, all charges settled, and no deductions required.</p>
-            <p>The Host remains responsible for significant or malicious damage, excessive or specialist cleaning, unauthorised overtime, unpaid bar tabs, missing items, supplier and staffing costs, special-order items and other costs arising from the event. Ordinary incidental wear and minor glass breakages are not charged. Where sums owed exceed the deposit, the Host must pay the balance on demand.</p>
+            <p>The Host remains responsible for significant or malicious damage, excessive or specialist cleaning, unauthorised overtime, unpaid bar tabs, missing items, supplier and staffing costs, special-order items and other costs arising from the event. Ordinary incidental wear and minor glass breakages are not charged. Where sums owed exceed the deposit, the Host must pay the balance on demand.</p>` : `            <p>No booking and damage deposit is required for this event. The booking is confirmed once agreed in writing with Orange Jelly Limited, trading as The Anchor.</p>
+            <p>The Host remains responsible for significant or malicious damage, excessive or specialist cleaning, unauthorised overtime, unpaid bar tabs, missing items, supplier and staffing costs, special-order items and other costs arising from the event, which are payable on demand. Ordinary incidental wear and minor glass breakages are not charged.</p>`}
           </div>
 
           <p class="section-label gap">Agreement</p>
           <div class="tc">
-            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b>, and commit to paying the total event cost of <b>${formatCurrency(total)}</b>. To secure the booking I will pay the booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>.</p>
+${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b>, and commit to paying the total event cost of <b>${formatCurrency(total)}</b>. To secure the booking I will pay the booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>.</p>
             <p>I understand the deposit is separate from and additional to the event cost and cannot be used towards the event balance or any other charge. I understand the full event balance of <b>${formatCurrency(total)}</b> and final guest numbers are due no later than <b>${balanceDueDate}</b> (14 calendar days before the event), and that failure to pay by the due date may result in cancellation and forfeiture of the deposit, except where a refund is required by law.</p>
-            <p>I understand that if I cancel <b>less than 30 calendar days</b> before the event, fail to attend, or fail to pay the balance by the due date, the deposit will be retained in full, except where a refund is required by law. If I cancel <b>30 calendar days or more</b> before the event, the deposit may be refunded less a 5% administration deduction and any direct costs already incurred or committed. By signing below, paying the deposit, or otherwise confirming in writing, I confirm I have read, understood and agree to be bound by this Agreement and its Terms and Conditions.</p>
+            <p>I understand that if I cancel <b>less than 30 calendar days</b> before the event, fail to attend, or fail to pay the balance by the due date, the deposit will be retained in full, except where a refund is required by law. If I cancel <b>30 calendar days or more</b> before the event, the deposit may be refunded less a 5% administration deduction and any direct costs already incurred or committed. By signing below, paying the deposit, or otherwise confirming in writing, I confirm I have read, understood and agree to be bound by this Agreement and its Terms and Conditions.</p>` : `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited, operating as The Anchor Pub, to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b>, and commit to paying the total event cost of <b>${formatCurrency(total)}</b>. No booking deposit is required for this event.</p>
+            <p>I understand the full event balance of <b>${formatCurrency(total)}</b> and final guest numbers are due no later than <b>${balanceDueDate}</b> (14 calendar days before the event), and that failure to pay by the due date may result in cancellation of the booking.</p>
+            <p>I understand that cancellations must be made in writing, and that any direct costs already incurred or committed for the event may remain payable. By signing below, or otherwise confirming in writing, I confirm I have read, understood and agree to be bound by this Agreement and its Terms and Conditions.</p>`}
           </div>
 
           <div class="sign-grid" style="margin-top:5mm;">
