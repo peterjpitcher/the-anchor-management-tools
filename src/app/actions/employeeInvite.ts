@@ -619,6 +619,33 @@ const HealthSectionSchema = z.object({
   disability_details: z.string().optional().nullable(),
 });
 
+/**
+ * Audit a persisted onboarding section write. Records field names only —
+ * never PII values (the sections hold NI, bank, health and contact data).
+ */
+async function auditOnboardingSectionWrite(
+  employeeId: string,
+  employeeEmail: string | null,
+  section: OnboardingSectionKey,
+  fieldsWritten: string[],
+) {
+  await logAuditEvent({
+    user_email: employeeEmail ?? undefined,
+    operation_type: 'update',
+    resource_type: 'employee_onboarding',
+    resource_id: employeeId,
+    operation_status: 'success',
+    new_values: {
+      section,
+      fields_written: fieldsWritten,
+    },
+    additional_info: {
+      source: 'employee_onboarding',
+      contains_sensitive_values: false,
+    },
+  });
+}
+
 async function auditOnboardingSensitiveSectionWrite(
   employeeId: string,
   employeeEmail: string | null,
@@ -675,6 +702,7 @@ export async function saveOnboardingSection(
         .eq('employee_id', employeeId);
 
       if (error) throw error;
+      await auditOnboardingSectionWrite(employeeId, validation.email, 'personal', Object.keys(parsed));
 
     } else if (section === 'emergency_contacts') {
       const parsed = EmergencyContactsSectionSchema.parse(data);
@@ -710,6 +738,12 @@ export async function saveOnboardingSection(
         console.error('[saveOnboardingSection] Failed to save emergency contacts atomically:', contactsError);
         return { success: false, error: 'Failed to save emergency contacts. Please try again.' };
       }
+      await auditOnboardingSectionWrite(
+        employeeId,
+        validation.email,
+        'emergency_contacts',
+        contacts.map((contact) => String(contact.priority ?? 'unknown').toLowerCase()),
+      );
 
     } else if (section === 'financial') {
       const parsed = FinancialSectionSchema.parse(data);

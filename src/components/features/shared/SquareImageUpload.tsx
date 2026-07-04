@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { uploadEventImage, deleteEventImage } from '@/app/actions/event-images'
-import { Button } from '@/ds'
+import { Button, ConfirmDialog } from '@/ds'
 import { TrashIcon, PhotoIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -27,6 +27,7 @@ export function SquareImageUpload({
 }: SquareImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -105,9 +106,9 @@ export function SquareImageUpload({
     }
   }
 
-  // Handle delete
+  // Handle delete (called from the confirmation dialog)
   const handleDelete = async () => {
-    if (!currentImageUrl || !window.confirm('Are you sure you want to delete this image?')) {
+    if (!currentImageUrl) {
       return
     }
 
@@ -138,6 +139,7 @@ export function SquareImageUpload({
       toast.error('Failed to delete image')
     } finally {
       setIsDeleting(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -165,7 +167,7 @@ export function SquareImageUpload({
           {currentImageUrl && (
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
               className="absolute -top-2 -right-2 p-2 sm:p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 disabled:opacity-50 shadow-md touch-manipulation min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
               title="Delete image"
@@ -218,6 +220,17 @@ export function SquareImageUpload({
           </p>
         )}
       </div>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete image"
+        message="Are you sure you want to delete this image?"
+        confirmLabel="Delete"
+        tone="danger"
+        closeOnConfirm={false}
+      />
     </div>
   )
 }
