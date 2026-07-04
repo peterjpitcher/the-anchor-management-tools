@@ -9,6 +9,12 @@ import { compareEntries } from './sort'
 export interface ScheduleCalendarListProps {
     entries: CalendarEntry[]
     onEntryClick?: (entry: CalendarEntry) => void
+    /**
+     * Hide date groups before today. Used on mobile where the list is the only
+     * view — without it, months of past entries render above Today and the
+     * page loads scrolled halfway down.
+     */
+    hidePast?: boolean
 }
 
 interface DateGroup {
@@ -16,24 +22,32 @@ interface DateGroup {
     entries: CalendarEntry[]
 }
 
-export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendarListProps) {
+export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false }: ScheduleCalendarListProps) {
     const today = useMemo(() => startOfToday(), [])
     const sorted = useMemo(() => [...entries].sort(compareEntries), [entries])
     const groups = useMemo(() => groupByDate(sorted), [sorted])
 
     // Ensure a Today group exists even when no entries land on today, so
-    // scrollIntoView always has a target to anchor.
+    // scrollIntoView always has a target to anchor. When hidePast is set,
+    // pre-today groups are dropped first (group dates and `today` are both
+    // local-midnight Dates, so the comparison is exact).
     const groupsWithToday = useMemo<DateGroup[]>(() => {
-        if (groups.some((g) => isSameDay(g.date, today))) return groups
-        const next: DateGroup[] = [...groups, { date: today, entries: [] }]
+        const base = hidePast
+            ? groups.filter((g) => g.date.getTime() >= today.getTime())
+            : groups
+        if (base.some((g) => isSameDay(g.date, today))) return base
+        const next: DateGroup[] = [...base, { date: today, entries: [] }]
         next.sort((a, b) => a.date.getTime() - b.date.getTime())
         return next
-    }, [groups, today])
+    }, [groups, today, hidePast])
 
     const todayRef = useRef<HTMLHeadingElement | null>(null)
     const hasAnchoredRef = useRef(false)
 
     useLayoutEffect(() => {
+        // With past groups hidden, Today is already at the top — scrolling
+        // would just yank the document down past any page header.
+        if (hidePast) return
         if (hasAnchoredRef.current) return
         const el = todayRef.current
         if (!el) return
@@ -44,13 +58,10 @@ export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendar
             hasAnchoredRef.current = true
         })
         return () => cancelAnimationFrame(raf)
-    }, [groupsWithToday.length])
+    }, [groupsWithToday.length, hidePast])
 
     return (
-        <div
-            className="flex flex-col gap-3 overflow-y-auto bg-gray-50 rounded-md p-2"
-            style={{ scrollMarginTop: '1rem' }}
-        >
+        <div className="flex flex-col gap-3 bg-gray-50 rounded-md p-2">
             {groupsWithToday.map((group) => {
                 const isTodayGroup = isSameDay(group.date, today)
                 return (
@@ -64,7 +75,8 @@ export function ScheduleCalendarList({ entries, onEntryClick }: ScheduleCalendar
                         <h2
                             ref={isTodayGroup ? todayRef : undefined}
                             className={cn(
-                                'text-sm font-semibold sticky top-0 z-10 px-3 py-2 border-b',
+                                // max-sm:top-14 keeps headers clear of the 56px sticky mobile chrome
+                                'text-sm font-semibold sticky top-0 max-sm:top-14 z-10 px-3 py-2 border-b',
                                 isTodayGroup
                                     ? 'bg-green-50 text-green-900 border-green-300'
                                     : 'bg-gray-100 text-gray-700 border-gray-200'

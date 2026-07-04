@@ -274,17 +274,17 @@ export default function DashboardClient({
                 {upcomingEvents.map((e) => (
                   <div
                     key={e.id}
-                    className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0"
+                    className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0"
                   >
                     <div className="w-11 text-center rounded-lg bg-primary-soft text-primary-soft-fg py-1.5 flex-shrink-0">
                       <div className="text-[10px] font-bold tracking-wider uppercase">{e.dateLabel}</div>
                       <div className="text-base font-bold leading-tight">{e.dayNumber}</div>
                     </div>
-                    <div>
-                      <div className="text-[13px] font-semibold text-text-strong">{e.title}</div>
-                      <div className="text-xs text-text-muted mt-0.5">{e.time} &middot; {e.host}</div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-text-strong truncate">{e.title}</div>
+                      <div className="text-xs text-text-muted mt-0.5 truncate">{e.time} &middot; {e.host}</div>
                     </div>
-                    <div className="flex items-center gap-2 min-w-[140px] justify-end">
+                    <div className="hidden sm:flex items-center gap-2 min-w-[140px] justify-end">
                       <span className="text-xs text-text-muted tabular-nums">{e.booked}/{e.capacity}</span>
                       <div className="w-20">
                         <ProgressBar value={Math.round((e.booked / e.capacity) * 100)} size="sm" />
