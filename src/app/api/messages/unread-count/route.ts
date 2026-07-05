@@ -35,20 +35,27 @@ async function buildResponse(): Promise<Response> {
 }
 
 export async function GET() {
+  // Keep a handle to the timeout so we can clear it once the race settles.
+  // Without this the timer keeps running after buildResponse() wins and fires
+  // ~6s later, logging a false "timed out" warning for a request that already
+  // returned the real count.
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  const timeoutPromise = new Promise<Response>((resolve) => {
+    timeoutId = setTimeout(() => {
+      logger.warn('Unread message count timed out; returning 0 badge')
+      resolve(NextResponse.json({ badge: 0 }))
+    }, TIMEOUT_MS)
+  })
+
   try {
-    return await Promise.race([
-      buildResponse(),
-      new Promise<Response>((resolve) =>
-        setTimeout(() => {
-          logger.warn('Unread message count timed out; returning 0 badge')
-          resolve(NextResponse.json({ badge: 0 }))
-        }, TIMEOUT_MS)
-      ),
-    ])
+    return await Promise.race([buildResponse(), timeoutPromise])
   } catch (error) {
     logger.error('Unexpected error fetching unread message count', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return NextResponse.json({ badge: 0 }, { status: 500 })
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
   }
 }
