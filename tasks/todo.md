@@ -39,9 +39,13 @@ confirmed-only guests; □ tick box per line; new `SALES_CLOSED` code.
       smoke-tested). Merged to main + pushed (`4fe8fa19`). Deploy VERIFIED: Vercel Ready, prod alias
       `management.orangejelly.co.uk` on `dpl_BXQNmsuVXXampwyzz2536qTbvddU`. Integrated pipeline green:
       lint 0, tsc 0, tests 3372/3372, build 0.
-- [ ] **WEBSITE — owner to deploy.** Branch `feat/event-sales-cutoff-web` (OJ-The-Anchor.pub) is on
-      current origin/main (no integration needed), verified green. Merge → main → manual prod deploy →
-      smoke-test a past-cutoff event (form replaced by "sales closed" panel; POST → 409 SALES_CLOSED).
+- [x] **WEBSITE SHIPPED (2026-07-05).** Merged `feat/event-sales-cutoff-web` → main (ff, `cbea61e6`),
+      pushed, and deployed to PROD via `vercel --prod` (project `the-anchor-pub`). Verified: Ready,
+      aliased to `the-anchor.pub` (200 on / and /whats-on). Merged feature branches deleted (both repos).
+
+**COMPLETE — both features live in prod across AMS + the-anchor.pub.** Live end-to-end cutoff smoke
+(set a real event's cutoff to the past → website shows "sales closed" panel) intentionally left to the
+owner to avoid mutating a live event's sales window.
 
 ## Previous Task: Rota "unpublished changes" false-alert — deletions invisible in UI (2026-07-05)
 
