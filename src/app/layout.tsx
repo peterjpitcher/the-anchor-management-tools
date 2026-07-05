@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
 import { ServiceWorkerRegistration } from "@/components/features/shared/ServiceWorkerRegistration";
 import { NetworkStatus } from "@/components/features/shared/NetworkStatus";
+import { ChunkErrorReloader } from "@/components/features/shared/ChunkErrorReloader";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -62,6 +63,7 @@ export default function RootLayout({
       <body className="font-sans antialiased" suppressHydrationWarning>
         {/* <ServiceWorkerRegistration /> */}
         {/* <NetworkStatus /> */}
+        <ChunkErrorReloader />
         <Toaster position="top-right" />
         <SupabaseProvider>{children}</SupabaseProvider>
       </body>
