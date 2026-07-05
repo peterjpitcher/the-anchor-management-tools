@@ -36,7 +36,7 @@ import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaSummary } from '@/lib/rota/summary';
-import { shiftIsUnpublished, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
@@ -690,6 +690,20 @@ export default function RotaGrid({
     () => shifts.filter(isShiftUnpublished).length,
     [shifts, isShiftUnpublished],
   );
+  // Shifts deleted since the last publish. The per-shift diff above only sees live
+  // rows, so it is blind to deletions — surface them explicitly so a "Published with
+  // changes" week always shows what actually needs republishing.
+  const removedShifts = useMemo(
+    () => getRemovedPublishedShifts(shifts, week, publishedShifts),
+    [shifts, week, publishedShifts],
+  );
+  const hasPendingChanges = unpublishedShiftCount > 0 || removedShifts.length > 0;
+  const publishStatusDetail = useMemo(() => {
+    const parts: string[] = [];
+    if (unpublishedShiftCount > 0) parts.push(`${unpublishedShiftCount} unpublished`);
+    if (removedShifts.length > 0) parts.push(`${removedShifts.length} removed`);
+    return parts.length > 0 ? parts.join(' · ') : 'No unpublished';
+  }, [unpublishedShiftCount, removedShifts.length]);
 
   // DnD handlers
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -1053,8 +1067,8 @@ export default function RotaGrid({
                 <SummaryPill
                   label="People"
                   value={`${scheduledEmployeeCount}/${employees.length}`}
-                  detail={unpublishedShiftCount > 0 ? `${unpublishedShiftCount} unpublished` : 'No unpublished'}
-                  tone={unpublishedShiftCount > 0 ? 'warning' : 'info'}
+                  detail={publishStatusDetail}
+                  tone={hasPendingChanges ? 'warning' : 'info'}
                 />
                 {periodSummary && (
                   <>
@@ -1084,6 +1098,29 @@ export default function RotaGrid({
                 <p className="rounded-default border border-warning/25 bg-warning-soft px-3 py-1.5 text-xs text-warning-fg">
                   {uncostedShiftCount} visible shift{uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
                 </p>
+              )}
+
+              {removedShifts.length > 0 && (
+                <div className="rounded-default border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
+                  <p className="font-semibold">
+                    {removedShifts.length} shift{removedShifts.length === 1 ? '' : 's'} removed since the rota was last published — publish to update staff.
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {removedShifts.map(shift => {
+                      const who = shift.is_open_shift
+                        ? 'Open shift'
+                        : shift.employee_id
+                          ? employeeNameById.get(shift.employee_id) ?? 'Unknown staff member'
+                          : 'Unassigned';
+                      return (
+                        <li key={shift.id} className="truncate">
+                          {who} — {shift.name ? `${shift.name}, ` : ''}
+                          {formatDayHeader(shift.shift_date)} {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               )}
             </CardBody>
             <CardBody className="p-0">

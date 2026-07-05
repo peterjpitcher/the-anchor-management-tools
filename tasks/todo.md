@@ -1,6 +1,39 @@
 # Task Tracker
 
-## Current Task: Party-size edit auto-splits across tables (2026-07-01)
+## Current Task: Rota "unpublished changes" false-alert — deletions invisible in UI (2026-07-05)
+
+**Context:** Manager got the Sunday `rota-manager-alert` email ("week of 2026-07-06 has unpublished
+changes") but the Weekly Rota showed "Published with changes" + "No unpublished" and nothing to
+publish. Verified root cause (multi-agent workflow + live prod DB): on 2026-06-29 `billy@` hard-deleted
+3 shifts from the already-published week. `deleteShift` sets `rota_weeks.has_unpublished_changes=true`
+but never refreshes the `rota_published_shifts` snapshot or re-publishes. The alert cron reads that
+boolean (correct → fires); the UI's per-shift `shiftIsUnpublished` diff walks LIVE rows only, so it is
+structurally blind to deletions (no live tile to flag) → shows "No unpublished". Split-brain on one
+screen. Same state on 5 published weeks total (2026-03-16, 06-15, 07-06, 07-13, 08-03).
+
+**Also confirmed:** the 21:00 `rota-staff-email` job reads the STALE snapshot
+(`send-rota-emails.ts:48-64`), not live shifts — so deleted-shift staff would be emailed phantom
+shifts until the week is republished. (Corrects the workflow's assumption that it reads live rows.)
+
+**Fix (scope: make removals visible in the rota UI so a dirty week always shows what to publish):**
+- [x] `src/lib/rota/publish-status.ts` — new `getRemovedPublishedShifts(liveShifts, week, snapshot)`
+      (snapshot rows with no live id; `[]` for draft/never-published)
+- [x] `RotaPublishStatus.tsx` — header badge now counts removed shifts → shows "Unpublished changes"
+      + Publish button instead of a green "Published"
+- [x] `RotaGrid.tsx` — People pill detail reconciled ("N unpublished · N removed"); new amber notice
+      lists each removed shift (who / name / day / time) with "publish to update staff"
+- [x] `tests/lib/rota/publish-status.test.ts` — +5 cases for the helper
+- [x] Verify: vitest full 3331/3331, tsc 0, eslint 0 (changed files), build exit 0 (incl. /rota)
+
+**Deliberately out of scope (one concern per changeset):** cancel-since-publish (status flips to
+`cancelled`, row still present) is a separate invisible-change gap; acceptance-only churn doesn't set
+the flag (accept/reject keep both tables in lockstep). Immediate prod reconciliation (republish the
+affected weeks) is the owner's data decision — not a code change.
+
+**Not committed** — awaiting user go-ahead (working tree also holds unrelated `src/ds/shell/*`
+nav-counts changes from another session; will branch + stage only the 4 rota files when asked).
+
+## Previous Task: Party-size edit auto-splits across tables (2026-07-01)
 
 **Context:** Editing a booking to a party bigger than any single table (6→9) didn't split
 across two tables, while NEW bookings did. Root cause was NOT the server allocator (FOH
