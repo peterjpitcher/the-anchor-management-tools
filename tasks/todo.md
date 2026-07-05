@@ -26,7 +26,9 @@ confirmed-only guests; □ tick box per line; new `SALES_CLOSED` code.
       model tests green; gate fix applied — confirmed-only filter per D4)
 - [x] PR C implemented + verified on branch `feat/event-sales-cutoff-web` (3 commits; tsc/lint/build
       green; 1 pre-existing unrelated full-suite failure confirmed on clean main)
-- [ ] PR B implemented + verified on branch `feat/event-sales-cutoff`
+- [x] PR B implemented + verified on branch `feat/event-sales-cutoff` (7 commits; full pipeline green
+      3334/3334; gate fixes: unique migration ts 20260726000000; persistence via dedicated admin update
+      because create/update_event_transaction RPCs whitelist columns and would have dropped the field)
 - [ ] Adversarial review (codex-qa-review)
 - [ ] Owner go-ahead → prod migration + merges + website deploy + deploy verification
 
