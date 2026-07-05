@@ -59,3 +59,22 @@ export function shiftIsUnpublished(
 
   return hasPublishedRotaDifference(shift, published);
 }
+
+/**
+ * Shifts that existed in the last published snapshot but no longer have a live shift
+ * row (i.e. deleted since publish). {@link shiftIsUnpublished} is driven by live rows,
+ * so it detects additions and edits but is structurally blind to deletions — a removed
+ * shift leaves no live tile to flag. This walks the snapshot instead so deletions are
+ * still surfaced as pending changes, keeping the UI in step with the week-level
+ * `has_unpublished_changes` flag (which every delete sets). Returns [] for draft or
+ * never-published weeks, where there is no snapshot to diff against.
+ */
+export function getRemovedPublishedShifts(
+  liveShifts: { id: string }[],
+  week: RotaPublishWeek,
+  publishedShifts: PublishedShiftSnapshot[],
+): PublishedShiftSnapshot[] {
+  if (week.status !== 'published' || !week.published_at) return [];
+  const liveIds = new Set(liveShifts.map(shift => shift.id));
+  return publishedShifts.filter(published => !liveIds.has(published.id));
+}
