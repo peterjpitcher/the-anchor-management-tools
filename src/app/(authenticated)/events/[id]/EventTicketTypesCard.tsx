@@ -153,92 +153,228 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage }:
         {ticketTypes.length === 0 ? (
           <EmptyState title="No ticket types" description="Add a ticket type below to get started." />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Base price</TableHead>
-                <TableHead>Capacity</TableHead>
-                <TableHead>Status</TableHead>
-                {canManage && <TableHead>Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Desktop table */}
+            <div className="hidden sm:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Base price</TableHead>
+                    <TableHead>Capacity</TableHead>
+                    <TableHead>Status</TableHead>
+                    {canManage && <TableHead>Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ticketTypes.map((row) => {
+                    const isEditing = editingId === row.id
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              aria-label="Ticket type name"
+                              value={editDraft.name}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                            />
+                          ) : (
+                            row.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              aria-label="Base price"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editDraft.base_price}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, base_price: e.target.value }))}
+                            />
+                          ) : (
+                            formatCurrency(Number(row.base_price))
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              aria-label="Capacity (blank = shared)"
+                              type="number"
+                              min="0"
+                              step="1"
+                              placeholder="Shared"
+                              value={editDraft.capacity}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))}
+                            />
+                          ) : row.capacity === null ? (
+                            <Badge tone="neutral">Shared</Badge>
+                          ) : (
+                            row.capacity
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge tone={row.is_active ? 'success' : 'neutral'}>
+                            {row.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </TableCell>
+                        {canManage && (
+                          <TableCell>
+                            {isEditing ? (
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleSaveEdit(row.id)}
+                                  disabled={isPending}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => setEditingId(null)}
+                                  disabled={isPending}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => startEdit(row)}
+                                  disabled={isPending}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => handleToggleActive(row)}
+                                  disabled={isPending}
+                                >
+                                  {row.is_active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => setRemoveId(row.id)}
+                                  disabled={isPending}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile card layout */}
+            <div className="block sm:hidden space-y-3">
               {ticketTypes.map((row) => {
                 const isEditing = editingId === row.id
                 return (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          aria-label="Ticket type name"
-                          value={editDraft.name}
-                          onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
-                        />
-                      ) : (
-                        row.name
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          aria-label="Base price"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={editDraft.base_price}
-                          onChange={(e) => setEditDraft((d) => ({ ...d, base_price: e.target.value }))}
-                        />
-                      ) : (
-                        formatCurrency(Number(row.base_price))
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          aria-label="Capacity (blank = shared)"
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder="Shared"
-                          value={editDraft.capacity}
-                          onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))}
-                        />
-                      ) : row.capacity === null ? (
-                        <Badge tone="neutral">Shared</Badge>
-                      ) : (
-                        row.capacity
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge tone={row.is_active ? 'success' : 'neutral'}>
-                        {row.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    {canManage && (
-                      <TableCell>
-                        {isEditing ? (
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleSaveEdit(row.id)}
-                              disabled={isPending}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => setEditingId(null)}
-                              disabled={isPending}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
+                  <div key={row.id} className="rounded-default border border-border p-4">
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div>
+                          <label
+                            className="mb-1 block text-sm font-medium text-text-strong"
+                            htmlFor={`edit-ticket-type-name-${row.id}`}
+                          >
+                            Name
+                          </label>
+                          <Input
+                            id={`edit-ticket-type-name-${row.id}`}
+                            value={editDraft.name}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            className="mb-1 block text-sm font-medium text-text-strong"
+                            htmlFor={`edit-ticket-type-price-${row.id}`}
+                          >
+                            Base price
+                          </label>
+                          <Input
+                            id={`edit-ticket-type-price-${row.id}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editDraft.base_price}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, base_price: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            className="mb-1 block text-sm font-medium text-text-strong"
+                            htmlFor={`edit-ticket-type-capacity-${row.id}`}
+                          >
+                            Capacity
+                          </label>
+                          <Input
+                            id={`edit-ticket-type-capacity-${row.id}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="Shared"
+                            value={editDraft.capacity}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))}
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleSaveEdit(row.id)}
+                            disabled={isPending}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setEditingId(null)}
+                            disabled={isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-medium text-text-strong">{row.name}</div>
+                          <Badge tone={row.is_active ? 'success' : 'neutral'}>
+                            {row.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 text-sm text-text-muted">
+                          {formatCurrency(Number(row.base_price))}
+                        </div>
+                        <div className="mt-1 text-sm text-text-muted">
+                          Capacity:{' '}
+                          {row.capacity === null ? (
+                            <Badge tone="neutral">Shared</Badge>
+                          ) : (
+                            row.capacity
+                          )}
+                        </div>
+                        {canManage && (
+                          <div className="mt-3 flex flex-wrap gap-2">
                             <Button
                               type="button"
                               size="sm"
@@ -268,13 +404,13 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage }:
                             </Button>
                           </div>
                         )}
-                      </TableCell>
+                      </>
                     )}
-                  </TableRow>
+                  </div>
                 )
               })}
-            </TableBody>
-          </Table>
+            </div>
+          </>
         )}
 
         {canManage && (
@@ -318,7 +454,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage }:
                 onChange={(e) => setAddDraft((d) => ({ ...d, capacity: e.target.value }))}
               />
             </div>
-            <Button type="button" onClick={handleAdd} disabled={isPending}>
+            <Button type="button" className="w-full sm:w-auto" onClick={handleAdd} disabled={isPending}>
               Add type
             </Button>
           </div>

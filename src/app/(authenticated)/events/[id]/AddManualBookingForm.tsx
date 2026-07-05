@@ -281,7 +281,7 @@ export function AddManualBookingForm({
                   return (
                     <div
                       key={type.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border p-2.5"
+                      className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-text">{type.name}</p>
@@ -301,7 +301,7 @@ export function AddManualBookingForm({
                         <Input
                           inputMode="numeric"
                           aria-label={`${type.name} quantity`}
-                          className="w-14 text-center"
+                          className="w-12 text-center"
                           value={quantityValue}
                           onChange={(e) => setQuantity(type.id, e.target.value)}
                           placeholder="0"

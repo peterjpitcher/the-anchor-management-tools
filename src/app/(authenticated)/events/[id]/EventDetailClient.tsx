@@ -501,30 +501,38 @@ export default function EventDetailClient({
         ]}
         className="mb-0"
         actions={
-          <div className="flex items-center gap-2">
-            <Badge tone={getStatusTone(event.event_status)} dot>
-              {formatStatusLabel(event.event_status)}
-            </Badge>
-            {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
-              <Badge tone="info">Free</Badge>
-            ) : resolvedEventPrice > 0 ? (
-              <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
-            ) : null}
-            {permissions.canEdit && (
-              <Button variant="secondary" size="sm" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
-                Edit
-              </Button>
-            )}
-            {canDeleteEvent && (
-              <Button
-                variant="danger"
-                size="sm"
-                icon={<Icon name="trash" size={14} />}
-                onClick={() => setDeleteDialogOpen(true)}
-                loading={isPending}
-              >
-                Delete
-              </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={getStatusTone(event.event_status)} dot>
+                {formatStatusLabel(event.event_status)}
+              </Badge>
+              {resolvedEventPrice === 0 && resolvedPaymentMode === 'free' ? (
+                <Badge tone="info">Free</Badge>
+              ) : resolvedEventPrice > 0 ? (
+                <Badge tone="neutral">{formatCurrency(resolvedEventPrice)}</Badge>
+              ) : null}
+            </div>
+            {(permissions.canEdit || canDeleteEvent) && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {permissions.canEdit && (
+                  <Button variant="secondary" size="sm" fullWidth className="sm:w-auto" icon={<Icon name="edit" size={14} />} onClick={() => setDrawerOpen(true)}>
+                    Edit
+                  </Button>
+                )}
+                {canDeleteEvent && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    fullWidth
+                    className="sm:w-auto"
+                    icon={<Icon name="trash" size={14} />}
+                    onClick={() => setDeleteDialogOpen(true)}
+                    loading={isPending}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         }
@@ -540,7 +548,7 @@ export default function EventDetailClient({
       <Tabs
         tabs={[
           { id: 'overview', label: 'Overview', count: activeBookings.length },
-          ...(showTicketTypesTab ? [{ id: 'ticket-types', label: 'Ticket types' }] : []),
+          ...(showTicketTypesTab ? [{ id: 'ticket-types', label: 'Tickets' }] : []),
           { id: 'short-links', label: 'Short Links', count: totalLinkClicks || undefined },
           { id: 'marketing', label: 'Marketing' },
         ]}
@@ -1019,6 +1027,149 @@ function AttendeesTab({
     setAttendeePage((current) => Math.min(current, totalAttendeePages))
   }, [totalAttendeePages])
 
+  // Numbered attendee-name list — shared between the desktop table cell and the
+  // mobile card so both stay in sync.
+  const renderAttendeeNames = (booking: EventBookingRow) => {
+    const attendeeNames = (booking.attendee_names ?? []).filter(
+      (name) => typeof name === 'string' && name.trim().length > 0
+    )
+    if (attendeeNames.length === 0) return null
+    return (
+      <ol className="mt-1 list-decimal pl-4 text-xs text-text-muted">
+        {attendeeNames.map((name, index) => (
+          <li key={index}>{name}</li>
+        ))}
+      </ol>
+    )
+  }
+
+  // Per-booking action cluster (mark-paid/comp/edit/edit-names/transfer/refund/
+  // cancel plus the inline seats and transfer editors). Extracted so the desktop
+  // table and the mobile card render the exact same controls and handlers.
+  const renderBookingActions = (booking: EventBookingRow) => {
+    if (!canManage) return null
+    const isEditing = editingBookingId === booking.id
+    const isTransferring = transferringBookingId === booking.id
+    const isCancelled = booking.status === 'cancelled'
+
+    // Paid (confirmed or cancelled) bookings can be refunded after the fact —
+    // cancelling with "no refund" is no longer a one-shot decision.
+    const canShowRefund =
+      booking.is_reminder_only !== true &&
+      Number(booking.paid_amount ?? 0) > 0 &&
+      (booking.status === 'confirmed' || booking.status === 'cancelled')
+
+    if (isEditing) {
+      return (
+        <div>
+          <div className="flex items-center gap-1">
+            <Input
+              inputMode="numeric"
+              value={editSeatsValue}
+              onChange={(e) => onEditSeatsValueChange(e.target.value.replace(/\D/g, ''))}
+              min={1}
+              max={20}
+              className="w-16"
+              aria-label="Seats"
+            />
+            <Button size="sm" variant="primary" onClick={onSaveSeats} disabled={isPending}>
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onCancelEdit}>
+              Cancel
+            </Button>
+          </div>
+          {editSeatsError && (
+            <p className="mt-1 text-xs text-danger" role="alert">{editSeatsError}</p>
+          )}
+        </div>
+      )
+    }
+
+    if (isCancelled) {
+      return canShowRefund ? (
+        <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
+          Refund…
+        </Button>
+      ) : null
+    }
+
+    if (isTransferring) {
+      return (
+        <div className="flex flex-wrap items-center gap-1">
+          <Select
+            value={transferTargetEventId}
+            onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
+            options={transferOptions}
+            className="w-44"
+          />
+          <Button size="sm" variant="primary" onClick={onConfirmTransfer} disabled={!transferTargetEventId.trim() || isPending}>
+            Transfer
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancelTransfer}>
+            Cancel
+          </Button>
+        </div>
+      )
+    }
+
+    const canEditNames =
+      booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1
+
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {booking.status === 'pending_payment' && (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'cash')}>
+              Cash paid
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'card_terminal')}>
+              Card paid
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onRequestComp(booking.id)}>
+              Comp
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onStartEditSeats(booking)}
+          icon={<Icon name="edit" size={14} />}
+        >
+          Edit
+        </Button>
+        {canEditNames && (
+          <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
+            Edit names
+          </Button>
+        )}
+        {booking.status === 'confirmed' && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onStartTransfer(booking.id)}
+          >
+            Transfer
+          </Button>
+        )}
+        {canShowRefund && (
+          <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
+            Refund…
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onCancelBooking(booking.id)}
+          className="text-danger hover:text-danger"
+        >
+          Cancel
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Stat cards */}
@@ -1064,7 +1215,7 @@ function AttendeesTab({
         <CardHeader
           title="Attendees"
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {canManage && (
                 <Button
                   variant="secondary"
@@ -1098,215 +1249,174 @@ function AttendeesTab({
           {visibleBookings.length === 0 ? (
             <EmptyState title="No Bookings" description="No bookings yet for this event." />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Seats</TableHead>
-                    {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
-                    <TableHead>Paid</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
-                    {canManage && <TableHead>Actions</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagedBookings.map((booking) => {
-                    const isEditing = editingBookingId === booking.id
-                    const isTransferring = transferringBookingId === booking.id
-                    const customerName = [
-                      booking.customer?.first_name,
-                      booking.customer?.last_name,
-                    ]
-                      .filter(Boolean)
-                      .join(' ') || '-'
-                    const isCancelled = booking.status === 'cancelled'
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Seats</TableHead>
+                      {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
+                      <TableHead>Paid</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created</TableHead>
+                      {canManage && <TableHead>Actions</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedBookings.map((booking) => {
+                      const isEditing = editingBookingId === booking.id
+                      const customerName = [
+                        booking.customer?.first_name,
+                        booking.customer?.last_name,
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || '-'
+                      const isCancelled = booking.status === 'cancelled'
 
-                    return (
-                      <TableRow key={booking.id} className={isCancelled ? 'opacity-50' : ''}>
-                        <TableCell>
+                      return (
+                        <TableRow key={booking.id} className={isCancelled ? 'opacity-50' : ''}>
+                          <TableCell>
+                            <CustomerLink
+                              customerId={booking.customer?.id ?? null}
+                              name={customerName}
+                              fallback="-"
+                              className="text-blue-600 hover:text-blue-700"
+                            />
+                            {renderAttendeeNames(booking)}
+                          </TableCell>
+                          <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              renderBookingActions(booking)
+                            ) : (
+                              <>
+                                {booking.seats ?? '-'}
+                                {booking.ticket_breakdown && (
+                                  <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
+                                )}
+                              </>
+                            )}
+                          </TableCell>
+                          {event.booking_mode === 'communal' && (
+                            <TableCell>
+                              <Badge tone={booking.event_seating_type === 'standing' ? 'warning' : 'info'}>
+                                {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
+                              </Badge>
+                            </TableCell>
+                          )}
+                          <TableCell>{formatBookingPayment(booking)}</TableCell>
+                          <TableCell>
+                            <Badge
+                              tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}
+                              dot
+                            >
+                              {formatStatusLabel(booking.status)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {formatDateInLondon(booking.created_at, {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </TableCell>
+                          {canManage && (
+                            <TableCell>
+                              {isEditing ? null : renderBookingActions(booking)}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="block md:hidden divide-y divide-border">
+                {pagedBookings.map((booking) => {
+                  const customerName = [
+                    booking.customer?.first_name,
+                    booking.customer?.last_name,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || '-'
+                  const isCancelled = booking.status === 'cancelled'
+
+                  return (
+                    <div key={booking.id} className={`py-4 ${isCancelled ? 'opacity-50' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 font-medium">
                           <CustomerLink
                             customerId={booking.customer?.id ?? null}
                             name={customerName}
                             fallback="-"
                             className="text-blue-600 hover:text-blue-700"
                           />
-                          {(() => {
-                            const attendeeNames = (booking.attendee_names ?? []).filter(
-                              (name) => typeof name === 'string' && name.trim().length > 0
-                            )
-                            if (attendeeNames.length === 0) return null
-                            return (
-                              <ol className="mt-1 list-decimal pl-4 text-xs text-gray-500">
-                                {attendeeNames.map((name, index) => (
-                                  <li key={index}>{name}</li>
-                                ))}
-                              </ol>
-                            )
-                          })()}
-                        </TableCell>
-                        <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
-                        <TableCell>
-                          {isEditing ? (
-                            <div>
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  inputMode="numeric"
-                                  value={editSeatsValue}
-                                  onChange={(e) => onEditSeatsValueChange(e.target.value.replace(/\D/g, ''))}
-                                  min={1}
-                                  max={20}
-                                  className="w-16"
-                                  aria-label="Seats"
-                                />
-                                <Button size="sm" variant="primary" onClick={onSaveSeats} disabled={isPending}>
-                                  Save
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={onCancelEdit}>
-                                  Cancel
-                                </Button>
-                              </div>
-                              {editSeatsError && (
-                                <p className="mt-1 text-xs text-danger" role="alert">{editSeatsError}</p>
-                              )}
-                            </div>
-                          ) : (
-                            <>
-                              {booking.seats ?? '-'}
-                              {booking.ticket_breakdown && (
-                                <div className="mt-0.5 text-xs text-gray-500">{booking.ticket_breakdown}</div>
-                              )}
-                            </>
-                          )}
-                        </TableCell>
+                        </div>
+                        <Badge
+                          tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}
+                          dot
+                        >
+                          {formatStatusLabel(booking.status)}
+                        </Badge>
+                      </div>
+
+                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        <div>
+                          <dt className="text-xs font-medium text-text-muted">Phone</dt>
+                          <dd className="mt-0.5 text-text">{booking.customer?.mobile_number ?? '-'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-text-muted">Seats</dt>
+                          <dd className="mt-0.5 text-text">
+                            {booking.seats ?? '-'}
+                            {booking.ticket_breakdown && (
+                              <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
+                            )}
+                          </dd>
+                        </div>
                         {event.booking_mode === 'communal' && (
-                          <TableCell>
-                            <Badge tone={booking.event_seating_type === 'standing' ? 'warning' : 'info'}>
-                              {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
-                            </Badge>
-                          </TableCell>
+                          <div>
+                            <dt className="text-xs font-medium text-text-muted">Type</dt>
+                            <dd className="mt-0.5">
+                              <Badge tone={booking.event_seating_type === 'standing' ? 'warning' : 'info'}>
+                                {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
+                              </Badge>
+                            </dd>
+                          </div>
                         )}
-                        <TableCell>{formatBookingPayment(booking)}</TableCell>
-                        <TableCell>
-                          <Badge
-                            tone={booking.status === 'cancelled' ? 'danger' : booking.status === 'confirmed' ? 'success' : 'neutral'}
-                            dot
-                          >
-                            {formatStatusLabel(booking.status)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {formatDateInLondon(booking.created_at, {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </TableCell>
-                        {canManage && (
-                          <TableCell>
-                            {(() => {
-                              // Paid (confirmed or cancelled) bookings can be refunded
-                              // after the fact — cancelling with "no refund" is no
-                              // longer a one-shot decision.
-                              const canShowRefund =
-                                booking.is_reminder_only !== true &&
-                                Number(booking.paid_amount ?? 0) > 0 &&
-                                (booking.status === 'confirmed' || booking.status === 'cancelled')
+                        <div>
+                          <dt className="text-xs font-medium text-text-muted">Paid</dt>
+                          <dd className="mt-0.5 text-text">{formatBookingPayment(booking)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-text-muted">Created</dt>
+                          <dd className="mt-0.5 text-text">
+                            {formatDateInLondon(booking.created_at, {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </dd>
+                        </div>
+                      </dl>
 
-                              if (isCancelled) {
-                                return canShowRefund ? (
-                                  <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
-                                    Refund…
-                                  </Button>
-                                ) : null
-                              }
+                      {renderAttendeeNames(booking)}
 
-                              if (isEditing) return null
+                      {canManage && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {renderBookingActions(booking)}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
 
-                              if (isTransferring) {
-                                return (
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    <Select
-                                      value={transferTargetEventId}
-                                      onChange={(e) => onTransferTargetEventIdChange(e.target.value)}
-                                      options={transferOptions}
-                                      className="w-44"
-                                    />
-                                    <Button size="sm" variant="primary" onClick={onConfirmTransfer} disabled={!transferTargetEventId.trim() || isPending}>
-                                      Transfer
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={onCancelTransfer}>
-                                      Cancel
-                                    </Button>
-                                  </div>
-                                )
-                              }
-
-                              const canEditNames =
-                                booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1
-
-                              return (
-                                <div className="flex flex-wrap items-center gap-1">
-                                  {booking.status === 'pending_payment' && (
-                                    <>
-                                      <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'cash')}>
-                                        Cash paid
-                                      </Button>
-                                      <Button size="sm" variant="ghost" onClick={() => onMarkPaid(booking.id, 'card_terminal')}>
-                                        Card paid
-                                      </Button>
-                                      <Button size="sm" variant="ghost" onClick={() => onRequestComp(booking.id)}>
-                                        Comp
-                                      </Button>
-                                    </>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => onStartEditSeats(booking)}
-                                    icon={<Icon name="edit" size={14} />}
-                                  >
-                                    Edit
-                                  </Button>
-                                  {canEditNames && (
-                                    <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
-                                      Edit names
-                                    </Button>
-                                  )}
-                                  {booking.status === 'confirmed' && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => onStartTransfer(booking.id)}
-                                    >
-                                      Transfer
-                                    </Button>
-                                  )}
-                                  {canShowRefund && (
-                                    <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
-                                      Refund…
-                                    </Button>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => onCancelBooking(booking.id)}
-                                    className="text-danger hover:text-danger"
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              )
-                            })()}
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
               <TablePagination
                 page={attendeePage}
                 totalPages={totalAttendeePages}
@@ -1314,7 +1424,7 @@ function AttendeesTab({
                 pageSize={pageSize}
                 totalItems={visibleBookings.length}
               />
-            </div>
+            </>
           )}
         </CardBody>
       </Card>
@@ -1474,8 +1584,8 @@ function DetailRow({
   return (
     <div className={className}>
       <dt className="text-xs font-medium text-text-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm text-text flex items-center gap-1.5">
-        <span className="break-all">{value}</span>
+      <dd className="mt-0.5 text-sm text-text flex items-center gap-1.5 min-w-0">
+        <span className="truncate min-w-0">{value}</span>
         {children}
       </dd>
     </div>
