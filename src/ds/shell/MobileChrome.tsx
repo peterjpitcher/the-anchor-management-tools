@@ -7,8 +7,7 @@ import { Anchor } from 'lucide-react'
 import { Avatar } from '@/ds/primitives/Avatar'
 import { Icon, type IconName } from '@/ds/icons'
 import { cn } from '@/lib/utils'
-import { useOutstandingCounts } from '@/hooks/useOutstandingCounts'
-import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
+import { useNavCounts } from './NavCountsContext'
 import { navCount, type NavGroup, type NavItem } from './SidebarNav'
 
 const DRAWER_GROUP_TITLES = ['Overview', 'Operations', 'Staff', 'Finance', 'Admin']
@@ -76,8 +75,7 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
 
 export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; onMore: () => void }) {
   const pathname = usePathname() ?? '/'
-  const unreadCount = useUnreadMessageCount()
-  const { counts } = useOutstandingCounts()
+  const { unreadCount, counts } = useNavCounts()
   const availableIds = new Set(navGroups.flatMap((group) => group.items.map((item) => item.id)))
   const tabs = MOBILE_TABS.filter((tab) => availableIds.has(tab.id))
   const primaryActive = tabs.some((tab) => isActivePath(pathname, tab.href))
@@ -151,8 +149,7 @@ export function MobileDrawer({
   isSigningOut: boolean
 }) {
   const pathname = usePathname() ?? '/'
-  const unreadCount = useUnreadMessageCount()
-  const { counts } = useOutstandingCounts()
+  const { unreadCount, counts } = useNavCounts()
   const groups = mobileNavGroups(navGroups)
 
   return (
