@@ -46,7 +46,7 @@ import { validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
-import { formatDateInLondon, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
 
@@ -797,6 +797,13 @@ function OverviewTab({ event }: { event: Event }) {
             {event.end_time && <DetailRow label="End Time" value={formatTime12Hour(event.end_time)} />}
             {event.doors_time && <DetailRow label="Doors" value={formatTime12Hour(event.doors_time)} />}
             {event.last_entry_time && <DetailRow label="Last Entry" value={formatTime12Hour(event.last_entry_time)} />}
+            {event.booking_cutoff_at && (
+              <DetailRow label="Online sales close" value={formatDateTime12Hour(event.booking_cutoff_at)}>
+                {new Date(event.booking_cutoff_at).getTime() < Date.now() && (
+                  <Badge tone="neutral" size="sm">Online sales closed</Badge>
+                )}
+              </DetailRow>
+            )}
             {event.booking_mode === 'communal' ? (
               <>
                 {(event as any).seated_capacity !== null && (event as any).seated_capacity !== undefined && (
