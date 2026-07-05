@@ -9,7 +9,7 @@ import { Icon, type IconName } from '@/ds/icons'
 import { cn } from '@/lib/utils'
 import { useOutstandingCounts } from '@/hooks/useOutstandingCounts'
 import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
-import type { NavGroup, NavItem } from './SidebarNav'
+import { navCount, type NavGroup, type NavItem } from './SidebarNav'
 
 const DRAWER_GROUP_TITLES = ['Overview', 'Operations', 'Staff', 'Finance', 'Admin']
 
@@ -32,28 +32,6 @@ function mobileNavGroups(navGroups: NavGroup[]): NavGroup[] {
 function isActivePath(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
-}
-
-function navCount(
-  item: Pick<NavItem, 'id' | 'badge'>,
-  unreadCount: number,
-  counts: ReturnType<typeof useOutstandingCounts>['counts'],
-): number | undefined {
-  if (item.id === 'messages') return unreadCount > 0 ? unreadCount : undefined
-  if (!counts) return item.badge
-
-  const countById: Record<string, number | undefined> = {
-    events: counts.events,
-    menu: counts.menu_management,
-    tables: counts.table_bookings,
-    'private-bookings': counts.private_bookings,
-    parking: counts.parking,
-    'cashing-up': counts.cashing_up,
-    invoices: counts.invoices,
-    receipts: counts.receipts,
-  }
-
-  return countById[item.id] || item.badge
 }
 
 export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
