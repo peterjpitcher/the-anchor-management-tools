@@ -146,7 +146,9 @@ export function buildKitchenAvailabilitySlots(
 ): KitchenAvailabilitySlot[] {
   const ceiling = resolveKitchenCeiling(settings, dateStr, override)
   const out: KitchenAvailabilitySlot[] = []
-  for (let m = gridStartMinutes; m <= gridEndMinutes; m += stepMinutes) {
+  // Half-open window [start, end): a booking at exactly the kitchen close time is
+  // outside_hours to the RPC, so never emit a slot at the end boundary.
+  for (let m = gridStartMinutes; m < gridEndMinutes; m += stepMinutes) {
     const covers = sumKitchenCoversInWindow(rows, m, settings.windowMinutes, now)
     const hh = String(Math.floor(m / 60)).padStart(2, '0')
     const mm = String(m % 60).padStart(2, '0')

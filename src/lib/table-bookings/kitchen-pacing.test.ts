@@ -95,13 +95,15 @@ describe('isSundayDate', () => {
 describe('buildKitchenAvailabilitySlots', () => {
   it('returns covers and remaining per grid slot', () => {
     const rows = [row({ booking_time: '19:00', party_size: 10 })]
-    const slots = buildKitchenAvailabilitySlots(rows, SETTINGS, '2026-07-06', 18 * 60, 19 * 60, 30, null, NOW)
-    // grid: 18:00, 18:30, 19:00 ; ceiling weekday = 19
+    const slots = buildKitchenAvailabilitySlots(rows, SETTINGS, '2026-07-06', 18 * 60, 20 * 60, 30, null, NOW)
+    // half-open [18:00, 20:00): grid 18:00, 18:30, 19:00, 19:30 ; ceiling weekday = 19
     const at1900 = slots.find((s) => s.time === '19:00')!
     expect(at1900.covers).toBe(10)
     expect(at1900.remaining).toBe(9)
     const at1800 = slots.find((s) => s.time === '18:00')!
     expect(at1800.covers).toBe(0)
     expect(at1800.remaining).toBe(19)
+    // end is exclusive — no slot emitted at the close boundary
+    expect(slots.some((s) => s.time === '20:00')).toBe(false)
   })
 })
