@@ -4,7 +4,7 @@ export { ScheduleCalendar } from './ScheduleCalendar'
 
 export { VenueCalendar } from './VenueCalendar'
 export type {
-    
+
     VenueCalendarEvent,
     VenueCalendarBooking,
     VenueCalendarBalanceDue,
@@ -13,3 +13,4 @@ export type {
     VenueCalendarParking,
     VenueCalendarSpecialHours,
 } from './VenueCalendar'
+export type { ScheduleDailyOps } from './types'

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
+import type { ScheduleDailyOps } from '@/components/schedule-calendar'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
 import {
   buildPrivateBookingBalanceDueSummaries,
@@ -275,6 +276,8 @@ export type DashboardSnapshot = {
   tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
   rotaToday: RotaTodaySnapshot
+  /** Per-day covers booked + staff on rota, for the schedule operational notes */
+  dailyOps: ScheduleDailyOps
   /** B4: Total revenue from private bookings today (confirmed/completed) */
   revenueToday: number
   /** B3: Pipeline value of upcoming confirmed + draft private bookings */
@@ -520,6 +523,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       staffOnRota: [],
     }
 
+    // Per-day covers + staff for the schedule operational notes. Populated in
+    // the permission-gated table-booking and rota blocks below.
+    const dailyOps: ScheduleDailyOps = { coversByDate: {}, staffByDate: {} }
+    const opsHorizonIso = getLocalIsoDateDaysAhead(90)
+
     // B4 / B3 analytics — only computed when user has private_bookings access
     let revenueToday = 0
     const bookingPipelineValue: BookingPipelineValue = {
@@ -676,7 +684,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               ? lastMonthNaturalEnd
               : comparableLastMonthEndCandidate
 
-          const [todayResult, todayCoversResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult] = await Promise.all([
+          const [todayResult, todayCoversResult, thisWeekResult, lastWeekResult, thisMonthResult, lastMonthResult, coversByDateResult] = await Promise.all([
             supabase
               .from('table_bookings')
               .select('id', { count: 'exact', head: true })
@@ -711,10 +719,17 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .not('status', 'in', '(cancelled,no_show)')
               .gte('booking_date', format(lastMonthStart, 'yyyy-MM-dd'))
               .lte('booking_date', format(lastMonthEnd, 'yyyy-MM-dd')),
+            supabase
+              .from('table_bookings')
+              .select('booking_date, party_size')
+              .not('status', 'in', '(cancelled,no_show)')
+              .gte('booking_date', todayIso)
+              .lte('booking_date', opsHorizonIso),
           ])
 
           if (todayResult.error) throw todayResult.error
           if (todayCoversResult.error) throw todayCoversResult.error
+          if (coversByDateResult.error) throw coversByDateResult.error
           if (thisWeekResult.error) throw thisWeekResult.error
           if (lastWeekResult.error) throw lastWeekResult.error
           if (thisMonthResult.error) throw thisMonthResult.error
@@ -725,6 +740,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             const partySize = Number(row.party_size ?? 0)
             return sum + (Number.isFinite(partySize) ? partySize : 0)
           }, 0)
+          for (const row of coversByDateResult.data ?? []) {
+            const date = (row as { booking_date?: string | null }).booking_date
+            if (!date) continue
+            const partySize = Number(row.party_size ?? 0)
+            if (!Number.isFinite(partySize)) continue
+            dailyOps.coversByDate[date] = (dailyOps.coversByDate[date] ?? 0) + partySize
+          }
           tableBookings.thisWeekTotal = thisWeekResult.count ?? 0
           tableBookings.lastWeekTotal = lastWeekResult.count ?? 0
           tableBookings.thisMonthTotal = thisMonthResult.count ?? 0
@@ -1015,7 +1037,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             }),
             supabase
               .from('private_bookings_with_details')
-              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount, calculated_total, final_payment_date')
+              .select('id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount, calculated_total, gross_total, final_payment_date')
               .in('status', ['confirmed'])
               .not('balance_due_date', 'is', null)
               .gte('balance_due_date', eventsLookbackIso)
@@ -1531,27 +1553,44 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
         try {
           const { data: shifts, error: rotaErr } = await supabase
             .from('rota_shifts')
-            .select('employee_id')
-            .eq('shift_date', todayIso)
+            .select('employee_id, shift_date')
+            .gte('shift_date', todayIso)
+            .lte('shift_date', opsHorizonIso)
             .eq('status', 'scheduled')
             .eq('is_open_shift', false)
             .not('employee_id', 'is', null)
 
           if (rotaErr) throw rotaErr
 
-          const empIds = [...new Set((shifts ?? []).map((s: any) => s.employee_id as string))]
+          const shiftRows = (shifts ?? []) as { employee_id: string; shift_date: string }[]
+          const empIds = [...new Set(shiftRows.map((s) => s.employee_id))]
           if (empIds.length > 0) {
             const { data: emps } = await supabase
               .from('employees')
               .select('employee_id, first_name')
               .in('employee_id', empIds)
 
-            rotaToday.staffOnRota = (emps ?? [])
-              .map((e: any) => e.first_name as string)
-              .filter(Boolean)
+            const firstNameById = new Map<string, string>()
+            for (const e of (emps ?? []) as { employee_id: string; first_name: string | null }[]) {
+              if (e.first_name) firstNameById.set(e.employee_id, e.first_name)
+            }
+
+            // Build per-day staff lists (deduped, alphabetical) for the schedule notes.
+            const namesByDate = new Map<string, Set<string>>()
+            for (const s of shiftRows) {
+              const name = firstNameById.get(s.employee_id)
+              if (!name || !s.shift_date) continue
+              if (!namesByDate.has(s.shift_date)) namesByDate.set(s.shift_date, new Set())
+              namesByDate.get(s.shift_date)!.add(name)
+            }
+            for (const [date, names] of namesByDate) {
+              dailyOps.staffByDate[date] = [...names].sort((a, b) => a.localeCompare(b))
+            }
+
+            rotaToday.staffOnRota = dailyOps.staffByDate[todayIso] ?? []
           }
         } catch (error) {
-          console.error('Failed to load rota today:', error)
+          console.error('Failed to load rota:', error)
           rotaToday.error = 'Failed to load rota'
         }
       })() : Promise.resolve(),
@@ -1583,6 +1622,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       tableBookings,
       systemHealth,
       rotaToday,
+      dailyOps,
       revenueToday,
       bookingPipelineValue,
     }

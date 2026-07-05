@@ -318,6 +318,7 @@ export default async function DashboardPage() {
             specialHours={snapshot.events.specialHours}
             parkingBookings={calendarParkingBookings}
             canCreateCalendarNote={canManageCalendarNotes}
+            dailyOps={snapshot.dailyOps}
           />
         }
         revenueData={revenueData}

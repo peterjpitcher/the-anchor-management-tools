@@ -18,6 +18,7 @@ import type {
   CalendarEntry,
   CalendarEntryKind,
   ScheduleCalendarView,
+  ScheduleDailyOps,
 } from './types'
 
 export interface VenueCalendarEvent {
@@ -102,6 +103,7 @@ export interface VenueCalendarProps {
   parkingBookings: VenueCalendarParking[]
   canCreateCalendarNote?: boolean
   onEmptyDayClick?: (date: Date) => void
+  dailyOps?: ScheduleDailyOps
   header?: ReactNode
   className?: string
 }
@@ -353,6 +355,7 @@ export function VenueCalendar({
   parkingBookings,
   canCreateCalendarNote,
   onEmptyDayClick,
+  dailyOps,
   header,
   className,
 }: VenueCalendarProps): ReactNode {
@@ -403,6 +406,7 @@ export function VenueCalendar({
         }}
         renderTooltip={renderTooltip}
         legendKinds={legendKinds}
+        dailyOps={dailyOps}
         firstDayOfWeek={1}
       />
 
