@@ -75,8 +75,11 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false }
                         <h2
                             ref={isTodayGroup ? todayRef : undefined}
                             className={cn(
-                                // max-sm:top-14 keeps headers clear of the 56px sticky mobile chrome
-                                'text-sm font-semibold sticky top-0 max-sm:top-14 z-10 px-3 py-2 border-b',
+                                // Plain card header — not sticky. Each day is its own
+                                // rounded, overflow-hidden card, so a viewport-offset
+                                // sticky header (top-14 to clear the mobile chrome) pinned
+                                // 56px into the card and bisected the first event row.
+                                'text-sm font-semibold px-3 py-2 border-b',
                                 isTodayGroup
                                     ? 'bg-green-50 text-green-900 border-green-300'
                                     : 'bg-gray-100 text-gray-700 border-gray-200'
