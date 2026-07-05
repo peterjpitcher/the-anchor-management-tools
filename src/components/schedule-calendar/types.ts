@@ -100,6 +100,15 @@ type TooltipData =
 
 export type ScheduleCalendarView = 'month' | 'week' | 'list'
 
+/**
+ * Per-day operational figures shown as a small note under each day in the
+ * mobile schedule list. Keyed by local ISO date (yyyy-MM-dd).
+ */
+export interface ScheduleDailyOps {
+    coversByDate: Record<string, number>
+    staffByDate: Record<string, string[]>
+}
+
 interface ScheduleCalendarProps {
     entries: CalendarEntry[]
     view: ScheduleCalendarView

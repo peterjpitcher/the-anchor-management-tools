@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { ScheduleCalendarMonth } from './ScheduleCalendarMonth'
 import { ScheduleCalendarWeek } from './ScheduleCalendarWeek'
 import { ScheduleCalendarList } from './ScheduleCalendarList'
-import type { CalendarEntry, CalendarEntryKind, ScheduleCalendarView } from './types'
+import type { CalendarEntry, CalendarEntryKind, ScheduleCalendarView, ScheduleDailyOps } from './types'
 
 export interface ScheduleCalendarProps {
     entries: CalendarEntry[]
@@ -20,6 +20,7 @@ export interface ScheduleCalendarProps {
     renderTooltip?: (entry: CalendarEntry) => ReactNode
     firstDayOfWeek?: 0 | 1 | 2 | 3 | 4 | 5 | 6
     legendKinds?: CalendarEntryKind[]
+    dailyOps?: ScheduleDailyOps
     className?: string
 }
 
@@ -33,6 +34,7 @@ export function ScheduleCalendar({
     renderTooltip,
     firstDayOfWeek = 1,
     legendKinds,
+    dailyOps,
     className,
 }: ScheduleCalendarProps) {
     const [anchor, setAnchor] = useState<Date>(() => new Date())
@@ -96,8 +98,8 @@ export function ScheduleCalendar({
                 )}
             </div>
 
-            {/* Legend */}
-            {legendKinds && legendKinds.length > 0 && (
+            {/* Legend — hidden on mobile to keep the schedule compact */}
+            {!isMobile && legendKinds && legendKinds.length > 0 && (
                 <div className="flex items-center gap-3 text-[11px] text-text-muted">
                     {legendKinds.map((k) => (
                         <span key={k} className="flex items-center gap-1">
@@ -132,7 +134,7 @@ export function ScheduleCalendar({
                 />
             )}
             {effectiveView === 'list' && (
-                <ScheduleCalendarList entries={entries} onEntryClick={onEntryClick} hidePast={isMobile} />
+                <ScheduleCalendarList entries={entries} onEntryClick={onEntryClick} hidePast={isMobile} dailyOps={dailyOps} />
             )}
         </div>
     )

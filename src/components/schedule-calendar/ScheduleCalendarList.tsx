@@ -3,7 +3,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { format, isPast, isSameDay } from 'date-fns'
 import { cn } from '@/lib/utils'
-import type { CalendarEntry } from './types'
+import type { CalendarEntry, ScheduleDailyOps } from './types'
 import { compareEntries } from './sort'
 
 export interface ScheduleCalendarListProps {
@@ -15,6 +15,8 @@ export interface ScheduleCalendarListProps {
      * page loads scrolled halfway down.
      */
     hidePast?: boolean
+    /** Per-day covers booked + staff on rota, rendered as a small note per day. */
+    dailyOps?: ScheduleDailyOps
 }
 
 interface DateGroup {
@@ -22,7 +24,7 @@ interface DateGroup {
     entries: CalendarEntry[]
 }
 
-export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false }: ScheduleCalendarListProps) {
+export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, dailyOps }: ScheduleCalendarListProps) {
     const today = useMemo(() => startOfToday(), [])
     const sorted = useMemo(() => [...entries].sort(compareEntries), [entries])
     const groups = useMemo(() => groupByDate(sorted), [sorted])
@@ -87,6 +89,21 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false }
                         >
                             {isTodayGroup ? 'Today' : format(group.date, 'EEEE d MMMM')}
                         </h2>
+                        {(() => {
+                            const iso = format(group.date, 'yyyy-MM-dd')
+                            const covers = dailyOps?.coversByDate[iso] ?? 0
+                            const staff = dailyOps?.staffByDate[iso] ?? []
+                            if (covers === 0 && staff.length === 0) return null
+                            return (
+                                <p className="text-[11px] leading-snug text-gray-500 px-3 py-1 border-b border-gray-100">
+                                    {covers > 0 && (
+                                        <span>{covers} cover{covers === 1 ? '' : 's'} booked</span>
+                                    )}
+                                    {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
+                                    {staff.length > 0 && <span>Working: {staff.join(', ')}</span>}
+                                </p>
+                            )
+                        })()}
                         {group.entries.length === 0 && isTodayGroup && (
                             <div className="text-xs text-gray-500 px-3 py-4 italic">
                                 No entries today.

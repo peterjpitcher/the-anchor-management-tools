@@ -13,6 +13,7 @@ import type {
   VenueCalendarNote,
   VenueCalendarParking,
   VenueCalendarSpecialHours,
+  ScheduleDailyOps,
 } from '@/components/schedule-calendar'
 import { Modal } from '@/ds'
 import { Button } from '@/ds'
@@ -35,6 +36,7 @@ export default function UpcomingScheduleCalendar({
   specialHours,
   parkingBookings,
   canCreateCalendarNote,
+  dailyOps,
 }: {
   events: VenueCalendarEvent[]
   calendarNotes: VenueCalendarNote[]
@@ -44,6 +46,7 @@ export default function UpcomingScheduleCalendar({
   specialHours: VenueCalendarSpecialHours[]
   parkingBookings: VenueCalendarParking[]
   canCreateCalendarNote?: boolean
+  dailyOps?: ScheduleDailyOps
 }) {
   const router = useRouter()
   const [newNoteDate, setNewNoteDate] = useState<string | null>(null)
@@ -163,6 +166,7 @@ export default function UpcomingScheduleCalendar({
         parkingBookings={parkingBookings}
         canCreateCalendarNote={canCreateCalendarNote}
         onEmptyDayClick={canCreateCalendarNote ? openNewNoteModal : undefined}
+        dailyOps={dailyOps}
       />
     </div>
   )
