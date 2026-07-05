@@ -18,6 +18,7 @@ import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
 import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
+import { utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 
 type GenerationPhase = 'checking' | 'drafting' | null
 
@@ -106,6 +107,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   const [bookingMode, setBookingMode] = useState('table')
   const [bookingUrl, setBookingUrl] = useState('')
   const [bookingsEnabled, setBookingsEnabled] = useState(true)
+  const [bookingCutoffAt, setBookingCutoffAt] = useState('')
   const [promoSmsEnabled, setPromoSmsEnabled] = useState(true)
 
   // ── Image ──
@@ -182,6 +184,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setBookingMode(event.booking_mode || 'table')
       setBookingUrl(event.booking_url || '')
       setBookingsEnabled(event.bookings_enabled ?? true)
+      setBookingCutoffAt(event.booking_cutoff_at ? utcIsoToLondonLocalInput(event.booking_cutoff_at) : '')
       setPromoSmsEnabled(event.promo_sms_enabled ?? true)
       setHeroImageUrl(event.hero_image_url || '')
       setSlug(event.slug || '')
@@ -223,6 +226,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setBookingMode('table')
       setBookingUrl('')
       setBookingsEnabled(true)
+      setBookingCutoffAt('')
       setPromoSmsEnabled(true)
       setHeroImageUrl('')
       setSlug('')
@@ -357,6 +361,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       formData.set('payment_mode', paymentMode)
       if (bookingUrl.trim()) formData.set('booking_url', bookingUrl.trim())
       formData.set('bookings_enabled', String(bookingsEnabled))
+      formData.set('booking_cutoff_at', bookingCutoffAt) // London wall-time or '' (cleared)
       formData.set('promo_sms_enabled', String(promoSmsEnabled))
 
       // Time & schedule
@@ -759,6 +764,14 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               onChange={setPromoSmsEnabled}
             />
           </div>
+          <Input
+            type="datetime-local"
+            label="Ticket sales close"
+            value={bookingCutoffAt}
+            onChange={(e) => setBookingCutoffAt(e.target.value)}
+            hint="Online ticket sales stop at this time. Staff can still add bookings after it. Leave blank to keep sales open until the event starts."
+            className="mt-3"
+          />
         </Section>
 
         {/* ── Checklist — only for existing events ── */}
