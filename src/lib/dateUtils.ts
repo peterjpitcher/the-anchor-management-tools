@@ -30,6 +30,16 @@ export function toLondonDateTimeLocalValue(value: string | Date | null | undefin
   return formatInTimeZone(date, LONDON_TIMEZONE, "yyyy-MM-dd'T'HH:mm")
 }
 
+// UTC ISO instant → value for an <input type="datetime-local"> (London wall time, no seconds).
+export function utcIsoToLondonLocalInput(iso: string): string {
+  return formatInTimeZone(new Date(iso), LONDON_TIMEZONE, "yyyy-MM-dd'T'HH:mm")
+}
+
+// datetime-local value (London wall time) → UTC ISO instant, or null when blank.
+export function londonLocalInputToUtcIso(local: string): string | null {
+  return local ? fromZonedTime(local, LONDON_TIMEZONE).toISOString() : null
+}
+
 export function formatDateInLondon(
   date: string | Date,
   options?: Intl.DateTimeFormatOptions,

@@ -48,6 +48,7 @@ export interface Event {
   gbp_event_description?: string | null;
   promo_sms_enabled?: boolean;
   bookings_enabled?: boolean;
+  booking_cutoff_at?: string | null;
 }
 
 export type PerformerSubmissionStatus =
