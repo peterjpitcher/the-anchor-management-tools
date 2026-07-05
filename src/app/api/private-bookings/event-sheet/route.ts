@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
 
-    const [bookingResult, suppliersResult, detailsResult] = await Promise.all([
+    const [bookingResult, suppliersResult] = await Promise.all([
       admin
         .from('private_bookings')
         .select(`
@@ -62,11 +62,6 @@ export async function GET(request: NextRequest) {
         .select('*')
         .eq('booking_id', bookingId)
         .order('arrival_time', { ascending: true, nullsFirst: false }),
-      admin
-        .from('private_bookings_with_details')
-        .select('deposit_amount, deposit_status, payment_status, gross_total, total_balance_paid, balance_remaining, balance_due_date')
-        .eq('id', bookingId)
-        .maybeSingle(),
     ])
 
     if (bookingResult.error || !bookingResult.data) {
@@ -77,7 +72,6 @@ export async function GET(request: NextRequest) {
     }
 
     const booking = bookingResult.data
-    const details = detailsResult.data ?? null
     const suppliers = suppliersResult.data ?? []
     const items = (booking.items ?? []) as Array<Record<string, any>>
 
@@ -147,13 +141,6 @@ export async function GET(request: NextRequest) {
       dogsExpected: Boolean(booking.dogs_expected),
       riskStatus: (booking.risk_status as string) ?? 'normal',
       specialRiskNotes: (booking.special_risk_notes as string | null) ?? null,
-      depositAmount: toNumberOrNull(details?.deposit_amount ?? booking.deposit_amount),
-      depositStatus: (details?.deposit_status as string | null) ?? null,
-      paymentStatus: (details?.payment_status as string | null) ?? null,
-      grossTotal: toNumberOrNull(details?.gross_total),
-      totalBalancePaid: toNumberOrNull(details?.total_balance_paid),
-      balanceRemaining: toNumberOrNull(details?.balance_remaining),
-      balanceDueDate: (details?.balance_due_date as string | null) ?? null,
     }
 
     const html = generateEventSheetHTML(data)
