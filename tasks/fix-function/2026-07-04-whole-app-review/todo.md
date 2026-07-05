@@ -30,8 +30,15 @@
 - [x] Lint clean; typecheck clean
 - [x] Full test suite: 493 files / 3236 tests, all passing (21 fallout failures fixed: 13 tests repinned to intentional new behaviour, 8 were pre-existing breaks — verified failing at base commit — repaired to current behaviour)
 - [x] Production build clean
-- [ ] Commit in logical chunks (local)
-- [ ] CONFIRM with owner: push to main + apply 5 migrations to prod (prod-migrate) + deploy-verify
+- [x] Commit in logical chunks (local) — 10 commits f011d056..1e53841d
+- [x] Owner approved. 5 migrations applied to prod via Supabase MCP + smoke-tested (move RPC guard paths, contract increment NULL, cashup void schema/perm/policy/view verified)
+- [x] Pushed main → origin (76655f69..1e53841d)
+- [x] deploy-verify: deployment m4m3kcd8u READY, prod aliases moved, route 200, no error logs
+
+## SHIPPED 2026-07-04. Owner still needs to:
+- Unregister Tabology cash-up webhook in Tabology Back Office (endpoint now 404)
+- Confirm UPSTASH_REDIS_REST_URL/TOKEN set in Vercel prod (feedback/public rate limits)
+- Phone check: dashboard (Today first) + short links usable
 
 ## Deferred (explicitly out of this run)
 - TP-07 N+1 set-based RPC (perf), FB-10 retention cron (unless trivial), FB-11 (business decision),
