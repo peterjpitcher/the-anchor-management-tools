@@ -1242,6 +1242,17 @@ function AttendeesTab({
               >
                 Booking Sheets
               </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Icon name="download" size={14} />}
+                onClick={() => {
+                  window.location.href = `/api/events/${event.id}/guest-list`
+                }}
+                disabled={activeBookingsCount === 0}
+              >
+                Guest List
+              </Button>
               <Button variant="ghost" size="sm" onClick={onToggleCancelled}>
                 {showCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
               </Button>
