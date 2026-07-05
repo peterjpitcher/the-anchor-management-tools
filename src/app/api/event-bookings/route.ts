@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, payment_mode, is_free, price, price_per_seat')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -235,6 +235,12 @@ export async function POST(request: NextRequest) {
           'BOOKINGS_DISABLED',
           409
         )
+      }
+
+      // Online-only sales cutoff. This route is API-key-only, so staff bookings
+      // (added via the authenticated app) are unaffected.
+      if (eventRow.booking_cutoff_at && new Date(eventRow.booking_cutoff_at).getTime() < Date.now()) {
+        return createErrorResponse('Online ticket sales for this event have closed.', 'SALES_CLOSED', 409)
       }
 
       if (
