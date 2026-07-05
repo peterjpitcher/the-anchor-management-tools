@@ -69,7 +69,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .from('bookings')
       .select('seats, attendee_names, is_reminder_only, customer:customers(first_name, last_name)')
       .eq('event_id', eventId)
-      .neq('status', 'cancelled')
+      .eq('status', 'confirmed')
       .eq('is_reminder_only', false)
 
     if (bookingsError) throw bookingsError
