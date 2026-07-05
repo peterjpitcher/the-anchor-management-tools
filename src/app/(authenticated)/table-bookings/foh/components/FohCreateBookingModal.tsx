@@ -36,6 +36,7 @@ export type CreateForm = {
   notes: string
   waive_deposit: boolean
   is_venue_event: boolean
+  bypass_pacing: boolean
 }
 
 type FohCreateBookingModalProps = {
@@ -43,6 +44,7 @@ type FohCreateBookingModalProps = {
   createMode: FohCreateMode
   createForm: CreateForm
   canWaiveDeposit: boolean
+  canEdit?: boolean
   walkInTargetTable: WalkInTargetTable | null
   submittingBooking: boolean
   // Customer search
@@ -88,6 +90,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     createMode,
     createForm,
     canWaiveDeposit,
+    canEdit = false,
     walkInTargetTable,
     submittingBooking,
     customerQuery,
@@ -497,6 +500,31 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 </div>
               )}
 
+            </div>
+          )}
+
+          {canEdit && createMode === 'booking' && createForm.purpose !== 'event' && (
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                <input
+                  id="bypass-kitchen-pacing"
+                  type="checkbox"
+                  checked={createForm.bypass_pacing}
+                  onChange={(e) =>
+                    onSetCreateForm((prev) => ({
+                      ...prev,
+                      bypass_pacing: e.target.checked
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
+                />
+                <label htmlFor="bypass-kitchen-pacing" className="cursor-pointer text-xs font-medium text-gray-700">
+                  Override kitchen pacing (this window is at capacity)
+                </label>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Only tick this to force a booking into a 30-minute window the kitchen has already filled.
+              </p>
             </div>
           )}
         </div>

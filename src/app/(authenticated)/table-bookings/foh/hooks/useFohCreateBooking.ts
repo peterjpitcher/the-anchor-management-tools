@@ -100,7 +100,8 @@ export function useFohCreateBooking(input: {
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     notes: '',
     waive_deposit: false,
-    is_venue_event: false
+    is_venue_event: false,
+    bypass_pacing: false
   })
 
   // --- Customer search ---
@@ -253,7 +254,7 @@ export function useFohCreateBooking(input: {
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
-      notes: '', waive_deposit: false, is_venue_event: false
+      notes: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false
     }))
     setCreateMode('booking'); setWalkInTargetTable(null); setCustomerQuery(''); setCustomerResults([])
     setSelectedCustomer(null); setEventOptions([]); setEventOptionsError(null)
@@ -310,7 +311,7 @@ export function useFohCreateBooking(input: {
         sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
         phone: walkInMode ? '' : current.phone, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
-        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false
+        notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false
       }
     })
     if (walkInMode) {
@@ -430,7 +431,8 @@ export function useFohCreateBooking(input: {
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
           purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food', notes: createForm.notes || undefined,
           sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true })) ? createForm.sunday_deposit_method : undefined,
-          waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined
+          waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined,
+          bypass_pacing: createForm.bypass_pacing || undefined
         })
       })
       const payload = (await response.json()) as FohCreateBookingResponse
