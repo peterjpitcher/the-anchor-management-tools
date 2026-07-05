@@ -80,6 +80,21 @@ type PacingSettingsResponse = {
   error?: string
 }
 
+type KitchenPacingSettings = {
+  enabled: boolean
+  window_minutes: number
+  pace_covers_regular: number
+  pace_covers_sunday: number
+  walk_in_reserve_regular: number
+  walk_in_reserve_sunday: number
+}
+
+type KitchenPacingSettingsResponse = {
+  success: boolean
+  data?: KitchenPacingSettings
+  error?: string
+}
+
 type TableDraft = {
   name: string
   table_number: string
@@ -124,6 +139,16 @@ export function TableSetupManager() {
     busy_threshold_covers: '30',
     filling_threshold_covers: '20',
     window_minutes: '60'
+  })
+  const [loadingKitchenPacing, setLoadingKitchenPacing] = useState(true)
+  const [savingKitchenPacing, setSavingKitchenPacing] = useState(false)
+  const [kitchenPacingDraft, setKitchenPacingDraft] = useState({
+    enabled: false,
+    window_minutes: '30',
+    pace_covers_regular: '25',
+    pace_covers_sunday: '20',
+    walk_in_reserve_regular: '6',
+    walk_in_reserve_sunday: '6'
   })
   const [newTable, setNewTable] = useState<TableDraft>({
     name: '',
@@ -207,6 +232,29 @@ export function TableSetupManager() {
     }
   }
 
+  async function loadKitchenPacing() {
+    setLoadingKitchenPacing(true)
+    try {
+      const response = await fetch('/api/settings/table-bookings/kitchen-pacing', { cache: 'no-store' })
+      const payload = (await response.json()) as KitchenPacingSettingsResponse
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error || 'Failed to load kitchen pacing settings')
+      }
+      setKitchenPacingDraft({
+        enabled: payload.data.enabled,
+        window_minutes: String(payload.data.window_minutes),
+        pace_covers_regular: String(payload.data.pace_covers_regular),
+        pace_covers_sunday: String(payload.data.pace_covers_sunday),
+        walk_in_reserve_regular: String(payload.data.walk_in_reserve_regular),
+        walk_in_reserve_sunday: String(payload.data.walk_in_reserve_sunday)
+      })
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to load kitchen pacing settings')
+    } finally {
+      setLoadingKitchenPacing(false)
+    }
+  }
+
   async function loadJoinGroups() {
     setLoadingGroups(true)
     try {
@@ -226,6 +274,7 @@ export function TableSetupManager() {
   useEffect(() => {
     void loadSetup()
     void loadPacingSettings()
+    void loadKitchenPacing()
     void loadJoinGroups()
   }, [])
 
@@ -580,6 +629,88 @@ export function TableSetupManager() {
     }
   }
 
+  async function saveKitchenPacing() {
+    const windowMinutes = Number.parseInt(kitchenPacingDraft.window_minutes, 10)
+    const paceRegular = Number.parseInt(kitchenPacingDraft.pace_covers_regular, 10)
+    const paceSunday = Number.parseInt(kitchenPacingDraft.pace_covers_sunday, 10)
+    const reserveRegular = Number.parseInt(kitchenPacingDraft.walk_in_reserve_regular, 10)
+    const reserveSunday = Number.parseInt(kitchenPacingDraft.walk_in_reserve_sunday, 10)
+
+    if (!Number.isFinite(windowMinutes) || windowMinutes < 10 || windowMinutes > 180 || windowMinutes % 5 !== 0) {
+      setErrorMessage('Window must be a multiple of 5 between 10 and 180 minutes')
+      return
+    }
+
+    for (const [label, value] of [
+      ['Regular pace', paceRegular],
+      ['Sunday pace', paceSunday]
+    ] as const) {
+      if (!Number.isFinite(value) || value < 1 || value > 500) {
+        setErrorMessage(`${label} must be between 1 and 500 covers`)
+        return
+      }
+    }
+
+    for (const [label, value] of [
+      ['Regular walk-in reserve', reserveRegular],
+      ['Sunday walk-in reserve', reserveSunday]
+    ] as const) {
+      if (!Number.isFinite(value) || value < 0 || value > 500) {
+        setErrorMessage(`${label} must be between 0 and 500 covers`)
+        return
+      }
+    }
+
+    setSavingKitchenPacing(true)
+    setErrorMessage(null)
+    setStatusMessage(null)
+
+    try {
+      const response = await fetch('/api/settings/table-bookings/kitchen-pacing', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: kitchenPacingDraft.enabled,
+          window_minutes: windowMinutes,
+          pace_covers_regular: paceRegular,
+          pace_covers_sunday: paceSunday,
+          walk_in_reserve_regular: reserveRegular,
+          walk_in_reserve_sunday: reserveSunday
+        })
+      })
+
+      const payload = (await response.json().catch(() => null)) as KitchenPacingSettingsResponse | null
+      if (!response.ok || !payload?.success || !payload.data) {
+        throw new Error(payload?.error || 'Failed to save kitchen pacing settings')
+      }
+
+      setKitchenPacingDraft({
+        enabled: payload.data.enabled,
+        window_minutes: String(payload.data.window_minutes),
+        pace_covers_regular: String(payload.data.pace_covers_regular),
+        pace_covers_sunday: String(payload.data.pace_covers_sunday),
+        walk_in_reserve_regular: String(payload.data.walk_in_reserve_regular),
+        walk_in_reserve_sunday: String(payload.data.walk_in_reserve_sunday)
+      })
+      setStatusMessage('Kitchen pacing settings saved')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save kitchen pacing settings')
+    } finally {
+      setSavingKitchenPacing(false)
+    }
+  }
+
+  const kitchenCeilingRegular = Math.max(
+    0,
+    (Number.parseInt(kitchenPacingDraft.pace_covers_regular, 10) || 0) -
+      (Number.parseInt(kitchenPacingDraft.walk_in_reserve_regular, 10) || 0)
+  )
+  const kitchenCeilingSunday = Math.max(
+    0,
+    (Number.parseInt(kitchenPacingDraft.pace_covers_sunday, 10) || 0) -
+      (Number.parseInt(kitchenPacingDraft.walk_in_reserve_sunday, 10) || 0)
+  )
+
   return (
     <div className="space-y-6">
       {statusMessage && (
@@ -667,6 +798,140 @@ export function TableSetupManager() {
                 size="sm"
               >
                 Save pacing settings
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Kitchen pacing (cap) */}
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-gray-900">Kitchen pacing (cap)</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          When on, online bookings that would push food covers over the cap in the window are declined
+          and asked to pick another time. Staff can override. Walk-ins bypass but use the reserve.
+        </p>
+
+        {loadingKitchenPacing ? (
+          <p className="mt-3 text-sm text-gray-500">Loading kitchen pacing settings...</p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={kitchenPacingDraft.enabled}
+                onChange={(event) =>
+                  setKitchenPacingDraft((current) => ({
+                    ...current,
+                    enabled: event.target.checked
+                  }))
+                }
+              />
+              <span>Kitchen pacing is {kitchenPacingDraft.enabled ? 'on' : 'off'}</span>
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-xs font-medium text-gray-700">
+                Window minutes
+                <input
+                  type="number"
+                  min={10}
+                  max={180}
+                  step={5}
+                  value={kitchenPacingDraft.window_minutes}
+                  onChange={(event) =>
+                    setKitchenPacingDraft((current) => ({
+                      ...current,
+                      window_minutes: event.target.value
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="text-xs font-medium text-gray-700">
+                Regular pace (covers)
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={kitchenPacingDraft.pace_covers_regular}
+                  onChange={(event) =>
+                    setKitchenPacingDraft((current) => ({
+                      ...current,
+                      pace_covers_regular: event.target.value
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="text-xs font-medium text-gray-700">
+                Sunday pace (covers)
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={kitchenPacingDraft.pace_covers_sunday}
+                  onChange={(event) =>
+                    setKitchenPacingDraft((current) => ({
+                      ...current,
+                      pace_covers_sunday: event.target.value
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="text-xs font-medium text-gray-700">
+                Regular walk-in reserve (covers)
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={kitchenPacingDraft.walk_in_reserve_regular}
+                  onChange={(event) =>
+                    setKitchenPacingDraft((current) => ({
+                      ...current,
+                      walk_in_reserve_regular: event.target.value
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="text-xs font-medium text-gray-700">
+                Sunday walk-in reserve (covers)
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={kitchenPacingDraft.walk_in_reserve_sunday}
+                  onChange={(event) =>
+                    setKitchenPacingDraft((current) => ({
+                      ...current,
+                      walk_in_reserve_sunday: event.target.value
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <p className="text-xs text-gray-600">
+              Online ceiling per window (pace &minus; reserve):{' '}
+              <span className="font-medium text-gray-900">{kitchenCeilingRegular}</span> regular ·{' '}
+              <span className="font-medium text-gray-900">{kitchenCeilingSunday}</span> Sunday
+            </p>
+
+            <div>
+              <Button
+                onClick={() => { void saveKitchenPacing() }}
+                disabled={savingKitchenPacing}
+                loading={savingKitchenPacing}
+                size="sm"
+              >
+                Save kitchen pacing settings
               </Button>
             </div>
           </div>

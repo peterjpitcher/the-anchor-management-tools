@@ -44,6 +44,7 @@ const CreateFohTableBookingSchema = z.object({
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
+  bypass_pacing: z.boolean().optional(),
   is_venue_event: z.boolean().optional().default(false)
 }).superRefine((value, context) => {
   if (!value.customer_id && !value.phone && value.walk_in !== true && value.management_override !== true) {
@@ -176,6 +177,9 @@ function getWalkInDurationMinutes(input: {
   return input.purpose === 'food' ? 120 : 90
 }
 
+// Raw-insert override path (management override + walk-in hours-bypass fallback).
+// Never calls create_table_booking_v05, so it already bypasses kitchen pacing —
+// do not add a duplicate pacing check here.
 async function createManualWalkInBookingOverride(params: {
   supabase: any
   customerId: string
@@ -1024,6 +1028,31 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Walk-ins are at-arrival and always bypass pacing; advance FOH bookings are
+  // subject to pacing unless a manager/super_admin explicitly overrides.
+  let bypassPacing = payload.walk_in === true
+  if (payload.bypass_pacing === true && payload.walk_in !== true) {
+    const { data: roleRows } = await auth.supabase
+      .from('user_roles')
+      .select('roles(name)')
+      .eq('user_id', auth.userId)
+    const isManagerOrAbove =
+      (roleRows as unknown as Array<{ roles: { name: string } | null }> | null)?.some(
+        (r) => r.roles?.name === 'manager' || r.roles?.name === 'super_admin'
+      ) ?? false
+    if (!isManagerOrAbove) {
+      return NextResponse.json({ error: 'Insufficient permissions to override kitchen pacing' }, { status: 403 })
+    }
+    await logAuditEvent({
+      user_id: auth.userId,
+      operation_type: 'create',
+      resource_type: 'table_booking_pacing_override',
+      operation_status: 'success',
+      additional_info: { bypass_pacing: true, date: payload.date, time: payload.time, party_size: payload.party_size },
+    })
+    bypassPacing = true
+  }
+
   const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_table_booking_v05', {
     p_customer_id: customerId,
     p_booking_date: payload.date,
@@ -1036,7 +1065,8 @@ export async function POST(request: NextRequest) {
     p_bypass_cutoff: true,
     // Venue events and management overrides automatically waive the deposit,
     // matching the explicit waive_deposit path.
-    p_deposit_waived: treatAsWaived
+    p_deposit_waived: treatAsWaived,
+    p_bypass_pacing: bypassPacing
   })
 
   let bookingResult: TableBookingRpcResult

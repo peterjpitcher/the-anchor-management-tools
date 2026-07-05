@@ -209,7 +209,7 @@ export async function savePacingSettings(
   return { ok: true }
 }
 
-function shouldCountBooking(row: BookingLoadRow, now: Date): boolean {
+export function shouldCountBooking(row: BookingLoadRow, now: Date): boolean {
   if (row.status === 'cancelled' || row.status === 'no_show') {
     return false
   }

@@ -395,6 +395,7 @@ export function FohScheduleClient({
         createMode={createBooking.createMode}
         createForm={createBooking.createForm}
         canWaiveDeposit={canWaiveDeposit}
+        canEdit={canEdit}
         walkInTargetTable={createBooking.walkInTargetTable}
         submittingBooking={createBooking.submittingBooking}
         customerQuery={createBooking.customerQuery}

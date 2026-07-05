@@ -174,6 +174,65 @@ const serviceStatusOverrideSchema = z.object({
   ),
 });
 
+export type KitchenWindow = { openMinutes: number; closeMinutes: number }
+
+/**
+ * Resolve the kitchen open/close window for a given date, mirroring how
+ * create_table_booking_v05 derives it: special_hours overrides business_hours
+ * field-by-field (COALESCE(sh.x, bh.x)), and the kitchen is treated as unavailable
+ * when it is explicitly closed or either edge is unset. Returns minutes-from-midnight
+ * for both edges, or null when there is no usable kitchen window for the date.
+ */
+export async function getKitchenWindowForDate(
+  date: string,
+  supabase: ReturnType<typeof createAdminClient> = createAdminClient()
+): Promise<KitchenWindow | null> {
+  const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+
+  const [{ data: businessRow }, { data: specialRow }] = await Promise.all([
+    supabase
+      .from('business_hours')
+      .select('kitchen_opens, kitchen_closes, is_kitchen_closed, is_closed')
+      .eq('day_of_week', dayOfWeek)
+      .maybeSingle(),
+    supabase
+      .from('special_hours')
+      .select('kitchen_opens, kitchen_closes, is_kitchen_closed, is_closed')
+      .eq('date', date)
+      .maybeSingle(),
+  ]);
+
+  if (!businessRow && !specialRow) {
+    return null;
+  }
+
+  const isClosed = specialRow?.is_closed ?? businessRow?.is_closed ?? false;
+  const isKitchenClosed =
+    specialRow?.is_kitchen_closed ?? businessRow?.is_kitchen_closed ?? false;
+  if (isClosed || isKitchenClosed) {
+    return null;
+  }
+
+  const kitchenOpens = specialRow?.kitchen_opens ?? businessRow?.kitchen_opens ?? null;
+  const kitchenCloses = specialRow?.kitchen_closes ?? businessRow?.kitchen_closes ?? null;
+  if (!kitchenOpens || !kitchenCloses) {
+    return null;
+  }
+
+  const openMinutes = toMinutes(kitchenOpens);
+  let closeMinutes = toMinutes(kitchenCloses);
+  // Treat a midnight close as the end of the service day, matching the RPC.
+  if (closeMinutes <= openMinutes) {
+    closeMinutes += 24 * 60;
+  }
+
+  if (!Number.isFinite(openMinutes) || !Number.isFinite(closeMinutes)) {
+    return null;
+  }
+
+  return { openMinutes, closeMinutes };
+}
+
 export class BusinessHoursService {
   static async getBusinessHours(): Promise<BusinessHours[]> {
     const supabase = createAdminClient();
