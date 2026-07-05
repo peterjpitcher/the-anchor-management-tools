@@ -22,9 +22,11 @@ confirmed-only guests; □ tick box per line; new `SALES_CLOSED` code.
 `main` (AMS auto-deploys), manual website deploy.
 
 **Progress:**
-- [ ] PR A implemented + verified on branch
-- [ ] PR C implemented + verified on branch
-- [ ] PR B implemented + verified on branch
+- [x] PR A implemented + verified on branch `feat/event-guest-list-pdf` (5 commits; tsc/lint/build green,
+      model tests green; gate fix applied — confirmed-only filter per D4)
+- [x] PR C implemented + verified on branch `feat/event-sales-cutoff-web` (3 commits; tsc/lint/build
+      green; 1 pre-existing unrelated full-suite failure confirmed on clean main)
+- [ ] PR B implemented + verified on branch `feat/event-sales-cutoff`
 - [ ] Adversarial review (codex-qa-review)
 - [ ] Owner go-ahead → prod migration + merges + website deploy + deploy verification
 
