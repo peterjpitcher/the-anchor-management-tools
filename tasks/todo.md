@@ -33,12 +33,15 @@ confirmed-only guests; □ tick box per line; new `SALES_CLOSED` code.
       No blockers. Fixes applied on-branch: PR A H1 Unicode-safe PDF + M1 long-name clip (c19adef6);
       PR C M2 explicit SALES_CLOSED submit branch (cbea61e6). PR B clean. PR A M2 (button vs filter)
       left as D4 (confirmed-only) by design.
-- [ ] **INTEGRATION CAVEAT:** local `main` is behind `origin/main` by 11 commits (parallel session);
-      branches were cut from stale main. Before merge: fetch, rebase/merge each branch onto current
-      `origin/main`, re-check migration timestamp uniqueness, re-run pipelines.
-- [ ] Owner go-ahead → integrate onto origin/main → prod migration (Supabase MCP) → merges
-      (AMS auto-deploys; resolve EventDetailClient.tsx button+chip if needed) → manual website deploy
-      → deploy verification (Ready + prod alias moved)
+- [x] **AMS SHIPPED (2026-07-05).** Integrated onto origin/main (kitchen-pacing upstream; zero source
+      conflicts, EventDetailClient button+chip auto-merged), migration rebumped to `20260726010000`
+      (kitchen-pacing took 000000/000001). Applied migration to PROD via Supabase MCP (column live,
+      smoke-tested). Merged to main + pushed (`4fe8fa19`). Deploy VERIFIED: Vercel Ready, prod alias
+      `management.orangejelly.co.uk` on `dpl_BXQNmsuVXXampwyzz2536qTbvddU`. Integrated pipeline green:
+      lint 0, tsc 0, tests 3372/3372, build 0.
+- [ ] **WEBSITE — owner to deploy.** Branch `feat/event-sales-cutoff-web` (OJ-The-Anchor.pub) is on
+      current origin/main (no integration needed), verified green. Merge → main → manual prod deploy →
+      smoke-test a past-cutoff event (form replaced by "sales closed" panel; POST → 409 SALES_CLOSED).
 
 ## Previous Task: Rota "unpublished changes" false-alert — deletions invisible in UI (2026-07-05)
 
