@@ -25,6 +25,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/table-booking',
   '/parking/guest',
   '/onboarding',
+  '/recruitment/book', // Public candidate interview/trial slot picker (token-gated). Scoped to /book so staff /recruitment pages stay protected.
   '/timeclock',
   '/m',
   '/g',
