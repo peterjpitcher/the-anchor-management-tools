@@ -5,6 +5,9 @@ import { usePathname } from 'next/navigation'
 import { Icon } from '@/ds/icons'
 import type { IconName } from '@/ds/icons'
 import type { ActionType, ModuleName } from '@/types/rbac'
+import type { OutstandingCounts } from '@/actions/get-outstanding-counts'
+import { useOutstandingCounts } from '@/hooks/useOutstandingCounts'
+import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
 
 export interface NavItem {
   id: string
@@ -91,6 +94,36 @@ export function filterNavGroupsForPermissions(
     .filter((group) => group.items.length > 0)
 }
 
+/**
+ * Resolves the live outstanding-count badge for a nav item. Shared by the
+ * desktop sidebar and the mobile chrome so both stay in sync. Falls back to any
+ * static `item.badge` when live counts are unavailable.
+ */
+export function navCount(
+  item: Pick<NavItem, 'id' | 'badge'>,
+  unreadCount: number,
+  counts: OutstandingCounts | null,
+): number | undefined {
+  if (item.id === 'messages') return unreadCount > 0 ? unreadCount : undefined
+  if (!counts) return item.badge
+
+  const countById: Record<string, number | undefined> = {
+    events: counts.events,
+    menu: counts.menu_management,
+    tables: counts.table_bookings,
+    'private-bookings': counts.private_bookings,
+    parking: counts.parking,
+    'cashing-up': counts.cashing_up,
+    invoices: counts.invoices,
+    receipts: counts.receipts,
+  }
+
+  // A live count wins even when it is 0 (0 = "nothing outstanding", not "no
+  // data"); only fall back to a static badge for items we don't track.
+  if (item.id in countById) return countById[item.id]
+  return item.badge
+}
+
 interface SidebarNavProps {
   items: NavGroup[]
   onNavigate?: () => void
@@ -103,6 +136,8 @@ function isActive(pathname: string, href: string): boolean {
 
 export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
   const pathname = usePathname() ?? '/'
+  const unreadCount = useUnreadMessageCount()
+  const { counts } = useOutstandingCounts()
 
   return (
     <nav aria-label="Main navigation" className="flex flex-col gap-0.5">
@@ -113,6 +148,7 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
           )}
           {group.items.map((item) => {
             const active = isActive(pathname, item.href)
+            const count = navCount(item, unreadCount, counts)
             return (
               <Link
                 key={item.id}
@@ -126,11 +162,11 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
               >
                 <Icon name={item.icon as IconName} size={20} className="shrink-0" />
                 <span className="ds-label truncate">{item.label}</span>
-                {item.badge !== undefined && item.badge > 0 && (
+                {count ? (
                   <span className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-sidebar-active-bg text-[11px] font-semibold text-sidebar-fg">
-                    {item.badge}
+                    {count}
                   </span>
-                )}
+                ) : null}
               </Link>
             )
           })}
