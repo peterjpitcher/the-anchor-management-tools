@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { shiftIsUnpublished, type PublishedShiftSnapshot, type RotaPublishShift } from '@/lib/rota/publish-status'
+import {
+  shiftIsUnpublished,
+  getRemovedPublishedShifts,
+  type PublishedShiftSnapshot,
+  type RotaPublishShift,
+} from '@/lib/rota/publish-status'
 
 const week = {
   status: 'published' as const,
@@ -42,5 +47,46 @@ describe('shiftIsUnpublished', () => {
     const publishedShiftById = new Map([[publishedShift.id, publishedShift]])
 
     expect(shiftIsUnpublished({ ...liveShift, start_time: '17:00:00' }, week, publishedShiftById)).toBe(true)
+  })
+})
+
+describe('getRemovedPublishedShifts', () => {
+  const secondPublishedShift: PublishedShiftSnapshot = {
+    ...publishedShift,
+    id: 'shift-2',
+    employee_id: 'employee-2',
+    name: 'Tuesday',
+  }
+
+  it('returns snapshot shifts that no longer have a live row', () => {
+    // Only shift-1 survives; shift-2 was deleted since publish.
+    const removed = getRemovedPublishedShifts([liveShift], week, [publishedShift, secondPublishedShift])
+
+    expect(removed).toHaveLength(1)
+    expect(removed[0].id).toBe('shift-2')
+  })
+
+  it('returns nothing when every published shift still has a live row', () => {
+    const secondLive: RotaPublishShift = { ...secondPublishedShift }
+
+    expect(getRemovedPublishedShifts([liveShift, secondLive], week, [publishedShift, secondPublishedShift])).toEqual([])
+  })
+
+  it('does not count a still-present (e.g. cancelled) live shift as removed', () => {
+    const cancelledLive: RotaPublishShift = { ...liveShift, status: 'cancelled' }
+
+    expect(getRemovedPublishedShifts([cancelledLive], week, [publishedShift])).toEqual([])
+  })
+
+  it('returns nothing for a draft week (no published snapshot to diff against)', () => {
+    const draftWeek = { status: 'draft' as const, published_at: null }
+
+    expect(getRemovedPublishedShifts([], draftWeek, [publishedShift])).toEqual([])
+  })
+
+  it('returns nothing when the week has never been published', () => {
+    const unpublishedWeek = { status: 'published' as const, published_at: null }
+
+    expect(getRemovedPublishedShifts([], unpublishedWeek, [publishedShift])).toEqual([])
   })
 })

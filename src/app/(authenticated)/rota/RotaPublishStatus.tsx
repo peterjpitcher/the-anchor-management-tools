@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { publishRotaWeek } from '@/app/actions/rota';
 import type { RotaShift, RotaWeek } from '@/app/actions/rota';
-import { shiftIsUnpublished, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 
 export default function RotaPublishStatus({
   week,
@@ -24,7 +24,9 @@ export default function RotaPublishStatus({
   const publishedShiftById = new Map(publishedShifts.map(shift => [shift.id, shift]));
   const activeShifts = shifts.filter(shift => shift.status !== 'cancelled');
   const unpublishedShifts = activeShifts.filter(shift => shiftIsUnpublished(shift, week, publishedShiftById));
-  const hasAnyUnpublished = unpublishedShifts.length > 0;
+  // Deletions leave no live tile to flag, so also count shifts removed since publish.
+  const removedShifts = getRemovedPublishedShifts(shifts, week, publishedShifts);
+  const hasAnyUnpublished = unpublishedShifts.length > 0 || removedShifts.length > 0;
   const hasAnyPublished = unpublishedShifts.length < activeShifts.length && activeShifts.length > 0;
   const isPublished = week.status === 'published' && !hasAnyUnpublished;
   const isDraft = !isPublished && !hasAnyPublished;
