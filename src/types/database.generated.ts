@@ -2941,6 +2941,7 @@ export type Database = {
         Row: {
           accessibility_notes: string | null
           attendance_note: string | null
+          booking_cutoff_at: string | null
           booking_mode: string
           booking_open: boolean
           booking_url: string | null
@@ -2999,6 +3000,7 @@ export type Database = {
         Insert: {
           accessibility_notes?: string | null
           attendance_note?: string | null
+          booking_cutoff_at?: string | null
           booking_mode?: string
           booking_open?: boolean
           booking_url?: string | null
@@ -3057,6 +3059,7 @@ export type Database = {
         Update: {
           accessibility_notes?: string | null
           attendance_note?: string | null
+          booking_cutoff_at?: string | null
           booking_mode?: string
           booking_open?: boolean
           booking_url?: string | null

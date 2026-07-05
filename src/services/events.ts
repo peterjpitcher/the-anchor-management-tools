@@ -83,6 +83,7 @@ export type CreateEventInput = {
   faqs?: Array<{ question: string; answer: string; sort_order?: number }>;
   promo_sms_enabled?: boolean;
   bookings_enabled?: boolean;
+  booking_cutoff_at?: string | null;
 };
 
 type EventBookingMode = NonNullable<CreateEventInput['booking_mode']>;
@@ -200,6 +201,35 @@ async function updateEventSplitCapacities(
       metadata: { eventId }
     })
     throw new Error('Failed to update event capacity split')
+  }
+
+  return data
+}
+
+// The create/update event transaction RPCs whitelist columns and do not
+// persist booking_cutoff_at, so it is written via a dedicated admin update —
+// mirroring the split-capacity / online-discount helpers. Only writes when the
+// field was explicitly provided so partial updates never clobber the value.
+async function updateEventBookingCutoff(
+  eventId: string,
+  input: Pick<UpdateEventInput, 'booking_cutoff_at'>
+) {
+  if (input.booking_cutoff_at === undefined) return null
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('events')
+    .update({ booking_cutoff_at: input.booking_cutoff_at })
+    .eq('id', eventId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) {
+    logger.error('Failed to update event booking cutoff', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId }
+    })
+    throw new Error('Failed to update event booking cutoff')
   }
 
   return data
@@ -484,7 +514,11 @@ export const eventSchema = z.object({
   }),
   faqs: z.array(eventFaqSchema).default([]),
   promo_sms_enabled: z.boolean().optional(),
-  bookings_enabled: z.boolean().optional()
+  bookings_enabled: z.boolean().optional(),
+  booking_cutoff_at: z.preprocess(
+    (val) => (val === '' || val === undefined ? null : val),
+    z.string().datetime({ offset: true }).nullable()
+  ).optional()
 })
 
 export class EventService {
@@ -578,7 +612,10 @@ export class EventService {
       seated_capacity: input.seated_capacity,
       standing_capacity: input.standing_capacity,
     })
-    const savedEvent = capacityEvent || discountEvent || event
+    const cutoffEvent = await updateEventBookingCutoff(event.id, {
+      booking_cutoff_at: input.booking_cutoff_at,
+    })
+    const savedEvent = cutoffEvent || capacityEvent || discountEvent || event
 
     // Attempt marketing link generation — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
@@ -774,7 +811,10 @@ export class EventService {
       seated_capacity: input.seated_capacity,
       standing_capacity: input.standing_capacity,
     })
-    const savedEvent = capacityEvent || discountEvent || event
+    const cutoffEvent = await updateEventBookingCutoff(id, {
+      booking_cutoff_at: input.booking_cutoff_at,
+    })
+    const savedEvent = cutoffEvent || capacityEvent || discountEvent || event
 
     // Attempt marketing link refresh — non-blocking for save, but capture failures
     let marketingLinksWarning: string | null = null
