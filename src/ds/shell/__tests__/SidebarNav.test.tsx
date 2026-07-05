@@ -41,6 +41,7 @@ vi.mock('@/hooks/useOutstandingCounts', () => ({
 
 import { SidebarNav, navCount } from '../SidebarNav'
 import type { NavGroup } from '../SidebarNav'
+import { NavCountsProvider } from '../NavCountsContext'
 
 const FULL_COUNTS: OutstandingCounts = {
   events: 4,
@@ -100,7 +101,12 @@ describe('SidebarNav', () => {
   ]
 
   it('renders live outstanding-count badges on the desktop sidebar', () => {
-    render(<SidebarNav items={items} />)
+    // Counts flow through the shared provider (which reads the mocked hooks).
+    render(
+      <NavCountsProvider>
+        <SidebarNav items={items} />
+      </NavCountsProvider>,
+    )
 
     // Events badge (from outstanding counts) and Messages badge (from unread count).
     expect(screen.getByText('2')).toBeInTheDocument()

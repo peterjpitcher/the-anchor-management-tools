@@ -6,6 +6,7 @@ import { filterNavGroupsForPermissions, NAV_GROUPS } from './SidebarNav'
 import { Topbar } from './Topbar'
 import { FohClockBand } from './FohClockBand'
 import { MobileBottomNav, MobileDrawer, MobileTopbar } from './MobileChrome'
+import { NavCountsProvider } from './NavCountsContext'
 import { cn } from '@/lib/utils'
 import { usePermissions } from '@/contexts/PermissionContext'
 
@@ -40,9 +41,12 @@ export function AppShell({
   const openMobile = useCallback(() => setMobileOpen(true), [])
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
-  return (
+  const shell = (
     <div className={cn('flex min-h-screen bg-bg', showSidebar && !fohMode && 'max-md:h-[100dvh] max-md:flex-col max-md:overflow-hidden')}>
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar. Its badges read the NavCountsProvider below, which is
+          mounted on `showSidebar && !fohMode`. The caller keeps `showSidebar`
+          and `!fohMode` equal, so the sidebar is always inside the provider; if
+          that ever diverges, badges fall back to empty (no crash). */}
       {showSidebar && (
         <Sidebar
           navGroups={navGroups}
@@ -97,4 +101,9 @@ export function AppShell({
       {showSidebar && !fohMode && <MobileBottomNav navGroups={navGroups} onMore={openMobile} />}
     </div>
   )
+
+  // Fetch the nav badge counts once for the whole shell. Only mount the
+  // provider when the nav surfaces render (never in FOH/chromeless mode), so
+  // FOH does no polling — matching the previous per-component behaviour.
+  return showSidebar && !fohMode ? <NavCountsProvider>{shell}</NavCountsProvider> : shell
 }

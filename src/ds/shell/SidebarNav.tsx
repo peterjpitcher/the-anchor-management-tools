@@ -6,8 +6,7 @@ import { Icon } from '@/ds/icons'
 import type { IconName } from '@/ds/icons'
 import type { ActionType, ModuleName } from '@/types/rbac'
 import type { OutstandingCounts } from '@/actions/get-outstanding-counts'
-import { useOutstandingCounts } from '@/hooks/useOutstandingCounts'
-import { useUnreadMessageCount } from '@/hooks/useUnreadMessageCount'
+import { useNavCounts } from './NavCountsContext'
 
 export interface NavItem {
   id: string
@@ -136,8 +135,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
   const pathname = usePathname() ?? '/'
-  const unreadCount = useUnreadMessageCount()
-  const { counts } = useOutstandingCounts()
+  const { unreadCount, counts } = useNavCounts()
 
   return (
     <nav aria-label="Main navigation" className="flex flex-col gap-0.5">
