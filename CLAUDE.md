@@ -383,16 +383,3 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - `error.tsx` files at route group level catch rendering errors
 <!-- GSD:architecture-end -->
 
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD (optional)
-
-GSD planning artifacts live in `.planning/`. Use `/gsd:*` commands only when explicitly working a planned phase; direct edits are otherwise fine.
-<!-- GSD:workflow-end -->
-
-<!-- GSD:profile-start -->
-## Developer Profile
-
-> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->
-

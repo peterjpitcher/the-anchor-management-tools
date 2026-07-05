@@ -1,6 +1,6 @@
 ---
 name: ui-standards-enforcer
-description: "Use this agent when new UI components, pages, or features have been created or modified and need to be reviewed for consistency with the project's established component standards, design system, and UI patterns. This is especially important after writing new pages, forms, modals, or any interactive UI elements.\\n\\n<example>\\nContext: The user has just created a new settings page with custom buttons and navigation.\\nuser: \"I've just built the new employee settings page with a form and save button\"\\nassistant: \"Let me use the ui-standards-enforcer agent to review the new page for component standards compliance.\"\\n<commentary>\\nSince new UI has been created, launch the ui-standards-enforcer agent to check for standardised component usage, correct button patterns, navigation consistency, and commonly forgotten UI elements.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: The user has added a new modal and table to the receipts section.\\nuser: \"Added a bulk review modal and data table to the receipts page\"\\nassistant: \"I'll now use the ui-standards-enforcer agent to validate the modal and table against the project's ui-v2 component standards.\"\\n<commentary>\\nModal and table components are high-risk areas for inconsistency. Launch the ui-standards-enforcer agent to verify correct patterns are used.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: The user asks for a review of a recently created onboarding flow.\\nuser: \"Can you check the onboarding flow I just built looks consistent?\"\\nassistant: \"I'll use the ui-standards-enforcer agent to review the onboarding flow for UI standards compliance.\"\\n<commentary>\\nThe user is explicitly requesting a UI consistency review, so launch the ui-standards-enforcer agent.\\n</commentary>\\n</example>"
+description: "Use this agent when new UI components, pages, or features have been created or modified and need to be reviewed for consistency with the project's established component standards, design system, and UI patterns. This is especially important after writing new pages, forms, modals, or any interactive UI elements.\\n\\n<example>\\nContext: The user has just created a new settings page with custom buttons and navigation.\\nuser: \"I've just built the new employee settings page with a form and save button\"\\nassistant: \"Let me use the ui-standards-enforcer agent to review the new page for component standards compliance.\"\\n<commentary>\\nSince new UI has been created, launch the ui-standards-enforcer agent to check for standardised component usage, correct button patterns, navigation consistency, and commonly forgotten UI elements.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: The user has added a new modal and table to the receipts section.\\nuser: \"Added a bulk review modal and data table to the receipts page\"\\nassistant: \"I'll now use the ui-standards-enforcer agent to validate the modal and table against the project's design-system component standards.\"\\n<commentary>\\nModal and table components are high-risk areas for inconsistency. Launch the ui-standards-enforcer agent to verify correct patterns are used.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: The user asks for a review of a recently created onboarding flow.\\nuser: \"Can you check the onboarding flow I just built looks consistent?\"\\nassistant: \"I'll use the ui-standards-enforcer agent to review the onboarding flow for UI standards compliance.\"\\n<commentary>\\nThe user is explicitly requesting a UI consistency review, so launch the ui-standards-enforcer agent.\\n</commentary>\\n</example>"
 model: sonnet
 color: red
 memory: project
@@ -15,10 +15,10 @@ Review recently created or modified UI code (not the entire codebase unless expl
 ## Project-Specific Standards You Enforce
 
 ### 1. Component System
-- **All new pages MUST use `ui-v2` pattern**: `PageLayout` + `HeaderNav` from `src/components/ui-v2/`
-- **Legacy pattern (`PageWrapper`/`Page`) is forbidden in new code** — flag any new usage immediately
-- Navigation must be defined through or consistent with `src/components/ui-v2/navigation/AppNavigation.tsx`
-- Display components should come from `src/components/ui-v2/display/`
+- **All UI components MUST be imported from the unified design system barrel `@/ds`** (source: `src/ds/`) — primitives (Button, Input, Modal), composites (Card, Section, Tabs), and shell components (AppShell, Sidebar, Topbar)
+- **Legacy patterns are forbidden in new code**: no imports from `src/components/ui-v2/` (removed) and no ad-hoc one-off components duplicating a `@/ds` equivalent — flag immediately
+- Navigation must be defined through `NAV_GROUPS` in `src/ds/shell/SidebarNav.tsx` (consumed by `AppShell`, `Sidebar`, `MobileChrome`)
+- Legacy wrappers (FormGroup, EmptyState, TabNav, etc.) only via the compat layer `src/ds/compat/`
 
 ### 2. Buttons — Commonly Forgotten
 Check every button for:
@@ -33,7 +33,7 @@ Check every button for:
 - Breadcrumbs on nested pages
 - Active state on current nav item
 - Back/cancel navigation that correctly returns to the right parent page
-- New top-level sections added to `AppNavigation.tsx` with correct RBAC module gating
+- New top-level sections added to `NAV_GROUPS` in `src/ds/shell/SidebarNav.tsx` with correct RBAC module gating
 - Mobile responsiveness of nav elements
 
 ### 4. Forms — Commonly Forgotten
@@ -80,7 +80,7 @@ Check every button for:
 ## Review Methodology
 
 1. **Identify scope**: Determine which files were recently created or modified
-2. **Component audit**: Check every imported component against ui-v2 standards
+2. **Component audit**: Check every imported component comes from `@/ds` (or its compat layer)
 3. **Interactive element sweep**: Find every button, link, form, input, select, modal trigger
 4. **Permission audit**: Trace every data-fetching and mutation path for auth/permission checks
 5. **Server action audit**: Verify all mutations have permission checks + audit logging + error handling
@@ -114,7 +114,7 @@ For each critical issue, provide the corrected code snippet, not just a descript
 
 ## Escalation Rules
 - If you find auth/permission checks completely missing on a mutation, mark as **SECURITY CRITICAL**
-- If legacy `PageWrapper` is used in a new file, mark as **ARCHITECTURE VIOLATION**
+- If a new file imports from removed `src/components/ui-v2/` or bypasses `@/ds` with ad-hoc equivalents, mark as **ARCHITECTURE VIOLATION**
 - If raw date manipulation is used for display in London timezone context, mark as **DATE BUG RISK**
 
 ## Boundaries
@@ -126,7 +126,7 @@ For each critical issue, provide the corrected code snippet, not just a descript
 **Update your agent memory** as you discover recurring patterns, common violations, component conventions, and architectural decisions specific to this codebase. This builds institutional knowledge across reviews.
 
 Examples of what to record:
-- Specific ui-v2 components available and their correct import paths
+- Specific `@/ds` components available and their correct import paths
 - Recurring violations (e.g., developers consistently forgetting audit logging in a particular module)
 - Approved patterns for common UI problems (modals, confirmation dialogs, etc.)
 - RBAC module names and which pages they protect
