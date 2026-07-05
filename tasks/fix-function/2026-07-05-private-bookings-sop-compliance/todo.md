@@ -1,5 +1,9 @@
 # Private Bookings SOP Compliance — Remediation Plan (approved 2026-07-05)
 
+STATUS: ALL 4 PHASES CODE-COMPLETE + VERIFIED on branch feat/private-bookings-sop-compliance.
+Commits: 1bfc2ad7 (7 migrations), 4701e860 (56 files: app + tests). Pipeline green: lint/tsc/test(3312)/build.
+Held for owner: (1) review branch, (2) apply migrations in filename order via Supabase MCP, (3) merge to main. See defect-log.md for the full FF-001..FF-030 status.
+
 PROGRESS (updated as phases complete):
 - Phase 1: DONE (code) — 14-day dates (migration 20260705100000 + app), VAT-aware money model (net storage, gross customer totals), GM-reviewed cancellation retention, contract+waiver rewritten to pack §§30–52, hold caps/reasons, hard-delete guard (20260705100001), deposit reduction/waiver guards. Verified: lint ✓ tsc ✓ build ✓; new unit tests 39/39 ✓.
 - Phase 2: DONE (code) — contract lifecycle (snapshot bucket + versioned storage + send-by-email + sent/acceptance tracking + payment-before-contract compliance flag, migration 20260705100002), reminder schedules (hold 7/3/1; balance 21/16/15/14 keyed to due date, no post-due chasing), cancellation email, refund emails wired, privacy+complaints footer on all customer emails, portal terms-before-payment.
