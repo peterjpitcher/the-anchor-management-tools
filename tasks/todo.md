@@ -1,6 +1,34 @@
 # Task Tracker
 
-## Current Task: Rota "unpublished changes" false-alert — deletions invisible in UI (2026-07-05)
+## Current Task: Event guest-list PDF + ticket-sales cutoff (2026-07-05)
+
+**Spec:** `docs/superpowers/specs/2026-07-05-event-guest-list-pdf-and-sales-cutoff-design.md`
+**Plan:** `docs/superpowers/plans/2026-07-05-event-guest-list-pdf-and-sales-cutoff.md`
+
+Two features, three deployable changesets, orchestrated via implement-plan (code mode):
+- **PR A (AMS, branch `feat/event-guest-list-pdf`)** — confirmed-guest-list PDF, grouped by booking,
+  booker first then a line per guest, blank hand-write note area per line. New PDFKit route +
+  pure line-model helper + button on event detail.
+- **PR B (AMS, branch `feat/event-sales-cutoff`)** — nullable `events.booking_cutoff_at timestamptz`;
+  form field; exposed in events API; enforced (409 `SALES_CLOSED`) in the API-key-only
+  `/api/event-bookings` route (⇒ online-only, staff bookings unaffected); staff-facing display.
+- **PR C (website, branch `feat/event-sales-cutoff-web`)** — read the field, `isEventBookingClosed`,
+  gate the booking form/page, map `SALES_CLOSED` in the proxy.
+
+**Decisions:** absolute datetime cutoff (blank = open till start); online-only scope; grouped PDF;
+confirmed-only guests; □ tick box per line; new `SALES_CLOSED` code.
+
+**Consequential steps held for owner go-ahead:** apply migration to prod (Supabase MCP), merge to
+`main` (AMS auto-deploys), manual website deploy.
+
+**Progress:**
+- [ ] PR A implemented + verified on branch
+- [ ] PR C implemented + verified on branch
+- [ ] PR B implemented + verified on branch
+- [ ] Adversarial review (codex-qa-review)
+- [ ] Owner go-ahead → prod migration + merges + website deploy + deploy verification
+
+## Previous Task: Rota "unpublished changes" false-alert — deletions invisible in UI (2026-07-05)
 
 **Context:** Manager got the Sunday `rota-manager-alert` email ("week of 2026-07-06 has unpublished
 changes") but the Weekly Rota showed "Published with changes" + "No unpublished" and nothing to
