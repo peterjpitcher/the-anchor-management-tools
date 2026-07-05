@@ -1553,7 +1553,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
         try {
           const { data: shifts, error: rotaErr } = await supabase
             .from('rota_shifts')
-            .select('employee_id, shift_date')
+            .select('employee_id, shift_date, start_time')
             .gte('shift_date', todayIso)
             .lte('shift_date', opsHorizonIso)
             .eq('status', 'scheduled')
@@ -1562,7 +1562,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
           if (rotaErr) throw rotaErr
 
-          const shiftRows = (shifts ?? []) as { employee_id: string; shift_date: string }[]
+          const shiftRows = (shifts ?? []) as { employee_id: string; shift_date: string; start_time: string | null }[]
           const empIds = [...new Set(shiftRows.map((s) => s.employee_id))]
           if (empIds.length > 0) {
             const { data: emps } = await supabase
@@ -1575,16 +1575,28 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               if (e.first_name) firstNameById.set(e.employee_id, e.first_name)
             }
 
-            // Build per-day staff lists (deduped, alphabetical) for the schedule notes.
-            const namesByDate = new Map<string, Set<string>>()
+            // Per day, list each staff member once, ordered by their earliest
+            // shift start time (start_time is a zero-padded HH:MM:SS string, so
+            // lexical compare == chronological). Names without a start sort last.
+            const earliestByDate = new Map<string, Map<string, string | null>>()
             for (const s of shiftRows) {
               const name = firstNameById.get(s.employee_id)
               if (!name || !s.shift_date) continue
-              if (!namesByDate.has(s.shift_date)) namesByDate.set(s.shift_date, new Set())
-              namesByDate.get(s.shift_date)!.add(name)
+              if (!earliestByDate.has(s.shift_date)) earliestByDate.set(s.shift_date, new Map())
+              const perName = earliestByDate.get(s.shift_date)!
+              const existing = perName.get(name)
+              if (!perName.has(name)) perName.set(name, s.start_time ?? null)
+              else if (s.start_time && (!existing || s.start_time < existing)) perName.set(name, s.start_time)
             }
-            for (const [date, names] of namesByDate) {
-              dailyOps.staffByDate[date] = [...names].sort((a, b) => a.localeCompare(b))
+            for (const [date, perName] of earliestByDate) {
+              dailyOps.staffByDate[date] = [...perName.entries()]
+                .sort(([nameA, startA], [nameB, startB]) => {
+                  if (startA && startB) return startA < startB ? -1 : startA > startB ? 1 : nameA.localeCompare(nameB)
+                  if (startA) return -1
+                  if (startB) return 1
+                  return nameA.localeCompare(nameB)
+                })
+                .map(([name]) => name)
             }
 
             rotaToday.staffOnRota = dailyOps.staffByDate[todayIso] ?? []
