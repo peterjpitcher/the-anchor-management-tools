@@ -291,6 +291,7 @@ export async function GET(
       cancellation_policy: event.cancellation_policy || null,
       accessibility_notes: event.accessibility_notes || null,
       bookings_enabled: event.bookings_enabled ?? true,
+      booking_cutoff_at: event.booking_cutoff_at ?? null,
       shortDescription: event.short_description,
       longDescription: event.long_description,
       metaTitle: event.meta_title,

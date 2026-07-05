@@ -190,6 +190,7 @@ export async function GET(_request: NextRequest) {
         cancellation_policy: event.cancellation_policy || null,
         accessibility_notes: event.accessibility_notes || null,
         bookings_enabled: event.bookings_enabled ?? true,
+        booking_cutoff_at: event.booking_cutoff_at ?? null,
         ...eventToSchema(event, faqs),
       };
     });
