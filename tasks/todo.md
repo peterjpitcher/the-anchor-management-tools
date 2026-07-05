@@ -29,8 +29,16 @@ confirmed-only guests; □ tick box per line; new `SALES_CLOSED` code.
 - [x] PR B implemented + verified on branch `feat/event-sales-cutoff` (7 commits; full pipeline green
       3334/3334; gate fixes: unique migration ts 20260726000000; persistence via dedicated admin update
       because create/update_event_transaction RPCs whitelist columns and would have dropped the field)
-- [ ] Adversarial review (codex-qa-review)
-- [ ] Owner go-ahead → prod migration + merges + website deploy + deploy verification
+- [x] Adversarial review — 3 independent reviewers (Claude-based fallback; Codex CLI binary broken).
+      No blockers. Fixes applied on-branch: PR A H1 Unicode-safe PDF + M1 long-name clip (c19adef6);
+      PR C M2 explicit SALES_CLOSED submit branch (cbea61e6). PR B clean. PR A M2 (button vs filter)
+      left as D4 (confirmed-only) by design.
+- [ ] **INTEGRATION CAVEAT:** local `main` is behind `origin/main` by 11 commits (parallel session);
+      branches were cut from stale main. Before merge: fetch, rebase/merge each branch onto current
+      `origin/main`, re-check migration timestamp uniqueness, re-run pipelines.
+- [ ] Owner go-ahead → integrate onto origin/main → prod migration (Supabase MCP) → merges
+      (AMS auto-deploys; resolve EventDetailClient.tsx button+chip if needed) → manual website deploy
+      → deploy verification (Ready + prod alias moved)
 
 ## Previous Task: Rota "unpublished changes" false-alert — deletions invisible in UI (2026-07-05)
 
