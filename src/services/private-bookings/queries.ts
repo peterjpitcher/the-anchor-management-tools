@@ -322,7 +322,7 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
         package:catering_packages(*),
         vendor:vendors(*)
       ),
-      documents:private_booking_documents(*),
+      documents:private_booking_documents!private_booking_documents_booking_id_fkey(*),
       sms_queue:private_booking_sms_queue(*),
       payments:private_booking_payments(*),
       audits:private_booking_audit(
