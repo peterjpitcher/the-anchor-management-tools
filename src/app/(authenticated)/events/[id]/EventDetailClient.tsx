@@ -1172,8 +1172,11 @@ function AttendeesTab({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+      {/* Stat cards — min-[1280px] instead of xl: works around a Tailwind v4
+          cascade bug where a named md/lg/xl grid-cols variant overrides the
+          base grid-cols-2 below its breakpoint, collapsing the grid to one
+          column on mobile. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 min-[1280px]:grid-cols-6">
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Total Seats Booked</p>
           <p className="mt-1 text-2xl font-semibold text-text-primary">{totalSeats}</p>
