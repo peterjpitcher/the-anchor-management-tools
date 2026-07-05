@@ -186,6 +186,36 @@ async function findCustomerByPhone(
   }
 }
 
+async function findCustomerByEmail(
+  client: SupabaseClient<Database, 'public'>,
+  normalizedEmail: string
+): Promise<{ customer: CustomerLookupRow | null; lookupError: boolean }> {
+  // Match case-insensitively against the `idx_customers_email_unique` index,
+  // which is defined on `lower(email)`. `ilike` can over-match because `_` and
+  // `%` are valid in an email local part, so we re-filter for an exact
+  // lower-cased match in JS. The unique index guarantees at most one true row.
+  const { data, error } = await client
+    .from('customers')
+    .select('id, mobile_e164, first_name, last_name, email')
+    .ilike('email', normalizedEmail)
+    .order('created_at', { ascending: true })
+    .limit(10)
+
+  if (error) {
+    console.error('Failed to look up customer by email:', error)
+    return { customer: null, lookupError: true }
+  }
+
+  const exact = (data ?? []).find(
+    row => (row.email ?? '').trim().toLowerCase() === normalizedEmail
+  )
+
+  return {
+    customer: (exact as CustomerLookupRow | undefined) ?? null,
+    lookupError: false
+  }
+}
+
 export async function ensureCustomerForPhone(
   supabase: SupabaseClient<Database, 'public'> | undefined,
   phone: string | null | undefined,
@@ -273,6 +303,8 @@ export async function ensureCustomerForPhone(
 
     if (insertError) {
       if ((insertError as { code?: string })?.code === '23505') {
+        // A unique violation here can be a phone collision (idx_customers_mobile_e164)
+        // or an email collision (idx_customers_email_unique). Try the phone owner first.
         const conflictLookup = await findCustomerByPhone(client, standardizedPhone, numbersToMatch)
         const conflictMatch = conflictLookup.customer
         if (conflictMatch) {
@@ -293,6 +325,35 @@ export async function ensureCustomerForPhone(
 
         if (conflictLookup.lookupError) {
           return { customerId: null, standardizedPhone, resolutionError: 'lookup_failed' }
+        }
+
+        // No phone match, so the violation was on the email: this email already
+        // belongs to an existing customer whose phone differs from what was
+        // entered (a returning customer using a different number). Link the
+        // booking to that customer instead of failing outright. We do not
+        // overwrite their phone/email here — enrichment only fills placeholders.
+        if (sanitizedEmail) {
+          const emailLookup = await findCustomerByEmail(client, sanitizedEmail)
+          const emailMatch = emailLookup.customer
+          if (emailMatch) {
+            await enrichMatchedCustomer(client, {
+              existingCustomer: emailMatch,
+              standardizedPhone,
+              fallbackFirstName: providedFirstName,
+              fallbackLastName: providedLastName,
+              fallbackEmail: sanitizedEmail
+            })
+
+            return {
+              customerId: emailMatch.id,
+              standardizedPhone,
+              resolvedFirstName: providedFirstName || emailMatch.first_name || undefined
+            }
+          }
+
+          if (emailLookup.lookupError) {
+            return { customerId: null, standardizedPhone, resolutionError: 'lookup_failed' }
+          }
         }
       }
 
