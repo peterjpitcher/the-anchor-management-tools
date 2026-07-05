@@ -66,13 +66,6 @@ export type EventSheetData = {
   dogsExpected: boolean
   riskStatus: string
   specialRiskNotes: string | null
-  depositAmount: number | null
-  depositStatus: string | null
-  paymentStatus: string | null
-  grossTotal: number | null
-  totalBalancePaid: number | null
-  balanceRemaining: number | null
-  balanceDueDate: string | null
 }
 
 function escapeHtml(value: string): string {
@@ -119,9 +112,6 @@ function buildBlockers(data: EventSheetData): string[] {
   }
   if (data.supplierStatus === 'incomplete') {
     blockers.push('Supplier documents incomplete — unapproved suppliers may be refused entry')
-  }
-  if ((data.balanceRemaining ?? 0) > 0) {
-    blockers.push(`Balance outstanding: ${money(data.balanceRemaining)} still due`)
   }
   if (data.riskStatus === 'high' || data.riskStatus === 'gm_approval_required') {
     blockers.push('Risk review required — escalate to the General Manager before the event runs')
@@ -370,15 +360,6 @@ export function generateEventSheetHTML(data: EventSheetData): string {
   <table class="kv">
     <tr><td>Risk status</td><td>${riskLine}</td></tr>
     <tr><td>Special risk notes</td><td>${text(data.specialRiskNotes, 'None recorded')}</td></tr>
-  </table>
-
-  <h2>Payment &amp; Deposit</h2>
-  <table class="kv">
-    <tr><td>Deposit</td><td>${money(data.depositAmount)} — ${text(data.depositStatus, 'Unknown')}</td></tr>
-    <tr><td>Payment status</td><td>${text(data.paymentStatus, 'Unknown')}</td></tr>
-    <tr><td>Total (incl. VAT)</td><td>${money(data.grossTotal)}</td></tr>
-    <tr><td>Paid to date</td><td>${money(data.totalBalancePaid)}</td></tr>
-    <tr><td>Balance remaining</td><td>${money(data.balanceRemaining)}${data.balanceDueDate ? ` (due ${date(data.balanceDueDate)})` : ''}</td></tr>
   </table>
 
   <h2>Duty Manager Notes</h2>
