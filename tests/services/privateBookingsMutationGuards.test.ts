@@ -215,6 +215,9 @@ describe('PrivateBookingService mutation row-effect guards', () => {
       event_type: 'party',
       source: 'manual',
       deposit_amount: 0,
+      // SOP §12: a £0 deposit is only allowed with an explicit GM waiver.
+      deposit_waived: true,
+      deposit_waived_reason: 'Venue-hosted event — GM waiver',
     })
 
     expect(result).toMatchObject({ id: 'booking-zero' })
@@ -242,6 +245,50 @@ describe('PrivateBookingService mutation row-effect guards', () => {
         trigger_type: 'booking_created',
       }),
     )
+  })
+
+  it('createBooking rejects a £0 deposit without a GM waiver (SOP §12)', async () => {
+    const rpc = vi.fn()
+    mockedCreateClient.mockResolvedValue({ rpc })
+
+    await expect(
+      PrivateBookingService.createBooking({
+        customer_first_name: 'Jean',
+        customer_last_name: 'Dupont',
+        contact_phone: '+33 6 12 34 56 78',
+        default_country_code: '33',
+        event_date: '2026-03-10',
+        start_time: '18:00',
+        guest_count: 40,
+        event_type: 'party',
+        source: 'manual',
+        deposit_amount: 0,
+      })
+    ).rejects.toThrow('A £0 deposit requires a General Manager waiver with a reason')
+
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('createBooking rejects a sub-£250 deposit without a reduction reason (SOP §12)', async () => {
+    const rpc = vi.fn()
+    mockedCreateClient.mockResolvedValue({ rpc })
+
+    await expect(
+      PrivateBookingService.createBooking({
+        customer_first_name: 'Jean',
+        customer_last_name: 'Dupont',
+        contact_phone: '+33 6 12 34 56 78',
+        default_country_code: '33',
+        event_date: '2026-03-10',
+        start_time: '18:00',
+        guest_count: 40,
+        event_type: 'party',
+        source: 'manual',
+        deposit_amount: 100,
+      })
+    ).rejects.toThrow('Reducing the deposit below £250 requires a reason (General Manager discretion)')
+
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('updateBookingItem throws not-found when update affects no rows', async () => {
@@ -1032,24 +1079,32 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls.length).toBe(0)
   })
 
-  describe('deletePrivateBooking SMS gate', () => {
+  describe('deletePrivateBooking delete gate (SOP §8)', () => {
+    let smsGateOr: Mock
+
     function mockDeleteSupabase(opts: {
-      blockingRows?: Array<{ id: string; status: string; scheduled_for: string | null }>
-      blockingError?: { message: string } | null
-      bookingDetails?: { calendar_event_id: string | null } | null
+      booking?: Partial<{
+        status: string
+        deposit_paid_date: string | null
+        contract_version: number | null
+        calendar_event_id: string | null
+      }>
+      paymentsCount?: number
+      documentsCount?: number
+      emailsCount?: number
+      smsCount?: number
+      gateError?: { message: string } | null
       deleteResult?: { data: unknown; error: { message: string } | null }
     }) {
-      const gateOr = vi.fn().mockResolvedValue({
-        data: opts.blockingRows ?? [],
-        error: opts.blockingError ?? null,
-      })
-      const gateEq = vi.fn().mockReturnValue({ or: gateOr })
-      const gateSelect = vi.fn().mockReturnValue({ eq: gateEq })
-
-      const detailsSingle = vi.fn().mockResolvedValue({
-        data: opts.bookingDetails ?? { calendar_event_id: null },
-        error: null,
-      })
+      // Auth client: status/deposit/contract pre-check, calendar lookup, delete.
+      const bookingRow = {
+        status: 'draft',
+        deposit_paid_date: null,
+        contract_version: 0,
+        calendar_event_id: null,
+        ...(opts.booking ?? {}),
+      }
+      const detailsSingle = vi.fn().mockResolvedValue({ data: bookingRow, error: null })
       const detailsEq = vi.fn().mockReturnValue({ single: detailsSingle })
 
       const deleteMaybeSingle = vi.fn().mockResolvedValue(
@@ -1060,14 +1115,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
       mockedCreateClient.mockResolvedValue({
         from: vi.fn((table: string) => {
-          if (table === 'private_booking_sms_queue') {
-            return { select: gateSelect }
-          }
           if (table === 'private_bookings') {
-            // The function calls select/single for calendar cleanup only if
-            // isCalendarConfigured(); the mocked google-calendar module
-            // returns false, so calendar cleanup is skipped. The delete path
-            // uses delete/eq/select/maybeSingle.
             return {
               select: vi.fn().mockReturnValue({ eq: detailsEq }),
               delete: vi.fn().mockReturnValue({ eq: deleteEq }),
@@ -1076,55 +1124,133 @@ describe('PrivateBookingService mutation row-effect guards', () => {
           throw new Error(`Unexpected table: ${table}`)
         }),
       })
+
+      // Admin client: the four count-based gate queries
+      // (select('id', { count: 'exact', head: true })).
+      const countResult = (count: number) => ({
+        count,
+        error: opts.gateError ?? null,
+      })
+      smsGateOr = vi.fn().mockResolvedValue(countResult(opts.smsCount ?? 0))
+
+      mockedCreateAdminClient.mockReturnValue({
+        from: vi.fn((table: string) => {
+          if (table === 'private_booking_payments') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue(countResult(opts.paymentsCount ?? 0)),
+              }),
+            }
+          }
+          if (table === 'private_booking_documents') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue(countResult(opts.documentsCount ?? 0)),
+              }),
+            }
+          }
+          if (table === 'email_messages') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  neq: vi.fn().mockResolvedValue(countResult(opts.emailsCount ?? 0)),
+                }),
+              }),
+            }
+          }
+          if (table === 'private_booking_sms_queue') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({ or: smsGateOr }),
+              }),
+            }
+          }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      })
     }
 
     it('throws when a sent SMS exists', async () => {
-      mockDeleteSupabase({
-        blockingRows: [{ id: 'q1', status: 'sent', scheduled_for: null }],
-      })
+      mockDeleteSupabase({ smsCount: 1 })
 
       await expect(PrivateBookingService.deletePrivateBooking('booking-x')).rejects.toThrow(
-        /Cannot delete booking/,
+        "Cannot delete booking: the customer has received SMS message(s). Use Cancel instead so they're notified.",
       )
     })
 
     it('throws when approved + future-scheduled exists', async () => {
-      mockDeleteSupabase({
-        blockingRows: [
-          {
-            id: 'q2',
-            status: 'approved',
-            scheduled_for: '2999-01-01T00:00:00.000Z',
-          },
-        ],
-      })
+      mockDeleteSupabase({ smsCount: 1 })
 
       await expect(PrivateBookingService.deletePrivateBooking('booking-z')).rejects.toThrow(
         /Cannot delete booking/,
       )
+      // The gate delegates sent/future-approved filtering to PostgREST.
+      expect(smsGateOr).toHaveBeenCalledWith(
+        'status.eq.sent,and(status.eq.approved,scheduled_for.gt.now())',
+      )
     })
 
     it('throws when multiple blocking rows exist and includes count in error', async () => {
-      mockDeleteSupabase({
-        blockingRows: [
-          { id: 'q1', status: 'sent', scheduled_for: null },
-          { id: 'q2', status: 'sent', scheduled_for: null },
-        ],
-      })
+      mockDeleteSupabase({ smsCount: 2 })
 
       await expect(PrivateBookingService.deletePrivateBooking('booking-multi')).rejects.toThrow(
-        /2 SMS message\(s\)/,
+        /SMS message\(s\)/,
+      )
+    })
+
+    it('throws when a deposit has been paid', async () => {
+      mockDeleteSupabase({ booking: { deposit_paid_date: '2026-01-10T00:00:00.000Z' } })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-dep')).rejects.toThrow(
+        'Cannot delete booking: a deposit has been paid. Use Cancel instead.',
+      )
+    })
+
+    it('throws when a contract has been generated', async () => {
+      mockDeleteSupabase({ booking: { contract_version: 2 } })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-contract')).rejects.toThrow(
+        'Cannot delete booking: a contract has been generated. Use Cancel instead.',
+      )
+    })
+
+    it('throws when payments have been recorded', async () => {
+      mockDeleteSupabase({ paymentsCount: 1 })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-pay')).rejects.toThrow(
+        'Cannot delete booking: payments have been recorded. Use Cancel instead.',
+      )
+    })
+
+    it('throws when a document has been generated', async () => {
+      mockDeleteSupabase({ documentsCount: 1 })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-doc')).rejects.toThrow(
+        'Cannot delete booking: a contract or document has been generated. Use Cancel instead.',
+      )
+    })
+
+    it('throws when the customer has been sent an outbound email', async () => {
+      mockDeleteSupabase({ emailsCount: 1 })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-email')).rejects.toThrow(
+        'Cannot delete booking: the customer has been emailed. Use Cancel instead.',
+      )
+    })
+
+    it('does not exempt cancelled bookings from the gate', async () => {
+      mockDeleteSupabase({ booking: { status: 'cancelled' }, smsCount: 1 })
+
+      await expect(PrivateBookingService.deletePrivateBooking('booking-cancelled')).rejects.toThrow(
+        /Cannot delete booking/,
       )
     })
 
     it('allows delete when only pending/cancelled/failed queue rows exist', async () => {
-      mockDeleteSupabase({
-        // Gate returns an empty list because the PostgREST .or filter is
-        // expected to exclude non-sent/non-future-approved rows. The unit
-        // test validates the happy path where the gate lets the delete
-        // proceed.
-        blockingRows: [],
-      })
+      // All gate counts are zero: no payments, documents, outbound emails, or
+      // sent/future-approved SMS. Non-blocking queue rows are excluded by the
+      // PostgREST .or filter, so the gate count is 0 on the happy path.
+      mockDeleteSupabase({})
 
       await expect(
         PrivateBookingService.deletePrivateBooking('booking-y'),
@@ -1133,8 +1259,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     it('throws a friendly error when the gate query itself fails', async () => {
       mockDeleteSupabase({
-        blockingRows: [],
-        blockingError: { message: 'PostgREST exploded' },
+        gateError: { message: 'PostgREST exploded' },
       })
 
       await expect(PrivateBookingService.deletePrivateBooking('booking-err')).rejects.toThrow(

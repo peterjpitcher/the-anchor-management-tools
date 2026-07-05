@@ -3,12 +3,18 @@ import { logger } from '@/lib/logger';
 import { generateBookingCalendarInvite } from './calendar-invite';
 import { formatDateInLondon } from '@/lib/dateUtils';
 
-const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ';
+const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ';
+const PRIVACY_NOTICE_URL = 'https://www.the-anchor.pub/privacy-policy';
 
 // Applied to every text element so emails render in one font everywhere — Outlook
 // does not inherit font-family from the wrapper div, so headings/body/tables would
 // otherwise fall back to a serif font.
 const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+
+// Shared small-print footer (SOP §26/§27: privacy notice link + complaints
+// contact on customer communications).
+const EMAIL_FOOTER_HTML = `<p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 4px 0 0 0;">How we use your data: <a href="${PRIVACY_NOTICE_URL}" style="color: #999999;">${PRIVACY_NOTICE_URL}</a><br>Questions or complaints: <a href="mailto:manager@the-anchor.pub" style="color: #999999;">manager@the-anchor.pub</a> or write to us at the address above.</p>`;
 
 function formatDate(isoDate: string): string {
   const parsed = new Date(isoDate)
@@ -111,11 +117,11 @@ export async function sendBookingConfirmationEmail(booking: {
     ${booking.total_amount != null ? row('Event balance due', formatCurrency(booking.total_amount)) : ''}
   </table>
   <p style="font-family: ${FONT_FAMILY};">Your date is currently on temporary hold. This hold is provisional only and your booking is not confirmed until we receive your deposit in cleared funds.</p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Unless we agree otherwise in writing, the temporary hold may be released if the deposit is not received within 14 calendar days.</p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Unless we agree otherwise in writing, the temporary hold may be released if the deposit is not received in cleared funds by the hold expiry date we've given you.</p>
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Paying the deposit confirms that you accept the booking Terms and Conditions set out in your contract, including the cancellation and refund policy. The deposit is separate from your event balance, which is payable separately nearer the time.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -212,7 +218,7 @@ export async function sendDepositReceivedEmail(booking: {
   <p style="font-family: ${FONT_FAMILY};">We'll be in touch closer to the date with final details. If you have any questions in the meantime, please feel free to contact us.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -275,7 +281,7 @@ export async function sendBalancePaidEmail(booking: {
   <p style="font-family: ${FONT_FAMILY};">Everything is all set. We are looking forward to welcoming you and your guests to The Anchor.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -336,7 +342,7 @@ export async function sendBookingCalendarInvite(booking: {
   <p style="font-family: ${FONT_FAMILY};">If you have any questions, please don't hesitate to get in touch.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -410,7 +416,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
   <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">Deposit Payment</h2>
   <p style="font-family: ${FONT_FAMILY};">Hi ${firstName},</p>
   <p style="font-family: ${FONT_FAMILY};">To secure your booking for <strong>${eventLabel}</strong> on <strong>${dateFormatted}</strong>, please pay your deposit of <strong>${depositFormatted}</strong> using the button below.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin: 12px 0;">Your booking is confirmed once we've received your deposit, and the deposit is separate from your event balance (payable nearer the time). <strong>If you cancel less than 30 days before the event, your deposit is non-refundable.</strong> If you cancel 30 days or more before the event, it's refundable less a 5% administration fee and any costs already incurred. Paying the deposit confirms that you accept the booking Terms and Conditions set out in your contract.</p>
+  <p style="font-family: ${FONT_FAMILY}; margin: 12px 0;">Your booking is confirmed once we've received your deposit, and the deposit is separate from your event balance (payable nearer the time). If you cancel 30 days or more before the event, your deposit is refunded less a 5% administration deduction and any costs already incurred. If you cancel less than 30 days before the event, we may retain up to the full deposit to cover reasonable losses and committed costs — we won't retain more than is reasonable in the circumstances. Paying the deposit confirms that you accept the booking Terms and Conditions set out in your contract.</p>
   <p style="font-family: ${FONT_FAMILY};">
     <a href="${paypalApproveUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #0070ba; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">
       Pay deposit via PayPal
@@ -421,7 +427,7 @@ export async function sendDepositPaymentLinkEmail(booking: {
   <p style="font-family: ${FONT_FAMILY};">If you have any questions about your booking, please don't hesitate to get in touch.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -445,78 +451,10 @@ export async function sendDepositPaymentLinkEmail(booking: {
 }
 
 /**
- * Send a balance reminder email before the event balance due date.
- * Fire-and-forget — never throws; errors are logged only.
- */
-async function sendBalanceReminderEmail(booking: {
-  id: string;
-  customer_id?: string | null;
-  contact_email?: string | null;
-  customer_first_name?: string | null;
-  customer_name?: string | null;
-  event_date: string;
-  event_type?: string | null;
-  total_amount?: number | null;
-  balance_due_date?: string | null;
-}): Promise<void> {
-  if (!booking.contact_email) return;
-
-  try {
-    const firstName =
-      booking.customer_first_name ||
-      booking.customer_name?.split(' ')[0] ||
-      'there';
-
-    const eventLabel = booking.event_type || 'your event';
-    const dateFormatted = formatDate(booking.event_date);
-    const balanceDueDate = booking.balance_due_date
-      ? formatDate(booking.balance_due_date)
-      : 'the due date';
-    const subject = `Event Balance Due — ${eventLabel} on ${dateFormatted}`;
-
-    const html = `
-<div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
-  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">Event Balance Due</h2>
-  <p style="font-family: ${FONT_FAMILY};">Hi ${firstName},</p>
-  <p style="font-family: ${FONT_FAMILY};">This is a reminder that the full event balance for your booking is due no later than <strong>${balanceDueDate}</strong>.</p>
-  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-    ${row('Event', eventLabel)}
-    ${row('Date', dateFormatted)}
-    ${booking.total_amount != null ? row('Event balance due', formatCurrency(booking.total_amount)) : ''}
-    ${row('Final guest numbers due', balanceDueDate)}
-  </table>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Please remember that your deposit is separate from the event balance and cannot be used towards payment of the event balance.</p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">If the event balance and final guest numbers are not received by the due date, Orange Jelly Limited may treat the booking as cancelled by you. In that case, the deposit may be retained in accordance with the cancellation policy.</p>
-  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
-  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
-</div>`;
-
-    const result = await sendEmail({
-      to: booking.contact_email,
-      subject,
-      html,
-      ...privateBookingEmailLog(booking, 'private_booking_balance_reminder'),
-    });
-    if (!result.success) {
-      logger.error('Balance reminder email send failed', {
-        error: new Error(result.error || 'Unknown email error'),
-        metadata: { bookingId: booking.id },
-      });
-    }
-  } catch (e) {
-    logger.error('Unexpected error sending balance reminder email', {
-      error: e instanceof Error ? e : new Error(String(e)),
-      metadata: { bookingId: booking.id },
-    });
-  }
-}
-
-/**
  * Send a deposit refund email after the event (full refund, no deductions).
  * Fire-and-forget — never throws; errors are logged only.
  */
-async function sendDepositRefundEmail(booking: {
+export async function sendDepositRefundEmail(booking: {
   id: string;
   customer_id?: string | null;
   contact_email?: string | null;
@@ -551,7 +489,7 @@ async function sendDepositRefundEmail(booking: {
   </table>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -578,7 +516,7 @@ async function sendDepositRefundEmail(booking: {
  * Send a deposit refund email with deductions after the event.
  * Fire-and-forget — never throws; errors are logged only.
  */
-async function sendDepositRefundWithDeductionsEmail(booking: {
+export async function sendDepositRefundWithDeductionsEmail(booking: {
   id: string;
   customer_id?: string | null;
   contact_email?: string | null;
@@ -617,10 +555,10 @@ async function sendDepositRefundWithDeductionsEmail(booking: {
     ${row('Reason for deductions', booking.deduction_reason)}
     ${row('Deposit refunded', formatCurrency(booking.refund_amount))}
   </table>
-  ${booking.deduction_amount > booking.deposit_amount ? `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #dc2626; font-weight: bold;">If the deductions exceed the deposit held, the remaining amount will be payable on demand.</p>` : ''}
+  ${booking.deduction_amount > booking.deposit_amount ? `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Where the deductions exceed the deposit held, the remaining amount is payable on request.</p>` : ''}
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
-  <p style="font-family: ${FONT_FAMILY}; color: #999999; font-size: 12px; margin: 0;">${VENUE_ADDRESS}</p>
+  ${EMAIL_FOOTER_HTML}
 </div>`;
 
     const result = await sendEmail({
@@ -640,5 +578,147 @@ async function sendDepositRefundWithDeductionsEmail(booking: {
       error: e instanceof Error ? e : new Error(String(e)),
       metadata: { bookingId: booking.id },
     });
+  }
+}
+
+/**
+ * Send a cancellation confirmation email with the refund/retention outcome
+ * (SOP §14.9). Sent alongside the cancellation SMS so email-only customers
+ * are not left uninformed. Fire-and-forget — never throws.
+ */
+export async function sendBookingCancelledEmail(booking: {
+  id: string;
+  customer_id?: string | null;
+  contact_email?: string | null;
+  customer_first_name?: string | null;
+  customer_name?: string | null;
+  event_date: string;
+  event_type?: string | null;
+  refund_amount: number;
+  retained_amount: number;
+  retention_reason?: string | null;
+  outcome: string;
+}): Promise<void> {
+  if (!booking.contact_email) return;
+
+  try {
+    const firstName =
+      booking.customer_first_name ||
+      booking.customer_name?.split(' ')[0] ||
+      'there';
+
+    const eventLabel = booking.event_type || 'your event';
+    const dateFormatted = formatDate(booking.event_date);
+    const subject = `Booking Cancelled — ${eventLabel} on ${dateFormatted}`;
+
+    let outcomeHtml = '';
+    if (booking.outcome === 'manual_review' || booking.outcome === 'gm_review_required') {
+      outcomeHtml = `<p style="font-family: ${FONT_FAMILY};">We're reviewing the payments on your booking and will confirm any refund shortly.</p>`;
+    } else {
+      const parts: string[] = [];
+      if (booking.refund_amount > 0) {
+        parts.push(`${formatCurrency(booking.refund_amount)} will be refunded to you within 10 working days, back to the payment method you used where possible.`);
+      }
+      if (booking.retained_amount > 0) {
+        parts.push(`${formatCurrency(booking.retained_amount)} of your deposit has been retained to cover reasonable costs arising from the cancellation${booking.retention_reason ? ` (${booking.retention_reason})` : ''}. We're happy to provide a breakdown on request.`);
+      }
+      if (parts.length === 0) {
+        parts.push('No money had been paid on this booking, so there is nothing to refund.');
+      }
+      outcomeHtml = parts.map((p) => `<p style="font-family: ${FONT_FAMILY};">${p}</p>`).join('\n  ');
+    }
+
+    const html = `
+<div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">Booking Cancelled</h2>
+  <p style="font-family: ${FONT_FAMILY};">Hi ${firstName},</p>
+  <p style="font-family: ${FONT_FAMILY};">Your booking for <strong>${eventLabel}</strong> on <strong>${dateFormatted}</strong> has been cancelled.</p>
+  ${outcomeHtml}
+  <p style="font-family: ${FONT_FAMILY};">If anything here doesn't look right, just reply to this email or call us on 01753 682707.</p>
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  ${EMAIL_FOOTER_HTML}
+</div>`;
+
+    const result = await sendEmail({
+      to: booking.contact_email,
+      subject,
+      html,
+      ...privateBookingEmailLog(booking, 'private_booking_cancelled'),
+    });
+    if (!result.success) {
+      logger.error('Booking cancelled email send failed', {
+        error: new Error(result.error || 'Unknown email error'),
+        metadata: { bookingId: booking.id },
+      });
+    }
+  } catch (e) {
+    logger.error('Unexpected error sending booking cancelled email', {
+      error: e instanceof Error ? e : new Error(String(e)),
+      metadata: { bookingId: booking.id },
+    });
+  }
+}
+
+/**
+ * Send the contract + terms to the customer with the PDF attached (SOP §11:
+ * the contract and terms must be provided before the deposit is paid, and the
+ * send must be recorded). The caller records contract_sent_at/sent_to.
+ * Throws on failure so the caller can surface the error to staff.
+ */
+export async function sendContractEmailToCustomer(booking: {
+  id: string;
+  customer_id?: string | null;
+  contact_email?: string | null;
+  customer_first_name?: string | null;
+  customer_name?: string | null;
+  event_date: string;
+  event_type?: string | null;
+  deposit_amount?: number | null;
+}, contract: {
+  version: number;
+  pdf: Buffer;
+}): Promise<void> {
+  if (!booking.contact_email) {
+    throw new Error('This booking has no contact email address');
+  }
+
+  const firstName =
+    booking.customer_first_name ||
+    booking.customer_name?.split(' ')[0] ||
+    'there';
+
+  const eventLabel = booking.event_type || 'your event';
+  const dateFormatted = formatDate(booking.event_date);
+  const subject = `Your booking contract — ${eventLabel} on ${dateFormatted}`;
+
+  const depositLine = booking.deposit_amount && booking.deposit_amount > 0
+    ? `<p style="font-family: ${FONT_FAMILY};">Paying the ${formatCurrency(booking.deposit_amount)} booking and damage deposit confirms that you accept these terms — so please do have a read first, and ask us anything that isn't clear.</p>`
+    : `<p style="font-family: ${FONT_FAMILY};">Please have a read and let us know that you're happy with everything — we're glad to answer any questions.</p>`;
+
+  const html = `
+<div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">Your Booking Contract</h2>
+  <p style="font-family: ${FONT_FAMILY};">Hi ${firstName},</p>
+  <p style="font-family: ${FONT_FAMILY};">Attached is the contract and terms for <strong>${eventLabel}</strong> on <strong>${dateFormatted}</strong> (contract version ${contract.version}).</p>
+  ${depositLine}
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  ${EMAIL_FOOTER_HTML}
+</div>`;
+
+  const result = await sendEmail({
+    to: booking.contact_email,
+    subject,
+    html,
+    attachments: [{
+      name: `The-Anchor-booking-contract-v${contract.version}.pdf`,
+      content: contract.pdf,
+      contentType: 'application/pdf',
+    }],
+    ...privateBookingEmailLog(booking, 'private_booking_contract'),
+  });
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to send contract email');
   }
 }

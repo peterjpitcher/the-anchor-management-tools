@@ -4,10 +4,12 @@ import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
   depositReminder7DayMessage,
+  depositReminder3DayMessage,
   depositReminder1DayMessage,
-  balanceReminder14DayMessage,
-  balanceReminder7DayMessage,
-  balanceReminder1DayMessage,
+  balanceReminder21DayMessage,
+  balanceReminder16DayMessage,
+  balanceReminder15DayMessage,
+  balanceReminderDueMessage,
   eventReminder1DayMessage,
   reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
@@ -155,8 +157,34 @@ export async function getBookingScheduledSms(
       })
     }
 
-    // 1-day: window 0-2 days.
-    if (daysUntilExpiry >= 0 && daysUntilExpiry <= 2) {
+    // 3-day: window 2-3 days (SOP §10: reminders at 7, 3 and 1 days).
+    if (daysUntilExpiry >= 2 && daysUntilExpiry <= 3) {
+      const triggerType = 'deposit_reminder_3day'
+      const body = depositReminder3DayMessage({
+        customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
+        eventDate: eventDateReadable,
+        depositAmount,
+      })
+      const suppression = decideSuppression({
+        triggerType,
+        isTbd,
+        dateTbdSuppresses: true,
+        featureFlagApplies: false,
+        flagEnabled,
+        alreadySent,
+        bookingId,
+        windowKey: holdExpiryWindowKey,
+      })
+      previews.push({
+        trigger_type: triggerType,
+        expected_fire_at: suppression ? null : holdExpiryReadable,
+        preview_body: body,
+        suppression_reason: suppression,
+      })
+    }
+
+    // 1-day: window 0-1 days.
+    if (daysUntilExpiry >= 0 && daysUntilExpiry <= 1) {
       const triggerType = 'deposit_reminder_1day'
       const body = depositReminder1DayMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
@@ -182,13 +210,17 @@ export async function getBookingScheduledSms(
     }
   }
 
-  // --- Balance + event reminders (confirmed) ---
+  // --- Balance & final-details + event reminders (confirmed) ---
+  // SOP §13: keyed to the due date (event − 14 days) — 7/2/1 days before the
+  // deadline and on the day. No previews once the deadline has passed
+  // (overdue balances are a manager-review matter, not auto-chased).
   if (booking.status === 'confirmed' && booking.event_date) {
     const event = new Date(booking.event_date)
     const daysUntilEvent = diffDaysCeil(event, now)
 
+    // Customer-payable total is VAT-inclusive (stored prices are net)
     const totalAmount = Number(
-      booking.calculated_total ?? booking.total_amount ?? 0,
+      booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0,
     )
     const balanceOutstanding =
       !booking.final_payment_date && totalAmount > 0
@@ -199,20 +231,50 @@ export async function getBookingScheduledSms(
       ? formatReadableDate(booking.balance_due_date)
       : eventDateReadable
 
-    const balanceWindowKey14 =
+    const balanceWindowKey =
       toIsoDateSlice(booking.balance_due_date) || toIsoDateSlice(booking.event_date)
-    const balanceWindowKey7 = balanceWindowKey14
-    const balanceWindowKey1 = toIsoDateSlice(booking.event_date)
     const eventWindowKey = toIsoDateSlice(booking.event_date)
 
-    if (balanceOutstanding > 0 && daysUntilEvent === 14) {
-      const triggerType = 'balance_reminder_14day'
-      const body = balanceReminder14DayMessage({
-        customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
-        eventDate: eventDateReadable,
-        balanceAmount: balanceOutstanding,
-        balanceDueDate: balanceDueDateReadable,
-      })
+    const daysUntilDue = booking.balance_due_date
+      ? diffDaysDateOnly(String(booking.balance_due_date), now)
+      : null
+
+    if (balanceOutstanding > 0 && daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 7) {
+      const customerFirstName = booking.customer_first_name ?? booking.customer_name ?? null
+      let triggerType: string
+      let body: string
+      if (daysUntilDue >= 3) {
+        triggerType = 'balance_reminder_21day'
+        body = balanceReminder21DayMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          balanceAmount: balanceOutstanding,
+          balanceDueDate: balanceDueDateReadable,
+        })
+      } else if (daysUntilDue === 2) {
+        triggerType = 'balance_reminder_16day'
+        body = balanceReminder16DayMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          balanceAmount: balanceOutstanding,
+          balanceDueDate: balanceDueDateReadable,
+        })
+      } else if (daysUntilDue === 1) {
+        triggerType = 'balance_reminder_15day'
+        body = balanceReminder15DayMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          balanceAmount: balanceOutstanding,
+        })
+      } else {
+        triggerType = 'balance_reminder_due'
+        body = balanceReminderDueMessage({
+          customerFirstName,
+          eventDate: eventDateReadable,
+          balanceAmount: balanceOutstanding,
+        })
+      }
+
       const suppression = decideSuppression({
         triggerType,
         isTbd,
@@ -221,62 +283,11 @@ export async function getBookingScheduledSms(
         flagEnabled,
         alreadySent,
         bookingId,
-        windowKey: balanceWindowKey14,
+        windowKey: balanceWindowKey,
       })
       previews.push({
         trigger_type: triggerType,
         expected_fire_at: suppression ? null : balanceDueDateReadable,
-        preview_body: body,
-        suppression_reason: suppression,
-      })
-    }
-
-    if (balanceOutstanding > 0 && daysUntilEvent === 7) {
-      const triggerType = 'balance_reminder_7day'
-      const body = balanceReminder7DayMessage({
-        customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
-        eventDate: eventDateReadable,
-        balanceAmount: balanceOutstanding,
-        balanceDueDate: balanceDueDateReadable,
-      })
-      const suppression = decideSuppression({
-        triggerType,
-        isTbd,
-        dateTbdSuppresses: true,
-        featureFlagApplies: true,
-        flagEnabled,
-        alreadySent,
-        bookingId,
-        windowKey: balanceWindowKey7,
-      })
-      previews.push({
-        trigger_type: triggerType,
-        expected_fire_at: suppression ? null : balanceDueDateReadable,
-        preview_body: body,
-        suppression_reason: suppression,
-      })
-    }
-
-    if (balanceOutstanding > 0 && daysUntilEvent === 1) {
-      const triggerType = 'balance_reminder_1day'
-      const body = balanceReminder1DayMessage({
-        customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
-        eventDate: eventDateReadable,
-        balanceAmount: balanceOutstanding,
-      })
-      const suppression = decideSuppression({
-        triggerType,
-        isTbd,
-        dateTbdSuppresses: true,
-        featureFlagApplies: true,
-        flagEnabled,
-        alreadySent,
-        bookingId,
-        windowKey: balanceWindowKey1,
-      })
-      previews.push({
-        trigger_type: triggerType,
-        expected_fire_at: suppression ? null : eventDateReadable,
         preview_body: body,
         suppression_reason: suppression,
       })
@@ -424,6 +435,13 @@ function parseFeatureFlag(): boolean {
 function diffDaysCeil(target: Date, now: Date): number {
   const diffMs = target.getTime() - now.getTime()
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+}
+
+/** Calendar-day difference between an ISO date (YYYY-MM-DD) and now, London-agnostic date-only maths. */
+function diffDaysDateOnly(isoDate: string, now: Date): number {
+  const target = Math.floor(Date.parse(`${isoDate.slice(0, 10)}T00:00:00Z`) / 86400000)
+  const today = Math.floor(Date.parse(`${toIsoDateSlice(now.toISOString())}T00:00:00Z`) / 86400000)
+  return target - today
 }
 
 function toIsoDateSlice(value: string | null | undefined): string {

@@ -15,10 +15,12 @@ import {
 import { sendPrivateBookingOutcomeEmail } from '@/lib/private-bookings/manager-notifications'
 import {
   depositReminder7DayMessage,
+  depositReminder3DayMessage,
   depositReminder1DayMessage,
-  balanceReminder14DayMessage,
-  balanceReminder7DayMessage,
-  balanceReminder1DayMessage,
+  balanceReminder21DayMessage,
+  balanceReminder16DayMessage,
+  balanceReminder15DayMessage,
+  balanceReminderDueMessage,
   eventReminder1DayMessage,
   reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
@@ -46,10 +48,12 @@ const PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = parseBooleanEnv(
 )
 const PRIVATE_BOOKING_MONITOR_TEMPLATE_KEYS = [
   'private_booking_deposit_reminder_7day',
+  'private_booking_deposit_reminder_3day',
   'private_booking_deposit_reminder_1day',
-  'private_booking_balance_reminder_14day',
-  'private_booking_balance_reminder_7day',
-  'private_booking_balance_reminder_1day',
+  'private_booking_balance_reminder_21day',
+  'private_booking_balance_reminder_16day',
+  'private_booking_balance_reminder_15day',
+  'private_booking_balance_reminder_due',
   'private_booking_event_reminder_1d',
   'private_booking_expired',
   'private_booking_post_event_followup',
@@ -377,6 +381,7 @@ export async function GET(request: Request) {
       postEventFollowupSent: 0,
       outcomeEmailsSent: 0,
       reviewRequestsSent: 0,
+      postEventInspectionsFlagged: 0,
       smsCapReached: false
     }
     const totalSmsSent = () =>
@@ -509,8 +514,8 @@ export async function GET(request: Request) {
           ? new Date(booking.hold_expiry).toISOString().slice(0, 10)
           : 'unknown'
 
-        // 1. Check 7-Day Reminder (Window: 2-7 days)
-        if (diffDays <= 7 && diffDays > 1) {
+        // 1. Check 7-Day Reminder (Window: 4-7 days)
+        if (diffDays <= 7 && diffDays > 3) {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -580,7 +585,78 @@ export async function GET(request: Request) {
           }
         }
 
-        // 2. Check 1-Day Reminder (Window: <= 1 day)
+        // 2. Check 3-Day Reminder (Window: 2-3 days) — SOP §10 hold reminders
+        // run at 7, 3 and 1 days before expiry.
+        if (diffDays <= 3 && diffDays > 1) {
+          if (!canSendMoreSms()) {
+            stats.smsCapReached = true
+            break
+          }
+
+          const triggerType = 'deposit_reminder_3day'
+          const { count, error: duplicateCheckError } = await supabase
+            .from('private_booking_sms_queue')
+            .select('id', { count: 'exact', head: true })
+            .eq('booking_id', booking.id)
+            .eq('trigger_type', triggerType)
+            .in('status', ['pending', 'approved', 'sent'])
+
+          if (duplicateCheckError) {
+            logger.warn('Skipping private booking 3-day reminder due to duplicate-check query failure', {
+              metadata: {
+                bookingId: booking.id,
+                triggerType,
+                runKey,
+                error: duplicateCheckError.message
+              }
+            })
+            continue
+          }
+
+          if ((count ?? 0) === 0) {
+            const reservation = await reserveCronSmsSend(supabase, {
+              bookingId: booking.id,
+              triggerType,
+              windowKey: holdExpiryWindowKey
+            })
+            if (!reservation.reserved) continue
+
+            const messageBody = depositReminder3DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              depositAmount,
+            })
+
+            const result = await SmsQueueService.queueAndSend({
+              booking_id: booking.id,
+              trigger_type: triggerType,
+              template_key: `private_booking_${triggerType}`,
+              message_body: messageBody,
+              customer_phone: contactPhone,
+              customer_name: booking.customer_name,
+              priority: 2
+            })
+
+            if (result.error) {
+              console.error(`Failed to queue 3-day reminder for booking ${booking.id}:`, result.error)
+            } else if (result.sent) {
+              stats.remindersSent++
+            }
+
+            maybeAbortFromSmsResult(result, {
+              stage: `pass1:${triggerType}`,
+              bookingId: booking.id,
+              triggerType,
+              templateKey: `private_booking_${triggerType}`
+            })
+
+            if (abortState.aborted) {
+              break
+            }
+          }
+        }
+
+        // 3. Check 1-Day Reminder (Window: <= 1 day)
         if (diffDays <= 1 && diffDays > 0) {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
@@ -655,23 +731,34 @@ export async function GET(request: Request) {
     // Hold expiry is handled by the dedicated private-bookings-expire-holds cron
 
     if (!abortState.aborted && PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED) {
-      // --- PASS 3: BALANCE REMINDERS (Confirmed - Catch-up Logic) ---
-      // Fire at 14, 7, or 1 days before event (selected by days-until-event).
+      // --- PASS 3: BALANCE & FINAL DETAILS REMINDERS (Confirmed) ---
+      // SOP §13: reminders fire 7 days, 2 days and 1 day before the balance &
+      // final-details due date (event − 14 days), and on the day itself —
+      // i.e. 21/16/15/14 days before the event. Bookings created inside the
+      // window get the next relevant reminder immediately. Once the deadline
+      // has passed there is NO automated chasing — overdue balances surface
+      // in the weekly digest and dashboard for General Manager review.
 
-      const fourteenDaysFromNow = new Date(now);
-      fourteenDaysFromNow.setDate(now.getDate() + 14);
+      const todayLondonIso = getLondonRunKey(now)
+      const dueWindowEnd = new Date(now);
+      dueWindowEnd.setDate(now.getDate() + 7);
+      const dueWindowEndIso = getLondonRunKey(dueWindowEnd)
 
       const { data: confirmedBookings } = await supabase
         .from('private_bookings_with_details')
         .select(
-          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes'
+          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, gross_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes'
         )
         .eq('status', 'confirmed')
-        .gt('event_date', now.toISOString()) // Future events only
-        .lte('event_date', fourteenDaysFromNow.toISOString()) // Within 14-day window
+        .not('balance_due_date', 'is', null)
+        .gte('balance_due_date', todayLondonIso) // due today or later — never chase past-due
+        .lte('balance_due_date', dueWindowEndIso) // within 7 days of the deadline
       // Removed .not('contact_phone', 'is', null) to allow fallback
 
       if (confirmedBookings) {
+        const toDayNumber = (isoDate: string): number =>
+          Math.floor(Date.parse(`${isoDate.slice(0, 10)}T00:00:00Z`) / 86400000)
+
         for (const booking of confirmedBookings) {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
@@ -690,15 +777,12 @@ export async function GET(request: Request) {
           const isPaid = !!booking.final_payment_date;
           if (isPaid) continue
 
-          // Compute days until event (ceil on ms → days, consistent with Pass 1).
-          const eventMs = new Date(booking.event_date).getTime()
-          if (!Number.isFinite(eventMs)) continue
-          const daysUntilEvent = Math.ceil((eventMs - now.getTime()) / (1000 * 60 * 60 * 24))
+          if (!booking.balance_due_date) continue
+          const daysUntilDue = toDayNumber(String(booking.balance_due_date)) - toDayNumber(todayLondonIso)
+          if (daysUntilDue < 0 || daysUntilDue > 7) continue
 
-          // Only fire at 14, 7, or 1 day windows.
-          if (![14, 7, 1].includes(daysUntilEvent)) continue
-
-          const totalAmount = Number(booking.calculated_total ?? booking.total_amount ?? 0)
+          // Customer-payable total is VAT-inclusive (stored prices are net)
+          const totalAmount = Number(booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0)
           // Booking and damage deposit — separate from event balance
           const viewBalanceRemaining = Number(booking.balance_remaining)
           const balanceDue = Number.isFinite(viewBalanceRemaining)
@@ -707,31 +791,40 @@ export async function GET(request: Request) {
           if (!Number.isFinite(balanceDue) || balanceDue <= 0) continue
 
           const eventDateReadable = formatLondonDate(booking.event_date);
-          const dueDateReadable = booking.balance_due_date
-            ? formatLondonDate(booking.balance_due_date)
-            : eventDateReadable
+          const dueDateReadable = formatLondonDate(booking.balance_due_date)
 
-          let triggerType: 'balance_reminder_14day' | 'balance_reminder_7day' | 'balance_reminder_1day'
+          let triggerType:
+            | 'balance_reminder_21day'
+            | 'balance_reminder_16day'
+            | 'balance_reminder_15day'
+            | 'balance_reminder_due'
           let messageBody: string
-          if (daysUntilEvent === 14) {
-            triggerType = 'balance_reminder_14day'
-            messageBody = balanceReminder14DayMessage({
+          if (daysUntilDue >= 3) {
+            triggerType = 'balance_reminder_21day'
+            messageBody = balanceReminder21DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
               balanceDueDate: dueDateReadable,
             })
-          } else if (daysUntilEvent === 7) {
-            triggerType = 'balance_reminder_7day'
-            messageBody = balanceReminder7DayMessage({
+          } else if (daysUntilDue === 2) {
+            triggerType = 'balance_reminder_16day'
+            messageBody = balanceReminder16DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
               balanceDueDate: dueDateReadable,
+            })
+          } else if (daysUntilDue === 1) {
+            triggerType = 'balance_reminder_15day'
+            messageBody = balanceReminder15DayMessage({
+              customerFirstName: booking.customer_first_name,
+              eventDate: eventDateReadable,
+              balanceAmount: balanceDue,
             })
           } else {
-            triggerType = 'balance_reminder_1day'
-            messageBody = balanceReminder1DayMessage({
+            triggerType = 'balance_reminder_due'
+            messageBody = balanceReminderDueMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
@@ -765,11 +858,8 @@ export async function GET(request: Request) {
             break
           }
 
-          // Window key: balance_due_date for the 14-/7-day windows, event_date for 1-day.
-          const balanceWindowKey =
-            triggerType === 'balance_reminder_1day'
-              ? new Date(booking.event_date).toISOString().slice(0, 10)
-              : (booking.balance_due_date ?? booking.event_date).slice(0, 10)
+          // Window key: the due date — one send cycle per trigger per deadline.
+          const balanceWindowKey = String(booking.balance_due_date).slice(0, 10)
 
           const reservation = await reserveCronSmsSend(supabase, {
             bookingId: booking.id,
@@ -1156,6 +1246,67 @@ export async function GET(request: Request) {
           })
 
           if (abortState.aborted) break
+        }
+      }
+    }
+
+    // --- PASS 6: POST-EVENT DEPOSIT INSPECTION (SOP §25) ---
+    // Events that have happened with a paid deposit and no refund decision yet
+    // enter the 48-hour inspection window: flag post_event_status =
+    // 'awaiting_inspection' for the staff workflow. Internal only — no
+    // customer comms. Capped at 50 bookings per run.
+    if (!abortState.aborted) {
+      const inspectionToday = getLondonRunKey(new Date())
+      const { data: inspectionDue, error: inspectionError } = await supabase
+        .from('private_bookings')
+        .select('id, status, event_date')
+        .or(`status.eq.completed,and(status.eq.confirmed,event_date.lt.${inspectionToday})`)
+        .not('deposit_paid_date', 'is', null)
+        .is('deposit_refund_status', null)
+        .is('post_event_status', null)
+        .limit(50)
+
+      if (inspectionError) {
+        logger.error('Post-event inspection pass query failed', {
+          error: new Error(inspectionError.message)
+        })
+      } else {
+        for (const booking of inspectionDue ?? []) {
+          const { data: flaggedRow, error: flagError } = await supabase
+            .from('private_bookings')
+            .update({ post_event_status: 'awaiting_inspection', updated_at: new Date().toISOString() })
+            .eq('id', booking.id)
+            .is('post_event_status', null)
+            .select('id')
+            .maybeSingle()
+
+          if (flagError) {
+            logger.error('Failed to flag booking for post-event inspection', {
+              error: new Error(flagError.message),
+              metadata: { bookingId: booking.id }
+            })
+            continue
+          }
+          // Another run won the claim — skip cleanly.
+          if (!flaggedRow) continue
+
+          const { error: inspectionAuditError } = await supabase
+            .from('private_booking_audit')
+            .insert({
+              booking_id: booking.id,
+              action: 'post_event_inspection_due',
+              field_name: 'post_event_status',
+              new_value: 'awaiting_inspection',
+              metadata: { event_date: booking.event_date, source: JOB_NAME }
+            })
+          if (inspectionAuditError) {
+            logger.error('Failed to audit post-event inspection flag', {
+              error: new Error(inspectionAuditError.message),
+              metadata: { bookingId: booking.id }
+            })
+          }
+
+          stats.postEventInspectionsFlagged++
         }
       }
     }

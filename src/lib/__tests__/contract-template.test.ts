@@ -87,7 +87,8 @@ describe('generateContractHTML', () => {
     )
     const waiverSheets = html.match(/data-doc="waiver"/g) || []
     expect(waiverSheets).toHaveLength(1)
-    expect(html).toContain('Self-catering food release &amp; indemnity waiver')
+    // SOP pack §51: the annex is a "responsibility agreement", not a release/indemnity waiver
+    expect(html).toContain('Self-catering and outside food responsibility agreement')
     // Signature block is data-driven from the booking
     expect(html).toContain('Double gender reveal &middot; approx. 30 guests')
     expect(html).toContain('This signature is separate from, and additional to')

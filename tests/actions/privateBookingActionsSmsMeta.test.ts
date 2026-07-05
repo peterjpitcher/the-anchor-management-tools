@@ -96,7 +96,8 @@ describe('private booking actions SMS meta propagation', () => {
     expect(PrivateBookingService.cancelBooking).toHaveBeenCalledWith(
       'booking-1',
       'staff_cancelled',
-      'user-1'
+      'user-1',
+      undefined
     )
     expect(result).toEqual({
       success: true,

@@ -1,4 +1,12 @@
 export type BookingStatus = 'draft' | 'confirmed' | 'completed' | 'cancelled'
+export type BookingLayout = 'seated' | 'standing' | 'mixed'
+export type FinalDetailsStatus = 'not_requested' | 'requested' | 'complete' | 'incomplete' | 'overdue' | 'manager_reviewed'
+export type SupplierStatus = 'not_applicable' | 'requested' | 'incomplete' | 'approved' | 'rejected'
+export type WaiverStatus = 'not_required' | 'required' | 'sent' | 'signed' | 'overdue'
+export type RiskStatus = 'low' | 'normal' | 'high' | 'gm_approval_required' | 'approved' | 'rejected'
+export type EventSheetStatus = 'not_generated' | 'generated' | 'sent_to_staff' | 'locked'
+export type PostEventStatus = 'awaiting_inspection' | 'inspection_complete' | 'deduction_discussion' | 'refund_processed' | 'complete'
+export type CancellationChannel = 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
 type PaymentMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
 type DiscountType = 'percent' | 'fixed'
@@ -87,6 +95,44 @@ export interface PrivateBooking {
   updated_at: string
   paypal_deposit_order_id?: string
   paypal_deposit_capture_id?: string
+  deposit_waived?: boolean
+  deposit_waived_reason?: string
+  contract_sent_at?: string
+  contract_sent_to?: string
+  contract_accepted_at?: string
+  contract_acceptance_method?: string
+  // Enquiry intake (SOP pack §9)
+  layout?: BookingLayout
+  guest_count_adults?: number
+  guest_count_under_18?: number
+  bar_tab_required?: boolean
+  bar_tab_limit?: number
+  bar_tab_prepaid_amount?: number
+  bar_tab_preauth_reference?: string
+  outside_food?: boolean
+  high_power_equipment?: boolean
+  high_power_equipment_approved_at?: string
+  decorations_plan?: string
+  dogs_expected?: boolean
+  special_risk_notes?: string
+  communication_preference?: string
+  cleardown_time?: string
+  // Workflow flags (SOP pack §8)
+  final_details_status?: FinalDetailsStatus
+  supplier_status?: SupplierStatus
+  waiver_status?: WaiverStatus
+  risk_status?: RiskStatus
+  event_sheet_status?: EventSheetStatus
+  post_event_status?: PostEventStatus
+  // Cancellation capture (SOP pack §14)
+  cancellation_channel?: CancellationChannel
+  cancellation_received_at?: string
+  cancellation_evidence_document_id?: string
+  cancelled_by?: string
+  // Record locking (SOP pack §27)
+  locked_at?: string
+  locked_reason?: string
+  locked_by?: string
 }
 
 export interface VenueSpace {
@@ -98,6 +144,10 @@ export interface VenueSpace {
   rate_per_hour: number
   minimum_hours: number
   setup_fee: number
+  /** VAT rate (%) — stored rates are net (SOP 2026-07) */
+  vat_rate?: number
+  /** Whole-venue space (e.g. Entire Pub) — booking it blocks every other space (SOP §6) */
+  blocks_all_spaces?: boolean
   active: boolean
   display_order: number
   created_at: string
@@ -113,12 +163,20 @@ export interface CateringPackage {
   good_to_know?: string
   guest_description?: string
   serving_style?: PackageType
-  category: 'food' | 'drink' | 'addon'
+  category: 'food' | 'drink' | 'addon' | 'self_catering' | 'other'
   pricing_model?: PricingModel
   cost_per_head: number
   minimum_guests: number
   maximum_guests?: number
   dietary_notes?: string
+  /** VAT rate (%) — stored prices are net (SOP 2026-07) */
+  vat_rate?: number
+  /** Booking this package requires the self-catering / outside-food waiver (SOP §21) */
+  requires_waiver?: boolean
+  /** Allergy details must be captured before the event when booked (SOP §22) */
+  requires_allergy_capture?: boolean
+  /** Seasonal package — availability window managed in settings */
+  seasonal?: boolean
   active: boolean
   display_order: number
   created_at: string
@@ -153,6 +211,8 @@ export interface PrivateBookingItem {
   description: string
   quantity: number
   unit_price: number
+  /** VAT rate (%) snapshotted from the source package/space; unit prices are net */
+  vat_rate?: number
   discount_type?: DiscountType
   discount_value?: number
   discount_reason?: string
@@ -240,6 +300,13 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
     phone?: string
   }
   calculated_total?: number
+  /** VAT on the discounted net total (stored prices are net) */
+  vat_amount?: number
+  /** Customer-payable total including VAT (excludes the deposit) */
+  gross_total?: number
+  total_balance_paid?: number
+  balance_remaining?: number
+  payment_status?: 'Fully Paid' | 'Partially Paid' | 'Unpaid'
   deposit_status?: 'Paid' | 'Required' | 'Not Required'
   days_until_event?: number
   sms_queue?: PrivateBookingSmsQueue[]

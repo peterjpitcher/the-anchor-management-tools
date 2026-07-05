@@ -73,6 +73,8 @@ export async function getBookings(filters?: {
         internal_notes,
         customer_requests,
         calculated_total,
+        vat_amount,
+        gross_total,
         deposit_status,
         days_until_event
       `,
@@ -169,6 +171,8 @@ export async function fetchPrivateBookings(options: {
         internal_notes,
         customer_requests,
         calculated_total,
+        vat_amount,
+        gross_total,
         deposit_status,
         days_until_event
       `,
@@ -251,7 +255,8 @@ export async function fetchPrivateBookings(options: {
   }
 
   const enriched = (data || []).map((booking) => {
-    const bookingTotal = toNumber(booking.calculated_total ?? booking.total_amount);
+    // Customer-payable total is VAT-inclusive (stored prices are net)
+    const bookingTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount);
     const paymentSum = paymentSumById.get(booking.id) ?? 0;
     const balanceRemaining = booking.final_payment_date ? 0 : Math.max(0, bookingTotal - paymentSum);
     return {

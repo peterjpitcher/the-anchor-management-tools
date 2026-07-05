@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger';
 import {
   sendBookingConfirmationEmail,
   sendBookingCalendarInvite,
+  sendBookingCancelledEmail,
 } from '@/lib/email/private-booking-emails';
 import type {
   BookingStatus,
@@ -24,9 +25,19 @@ import {
   normalizeSmsSafetyMeta,
   toNumber,
   computeHoldExpiry,
+  balanceDueMoment,
   DATE_TBD_NOTE,
   DEFAULT_TBD_TIME,
+  PRIVATE_BOOKING_INTAKE_FIELDS,
+  assertBarTabRules,
+  deriveRiskStatus,
 } from './types';
+import {
+  findBookingConflicts,
+  checkCapacity,
+  getBookingSpaceIds,
+  type BookingConflict,
+} from './conflicts';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import {
   privateBookingCreatedMessage,
@@ -39,7 +50,8 @@ import {
   bookingCancelledHoldMessage,
   bookingCancelledRefundableMessage,
   bookingCancelledPartialRefundMessage,
-  bookingCancelledNonRefundableMessage,
+  bookingCancelledRetentionMessage,
+  bookingCancelledReviewPendingMessage,
   bookingCancelledManualReviewMessage,
 } from '@/lib/private-bookings/messages';
 import {
@@ -134,13 +146,15 @@ type CancellationSmsVariant = {
     | 'booking_cancelled_hold'
     | 'booking_cancelled_refundable'
     | 'booking_cancelled_partial_refund'
-    | 'booking_cancelled_non_refundable'
+    | 'booking_cancelled_retention'
+    | 'booking_cancelled_review_pending'
     | 'booking_cancelled_manual_review'
   templateKey:
     | 'private_booking_cancelled_hold'
     | 'private_booking_cancelled_refundable'
     | 'private_booking_cancelled_partial_refund'
-    | 'private_booking_cancelled_non_refundable'
+    | 'private_booking_cancelled_retention'
+    | 'private_booking_cancelled_review_pending'
     | 'private_booking_cancelled_manual_review'
   messageBody: string
   outcome: CancellationFinancialOutcome
@@ -148,8 +162,26 @@ type CancellationSmsVariant = {
   retainedAmount: number
 }
 
+/**
+ * Manager decision for a sub-30-day cancellation (SOP §14): how much of the
+ * paid deposit is retained (0..deposit) and why. Never applied automatically.
+ */
+export type CancellationRetentionDecision = {
+  retainedAmount: number
+  reason: string
+}
+
+/**
+ * SOP §14: cancellations are captured with the written channel they arrived
+ * through and when they were received; the processor is recorded separately.
+ */
+export type CancellationCaptureDetails = {
+  channel?: 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
+  receivedAt?: string
+}
+
 const UPDATE_BOOKING_BASE_SELECT =
-  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute'
+  'status, contact_phone, contact_email, customer_first_name, customer_last_name, customer_name, event_date, start_time, setup_date, setup_time, end_time, end_time_next_day, customer_id, internal_notes, balance_due_date, calendar_event_id, hold_expiry, deposit_paid_date, deposit_amount, guest_count, event_type, source, customer_requests, contract_note, special_requirements, accessibility_needs, has_open_dispute, layout, guest_count_adults, guest_count_under_18, bar_tab_required, bar_tab_limit, bar_tab_prepaid_amount, bar_tab_preauth_reference, outside_food, high_power_equipment, decorations_plan, dogs_expected, special_risk_notes, communication_preference, cleardown_time, risk_status'
 
 const CANCELLED_BOOKING_CORRECTION_FIELDS = new Set([
   'contact_email',
@@ -224,6 +256,7 @@ async function resolveCancellationSmsVariant(input: {
   bookingId: string
   customerFirstName: string | null | undefined
   eventDate: string
+  retentionDecision?: CancellationRetentionDecision | null
 }): Promise<CancellationSmsVariant> {
   const outcome = await getPrivateBookingCancellationOutcome(input.bookingId)
 
@@ -267,19 +300,58 @@ async function resolveCancellationSmsVariant(input: {
         refundAmount: outcome.refund_amount,
         retainedAmount: outcome.retained_amount,
       }
-    case 'non_refundable_retained':
+    case 'gm_review_required': {
+      // SOP §14: retention up to the full deposit is a manager decision.
+      const decision = input.retentionDecision
+      if (!decision) {
+        // Cancelled before a retention decision exists (e.g. edit-form path):
+        // tell the customer the payment review is in progress — never assert
+        // an automatic retention.
+        return {
+          triggerType: 'booking_cancelled_review_pending',
+          templateKey: 'private_booking_cancelled_review_pending',
+          messageBody: bookingCancelledReviewPendingMessage({
+            customerFirstName: input.customerFirstName,
+            eventDate: input.eventDate,
+          }),
+          outcome: outcome.outcome,
+          refundAmount: outcome.refund_amount,
+          retainedAmount: 0,
+        }
+      }
+
+      const retained = Math.min(Math.max(decision.retainedAmount, 0), outcome.max_retainable)
+      const refundTotal = outcome.refund_amount + (outcome.max_retainable - retained)
+
+      if (retained <= 0) {
+        return {
+          triggerType: 'booking_cancelled_refundable',
+          templateKey: 'private_booking_cancelled_refundable',
+          messageBody: bookingCancelledRefundableMessage({
+            customerFirstName: input.customerFirstName,
+            eventDate: input.eventDate,
+            refundAmount: refundTotal,
+          }),
+          outcome: outcome.outcome,
+          refundAmount: refundTotal,
+          retainedAmount: 0,
+        }
+      }
+
       return {
-        triggerType: 'booking_cancelled_non_refundable',
-        templateKey: 'private_booking_cancelled_non_refundable',
-        messageBody: bookingCancelledNonRefundableMessage({
+        triggerType: 'booking_cancelled_retention',
+        templateKey: 'private_booking_cancelled_retention',
+        messageBody: bookingCancelledRetentionMessage({
           customerFirstName: input.customerFirstName,
           eventDate: input.eventDate,
-          retainedAmount: outcome.retained_amount,
+          retainedAmount: retained,
+          refundAmount: refundTotal,
         }),
         outcome: outcome.outcome,
-        refundAmount: outcome.refund_amount,
-        retainedAmount: outcome.retained_amount,
+        refundAmount: refundTotal,
+        retainedAmount: retained,
       }
+    }
     case 'manual_review':
     default:
       return {
@@ -293,6 +365,233 @@ async function resolveCancellationSmsVariant(input: {
         refundAmount: outcome.refund_amount,
         retainedAmount: outcome.retained_amount,
       }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SOP compliance helpers (intake, risk, conflicts, waiver, electricity)
+// ---------------------------------------------------------------------------
+
+const ELECTRICITY_CHARGE_DESCRIPTION = 'Electricity charge — high-power equipment'
+
+// Waiver-package name fallback — used ONLY when catering_packages.requires_waiver
+// is unavailable (pre-migration schema). Flag-first everywhere else (SOP §21).
+const WAIVER_PACKAGE_NAME_PATTERN = /bring your own|self[\s-]?cater|\bbyo\b/i
+
+function formatConflictError(conflict: BookingConflict): string {
+  return `Space conflict: ${conflict.space_name} is held by ${conflict.customer_name || 'another booking'} (${conflict.booking_status}) from ${conflict.occupies_from} to ${conflict.occupies_until}`
+}
+
+/**
+ * SOP §6/§28: block bookings whose spaces clash with existing holds/confirmed
+ * bookings, or whose guest count exceeds the safe capacity for the layout.
+ * Genuine conflicts and capacity breaches throw; infrastructure failures fail
+ * open (logged) so a broken check never blocks the flow.
+ */
+async function assertSpaceAvailabilityAndCapacity(input: {
+  spaceIds: string[]
+  eventDate: string
+  startTime?: string | null
+  endTime?: string | null
+  setupDate?: string | null
+  setupTime?: string | null
+  cleardownTime?: string | null
+  excludeBookingId?: string | null
+  guestCount?: number | null
+  layout?: 'seated' | 'standing' | 'mixed' | null
+  skipCapacity?: boolean
+}): Promise<void> {
+  if (input.spaceIds.length === 0) return
+
+  // findBookingConflicts fails open internally (returns [] on RPC errors), so
+  // any conflicts returned here are genuine.
+  const conflicts = await findBookingConflicts({
+    eventDate: input.eventDate,
+    startTime: input.startTime ?? null,
+    endTime: input.endTime ?? null,
+    setupDate: input.setupDate ?? null,
+    setupTime: input.setupTime ?? null,
+    cleardownTime: input.cleardownTime ?? null,
+    spaceIds: input.spaceIds,
+    excludeBookingId: input.excludeBookingId ?? null,
+  })
+  if (conflicts.length > 0) {
+    throw new Error(formatConflictError(conflicts[0]))
+  }
+
+  if (input.skipCapacity) return
+
+  let spacesForCapacity: Array<{ name: string; capacity_seated?: number | null; capacity_standing?: number | null }> | null = null
+  try {
+    const admin = createAdminClient()
+    const { data: spaces, error } = await admin
+      .from('venue_spaces')
+      .select('name, capacity_seated, capacity_standing')
+      .in('id', input.spaceIds)
+    if (error) throw new Error(error.message)
+    spacesForCapacity = spaces || []
+  } catch (spacesError) {
+    // Fail open: a broken lookup must never block the booking flow.
+    logger.error('Capacity check skipped: failed to load venue spaces', {
+      error: spacesError instanceof Error ? spacesError : new Error(String(spacesError)),
+      metadata: { spaceIds: input.spaceIds },
+    })
+  }
+
+  if (spacesForCapacity) {
+    const capacityResult = checkCapacity({
+      spaces: spacesForCapacity,
+      guestCount: input.guestCount ?? null,
+      layout: input.layout ?? null,
+    })
+    if (!capacityResult.ok) {
+      throw new Error(capacityResult.reason || 'Guest count exceeds the capacity for the selected space')
+    }
+  }
+}
+
+/**
+ * SOP §17: ensure exactly one £25 electricity line exists for approved
+ * high-power or amplified equipment. Never duplicates; never removes.
+ */
+async function ensureElectricityChargeItem(
+  admin: ReturnType<typeof createAdminClient>,
+  bookingId: string
+): Promise<void> {
+  const { data: existing, error: lookupError } = await admin
+    .from('private_booking_items')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('description', ELECTRICITY_CHARGE_DESCRIPTION)
+    .limit(1)
+  if (lookupError) throw new Error(lookupError.message)
+  if (existing && existing.length > 0) return
+
+  const { error: insertError } = await admin.from('private_booking_items').insert({
+    booking_id: bookingId,
+    item_type: 'other',
+    description: ELECTRICITY_CHARGE_DESCRIPTION,
+    quantity: 1,
+    unit_price: 25,
+    vat_rate: 20,
+  })
+  if (insertError) throw new Error(insertError.message)
+}
+
+/**
+ * Post-create follow-up: the create RPC ignores unknown keys, so the §9 intake
+ * fields (plus the derived §18 risk status and any §17 electricity line) are
+ * persisted with one admin UPDATE. Failures are logged, never thrown — the
+ * booking itself already exists.
+ */
+async function applyIntakeFollowUp(bookingId: string, input: CreatePrivateBookingInput): Promise<void> {
+  try {
+    const admin = createAdminClient()
+
+    const intakeUpdate: Record<string, unknown> = {}
+    for (const field of PRIVATE_BOOKING_INTAKE_FIELDS) {
+      const value = (input as Record<string, unknown>)[field]
+      if (value !== undefined) {
+        intakeUpdate[field] = value === '' ? null : value
+      }
+    }
+
+    // SOP §18/§6.7: derive the initial risk status — no GM decision can exist
+    // at creation, so the derived value always applies.
+    const derivedRisk = deriveRiskStatus(input)
+    if (Object.keys(intakeUpdate).length > 0 || derivedRisk !== 'normal') {
+      intakeUpdate.risk_status = derivedRisk
+      const { error } = await admin.from('private_bookings').update(intakeUpdate).eq('id', bookingId)
+      if (error) throw new Error(error.message)
+    }
+
+    if (input.high_power_equipment === true) {
+      await ensureElectricityChargeItem(admin, bookingId)
+    }
+  } catch (intakeError) {
+    logger.error('Private booking intake follow-up failed (non-blocking)', {
+      error: intakeError instanceof Error ? intakeError : new Error(String(intakeError)),
+      metadata: { bookingId },
+    })
+  }
+}
+
+/**
+ * SOP §21: keep waiver_status in step with the booking's catering items.
+ * Flag-first (catering_packages.requires_waiver); the name pattern is only a
+ * fallback when the flag column is unavailable. 'not_required' ⇄ 'required'
+ * only — never downgrades 'sent' / 'signed' / 'overdue'. Also marks
+ * outside_food when a waiver package is present.
+ */
+async function reconcileWaiverStatus(bookingId: string, performedByUserId?: string): Promise<void> {
+  const admin = createAdminClient()
+
+  const { data: bookingRow, error: bookingError } = await admin
+    .from('private_bookings')
+    .select('id, waiver_status, outside_food')
+    .eq('id', bookingId)
+    .single()
+  if (bookingError || !bookingRow) {
+    throw new Error(bookingError?.message || 'Booking not found for waiver reconciliation')
+  }
+
+  let waiverRequired = false
+  const { data: flaggedItems, error: flaggedError } = await admin
+    .from('private_booking_items')
+    .select('id, package:catering_packages(id, name, requires_waiver)')
+    .eq('booking_id', bookingId)
+    .eq('item_type', 'catering')
+
+  if (flaggedError) {
+    // Fallback ONLY when the requires_waiver column errors: match by name.
+    const { data: namedItems, error: namedError } = await admin
+      .from('private_booking_items')
+      .select('id, package:catering_packages(id, name)')
+      .eq('booking_id', bookingId)
+      .eq('item_type', 'catering')
+    if (namedError) throw new Error(namedError.message)
+    waiverRequired = (namedItems || []).some((item: any) =>
+      WAIVER_PACKAGE_NAME_PATTERN.test(item.package?.name || '')
+    )
+  } else {
+    waiverRequired = (flaggedItems || []).some((item: any) => item.package?.requires_waiver === true)
+  }
+
+  const currentStatus = (bookingRow as any).waiver_status || 'not_required'
+  let nextStatus: string | null = null
+  if (waiverRequired && currentStatus === 'not_required') {
+    nextStatus = 'required'
+  } else if (!waiverRequired && currentStatus === 'required') {
+    nextStatus = 'not_required'
+  }
+
+  const updates: Record<string, unknown> = {}
+  if (nextStatus) updates.waiver_status = nextStatus
+  if (waiverRequired && (bookingRow as any).outside_food !== true) updates.outside_food = true
+  if (Object.keys(updates).length === 0) return
+
+  const { error: updateError } = await admin
+    .from('private_bookings')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', bookingId)
+  if (updateError) throw new Error(updateError.message)
+
+  if (nextStatus) {
+    const { error: auditError } = await admin.from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: 'field_updated',
+      field_name: 'waiver_status',
+      old_value: currentStatus,
+      new_value: nextStatus,
+      performed_by: performedByUserId ?? null,
+      metadata: { via: 'booking_items_reconciliation' },
+    })
+    if (auditError) {
+      logger.error('Failed to audit waiver status change (non-blocking)', {
+        error: new Error(auditError.message),
+        metadata: { bookingId, nextStatus },
+      })
+    }
   }
 }
 
@@ -317,36 +616,69 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
     }
   }
 
-  // Calculate balance due date if not provided
-  let balanceDueDate = input.balance_due_date;
-  if (!balanceDueDate && finalEventDate && !input.date_tbd) {
-    const d = new Date(finalEventDate);
-    d.setDate(d.getDate() - 7);
-    balanceDueDate = toLocalIsoDate(d);
-  }
-
   const currentDateTime = new Date();
   const actualEventDate = new Date(finalEventDate);
+  const dueMoment = balanceDueMoment(actualEventDate);
+  const isShortNotice = !input.date_tbd && currentDateTime.getTime() > dueMoment.getTime();
+
+  // Balance & final details are due 14 calendar days before the event
+  // (SOP §13). Bookings created inside that window are due immediately.
+  let balanceDueDate = input.balance_due_date;
+  if (!balanceDueDate && finalEventDate && !input.date_tbd) {
+    balanceDueDate = isShortNotice
+      ? toLocalIsoDate(currentDateTime)
+      : toLocalIsoDate(dueMoment);
+  }
 
   const depositAmount = input.deposit_amount ?? 250;
   const requiresDeposit = depositAmount > 0;
+
+  // SOP §12: the £250 default deposit may only be reduced with a recorded
+  // reason (General Manager discretion); £0 requires an explicit waiver.
+  if (depositAmount === 0) {
+    if (!input.deposit_waived || !(input.deposit_waived_reason || '').trim()) {
+      throw new Error('A £0 deposit requires a General Manager waiver with a reason');
+    }
+  } else if (depositAmount < 250 && !(input.deposit_reduction_reason || '').trim()) {
+    throw new Error('Reducing the deposit below £250 requires a reason (General Manager discretion)');
+  }
+
+  // SOP §12: bar tabs need a recorded limit and pre-payment/pre-authorisation.
+  assertBarTabRules(input);
+
+  // SOP §6/§28: conflict + capacity gate for real-dated bookings with spaces.
+  const requestedSpaceIds = Array.from(new Set(
+    (input.items || [])
+      .filter((item) => item.item_type === 'space' && item.space_id)
+      .map((item) => item.space_id as string)
+  ));
+  if (requestedSpaceIds.length > 0 && !input.date_tbd && input.event_date) {
+    await assertSpaceAvailabilityAndCapacity({
+      spaceIds: requestedSpaceIds,
+      eventDate: input.event_date,
+      startTime: input.start_time ?? null,
+      endTime: input.end_time ?? null,
+      setupDate: input.setup_date ?? null,
+      setupTime: input.setup_time ?? null,
+      cleardownTime: input.cleardown_time ?? null,
+      guestCount: input.guest_count ?? null,
+      layout: input.layout ?? null,
+    });
+  }
+
   let holdExpiryMoment: Date | null = null;
 
-  // Logic for Deposit Due Date (Hold Expiry)
-  const sevenDaysBeforeEvent = new Date(actualEventDate);
-  sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
-
+  // Logic for Deposit Due Date (Hold Expiry) — a hold must never run past the
+  // balance & final-details deadline (SOP §10).
   if (!requiresDeposit || input.date_tbd) {
     holdExpiryMoment = null;
   } else if (input.hold_expiry) {
     // User manually specified a date
     holdExpiryMoment = new Date(input.hold_expiry);
 
-    const isShortNotice = currentDateTime.getTime() > sevenDaysBeforeEvent.getTime();
-
     if (!isShortNotice) {
-      if (holdExpiryMoment.getTime() > sevenDaysBeforeEvent.getTime()) {
-        holdExpiryMoment = sevenDaysBeforeEvent;
+      if (holdExpiryMoment.getTime() > dueMoment.getTime()) {
+        holdExpiryMoment = dueMoment;
       }
     } else {
       if (holdExpiryMoment.getTime() > actualEventDate.getTime()) {
@@ -415,6 +747,13 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
   if (error) {
     logger.error('Create private booking transaction error:', { error: error instanceof Error ? error : new Error(String(error)) });
     throw new Error('Failed to create private booking');
+  }
+
+  // 2b. Intake follow-up (SOP §9/§17/§18): the create RPC ignores unknown
+  // keys, so persist the intake fields + derived risk status with one admin
+  // UPDATE (non-blocking on failure).
+  if (booking) {
+    await applyIntakeFollowUp(booking.id, input);
   }
 
   // 3. Side Effects (Fire and Forget / Non-blocking mostly)
@@ -510,6 +849,39 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     if (!allowed.includes(input.status as BookingStatus)) {
       throw new Error(`Cannot transition booking from '${currentBooking.status}' to '${input.status}'`);
     }
+  }
+
+  // SOP §12: deposit reductions below £250 need a recorded reason; £0 needs an
+  // explicit GM waiver. Enforced on the edit path too (mirrors createBooking).
+  const depositChanged =
+    input.deposit_amount !== undefined &&
+    !currentBooking.deposit_paid_date &&
+    toNumber(input.deposit_amount) !== toNumber(currentBooking.deposit_amount)
+  if (depositChanged) {
+    const nextDeposit = toNumber(input.deposit_amount)
+    if (nextDeposit === 0) {
+      if (!input.deposit_waived || !(input.deposit_waived_reason || '').trim()) {
+        throw new Error('A £0 deposit requires a General Manager waiver with a reason')
+      }
+    } else if (nextDeposit < 250 && !(input.deposit_reduction_reason || '').trim()) {
+      throw new Error('Reducing the deposit below £250 requires a reason (General Manager discretion)')
+    }
+  }
+
+  // SOP §12: bar tab rules on the edit path — merge partial input with the
+  // current values so a limit-only edit is still validated against the flag.
+  const barTabTouched =
+    input.bar_tab_required !== undefined ||
+    input.bar_tab_limit !== undefined ||
+    input.bar_tab_prepaid_amount !== undefined ||
+    input.bar_tab_preauth_reference !== undefined
+  if (barTabTouched) {
+    assertBarTabRules({
+      bar_tab_required: input.bar_tab_required ?? (currentBooking as any).bar_tab_required,
+      bar_tab_limit: input.bar_tab_limit ?? (currentBooking as any).bar_tab_limit,
+      bar_tab_prepaid_amount: input.bar_tab_prepaid_amount ?? (currentBooking as any).bar_tab_prepaid_amount,
+      bar_tab_preauth_reference: input.bar_tab_preauth_reference ?? (currentBooking as any).bar_tab_preauth_reference,
+    })
   }
 
   let completedStatusAlreadyMessaged = false;
@@ -631,6 +1003,50 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
   // Remove non-column fields.
   delete updatePayload.items;
   delete updatePayload.default_country_code;
+  delete updatePayload.deposit_reduction_reason;
+  delete updatePayload.date_change_reason;
+
+  // cleardown_time is a time column — an empty string means "clear it".
+  if (typeof updatePayload.cleardown_time === 'string' && updatePayload.cleardown_time.trim() === '') {
+    updatePayload.cleardown_time = null;
+  }
+
+  // SOP §18: re-derive risk status when risk-relevant intake changes — but
+  // never overwrite a GM decision ('approved' / 'rejected').
+  const riskInputsTouched =
+    input.event_type !== undefined ||
+    input.guest_count !== undefined ||
+    input.guest_count_under_18 !== undefined ||
+    input.outside_food !== undefined ||
+    input.high_power_equipment !== undefined ||
+    input.special_risk_notes !== undefined
+  const currentRiskStatus = ((currentBooking as any).risk_status as string | undefined) ?? 'normal'
+  if (riskInputsTouched && !['approved', 'rejected'].includes(currentRiskStatus)) {
+    const derivedRisk = deriveRiskStatus({
+      event_type: input.event_type ?? currentBooking.event_type,
+      guest_count: input.guest_count ?? currentBooking.guest_count,
+      guest_count_under_18: input.guest_count_under_18 ?? (currentBooking as any).guest_count_under_18,
+      outside_food: input.outside_food ?? (currentBooking as any).outside_food,
+      high_power_equipment: input.high_power_equipment ?? (currentBooking as any).high_power_equipment,
+      special_risk_notes: input.special_risk_notes ?? (currentBooking as any).special_risk_notes,
+    })
+    // Only write when it actually changes — a no-op write would create a
+    // spurious audit entry and trip the cancelled/completed immutability guard.
+    if (derivedRisk !== currentRiskStatus) {
+      updatePayload.risk_status = derivedRisk
+    }
+  }
+
+  // Deposit waiver columns only move when the deposit amount itself changes:
+  // £0 records the waiver; any positive amount clears it.
+  if (depositChanged) {
+    const nextDeposit = toNumber(input.deposit_amount)
+    updatePayload.deposit_waived = nextDeposit === 0
+    updatePayload.deposit_waived_reason = nextDeposit === 0 ? (input.deposit_waived_reason || null) : null
+  } else {
+    delete updatePayload.deposit_waived
+    delete updatePayload.deposit_waived_reason
+  }
 
   // Handle TBD transitions
   const wasTbd = isBookingDateTbd(currentBooking);
@@ -682,6 +1098,36 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
   }
 
+  // SOP §6/§28: when the event timing moves on a real-dated booking with space
+  // items, re-check conflicts against other holds/confirmed bookings.
+  const startTimeChanged = input.start_time !== undefined &&
+    immutableBookingValuesDiffer('start_time', finalStartTime, currentBooking.start_time)
+  const endTimeChangedForConflicts = cleanedEndTime !== undefined &&
+    immutableBookingValuesDiffer('end_time', cleanedEndTime, currentBooking.end_time)
+  const setupTouched = normalizedSetupDate !== undefined || normalizedSetupTime !== undefined
+  const cleardownTouched = input.cleardown_time !== undefined
+  const timingChanged = Boolean(dateChanged) || startTimeChanged || endTimeChangedForConflicts || setupTouched || cleardownTouched
+  const effectiveDateTbd = input.date_tbd ?? wasTbd
+
+  if (timingChanged && !effectiveDateTbd && finalEventDate) {
+    const bookingSpaceIds = await getBookingSpaceIds(id)
+    if (bookingSpaceIds.length > 0) {
+      await assertSpaceAvailabilityAndCapacity({
+        spaceIds: bookingSpaceIds,
+        eventDate: finalEventDate,
+        startTime: finalStartTime,
+        endTime: cleanedEndTime === undefined ? (currentBooking.end_time as string | null) : cleanedEndTime,
+        setupDate: normalizedSetupDate === undefined ? (currentBooking.setup_date as string | null) : normalizedSetupDate,
+        setupTime: normalizedSetupTime === undefined ? (currentBooking.setup_time as string | null) : normalizedSetupTime,
+        cleardownTime: input.cleardown_time !== undefined
+          ? (input.cleardown_time || null)
+          : ((currentBooking as any).cleardown_time ?? null),
+        excludeBookingId: id,
+        skipCapacity: true,
+      })
+    }
+  }
+
   // 3. Perform Update
   const { data: updatedBooking, error } = await supabase
     .from('private_bookings')
@@ -697,6 +1143,82 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   if (!updatedBooking) {
     throw new Error('Booking not found');
+  }
+
+  // SOP §15.6: audit the date change (original date, new date, reason, approver).
+  if (dateChanged) {
+    try {
+      const { error: dateAuditError } = await createAdminClient().from('private_booking_audit').insert({
+        booking_id: id,
+        action: 'date_changed',
+        field_name: 'event_date',
+        old_value: String(currentBooking.event_date ?? ''),
+        new_value: String(updatedBooking.event_date ?? ''),
+        performed_by: performedByUserId ?? null,
+        metadata: {
+          reason: input.date_change_reason ?? null,
+          approved_by: performedByUserId ?? null,
+        },
+      })
+      if (dateAuditError) throw new Error(dateAuditError.message)
+    } catch (dateAuditFailure) {
+      logger.error('Failed to audit private booking date change (non-blocking)', {
+        error: dateAuditFailure instanceof Error ? dateAuditFailure : new Error(String(dateAuditFailure)),
+        metadata: { bookingId: id },
+      })
+    }
+  }
+
+  // SOP §28: field-level audit diffs for key commercial/contact fields
+  // (event_date is covered by the date_changed entry above).
+  try {
+    const auditedFieldKeys = [
+      'start_time', 'end_time', 'guest_count', 'deposit_amount', 'balance_due_date',
+      'contact_phone', 'contact_email', 'layout', 'bar_tab_limit',
+    ]
+    const stringifyAuditValue = (key: string, value: unknown): string => {
+      const normalised = normalizeImmutableBookingValue(key, value)
+      return normalised === null || normalised === undefined ? '' : String(normalised)
+    }
+    const fieldAuditRows = auditedFieldKeys
+      .filter((key) => key in updatePayload)
+      .map((key) => ({
+        key,
+        oldValue: stringifyAuditValue(key, (currentBooking as any)[key]),
+        newValue: stringifyAuditValue(key, updatePayload[key]),
+      }))
+      .filter((row) => row.oldValue !== row.newValue)
+      .map((row) => ({
+        booking_id: id,
+        action: 'field_updated',
+        field_name: row.key,
+        old_value: row.oldValue,
+        new_value: row.newValue,
+        performed_by: performedByUserId ?? null,
+      }))
+    if (fieldAuditRows.length > 0) {
+      const { error: fieldAuditError } = await createAdminClient()
+        .from('private_booking_audit')
+        .insert(fieldAuditRows)
+      if (fieldAuditError) throw new Error(fieldAuditError.message)
+    }
+  } catch (fieldAuditFailure) {
+    logger.error('Failed to write private booking field audit rows (non-blocking)', {
+      error: fieldAuditFailure instanceof Error ? fieldAuditFailure : new Error(String(fieldAuditFailure)),
+      metadata: { bookingId: id },
+    })
+  }
+
+  // SOP §17: add the £25 electricity line when high-power equipment is newly flagged.
+  if (input.high_power_equipment === true && (currentBooking as any).high_power_equipment !== true) {
+    try {
+      await ensureElectricityChargeItem(createAdminClient(), id)
+    } catch (electricityError) {
+      logger.error('Failed to add electricity charge item (non-blocking)', {
+        error: electricityError instanceof Error ? electricityError : new Error(String(electricityError)),
+        metadata: { bookingId: id },
+      })
+    }
   }
 
   const smsSideEffects: Array<{
@@ -759,14 +1281,19 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // 4. Side Effects
 
-  // Send Date Change SMS if hold was reset
-  if (!abortSmsSideEffects && holdExpiryIso && updatedBooking.status === 'draft') {
+  // Send Date Change SMS: drafts get it when the hold was reset; confirmed
+  // bookings get it on any real date change (SOP §15.6).
+  const shouldSendDateChangeSms =
+    (Boolean(holdExpiryIso) && updatedBooking.status === 'draft') ||
+    (Boolean(dateChanged) && updatedBooking.status === 'confirmed')
+  if (!abortSmsSideEffects && shouldSendDateChangeSms) {
     const eventDateReadable = formatPrivateBookingDate(updatedBooking.event_date);
 
-    const expiryDate = new Date(holdExpiryIso);
-    const expiryReadable = formatPrivateBookingDate(expiryDate, {
-      day: 'numeric', month: 'long'
-    });
+    const expiryReadable = holdExpiryIso
+      ? formatPrivateBookingDate(new Date(holdExpiryIso), {
+          day: 'numeric', month: 'long'
+        })
+      : null;
 
     const smsMessage = dateChangedMessage({
       customerFirstName: updatedBooking.customer_first_name,
@@ -1149,13 +1676,21 @@ export async function applyBookingDiscount(
 // Cancel booking
 // ---------------------------------------------------------------------------
 
-export async function cancelBooking(id: string, reason: string, performedByUserId?: string): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
+export async function cancelBooking(
+  id: string,
+  reason: string,
+  performedByUserId?: string,
+  options?: {
+    retentionDecision?: CancellationRetentionDecision | null
+    capture?: CancellationCaptureDetails | null
+  }
+): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
   const supabase = await createClient();
 
   // 1. Get Booking
   const { data: booking, error: fetchError } = await supabase
     .from('private_bookings')
-    .select('id, status, event_date, customer_first_name, customer_last_name, customer_name, contact_phone, calendar_event_id, customer_id, date_tbd, internal_notes')
+    .select('id, status, event_date, event_type, customer_first_name, customer_last_name, customer_name, contact_phone, contact_email, calendar_event_id, customer_id, date_tbd, internal_notes')
     .eq('id', id)
     .single();
 
@@ -1167,14 +1702,37 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     throw new Error('Booking cannot be cancelled');
   }
 
+  // 1b. Validate any retention decision before the booking is touched.
+  // SOP §14: for sub-30-day cancellations with a paid deposit, retention up
+  // to the full deposit is a manager decision with a recorded reason.
+  const retentionDecision = options?.retentionDecision ?? null
+  if (retentionDecision) {
+    const outcome = await getPrivateBookingCancellationOutcome(id)
+    if (outcome.outcome !== 'gm_review_required') {
+      throw new Error('A retention decision only applies to cancellations within 30 days of the event with a paid deposit')
+    }
+    if (retentionDecision.retainedAmount < 0 || retentionDecision.retainedAmount > outcome.max_retainable) {
+      throw new Error(`Retained amount must be between £0 and £${outcome.max_retainable}`)
+    }
+    if (retentionDecision.retainedAmount > 0 && !retentionDecision.reason.trim()) {
+      throw new Error('Please record the reason for retaining part or all of the deposit')
+    }
+  }
+
   // 2. Update Status
   const nowIso = new Date().toISOString();
+  // SOP §14: capture how and when the cancellation arrived and who processed it.
+  const capture = options?.capture ?? null;
+  const cancellationReceivedAt = capture?.receivedAt || nowIso;
   let { data: updatedBookingRow, error: updateError } = await supabase
     .from('private_bookings')
     .update({
       status: 'cancelled',
       cancellation_reason: reason || 'Cancelled by staff',
       cancelled_at: nowIso,
+      cancellation_channel: capture?.channel ?? null,
+      cancellation_received_at: cancellationReceivedAt,
+      cancelled_by: performedByUserId ?? null,
       updated_at: nowIso
     })
     .eq('id', id)
@@ -1245,23 +1803,24 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
 
   const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
 
+  const bookingIsTbd = isBookingDateTbd(booking);
+  const eventDate = bookingIsTbd
+    ? 'Date to be confirmed'
+    : formatPrivateBookingDate(booking.event_date);
+  const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
+
+  // Pick the cancellation variant based on paid totals + dispute state and
+  // any manager retention decision (SOP §14 — retention is never automatic).
+  // Shared by the SMS and the cancellation email (SOP §14.9).
+  const variant = await resolveCancellationSmsVariant({
+    bookingId: id,
+    customerFirstName: firstName,
+    eventDate: eventDate,
+    retentionDecision,
+  })
+
   // 4. SMS Notification
   if (booking.contact_phone || booking.customer_id) {
-    const bookingIsTbd = isBookingDateTbd(booking);
-    const eventDate = bookingIsTbd
-      ? 'Date to be confirmed'
-      : formatPrivateBookingDate(booking.event_date);
-
-    const firstName = booking.customer_first_name || booking.customer_name?.split(' ')[0] || 'there';
-    // Pick the cancellation variant based on paid totals + dispute state.
-    // See `resolveCancellationSmsVariant` for the four-outcome mapping.
-    const variant = await resolveCancellationSmsVariant({
-      bookingId: id,
-      customerFirstName: firstName,
-      eventDate: eventDate,
-    })
-
-
     let smsResult: any
     try {
       smsResult = await SmsQueueService.queueAndSend({
@@ -1325,13 +1884,47 @@ export async function cancelBooking(id: string, reason: string, performedByUserI
     }
   }
 
+  // 4b. Cancellation confirmation email (SOP §14.9) — fire-and-forget so an
+  // email failure never blocks the cancellation itself.
+  if (booking.contact_email) {
+    void sendBookingCancelledEmail({
+      id,
+      customer_id: booking.customer_id,
+      contact_email: booking.contact_email,
+      customer_first_name: booking.customer_first_name,
+      customer_name: booking.customer_name,
+      event_date: booking.event_date,
+      event_type: booking.event_type,
+      refund_amount: variant.refundAmount,
+      retained_amount: variant.retainedAmount,
+      retention_reason: retentionDecision?.reason ?? null,
+      outcome: variant.outcome,
+    }).catch((emailError) => {
+      logger.error('Private booking cancellation email background task failed', {
+        error: emailError instanceof Error ? emailError : new Error(String(emailError)),
+        metadata: { bookingId: id },
+      })
+    })
+  }
+
   await logAuditEvent({
     user_id: performedByUserId,
     operation_type: 'update',
     resource_type: 'private_booking',
     resource_id: id,
     operation_status: 'success',
-    additional_info: { action: 'cancellation', reason: reason || 'staff_cancelled' },
+    additional_info: {
+      action: 'cancellation',
+      reason: reason || 'staff_cancelled',
+      ...(capture?.channel ? { cancellation_channel: capture.channel } : {}),
+      cancellation_received_at: cancellationReceivedAt,
+      ...(retentionDecision
+        ? {
+            retention_retained_amount: retentionDecision.retainedAmount,
+            retention_reason: retentionDecision.reason,
+          }
+        : {}),
+    },
   })
 
   return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
@@ -1466,10 +2059,16 @@ export async function expireBooking(
 export async function extendHold(
   id: string,
   days: 7 | 14 | 30,
-  extendedBy?: string
+  extendedBy?: string,
+  reason?: string
 ): Promise<{ success: true; newExpiry: string; smsSent: boolean }> {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
+
+  // SOP §10: hold extensions require a recorded reason.
+  if (!(reason || '').trim()) {
+    throw new Error('Please record a reason for extending the hold');
+  }
 
   // 1. Fetch booking
   const { data: booking, error: fetchError } = await supabase
@@ -1488,13 +2087,14 @@ export async function extendHold(
   const newExpiry = new Date(baseDate);
   newExpiry.setDate(newExpiry.getDate() + days);
 
-  // Cap at 7 days before the event (matching creation logic)
+  // Cap at the balance & final-details due date — a hold must never run past
+  // it (SOP §10). Extensions inside the 14-day window cap at the event start.
   if (booking.event_date) {
     const eventDate = new Date(booking.event_date);
-    const sevenDaysBeforeEvent = new Date(eventDate);
-    sevenDaysBeforeEvent.setDate(sevenDaysBeforeEvent.getDate() - 7);
-    if (newExpiry > sevenDaysBeforeEvent) {
-      newExpiry.setTime(sevenDaysBeforeEvent.getTime());
+    const dueMoment = balanceDueMoment(eventDate);
+    const cap = new Date() > dueMoment ? eventDate : dueMoment;
+    if (newExpiry > cap) {
+      newExpiry.setTime(cap.getTime());
     }
   }
 
@@ -1542,6 +2142,7 @@ export async function extendHold(
           event_date: eventDateReadable,
           new_expiry: expiryReadable,
           extended_days: days,
+          extension_reason: reason,
         }
       });
     } catch (error) {
@@ -1571,13 +2172,14 @@ export async function extendHold(
 export async function deletePrivateBooking(id: string): Promise<{ deletedBooking: any }> {
   const supabase = await createClient();
 
-  // GATE: block if any SMS was sent, or is approved-and-scheduled for a future
-  // time — UNLESS the booking is already cancelled (customer already notified).
-  // The DB trigger is the last-line defence; this action-layer check surfaces
-  // a friendly error for the UI.
+  // GATE (SOP §8): a booking may be hard-deleted only when no payment has been
+  // made, no contract/document has been generated, and no customer SMS or
+  // email has been sent or queued. Cancelled bookings are NOT exempt —
+  // cancellation records must be retained. The DB trigger is the last-line
+  // defence; this action-layer check surfaces a friendly error for the UI.
   const { data: bookingRow, error: bookingCheckError } = await supabase
     .from('private_bookings')
-    .select('status')
+    .select('status, deposit_paid_date, contract_version')
     .eq('id', id)
     .single();
 
@@ -1585,30 +2187,43 @@ export async function deletePrivateBooking(id: string): Promise<{ deletedBooking
     throw new Error('Booking not found or inaccessible.');
   }
 
-  // Skip SMS gate for cancelled bookings — customer already notified
-  if (bookingRow.status !== 'cancelled') {
-    const { data: blockingRows, error: blockingError } = await supabase
-      .from('private_booking_sms_queue')
-      .select('id, status, scheduled_for')
-      .eq('booking_id', id)
-      .or('status.eq.sent,and(status.eq.approved,scheduled_for.gt.now())');
+  if (bookingRow.deposit_paid_date) {
+    throw new Error('Cannot delete booking: a deposit has been paid. Use Cancel instead.');
+  }
+  if ((bookingRow.contract_version ?? 0) > 0) {
+    throw new Error('Cannot delete booking: a contract has been generated. Use Cancel instead.');
+  }
 
-    if (blockingError) {
-      const blockingErr = blockingError as { message?: string } | null;
-      logger.error('deletePrivateBooking: failed to check SMS gate', {
-        error: blockingError instanceof Error
-          ? blockingError
-          : new Error(String(blockingErr?.message ?? blockingError)),
-        metadata: { bookingId: id },
-      });
-      throw new Error('Failed to verify delete eligibility; please try again.');
-    }
+  const admin = createAdminClient();
 
-    if (blockingRows && blockingRows.length > 0) {
-      throw new Error(
-        `Cannot delete booking: customer has received ${blockingRows.length} SMS message(s). Use Cancel instead so they're notified.`,
-      );
-    }
+  const [paymentsCheck, documentsCheck, emailsCheck, smsCheck] = await Promise.all([
+    admin.from('private_booking_payments').select('id', { count: 'exact', head: true }).eq('booking_id', id),
+    admin.from('private_booking_documents').select('id', { count: 'exact', head: true }).eq('booking_id', id),
+    admin.from('email_messages').select('id', { count: 'exact', head: true }).eq('private_booking_id', id).neq('direction', 'inbound'),
+    admin.from('private_booking_sms_queue').select('id', { count: 'exact', head: true }).eq('booking_id', id)
+      .or('status.eq.sent,and(status.eq.approved,scheduled_for.gt.now())'),
+  ]);
+
+  const gateError = paymentsCheck.error || documentsCheck.error || emailsCheck.error || smsCheck.error;
+  if (gateError) {
+    logger.error('deletePrivateBooking: failed to check delete gate', {
+      error: new Error((gateError as { message?: string }).message ?? String(gateError)),
+      metadata: { bookingId: id },
+    });
+    throw new Error('Failed to verify delete eligibility; please try again.');
+  }
+
+  if ((paymentsCheck.count ?? 0) > 0) {
+    throw new Error('Cannot delete booking: payments have been recorded. Use Cancel instead.');
+  }
+  if ((documentsCheck.count ?? 0) > 0) {
+    throw new Error('Cannot delete booking: a contract or document has been generated. Use Cancel instead.');
+  }
+  if ((emailsCheck.count ?? 0) > 0) {
+    throw new Error('Cannot delete booking: the customer has been emailed. Use Cancel instead.');
+  }
+  if ((smsCheck.count ?? 0) > 0) {
+    throw new Error("Cannot delete booking: the customer has received SMS message(s). Use Cancel instead so they're notified.");
   }
 
   // D16: DB delete first, then calendar cleanup (reverse order for safety)
@@ -1696,6 +2311,7 @@ export async function addBookingItem(data: {
   discount_value?: number;
   discount_type?: 'percent' | 'fixed';
   notes?: string | null;
+  vat_rate?: number;
 }): Promise<{ success: true }> {
   // D9: Server-side discount bounds validation
   if (data.discount_value !== undefined && data.discount_value !== null) {
@@ -1710,7 +2326,58 @@ export async function addBookingItem(data: {
     }
   }
 
+  // SOP §6: adding a space must not clash with other holds/confirmed bookings.
+  if (data.item_type === 'space' && data.space_id) {
+    const adminForConflicts = createAdminClient();
+    const { data: bookingRow, error: bookingLookupError } = await adminForConflicts
+      .from('private_bookings')
+      .select('event_date, start_time, end_time, setup_date, setup_time, cleardown_time, date_tbd, internal_notes')
+      .eq('id', data.booking_id)
+      .maybeSingle();
+    if (bookingLookupError) {
+      // Fail open: a broken lookup must not block the item flow.
+      logger.error('Space conflict pre-check skipped: booking lookup failed', {
+        error: new Error(bookingLookupError.message),
+        metadata: { bookingId: data.booking_id },
+      });
+    } else if (bookingRow?.event_date && !isBookingDateTbd(bookingRow)) {
+      const conflicts = await findBookingConflicts({
+        eventDate: bookingRow.event_date as string,
+        startTime: (bookingRow.start_time as string | null) ?? null,
+        endTime: (bookingRow.end_time as string | null) ?? null,
+        setupDate: (bookingRow.setup_date as string | null) ?? null,
+        setupTime: (bookingRow.setup_time as string | null) ?? null,
+        cleardownTime: ((bookingRow as any).cleardown_time as string | null) ?? null,
+        spaceIds: [data.space_id],
+        excludeBookingId: data.booking_id,
+      });
+      if (conflicts.length > 0) {
+        throw new Error(formatConflictError(conflicts[0]));
+      }
+    }
+  }
+
   const supabase = await createClient();
+
+  // Snapshot the VAT rate from the source package/space (stored prices are
+  // net; the rate is frozen on the line at the time it is added).
+  let vatRate = data.vat_rate;
+  if (vatRate === undefined || vatRate === null) {
+    try {
+      if (data.package_id) {
+        const { data: pkg } = await supabase
+          .from('catering_packages').select('vat_rate').eq('id', data.package_id).maybeSingle();
+        vatRate = toNumber(pkg?.vat_rate, 20);
+      } else if (data.space_id) {
+        const { data: space } = await supabase
+          .from('venue_spaces').select('vat_rate').eq('id', data.space_id).maybeSingle();
+        vatRate = toNumber(space?.vat_rate, 20);
+      }
+    } catch {
+      vatRate = undefined;
+    }
+    vatRate = vatRate ?? 20;
+  }
 
   const { data: lastItem, error: orderError } = await supabase
     .from('private_booking_items')
@@ -1739,6 +2406,7 @@ export async function addBookingItem(data: {
       description: data.description,
       quantity: data.quantity,
       unit_price: data.unit_price,
+      vat_rate: vatRate,
       discount_value: data.discount_value,
       discount_type: data.discount_type,
       notes: data.notes,
@@ -1756,6 +2424,18 @@ export async function addBookingItem(data: {
     await admin.rpc('apply_balance_payment_status', { p_booking_id: data.booking_id });
   } catch (reconcileError) {
     logger.error('Failed to reconcile payment status after item add:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
+  }
+
+  // SOP §21: catering changes can flip the waiver requirement.
+  if (data.item_type === 'catering') {
+    try {
+      await reconcileWaiverStatus(data.booking_id);
+    } catch (waiverError) {
+      logger.error('Failed to reconcile waiver status after item add (non-blocking)', {
+        error: waiverError instanceof Error ? waiverError : new Error(String(waiverError)),
+        metadata: { bookingId: data.booking_id },
+      });
+    }
   }
 
   return { success: true };
@@ -1838,7 +2518,7 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
 
   const { data: item, error: fetchError } = await supabase
     .from('private_booking_items')
-    .select('booking_id')
+    .select('booking_id, item_type')
     .eq('id', itemId)
     .single();
 
@@ -1868,6 +2548,19 @@ export async function deleteBookingItem(itemId: string): Promise<{ success: true
     await admin.rpc('apply_balance_payment_status', { p_booking_id: item.booking_id });
   } catch (reconcileError) {
     logger.error('Failed to reconcile payment status after item delete:', { error: reconcileError instanceof Error ? reconcileError : new Error(String(reconcileError)) });
+  }
+
+  // SOP §21: removing the last waiver package drops 'required' back to
+  // 'not_required' (never downgrades 'sent'/'signed').
+  if (item.item_type === 'catering') {
+    try {
+      await reconcileWaiverStatus(item.booking_id);
+    } catch (waiverError) {
+      logger.error('Failed to reconcile waiver status after item delete (non-blocking)', {
+        error: waiverError instanceof Error ? waiverError : new Error(String(waiverError)),
+        metadata: { bookingId: item.booking_id },
+      });
+    }
   }
 
   return { success: true, bookingId: item.booking_id };
@@ -2140,7 +2833,7 @@ export async function deleteVenueSpace(id: string, userId: string, userEmail?: s
 export async function createCateringPackage(data: {
   name: string;
   serving_style: string;
-  category: 'food' | 'drink' | 'addon';
+  category: 'food' | 'drink' | 'addon' | 'self_catering' | 'other';
   per_head_cost: number;
   pricing_model?: 'per_head' | 'total_value';
   minimum_order?: number | null;
@@ -2218,7 +2911,7 @@ export async function createCateringPackage(data: {
 export async function updateCateringPackage(id: string, data: {
   name: string;
   serving_style: string;
-  category: 'food' | 'drink' | 'addon';
+  category: 'food' | 'drink' | 'addon' | 'self_catering' | 'other';
   per_head_cost: number;
   pricing_model?: 'per_head' | 'total_value';
   minimum_order?: number | null;

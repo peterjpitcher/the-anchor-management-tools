@@ -207,6 +207,20 @@ describe('private booking monitor route error payloads', () => {
               }
             }
 
+            // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
+            if (columns === 'id, status, event_date') {
+              return {
+                or: () => ({
+                  not: () => ({
+                    is: () => ({
+                      is: () => ({
+                        limit: vi.fn().mockResolvedValue({ data: [], error: null })
+                      })
+                    })
+                  })
+                })
+              }
+            }
             throw new Error(`Unexpected private_bookings select: ${columns}`)
           }),
         }
@@ -228,11 +242,15 @@ describe('private booking monitor route error payloads', () => {
       }
 
       if (table === 'private_bookings_with_details') {
+        // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+        //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              gt: vi.fn(() => ({
-                lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+              not: vi.fn(() => ({
+                gte: vi.fn(() => ({
+                  lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                })),
               })),
             })),
           })),
@@ -278,7 +296,8 @@ describe('private booking monitor route error payloads', () => {
           customer_first_name: 'Test',
           customer_name: 'Test User',
           contact_phone: '+447700900123',
-          hold_expiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          // 5 days out — inside the 7-day reminder window (4-7 days)
+          hold_expiry: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
           event_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           customer_id: 'customer-1',
           deposit_amount: 250,
@@ -289,7 +308,7 @@ describe('private booking monitor route error payloads', () => {
           customer_first_name: 'Test2',
           customer_name: 'Test User2',
           contact_phone: '+447700900124',
-          hold_expiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          hold_expiry: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
           event_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           customer_id: 'customer-2',
           deposit_amount: 250,
@@ -334,6 +353,20 @@ describe('private booking monitor route error payloads', () => {
                   }
                 }
 
+                // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
+                if (columns === 'id, status, event_date') {
+                  return {
+                    or: () => ({
+                      not: () => ({
+                        is: () => ({
+                          is: () => ({
+                            limit: vi.fn().mockResolvedValue({ data: [], error: null })
+                          })
+                        })
+                      })
+                    })
+                  }
+                }
                 throw new Error(`Unexpected private_bookings select: ${columns}`)
               }),
             }
@@ -503,17 +536,35 @@ describe('private booking monitor route error payloads', () => {
                   }
                 }
 
+                // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
+                if (columns === 'id, status, event_date') {
+                  return {
+                    or: () => ({
+                      not: () => ({
+                        is: () => ({
+                          is: () => ({
+                            limit: vi.fn().mockResolvedValue({ data: [], error: null })
+                          })
+                        })
+                      })
+                    })
+                  }
+                }
                 throw new Error(`Unexpected private_bookings select: ${columns}`)
               }),
             }
           }
 
           if (table === 'private_bookings_with_details') {
+            // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+            //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
             return {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
-                  gt: vi.fn(() => ({
-                    lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                  not: vi.fn(() => ({
+                    gte: vi.fn(() => ({
+                      lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
                   })),
                 })),
               })),

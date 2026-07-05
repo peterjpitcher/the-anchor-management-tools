@@ -54,6 +54,11 @@ export function CateringPackageModal({
 
             const getString = (key: string) => formData.get(key) as string || null
 
+            const parseVatRate = (value: FormDataEntryValue | null) => {
+                const parsed = parseFloat(value as string)
+                return isNaN(parsed) ? 20 : parsed
+            }
+
             if (isEditing && packageToEdit) {
                 // Need to append the ID for update
                 formData.append('packageId', packageToEdit.id)
@@ -61,7 +66,7 @@ export function CateringPackageModal({
                 result = await updateCateringPackage(packageToEdit.id, {
                     name: formData.get('name') as string,
                     serving_style: formData.get('serving_style') as string,
-                    category: formData.get('category') as 'food' | 'drink' | 'addon',
+                    category: formData.get('category') as CateringPackage['category'],
                     per_head_cost: parseCost(formData.get('cost_per_head')),
                     pricing_model: formData.get('pricing_model') as any,
                     minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
@@ -71,13 +76,17 @@ export function CateringPackageModal({
                     good_to_know: getString('good_to_know'),
                     guest_description: getString('guest_description'),
                     dietary_notes: getString('dietary_notes'),
+                    vat_rate: parseVatRate(formData.get('vat_rate')),
+                    requires_waiver: formData.get('requires_waiver') === 'on',
+                    requires_allergy_capture: formData.get('requires_allergy_capture') === 'on',
+                    seasonal: formData.get('seasonal') === 'on',
                     is_active: formData.get('active') === 'on'
                 })
             } else {
                 result = await createCateringPackage({
                     name: formData.get('name') as string,
                     serving_style: formData.get('serving_style') as string,
-                    category: formData.get('category') as 'food' | 'drink' | 'addon',
+                    category: formData.get('category') as CateringPackage['category'],
                     per_head_cost: parseCost(formData.get('cost_per_head')),
                     pricing_model: formData.get('pricing_model') as any,
                     minimum_order: parseInt(formData.get('minimum_guests') as string) || null,
@@ -87,6 +96,10 @@ export function CateringPackageModal({
                     good_to_know: getString('good_to_know'),
                     guest_description: getString('guest_description'),
                     dietary_notes: getString('dietary_notes'),
+                    vat_rate: parseVatRate(formData.get('vat_rate')),
+                    requires_waiver: formData.get('requires_waiver') === 'on',
+                    requires_allergy_capture: formData.get('requires_allergy_capture') === 'on',
+                    seasonal: formData.get('seasonal') === 'on',
                     is_active: formData.get('active') === 'on'
                 })
             }
@@ -126,7 +139,9 @@ export function CateringPackageModal({
     const categoryOptions = [
         { value: 'food', label: 'Food' },
         { value: 'drink', label: 'Drinks' },
-        { value: 'addon', label: 'Add-ons' }
+        { value: 'addon', label: 'Add-ons' },
+        { value: 'self_catering', label: 'Self-catering' },
+        { value: 'other', label: 'Other' }
     ]
 
     const servingStyleOptions = [
@@ -229,6 +244,17 @@ export function CateringPackageModal({
                         />
                     </FormGroup>
 
+                    <FormGroup label="VAT Rate (%)" help="Stored prices are net; VAT is applied on top at this rate">
+                        <Input
+                            type="number"
+                            name="vat_rate"
+                            defaultValue={packageToEdit?.vat_rate ?? 20}
+                            min="0"
+                            step="0.01"
+                            placeholder="20"
+                        />
+                    </FormGroup>
+
                     <div className="flex items-center pt-6">
                         <Checkbox
                             name="active"
@@ -236,6 +262,31 @@ export function CateringPackageModal({
                             defaultChecked={packageToEdit?.active ?? true}
                         />
                     </div>
+                </div>
+
+                <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Compliance</h3>
+
+                    <Checkbox
+                        name="requires_waiver"
+                        label="Requires self-catering waiver"
+                        description="Booking this package requires the customer to sign the outside-food responsibility agreement"
+                        defaultChecked={packageToEdit?.requires_waiver ?? false}
+                    />
+
+                    <Checkbox
+                        name="requires_allergy_capture"
+                        label="Requires allergy capture"
+                        description="Allergy details must be captured before the event when this package is booked"
+                        defaultChecked={packageToEdit?.requires_allergy_capture ?? false}
+                    />
+
+                    <Checkbox
+                        name="seasonal"
+                        label="Seasonal"
+                        description="This package is only available during certain times of the year"
+                        defaultChecked={packageToEdit?.seasonal ?? false}
+                    />
                 </div>
 
                 <div className="space-y-4">

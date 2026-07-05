@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { createPrivateBooking } from '@/app/actions/privateBookingActions'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
+import { EventDetailsRiskSection } from '@/components/private-bookings/EventDetailsRiskSection'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
@@ -19,6 +20,7 @@ import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
+import { Checkbox } from '@/ds'
 import { FormGroup } from '@/ds'
 import { Alert } from '@/ds'
 import { LinkButton } from '@/ds'
@@ -42,6 +44,14 @@ export default function NewPrivateBookingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [dateTbd, setDateTbd] = useState(false)
+  // SOP §12: the £250 standard deposit may only be reduced with a recorded
+  // GM reason; £0 requires an explicit GM waiver plus reason.
+  const [depositAmountInput, setDepositAmountInput] = useState('250')
+  const [depositWaived, setDepositWaived] = useState(false)
+
+  const depositValue = Number(depositAmountInput)
+  const showDepositReduction = Number.isFinite(depositValue) && depositValue > 0 && depositValue < 250
+  const showDepositWaiver = depositAmountInput.trim() !== '' && depositValue === 0
 
   useEffect(() => {
     async function checkPermission() {
@@ -71,10 +81,17 @@ export default function NewPrivateBookingPage() {
     setError('')
 
     const formData = new FormData(e.currentTarget)
-    
+
     // Add customer_id if a customer was selected
     if (selectedCustomer) {
       formData.set('customer_id', selectedCustomer.id)
+    }
+
+    // A £0 deposit requires the GM waiver to be explicitly confirmed
+    if (showDepositWaiver && !depositWaived) {
+      setError('A £0 deposit requires a General Manager waiver — please confirm the waiver')
+      setIsSubmitting(false)
+      return
     }
 
     try {
@@ -312,6 +329,9 @@ export default function NewPrivateBookingPage() {
             </div>
           </Section>
 
+          {/* Event Details & Risk (SOP intake) */}
+          <EventDetailsRiskSection />
+
           {/* Setup Details */}
           <Section
             title="Setup Details"
@@ -357,7 +377,8 @@ export default function NewPrivateBookingPage() {
                   name="deposit_amount"
                   step="0.01"
                   min="0"
-                  defaultValue="250"
+                  value={depositAmountInput}
+                  onChange={(e) => setDepositAmountInput(e.target.value)}
                 />
               </FormGroup>
               <FormGroup
@@ -372,8 +393,8 @@ export default function NewPrivateBookingPage() {
                 />
               </FormGroup>
               <FormGroup
-                label="Balance Due Date"
-                help="Leave blank to auto-calculate (14 days before event)"
+                label="Balance & Final Details Due"
+                help="Balance and final details are due 14 days before the event — leave blank to auto-calculate"
               >
                 <Input
                   type="date"
@@ -382,6 +403,42 @@ export default function NewPrivateBookingPage() {
                 />
               </FormGroup>
             </div>
+            {showDepositReduction && (
+              <div className="mt-4">
+                <FormGroup
+                  label="Reason for reduced deposit (GM discretion)"
+                  help="The standard deposit is £250 — reducing it needs a recorded reason"
+                >
+                  <Input
+                    type="text"
+                    id="deposit_reduction_reason"
+                    name="deposit_reduction_reason"
+                    required
+                    placeholder="e.g. Repeat corporate client"
+                  />
+                </FormGroup>
+              </div>
+            )}
+            {showDepositWaiver && (
+              <div className="mt-4 space-y-4">
+                <Checkbox
+                  name="deposit_waived"
+                  value="true"
+                  checked={depositWaived}
+                  onChange={(checked) => setDepositWaived(checked)}
+                  label="Deposit waived (GM approved — venue-hosted/internal event)"
+                />
+                <FormGroup label="Reason for waiving the deposit">
+                  <Input
+                    type="text"
+                    id="deposit_waived_reason"
+                    name="deposit_waived_reason"
+                    required
+                    placeholder="e.g. Venue-hosted event"
+                  />
+                </FormGroup>
+              </div>
+            )}
           </Section>
 
           {/* Additional Information */}
