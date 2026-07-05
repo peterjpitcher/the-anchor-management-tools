@@ -514,7 +514,7 @@ describe('privateBookingActions', () => {
       const result = await cancelPrivateBooking('booking-1', 'Customer changed plans')
 
       expect(result).toEqual(expectedResult)
-      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', 'Customer changed plans', 'user-1')
+      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', 'Customer changed plans', 'user-1', undefined)
     })
 
     it('should pass empty string when no reason given', async () => {
@@ -522,7 +522,54 @@ describe('privateBookingActions', () => {
 
       await cancelPrivateBooking('booking-1')
 
-      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', '', 'user-1')
+      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', '', 'user-1', undefined)
+    })
+
+    it('should pass a retention decision through to the service (SOP §14)', async () => {
+      mockedCancelBooking.mockResolvedValue({ success: true })
+
+      const retention = { retainedAmount: 100, reason: 'Supplier costs already incurred' }
+      const result = await cancelPrivateBooking('booking-1', 'Customer cancelled', retention)
+
+      expect(result).toEqual({ success: true })
+      expect(mockedCancelBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'Customer cancelled',
+        'user-1',
+        { retentionDecision: retention, capture: null }
+      )
+    })
+
+    it('should require GM override permission to retain more than £0 (SOP §14)', async () => {
+      mockedPermission.mockImplementation((_module: string, action: string) =>
+        Promise.resolve(action === 'edit')
+      )
+
+      const result = await cancelPrivateBooking('booking-1', 'Customer cancelled', {
+        retainedAmount: 100,
+        reason: 'Supplier costs',
+      })
+
+      expect(result).toEqual({ error: 'Retaining a deposit requires General Manager override permission' })
+      expect(mockedCancelBooking).not.toHaveBeenCalled()
+    })
+
+    it('should not require GM override permission for a £0 retention decision', async () => {
+      mockedPermission.mockImplementation((_module: string, action: string) =>
+        Promise.resolve(action === 'edit')
+      )
+      mockedCancelBooking.mockResolvedValue({ success: true })
+
+      const retention = { retainedAmount: 0, reason: 'Nothing to retain' }
+      const result = await cancelPrivateBooking('booking-1', 'Customer cancelled', retention)
+
+      expect(result).toEqual({ success: true })
+      expect(mockedCancelBooking).toHaveBeenCalledWith(
+        'booking-1',
+        'Customer cancelled',
+        'user-1',
+        { retentionDecision: retention, capture: null }
+      )
     })
 
     it('should return error when permission denied', async () => {
@@ -792,13 +839,17 @@ describe('privateBookingActions', () => {
     it('should extend hold and audit-log on success', async () => {
       mockedExtendHold.mockResolvedValue({ success: true })
 
-      const result = await extendBookingHold('booking-1', 14)
+      const result = await extendBookingHold('booking-1', 14, 'Customer finalising numbers')
 
       expect(result).toEqual({ success: true })
-      expect(mockedExtendHold).toHaveBeenCalledWith('booking-1', 14, 'user-1')
+      expect(mockedExtendHold).toHaveBeenCalledWith('booking-1', 14, 'user-1', 'Customer finalising numbers')
       expect(mockedLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
-          additional_info: expect.objectContaining({ action: 'extend_booking_hold', days: 14 }),
+          additional_info: expect.objectContaining({
+            action: 'extend_booking_hold',
+            days: 14,
+            reason: 'Customer finalising numbers',
+          }),
         })
       )
     })
@@ -806,15 +857,29 @@ describe('privateBookingActions', () => {
     it('should return error when permission denied', async () => {
       mockedPermission.mockResolvedValue(false)
 
-      const result = await extendBookingHold('booking-1', 7)
+      const result = await extendBookingHold('booking-1', 7, 'Customer finalising numbers')
 
       expect(result).toEqual({ error: 'You do not have permission to extend booking holds' })
+    })
+
+    it('should require a reason (SOP §10)', async () => {
+      const result = await extendBookingHold('booking-1', 7)
+
+      expect(result).toEqual({ error: 'Please record a reason for extending the hold' })
+      expect(mockedExtendHold).not.toHaveBeenCalled()
+    })
+
+    it('should reject a whitespace-only reason', async () => {
+      const result = await extendBookingHold('booking-1', 7, '   ')
+
+      expect(result).toEqual({ error: 'Please record a reason for extending the hold' })
+      expect(mockedExtendHold).not.toHaveBeenCalled()
     })
 
     it('should handle service error', async () => {
       mockedExtendHold.mockRejectedValue(new Error('Hold already expired'))
 
-      const result = await extendBookingHold('booking-1', 30)
+      const result = await extendBookingHold('booking-1', 30, 'Customer finalising numbers')
 
       expect(result).toEqual({ error: 'Hold already expired' })
     })
@@ -1026,6 +1091,7 @@ describe('privateBookingActions', () => {
       fd.set('type', 'deposit')
       fd.set('amount', '150')
       fd.set('method', 'cash')
+      fd.set('reduction_reason', 'GM agreed reduced deposit for repeat customer')
 
       const result = await editPrivateBookingPayment(fd)
 
@@ -1033,7 +1099,12 @@ describe('privateBookingActions', () => {
       expect(mockedUpdateDepositAmount).toHaveBeenCalledWith(
         '660e8400-e29b-41d4-a716-446655440000',
         150,
-        'user-1'
+        'user-1',
+        {
+          reductionReason: 'GM agreed reduced deposit for repeat customer',
+          waived: false,
+          waivedReason: undefined,
+        }
       )
       expect(mockedUpdateDeposit).not.toHaveBeenCalled()
     })
@@ -1059,6 +1130,8 @@ describe('privateBookingActions', () => {
       fd.set('type', 'deposit')
       fd.set('amount', '0')
       fd.set('method', 'cash')
+      fd.set('waived', 'true')
+      fd.set('waived_reason', 'Venue-hosted charity event — GM waiver')
 
       const result = await editPrivateBookingPayment(fd)
 
@@ -1066,13 +1139,20 @@ describe('privateBookingActions', () => {
       expect(mockedUpdateDepositAmount).toHaveBeenCalledWith(
         '660e8400-e29b-41d4-a716-446655440000',
         0,
-        'user-1'
+        'user-1',
+        {
+          reductionReason: undefined,
+          waived: true,
+          waivedReason: 'Venue-hosted charity event — GM waiver',
+        }
       )
       expect(mockedUpdateDeposit).not.toHaveBeenCalled()
       expect(mockedLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           additional_info: expect.objectContaining({
             no_deposit_required: true,
+            deposit_waived: true,
+            waived_reason: 'Venue-hosted charity event — GM waiver',
           }),
         })
       )

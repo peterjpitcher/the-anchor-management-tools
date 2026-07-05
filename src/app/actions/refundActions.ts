@@ -4,6 +4,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { sendRefundNotification } from '@/lib/refund-notifications'
+import {
+  sendDepositRefundEmail,
+  sendDepositRefundWithDeductionsEmail,
+} from '@/lib/email/private-booking-emails'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { revalidatePath } from 'next/cache'
@@ -170,6 +174,59 @@ async function updateRefundStatus(
   }
 }
 
+/**
+ * Post-event deposit refund notice (SOP §25.7–8): itemised email with any
+ * deduction explained. Cancellation refunds are covered by the cancellation
+ * email, so this only fires for completed bookings. Fire-and-forget.
+ */
+async function sendPrivateBookingRefundEmailSideEffect(
+  db: ReturnType<typeof createAdminClient>,
+  sourceType: SourceType,
+  sourceId: string,
+  refundAmount: number,
+  reason: string,
+): Promise<void> {
+  if (sourceType !== 'private_booking') return
+  try {
+    const { data: pb } = await db
+      .from('private_bookings')
+      .select('id, status, customer_id, contact_email, customer_first_name, customer_name, event_date, event_type, deposit_amount')
+      .eq('id', sourceId)
+      .maybeSingle()
+    if (!pb?.contact_email || pb.status !== 'completed') return
+
+    const deposit = Number(pb.deposit_amount ?? 0)
+    if (deposit > 0 && refundAmount + 0.005 < deposit) {
+      await sendDepositRefundWithDeductionsEmail({
+        id: pb.id,
+        customer_id: pb.customer_id,
+        contact_email: pb.contact_email,
+        customer_first_name: pb.customer_first_name,
+        customer_name: pb.customer_name,
+        event_date: pb.event_date,
+        event_type: pb.event_type,
+        deposit_amount: deposit,
+        deduction_amount: Math.round((deposit - refundAmount) * 100) / 100,
+        deduction_reason: reason,
+        refund_amount: refundAmount,
+      })
+    } else {
+      await sendDepositRefundEmail({
+        id: pb.id,
+        customer_id: pb.customer_id,
+        contact_email: pb.contact_email,
+        customer_first_name: pb.customer_first_name,
+        customer_name: pb.customer_name,
+        event_date: pb.event_date,
+        event_type: pb.event_type,
+        refund_amount: refundAmount,
+      })
+    }
+  } catch {
+    // Fire-and-forget: email failure must never fail the refund itself.
+  }
+}
+
 export async function processPayPalRefund(
   sourceType: SourceType,
   sourceId: string,
@@ -296,6 +353,7 @@ export async function processPayPalRefund(
       }
 
       await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+      void sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, reason)
 
       let notificationStatus: string | null = null
       if (booking.customerName) {
@@ -499,6 +557,7 @@ export async function processManualRefund(
 
   // 6. Update booking refund status
   await updateRefundStatus(db, sourceType, sourceId, booking.originalAmount)
+  void sendPrivateBookingRefundEmailSideEffect(db, sourceType, sourceId, amount, reason)
 
   // 7. Audit
   await logAuditEvent({

@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest'
 import {
   privateBookingCreatedMessage,
   depositReminder7DayMessage,
+  depositReminder3DayMessage,
   depositReminder1DayMessage,
   depositReceivedMessage,
   bookingConfirmedMessage,
-  balanceReminder14DayMessage,
-  balanceReminder7DayMessage,
-  balanceReminder1DayMessage,
+  balanceReminder21DayMessage,
+  balanceReminder16DayMessage,
+  balanceReminder15DayMessage,
+  balanceReminderDueMessage,
   finalPaymentMessage,
   setupReminderMessage,
   dateChangedMessage,
@@ -15,7 +17,8 @@ import {
   holdExtendedMessage,
   bookingCancelledHoldMessage,
   bookingCancelledRefundableMessage,
-  bookingCancelledNonRefundableMessage,
+  bookingCancelledRetentionMessage,
+  bookingCancelledReviewPendingMessage,
   bookingCancelledManualReviewMessage,
   bookingExpiredMessage,
   bookingCompletedThanksMessage,
@@ -70,15 +73,44 @@ describe('bookingCancelledRefundableMessage', () => {
   })
 })
 
-describe('bookingCancelledNonRefundableMessage', () => {
-  it('states retained amount with booking-terms wording', () => {
-    const body = bookingCancelledNonRefundableMessage({
+describe('bookingCancelledRetentionMessage', () => {
+  it('states the reviewed retained amount and the refund when one is due', () => {
+    const body = bookingCancelledRetentionMessage({
       customerFirstName: 'Sarah',
       eventDate: '12 May 2026',
       retainedAmount: 150,
+      refundAmount: 50,
     })
     expect(body).toContain('£150')
-    expect(body).toContain('retained per our booking terms')
+    expect(body).toContain('Following review')
+    expect(body).toContain('£50 will be refunded within 10 working days')
+    expect(body).not.toContain('per our booking terms')
+    expect(body).not.toContain('non-refundable')
+  })
+
+  it('omits the refund sentence when nothing is refunded', () => {
+    const body = bookingCancelledRetentionMessage({
+      customerFirstName: 'Sarah',
+      eventDate: '12 May 2026',
+      retainedAmount: 150,
+      refundAmount: 0,
+    })
+    expect(body).toContain('£150')
+    expect(body).not.toContain('refunded within 10 working days')
+    expect(body).not.toContain('per our booking terms')
+    expect(body).not.toContain('non-refundable')
+  })
+})
+
+describe('bookingCancelledReviewPendingMessage', () => {
+  it('asserts no amounts while the retention decision is pending', () => {
+    const body = bookingCancelledReviewPendingMessage({
+      customerFirstName: 'Sarah',
+      eventDate: '12 May 2026',
+    })
+    expect(body).not.toContain('£')
+    expect(body).toContain('reviewing payments')
+    expect(body).toContain('confirm any refund shortly')
   })
 })
 
@@ -98,12 +130,14 @@ describe('every message', () => {
   const allMessages = [
     () => privateBookingCreatedMessage({ customerFirstName: 'A', eventDate: 'x', depositAmount: 1, holdExpiry: 'y' }),
     () => depositReminder7DayMessage({ customerFirstName: 'A', eventDate: 'x', depositAmount: 1, daysRemaining: 3 }),
+    () => depositReminder3DayMessage({ customerFirstName: 'A', eventDate: 'x', depositAmount: 1 }),
     () => depositReminder1DayMessage({ customerFirstName: 'A', eventDate: 'x', depositAmount: 1 }),
     () => depositReceivedMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => bookingConfirmedMessage({ customerFirstName: 'A', eventDate: 'x' }),
-    () => balanceReminder14DayMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1, balanceDueDate: 'y' }),
-    () => balanceReminder7DayMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1, balanceDueDate: 'y' }),
-    () => balanceReminder1DayMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1 }),
+    () => balanceReminder21DayMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1, balanceDueDate: 'y' }),
+    () => balanceReminder16DayMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1, balanceDueDate: 'y' }),
+    () => balanceReminder15DayMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1 }),
+    () => balanceReminderDueMessage({ customerFirstName: 'A', eventDate: 'x', balanceAmount: 1 }),
     () => finalPaymentMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => setupReminderMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => dateChangedMessage({ customerFirstName: 'A', newEventDate: 'x' }),
@@ -111,7 +145,8 @@ describe('every message', () => {
     () => holdExtendedMessage({ customerFirstName: 'A', eventDate: 'x', newExpiryDate: 'y' }),
     () => bookingCancelledHoldMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => bookingCancelledRefundableMessage({ customerFirstName: 'A', eventDate: 'x', refundAmount: 1 }),
-    () => bookingCancelledNonRefundableMessage({ customerFirstName: 'A', eventDate: 'x', retainedAmount: 1 }),
+    () => bookingCancelledRetentionMessage({ customerFirstName: 'A', eventDate: 'x', retainedAmount: 1, refundAmount: 1 }),
+    () => bookingCancelledReviewPendingMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => bookingCancelledManualReviewMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => bookingExpiredMessage({ customerFirstName: 'A', eventDate: 'x' }),
     () => bookingCompletedThanksMessage({ customerFirstName: 'A' }),

@@ -109,19 +109,28 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
         }
     ]
 
+    const categoryLabels: Record<string, string> = {
+        food: 'Food',
+        drink: 'Drinks',
+        addon: 'Add-on',
+        self_catering: 'Self-catering',
+        other: 'Other'
+    }
+
     const renderTable = (category: string) => {
         const packages = initialPackages.filter(pkg => pkg.category === category)
+        const categoryLabel = categoryLabels[category] ?? category
 
         if (packages.length === 0) {
             return (
                 <div className="py-12">
                     <EmptyState
                         icon={<SparklesIcon className="h-12 w-12 text-gray-400" />}
-                        title={`No ${category} packages yet`}
+                        title={`No ${categoryLabel.toLowerCase()} packages yet`}
                         description="Get started by creating your first package."
                         action={
                             <Button onClick={handleAdd} leftIcon={<PlusIcon className="h-4 w-4" />}>
-                                Add {category === 'addon' ? 'Add-on' : category} Package
+                                Add {categoryLabel} Package
                             </Button>
                         }
                     />
@@ -165,6 +174,16 @@ export function CateringManager({ initialPackages }: CateringManagerProps) {
                         key: 'addon',
                         label: 'Add-ons',
                         content: <div className="pt-4">{renderTable('addon')}</div>
+                    },
+                    {
+                        key: 'self_catering',
+                        label: 'Self-catering',
+                        content: <div className="pt-4">{renderTable('self_catering')}</div>
+                    },
+                    {
+                        key: 'other',
+                        label: 'Other',
+                        content: <div className="pt-4">{renderTable('other')}</div>
                     }
                 ]}
             />

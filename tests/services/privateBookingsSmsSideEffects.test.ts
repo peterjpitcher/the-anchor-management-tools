@@ -10,7 +10,9 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 vi.mock('@/app/actions/audit', () => ({
-  logAuditEvent: vi.fn(),
+  // finalizeDepositPayment fire-and-forgets logAuditEvent(...).catch(...) for
+  // the SOP §11 compliance flag, so the mock must return a promise.
+  logAuditEvent: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('@/services/sms-queue', () => ({
@@ -30,6 +32,7 @@ vi.mock('@/services/private-bookings/financial', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
+import { logAuditEvent } from '@/app/actions/audit'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getPrivateBookingCancellationOutcome } from '@/services/private-bookings/financial'
@@ -39,7 +42,8 @@ import {
   finalPaymentMessage,
   bookingCancelledHoldMessage,
   bookingCancelledRefundableMessage,
-  bookingCancelledNonRefundableMessage,
+  bookingCancelledRetentionMessage,
+  bookingCancelledReviewPendingMessage,
   bookingCancelledManualReviewMessage,
 } from '@/lib/private-bookings/messages'
 
@@ -274,6 +278,15 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         }),
       })
     )
+    // SOP §11: deposit landed before the contract was sent — compliance flag.
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additional_info: expect.objectContaining({
+          action: 'compliance_flag',
+          flag: 'payment_received_before_contract_sent',
+        }),
+      })
+    )
   })
 
   it('recordFinalPayment returns smsSideEffects when queueAndSend returns an error result', async () => {
@@ -455,18 +468,20 @@ describe('PrivateBookingService SMS side-effect meta', () => {
     )
   })
 
-  it('cancelBooking picks booking_cancelled_non_refundable when only deposit paid', async () => {
+  it('cancelBooking picks booking_cancelled_review_pending when gm_review_required and no decision recorded', async () => {
     mockCancelBookingSupabase()
 
     mockedGetCancellationOutcome.mockResolvedValue({
-      outcome: 'non_refundable_retained',
+      outcome: 'gm_review_required',
       refund_amount: 0,
-      retained_amount: 150,
+      retained_amount: 0,
+      deposit_deduction: 0,
+      max_retainable: 150,
     })
 
     ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
       success: true,
-      queueId: 'queue-nonref-1',
+      queueId: 'queue-review-1',
       sent: true,
     })
 
@@ -474,20 +489,138 @@ describe('PrivateBookingService SMS side-effect meta', () => {
 
     expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
-        trigger_type: 'booking_cancelled_non_refundable',
-        template_key: 'private_booking_cancelled_non_refundable',
-        message_body: bookingCancelledNonRefundableMessage({
+        trigger_type: 'booking_cancelled_review_pending',
+        template_key: 'private_booking_cancelled_review_pending',
+        message_body: bookingCancelledReviewPendingMessage({
           customerFirstName: 'Alex',
           eventDate: '20 February 2026',
-          retainedAmount: 150,
         }),
         metadata: expect.objectContaining({
-          financial_outcome: 'non_refundable_retained',
+          financial_outcome: 'gm_review_required',
           refund_amount: 0,
-          retained_amount: 150,
+          retained_amount: 0,
         }),
       })
     )
+  })
+
+  it('cancelBooking picks booking_cancelled_retention when a manager retains part of the deposit', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'gm_review_required',
+      refund_amount: 0,
+      retained_amount: 0,
+      deposit_deduction: 0,
+      max_retainable: 150,
+    })
+
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
+      success: true,
+      queueId: 'queue-retention-1',
+      sent: true,
+    })
+
+    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1', {
+      retentionDecision: { retainedAmount: 100, reason: 'Supplier costs already incurred' },
+    })
+
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_retention',
+        template_key: 'private_booking_cancelled_retention',
+        message_body: bookingCancelledRetentionMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+          retainedAmount: 100,
+          refundAmount: 50, // unretained deposit refunded
+        }),
+        metadata: expect.objectContaining({
+          financial_outcome: 'gm_review_required',
+          refund_amount: 50,
+          retained_amount: 100,
+        }),
+      })
+    )
+  })
+
+  it('cancelBooking picks booking_cancelled_refundable when a manager retains £0', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'gm_review_required',
+      refund_amount: 200,
+      retained_amount: 0,
+      deposit_deduction: 0,
+      max_retainable: 150,
+    })
+
+    ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
+      success: true,
+      queueId: 'queue-zero-retention-1',
+      sent: true,
+    })
+
+    await PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1', {
+      retentionDecision: { retainedAmount: 0, reason: 'Goodwill — no costs incurred' },
+    })
+
+    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        trigger_type: 'booking_cancelled_refundable',
+        template_key: 'private_booking_cancelled_refundable',
+        message_body: bookingCancelledRefundableMessage({
+          customerFirstName: 'Alex',
+          eventDate: '20 February 2026',
+          refundAmount: 350, // balance + full deposit refunded
+        }),
+        metadata: expect.objectContaining({
+          financial_outcome: 'gm_review_required',
+          refund_amount: 350,
+          retained_amount: 0,
+        }),
+      })
+    )
+  })
+
+  it('cancelBooking rejects a retention decision above the retainable deposit', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'gm_review_required',
+      refund_amount: 0,
+      retained_amount: 0,
+      deposit_deduction: 0,
+      max_retainable: 150,
+    })
+
+    await expect(
+      PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1', {
+        retentionDecision: { retainedAmount: 200, reason: 'Too much' },
+      })
+    ).rejects.toThrow('Retained amount must be between £0 and £150')
+
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalled()
+  })
+
+  it('cancelBooking rejects a retention decision when the outcome does not require GM review', async () => {
+    mockCancelBookingSupabase()
+
+    mockedGetCancellationOutcome.mockResolvedValue({
+      outcome: 'no_money',
+      refund_amount: 0,
+      retained_amount: 0,
+      deposit_deduction: 0,
+      max_retainable: 0,
+    })
+
+    await expect(
+      PrivateBookingService.cancelBooking('booking-1', 'Customer requested', 'user-1', {
+        retentionDecision: { retainedAmount: 0, reason: 'n/a' },
+      })
+    ).rejects.toThrow('A retention decision only applies to cancellations within 30 days of the event with a paid deposit')
+
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalled()
   })
 
   it('cancelBooking picks booking_cancelled_manual_review when dispute open', async () => {

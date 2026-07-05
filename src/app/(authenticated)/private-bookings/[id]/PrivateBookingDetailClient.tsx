@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from "@/lib/dateUtils";
+import { formatDateFull, formatTime12Hour, formatDateTime12Hour, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
 import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
 import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
@@ -33,6 +33,7 @@ import {
   BoltIcon,
   Bars3Icon,
   LinkIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 import {
   DndContext,
@@ -74,6 +75,7 @@ import {
   editPrivateBookingPayment,
   getCancellationPreview,
   getCompletionPreview,
+  sendBookingContract,
 } from '@/app/actions/privateBookingActions'
 import type {
   PrivateBookingWithDetails,
@@ -88,10 +90,20 @@ import type {
 import PaymentHistoryTable from './PaymentHistoryTable'
 // Design system components
 import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
-import { Button, LinkButton, Input, Select, Textarea, Badge, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
+import { Button, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
+import {
+  WorkflowStatusPanel,
+  RecordLockBanner,
+  RecordLockControl,
+  WaiverRiskPanel,
+  SuppliersPanel,
+  DeductionsPanel,
+  ComplaintsPanel,
+} from '@/components/private-bookings/WorkflowPanels'
 import { formatCurrency } from '@/lib/format'
+import { computeBookingMoney } from '@/lib/private-bookings/vat'
 // Using types from private-bookings.ts
 
 // Status configuration
@@ -499,12 +511,13 @@ type CancellationPreview = {
     | 'no_money'
     | 'refundable'
     | 'deposit_partial_refund'
-    | 'non_refundable_retained'
+    | 'gm_review_required'
     | 'manual_review'
     | null;
   refund_amount: number;
   retained_amount: number;
   deposit_deduction: number;
+  max_retainable: number;
   preview_body: string | null;
   error?: string;
 };
@@ -516,8 +529,16 @@ const CANCELLATION_OUTCOME_LABEL: Record<
   no_money: 'No money changed hands',
   refundable: 'Balance refundable (deposit retained)',
   deposit_partial_refund: 'Deposit refundable less 5% admin deduction',
-  non_refundable_retained: 'Deposit retained (<30 days notice)',
+  gm_review_required: "Less than 30 days' notice — manager decides deposit retention",
   manual_review: 'Manual review',
+};
+
+const getCancellationOutcomeLabel = (preview: CancellationPreview): string => {
+  if (!preview.outcome) return '';
+  if (preview.outcome === 'gm_review_required') {
+    return `Less than 30 days' notice — manager decides deposit retention (up to ${formatCurrency(preview.max_retainable)})`;
+  }
+  return CANCELLATION_OUTCOME_LABEL[preview.outcome];
 };
 
 const CANCELLATION_OUTCOME_VARIANT: Record<
@@ -527,7 +548,7 @@ const CANCELLATION_OUTCOME_VARIANT: Record<
   no_money: 'default',
   refundable: 'info',
   deposit_partial_refund: 'success',
-  non_refundable_retained: 'warning',
+  gm_review_required: 'warning',
   manual_review: 'error',
 };
 
@@ -544,6 +565,17 @@ function StatusModal({
     useState<CancellationPreview | null>(null);
   const [completePreview, setCompletePreview] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // SOP §14: <30 days with a paid deposit — the manager decides how much of
+  // the deposit (0..max_retainable) to retain, with a recorded reason.
+  const [retainedAmountStr, setRetainedAmountStr] = useState('');
+  const [retentionReason, setRetentionReason] = useState('');
+  const [retentionSeeded, setRetentionSeeded] = useState(false);
+  // SOP §14: capture how the cancellation reached us. A phone call alone is
+  // not written cancellation, so record the channel and when it was received.
+  const [cancelChannel, setCancelChannel] = useState<
+    'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
+  >('email');
+  const [cancelReceivedAt, setCancelReceivedAt] = useState('');
 
   // Reset state when modal opens / changes booking.
   useEffect(() => {
@@ -553,6 +585,11 @@ function StatusModal({
       setCompletePreview(null);
       setPreviewLoading(false);
       setIsSubmitting(false);
+      setRetainedAmountStr('');
+      setRetentionReason('');
+      setRetentionSeeded(false);
+      setCancelChannel('email');
+      setCancelReceivedAt(toLondonDateTimeLocalValue(new Date()));
     }
   }, [isOpen, currentStatus]);
 
@@ -568,6 +605,13 @@ function StatusModal({
         const preview = await getCancellationPreview(bookingId);
         if (!active) return;
         setCancelPreview(preview);
+        if (preview.outcome === 'gm_review_required') {
+          // Default the retention to the maximum; the manager can reduce it.
+          setRetainedAmountStr((prev) =>
+            prev === '' ? preview.max_retainable.toFixed(2) : prev,
+          );
+          setRetentionSeeded(true);
+        }
         setPreviewLoading(false);
       } else if (newStatus === 'completed' && currentStatus !== 'completed') {
         setPreviewLoading(true);
@@ -587,13 +631,65 @@ function StatusModal({
     };
   }, [newStatus, isOpen, bookingId, currentStatus]);
 
+  // Live-update the SMS preview as the manager adjusts the retained amount.
+  useEffect(() => {
+    if (!isOpen || !retentionSeeded) return;
+    if (newStatus !== 'cancelled') return;
+    const parsed = Number(retainedAmountStr);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+
+    const handle = setTimeout(async () => {
+      const preview = await getCancellationPreview(bookingId, {
+        retainedAmount: parsed,
+      });
+      setCancelPreview(preview);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [retainedAmountStr, retentionSeeded, isOpen, newStatus, bookingId]);
+
   const handleSubmit = async () => {
+    let retention: { retainedAmount: number; reason: string } | null = null;
+    if (
+      newStatus === 'cancelled' &&
+      cancelPreview?.outcome === 'gm_review_required'
+    ) {
+      const parsed = Number(retainedAmountStr);
+      const max = cancelPreview.max_retainable;
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > max) {
+        toast.error(
+          `Retained amount must be between £0 and £${max.toFixed(2)}`,
+        );
+        return;
+      }
+      if (parsed > 0 && !retentionReason.trim()) {
+        toast.error(
+          'Please record the reason for retaining part or all of the deposit',
+        );
+        return;
+      }
+      retention = { retainedAmount: parsed, reason: retentionReason.trim() };
+    }
+
+    // SOP §14: record how and when the cancellation reached us.
+    const capture =
+      newStatus === 'cancelled'
+        ? {
+            channel: cancelChannel,
+            receivedAt: parseLondonDateTimeLocalToIso(cancelReceivedAt) ?? undefined,
+          }
+        : null;
+
     setIsSubmitting(true);
-    const result = await updateBookingStatus(bookingId, newStatus);
-    if (result.success) {
+    // Cancellations go through the dedicated cancel action so the manager's
+    // retention decision (SOP §14) reaches the service layer.
+    const result =
+      newStatus === 'cancelled'
+        ? await cancelPrivateBooking(bookingId, undefined, retention, capture)
+        : await updateBookingStatus(bookingId, newStatus);
+    if ('success' in result && result.success) {
       onSuccess();
       onClose();
-    } else if (result.error) {
+    } else if ('error' in result && result.error) {
       toast.error(result.error);
     }
     setIsSubmitting(false);
@@ -689,8 +785,76 @@ function StatusModal({
                             CANCELLATION_OUTCOME_VARIANT[cancelPreview.outcome]
                           }
                         >
-                          {CANCELLATION_OUTCOME_LABEL[cancelPreview.outcome]}
+                          {getCancellationOutcomeLabel(cancelPreview)}
                         </Badge>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-3 rounded border border-gray-200 bg-white p-3 sm:grid-cols-2">
+                      <FormGroup label="How was the cancellation received?">
+                        <Select
+                          value={cancelChannel}
+                          onChange={(e) =>
+                            setCancelChannel(
+                              e.target.value as
+                                | 'email'
+                                | 'whatsapp'
+                                | 'text'
+                                | 'phone'
+                                | 'in_person'
+                                | 'other',
+                            )
+                          }
+                          disabled={isSubmitting}
+                          options={[
+                            { value: 'email', label: 'Email' },
+                            { value: 'whatsapp', label: 'WhatsApp' },
+                            { value: 'text', label: 'Text' },
+                            { value: 'phone', label: 'Phone' },
+                            { value: 'in_person', label: 'In person' },
+                            { value: 'other', label: 'Other' },
+                          ]}
+                        />
+                      </FormGroup>
+                      <FormGroup label="Received at">
+                        <Input
+                          type="datetime-local"
+                          value={cancelReceivedAt}
+                          onChange={(e) => setCancelReceivedAt(e.target.value)}
+                          disabled={isSubmitting}
+                        />
+                      </FormGroup>
+                      <p className="text-xs text-gray-500 sm:col-span-2">
+                        A phone call on its own is not a written cancellation — ask the customer to confirm in writing where you can.
+                      </p>
+                    </div>
+                    {cancelPreview.outcome === 'gm_review_required' && (
+                      <div className="space-y-3 rounded border border-amber-200 bg-amber-50 p-3">
+                        <FormGroup
+                          label="Deposit to retain (£)"
+                          help={`Manager decision — up to ${formatCurrency(cancelPreview.max_retainable)} of the paid deposit. Retaining anything requires manager permission.`}
+                        >
+                          <Input
+                            type="number"
+                            min="0"
+                            max={cancelPreview.max_retainable.toFixed(2)}
+                            step="0.01"
+                            value={retainedAmountStr}
+                            onChange={(e) => setRetainedAmountStr(e.target.value)}
+                            disabled={isSubmitting}
+                          />
+                        </FormGroup>
+                        {Number(retainedAmountStr) > 0 && (
+                          <FormGroup label="Reason for retaining the deposit">
+                            <Textarea
+                              value={retentionReason}
+                              onChange={(e) => setRetentionReason(e.target.value)}
+                              rows={2}
+                              required
+                              disabled={isSubmitting}
+                              placeholder="Required when retaining any of the deposit"
+                            />
+                          </FormGroup>
+                        )}
                       </div>
                     )}
                     {cancelPreview.refund_amount > 0 && (
@@ -1519,6 +1683,8 @@ export default function PrivateBookingDetailClient({
   const [noteText, setNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
   const [sendingCalendarInvite, setSendingCalendarInvite] = useState(false);
+  // SOP §11: contract + terms are emailed to the customer before payment
+  const [sendingContract, setSendingContract] = useState(false);
   // PayPal deposit state
   const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
   const [paypalCaptureHandled, setPaypalCaptureHandled] = useState(false);
@@ -1527,8 +1693,18 @@ export default function PrivateBookingDetailClient({
   const [editingDeposit, setEditingDeposit] = useState(false);
   const [editDepositAmount, setEditDepositAmount] = useState('');
   const [savingDeposit, setSavingDeposit] = useState(false);
+  // SOP §12: reducing the deposit below £250 needs a recorded GM reason;
+  // £0 needs an explicit GM waiver plus reason.
+  const [depositEditReason, setDepositEditReason] = useState('');
+  const [depositWaiveConfirmed, setDepositWaiveConfirmed] = useState(false);
   // Share portal link state
   const [isCopyingLink, setIsCopyingLink] = useState(false);
+  // SOP workflow panels — bump to force suppliers/deductions/complaints reloads
+  const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
+  const refreshWorkflow = useCallback(() => {
+    setWorkflowRefreshKey((key) => key + 1);
+    router.refresh();
+  }, [router]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -1705,6 +1881,23 @@ export default function PrivateBookingDetailClient({
 
   const handleSaveDepositAmount = useCallback(async () => {
     if (savingDeposit) return;
+    const nextAmount = Number(editDepositAmount);
+    const trimmedReason = depositEditReason.trim();
+    // SOP §12: reductions below the £250 standard need a recorded reason;
+    // £0 needs an explicit GM waiver plus reason.
+    if (Number.isFinite(nextAmount) && nextAmount === 0) {
+      if (!depositWaiveConfirmed) {
+        toast.error('Please confirm the deposit waiver (GM approved)');
+        return;
+      }
+      if (!trimmedReason) {
+        toast.error('Please record the reason for waiving the deposit');
+        return;
+      }
+    } else if (Number.isFinite(nextAmount) && nextAmount > 0 && nextAmount < 250 && !trimmedReason) {
+      toast.error('Please record the reason for the reduced deposit (GM discretion)');
+      return;
+    }
     setSavingDeposit(true);
     try {
       const formData = new FormData();
@@ -1712,9 +1905,14 @@ export default function PrivateBookingDetailClient({
       formData.set('type', 'deposit');
       formData.set('amount', editDepositAmount);
       formData.set('method', booking?.deposit_payment_method ?? 'cash');
+      if (Number.isFinite(nextAmount) && nextAmount === 0) {
+        formData.set('waived', 'true');
+        formData.set('waived_reason', trimmedReason);
+      } else if (Number.isFinite(nextAmount) && nextAmount > 0 && nextAmount < 250) {
+        formData.set('reduction_reason', trimmedReason);
+      }
       const result = await editPrivateBookingPayment(formData);
       if (result.success) {
-        const nextAmount = Number(editDepositAmount);
         toast.success(Number.isFinite(nextAmount) && nextAmount <= 0
           ? 'Booking confirmed with no deposit required'
           : 'Deposit amount updated');
@@ -1728,7 +1926,7 @@ export default function PrivateBookingDetailClient({
     } finally {
       setSavingDeposit(false);
     }
-  }, [bookingId, editDepositAmount, savingDeposit, booking?.deposit_payment_method, router]);
+  }, [bookingId, editDepositAmount, savingDeposit, depositEditReason, depositWaiveConfirmed, booking?.deposit_payment_method, router]);
 
   const handleAddNote = useCallback(async () => {
     if (addingNote) {
@@ -1787,6 +1985,22 @@ export default function PrivateBookingDetailClient({
       setSendingCalendarInvite(false);
     }
   }, [bookingId, sendingCalendarInvite]);
+
+  const handleSendContract = useCallback(async () => {
+    if (!bookingId || sendingContract) return;
+    setSendingContract(true);
+    try {
+      const result = await sendBookingContract(bookingId);
+      if (result.success) {
+        toast.success(`Contract v${result.version} sent to the customer`);
+        router.refresh();
+      } else {
+        toast.error(result.error || 'Failed to send contract');
+      }
+    } finally {
+      setSendingContract(false);
+    }
+  }, [bookingId, sendingContract, router]);
 
   const handleCopyPortalLink = useCallback(async () => {
     if (!bookingId || isCopyingLink) return;
@@ -1956,6 +2170,20 @@ export default function PrivateBookingDetailClient({
   const depositAmount = toNumber(booking.deposit_amount, 0);
   const depositRequired = depositAmount > 0;
 
+  // Stored prices are NET (SOP 2026-07) — customer-payable figures are gross.
+  // Computed locally from items so the summary stays live during edits.
+  const bookingMoney = computeBookingMoney(
+    items,
+    booking.discount_type,
+    booking.discount_amount,
+  );
+
+  const editDepositValue = Number(editDepositAmount);
+  const showDepositReductionReason =
+    editingDeposit && Number.isFinite(editDepositValue) && editDepositValue > 0 && editDepositValue < 250;
+  const showDepositWaiver =
+    editingDeposit && editDepositAmount.trim() !== '' && editDepositValue === 0;
+
   type AuditEntry = NonNullable<PrivateBookingWithDetails['audit_trail']>[number]
   const auditTrail = booking.audit_trail ?? []
 
@@ -2116,6 +2344,8 @@ export default function PrivateBookingDetailClient({
         />
       )}
 
+      <RecordLockBanner booking={booking} />
+
       {isDateTbd && (
         <Alert
           variant="warning"
@@ -2270,7 +2500,7 @@ export default function PrivateBookingDetailClient({
                 <div className="mt-6">
                   <Alert
                     variant="warning"
-                    title={`Balance due by ${formatDateFull(booking.balance_due_date)}`}
+                    title={`Balance & final details due by ${formatDateFull(booking.balance_due_date)}`}
                   />
                 </div>
               )}
@@ -2470,10 +2700,37 @@ export default function PrivateBookingDetailClient({
               </Card>
             </Section>
           )}
+
+          <WaiverRiskPanel
+            booking={booking}
+            canManage={canManageDeposits}
+            onChanged={refreshWorkflow}
+          />
+
+          <SuppliersPanel
+            bookingId={bookingId}
+            canEdit={canEdit}
+            canManage={canManageDeposits}
+            refreshKey={workflowRefreshKey}
+            onChanged={refreshWorkflow}
+          />
+
+          <DeductionsPanel
+            bookingId={bookingId}
+            canManage={canManageDeposits}
+            refreshKey={workflowRefreshKey}
+          />
+
+          <ComplaintsPanel
+            bookingId={bookingId}
+            canManage={canManageDeposits}
+            refreshKey={workflowRefreshKey}
+          />
         </div>
 
         {/* Sidebar - Right 1/3 */}
         <div className="space-y-6">
+          <WorkflowStatusPanel booking={booking} />
           {/* Financial Summary Card */}
           <Section
             title="Financial Summary"
@@ -2557,13 +2814,25 @@ export default function PrivateBookingDetailClient({
                   </div>
                 )}
 
-                <div className="pt-3 border-t">
+                <div className="pt-3 border-t space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Event price (ex VAT)</span>
+                    <span className="font-medium text-gray-900">
+                      {formatMoney(bookingMoney.discountedNet)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">VAT</span>
+                    <span className="font-medium text-gray-900">
+                      {formatMoney(bookingMoney.vatAmount)}
+                    </span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-base font-medium text-gray-900">
-                      Total Event Cost
+                      Event total inc. VAT
                     </span>
                     <span className="text-xl font-bold text-gray-900">
-                      {formatMoney(calculateTotal())}
+                      {formatMoney(bookingMoney.grossTotal)}
                     </span>
                   </div>
                 </div>
@@ -2589,39 +2858,75 @@ export default function PrivateBookingDetailClient({
                     </div>
                   <div className="text-right">
                     {editingDeposit ? (
-                      <div className="flex items-center gap-1 justify-end">
-                        <Input
-                          type="number"
-                          value={editDepositAmount}
-                          onChange={(e) => setEditDepositAmount(e.target.value)}
-                          disabled={savingDeposit}
-                          min="0"
-                          step="0.01"
-                          placeholder="Amount"
-                          aria-label="Deposit amount"
-                          inputSize="sm"
-                          className="w-24"
-                        />
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={handleSaveDepositAmount}
-                          loading={savingDeposit}
-                          disabled={savingDeposit}
-                          aria-label="Save deposit amount"
-                        >
-                          <CheckIcon className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setEditingDeposit(false)}
-                          disabled={savingDeposit}
-                          type="button"
-                          aria-label="Cancel edit"
-                        >
-                          <XMarkIcon className="h-4 w-4" />
-                        </Button>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1 justify-end">
+                          <Input
+                            type="number"
+                            value={editDepositAmount}
+                            onChange={(e) => setEditDepositAmount(e.target.value)}
+                            disabled={savingDeposit}
+                            min="0"
+                            step="0.01"
+                            placeholder="Amount"
+                            aria-label="Deposit amount"
+                            inputSize="sm"
+                            className="w-24"
+                          />
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={handleSaveDepositAmount}
+                            loading={savingDeposit}
+                            disabled={savingDeposit}
+                            aria-label="Save deposit amount"
+                          >
+                            <CheckIcon className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setEditingDeposit(false)}
+                            disabled={savingDeposit}
+                            type="button"
+                            aria-label="Cancel edit"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {showDepositReductionReason && (
+                          <div className="text-left">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Reason for reduced deposit (GM discretion)
+                            </label>
+                            <Textarea
+                              value={depositEditReason}
+                              onChange={(e) => setDepositEditReason(e.target.value)}
+                              rows={2}
+                              required
+                              disabled={savingDeposit}
+                              placeholder="Standard deposit is £250"
+                            />
+                          </div>
+                        )}
+                        {showDepositWaiver && (
+                          <div className="space-y-2 text-left">
+                            <Checkbox
+                              label="Deposit waived (GM approved — venue-hosted/internal event)"
+                              checked={depositWaiveConfirmed}
+                              onChange={(checked) => setDepositWaiveConfirmed(checked)}
+                              disabled={savingDeposit}
+                            />
+                            <Textarea
+                              value={depositEditReason}
+                              onChange={(e) => setDepositEditReason(e.target.value)}
+                              rows={2}
+                              required
+                              disabled={savingDeposit}
+                              placeholder="Reason for waiving the deposit"
+                              aria-label="Reason for waiving the deposit"
+                            />
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 justify-end">
@@ -2633,6 +2938,8 @@ export default function PrivateBookingDetailClient({
                             type="button"
                             onClick={() => {
                               setEditDepositAmount(String(depositAmount));
+                              setDepositEditReason('');
+                              setDepositWaiveConfirmed(false);
                               setEditingDeposit(true);
                             }}
                             className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
@@ -2719,10 +3026,23 @@ export default function PrivateBookingDetailClient({
                   )}
                 </div>
 
+                {/* SOP: gross event total plus the refundable deposit (unless waived) */}
+                <div className="flex justify-between text-sm pt-3 border-t">
+                  <span className="font-medium text-gray-900">
+                    Total to pay before event
+                  </span>
+                  <span className="font-semibold text-gray-900">
+                    {formatMoney(
+                      bookingMoney.grossTotal + (depositRequired ? depositAmount : 0),
+                    )}
+                  </span>
+                </div>
+
                 {(() => {
                   const payments: PrivateBookingPayment[] = booking.payments ?? [];
                   const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-                  const bookingTotal = calculateTotal();
+                  // Balance is VAT-inclusive: stored prices are net
+                  const bookingTotal = bookingMoney.grossTotal;
                   // Booking and damage deposit — separate from event balance
                   const remaining = Math.max(0, bookingTotal - totalPaid);
                   return (
@@ -2775,7 +3095,7 @@ export default function PrivateBookingDetailClient({
                           payments={paymentHistory}
                           bookingId={bookingId}
                           canEditPayments={canEditPayments}
-                          totalAmount={calculateTotal()}
+                          totalAmount={bookingMoney.grossTotal}
                         />
                       </div>
 
@@ -2826,6 +3146,42 @@ export default function PrivateBookingDetailClient({
                   <ChevronRightIcon className="h-4 w-4 text-gray-400" />
                 </Link>
 
+                <a
+                  href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100"
+                >
+                  <div className="flex items-center">
+                    <ClipboardDocumentListIcon className="h-5 w-5 mr-3 text-blue-600" />
+                    Staff event sheet
+                  </div>
+                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleSendContract}
+                  disabled={sendingContract || !booking.contact_email}
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center">
+                    <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
+                    {sendingContract ? 'Sending contract…' : 'Send Contract to Customer'}
+                  </div>
+                  <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                </button>
+                {booking.contract_sent_at ? (
+                  <p className="text-xs text-gray-500 px-1">
+                    Contract sent {formatDateFull(booking.contract_sent_at)}
+                    {booking.contract_sent_to ? ` to ${booking.contract_sent_to}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 px-1">
+                    Contract not yet sent — terms must reach the customer before the deposit is paid.
+                  </p>
+                )}
+
               </div>
             </Card>
           </Section>
@@ -2871,6 +3227,12 @@ export default function PrivateBookingDetailClient({
               </div>
             </Card>
           </Section>
+
+          <RecordLockControl
+            booking={booking}
+            canManage={canManageDeposits}
+            onChanged={refreshWorkflow}
+          />
         </div>
       </div>
 
@@ -2900,8 +3262,8 @@ export default function PrivateBookingDetailClient({
       {canManageDeposits && (() => {
         const payments: PrivateBookingPayment[] = booking?.payments ?? [];
         const totalPaid = payments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-        // Booking and damage deposit — separate from event balance
-        const remaining = Math.max(0, calculateTotal() - totalPaid);
+        // Booking and damage deposit — separate from event balance (gross, inc. VAT)
+        const remaining = Math.max(0, bookingMoney.grossTotal - totalPaid);
         return (
           <PaymentModal
             open={showFinalModal}

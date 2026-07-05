@@ -47,6 +47,9 @@ interface BookingRow {
   deposit_paid_date: string | null
   total_amount: number
   calculated_total: number | null
+  vat_amount: number | null
+  gross_total: number | null
+  balance_remaining: number | null
   balance_due_date: string | null
   final_payment_date: string | null
   contact_email: string | null
@@ -137,7 +140,7 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const { data: booking, error } = await supabase
     .from('private_bookings_with_details')
     .select(
-      'id, customer_first_name, customer_last_name, customer_name, customer_full_name, event_date, start_time, end_time, end_time_next_day, guest_count, event_type, status, deposit_amount, deposit_paid_date, total_amount, calculated_total, balance_due_date, final_payment_date, contact_email, customer_requests'
+      'id, customer_first_name, customer_last_name, customer_name, customer_full_name, event_date, start_time, end_time, end_time_next_day, guest_count, event_type, status, deposit_amount, deposit_paid_date, total_amount, calculated_total, vat_amount, gross_total, balance_remaining, balance_due_date, final_payment_date, contact_email, customer_requests'
     )
     .eq('id', bookingId)
     .single()
@@ -167,9 +170,12 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const balancePaid = !!b.final_payment_date
   const depositRequired = b.deposit_amount > 0
   // Booking and damage deposit — separate from event balance, not deducted from event cost
-  // Prefer calculated_total from the view (items-based) over legacy total_amount
-  const effectiveTotal = b.calculated_total ?? b.total_amount
-  const balanceRemaining = balancePaid ? 0 : Math.max(0, effectiveTotal - balancePaymentsTotal)
+  // Stored prices are net: show the customer the VAT-inclusive gross total
+  // from the view, falling back to legacy net figures for old rows
+  const effectiveTotal = b.gross_total ?? b.calculated_total ?? b.total_amount
+  const balanceRemaining = balancePaid
+    ? 0
+    : Math.max(0, b.balance_remaining ?? (effectiveTotal - balancePaymentsTotal))
 
   // Format end time, accounting for next-day events
   let endTimeDisplay: string | null = null
@@ -287,14 +293,24 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
           </div>
 
           {depositRequired && !depositPaid && b.status !== 'cancelled' && b.status !== 'completed' && (
-            <FreshPayPalLinkClient portalToken={token} autoStart={fresh_payment_link === '1'} />
+            <>
+              <FreshPayPalLinkClient portalToken={token} autoStart={fresh_payment_link === '1'} />
+              <p className="text-xs text-gray-500 py-2">
+                Paying the deposit confirms that you accept the booking terms and conditions in the
+                contract we&apos;ve sent to your email address. If you haven&apos;t received it, please
+                contact us on 01753 682707 or{' '}
+                <a href="mailto:manager@the-anchor.pub" className="underline">manager@the-anchor.pub</a>{' '}
+                before paying. How we use your data:{' '}
+                <a href="https://www.the-anchor.pub/privacy-policy" className="underline" rel="noopener noreferrer" target="_blank">privacy notice</a>.
+              </p>
+            </>
           )}
 
           {/* Total / balance row */}
           <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
             <div>
               <p className="text-sm font-medium text-gray-900">Total</p>
-              <p className="text-xs text-gray-500">Full event cost</p>
+              <p className="text-xs text-gray-500">Full event cost — includes VAT</p>
             </div>
             <p className="text-sm font-semibold text-gray-900">
               {formatCurrency(effectiveTotal)}

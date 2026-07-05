@@ -143,19 +143,44 @@ describe('getBookingScheduledSms', () => {
     expect(result.map((r) => r.preview_body).join('\n')).not.toContain('£0')
   })
 
-  it('returns balance_reminder_14day for confirmed booking with balance outstanding', async () => {
+  it('returns balance_reminder_21day for confirmed booking with balance due in 3-7 days', async () => {
     process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
-    mockSupabase({ booking: confirmedBooking() })
+    mockSupabase({ booking: confirmedBooking() }) // balance_due_date 7 days from NOW
 
     const result = await getBookingScheduledSms(BOOKING_ID, NOW)
 
-    const fourteen = result.find(
-      (r) => r.trigger_type === 'balance_reminder_14day',
+    const twentyOne = result.find(
+      (r) => r.trigger_type === 'balance_reminder_21day',
     )
-    expect(fourteen).toBeDefined()
-    expect(fourteen?.suppression_reason).toBeNull()
-    expect(fourteen?.preview_body).toContain('Sam')
-    expect(fourteen?.preview_body).toContain('£1200')
+    expect(twentyOne).toBeDefined()
+    expect(twentyOne?.suppression_reason).toBeNull()
+    expect(twentyOne?.preview_body).toContain('Sam')
+    expect(twentyOne?.preview_body).toContain('£1200')
+  })
+
+  it('returns balance_reminder_16day when the balance is due in 2 days', async () => {
+    process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
+    mockSupabase({ booking: confirmedBooking({ balance_due_date: '2026-05-03' }) })
+
+    const result = await getBookingScheduledSms(BOOKING_ID, NOW)
+
+    const sixteen = result.find(
+      (r) => r.trigger_type === 'balance_reminder_16day',
+    )
+    expect(sixteen).toBeDefined()
+    expect(sixteen?.suppression_reason).toBeNull()
+  })
+
+  it('returns balance_reminder_due on the balance due date itself', async () => {
+    process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
+    mockSupabase({ booking: confirmedBooking({ balance_due_date: '2026-05-01' }) })
+
+    const result = await getBookingScheduledSms(BOOKING_ID, NOW)
+
+    const due = result.find((r) => r.trigger_type === 'balance_reminder_due')
+    expect(due).toBeDefined()
+    expect(due?.suppression_reason).toBeNull()
+    expect(due?.preview_body).toContain('today')
   })
 
   it('uses remaining balance after partial payments in balance reminders', async () => {
@@ -167,12 +192,12 @@ describe('getBookingScheduledSms', () => {
 
     const result = await getBookingScheduledSms(BOOKING_ID, NOW)
 
-    const fourteen = result.find(
-      (r) => r.trigger_type === 'balance_reminder_14day',
+    const twentyOne = result.find(
+      (r) => r.trigger_type === 'balance_reminder_21day',
     )
-    expect(fourteen).toBeDefined()
-    expect(fourteen?.preview_body).toContain('£700')
-    expect(fourteen?.preview_body).not.toContain('£1200')
+    expect(twentyOne).toBeDefined()
+    expect(twentyOne?.preview_body).toContain('£700')
+    expect(twentyOne?.preview_body).not.toContain('£1200')
   })
 
   it('returns event_reminder_1d when event is tomorrow', async () => {
@@ -217,12 +242,12 @@ describe('getBookingScheduledSms', () => {
 
     const result = await getBookingScheduledSms(BOOKING_ID, NOW)
 
-    const fourteen = result.find(
-      (r) => r.trigger_type === 'balance_reminder_14day',
+    const twentyOne = result.find(
+      (r) => r.trigger_type === 'balance_reminder_21day',
     )
-    expect(fourteen).toBeDefined()
-    expect(fourteen?.suppression_reason).toBe('feature_flag_disabled')
-    expect(fourteen?.expected_fire_at).toBeNull()
+    expect(twentyOne).toBeDefined()
+    expect(twentyOne?.suppression_reason).toBe('feature_flag_disabled')
+    expect(twentyOne?.expected_fire_at).toBeNull()
   })
 
   it('suppresses with date_tbd when isBookingDateTbd', async () => {

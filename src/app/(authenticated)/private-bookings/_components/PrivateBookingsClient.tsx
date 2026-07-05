@@ -29,9 +29,11 @@ import {
   SearchInput,
   ConfirmDialog,
   Drawer,
+  Modal,
   Select,
   Field,
   Input,
+  Textarea,
   Empty,
 } from '@/ds/primitives'
 
@@ -157,6 +159,10 @@ export default function PrivateBookingsClient({
   /* --- Action state --- */
   const [cancelConfirmBookingId, setCancelConfirmBookingId] = useState<string | null>(null)
   const [extendingHoldId, setExtendingHoldId] = useState<string | null>(null)
+  // Extending a hold requires a recorded reason (SOP) — collected in a modal
+  const [extendHoldTarget, setExtendHoldTarget] = useState<{ bookingId: string; days: 7 | 14 | 30 } | null>(null)
+  const [extendHoldReason, setExtendHoldReason] = useState('')
+  const [extendingHold, setExtendingHold] = useState(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   /* --- Hide bookings (localStorage) --- */
@@ -280,16 +286,28 @@ export default function PrivateBookingsClient({
     fetchWithState({ page: currentPage })
   }
 
-  const handleExtendHold = async (bookingId: string, days: 7 | 14 | 30) => {
+  const handleExtendHoldRequest = (bookingId: string, days: 7 | 14 | 30) => {
+    setExtendHoldReason('')
+    setExtendHoldTarget({ bookingId, days })
+  }
+
+  const handleExtendHoldConfirm = async () => {
+    if (!extendHoldTarget || extendingHold) return
+    const reason = extendHoldReason.trim()
+    if (!reason) { toast.error('Please record a reason for extending the hold'); return }
+    const { bookingId, days } = extendHoldTarget
+    setExtendingHold(true)
     setExtendingHoldId(bookingId)
     try {
-      const result = await extendBookingHold(bookingId, days)
+      const result = await extendBookingHold(bookingId, days, reason)
       if ('error' in result && result.error) { toast.error(result.error); return }
       toast.success(
         `Hold extended by ${days} days${'smsSent' in result && result.smsSent ? ' -- customer notified by SMS' : ''}`,
       )
+      setExtendHoldTarget(null)
       fetchWithState({ page: currentPage })
     } finally {
+      setExtendingHold(false)
       setExtendingHoldId(null)
     }
   }
@@ -322,6 +340,48 @@ export default function PrivateBookingsClient({
         confirmLabel="Cancel booking"
         cancelLabel="Keep booking"
       />
+
+      {/* Extend hold — a reason is required (recorded in the audit trail) */}
+      <Modal
+        open={extendHoldTarget !== null}
+        onClose={() => setExtendHoldTarget(null)}
+        title={extendHoldTarget ? `Extend hold by ${extendHoldTarget.days} days` : 'Extend hold'}
+      >
+        <div className="space-y-4">
+          <Field
+            label="Reason for extending the hold"
+            required
+            hint="Recorded against the booking's audit trail."
+          >
+            <Textarea
+              value={extendHoldReason}
+              onChange={(e) => setExtendHoldReason(e.target.value)}
+              rows={2}
+              placeholder="e.g. Customer confirming numbers after the weekend"
+              disabled={extendingHold}
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setExtendHoldTarget(null)}
+              disabled={extendingHold}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleExtendHoldConfirm}
+              loading={extendingHold}
+              disabled={extendingHold || !extendHoldReason.trim()}
+            >
+              Extend hold
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <PageHeader
         breadcrumbs={[{ label: 'Private Bookings' }]}
@@ -607,7 +667,7 @@ export default function PrivateBookingsClient({
                                 onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => {
                                   const days = Number(e.target.value) as 7 | 14 | 30
-                                  if (days) { handleExtendHold(booking.id, days); e.target.value = '' }
+                                  if (days) { handleExtendHoldRequest(booking.id, days); e.target.value = '' }
                                 }}
                                 className="text-xs border border-border rounded-default px-1.5 py-0.5 text-text bg-surface focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 cursor-pointer"
                                 title="Extend hold"
@@ -751,7 +811,7 @@ export default function PrivateBookingsClient({
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             const days = Number(e.target.value) as 7 | 14 | 30
-                            if (days) { handleExtendHold(booking.id, days); e.target.value = '' }
+                            if (days) { handleExtendHoldRequest(booking.id, days); e.target.value = '' }
                           }}
                           className="text-xs border border-border rounded-default px-1.5 py-0.5 text-text bg-surface focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 cursor-pointer"
                         >

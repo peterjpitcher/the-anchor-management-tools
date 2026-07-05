@@ -185,7 +185,7 @@ describe('getPrivateBookingCancellationOutcome', () => {
     expect(outcome.retained_amount).toBe(0)
   })
 
-  it('returns non_refundable_retained when only deposit paid (policy: deposit non-refundable)', async () => {
+  it('returns gm_review_required when deposit paid within 30 days (retention is a manager decision, SOP §14)', async () => {
     mockSupabase({
       booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10' },
       payments: [],
@@ -193,12 +193,14 @@ describe('getPrivateBookingCancellationOutcome', () => {
 
     const outcome = await getPrivateBookingCancellationOutcome('booking-4')
 
-    expect(outcome.outcome).toBe('non_refundable_retained')
-    expect(outcome.retained_amount).toBe(150)
+    expect(outcome.outcome).toBe('gm_review_required')
+    expect(outcome.retained_amount).toBe(0)
     expect(outcome.refund_amount).toBe(0)
+    expect(outcome.deposit_deduction).toBe(0)
+    expect(outcome.max_retainable).toBe(150)
   })
 
-  it('returns refundable when balance paid AND no dispute', async () => {
+  it('keeps balance payments refundable in gm_review_required (deposit paid + balance, <30 days)', async () => {
     mockSupabase({
       booking: { deposit_amount: 150, deposit_paid_date: '2026-01-10' },
       payments: [
@@ -209,9 +211,27 @@ describe('getPrivateBookingCancellationOutcome', () => {
 
     const outcome = await getPrivateBookingCancellationOutcome('booking-5')
 
+    expect(outcome.outcome).toBe('gm_review_required')
+    expect(outcome.refund_amount).toBe(450)
+    expect(outcome.retained_amount).toBe(0)
+    expect(outcome.max_retainable).toBe(150)
+  })
+
+  it('returns refundable when only balance payments exist (no deposit paid, <30 days)', async () => {
+    mockSupabase({
+      booking: { deposit_amount: 150, deposit_paid_date: null },
+      payments: [
+        { amount: 200, notes: null },
+        { amount: 250, notes: 'top-up' },
+      ],
+    })
+
+    const outcome = await getPrivateBookingCancellationOutcome('booking-5b')
+
     expect(outcome.outcome).toBe('refundable')
     expect(outcome.refund_amount).toBe(450)
-    expect(outcome.retained_amount).toBe(150)
+    expect(outcome.retained_amount).toBe(0)
+    expect(outcome.max_retainable).toBe(0)
   })
 
   it('returns manual_review when has_open_dispute is true', async () => {
@@ -250,15 +270,37 @@ describe('getPrivateBookingCancellationOutcome', () => {
       booking: {
         deposit_amount: 150,
         deposit_paid_date: '2026-01-10',
-        event_date: '2026-07-24',
+        event_date: '2026-07-24', // 29 days away in London — inside the review window
       },
       payments: [],
     })
 
     const outcome = await getPrivateBookingCancellationOutcome('booking-london-boundary')
 
-    expect(outcome.outcome).toBe('non_refundable_retained')
-    expect(outcome.retained_amount).toBe(150)
+    expect(outcome.outcome).toBe('gm_review_required')
+    expect(outcome.retained_amount).toBe(0)
     expect(outcome.refund_amount).toBe(0)
+    expect(outcome.max_retainable).toBe(150)
+  })
+
+  it('applies the 5% admin deduction at 30+ days before the event', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-24T23:30:00.000Z')) // 25 Jun 2026 in London
+    mockSupabase({
+      booking: {
+        deposit_amount: 150,
+        deposit_paid_date: '2026-01-10',
+        event_date: '2026-07-25', // exactly 30 days away in London
+      },
+      payments: [],
+    })
+
+    const outcome = await getPrivateBookingCancellationOutcome('booking-30-day-boundary')
+
+    expect(outcome.outcome).toBe('deposit_partial_refund')
+    expect(outcome.deposit_deduction).toBe(7.5)
+    expect(outcome.retained_amount).toBe(7.5)
+    expect(outcome.refund_amount).toBe(142.5)
+    expect(outcome.max_retainable).toBe(0)
   })
 })

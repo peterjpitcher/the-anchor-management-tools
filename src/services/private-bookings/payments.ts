@@ -4,6 +4,7 @@ import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
+import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
 import {
   sendDepositReceivedEmail,
@@ -23,6 +24,11 @@ import {
   normalizeSmsSafetyMeta,
   toNumber,
 } from './types';
+import {
+  checkCapacity,
+  getBookingConflictSummary,
+  getBookingSpaceIds,
+} from './conflicts';
 import {
   bookingConfirmedMessage,
   depositReceivedMessage,
@@ -323,21 +329,22 @@ async function finalizeDepositPaymentWithClient(
 
   const { data: booking, error: fetchError } = await db
     .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount, date_tbd, internal_notes')
+    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, contact_email, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, deposit_amount, balance_due_date, total_amount, date_tbd, internal_notes, contract_sent_at, layout, risk_status')
     .eq('id', bookingId)
     .single();
 
   if (fetchError || !booking) throw new Error('Booking not found');
 
-  // Fetch calculated_total from the view for accurate email totals
+  // Fetch the customer-payable total from the view for accurate email totals
+  // (gross_total is VAT-inclusive; stored prices are net)
   let calculatedTotal: number | null = null;
   const { data: viewRow } = await db
     .from('private_bookings_with_details')
-    .select('calculated_total')
+    .select('calculated_total, gross_total')
     .eq('id', bookingId)
     .maybeSingle();
-  if (viewRow?.calculated_total != null) {
-    calculatedTotal = toNumber(viewRow.calculated_total);
+  if (viewRow?.gross_total != null || viewRow?.calculated_total != null) {
+    calculatedTotal = toNumber(viewRow.gross_total ?? viewRow.calculated_total);
   }
 
   if (booking.status === 'cancelled' || booking.status === 'completed') {
@@ -362,8 +369,63 @@ async function finalizeDepositPaymentWithClient(
     return { success: true, alreadyRecorded: true }
   }
 
+  // SOP §6/§18/§28: gate the draft→confirmed flip on space conflicts,
+  // capacity and an outstanding risk review. The payment is ALWAYS recorded —
+  // the money has already been taken (especially PayPal); when gated the
+  // booking stays 'draft' and staff resolve then confirm via a status change.
+  // Fail-open rule: if the checks themselves throw (infrastructure), log and
+  // proceed as if clear — never block money flows on a broken check.
+  let confirmationBlockedReasons: string[] = []
+  if (booking.status === 'draft') {
+    try {
+      const conflicts = await getBookingConflictSummary(bookingId)
+      if (conflicts.length > 0) {
+        const first = conflicts[0]
+        confirmationBlockedReasons.push(
+          `Space conflict: ${first.space_name} is held by ${first.customer_name || 'another booking'} (${first.booking_status})`
+        )
+      }
+
+      const spaceIds = await getBookingSpaceIds(bookingId)
+      if (spaceIds.length > 0) {
+        const { data: spaces, error: spacesError } = await db
+          .from('venue_spaces')
+          .select('name, capacity_seated, capacity_standing')
+          .in('id', spaceIds)
+        if (!spacesError) {
+          const capacityResult = checkCapacity({
+            spaces: spaces || [],
+            guestCount: booking.guest_count,
+            layout: (booking as { layout?: 'seated' | 'standing' | 'mixed' | null }).layout ?? null,
+          })
+          if (!capacityResult.ok) {
+            confirmationBlockedReasons.push(
+              capacityResult.reason || 'Guest count exceeds the capacity for the selected space'
+            )
+          }
+        }
+      }
+
+      const riskStatus = (booking as { risk_status?: string | null }).risk_status
+      if (riskStatus === 'high' || riskStatus === 'gm_approval_required') {
+        confirmationBlockedReasons.push(
+          riskStatus === 'high'
+            ? 'Risk review outstanding: high-risk booking has not been approved (outside food, high-power equipment or other §18 trigger)'
+            : 'General Manager approval required before confirmation (SOP §6.7)'
+        )
+      }
+    } catch (gateError) {
+      logger.error('Deposit confirmation gate check failed — proceeding (fail open)', {
+        error: gateError instanceof Error ? gateError : new Error(String(gateError)),
+        metadata: { bookingId },
+      })
+      confirmationBlockedReasons = []
+    }
+  }
+  const confirmationBlocked = confirmationBlockedReasons.length > 0
+
   const statusUpdate: Partial<{ status: BookingStatus; cancellation_reason: null }> =
-    booking.status === 'draft'
+    booking.status === 'draft' && !confirmationBlocked
       ? { status: 'confirmed', cancellation_reason: null }
       : {};
 
@@ -378,6 +440,15 @@ async function finalizeDepositPaymentWithClient(
     updatePayload.paypal_deposit_capture_id = paypalCaptureId
   }
 
+  // SOP §11: payment of the deposit constitutes acceptance only if the
+  // customer received the terms first. Stamp the acceptance when the contract
+  // was sent beforehand; otherwise flag a compliance issue for review.
+  const contractSentBeforePayment = Boolean((booking as { contract_sent_at?: string | null }).contract_sent_at)
+  if (contractSentBeforePayment) {
+    updatePayload.contract_accepted_at = new Date().toISOString()
+    updatePayload.contract_acceptance_method = 'deposit_payment'
+  }
+
   const { data: updatedBooking, error } = await db
     .from('private_bookings')
     .update(updatePayload)
@@ -388,6 +459,48 @@ async function finalizeDepositPaymentWithClient(
 
   if (error) throw new Error('Failed to record deposit');
   if (!updatedBooking) return { success: true, alreadyRecorded: true }
+
+  if (confirmationBlocked) {
+    logger.warn('Private booking deposit recorded but confirmation blocked (SOP gate)', {
+      metadata: { bookingId, method, reasons: confirmationBlockedReasons },
+    })
+    try {
+      const { error: blockAuditError } = await createAdminClient().from('private_booking_audit').insert({
+        booking_id: bookingId,
+        action: 'confirmation_blocked',
+        performed_by: performedByUserId ?? null,
+        metadata: {
+          reasons: confirmationBlockedReasons,
+          method,
+          amount: recordedAmount,
+        },
+      })
+      if (blockAuditError) throw new Error(blockAuditError.message)
+    } catch (blockAuditFailure) {
+      logger.error('Failed to audit blocked confirmation (non-blocking)', {
+        error: blockAuditFailure instanceof Error ? blockAuditFailure : new Error(String(blockAuditFailure)),
+        metadata: { bookingId },
+      })
+    }
+  }
+
+  if (!contractSentBeforePayment) {
+    logger.warn('Private booking deposit received before the contract was sent (SOP compliance flag)', {
+      metadata: { bookingId, method },
+    })
+    void logAuditEvent({
+      user_id: performedByUserId,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'compliance_flag',
+        flag: 'payment_received_before_contract_sent',
+        method,
+      },
+    }).catch(() => {})
+  }
 
   const smsSideEffects = await sendDepositReceivedSideEffects({
     db,
@@ -552,15 +665,16 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
   if (fetchError || !booking) throw new Error('Booking not found');
 
-  // Fetch calculated_total from the view for accurate email totals
+  // Fetch the customer-payable (VAT-inclusive) total from the view for
+  // accurate email totals — stored prices are net
   let balanceCalculatedTotal: number | null = null;
   const { data: balanceViewRow } = await supabase
     .from('private_bookings_with_details')
-    .select('calculated_total')
+    .select('calculated_total, gross_total')
     .eq('id', bookingId)
     .maybeSingle();
-  if (balanceViewRow?.calculated_total != null) {
-    balanceCalculatedTotal = toNumber(balanceViewRow.calculated_total);
+  if (balanceViewRow?.gross_total != null || balanceViewRow?.calculated_total != null) {
+    balanceCalculatedTotal = toNumber(balanceViewRow.gross_total ?? balanceViewRow.calculated_total);
   }
 
   // Single atomic RPC: inserts payment, recalculates totals, and conditionally
@@ -831,15 +945,24 @@ export async function updateDeposit(
  * Update only the deposit amount for an unpaid deposit.
  * Unlike updateDeposit, this does NOT write deposit_payment_method (avoids method pollution).
  * Also clears paypal_deposit_order_id to invalidate any in-flight PayPal order (CR-1).
+ *
+ * SOP §12: reducing the £250 default requires a recorded reason (General
+ * Manager discretion); setting £0 requires an explicit waiver — a £0 deposit
+ * no longer confirms a booking silently.
  */
 export async function updateDepositAmount(
   bookingId: string,
   amount: number,
-  performedByUserId?: string
+  performedByUserId?: string,
+  options?: { reductionReason?: string; waived?: boolean; waivedReason?: string }
 ): Promise<void> {
   const db = createAdminClient()
 
   if (amount <= 0) {
+    if (!options?.waived || !(options.waivedReason || '').trim()) {
+      throw new Error('A £0 deposit requires a General Manager waiver with a reason')
+    }
+
     const { data: booking, error: fetchError } = await db
       .from('private_bookings')
       .select('id, status, customer_first_name, customer_last_name, customer_name, contact_phone, contact_email, customer_id, event_date, event_type, calendar_event_id')
@@ -856,6 +979,8 @@ export async function updateDepositAmount(
         deposit_payment_method: null,
         paypal_deposit_order_id: null,
         hold_expiry: null,
+        deposit_waived: true,
+        deposit_waived_reason: options.waivedReason,
         ...(shouldConfirm ? { status: 'confirmed', cancellation_reason: null } : {}),
         updated_at: new Date().toISOString(),
       })
@@ -880,9 +1005,19 @@ export async function updateDepositAmount(
     return
   }
 
+  if (amount < 250 && !(options?.reductionReason || '').trim()) {
+    throw new Error('Reducing the deposit below £250 requires a reason (General Manager discretion)')
+  }
+
   const { error } = await db
     .from('private_bookings')
-    .update({ deposit_amount: amount, paypal_deposit_order_id: null, updated_at: new Date().toISOString() })
+    .update({
+      deposit_amount: amount,
+      paypal_deposit_order_id: null,
+      deposit_waived: false,
+      deposit_waived_reason: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', bookingId)
   if (error) throw new Error(`Failed to update deposit amount: ${error.message}`)
 }

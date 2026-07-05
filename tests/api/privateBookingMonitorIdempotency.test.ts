@@ -71,13 +71,13 @@ describe('private booking monitor idempotency guard', () => {
     vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
 
     try {
-      // Single draft booking, 3 days to hold expiry (7-day window hits).
+      // Single draft booking, 5 days to hold expiry (7-day window: 4-7 days).
       const draftBooking = {
         id: 'booking-1',
         customer_first_name: 'Sarah',
         customer_name: 'Sarah Jones',
         contact_phone: '+447700900123',
-        hold_expiry: new Date('2026-02-18T12:00:00.000Z').toISOString(),
+        hold_expiry: new Date('2026-02-20T12:00:00.000Z').toISOString(),
         event_date: new Date('2026-02-28T12:00:00.000Z').toISOString(),
         customer_id: 'customer-1',
         deposit_amount: 250,
@@ -167,6 +167,20 @@ describe('private booking monitor idempotency guard', () => {
                     })),
                   }
                 }
+                // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
+                if (columns === 'id, status, event_date') {
+                  return {
+                    or: () => ({
+                      not: () => ({
+                        is: () => ({
+                          is: () => ({
+                            limit: vi.fn().mockResolvedValue({ data: [], error: null })
+                          })
+                        })
+                      })
+                    })
+                  }
+                }
                 throw new Error(`Unexpected private_bookings select: ${columns}`)
               }),
             }
@@ -185,11 +199,15 @@ describe('private booking monitor idempotency guard', () => {
           }
 
           if (table === 'private_bookings_with_details') {
+            // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+            //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
             return {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
-                  gt: vi.fn(() => ({
-                    lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                  not: vi.fn(() => ({
+                    gte: vi.fn(() => ({
+                      lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
                   })),
                 })),
               })),
@@ -216,10 +234,10 @@ describe('private booking monitor idempotency guard', () => {
       expect(idempotencyInsert).toHaveBeenCalledTimes(1)
       expect(idempotencyInsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotency_key: 'booking-1:deposit_reminder_7day:2026-02-18',
+          idempotency_key: 'booking-1:deposit_reminder_7day:2026-02-20',
           booking_id: 'booking-1',
           trigger_type: 'deposit_reminder_7day',
-          window_key: '2026-02-18',
+          window_key: '2026-02-20',
         })
       )
       expect(SmsQueueService.queueAndSend).toHaveBeenCalledTimes(1)
@@ -244,7 +262,7 @@ describe('private booking monitor idempotency guard', () => {
         customer_first_name: 'Sarah',
         customer_name: 'Sarah Jones',
         contact_phone: '+447700900123',
-        hold_expiry: new Date('2026-02-18T12:00:00.000Z').toISOString(),
+        hold_expiry: new Date('2026-02-20T12:00:00.000Z').toISOString(),
         event_date: new Date('2026-02-28T12:00:00.000Z').toISOString(),
         customer_id: 'customer-1',
         deposit_amount: 250,
@@ -332,6 +350,20 @@ describe('private booking monitor idempotency guard', () => {
                     })),
                   }
                 }
+                // PASS 6 — post-event inspection sweep (no eligible bookings in these tests)
+                if (columns === 'id, status, event_date') {
+                  return {
+                    or: () => ({
+                      not: () => ({
+                        is: () => ({
+                          is: () => ({
+                            limit: vi.fn().mockResolvedValue({ data: [], error: null })
+                          })
+                        })
+                      })
+                    })
+                  }
+                }
                 throw new Error(`Unexpected private_bookings select: ${columns}`)
               }),
             }
@@ -348,11 +380,15 @@ describe('private booking monitor idempotency guard', () => {
             }
           }
           if (table === 'private_bookings_with_details') {
+            // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+            //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
             return {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
-                  gt: vi.fn(() => ({
-                    lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                  not: vi.fn(() => ({
+                    gte: vi.fn(() => ({
+                      lte: vi.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
                   })),
                 })),
               })),

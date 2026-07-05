@@ -6,6 +6,7 @@ import { useActionState } from 'react'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
+import { EventDetailsRiskSection } from '@/components/private-bookings/EventDetailsRiskSection'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
@@ -78,6 +79,9 @@ export default function EditPrivateBookingPage({
   const [previousSetupDate, setPreviousSetupDate] = useState('')
   const [previousSetupTime, setPreviousSetupTime] = useState('')
   const [internalNotesField, setInternalNotesField] = useState('')
+  // SOP §12: changing the deposit below the £250 standard needs a recorded
+  // GM reason; £0 needs an explicit GM waiver plus reason.
+  const [depositAmountDraft, setDepositAmountDraft] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadBooking() {
@@ -344,10 +348,11 @@ export default function EditPrivateBookingPage({
                   step="0.01"
                   defaultValue={booking.deposit_amount ?? 0}
                   disabled={!!booking.deposit_paid_date}
+                  onChange={(e) => setDepositAmountDraft(e.target.value)}
                 />
               </FormGroup>
 
-              <FormGroup label="Balance Due Date">
+              <FormGroup label="Balance & Final Details Due">
                 <Input
                   type="date"
                   name="balance_due_date"
@@ -357,6 +362,53 @@ export default function EditPrivateBookingPage({
                 />
               </FormGroup>
             </div>
+
+            {/* SOP §12: reduced/waived deposits need a recorded GM reason */}
+            {(() => {
+              if (booking.deposit_paid_date || depositAmountDraft === null) return null
+              const draftValue = Number(depositAmountDraft)
+              const originalDeposit = Number(booking.deposit_amount ?? 0)
+              if (!Number.isFinite(draftValue) || draftValue === originalDeposit) return null
+              if (draftValue > 0 && draftValue < 250) {
+                return (
+                  <div className="mt-4">
+                    <FormGroup
+                      label="Reason for reduced deposit (GM discretion)"
+                      help="The standard deposit is £250 — reducing it needs a recorded reason"
+                    >
+                      <Input
+                        type="text"
+                        name="deposit_reduction_reason"
+                        id="deposit_reduction_reason"
+                        required
+                        placeholder="e.g. Repeat corporate client"
+                      />
+                    </FormGroup>
+                  </div>
+                )
+              }
+              if (draftValue === 0) {
+                return (
+                  <div className="mt-4 space-y-4">
+                    <Checkbox
+                      name="deposit_waived"
+                      value="true"
+                      label="Deposit waived (GM approved — venue-hosted/internal event)"
+                    />
+                    <FormGroup label="Reason for waiving the deposit">
+                      <Input
+                        type="text"
+                        name="deposit_waived_reason"
+                        id="deposit_waived_reason"
+                        required
+                        placeholder="e.g. Venue-hosted event"
+                      />
+                    </FormGroup>
+                  </div>
+                )
+              }
+              return null
+            })()}
 
             <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
               <input type="hidden" name="has_open_dispute" value="false" />
@@ -465,6 +517,26 @@ export default function EditPrivateBookingPage({
               </div>
             </div>
           </Section>
+
+          {/* Event Details & Risk (SOP intake) */}
+          <EventDetailsRiskSection
+            defaults={{
+              layout: booking.layout ?? null,
+              guestCountAdults: booking.guest_count_adults ?? null,
+              guestCountUnder18: booking.guest_count_under_18 ?? null,
+              barTabRequired: booking.bar_tab_required ?? null,
+              barTabLimit: booking.bar_tab_limit ?? null,
+              barTabPrepaidAmount: booking.bar_tab_prepaid_amount ?? null,
+              barTabPreauthReference: booking.bar_tab_preauth_reference ?? null,
+              outsideFood: booking.outside_food ?? null,
+              highPowerEquipment: booking.high_power_equipment ?? null,
+              decorationsPlan: booking.decorations_plan ?? null,
+              dogsExpected: booking.dogs_expected ?? null,
+              specialRiskNotes: booking.special_risk_notes ?? null,
+              communicationPreference: booking.communication_preference ?? null,
+              cleardownTime: booking.cleardown_time ?? null,
+            }}
+          />
 
           {/* Additional Information */}
           <Section title="Additional Information">

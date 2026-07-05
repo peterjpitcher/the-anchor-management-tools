@@ -210,6 +210,8 @@ describe('updateDepositAmount', () => {
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       deposit_amount: 350,
       paypal_deposit_order_id: null,
+      deposit_waived: false,
+      deposit_waived_reason: null,
     }))
   })
 
@@ -221,7 +223,42 @@ describe('updateDepositAmount', () => {
       from: vi.fn().mockReturnValue({ update: mockUpdate }),
     } as any)
 
-    await expect(updateDepositAmount('booking-123', 200)).rejects.toThrow('Failed to update deposit amount: DB error')
+    await expect(updateDepositAmount('booking-123', 300)).rejects.toThrow('Failed to update deposit amount: DB error')
+  })
+
+  it('should require a reason to reduce the deposit below £250 (SOP §12)', async () => {
+    const mockFrom = vi.fn()
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({ from: mockFrom } as any)
+
+    await expect(updateDepositAmount('booking-123', 200)).rejects.toThrow(
+      'Reducing the deposit below £250 requires a reason (General Manager discretion)'
+    )
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('should accept a sub-£250 amount when a reduction reason is recorded', async () => {
+    const mockUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    const mockFrom = vi.fn().mockReturnValue({ update: mockUpdate })
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({ from: mockFrom } as any)
+
+    await updateDepositAmount('booking-123', 200, 'user-1', { reductionReason: 'GM agreed reduction' })
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ deposit_amount: 200 }))
+  })
+
+  it('should require a GM waiver with a reason to set the deposit to £0 (SOP §12)', async () => {
+    const mockFrom = vi.fn()
+    ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({ from: mockFrom } as any)
+
+    await expect(updateDepositAmount('booking-123', 0)).rejects.toThrow(
+      'A £0 deposit requires a General Manager waiver with a reason'
+    )
+    await expect(updateDepositAmount('booking-123', 0, 'user-1', { waived: true })).rejects.toThrow(
+      'A £0 deposit requires a General Manager waiver with a reason'
+    )
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 })
 

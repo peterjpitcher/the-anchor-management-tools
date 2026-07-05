@@ -13,7 +13,14 @@ import type {
   PrivateBookingWithDetails,
   BookingStatus,
 } from '@/types/private-bookings'
+import type { ActionType } from '@/types/rbac'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
+
+// General Manager override permission (SOP pack §5) — seeded by migration
+// 20260705100003_pb_workflow_model.sql. The ActionType union in
+// src/types/rbac.ts has not been extended yet, so the action name is asserted
+// here; remove the assertion once 'gm_override' joins the union.
+const GM_OVERRIDE_ACTION = 'gm_override' as ActionType
 
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import { sanitizeMoneyString } from '@/lib/utils'
@@ -224,8 +231,38 @@ export async function createPrivateBooking(formData: FormData) {
         const value = getString(formData, 'deposit_amount')
         return value ? parseFloat(value) : undefined
       })(),
+      deposit_reduction_reason: getString(formData, 'deposit_reduction_reason'),
+      deposit_waived: getString(formData, 'deposit_waived') === 'true',
+      deposit_waived_reason: getString(formData, 'deposit_waived_reason'),
       balance_due_date: getString(formData, 'balance_due_date'),
       hold_expiry: getString(formData, 'deposit_due_date'),
+      // Enquiry intake fields (SOP pack §9)
+      layout: getString(formData, 'layout') as 'seated' | 'standing' | 'mixed' | undefined,
+      guest_count_adults: (() => {
+        const value = getString(formData, 'guest_count_adults')
+        return value ? parseInt(value, 10) : undefined
+      })(),
+      guest_count_under_18: (() => {
+        const value = getString(formData, 'guest_count_under_18')
+        return value ? parseInt(value, 10) : undefined
+      })(),
+      bar_tab_required: getString(formData, 'bar_tab_required') === 'true',
+      bar_tab_limit: (() => {
+        const value = getString(formData, 'bar_tab_limit')
+        return value ? parseFloat(value) : undefined
+      })(),
+      bar_tab_prepaid_amount: (() => {
+        const value = getString(formData, 'bar_tab_prepaid_amount')
+        return value ? parseFloat(value) : undefined
+      })(),
+      bar_tab_preauth_reference: getString(formData, 'bar_tab_preauth_reference'),
+      outside_food: getString(formData, 'outside_food') === 'true',
+      high_power_equipment: getString(formData, 'high_power_equipment') === 'true',
+      decorations_plan: getString(formData, 'decorations_plan'),
+      dogs_expected: getString(formData, 'dogs_expected') === 'true',
+      special_risk_notes: getString(formData, 'special_risk_notes'),
+      communication_preference: getString(formData, 'communication_preference'),
+      cleardown_time: getString(formData, 'cleardown_time') ? formatTimeToHHMM(getString(formData, 'cleardown_time')) : undefined,
     }
 
     // Validate data and fetch auth/permission in parallel
@@ -244,6 +281,15 @@ export async function createPrivateBooking(formData: FormData) {
 
     if (!canCreate && !canManage) {
       return { error: 'You do not have permission to create private bookings' }
+    }
+
+    // SOP §12: reducing the deposit below the £250 default needs the General
+    // Manager override permission, not just a recorded reason.
+    if (bookingData.deposit_amount !== undefined && bookingData.deposit_amount < 250) {
+      const canOverride = await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION)
+      if (!canOverride) {
+        return { error: 'Deposit reductions need General Manager override permission' }
+      }
     }
 
     // Call Service
@@ -268,8 +314,25 @@ export async function createPrivateBooking(formData: FormData) {
       accessibility_needs: bookingData.accessibility_needs || undefined,
       source: bookingData.source || undefined,
       deposit_amount: bookingData.deposit_amount,
+      deposit_reduction_reason: bookingData.deposit_reduction_reason || undefined,
+      deposit_waived: bookingData.deposit_waived,
+      deposit_waived_reason: bookingData.deposit_waived_reason || undefined,
       balance_due_date: bookingData.balance_due_date || undefined,
       hold_expiry: bookingData.hold_expiry || undefined,
+      layout: bookingData.layout,
+      guest_count_adults: bookingData.guest_count_adults,
+      guest_count_under_18: bookingData.guest_count_under_18,
+      bar_tab_required: bookingData.bar_tab_required,
+      bar_tab_limit: bookingData.bar_tab_limit,
+      bar_tab_prepaid_amount: bookingData.bar_tab_prepaid_amount,
+      bar_tab_preauth_reference: bookingData.bar_tab_preauth_reference || undefined,
+      outside_food: bookingData.outside_food,
+      high_power_equipment: bookingData.high_power_equipment,
+      decorations_plan: bookingData.decorations_plan || undefined,
+      dogs_expected: bookingData.dogs_expected,
+      special_risk_notes: bookingData.special_risk_notes || undefined,
+      communication_preference: bookingData.communication_preference || undefined,
+      cleardown_time: bookingData.cleardown_time || undefined,
       created_by: user?.id,
       date_tbd: isDateTbd
     } as CreatePrivateBookingInput);
@@ -280,6 +343,14 @@ export async function createPrivateBooking(formData: FormData) {
       resource_type: 'private_booking',
       resource_id: booking.id,
       operation_status: 'success',
+      additional_info: {
+        ...(bookingData.deposit_amount !== undefined && bookingData.deposit_amount > 0 && bookingData.deposit_amount < 250
+          ? { deposit_reduced_to: bookingData.deposit_amount, deposit_reduction_reason: bookingData.deposit_reduction_reason }
+          : {}),
+        ...(bookingData.deposit_waived
+          ? { deposit_waived: true, deposit_waived_reason: bookingData.deposit_waived_reason }
+          : {}),
+      },
     })
 
     revalidatePath('/private-bookings')
@@ -351,11 +422,56 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
       const value = getStringAllowEmpty(formData, 'deposit_amount')
       return value ? parseFloat(value) : undefined
     })(),
+    deposit_reduction_reason: getString(formData, 'deposit_reduction_reason'),
+    deposit_waived: formData.has('deposit_waived')
+      ? formData.getAll('deposit_waived').includes('true')
+      : undefined,
+    deposit_waived_reason: getString(formData, 'deposit_waived_reason'),
     balance_due_date: getStringAllowEmpty(formData, 'balance_due_date'),
     has_open_dispute: formData.has('has_open_dispute')
       ? formData.getAll('has_open_dispute').includes('true')
       : undefined,
     status: getString(formData, 'status') as BookingStatus | undefined,
+    // Enquiry intake fields (SOP pack §9) — undefined when absent so partial
+    // edits leave the stored values untouched.
+    layout: getString(formData, 'layout') as 'seated' | 'standing' | 'mixed' | undefined,
+    guest_count_adults: (() => {
+      const value = getStringAllowEmpty(formData, 'guest_count_adults')
+      return value ? parseInt(value, 10) : undefined
+    })(),
+    guest_count_under_18: (() => {
+      const value = getStringAllowEmpty(formData, 'guest_count_under_18')
+      return value ? parseInt(value, 10) : undefined
+    })(),
+    bar_tab_required: formData.has('bar_tab_required')
+      ? formData.getAll('bar_tab_required').includes('true')
+      : undefined,
+    bar_tab_limit: (() => {
+      const value = getStringAllowEmpty(formData, 'bar_tab_limit')
+      return value ? parseFloat(value) : undefined
+    })(),
+    bar_tab_prepaid_amount: (() => {
+      const value = getStringAllowEmpty(formData, 'bar_tab_prepaid_amount')
+      return value ? parseFloat(value) : undefined
+    })(),
+    bar_tab_preauth_reference: getStringAllowEmpty(formData, 'bar_tab_preauth_reference'),
+    outside_food: formData.has('outside_food')
+      ? formData.getAll('outside_food').includes('true')
+      : undefined,
+    high_power_equipment: formData.has('high_power_equipment')
+      ? formData.getAll('high_power_equipment').includes('true')
+      : undefined,
+    decorations_plan: getStringAllowEmpty(formData, 'decorations_plan'),
+    dogs_expected: formData.has('dogs_expected')
+      ? formData.getAll('dogs_expected').includes('true')
+      : undefined,
+    special_risk_notes: getStringAllowEmpty(formData, 'special_risk_notes'),
+    communication_preference: getStringAllowEmpty(formData, 'communication_preference'),
+    cleardown_time: (() => {
+      const raw = getStringAllowEmpty(formData, 'cleardown_time')
+      if (raw === undefined) return undefined
+      return raw === '' ? '' : formatTimeToHHMM(raw)
+    })(),
   }
 
   // Validate data
@@ -366,10 +482,21 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
 
   const bookingData = validationResult.data
 
+  // SOP §12: reducing the deposit below the £250 default needs the General
+  // Manager override permission, not just a recorded reason.
+  if (bookingData.deposit_amount !== undefined && bookingData.deposit_amount < 250) {
+    const canOverride = await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION)
+    if (!canOverride) {
+      return { error: 'Deposit reductions need General Manager override permission' }
+    }
+  }
+
   try {
     // Call Service
     const booking = await PrivateBookingService.updateBooking(id, {
       ...bookingData,
+      // SOP §15: why the date moved — audited by the service, never stored as a column.
+      date_change_reason: getString(formData, 'date_change_reason'),
       date_tbd: isDateTbd
     } as UpdatePrivateBookingInput, user.id);
 
@@ -471,10 +598,12 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
 /**
  * Return whether a private booking can still be hard-deleted.
  *
- * A booking is delete-eligible only when no SMS has been sent AND no SMS is
- * currently scheduled in the future. This mirrors the Wave 1 DB trigger
- * `private_bookings_delete_gate` so the UI can disable the delete button before
- * the user commits, avoiding a dead-end database error.
+ * SOP §8: a booking is delete-eligible only when no payment has been made,
+ * no contract or document has been generated, and no customer SMS or email
+ * has been sent or scheduled. Cancelled bookings are NOT exempt —
+ * cancellation records must be retained. This mirrors the DB trigger
+ * `private_bookings_delete_gate` so the UI can disable the delete button
+ * before the user commits, avoiding a dead-end database error.
  *
  * @param bookingId — the UUID of the booking to check
  */
@@ -511,11 +640,9 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
 
   const admin = createAdminClient()
 
-  // If the booking is already cancelled, the customer has been notified —
-  // the SMS gate should not block deletion.
   const { data: booking, error: bookingError } = await admin
     .from('private_bookings')
-    .select('status')
+    .select('status, deposit_paid_date, contract_version')
     .eq('id', bookingId)
     .single()
 
@@ -528,33 +655,45 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
     }
   }
 
-  // Skip SMS gate for cancelled bookings — customer already notified
-  if (booking.status === 'cancelled') {
+  if (booking.deposit_paid_date) {
     return {
-      canDelete: true,
+      canDelete: false,
       sentCount: 0,
-      scheduledCount: 0
+      scheduledCount: 0,
+      reason: 'A deposit has been paid — cancel instead of delete'
     }
   }
 
-  const { data, error } = await admin
-    .from('private_booking_sms_queue')
-    .select('status, scheduled_for')
-    .eq('booking_id', bookingId)
+  if ((booking.contract_version ?? 0) > 0) {
+    return {
+      canDelete: false,
+      sentCount: 0,
+      scheduledCount: 0,
+      reason: 'A contract has been generated — cancel instead of delete'
+    }
+  }
 
-  if (error) {
-    logPrivateBookingActionError('Error fetching SMS queue for delete eligibility:', error, {
+  const [smsResult, paymentsResult, documentsResult, emailsResult] = await Promise.all([
+    admin.from('private_booking_sms_queue').select('status, scheduled_for').eq('booking_id', bookingId),
+    admin.from('private_booking_payments').select('id', { count: 'exact', head: true }).eq('booking_id', bookingId),
+    admin.from('private_booking_documents').select('id', { count: 'exact', head: true }).eq('booking_id', bookingId),
+    admin.from('email_messages').select('id', { count: 'exact', head: true }).eq('private_booking_id', bookingId).neq('direction', 'inbound'),
+  ])
+
+  const gateError = smsResult.error || paymentsResult.error || documentsResult.error || emailsResult.error
+  if (gateError) {
+    logPrivateBookingActionError('Error checking delete eligibility:', gateError, {
       bookingId
     })
     return {
       canDelete: false,
       sentCount: 0,
       scheduledCount: 0,
-      reason: 'Unable to verify SMS history — please try again'
+      reason: 'Unable to verify delete eligibility — please try again'
     }
   }
 
-  const rows = data ?? []
+  const rows = smsResult.data ?? []
   const now = Date.now()
 
   const sentCount = rows.filter((row) => row.status === 'sent').length
@@ -564,6 +703,33 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
     const scheduledAt = Date.parse(row.scheduled_for)
     return Number.isFinite(scheduledAt) && scheduledAt > now
   }).length
+
+  if ((paymentsResult.count ?? 0) > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: 'Payments have been recorded — cancel instead of delete'
+    }
+  }
+
+  if ((documentsResult.count ?? 0) > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: 'A contract or document has been generated — cancel instead of delete'
+    }
+  }
+
+  if ((emailsResult.count ?? 0) > 0) {
+    return {
+      canDelete: false,
+      sentCount,
+      scheduledCount,
+      reason: 'The customer has been emailed — cancel instead of delete'
+    }
+  }
 
   if (sentCount > 0) {
     return {
@@ -598,11 +764,15 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
  * Returns `null` preview_body on error so callers can still show a
  * confirmation dialog; they just won't be able to preview the SMS.
  */
-export async function getCancellationPreview(bookingId: string): Promise<{
+export async function getCancellationPreview(
+  bookingId: string,
+  retention?: { retainedAmount: number } | null
+): Promise<{
   outcome: import('@/services/private-bookings/financial').CancellationFinancialOutcome | null
   refund_amount: number
   retained_amount: number
   deposit_deduction: number
+  max_retainable: number
   preview_body: string | null
   error?: string
 }> {
@@ -615,6 +785,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       refund_amount: 0,
       retained_amount: 0,
       deposit_deduction: 0,
+      max_retainable: 0,
       preview_body: null,
       error: 'Unauthorized',
     }
@@ -628,6 +799,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       refund_amount: 0,
       retained_amount: 0,
       deposit_deduction: 0,
+      max_retainable: 0,
       preview_body: null,
       error: 'You do not have permission to cancel private bookings',
     }
@@ -642,7 +814,8 @@ export async function getCancellationPreview(bookingId: string): Promise<{
         bookingCancelledHoldMessage,
         bookingCancelledRefundableMessage,
         bookingCancelledPartialRefundMessage,
-        bookingCancelledNonRefundableMessage,
+        bookingCancelledRetentionMessage,
+        bookingCancelledReviewPendingMessage,
         bookingCancelledManualReviewMessage,
       },
       outcome,
@@ -665,6 +838,8 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       : 'your event date'
 
     let previewBody: string
+    let previewRefund = outcome.refund_amount
+    let previewRetained = outcome.retained_amount
     switch (outcome.outcome) {
       case 'no_money':
         previewBody = bookingCancelledHoldMessage({
@@ -687,13 +862,33 @@ export async function getCancellationPreview(bookingId: string): Promise<{
           refundAmount: outcome.refund_amount,
         })
         break
-      case 'non_refundable_retained':
-        previewBody = bookingCancelledNonRefundableMessage({
-          customerFirstName,
-          eventDate: eventDateReadable,
-          retainedAmount: outcome.retained_amount,
-        })
+      case 'gm_review_required': {
+        // SOP §14: retention up to the full deposit is a manager decision.
+        // Preview reflects the retained amount chosen in the cancel modal.
+        if (retention) {
+          const retained = Math.min(Math.max(retention.retainedAmount, 0), outcome.max_retainable)
+          previewRefund = outcome.refund_amount + (outcome.max_retainable - retained)
+          previewRetained = retained
+          previewBody = retained > 0
+            ? bookingCancelledRetentionMessage({
+                customerFirstName,
+                eventDate: eventDateReadable,
+                retainedAmount: retained,
+                refundAmount: previewRefund,
+              })
+            : bookingCancelledRefundableMessage({
+                customerFirstName,
+                eventDate: eventDateReadable,
+                refundAmount: previewRefund,
+              })
+        } else {
+          previewBody = bookingCancelledReviewPendingMessage({
+            customerFirstName,
+            eventDate: eventDateReadable,
+          })
+        }
         break
+      }
       case 'manual_review':
       default:
         previewBody = bookingCancelledManualReviewMessage({
@@ -705,9 +900,10 @@ export async function getCancellationPreview(bookingId: string): Promise<{
 
     return {
       outcome: outcome.outcome,
-      refund_amount: outcome.refund_amount,
-      retained_amount: outcome.retained_amount,
+      refund_amount: previewRefund,
+      retained_amount: previewRetained,
       deposit_deduction: outcome.deposit_deduction,
+      max_retainable: outcome.max_retainable,
       preview_body: previewBody,
     }
   } catch (error) {
@@ -719,6 +915,7 @@ export async function getCancellationPreview(bookingId: string): Promise<{
       refund_amount: 0,
       retained_amount: 0,
       deposit_deduction: 0,
+      max_retainable: 0,
       preview_body: null,
       error: 'Failed to compute cancellation preview',
     }
@@ -1069,12 +1266,31 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
   }
 }
 
-// Cancel a private booking and notify customer by SMS
-export async function cancelPrivateBooking(bookingId: string, reason?: string) {
+// Cancel a private booking and notify customer by SMS.
+// For sub-30-day cancellations with a paid deposit, SOP §14 requires a
+// manager retention decision (0..deposit + reason) — pass it via `retention`.
+export async function cancelPrivateBooking(
+  bookingId: string,
+  reason?: string,
+  retention?: { retainedAmount: number; reason: string } | null,
+  capture?: {
+    channel?: 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
+    receivedAt?: string
+  } | null
+) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
     || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to cancel private bookings' }
+  }
+
+  // SOP §14/§25: retaining any part of the deposit is a General Manager
+  // decision — require the gm_override permission.
+  if (retention && retention.retainedAmount > 0) {
+    const canOverride = await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION)
+    if (!canOverride) {
+      return { error: 'Retaining a deposit requires General Manager override permission' }
+    }
   }
 
   // Get current user
@@ -1085,7 +1301,10 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
     const result = await PrivateBookingService.cancelBooking(
       bookingId,
       reason || '',
-      user?.id || undefined
+      user?.id || undefined,
+      (retention || capture)
+        ? { retentionDecision: retention ?? null, capture: capture ?? null }
+        : undefined
     )
 
     revalidatePath('/private-bookings')
@@ -1102,18 +1321,22 @@ export async function cancelPrivateBooking(bookingId: string, reason?: string) {
   }
 }
 
-export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
+export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30, reason?: string) {
   const canEdit = await checkUserPermission('private_bookings', 'edit')
     || await checkUserPermission('private_bookings', 'manage')
   if (!canEdit) {
     return { error: 'You do not have permission to extend booking holds' }
   }
 
+  if (!(reason || '').trim()) {
+    return { error: 'Please record a reason for extending the hold' }
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   try {
-    const result = await PrivateBookingService.extendHold(bookingId, days, user?.id)
+    const result = await PrivateBookingService.extendHold(bookingId, days, user?.id, reason)
 
     try {
       await logAuditEvent({
@@ -1125,6 +1348,7 @@ export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30) {
         additional_info: {
           action: 'extend_booking_hold',
           days,
+          reason,
         },
       })
     } catch (auditError) {
@@ -1316,12 +1540,48 @@ export async function sendApprovedSms(smsId: string) {
 }
 
 // Venue Space Management
+// SOP + optional pricing columns (VAT, whole-venue flag, minimum hours, setup
+// fee, display order) live outside the base service mapping, so persist them
+// here in a single follow-up update on the same row. Hire rates are stored net;
+// vat_rate is applied on top at display/invoicing time.
+type VenueSpaceSopColumns = {
+  vat_rate: number
+  blocks_all_spaces: boolean
+  minimum_hours?: number
+  setup_fee?: number
+  display_order?: number
+}
+
+async function persistVenueSpaceSopColumns(spaceId: string, sop: VenueSpaceSopColumns) {
+  const admin = createAdminClient()
+  const update: Record<string, number | boolean> = {
+    vat_rate: sop.vat_rate,
+    blocks_all_spaces: sop.blocks_all_spaces,
+  }
+  if (sop.minimum_hours !== undefined) update.minimum_hours = sop.minimum_hours
+  if (sop.setup_fee !== undefined) update.setup_fee = sop.setup_fee
+  if (sop.display_order !== undefined) update.display_order = sop.display_order
+
+  const { error } = await admin
+    .from('venue_spaces')
+    .update(update)
+    .eq('id', spaceId)
+  if (error) {
+    throw new Error(error.message || 'Failed to save venue space settings')
+  }
+}
+
 export async function createVenueSpace(data: {
   name: string
   capacity: number
   capacity_standing: number
   hire_cost: number
   description?: string | null
+  vat_rate?: number
+  blocks_all_spaces?: boolean
+  minimum_hours?: number
+  setup_fee?: number
+  display_order?: number
   is_active: boolean
 }) {
   const permission = await requirePrivateBookingsPermission('manage_spaces')
@@ -1332,7 +1592,20 @@ export async function createVenueSpace(data: {
   const { user } = permission
 
   try {
-    await PrivateBookingService.createVenueSpace(data, user.id, user.email || undefined)
+    const inserted = await PrivateBookingService.createVenueSpace(
+      data,
+      user.id,
+      user.email || undefined
+    )
+    if (inserted?.id) {
+      await persistVenueSpaceSopColumns(inserted.id, {
+        vat_rate: data.vat_rate ?? 20,
+        blocks_all_spaces: data.blocks_all_spaces ?? false,
+        minimum_hours: data.minimum_hours,
+        setup_fee: data.setup_fee,
+        display_order: data.display_order,
+      })
+    }
     revalidatePath('/private-bookings/settings/spaces')
     return { success: true }
   } catch (error: unknown) {
@@ -1347,6 +1620,11 @@ export async function updateVenueSpace(id: string, data: {
   capacity_standing: number
   hire_cost: number
   description?: string | null
+  vat_rate?: number
+  blocks_all_spaces?: boolean
+  minimum_hours?: number
+  setup_fee?: number
+  display_order?: number
   is_active: boolean
 }) {
   const permission = await requirePrivateBookingsPermission('manage_spaces')
@@ -1358,6 +1636,13 @@ export async function updateVenueSpace(id: string, data: {
 
   try {
     await PrivateBookingService.updateVenueSpace(id, data, user.id, user.email || undefined)
+    await persistVenueSpaceSopColumns(id, {
+      vat_rate: data.vat_rate ?? 20,
+      blocks_all_spaces: data.blocks_all_spaces ?? false,
+      minimum_hours: data.minimum_hours,
+      setup_fee: data.setup_fee,
+      display_order: data.display_order,
+    })
     revalidatePath('/private-bookings/settings/spaces')
     return { success: true }
   } catch (error: unknown) {
@@ -1385,10 +1670,40 @@ export async function deleteVenueSpace(id: string) {
 }
 
 // Catering Package Management
+type CateringPackageCategory = 'food' | 'drink' | 'addon' | 'self_catering' | 'other'
+
+// SOP columns (VAT + waiver/allergy/seasonal flags) live outside the base
+// service mapping, so persist them here in a single follow-up update on the
+// same row the service just wrote. Prices are stored net; vat_rate is applied
+// on top at display/invoicing time.
+async function persistCateringSopColumns(
+  packageId: string,
+  sop: {
+    vat_rate: number
+    requires_waiver: boolean
+    requires_allergy_capture: boolean
+    seasonal: boolean
+  }
+) {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('catering_packages')
+    .update({
+      vat_rate: sop.vat_rate,
+      requires_waiver: sop.requires_waiver,
+      requires_allergy_capture: sop.requires_allergy_capture,
+      seasonal: sop.seasonal,
+    })
+    .eq('id', packageId)
+  if (error) {
+    throw new Error(error.message || 'Failed to save catering package settings')
+  }
+}
+
 export async function createCateringPackage(data: {
   name: string
   serving_style: string
-  category: 'food' | 'drink' | 'addon'
+  category: CateringPackageCategory
   per_head_cost: number
   pricing_model?: 'per_head' | 'total_value'
   minimum_order?: number | null
@@ -1398,6 +1713,10 @@ export async function createCateringPackage(data: {
   good_to_know?: string | null
   guest_description?: string | null
   dietary_notes?: string | null
+  vat_rate?: number
+  requires_waiver?: boolean
+  requires_allergy_capture?: boolean
+  seasonal?: boolean
   is_active: boolean
 }) {
   const permission = await requirePrivateBookingsPermission('manage_catering')
@@ -1408,7 +1727,19 @@ export async function createCateringPackage(data: {
   const { user } = permission
 
   try {
-    await PrivateBookingService.createCateringPackage(data, user.id, user.email || undefined)
+    const inserted = await PrivateBookingService.createCateringPackage(
+      data,
+      user.id,
+      user.email || undefined
+    )
+    if (inserted?.id) {
+      await persistCateringSopColumns(inserted.id, {
+        vat_rate: data.vat_rate ?? 20,
+        requires_waiver: data.requires_waiver ?? false,
+        requires_allergy_capture: data.requires_allergy_capture ?? false,
+        seasonal: data.seasonal ?? false,
+      })
+    }
     revalidatePath('/private-bookings/settings/catering')
     return { success: true }
   } catch (error: unknown) {
@@ -1420,7 +1751,7 @@ export async function createCateringPackage(data: {
 export async function updateCateringPackage(id: string, data: {
   name: string
   serving_style: string
-  category: 'food' | 'drink' | 'addon'
+  category: CateringPackageCategory
   per_head_cost: number
   pricing_model?: 'per_head' | 'total_value'
   minimum_order?: number | null
@@ -1430,6 +1761,10 @@ export async function updateCateringPackage(id: string, data: {
   good_to_know?: string | null
   guest_description?: string | null
   dietary_notes?: string | null
+  vat_rate?: number
+  requires_waiver?: boolean
+  requires_allergy_capture?: boolean
+  seasonal?: boolean
   is_active: boolean
 }) {
   const permission = await requirePrivateBookingsPermission('manage_catering')
@@ -1440,7 +1775,18 @@ export async function updateCateringPackage(id: string, data: {
   const { user } = permission
 
   try {
-    await PrivateBookingService.updateCateringPackage(id, data, user.id, user.email || undefined)
+    await PrivateBookingService.updateCateringPackage(
+      id,
+      data,
+      user.id,
+      user.email || undefined
+    )
+    await persistCateringSopColumns(id, {
+      vat_rate: data.vat_rate ?? 20,
+      requires_waiver: data.requires_waiver ?? false,
+      requires_allergy_capture: data.requires_allergy_capture ?? false,
+      seasonal: data.seasonal ?? false,
+    })
     revalidatePath('/private-bookings/settings/catering')
     return { success: true }
   } catch (error: unknown) {
@@ -2211,6 +2557,21 @@ export async function editPrivateBookingPayment(
       return { error: 'Paid deposit amount must be greater than £0' }
     }
 
+    // SOP §12: reducing the deposit below the £250 default needs the General
+    // Manager override permission, not just a recorded reason.
+    if (newAmount < 250) {
+      const canOverride = await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION, user.id)
+      if (!canOverride) {
+        return { error: 'Deposit reductions need General Manager override permission' }
+      }
+    }
+
+    // SOP §12: reductions below £250 need a recorded reason; £0 needs an
+    // explicit GM waiver. Collected from the deposit edit form.
+    const reductionReason = (formData.get('reduction_reason') as string | null)?.trim() || undefined
+    const waived = formData.get('waived') === 'true'
+    const waivedReason = (formData.get('waived_reason') as string | null)?.trim() || undefined
+
     try {
       if (oldBooking?.deposit_paid_date) {
         // Paid deposit: update amount + method (existing behaviour)
@@ -2220,7 +2581,11 @@ export async function editPrivateBookingPayment(
         })
       } else {
         // Unpaid deposit: update amount only, clear PayPal order (CR-1, ID-1)
-        await updateDepositAmount(parsed.data.bookingId, newAmount, user.id)
+        await updateDepositAmount(parsed.data.bookingId, newAmount, user.id, {
+          reductionReason,
+          waived,
+          waivedReason,
+        })
       }
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to update deposit' }
@@ -2240,6 +2605,8 @@ export async function editPrivateBookingPayment(
         new_method: oldBooking?.deposit_paid_date ? parsed.data.method : oldBooking?.deposit_payment_method,
         deposit_paid: !!oldBooking?.deposit_paid_date,
         no_deposit_required: !oldBooking?.deposit_paid_date && newAmount <= 0,
+        ...(reductionReason ? { reduction_reason: reductionReason } : {}),
+        ...(waived ? { deposit_waived: true, waived_reason: waivedReason } : {}),
       },
     })
     revalidatePath('/private-bookings')
@@ -2386,6 +2753,87 @@ export async function sendPrivateBookingSms(
     return { success: true }
   } catch (error) {
     logPrivateBookingActionError('Error sending private booking SMS:', error, { bookingId })
+    return { error: getErrorMessage(error) }
+  }
+}
+
+// Send the contract + terms to the customer (SOP §11: the contract must be
+// provided before the deposit is paid, and the send must be recorded).
+// Generates a fresh version, stores the HTML + PDF snapshots, emails the PDF
+// and stamps contract_sent_at / contract_sent_to.
+export async function sendBookingContract(
+  bookingId: string
+): Promise<{ success?: boolean; version?: number; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const canSend = await checkUserPermission('private_bookings', 'generate_contracts')
+    || await checkUserPermission('private_bookings', 'manage')
+  if (!canSend) return { error: 'You do not have permission to send contracts' }
+
+  try {
+    const { generateContractDocument, storeContractSnapshot } = await import('@/lib/private-bookings/contract-lifecycle')
+    const { generatePDFFromHTML } = await import('@/lib/pdf-generator')
+    const { sendContractEmailToCustomer } = await import('@/lib/email/private-booking-emails')
+
+    const { html, version, booking } = await generateContractDocument(bookingId, { performedBy: user.id })
+
+    if (!booking.contact_email) {
+      return { error: 'This booking has no contact email address — add one before sending the contract' }
+    }
+
+    const pdf = await generatePDFFromHTML(html, {
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    })
+
+    const admin = createAdminClient()
+    await storeContractSnapshot(admin, {
+      bookingId,
+      version,
+      fileName: `contract-v${version}.pdf`,
+      content: pdf,
+      mimeType: 'application/pdf',
+      generatedBy: user.id,
+      metadata: { sent_to: booking.contact_email },
+    })
+
+    await sendContractEmailToCustomer(booking, { version, pdf })
+
+    const nowIso = new Date().toISOString()
+    const { error: updateError } = await admin
+      .from('private_bookings')
+      .update({ contract_sent_at: nowIso, contract_sent_to: booking.contact_email, updated_at: nowIso })
+      .eq('id', bookingId)
+    if (updateError) {
+      logger.error('Failed to record contract send', {
+        error: new Error(updateError.message),
+        metadata: { bookingId },
+      })
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: {
+        action: 'contract_sent',
+        contract_version: version,
+        sent_to: booking.contact_email,
+        customer_notified: true,
+      },
+    })
+
+    revalidatePath('/private-bookings')
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true, version }
+  } catch (error: unknown) {
+    logPrivateBookingActionError('Error sending booking contract:', error, { bookingId })
     return { error: getErrorMessage(error) }
   }
 }

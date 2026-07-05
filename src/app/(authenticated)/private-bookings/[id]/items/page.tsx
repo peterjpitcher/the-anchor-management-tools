@@ -39,6 +39,7 @@ import { ConfirmDialog } from '@/ds'
 import { toast } from '@/ds'
 
 import { formatCurrency } from '@/lib/format'
+import { computeBookingMoney } from '@/lib/private-bookings/vat'
 interface AddItemModalProps {
   isOpen: boolean
   onClose: () => void
@@ -795,6 +796,9 @@ export default function ItemsPage() {
     )
   }
 
+  // Stored prices are net — show VAT and the VAT-inclusive total (SOP 2026-07)
+  const bookingMoney = computeBookingMoney(items, booking?.discount_type, booking?.discount_amount)
+
   const customerLabel = booking
     ? booking.customer_name || `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim() || 'Unknown'
     : 'Unknown'
@@ -889,11 +893,23 @@ export default function ItemsPage() {
             ))}
 
             {/* Total */}
-            <div className="border-t pt-4">
+            <div className="border-t pt-4 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-lg font-medium text-gray-900">Total</span>
+                <span className="text-lg font-medium text-gray-900">Total (ex VAT)</span>
                 <span className="text-2xl font-bold text-gray-900">
                   {formatMoney(calculateSubtotal())}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500">VAT</span>
+                <span className="font-medium text-gray-900">
+                  {formatMoney(bookingMoney.vatAmount)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-base font-medium text-gray-900">Total inc. VAT</span>
+                <span className="text-lg font-semibold text-gray-900">
+                  {formatMoney(bookingMoney.grossTotal)}
                 </span>
               </div>
             </div>

@@ -6,13 +6,16 @@ import { logger } from '@/lib/logger'
  *
  * - `no_money` — nothing has been paid yet (no deposit, no balance). Customer
  *   loses nothing and is simply told the hold is gone.
- * - `refundable` — balance payment(s) exist and can be refunded. Deposit
- *   refund depends on cancellation timing (30-day threshold).
+ * - `refundable` — balance payment(s) exist and can be refunded; no deposit
+ *   retention decision is needed (no deposit was paid).
  * - `deposit_partial_refund` — cancelled 30+ days before event. Deposit
  *   refunded less 5% cancellation administration deduction and any direct
  *   costs already incurred.
- * - `non_refundable_retained` — cancelled less than 30 days before event,
- *   failed to attend, or otherwise did not proceed. Deposit retained in full.
+ * - `gm_review_required` — cancelled less than 30 days before event with a
+ *   deposit paid. The Anchor MAY retain up to the full deposit where
+ *   reasonable and evidenced, but retention is a General Manager decision,
+ *   never automatic (SOP §14). The caller must supply the decided retained
+ *   amount (0..max_retainable) and a reason before the customer is told.
  * - `manual_review` — there is something unusual (an open dispute/chargeback
  *   noted on a payment) and a human must decide. Customer is told a team
  *   member will be in touch.
@@ -21,7 +24,7 @@ export type CancellationFinancialOutcome =
   | 'no_money'
   | 'refundable'
   | 'deposit_partial_refund'
-  | 'non_refundable_retained'
+  | 'gm_review_required'
   | 'manual_review'
 
 export type PrivateBookingPaidTotals = {
@@ -37,6 +40,8 @@ export type PrivateBookingCancellationOutcome = {
   refund_amount: number
   retained_amount: number
   deposit_deduction: number
+  /** Deposit amount a manager may retain (only set for gm_review_required). */
+  max_retainable: number
 }
 
 /**
@@ -145,10 +150,13 @@ function daysUntilEvent(eventDate: string): number {
 /**
  * Derive the cancellation financial outcome for a private booking.
  *
- * Deposit refund policy (tiered by cancellation timing):
+ * Deposit refund policy (tiered by cancellation timing, SOP §14):
  *   - 30+ calendar days before event → deposit refunded less 5%
  *     cancellation administration deduction (+ any direct costs incurred)
- *   - Less than 30 calendar days → deposit retained in full
+ *   - Less than 30 calendar days → The Anchor MAY retain up to the full
+ *     deposit where reasonable and evidenced. The retained amount is a
+ *     General Manager decision recorded at cancellation time — never an
+ *     automatic full retention.
  *
  * Balance payments are always refundable (unless dispute exists).
  *
@@ -156,9 +164,9 @@ function daysUntilEvent(eventDate: string): number {
  *   1. `has_open_dispute` → `manual_review`
  *   2. nothing paid → `no_money`
  *   3. 30+ days before event → `deposit_partial_refund` (balance also refunded)
- *   4. <30 days before event → `non_refundable_retained` (deposit kept)
- *      or `refundable` if balance payments also exist (balance refunded,
- *      deposit kept)
+ *   4. <30 days before event with deposit paid → `gm_review_required`
+ *      (balance refundable; deposit retention 0..deposit decided by manager)
+ *   5. <30 days, balance payments only → `refundable`
  */
 export async function getPrivateBookingCancellationOutcome(
   bookingId: string,
@@ -171,11 +179,12 @@ export async function getPrivateBookingCancellationOutcome(
       refund_amount: 0,
       retained_amount: totals.total_paid,
       deposit_deduction: 0,
+      max_retainable: 0,
     }
   }
 
   if (totals.total_paid === 0) {
-    return { outcome: 'no_money', refund_amount: 0, retained_amount: 0, deposit_deduction: 0 }
+    return { outcome: 'no_money', refund_amount: 0, retained_amount: 0, deposit_deduction: 0, max_retainable: 0 }
   }
 
   const days = totals.event_date ? daysUntilEvent(totals.event_date) : 0
@@ -189,24 +198,28 @@ export async function getPrivateBookingCancellationOutcome(
       refund_amount: depositRefund + totals.balance_payments_total,
       retained_amount: deduction,
       deposit_deduction: deduction,
+      max_retainable: 0,
     }
   }
 
-  // <30 days: deposit retained in full
-  if (totals.balance_payments_total === 0) {
+  if (totals.deposit_paid > 0) {
+    // <30 days with a deposit: retention is a manager decision, up to the
+    // full deposit. Balance payments remain refundable.
     return {
-      outcome: 'non_refundable_retained',
-      refund_amount: 0,
-      retained_amount: totals.deposit_paid,
+      outcome: 'gm_review_required',
+      refund_amount: totals.balance_payments_total,
+      retained_amount: 0,
       deposit_deduction: 0,
+      max_retainable: totals.deposit_paid,
     }
   }
 
-  // <30 days with balance payments: refund balance, retain deposit
+  // <30 days, balance payments only: refund the balance
   return {
     outcome: 'refundable',
     refund_amount: totals.balance_payments_total,
-    retained_amount: totals.deposit_paid,
+    retained_amount: 0,
     deposit_deduction: 0,
+    max_retainable: 0,
   }
 }

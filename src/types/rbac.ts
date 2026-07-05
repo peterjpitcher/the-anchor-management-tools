@@ -84,6 +84,8 @@ export type ActionType =
   | 'manage_catering'
   | 'manage_vendors'
   | 'generate_contracts'
+  | 'gm_override'
+  | 'view_sensitive'
   | 'view_sms_queue'
   | 'approve_sms'
   | 'enroll'

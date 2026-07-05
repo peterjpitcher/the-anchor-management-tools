@@ -107,11 +107,15 @@ function buildBaseSupabase(options: {
         }
       }
       if (table === 'private_bookings_with_details') {
+        // Pass 3: .eq('status').not('balance_due_date', 'is', null)
+        //   .gte('balance_due_date', today).lte('balance_due_date', today+7)
         return {
           select: () => ({
             eq: () => ({
-              gt: () => ({
-                lte: vi.fn().mockResolvedValue({ data: [], error: null })
+              not: () => ({
+                gte: () => ({
+                  lte: vi.fn().mockResolvedValue({ data: [], error: null })
+                })
               })
             })
           })
@@ -203,6 +207,20 @@ function buildBaseSupabase(options: {
               return {
                 eq: () => ({
                   eq: vi.fn().mockResolvedValue({ data: [], error: null })
+                })
+              }
+            }
+            // PASS 6 — post-event inspection sweep (no eligible bookings here)
+            if (columns === 'id, status, event_date') {
+              return {
+                or: () => ({
+                  not: () => ({
+                    is: () => ({
+                      is: () => ({
+                        limit: vi.fn().mockResolvedValue({ data: [], error: null })
+                      })
+                    })
+                  })
                 })
               }
             }

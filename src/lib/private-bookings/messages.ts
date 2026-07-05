@@ -41,6 +41,16 @@ export function depositReminder7DayMessage(input: {
   )
 }
 
+export function depositReminder3DayMessage(input: {
+  customerFirstName: string | null | undefined
+  eventDate: string
+  depositAmount: number
+}): string {
+  return cap(
+    `Hi ${name(input.customerFirstName)} — your hold on ${input.eventDate} is expiring soon. ${money(input.depositAmount)} deposit locks the date in before it's released.`
+  )
+}
+
 export function depositReminder1DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
@@ -67,35 +77,50 @@ export function bookingConfirmedMessage(input: {
   return cap(`Hi ${name(input.customerFirstName)} — you're all confirmed for ${input.eventDate}. Can't wait.`)
 }
 
-export function balanceReminder14DayMessage(input: {
+// Balance & final-details reminders are keyed to the due date (14 calendar
+// days before the event) per SOP §13: sent 7 days, 2 days and 1 day before
+// the deadline, and on the day itself. Late-created bookings get the next
+// relevant reminder immediately (windowing handled by the cron).
+
+export function balanceReminder21DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   balanceAmount: number
   balanceDueDate: string
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)} — two weeks to go. ${money(input.balanceAmount)} balance due by ${input.balanceDueDate} to keep ${input.eventDate} on track.`
+    `Hi ${name(input.customerFirstName)} — ${money(input.balanceAmount)} balance and your final details (numbers, menus, suppliers) are due by ${input.balanceDueDate} for ${input.eventDate}.`
   )
 }
 
-export function balanceReminder7DayMessage(input: {
+export function balanceReminder16DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   balanceAmount: number
   balanceDueDate: string
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)} — one week to go. ${money(input.balanceAmount)} balance still to settle by ${input.balanceDueDate}.`
+    `Hi ${name(input.customerFirstName)} — 2 days to go: ${money(input.balanceAmount)} balance and final details due by ${input.balanceDueDate} for ${input.eventDate}.`
   )
 }
 
-export function balanceReminder1DayMessage(input: {
+export function balanceReminder15DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   balanceAmount: number
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)} — ${money(input.balanceAmount)} balance due tomorrow for ${input.eventDate}. Get it in today so we can focus on the event.`
+    `Hi ${name(input.customerFirstName)} — your ${money(input.balanceAmount)} balance and final details for ${input.eventDate} are due tomorrow.`
+  )
+}
+
+export function balanceReminderDueMessage(input: {
+  customerFirstName: string | null | undefined
+  eventDate: string
+  balanceAmount: number
+}): string {
+  return cap(
+    `Hi ${name(input.customerFirstName)} — ${money(input.balanceAmount)} balance and your final details for ${input.eventDate} are due today. Get them in and you're all set.`
   )
 }
 
@@ -174,13 +199,35 @@ export function bookingCancelledPartialRefundMessage(input: {
   )
 }
 
-export function bookingCancelledNonRefundableMessage(input: {
+/**
+ * Sent once a manager has decided the retention for a sub-30-day
+ * cancellation (SOP §14: retention may be up to the full deposit where
+ * reasonable and evidenced — never automatic).
+ */
+export function bookingCancelledRetentionMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   retainedAmount: number
+  refundAmount: number
+}): string {
+  const refundPart = input.refundAmount > 0
+    ? ` ${money(input.refundAmount)} will be refunded within 10 working days.`
+    : ''
+  return cap(
+    `Hi ${name(input.customerFirstName)} — your booking on ${input.eventDate} is cancelled. Following review, ${money(input.retainedAmount)} of your deposit has been retained to cover costs from the cancellation.${refundPart} We'll send a breakdown on request.`
+  )
+}
+
+/**
+ * Sent when a sub-30-day cancellation is processed before the retention
+ * decision has been made — no amounts are asserted to the customer.
+ */
+export function bookingCancelledReviewPendingMessage(input: {
+  customerFirstName: string | null | undefined
+  eventDate: string
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)} — your booking on ${input.eventDate} is cancelled. As cancellation was within 30 days of the event, the ${money(input.retainedAmount)} deposit is retained per our booking terms.`
+    `Hi ${name(input.customerFirstName)} — your booking on ${input.eventDate} is cancelled. We're reviewing payments and your deposit, and will confirm any refund shortly.`
   )
 }
 
