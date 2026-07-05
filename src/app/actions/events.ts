@@ -9,6 +9,7 @@ import { EventService, eventSchema, CreateEventInput, UpdateEventInput } from '@
 import { EventBookingService } from '@/services/event-bookings'
 import { createClient } from '@/lib/supabase/server' // Required for getting user in action
 import { createAdminClient } from '@/lib/supabase/admin'
+import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import {
@@ -327,7 +328,9 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     highlight_video_urls: parseJsonFormField(rawData.highlight_video_urls, stringArrayFormFieldSchema, categoryDefaults.highlight_video_urls || [], 'highlight_video_urls'),
     gallery_image_urls: parseJsonFormField(rawData.gallery_image_urls, stringArrayFormFieldSchema, categoryDefaults.gallery_image_urls || [], 'gallery_image_urls'),
     promo_sms_enabled: rawData.promo_sms_enabled === 'true' ? true : rawData.promo_sms_enabled === 'false' ? false : categoryDefaults.promo_sms_enabled ?? true,
-    bookings_enabled: rawData.bookings_enabled === 'true' ? true : rawData.bookings_enabled === 'false' ? false : categoryDefaults.bookings_enabled ?? true
+    bookings_enabled: rawData.bookings_enabled === 'true' ? true : rawData.bookings_enabled === 'false' ? false : categoryDefaults.bookings_enabled ?? true,
+    // London wall-time (from the datetime-local input) → UTC ISO instant, or null when blank.
+    booking_cutoff_at: londonLocalInputToUtcIso(typeof rawData.booking_cutoff_at === 'string' ? rawData.booking_cutoff_at : '')
   };
 
   const pricing = normalizeEventPricingFields({
