@@ -9,6 +9,8 @@ export type RotaDayInfo = {
   events: { name: string; time: string | null }[];
   privateBookings: { customer_name: string; guest_count: number }[];
   tableCovers: number;
+  highChairs: number;
+  outsideCovers: number;
   calendarNotes: { title: string; color: string }[];
 };
 
@@ -46,7 +48,7 @@ export async function getRotaWeekDayInfo(
 
     supabase
       .from('table_bookings')
-      .select('booking_date, party_size')
+      .select('booking_date, party_size, high_chair_count, is_outside_seating')
       .gte('booking_date', weekStart)
       .lte('booking_date', weekEnd)
       .neq('status', 'cancelled'),
@@ -71,7 +73,7 @@ export async function getRotaWeekDayInfo(
     const d = new Date(start);
     d.setDate(d.getDate() + i);
     const iso = d.toISOString().split('T')[0];
-    result[iso] = { date: iso, events: [], privateBookings: [], tableCovers: 0, calendarNotes: [] };
+    result[iso] = { date: iso, events: [], privateBookings: [], tableCovers: 0, highChairs: 0, outsideCovers: 0, calendarNotes: [] };
   }
 
   for (const e of eventsRes.data ?? []) {
@@ -94,7 +96,12 @@ export async function getRotaWeekDayInfo(
   for (const tb of tbRes.data ?? []) {
     const iso = tb.booking_date as string;
     if (result[iso]) {
-      result[iso].tableCovers += (tb.party_size ?? 0) as number;
+      const partySize = (tb.party_size ?? 0) as number;
+      result[iso].tableCovers += partySize;
+      result[iso].highChairs += (tb.high_chair_count ?? 0) as number;
+      if (tb.is_outside_seating) {
+        result[iso].outsideCovers += partySize;
+      }
     }
   }
 

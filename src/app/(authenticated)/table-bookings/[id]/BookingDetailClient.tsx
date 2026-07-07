@@ -309,6 +309,8 @@ export interface Booking {
   start_datetime: string | null
   end_datetime: string | null
   duration_minutes: number | null
+  high_chair_count: number | null
+  is_outside_seating: boolean | null
   deposit_waived: boolean | null
   hold_expires_at: string | null
   reminder_sent: boolean | null
@@ -834,7 +836,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                 {formatBookingDate(booking.booking_date)}
                 {booking.booking_time ? ` at ${booking.booking_time.slice(0, 5)}` : ''}
                 {booking.party_size != null ? ` · ${booking.party_size} covers` : ''}
-                {assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
+                {booking.is_outside_seating ? ' · Outside' : assignedTableLabel ? ` · ${assignedTableLabel}` : ''}
               </p>
             </div>
           </div>
@@ -845,11 +847,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
             <div className="rounded-md bg-gray-50 px-3 py-2">
               <p className="text-xs text-gray-500">Tables</p>
-              <p className="text-lg font-semibold text-gray-900">{assignedTables.length || '-'}</p>
+              <p className="text-lg font-semibold text-gray-900">{booking.is_outside_seating ? 'Outside' : assignedTables.length || '-'}</p>
             </div>
             <div className="rounded-md bg-gray-50 px-3 py-2">
               <p className="text-xs text-gray-500">Capacity</p>
-              <p className="text-lg font-semibold text-gray-900">{assignedCapacity || '-'}</p>
+              <p className="text-lg font-semibold text-gray-900">{booking.is_outside_seating ? 'Outside' : assignedCapacity || '-'}</p>
             </div>
             <div className="rounded-md bg-gray-50 px-3 py-2">
               <p className="text-xs text-gray-500">Audit</p>
@@ -880,7 +882,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               <DetailItem label="Duration" value={formatDuration(booking.duration_minutes)} />
               <DetailItem label="Party size" value={booking.party_size ?? '-'} />
               <DetailItem label="Committed size" value={booking.committed_party_size ?? '-'} />
-              <DetailItem label="Assigned tables" value={assignedTableLabel ?? '-'} />
+              <DetailItem label="Assigned tables" value={booking.is_outside_seating ? 'Outside' : assignedTableLabel ?? '-'} />
+              <DetailItem label="Seating" value={booking.is_outside_seating ? 'Outside' : 'Indoor'} />
+              <DetailItem label="High chairs" value={String(booking.high_chair_count ?? 0)} />
               <DetailItem label="Booking type" value={formatLabel(booking.booking_type)} />
               <DetailItem label="Purpose" value={formatLabel(booking.booking_purpose)} />
               <DetailItem label="Source" value={formatLabel(booking.source)} />

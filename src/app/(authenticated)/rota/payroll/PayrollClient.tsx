@@ -67,7 +67,16 @@ function DayInfoChips({ info }: { info?: RotaDayInfo }) {
     items.push(
       <span key="covers" className="inline-flex items-center gap-0.5 text-[10px] text-teal-600">
         <span className="w-1 h-1 rounded-full bg-teal-400 inline-block shrink-0" />
-        {info.tableCovers} covers
+        {info.tableCovers} covers{info.outsideCovers > 0 ? ` (${info.outsideCovers} outside)` : ''}
+      </span>
+    );
+  }
+
+  if (info.highChairs > 0) {
+    items.push(
+      <span key="highchairs" className="inline-flex items-center gap-0.5 text-[10px] text-sky-600">
+        <span className="w-1 h-1 rounded-full bg-sky-400 inline-block shrink-0" />
+        {info.highChairs} high chair{info.highChairs !== 1 ? 's' : ''}
       </span>
     );
   }

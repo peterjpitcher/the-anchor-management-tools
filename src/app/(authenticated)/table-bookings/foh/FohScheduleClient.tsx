@@ -199,7 +199,7 @@ export function FohScheduleClient({
   useEffect(() => {
     let cancelled = false
     async function load() {
-      if (!selectedBooking || !canEdit || selectedBooking.is_private_block || selectedBookingIsEventOnly) {
+      if (!selectedBooking || !canEdit || selectedBooking.is_private_block || selectedBookingIsEventOnly || selectedBooking.is_outside_seating) {
         setSelectedMoveOptions([]); setLoadingSelectedMoveOptions(false); return
       }
       setLoadingSelectedMoveOptions(true)

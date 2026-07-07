@@ -73,6 +73,8 @@ type CustomerTableBooking = {
   status: string | null
   source: string | null
   created_at: string | null
+  high_chair_count: number | null
+  is_outside_seating: boolean | null
 }
 
 type CustomerEventBooking = {
@@ -347,7 +349,7 @@ export default function CustomerViewPage() {
           .single(),
         supabase.from('table_bookings')
           .select(
-            'id, booking_reference, booking_date, booking_time, start_datetime, party_size, booking_type, booking_purpose, status, source, created_at'
+            'id, booking_reference, booking_date, booking_time, start_datetime, party_size, booking_type, booking_purpose, status, source, created_at, high_chair_count, is_outside_seating'
           )
           .eq('customer_id', customerId)
           .order('start_datetime', { ascending: false, nullsFirst: false })
@@ -434,7 +436,9 @@ export default function CustomerViewPage() {
             booking_purpose: row.booking_purpose || null,
             status: row.status || null,
             source: row.source || null,
-            created_at: row.created_at || null
+            created_at: row.created_at || null,
+            high_chair_count: row.high_chair_count ?? null,
+            is_outside_seating: row.is_outside_seating ?? null
           }))
         )
       }
@@ -710,7 +714,9 @@ export default function CustomerViewPage() {
         booking_display: formatDateTimeWithFallback(bookingDateTime, booking.booking_date, booking.booking_time),
         summary: [
           formatLabel(booking.booking_purpose, 'No purpose set'),
-          formatLabel(booking.source, 'Internal')
+          formatLabel(booking.source, 'Internal'),
+          ...(booking.is_outside_seating ? ['Outside'] : []),
+          ...((booking.high_chair_count ?? 0) > 0 ? [`High chair ×${booking.high_chair_count}`] : [])
         ].join(' · ')
       })
     })

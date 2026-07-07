@@ -1154,7 +1154,7 @@ export default function RotaGrid({
                 <div className="flex-1 grid grid-cols-7">
                   {days.map(d => {
                     const info = dayInfo[d];
-                    const hasAnything = info && (info.events.length > 0 || info.privateBookings.length > 0 || info.tableCovers > 0 || info.calendarNotes.length > 0);
+                    const hasAnything = info && (info.events.length > 0 || info.privateBookings.length > 0 || info.tableCovers > 0 || info.highChairs > 0 || info.outsideCovers > 0 || info.calendarNotes.length > 0);
                     return (
                       <div
                         key={d}
@@ -1183,7 +1183,13 @@ export default function RotaGrid({
                             {info.tableCovers > 0 && (
                               <div className="flex items-center gap-0.5">
                                 <span className="shrink-0 w-1 h-1 rounded-full bg-success mt-px" />
-                                <span className="text-[10px] text-success-fg leading-tight">{info.tableCovers} covers</span>
+                                <span className="text-[10px] text-success-fg leading-tight">{info.tableCovers} covers{info.outsideCovers > 0 ? ` (${info.outsideCovers} outside)` : ''}</span>
+                              </div>
+                            )}
+                            {info.highChairs > 0 && (
+                              <div className="flex items-center gap-0.5">
+                                <span className="shrink-0 w-1 h-1 rounded-full bg-info mt-px" />
+                                <span className="text-[10px] text-info-fg leading-tight">{info.highChairs} high chair{info.highChairs !== 1 ? 's' : ''}</span>
                               </div>
                             )}
                           </div>
