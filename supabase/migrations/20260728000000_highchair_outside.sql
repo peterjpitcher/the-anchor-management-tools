@@ -770,13 +770,18 @@ BEGIN
 END;
 $function$;
 
+-- Grant-neutral: reproduce prod's exact current ACL (anon + authenticated +
+-- service_role; PUBLIC revoked) so this feature migration does not alter the
+-- access-control posture. NOTE: the anon/authenticated grants are a pre-existing
+-- exposure (the 20260711000000 hardening was undone when the function was later
+-- recreated) — tightening them is a separate concern for a follow-up migration.
 REVOKE ALL ON FUNCTION public.create_table_booking_v05(
   uuid, date, time without time zone, integer, text, text, boolean, text, boolean, boolean, boolean, integer, boolean
 ) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.create_table_booking_v05(
   uuid, date, time without time zone, integer, text, text, boolean, text, boolean, boolean, boolean, integer, boolean
-) TO service_role;
+) TO anon, authenticated, service_role;
 
 -- ===========================================================================
 -- Step 4: Redefine move_table_booking_time_v05
@@ -847,8 +852,9 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.move_table_booking_time_v05(uuid, time, timestamptz, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.move_table_booking_time_v05(uuid, time, timestamptz, timestamptz) TO authenticated;
+-- Grant-neutral: prod locks this to service_role only (the 20260711000000
+-- SECURITY DEFINER hardening). Do NOT re-expose it to anon/authenticated.
+REVOKE ALL ON FUNCTION public.move_table_booking_time_v05(uuid, time, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.move_table_booking_time_v05(uuid, time, timestamptz, timestamptz) TO service_role;
 
 -- ===========================================================================
