@@ -1,3 +1,6 @@
+// NOTE: The `table_bookings.high_chair_count` and `table_bookings.is_outside_seating`
+// fields below were hand-added alongside migration 20260728000000_highchair_outside.sql,
+// pending a full regeneration of this file from prod.
 export type Json =
   | string
   | number
@@ -10053,9 +10056,11 @@ export type Database = {
           end_datetime: string | null
           event_booking_id: string | null
           event_id: string | null
+          high_chair_count: number
           hold_expires_at: string | null
           id: string
           internal_notes: string | null
+          is_outside_seating: boolean
           is_venue_event: boolean
           left_at: string | null
           modification_count: number | null
@@ -10111,9 +10116,11 @@ export type Database = {
           end_datetime?: string | null
           event_booking_id?: string | null
           event_id?: string | null
+          high_chair_count?: number
           hold_expires_at?: string | null
           id?: string
           internal_notes?: string | null
+          is_outside_seating?: boolean
           is_venue_event?: boolean
           left_at?: string | null
           modification_count?: number | null
@@ -10169,9 +10176,11 @@ export type Database = {
           end_datetime?: string | null
           event_booking_id?: string | null
           event_id?: string | null
+          high_chair_count?: number
           hold_expires_at?: string | null
           id?: string
           internal_notes?: string | null
+          is_outside_seating?: boolean
           is_venue_event?: boolean
           left_at?: string | null
           modification_count?: number | null
