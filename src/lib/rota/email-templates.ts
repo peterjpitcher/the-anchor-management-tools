@@ -21,7 +21,11 @@ export type PayrollEmployeeSummary = {
   plannedHours: number;
   actualHours: number;
   hourlyRate: number | null;
-  totalPay: number | null; // null for salaried
+  totalPay: number | null; // null for salaried; premium-inclusive when set
+  // Premium-rate breakdown (optional for backward compatibility with snapshots
+  // frozen before the premium feature — treated as no premium when absent).
+  standardHours?: number; // hours paid at the base rate
+  premiumHours?: number;  // hours paid at the premium (effective) rate
 };
 
 export type LeavingEmployee = {
@@ -533,18 +537,27 @@ export function buildPayrollEmailHtml(
   leavingEmployees: LeavingEmployee[] = [],
 ): string {
   const monthLabel = format(new Date(year, month - 1, 1), 'MMMM yyyy');
-  const totalPay = employees.reduce((sum, e) => sum + (e.totalPay ?? 0), 0);
+  const paid = employees.filter(e => e.totalPay !== null);
+  const totalPay = paid.reduce((sum, e) => sum + (e.totalPay ?? 0), 0);
+  const totalStandardHours = paid.reduce((sum, e) => sum + (e.standardHours ?? e.actualHours ?? 0), 0);
+  const totalPremiumHours = paid.reduce((sum, e) => sum + (e.premiumHours ?? 0), 0);
+  const anyPremium = totalPremiumHours > 0;
 
-  const rows = employees
-    .filter(e => e.totalPay !== null)
-    .map(e => `
+  const rows = paid
+    .map(e => {
+      // Back-compat: pre-feature summaries lack the split — treat as no premium.
+      const premiumHours = e.premiumHours ?? 0;
+      const standardHours = e.standardHours ?? e.actualHours ?? 0;
+      return `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #eee">${e.name}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${e.actualHours.toFixed(2)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${standardHours.toFixed(2)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">${premiumHours > 0 ? premiumHours.toFixed(2) : '—'}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right">£${(e.hourlyRate ?? 0).toFixed(2)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right"><strong>£${(e.totalPay ?? 0).toFixed(2)}</strong></td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
   return `
     <div style="font-family:sans-serif;max-width:700px;margin:0 auto">
@@ -553,21 +566,28 @@ export function buildPayrollEmailHtml(
         <thead>
           <tr style="background:#1F5C2E;color:#fff">
             <th style="padding:8px 12px;text-align:left">Employee</th>
-            <th style="padding:8px 12px;text-align:right">Hours</th>
-            <th style="padding:8px 12px;text-align:right">Rate</th>
+            <th style="padding:8px 12px;text-align:right">Standard Hours</th>
+            <th style="padding:8px 12px;text-align:right">Premium Hours</th>
+            <th style="padding:8px 12px;text-align:right">Base Rate</th>
             <th style="padding:8px 12px;text-align:right">Amount</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
         <tfoot>
           <tr style="background:#e8f5e9">
-            <td colspan="3" style="padding:8px 12px"><strong>Total</strong></td>
+            <td style="padding:8px 12px"><strong>Total</strong></td>
+            <td style="padding:8px 12px;text-align:right"><strong>${totalStandardHours.toFixed(2)}</strong></td>
+            <td style="padding:8px 12px;text-align:right"><strong>${anyPremium ? totalPremiumHours.toFixed(2) : '—'}</strong></td>
+            <td style="padding:8px 12px"></td>
             <td style="padding:8px 12px;text-align:right"><strong>£${totalPay.toFixed(2)}</strong></td>
           </tr>
         </tfoot>
       </table>
       <p style="color:#666;font-size:14px">
         Full shift-level detail is in the attached Excel file.
+        Amounts are premium-inclusive; ${anyPremium
+          ? 'premium hours are paid above the base rate (see the Excel for the multiplier and effective rate per shift).'
+          : 'no premium hours applied this period.'}
         Salaried staff are excluded from the amounts above.
       </p>
       ${leavingEmployees.length > 0 ? `

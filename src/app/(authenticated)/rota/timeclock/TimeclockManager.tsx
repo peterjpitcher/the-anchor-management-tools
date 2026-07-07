@@ -12,11 +12,52 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import { createTimeclockSession, updateTimeclockSession, deleteTimeclockSession, approveTimeclockSession } from '@/app/actions/timeclock';
-import type { TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
+import type { SessionPremiumInput, TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
 import type { RotaEmployee } from '@/app/actions/rota';
 import { Badge } from '@/ds';
 import { Button } from '@/ds';
-import { formatTime12Hour } from '@/lib/dateUtils';
+import { formatTime12Hour, parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
+
+// Premium rate presets offered in the review UI. 'custom' captures a bespoke
+// £/hr override; 'none' clears any premium.
+type PremiumChoice = 'none' | '1.5' | '2' | 'custom';
+
+// PostgREST returns `numeric` columns as STRINGS ("1.50"). Coerce before any
+// strict-equality check so "1.50" doesn't fall through to 'none' and wipe the
+// premium on the next save.
+function toNum(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function premiumChoiceFor(
+  multiplier: number | string | null,
+  override: number | string | null,
+): PremiumChoice {
+  const ov = toNum(override);
+  const mult = toNum(multiplier);
+  if (ov != null) return 'custom';
+  if (mult === 1.5) return '1.5';
+  if (mult === 2) return '2';
+  return 'none';
+}
+
+// A short, calm label for a premium already set on a row.
+function premiumChipLabel(
+  reason: string | null,
+  multiplier: number | string | null,
+  override: number | string | null,
+): string | null {
+  if (reason && reason.trim()) return reason.trim();
+  const ov = toNum(override);
+  const mult = toNum(multiplier);
+  if (ov != null) return `£${ov.toFixed(2)}/hr`;
+  if (mult === 1.5) return 'Time and a half';
+  if (mult === 2) return 'Double time';
+  if (mult != null) return `Premium ×${mult}`;
+  return null;
+}
 
 interface TimeclockManagerProps {
   sessions: TimeclockSessionWithEmployee[];
@@ -26,6 +67,17 @@ interface TimeclockManagerProps {
   year: number;
   month: number;
   monthOptions: { label: string; value: string }[];
+  // When the viewer holds only `payroll:approve` (not `timeclock:edit`), the
+  // server actions gate edits behind this flag. Passing it lets the D6-sanctioned
+  // payroll approver edit sessions without weakening the timeclock:edit gate.
+  allowPayrollApprove: boolean;
+}
+
+// A short read-only label describing the premium the linked shift would pay when
+// the session has no explicit override — shown so the manager knows what will be
+// paid before deciding whether to override.
+function inheritedShiftPremiumLabel(s: TimeclockSessionWithEmployee): string | null {
+  return premiumChipLabel(s.shift_premium_reason, s.shift_rate_multiplier, s.shift_rate_override);
 }
 
 function formatDayHeader(iso: string): string {
@@ -60,6 +112,7 @@ export default function TimeclockManager({
   year,
   month,
   monthOptions,
+  allowPayrollApprove,
 }: TimeclockManagerProps) {
   const router = useRouter();
   const [sessions, setSessions] = useState(initialSessions);
@@ -73,7 +126,7 @@ export default function TimeclockManager({
 
   const handleApprove = (id: string) => {
     setApprovingId(id);
-    approveTimeclockSession(id).then(result => {
+    approveTimeclockSession(id, { allowPayrollApprove }).then(result => {
       setApprovingId(null);
       if (!result.success) { toast.error(result.error); return; }
       setSessions(prev => prev.map(s => s.id === id ? { ...s, is_reviewed: true } : s));
@@ -85,6 +138,11 @@ export default function TimeclockManager({
   const [editIn, setEditIn] = useState('');
   const [editOut, setEditOut] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  // Premium edit state
+  const [editPremium, setEditPremium] = useState<PremiumChoice>('none');
+  const [editCustomRate, setEditCustomRate] = useState('');
+  const [editPremiumFrom, setEditPremiumFrom] = useState(''); // HH:MM local, blank = whole session
+  const [editPremiumTo, setEditPremiumTo] = useState('');     // HH:MM local, blank = whole session
   const [savePending, startSaveTransition] = useTransition();
 
   // Delete state
@@ -96,7 +154,7 @@ export default function TimeclockManager({
 
   const handleDelete = (id: string) => {
     startDeleteTransition(async () => {
-      const result = await deleteTimeclockSession(id);
+      const result = await deleteTimeclockSession(id, { allowPayrollApprove });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Session deleted');
       setDeletingId(null);
@@ -120,18 +178,105 @@ export default function TimeclockManager({
     setEditIn(s.clock_in_local);
     setEditOut(s.clock_out_local ?? '');
     setEditNotes(s.notes ?? '');
+
+    // Seed the editable premium from the session's OWN premium only — an
+    // explicit manager override. We deliberately do NOT seed from the linked
+    // shift: otherwise opening a row just to fix a clock time and saving would
+    // bake the shift's premium onto the session as a spurious override. When the
+    // session has no override the control defaults to 'None' (= inherit), and
+    // the shift's effective premium is shown separately as read-only context.
+    const override = toNum(s.rate_override);
+    setEditPremium(premiumChoiceFor(s.rate_multiplier, s.rate_override));
+    setEditCustomRate(override != null ? String(override) : '');
+    setEditPremiumFrom(s.premium_start_local ?? '');
+    setEditPremiumTo(s.premium_end_local ?? '');
   };
 
   const cancelEdit = () => setEditingId(null);
 
+  // Build a UTC ISO instant from the session's work_date + a HH:MM local time,
+  // advancing a day when the time falls before clock-in (overnight window). The
+  // server re-clamps to the worked interval, so this only needs to land the
+  // window on the correct side of midnight.
+  const windowInstant = (workDate: string, clockInLocal: string, hhmm: string): string | null => {
+    if (!hhmm) return null;
+    const base = parseLondonDateTimeLocalToIso(`${workDate}T${hhmm}`);
+    if (!base) return null;
+    const inIso = parseLondonDateTimeLocalToIso(`${workDate}T${clockInLocal}`);
+    if (inIso && new Date(base).getTime() < new Date(inIso).getTime()) {
+      return new Date(new Date(base).getTime() + 24 * 60 * 60 * 1000).toISOString();
+    }
+    return base;
+  };
+
+  const buildPremiumInput = (s: TimeclockSessionWithEmployee): SessionPremiumInput => {
+    if (editPremium === 'none') {
+      return { rateMultiplier: null, rateOverride: null, premiumReason: null, premiumStartAt: null, premiumEndAt: null };
+    }
+    const rateOverride = editPremium === 'custom' ? Number(editCustomRate) : null;
+    const rateMultiplier = editPremium === '1.5' ? 1.5 : editPremium === '2' ? 2 : null;
+    return {
+      rateMultiplier,
+      rateOverride: rateOverride != null && !Number.isNaN(rateOverride) ? rateOverride : null,
+      premiumReason: null,
+      premiumStartAt: windowInstant(s.work_date, editIn, editPremiumFrom),
+      premiumEndAt: windowInstant(s.work_date, editIn, editPremiumTo),
+    };
+  };
+
+  // Has the manager actually touched the override relative to what the session
+  // already stored? If not, we must NOT send a premium on save — otherwise a
+  // pure clock-time correction would bake the current control state into a
+  // spurious session override. Compares the edit control against the session's
+  // OWN premium only (never the inherited shift default).
+  const premiumChanged = (s: TimeclockSessionWithEmployee): boolean => {
+    const originalChoice = premiumChoiceFor(s.rate_multiplier, s.rate_override);
+    if (editPremium !== originalChoice) return true;
+    if (editPremium === 'custom') {
+      const original = toNum(s.rate_override);
+      if (Number(editCustomRate) !== original) return true;
+    }
+    if (editPremium !== 'none') {
+      // Compare the window (blank = whole session).
+      if ((editPremiumFrom || '') !== (s.premium_start_local ?? '')) return true;
+      if ((editPremiumTo || '') !== (s.premium_end_local ?? '')) return true;
+    }
+    return false;
+  };
+
   const saveEdit = (s: TimeclockSessionWithEmployee) => {
+    if (editPremium === 'custom') {
+      const rate = Number(editCustomRate);
+      if (!editCustomRate || Number.isNaN(rate) || rate <= 0) {
+        toast.error('Enter a valid custom rate (£/hr)');
+        return;
+      }
+    }
+    // Only send a premium when the manager actually set or changed the override.
+    // Leaving it untouched (a times/notes-only edit) omits it so the server
+    // preserves the session's existing premium instead of creating one.
+    const premium = premiumChanged(s) ? buildPremiumInput(s) : undefined;
     startSaveTransition(async () => {
-      const result = await updateTimeclockSession(s.id, s.work_date, editIn, editOut || null, editNotes || null);
+      const result = await updateTimeclockSession(s.id, s.work_date, editIn, editOut || null, editNotes || null, { premium, allowPayrollApprove });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Session updated');
       setEditingId(null);
       setSessions(prev => prev.map(x => x.id === s.id
-        ? { ...x, clock_in_local: editIn, clock_out_local: editOut || null, is_auto_close: false, notes: editNotes || null }
+        ? {
+            ...x,
+            clock_in_local: editIn,
+            clock_out_local: editOut || null,
+            is_auto_close: false,
+            notes: editNotes || null,
+            rate_multiplier: result.data.rate_multiplier,
+            rate_override: result.data.rate_override,
+            premium_reason: result.data.premium_reason,
+            premium_start_at: result.data.premium_start_at,
+            premium_end_at: result.data.premium_end_at,
+            // Optimistic local labels; a router refresh re-derives them server-side.
+            premium_start_local: result.data.premium_start_at ? (editPremiumFrom || null) : null,
+            premium_end_local: result.data.premium_end_at ? (editPremiumTo || null) : null,
+          }
         : x,
       ));
     });
@@ -145,7 +290,7 @@ export default function TimeclockManager({
     if (!addIn) { toast.error('Enter a clock-in time'); return; }
 
     startAddTransition(async () => {
-      const result = await createTimeclockSession(addEmployeeId, addDate, addIn, addOut || null, addNotes || null);
+      const result = await createTimeclockSession(addEmployeeId, addDate, addIn, addOut || null, addNotes || null, { allowPayrollApprove });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Entry added');
       setSessions(prev => [...prev, result.data].sort((a, b) =>
@@ -382,13 +527,103 @@ export default function TimeclockManager({
                             {durationHours(s.clock_in_at, s.clock_out_at)}
                           </td>
 
-                          {/* Flags */}
-                          <td className="px-3 py-2">
-                            <div className="flex flex-wrap gap-1">
-                              {s.is_auto_close && <Badge variant="warning" size="sm">auto-close</Badge>}
-                              {s.is_unscheduled && <Badge variant="error" size="sm">unscheduled</Badge>}
-                              {s.is_reviewed && <Badge variant="success" size="sm">approved</Badge>}
-                            </div>
+                          {/* Flags + premium */}
+                          <td className="px-3 py-2 align-top">
+                            {isEditing ? (
+                              <div className="space-y-1.5">
+                                <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide">Premium rate</label>
+                                {(() => {
+                                  const inherited = inheritedShiftPremiumLabel(s);
+                                  if (!inherited) return null;
+                                  return (
+                                    <p className="text-[10px] text-gray-500">
+                                      Inherited from shift: <span className="font-medium text-gray-700">{inherited}</span>
+                                    </p>
+                                  );
+                                })()}
+                                <select
+                                  value={editPremium}
+                                  onChange={e => setEditPremium(e.target.value as PremiumChoice)}
+                                  className="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs bg-white text-gray-900"
+                                >
+                                  <option value="none">
+                                    {inheritedShiftPremiumLabel(s) ? 'None (inherit from shift)' : 'None (standard)'}
+                                  </option>
+                                  <option value="1.5">Time and a half ×1.5</option>
+                                  <option value="2">Double time ×2.0</option>
+                                  <option value="custom">Custom £/hr…</option>
+                                </select>
+                                {editPremium === 'custom' && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-400">£</span>
+                                    <input
+                                      type="number"
+                                      inputMode="decimal"
+                                      min="0"
+                                      step="0.01"
+                                      value={editCustomRate}
+                                      onChange={e => setEditCustomRate(e.target.value)}
+                                      placeholder="0.00"
+                                      className="w-20 border border-gray-300 rounded px-1.5 py-0.5 text-xs"
+                                    />
+                                    <span className="text-xs text-gray-400">/hr</span>
+                                  </div>
+                                )}
+                                {editPremium !== 'none' && (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="time"
+                                      value={editPremiumFrom}
+                                      onChange={e => setEditPremiumFrom(e.target.value)}
+                                      className="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs"
+                                      aria-label="Premium from"
+                                    />
+                                    <span className="text-[10px] text-gray-400">to</span>
+                                    <input
+                                      type="time"
+                                      value={editPremiumTo}
+                                      onChange={e => setEditPremiumTo(e.target.value)}
+                                      className="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs"
+                                      aria-label="Premium to"
+                                    />
+                                  </div>
+                                )}
+                                {editPremium !== 'none' && !editPremiumFrom && !editPremiumTo && (
+                                  <p className="text-[10px] text-gray-400">Applies to the whole session</p>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {s.is_auto_close && <Badge variant="warning" size="sm">auto-close</Badge>}
+                                {s.is_unscheduled && <Badge variant="error" size="sm">unscheduled</Badge>}
+                                {s.is_reviewed && <Badge variant="success" size="sm">approved</Badge>}
+                                {(() => {
+                                  // The session's own explicit override wins. When there is none, fall
+                                  // back to the linked shift's premium — it is what actually gets paid
+                                  // (resolved live at payroll), shown here as inherited context.
+                                  const hasOwnOverride = toNum(s.rate_multiplier) != null || toNum(s.rate_override) != null;
+                                  if (hasOwnOverride) {
+                                    const label = premiumChipLabel(s.premium_reason, s.rate_multiplier, s.rate_override);
+                                    if (!label) return null;
+                                    const windowNote = s.premium_start_local || s.premium_end_local
+                                      ? ` ${formatTime12Hour(s.premium_start_local ?? s.clock_in_local)}–${s.premium_end_local ? formatTime12Hour(s.premium_end_local) : 'out'}`
+                                      : '';
+                                    return (
+                                      <Badge variant="info" size="sm">
+                                        {label}{windowNote}
+                                      </Badge>
+                                    );
+                                  }
+                                  const inherited = inheritedShiftPremiumLabel(s);
+                                  if (!inherited) return null;
+                                  return (
+                                    <Badge variant="neutral" size="sm" title="Inherited from the linked shift">
+                                      {inherited} (shift)
+                                    </Badge>
+                                  );
+                                })()}
+                              </div>
+                            )}
                           </td>
 
                           {/* Notes */}
