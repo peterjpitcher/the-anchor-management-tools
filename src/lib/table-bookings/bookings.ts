@@ -885,7 +885,9 @@ export async function sendTableBookingCreatedSmsIfAllowed(
 
   let smsBody: string
   if (input.bookingResult.state === 'pending_payment') {
-    const depositKindLabel = input.bookingResult.sunday_lunch ? 'Sunday lunch deposit' : 'table deposit'
+    const depositKindLabel = input.bookingResult.sunday_lunch
+      ? 'Sunday lunch deposit'
+      : isOutside ? 'deposit' : 'table deposit'
     const secureNoun = isOutside ? 'outside booking' : 'table'
     const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your ${secureNoun} for ${partySize} ${seatWord} on ${bookingMoment}.`
     const cta = input.nextStepUrl ? `Pay now: ${input.nextStepUrl}` : 'We will text your payment link shortly.'

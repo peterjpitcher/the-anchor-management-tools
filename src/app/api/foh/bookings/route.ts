@@ -1030,14 +1030,15 @@ export async function POST(request: NextRequest) {
     try {
       const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString()
       // Fingerprint the request so two near-simultaneous bookings that differ
-      // only in party size, purpose, chairs, or outside-seating are NOT
-      // collapsed into one. party_size/booking_purpose/is_outside_seating are
-      // stored as requested, so they can filter in SQL; high_chair_count is
-      // stored as the GRANTED value (may be clamped below the request), so we
-      // compare the requested figure against the stored one after the fetch and
-      // fall through to a fresh create on any mismatch.
+      // in party size, purpose, or indoor/outside seating are NOT collapsed.
+      // All fingerprint fields are stored as requested, so they filter in SQL.
+      // We deliberately do NOT compare high_chair_count: it is stored as the
+      // GRANTED value (may be clamped below the request), so comparing it would
+      // fail to dedupe an identical retry whose request was clamped — creating a
+      // duplicate booking. A same customer/date/time/party/purpose/seating retry
+      // within 60s is a double-submit regardless of the requested chair count.
       const { data: recentDuplicate } = await (auth.supabase.from('table_bookings') as any)
-        .select('id, booking_reference, status, high_chair_count')
+        .select('id, booking_reference, status')
         .eq('customer_id', customerId)
         .eq('booking_date', payload.date)
         .eq('booking_time', bookingTime)
@@ -1048,15 +1049,7 @@ export async function POST(request: NextRequest) {
         .gte('created_at', sixtySecondsAgo)
         .maybeSingle()
 
-      const requestedHighChairsForDedup = Math.max(
-        0,
-        Math.min(2, Math.trunc(Number(payload.high_chair_count ?? 0)) || 0)
-      )
-      const highChairFingerprintMatches =
-        recentDuplicate != null &&
-        Number(recentDuplicate.high_chair_count ?? 0) === requestedHighChairsForDedup
-
-      if (recentDuplicate && highChairFingerprintMatches) {
+      if (recentDuplicate) {
         const dupState: FohCreateBookingResponseData['state'] =
           recentDuplicate.status === 'confirmed'
             ? 'confirmed'
