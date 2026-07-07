@@ -1,5 +1,5 @@
 import { differenceInYears, parseISO } from 'date-fns';
-import { calculatePaidHours } from '@/lib/rota/pay-calculator';
+import { calculatePaidHours, computePlannedShiftPremiumPay } from '@/lib/rota/pay-calculator';
 
 export type RotaSummaryPayrollPeriod = {
   year: number;
@@ -18,6 +18,11 @@ export type RotaSummaryShift = {
   is_overnight: boolean;
   is_open_shift: boolean;
   status: string;
+  rate_multiplier: number | null;
+  rate_override: number | null;
+  premium_reason: string | null;
+  premium_start_time: string | null;
+  premium_end_time: string | null;
 };
 
 export type RotaSummaryEmployee = {
@@ -315,7 +320,23 @@ export function buildRotaSummary(input: {
       continue;
     }
 
-    const cost = round2(hours * rate.rate);
+    // Fold any premium (whole-shift or windowed) into the estimated cost via
+    // the shared window-aware pay calculator, so the estimate matches payroll.
+    const cost = computePlannedShiftPremiumPay(
+      shift.shift_date,
+      shift.start_time,
+      shift.end_time,
+      shift.unpaid_break_minutes,
+      rate.rate,
+      {
+        rateMultiplier: shift.rate_multiplier,
+        rateOverride: shift.rate_override,
+        premiumReason: shift.premium_reason,
+        premiumStartTime: shift.premium_start_time,
+        premiumEndTime: shift.premium_end_time,
+      },
+      shift.is_overnight,
+    ).pay;
     if (isInPayrollPeriod) {
       employeeTotal.estimatedCost = round2((employeeTotal.estimatedCost ?? 0) + cost);
       employeeTotal.costedShiftCount += 1;

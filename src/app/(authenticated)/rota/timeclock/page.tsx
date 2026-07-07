@@ -39,6 +39,12 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
   const sessions = result.success ? result.data : [];
   const employees = employeesResult.success ? employeesResult.data : [];
 
+  // A viewer holding only `payroll:approve` (not `timeclock:edit`) is a
+  // D6-sanctioned editor of timeclock sessions. Pass the flag so the server
+  // actions let them through; the actions still re-verify the permission
+  // server-side, so this never weakens the gate.
+  const allowPayrollApprove = await checkUserPermission('payroll', 'approve');
+
   const monthOptions = buildPayrollMonthOptions(defaultPeriod);
 
   return (
@@ -61,6 +67,7 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
             year={year}
             month={month}
             monthOptions={monthOptions}
+            allowPayrollApprove={allowPayrollApprove}
           />
         </Card>
       </Section>

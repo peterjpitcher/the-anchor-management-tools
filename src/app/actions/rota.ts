@@ -11,6 +11,8 @@ import { sendRotaWeekEmails, sendRotaWeekChangeEmails, type DiffShiftRow } from 
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { sendEmail } from '@/lib/email/emailService';
 import { fromZonedTime } from 'date-fns-tz';
+import { parseLondonDateTimeLocal } from '@/lib/dateUtils';
+import { hasPremium } from '@/lib/rota/pay-calculator';
 import {
   buildOpenShiftRequestManagerEmailHtml,
   buildShiftRejectedManagerEmailHtml,
@@ -76,6 +78,11 @@ export type RotaShift = {
   acceptance_note: string | null;
   auto_accept_reason: string | null;
   auto_accept_warning_sent_at: string | null;
+  rate_multiplier: number | null;
+  rate_override: number | null;
+  premium_reason: string | null;
+  premium_start_time: string | null;
+  premium_end_time: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -181,6 +188,115 @@ const ACCEPTANCE_RESET_FIELDS = new Set([
   'shift_date',
   'employee_id',
 ]);
+
+// Premium (time-and-a-half / double-time / bespoke) columns carried through the
+// rota write path, publish snapshot and cost estimate. See premium-rate-spec §4.
+const PREMIUM_SHIFT_COLUMNS = [
+  'rate_multiplier',
+  'rate_override',
+  'premium_reason',
+  'premium_start_time',
+  'premium_end_time',
+] as const;
+
+/** "HH:mm" or "HH:mm:ss" → minutes since midnight. */
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+type PremiumWindowInput = {
+  rateMultiplier?: number | null;
+  rateOverride?: number | null;
+  premiumStartTime?: string | null;
+  premiumEndTime?: string | null;
+};
+
+/**
+ * Validate a premium time window against the shift's own start/end.
+ * Rules (spec §6a):
+ *  - a window needs both bounds, and a rate (multiplier or override) to mean anything;
+ *  - end must be after start (an overnight window is allowed — it wraps past midnight);
+ *  - the window must sit within the shift times.
+ * Returns an error message, or null when valid.
+ */
+function validatePremiumWindow(
+  premium: PremiumWindowInput,
+  startTime: string,
+  endTime: string,
+  isOvernight: boolean,
+): string | null {
+  const { premiumStartTime, premiumEndTime } = premium;
+  const hasWindow = premiumStartTime != null || premiumEndTime != null;
+  const premiumSet = premium.rateMultiplier != null || premium.rateOverride != null;
+
+  if (!hasWindow) return null; // whole-shift premium (or no premium at all)
+
+  if (premiumStartTime == null || premiumEndTime == null) {
+    return 'A premium time window needs both a start and an end time';
+  }
+  if (!premiumSet) {
+    return 'Set a premium rate before choosing a time window';
+  }
+
+  // Resolve everything to minutes on a single overnight-aware timeline so an
+  // "after 00:00" window lands on the correct side of midnight.
+  const shiftStart = timeToMinutes(startTime);
+  const overnight = isOvernight || timeToMinutes(endTime) < shiftStart;
+  const shiftEnd = overnight ? timeToMinutes(endTime) + 24 * 60 : timeToMinutes(endTime);
+
+  const onTimeline = (time: string): number => {
+    const mins = timeToMinutes(time);
+    // Only times STRICTLY before the shift start wrap to the next day. A window
+    // that begins exactly at the shift start (e.g. 18:00 on an 18:00→02:00 shift)
+    // stays on day 0 — using `<=` here wrongly pushed it to day+1 and blocked the save.
+    return overnight && mins < shiftStart ? mins + 24 * 60 : mins;
+  };
+  const winStart = onTimeline(premiumStartTime);
+  const winEnd = onTimeline(premiumEndTime);
+
+  if (winEnd <= winStart) {
+    return 'The premium end time must be after the premium start time';
+  }
+  if (winStart < shiftStart || winEnd > shiftEnd) {
+    return 'The premium time window must sit within the shift times';
+  }
+  return null;
+}
+
+type PremiumShiftColumns = {
+  rate_multiplier: number | null;
+  rate_override: number | null;
+  premium_reason: string | null;
+  premium_start_time: string | null;
+  premium_end_time: string | null;
+};
+
+/**
+ * Map the parsed camelCase premium fields to snake_case DB columns. When no
+ * premium is set (neither multiplier nor override) the reason and window are
+ * cleared too, so a stray reason or window can never linger without a rate.
+ */
+function normaliseShiftPremium(input: PremiumWindowInput & { premiumReason?: string | null }): PremiumShiftColumns {
+  const rateMultiplier = input.rateMultiplier ?? null;
+  const rateOverride = input.rateOverride ?? null;
+  if (!hasPremium({ rateMultiplier, rateOverride })) {
+    return {
+      rate_multiplier: null,
+      rate_override: null,
+      premium_reason: null,
+      premium_start_time: null,
+      premium_end_time: null,
+    };
+  }
+  return {
+    rate_multiplier: rateMultiplier,
+    rate_override: rateOverride,
+    premium_reason: input.premiumReason?.trim() || null,
+    premium_start_time: input.premiumStartTime ?? null,
+    premium_end_time: input.premiumEndTime ?? null,
+  };
+}
 
 function shiftStartInstant(shiftDate: string, startTime: string): Date {
   return fromZonedTime(`${shiftDate}T${startTime}`, 'Europe/London');
@@ -542,10 +658,10 @@ export async function getWeekShifts(weekStart: string, userId?: string): Promise
   const sundayIso = addDaysIso(weekStart, 6);
 
   // Explicit column list matching RotaShift type — avoids fetching unnecessary columns
-  const rotaShiftColumns = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, created_at, updated_at' as const;
-  const rotaShiftColumnsWithoutSickReason = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, created_at, updated_at' as const;
-  const rotaShiftColumnsWithoutAcceptance = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
-  const rotaShiftColumnsWithoutSickReasonOrAcceptance = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, created_at, updated_at' as const;
+  const rotaShiftColumns = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutSickReason = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutAcceptance = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, sick_reason, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, created_at, updated_at' as const;
+  const rotaShiftColumnsWithoutSickReasonOrAcceptance = 'id, week_id, employee_id, template_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, reassigned_from_id, reassigned_at, reassigned_by, reassignment_reason, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, created_at, updated_at' as const;
 
   type RotaShiftQueryResult = {
     data: Array<Partial<RotaShift>> | null;
@@ -589,8 +705,8 @@ export async function getWeekShifts(weekStart: string, userId?: string): Promise
   const hasLiveScheduledShifts = liveRows.some(shift => !shift.status || shift.status === 'scheduled');
   if (hasLiveScheduledShifts) return { success: true, data: liveRows };
 
-  const publishedShiftColumns = 'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, published_at' as const;
-  const publishedShiftColumnsWithoutAcceptance = 'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, published_at' as const;
+  const publishedShiftColumns = 'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, published_at' as const;
+  const publishedShiftColumnsWithoutAcceptance = 'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, published_at' as const;
   type PublishedShiftQueryResult = {
     data: Array<Partial<RotaShift> & { published_at?: string | null }> | null;
     error: { code?: string; message: string } | null;
@@ -657,6 +773,11 @@ export async function getWeekShifts(weekStart: string, userId?: string): Promise
       acceptance_note: row.acceptance_note ?? null,
       auto_accept_reason: row.auto_accept_reason ?? null,
       auto_accept_warning_sent_at: row.auto_accept_warning_sent_at ?? null,
+      rate_multiplier: row.rate_multiplier ?? null,
+      rate_override: row.rate_override ?? null,
+      premium_reason: row.premium_reason ?? null,
+      premium_start_time: row.premium_start_time ?? null,
+      premium_end_time: row.premium_end_time ?? null,
       created_at: timestamp,
       updated_at: timestamp,
     };
@@ -695,6 +816,11 @@ export async function getWeekShifts(weekStart: string, userId?: string): Promise
         acceptance_note: shift.acceptance_note,
         auto_accept_reason: shift.auto_accept_reason,
         auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at,
+        rate_multiplier: shift.rate_multiplier,
+        rate_override: shift.rate_override,
+        premium_reason: shift.premium_reason,
+        premium_start_time: shift.premium_start_time,
+        premium_end_time: shift.premium_end_time,
         created_at: shift.created_at,
         updated_at: shift.updated_at,
       })), { onConflict: 'id' });
@@ -797,7 +923,7 @@ export async function getRotaSummaryForWeek(
 
   const { data: summaryShifts, error: shiftsError } = await supabase
     .from('rota_shifts')
-    .select('employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, is_open_shift, status')
+    .select('employee_id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, is_open_shift, status, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
     .gte('shift_date', summaryStart)
     .lte('shift_date', summaryEnd);
 
@@ -1027,6 +1153,11 @@ const CreateShiftSchema = z.object({
   department: z.string().min(1),
   notes: z.string().nullable().optional(),
   isOvernight: z.boolean().default(false),
+  rateMultiplier: z.number().min(1).max(3).nullable().optional(),
+  rateOverride: z.number().positive().max(100).nullable().optional(),
+  premiumReason: z.string().max(200).nullable().optional(),
+  premiumStartTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).transform(t => t.slice(0, 5)).nullable().optional(),
+  premiumEndTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).transform(t => t.slice(0, 5)).nullable().optional(),
 }).refine(
   d => d.isOpenShift || !!d.employeeId,
   { message: 'employeeId is required unless isOpenShift is true', path: ['employeeId'] },
@@ -1058,6 +1189,23 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
     return { success: false, error: `Shift date must be within this rota week (${weekStart} to ${weekEnd})` };
   }
 
+  // Validate the RAW premium input (before normalisation) so a window supplied
+  // without a rate is reported rather than silently dropped.
+  const windowError = validatePremiumWindow(
+    {
+      rateMultiplier: parsed.data.rateMultiplier ?? null,
+      rateOverride: parsed.data.rateOverride ?? null,
+      premiumStartTime: parsed.data.premiumStartTime ?? null,
+      premiumEndTime: parsed.data.premiumEndTime ?? null,
+    },
+    parsed.data.startTime,
+    parsed.data.endTime,
+    parsed.data.isOvernight,
+  );
+  if (windowError) return { success: false, error: windowError };
+
+  const premium = normaliseShiftPremium(parsed.data);
+
   const { data, error } = await supabase
     .from('rota_shifts')
     .insert({
@@ -1073,6 +1221,7 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
       department: parsed.data.department,
       notes: parsed.data.notes ?? null,
       is_overnight: parsed.data.isOvernight,
+      ...premium,
       ...initialAcceptanceForShift({
         employee_id: parsed.data.isOpenShift ? null : (parsed.data.employeeId ?? null),
         is_open_shift: parsed.data.isOpenShift,
@@ -1114,7 +1263,10 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
 
 export async function updateShift(
   shiftId: string,
-  updates: Partial<Pick<RotaShift, 'start_time' | 'end_time' | 'unpaid_break_minutes' | 'notes' | 'status' | 'is_overnight' | 'department'>>,
+  updates: Partial<Pick<RotaShift,
+    | 'start_time' | 'end_time' | 'unpaid_break_minutes' | 'notes' | 'status' | 'is_overnight' | 'department'
+    | 'rate_multiplier' | 'rate_override' | 'premium_reason' | 'premium_start_time' | 'premium_end_time'
+  >>,
 ): Promise<{ success: true; data: RotaShift } | { success: false; error: string }> {
   const canEdit = await checkUserPermission('rota', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
@@ -1124,13 +1276,62 @@ export async function updateShift(
 
   const { data: current, error: currentError } = await supabase
     .from('rota_shifts')
-    .select('employee_id, is_open_shift, status, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at')
+    .select('id, employee_id, is_open_shift, status, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
     .eq('id', shiftId)
     .single();
 
   if (currentError || !current) return { success: false, error: 'Shift not found' };
 
   const currentValues = current as Record<string, unknown>;
+
+  // Premium: any of the five columns present in `updates` means the manager is
+  // editing the premium. Re-validate the window against the effective (possibly
+  // just-edited) shift times, normalise so a rate cleared to none also clears
+  // the reason + window, and only flag a real change (so an unchanged re-save
+  // doesn't needlessly churn payroll approvals).
+  //
+  // Sessions no longer inherit shift premium: an un-overridden session resolves
+  // its premium LIVE from the linked shift in payroll/portal, so there is nothing
+  // to copy down. Session premium columns now mean ONLY an explicit manager
+  // override. We therefore never write premium onto timeclock_sessions here.
+  const editsPremium = PREMIUM_SHIFT_COLUMNS.some(col => col in updates);
+  let premiumChanged = false;
+  if (editsPremium) {
+    const effStart = (updates.start_time ?? current.start_time) as string;
+    const effEnd = (updates.end_time ?? current.end_time) as string;
+    const effOvernight = (updates.is_overnight ?? current.is_overnight) as boolean;
+    const normalised = normaliseShiftPremium({
+      rateMultiplier: (('rate_multiplier' in updates ? updates.rate_multiplier : current.rate_multiplier) ?? null) as number | null,
+      rateOverride: (('rate_override' in updates ? updates.rate_override : current.rate_override) ?? null) as number | null,
+      premiumReason: (('premium_reason' in updates ? updates.premium_reason : current.premium_reason) ?? null) as string | null,
+      premiumStartTime: (('premium_start_time' in updates ? updates.premium_start_time : current.premium_start_time) ?? null) as string | null,
+      premiumEndTime: (('premium_end_time' in updates ? updates.premium_end_time : current.premium_end_time) ?? null) as string | null,
+    });
+    const windowError = validatePremiumWindow(
+      { rateMultiplier: normalised.rate_multiplier, rateOverride: normalised.rate_override, premiumStartTime: normalised.premium_start_time, premiumEndTime: normalised.premium_end_time },
+      effStart,
+      effEnd,
+      effOvernight,
+    );
+    if (windowError) return { success: false, error: windowError };
+
+    // The modal supplies window times as "HH:mm" while the DB `time` columns come
+    // back as "HH:mm:ss" — normalise both to "HH:mm" so a genuine no-op re-save of a
+    // windowed shift does NOT falsely flag a change and needlessly drop the frozen
+    // payroll approval snapshot.
+    const hhmm = (t: unknown): string | null => (t == null ? null : String(t).slice(0, 5));
+    premiumChanged =
+      Number(normalised.rate_multiplier ?? 0) !== Number((current.rate_multiplier as number | null) ?? 0) ||
+      Number(normalised.rate_override ?? 0) !== Number((current.rate_override as number | null) ?? 0) ||
+      (normalised.premium_reason ?? null) !== ((current.premium_reason as string | null) ?? null) ||
+      hhmm(normalised.premium_start_time) !== hhmm(current.premium_start_time) ||
+      hhmm(normalised.premium_end_time) !== hhmm(current.premium_end_time);
+
+    // Overwrite the premium keys in `updates` with the fully-normalised set so
+    // all five columns move together.
+    Object.assign(updates, normalised);
+  }
+
   const updatePayload: Record<string, unknown> = { ...updates };
   const resetsAcceptance = Object.keys(updates).some(key => ACCEPTANCE_RESET_FIELDS.has(key));
   if (resetsAcceptance) {
@@ -1159,6 +1360,31 @@ export async function updateShift(
     .eq('id', data.week_id)
     .eq('status', 'published');
 
+  // When the premium genuinely changed, any frozen payroll approval covering the
+  // shift date is now stale — payroll resolves premium live from the shift, so we
+  // drop the snapshot and let it recompute. We do NOT touch timeclock_sessions.
+  if (premiumChanged) {
+    const shiftDate = (data.shift_date ?? current.shift_date) as string | null;
+    if (shiftDate) {
+      const admin = createAdminClient();
+      await invalidatePayrollApprovalsForDate(admin, shiftDate);
+      // Audit the snapshot deletion so the invalidation is traceable to the
+      // shift-premium change that caused it.
+      void logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'payroll_approval',
+        resource_id: shiftDate,
+        operation_status: 'success',
+        additional_info: {
+          reason: 'invalidated by shift-premium change',
+          shift_id: shiftId,
+          shift_date: shiftDate,
+        },
+      });
+    }
+  }
+
   // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
@@ -1171,7 +1397,37 @@ export async function updateShift(
   });
 
   revalidatePath('/rota');
+  revalidatePath('/rota/timeclock');
   return { success: true, data: data as RotaShift };
+}
+
+/**
+ * Delete any frozen payroll month-approval snapshot covering `workDate` so the
+ * next payroll read recomputes with the new premium. Mirrors the private helper
+ * in timeclock.ts (which owns the session write path); duplicated here so the
+ * rota write path can invalidate without importing across ownership boundaries.
+ */
+async function invalidatePayrollApprovalsForDate(
+  admin: ReturnType<typeof createAdminClient>,
+  workDate: string,
+): Promise<void> {
+  const { data: periods } = await admin
+    .from('payroll_periods')
+    .select('year, month')
+    .lte('period_start', workDate)
+    .gte('period_end', workDate);
+
+  if (!periods?.length) return;
+
+  await Promise.all(
+    periods.map(period =>
+      admin
+        .from('payroll_month_approvals')
+        .delete()
+        .eq('year', period.year)
+        .eq('month', period.month),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2375,6 +2631,13 @@ export async function addShiftsFromTemplates(
       unpaid_break_minutes: t.unpaid_break_minutes,
       department: t.department,
       is_overnight: false,
+      // Templates carry no premium yet (per-template premium is deferred, spec D7)
+      // — insert nulls so the column list is explicit and future-proof.
+      rate_multiplier: null,
+      rate_override: null,
+      premium_reason: null,
+      premium_start_time: null,
+      premium_end_time: null,
       ...initialAcceptanceForShift({
         employee_id: t.employee_id ?? null,
         is_open_shift: !t.employee_id,
@@ -2610,7 +2873,7 @@ export async function publishRotaWeek(weekId: string): Promise<
   // what was published, not in-progress edits.
   const { data: currentShifts } = await supabase
     .from('rota_shifts')
-    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
     .eq('week_id', weekId)
     .neq('status', 'cancelled');
 
@@ -2630,7 +2893,7 @@ export async function publishRotaWeek(weekId: string): Promise<
   if (isRepublish) {
     const { data: prev } = await admin
       .from('rota_published_shifts')
-      .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at')
+      .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
       .eq('week_id', weekId);
     previousSnapshot = (prev ?? []) as RotaShift[];
     previousPublishedShifts = previousSnapshot.map(s => ({
@@ -2659,7 +2922,13 @@ export async function publishRotaWeek(weekId: string): Promise<
     prev.department !== curr.department ||
     prev.is_overnight !== curr.is_overnight ||
     prev.is_open_shift !== curr.is_open_shift ||
-    prev.status !== curr.status
+    prev.status !== curr.status ||
+    // A premium change is a schedule change — re-notify the affected employee.
+    Number(prev.rate_multiplier ?? 0) !== Number(curr.rate_multiplier ?? 0) ||
+    Number(prev.rate_override ?? 0) !== Number(curr.rate_override ?? 0) ||
+    (prev.premium_reason ?? null) !== (curr.premium_reason ?? null) ||
+    (prev.premium_start_time ?? null) !== (curr.premium_start_time ?? null) ||
+    (prev.premium_end_time ?? null) !== (curr.premium_end_time ?? null)
   );
 
   await Promise.all(previousSnapshot.map(async prev => {

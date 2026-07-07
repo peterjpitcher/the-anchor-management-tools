@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { verifyCalendarToken } from '@/lib/portal/calendar-token'
+import { premiumLabel, hasPremium } from '@/lib/rota/pay-calculator'
 import {
   foldLine,
   escapeICS,
@@ -15,6 +16,42 @@ import {
 } from '@/lib/ics/utils'
 
 export const dynamic = 'force-dynamic'
+
+/** "HH:mm:ss" → "HH:mm"; leaves other input untouched. */
+function shortTime(time: string | null): string | null {
+  if (!time) return null
+  return time.length >= 5 ? time.slice(0, 5) : time
+}
+
+/**
+ * A short, non-numeric premium note for a shift's ICS description, e.g.
+ * "Premium rate: Double time after 00:00". Returns null when no premium is set.
+ */
+function buildPremiumNote(row: Record<string, unknown>): string | null {
+  // PostgREST serialises numeric columns as strings ("2.00"), so coerce before use
+  // (a bare typeof-number check would discard every real value).
+  const toNum = (v: unknown): number | null => {
+    if (v == null || v === '') return null
+    const n = typeof v === 'number' ? v : Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const rateMultiplier = toNum(row.rate_multiplier)
+  const rateOverride = toNum(row.rate_override)
+  if (!hasPremium({ rateMultiplier, rateOverride })) return null
+
+  const premiumReason = typeof row.premium_reason === 'string' ? row.premium_reason : null
+  const label = premiumLabel(rateMultiplier, rateOverride, premiumReason, rateOverride ?? 0, 0) || 'Premium'
+
+  const start = shortTime(typeof row.premium_start_time === 'string' ? row.premium_start_time : null)
+  const end = shortTime(typeof row.premium_end_time === 'string' ? row.premium_end_time : null)
+
+  let window = ''
+  if (start && end) window = ` ${start}-${end}`
+  else if (start) window = ` after ${start}`
+  else if (end) window = ` until ${end}`
+
+  return `Premium rate: ${label}${window}`
+}
 
 export async function GET(req: NextRequest): Promise<Response> {
   const employeeId = req.nextUrl.searchParams.get('employee_id')
@@ -57,7 +94,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // and removes them, rather than silently leaving stale events when UIDs disappear.
   const { data: shifts, error: shiftsError } = await supabase
     .from('rota_published_shifts')
-    .select('id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name, published_at, acceptance_status')
+    .select('id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name, published_at, acceptance_status, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
     .eq('employee_id', employeeId)
     .gte('shift_date', fromStr)
     .lte('shift_date', toStr)
@@ -67,6 +104,14 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   if (shiftsError) {
     return new Response('Error loading shifts', { status: 500 })
+  }
+
+  // Non-numeric premium note per shift (id → label), e.g. "Premium rate: Double time".
+  // No pay figures in the calendar — just a heads-up that the shift is at premium.
+  const premiumNoteById = new Map<string, string>()
+  for (const row of (shifts ?? []) as Array<Record<string, unknown>>) {
+    const note = buildPremiumNote(row)
+    if (note) premiumNoteById.set(String(row.id), note)
   }
 
   const typedShifts = (shifts ?? []) as unknown as PublishedShiftRow[]
@@ -138,6 +183,8 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     const descParts: string[] = [`Department: ${deptLabel || (shift.department ?? '')}`]
     if (shift.status === 'cancelled') descParts.push('Status: Cancelled')
+    const premiumNote = premiumNoteById.get(shift.id)
+    if (premiumNote) descParts.push(premiumNote)
     if (shift.notes) descParts.push(`Notes: ${shift.notes}`)
 
     lines.push(...buildVEvent({ shift, uidPrefix: 'staff-shift', summary, descriptionParts: descParts }))
