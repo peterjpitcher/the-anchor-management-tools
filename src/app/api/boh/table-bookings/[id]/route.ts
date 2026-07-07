@@ -172,8 +172,11 @@ export async function PATCH(
   // re-persist the granted count under the global lock. It never blocks — a booking
   // whose chairs no longer fit the new window is simply granted fewer.
   const existingHighChairCount = Math.max(0, Number(existing.high_chair_count ?? 0))
+  // Track the count that ends up persisted so the response + audit reflect the
+  // re-granted (possibly clamped) value rather than the stale pre-grant figure.
+  let finalHighChairCount = existingHighChairCount
   if (windowChanged && existingHighChairCount > 0) {
-    const { error: reserveError } = await (auth.supabase as any).rpc('reserve_high_chairs', {
+    const { data: granted, error: reserveError } = await (auth.supabase as any).rpc('reserve_high_chairs', {
       p_booking_id: id,
       p_requested: existingHighChairCount,
       p_start: window.startIso,
@@ -182,8 +185,10 @@ export async function PATCH(
 
     if (reserveError) {
       // Never fail the edit over a chair re-grant — log and continue with the
-      // window change already persisted.
+      // window change already persisted (the prior count remains on the row).
       console.error('[boh-table-booking-edit] Failed to re-grant high chairs for new window:', reserveError)
+    } else if (typeof granted === 'number') {
+      finalHighChairCount = granted
     }
   }
 
@@ -194,14 +199,14 @@ export async function PATCH(
     resource_id: id,
     operation_status: 'success',
     old_values: existing,
-    new_values: updatePayload,
+    new_values: { ...updatePayload, high_chair_count: finalHighChairCount },
     additional_info: { action: 'admin_booking_edit' },
   }).catch(() => {})
 
   revalidatePath('/table-bookings')
   revalidatePath(`/table-bookings/${id}`)
 
-  return NextResponse.json({ success: true, data: { id } })
+  return NextResponse.json({ success: true, data: { id, high_chair_count: finalHighChairCount } })
 }
 
 export async function DELETE(
