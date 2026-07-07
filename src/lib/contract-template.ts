@@ -408,11 +408,12 @@ export function generateContractHTML(data: ContractData): string {
 
   <div class="screen-note">
     <strong>The Anchor — Private booking contract.</strong> ${safeCustomerName} &middot; ${safeEventType} &middot; ${eventDate} &middot; ref ${ref}.${hasOwnFood ? ' Followed by an <strong>optional self-catering and outside food responsibility agreement</strong> (separate annex, separate signature).' : ''}
-    <span class="sub">Each sheet is one printed page. Print &middot; A4 &middot; Portrait &middot; margins &ldquo;None&rdquo;.</span>
+    <span class="sub">Use <strong>Download PDF</strong> for the exact layout. The browser Print button follows your own print settings (e.g. a minimum font size), which can shift the layout.</span>
   </div>
   <div class="toolbar">
     <a class="back-link" href="/private-bookings/${booking.id}">&larr; Back to booking</a>
-    <button class="print-btn" onclick="window.print()">Print / save as PDF</button>
+    <a class="print-btn" href="/api/private-bookings/contract?bookingId=${booking.id}&amp;format=pdf">Download PDF</a>
+    <button class="back-link" type="button" style="cursor:pointer; background:transparent;" onclick="window.print()">Print</button>
   </div>
 
   <div class="stage">
