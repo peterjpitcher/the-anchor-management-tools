@@ -136,9 +136,11 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const { data: booking } = await supabase
     .from('table_bookings')
-    .select('payment_status, paypal_deposit_order_id')
+    .select('payment_status, paypal_deposit_order_id, is_outside_seating')
     .eq('id', preview.tableBookingId)
     .single()
+
+  const isOutsideSeating = Boolean(booking?.is_outside_seating)
 
   if (booking?.payment_status === 'completed') {
     return <DepositReceivedPanel contactPhone={contactPhone} guestFirstName={guestFirstName} />
@@ -461,6 +463,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
             paypalClientId={paypalClientId}
             paypalEnvironment={paypalEnvironment}
             captureAction={captureDeposit}
+            isOutsideSeating={isOutsideSeating}
           />
         </div>
         <p className="mt-4 text-sm text-slate-700">

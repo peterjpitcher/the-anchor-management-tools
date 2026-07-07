@@ -1,15 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-// The route reads the purpose-aware booking rows directly via the admin client:
-// from('table_bookings').select(...).eq('booking_date', date) -> { data, error }.
+// The route reads rows directly via the admin client through two chains:
+//  - kitchen rows:  from('table_bookings').select(...).eq('booking_date', date)
+//  - chair holds:   from('table_bookings').select(...).gt(...).gte(...).lt(...)
+// Both resolve to { data, error }. The select() result must satisfy either chain.
 const kitchenRowsResult = { data: [] as unknown[], error: null as unknown }
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
     from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => Promise.resolve(kitchenRowsResult)),
-      })),
+      select: vi.fn(() => {
+        const chain: Record<string, unknown> = {
+          eq: vi.fn(() => Promise.resolve(kitchenRowsResult)),
+          gt: vi.fn(() => chain),
+          gte: vi.fn(() => chain),
+          lt: vi.fn(() => Promise.resolve(kitchenRowsResult)),
+          maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
+        }
+        return chain
+      }),
     })),
   })),
 }))
@@ -44,6 +53,8 @@ vi.mock('@/lib/table-bookings/kitchen-pacing', () => ({
   getKitchenPacingOverrideForDate: vi.fn(),
   resolveKitchenCeiling: vi.fn(),
   buildKitchenAvailabilitySlots: vi.fn(),
+  enrichSlotsWithHighChairsRemaining: vi.fn(),
+  getHighChairInventory: vi.fn(),
   isSundayDate: vi.fn(),
 }))
 
@@ -59,6 +70,8 @@ import {
 } from '@/lib/table-bookings/load'
 import {
   buildKitchenAvailabilitySlots,
+  enrichSlotsWithHighChairsRemaining,
+  getHighChairInventory,
   getKitchenPacingOverrideForDate,
   getKitchenPacingSettings,
   isSundayDate,
@@ -87,6 +100,8 @@ const SLOTS = [
   { time: '18:15', covers: 0, remaining: 19 },
   { time: '18:30', covers: 10, remaining: 9 },
 ]
+// The route enriches each base slot with `high_chairs_remaining` before returning.
+const ENRICHED_SLOTS = SLOTS.map((slot) => ({ ...slot, high_chairs_remaining: 2 }))
 
 function makeRequest(date: string | null) {
   const url =
@@ -105,6 +120,11 @@ beforeEach(() => {
   vi.mocked(getKitchenWindowForDate).mockResolvedValue({ openMinutes: 18 * 60, closeMinutes: 21 * 60 })
   vi.mocked(resolveKitchenCeiling).mockReturnValue(19)
   vi.mocked(buildKitchenAvailabilitySlots).mockReturnValue(SLOTS)
+  vi.mocked(getHighChairInventory).mockResolvedValue(2)
+  // Passthrough that appends the chair figure — mirrors the real enrichment contract.
+  vi.mocked(enrichSlotsWithHighChairsRemaining).mockImplementation((slots) =>
+    slots.map((slot) => ({ ...slot, high_chairs_remaining: 2 }))
+  )
   vi.mocked(isSundayDate).mockReturnValue(false)
 })
 
@@ -127,9 +147,11 @@ describe('GET /api/table-bookings/load', () => {
     expect(json.data.bookings).toEqual(BOOKINGS)
   })
 
-  it('enforces the read:table_bookings API scope and sets the 30s cache header', async () => {
+  it('enforces the read:table_bookings API scope and serves the chair figure no-store', async () => {
     const res = await GET(makeRequest('2026-07-06'))
-    expect(res.headers.get('cache-control')).toBe('public, max-age=30, stale-while-revalidate=60')
+    // Response now carries per-slot high_chairs_remaining (a 2-unit physical resource),
+    // so it must never be served from a stale/CDN copy.
+    expect(res.headers.get('cache-control')).toBe('no-store')
     expect(vi.mocked(withApiAuth)).toHaveBeenCalledWith(
       expect.any(Function),
       ['read:table_bookings'],
@@ -147,7 +169,7 @@ describe('GET /api/table-bookings/load', () => {
       ceiling_covers: 19,
       walk_in_reserve: 6,
     })
-    expect(json.data.slots).toEqual(SLOTS)
+    expect(json.data.slots).toEqual(ENRICHED_SLOTS)
   })
 
   it('uses the Sunday walk-in reserve on a Sunday', async () => {

@@ -161,7 +161,7 @@ export default async function TableManageBookingPage({
         <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
           <p><span className="font-medium text-gray-900">Booking:</span> {preview.booking_reference || preview.table_booking_id}</p>
           <p className="mt-1"><span className="font-medium text-gray-900">Time:</span> {formatDateTime(preview.start_datetime)}</p>
-          <p className="mt-1"><span className="font-medium text-gray-900">Table:</span> {preview.table_name || 'Unassigned'}</p>
+          <p className="mt-1"><span className="font-medium text-gray-900">Table:</span> {preview.is_outside_seating ? 'Outside' : (preview.table_name || 'Unassigned')}</p>
           <p className="mt-1"><span className="font-medium text-gray-900">Party size:</span> {preview.party_size || 1}</p>
           <p className="mt-1"><span className="font-medium text-gray-900">Status:</span> {humanizeStatus(preview.status)}</p>
         </div>
@@ -199,7 +199,7 @@ export default async function TableManageBookingPage({
                 name="notes"
                 rows={3}
                 defaultValue={preview.special_requirements || ''}
-                placeholder="Allergies, dietary needs, accessibility requirements, highchairs, etc."
+                placeholder="Allergies, dietary needs, accessibility requirements, etc."
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
             </div>

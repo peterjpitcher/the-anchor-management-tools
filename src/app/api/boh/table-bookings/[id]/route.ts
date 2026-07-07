@@ -80,7 +80,7 @@ export async function PATCH(
   }
 
   const { data: existing, error: loadError } = await auth.supabase.from('table_bookings')
-    .select('id, status, booking_date, booking_time, duration_minutes, customer_id, special_requirements, dietary_requirements, allergies, celebration_type, internal_notes')
+    .select('id, status, booking_date, booking_time, duration_minutes, customer_id, special_requirements, dietary_requirements, allergies, celebration_type, internal_notes, high_chair_count, is_outside_seating')
     .eq('id', id)
     .maybeSingle()
 
@@ -107,6 +107,15 @@ export async function PATCH(
   }
 
   const nowIso = new Date().toISOString()
+  const isOutsideSeating = existing.is_outside_seating === true
+
+  // A re-window is any change to the date, time, or duration. When it happens we
+  // must re-check the high-chair cap for the new window (never block — clamp).
+  const windowChanged =
+    existing.booking_date !== parsed.data.booking_date ||
+    existing.booking_time !== parsed.data.booking_time ||
+    existing.duration_minutes !== parsed.data.duration_minutes
+
   const updatePayload = {
     booking_date: parsed.data.booking_date,
     booking_time: parsed.data.booking_time,
@@ -122,21 +131,26 @@ export async function PATCH(
     updated_at: nowIso,
   }
 
-  const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
-    .update({
-      start_datetime: window.startIso,
-      end_datetime: window.endIso,
-    })
-    .eq('table_booking_id', id)
+  // Outside bookings hold no table, so there are no assignment rows to re-window —
+  // the UPDATE is a safe no-op. Skip it explicitly so the misleading conflict path
+  // can never fire for an outside booking.
+  if (!isOutsideSeating) {
+    const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
+      .update({
+        start_datetime: window.startIso,
+        end_datetime: window.endIso,
+      })
+      .eq('table_booking_id', id)
 
-  if (assignmentError) {
-    if (isAssignmentConflict(assignmentError)) {
-      return NextResponse.json(
-        { error: 'The current table is not available at the new date or time.' },
-        { status: 409 }
-      )
+    if (assignmentError) {
+      if (isAssignmentConflict(assignmentError)) {
+        return NextResponse.json(
+          { error: 'The current table is not available at the new date or time.' },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ error: 'Failed to update table assignment window' }, { status: 500 })
     }
-    return NextResponse.json({ error: 'Failed to update table assignment window' }, { status: 500 })
   }
 
   const { data: updated, error: updateError } = await auth.supabase.from('table_bookings')
@@ -150,6 +164,27 @@ export async function PATCH(
   }
   if (!updated) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // Re-check the high-chair cap for the new window whenever the booking is
+  // re-windowed. This is a direct UPDATE path (it does not route through
+  // move_table_booking_time_v05), so we call reserve_high_chairs to clamp and
+  // re-persist the granted count under the global lock. It never blocks — a booking
+  // whose chairs no longer fit the new window is simply granted fewer.
+  const existingHighChairCount = Math.max(0, Number(existing.high_chair_count ?? 0))
+  if (windowChanged && existingHighChairCount > 0) {
+    const { error: reserveError } = await (auth.supabase as any).rpc('reserve_high_chairs', {
+      p_booking_id: id,
+      p_requested: existingHighChairCount,
+      p_start: window.startIso,
+      p_end: window.endIso,
+    })
+
+    if (reserveError) {
+      // Never fail the edit over a chair re-grant — log and continue with the
+      // window change already persisted.
+      console.error('[boh-table-booking-edit] Failed to re-grant high chairs for new window:', reserveError)
+    }
   }
 
   await logAuditEvent({

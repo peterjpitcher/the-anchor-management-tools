@@ -14,6 +14,8 @@ interface TablePaymentClientProps {
   paypalClientId: string
   paypalEnvironment: string
   captureAction: (orderId: string) => Promise<{ success: boolean; error?: string }>
+  // Outside bookings hold no indoor table — used to keep the "reserved" copy table-free.
+  isOutsideSeating?: boolean
 }
 
 type PaymentState = 'idle' | 'paying' | 'success' | 'error'
@@ -48,6 +50,7 @@ export function TablePaymentClient({
   paypalClientId,
   paypalEnvironment,
   captureAction,
+  isOutsideSeating = false,
 }: TablePaymentClientProps) {
   const [paymentState, setPaymentState] = useState<PaymentState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -70,7 +73,7 @@ export function TablePaymentClient({
     <div>
       {showCancelledMessage && paymentState === 'idle' && (
         <div role="alert" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Payment was not completed. Your table is still reserved if you pay before the hold expiry time below.
+          Payment was not completed. Your {isOutsideSeating ? 'booking' : 'table'} is still reserved if you pay before the hold expiry time below.
         </div>
       )}
 

@@ -41,6 +41,11 @@ const CreateFohTableBookingSchema = z.object({
   // forward, but Sunday bookings no longer have a pre-order flow.
   sunday_lunch: z.boolean().optional(),
   sunday_deposit_method: z.enum(['cash', 'payment_link']).optional(),
+  // High-chair request (hard cap of 2 for everyone — no override flag). The DB
+  // grants atomically and may clamp below the request. `outside_seating` holds
+  // no indoor table but still paces.
+  high_chair_count: z.coerce.number().int().min(0).max(2).optional(),
+  outside_seating: z.boolean().optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
@@ -191,6 +196,12 @@ async function createManualWalkInBookingOverride(params: {
     party_size: number
     purpose: 'food' | 'drinks'
     notes?: string
+    // High-chair request (0–2). Granted atomically via reserve_high_chairs
+    // after the row is inserted — never counted-then-inserted in JS.
+    high_chair_count?: number
+    // Outside bookings hold no indoor table, so table allocation and the
+    // assignment insert are skipped for them.
+    outside_seating?: boolean
   }
 }): Promise<TableBookingRpcResult> {
   const bookingTime = params.payload.time.length === 5 ? `${params.payload.time}:00` : params.payload.time
@@ -207,6 +218,13 @@ async function createManualWalkInBookingOverride(params: {
   const endIso = new Date(startMs + durationMinutes * 60 * 1000).toISOString()
   const nowIso = new Date().toISOString()
   const bookingType = 'regular'
+  // Normalise the two new features once. `isOutsideSeating` skips indoor table
+  // allocation; `requestedHighChairs` is granted atomically after insert.
+  const isOutsideSeating = params.payload.outside_seating === true
+  const requestedHighChairs = Math.max(
+    0,
+    Math.min(2, Math.trunc(Number(params.payload.high_chair_count ?? 0)) || 0)
+  )
 
   type TableCandidate = {
     id: string
@@ -476,8 +494,10 @@ async function createManualWalkInBookingOverride(params: {
     return deduped
   }
 
-  const combos = await computeAvailableCombos()
-  if (combos.length === 0) {
+  // Outside bookings hold no indoor table, so skip allocation entirely — they
+  // can never return `no_table`. Indoor bookings still require a viable combo.
+  const combos = isOutsideSeating ? [] : await computeAvailableCombos()
+  if (!isOutsideSeating && combos.length === 0) {
     return {
       state: 'blocked',
       reason: 'no_table'
@@ -506,6 +526,10 @@ async function createManualWalkInBookingOverride(params: {
         seated_at: seatNow ? nowIso : null,
         start_datetime: startIso,
         end_datetime: endIso,
+        // Insert chairs as 0 and grant atomically via reserve_high_chairs below
+        // — never count-then-insert in JS (not atomic across separate requests).
+        high_chair_count: 0,
+        is_outside_seating: isOutsideSeating,
         created_at: nowIso,
         updated_at: nowIso
       })
@@ -515,6 +539,57 @@ async function createManualWalkInBookingOverride(params: {
     if (!error && data?.id) {
       const tableBookingId = data.id as string
       let unknownAssignmentError: { code?: string; message?: string } | null = null
+
+      // Grant high chairs atomically via the shared primitive. It locks, counts
+      // the overlapping window, clamps to inventory and persists the granted
+      // count on the row — safe despite this multi-statement flow because the
+      // lock+count+update happen inside one function invocation. Never blocks.
+      async function grantHighChairs(): Promise<number> {
+        if (requestedHighChairs <= 0) {
+          return 0
+        }
+        const { data: grantedRaw, error: reserveError } = await params.supabase.rpc('reserve_high_chairs', {
+          p_booking_id: tableBookingId,
+          p_requested: requestedHighChairs,
+          p_start: startIso,
+          p_end: endIso
+        })
+        if (reserveError) {
+          // Non-fatal: the booking is valid without the chair. Log and treat as
+          // zero granted so the caller/customer is never blocked on chairs.
+          logger.warn('reserve_high_chairs failed for walk-in override', {
+            metadata: {
+              tableBookingId,
+              requested: requestedHighChairs,
+              error: reserveError.message || String(reserveError)
+            }
+          })
+          return 0
+        }
+        return typeof grantedRaw === 'number' ? grantedRaw : Number(grantedRaw ?? 0) || 0
+      }
+
+      // Outside bookings hold no indoor table — skip the assignment insert and
+      // return confirmed directly (with chairs granted). Not a `no_table` case.
+      if (isOutsideSeating) {
+        const highChairsGranted = await grantHighChairs()
+        return {
+          state: 'confirmed',
+          table_booking_id: tableBookingId,
+          booking_reference: (data.booking_reference as string) || bookingReference,
+          status: 'confirmed',
+          party_size: params.payload.party_size,
+          booking_purpose: params.payload.purpose,
+          booking_type: bookingType,
+          start_datetime: startIso,
+          end_datetime: endIso,
+          hold_expires_at: undefined,
+          sunday_lunch: false,
+          high_chairs_granted: highChairsGranted,
+          high_chair_count: highChairsGranted,
+          is_outside_seating: true
+        }
+      }
 
       for (const combo of combos) {
         const assignmentPayload = combo.tableIds.map((tableId) => ({
@@ -529,6 +604,7 @@ async function createManualWalkInBookingOverride(params: {
           .insert(assignmentPayload)
 
         if (!assignmentError) {
+          const highChairsGranted = await grantHighChairs()
           return {
             state: 'confirmed',
             table_booking_id: tableBookingId,
@@ -545,7 +621,10 @@ async function createManualWalkInBookingOverride(params: {
             start_datetime: startIso,
             end_datetime: endIso,
             hold_expires_at: undefined,
-            sunday_lunch: false
+            sunday_lunch: false,
+            high_chairs_granted: highChairsGranted,
+            high_chair_count: highChairsGranted,
+            is_outside_seating: false
           }
         }
 
@@ -775,7 +854,9 @@ export async function POST(request: NextRequest) {
           time: bookingTime,
           party_size: payload.party_size,
           purpose: payload.purpose,
-          notes: payload.notes
+          notes: payload.notes,
+          high_chair_count: payload.high_chair_count,
+          outside_seating: payload.outside_seating
         }
       })
     } catch (mgmtError) {
@@ -948,16 +1029,34 @@ export async function POST(request: NextRequest) {
   if (payload.walk_in !== true && customerId) {
     try {
       const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString()
+      // Fingerprint the request so two near-simultaneous bookings that differ
+      // only in party size, purpose, chairs, or outside-seating are NOT
+      // collapsed into one. party_size/booking_purpose/is_outside_seating are
+      // stored as requested, so they can filter in SQL; high_chair_count is
+      // stored as the GRANTED value (may be clamped below the request), so we
+      // compare the requested figure against the stored one after the fetch and
+      // fall through to a fresh create on any mismatch.
       const { data: recentDuplicate } = await (auth.supabase.from('table_bookings') as any)
-        .select('id, booking_reference, status')
+        .select('id, booking_reference, status, high_chair_count')
         .eq('customer_id', customerId)
         .eq('booking_date', payload.date)
         .eq('booking_time', bookingTime)
+        .eq('party_size', payload.party_size)
+        .eq('booking_purpose', payload.purpose)
+        .eq('is_outside_seating', payload.outside_seating ?? false)
         .not('status', 'in', '("cancelled","no_show")')
         .gte('created_at', sixtySecondsAgo)
         .maybeSingle()
 
-      if (recentDuplicate) {
+      const requestedHighChairsForDedup = Math.max(
+        0,
+        Math.min(2, Math.trunc(Number(payload.high_chair_count ?? 0)) || 0)
+      )
+      const highChairFingerprintMatches =
+        recentDuplicate != null &&
+        Number(recentDuplicate.high_chair_count ?? 0) === requestedHighChairsForDedup
+
+      if (recentDuplicate && highChairFingerprintMatches) {
         const dupState: FohCreateBookingResponseData['state'] =
           recentDuplicate.status === 'confirmed'
             ? 'confirmed'
@@ -1066,7 +1165,11 @@ export async function POST(request: NextRequest) {
     // Venue events and management overrides automatically waive the deposit,
     // matching the explicit waive_deposit path.
     p_deposit_waived: treatAsWaived,
-    p_bypass_pacing: bypassPacing
+    p_bypass_pacing: bypassPacing,
+    // Chairs are a hard ceiling for everyone — no override flag. Granted
+    // atomically inside the RPC; outside bookings hold no indoor table.
+    p_high_chair_count: payload.high_chair_count ?? 0,
+    p_outside_seating: payload.outside_seating ?? false
   })
 
   let bookingResult: TableBookingRpcResult
@@ -1118,7 +1221,9 @@ export async function POST(request: NextRequest) {
           time: bookingTime,
           party_size: payload.party_size,
           purpose: payload.purpose,
-          notes: payload.notes
+          notes: payload.notes,
+          high_chair_count: payload.high_chair_count,
+          outside_seating: payload.outside_seating
         }
       })
       shouldSendBookingSms = false
@@ -1374,7 +1479,11 @@ export async function POST(request: NextRequest) {
         status: bookingResult.status || bookingResult.state,
         table_name: bookingResult.table_name || null,
         source: 'foh',
-        deposit_waived: payload.waive_deposit === true
+        deposit_waived: payload.waive_deposit === true,
+        // Record the GRANTED chair count (not the requested figure) and the
+        // seating type for reporting.
+        high_chairs_granted: bookingResult.high_chairs_granted ?? bookingResult.high_chair_count ?? 0,
+        is_outside_seating: bookingResult.is_outside_seating ?? false
       }
     }, {
       userId: auth.userId,

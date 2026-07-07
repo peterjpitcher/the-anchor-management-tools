@@ -71,7 +71,7 @@ export async function getTableBookingForFoh(
 ): Promise<TableBookingForFoh | null> {
   const { data, error } = await supabase.from('table_bookings')
     .select(
-      'id, customer_id, booking_reference, status, booking_type, payment_status, deposit_waived, paypal_deposit_capture_id, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime'
+      'id, customer_id, booking_reference, status, booking_type, payment_status, deposit_waived, paypal_deposit_capture_id, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime, high_chair_count, is_outside_seating'
     )
     .eq('id', bookingId)
     .maybeSingle()
