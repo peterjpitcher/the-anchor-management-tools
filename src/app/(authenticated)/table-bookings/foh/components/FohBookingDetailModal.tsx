@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Modal } from '@/ds'
+import { Badge, Modal } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
   formatGbp,
@@ -84,6 +84,8 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     selectedBooking.is_communal_event_block ||
     selectedBooking.id.startsWith('communal-') ||
     selectedBooking.id.startsWith('standing-')
+  const selectedBookingIsOutside = selectedBooking.is_outside_seating === true
+  const selectedBookingHighChairs = selectedBooking.high_chair_count ?? 0
   const selectedBookingSeatedTime = formatLifecycleTime(selectedBooking.seated_at)
   const selectedBookingLeftTime = formatLifecycleTime(selectedBooking.left_at)
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking.no_show_at)
@@ -124,6 +126,12 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             {selectedBooking.assignment_count && selectedBooking.assignment_count > 1 ? ` · joined ${selectedBooking.assignment_count} tables` : ''}
             {selectedBookingContext?.laneTableName ? ` · table ${selectedBookingContext.laneTableName}` : ''}
           </p>
+          {(selectedBookingIsOutside || selectedBookingHighChairs > 0) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              {selectedBookingIsOutside ? <Badge tone="info">Outside</Badge> : null}
+              {selectedBookingHighChairs > 0 ? <Badge tone="neutral">High chair ×{selectedBookingHighChairs}</Badge> : null}
+            </div>
+          )}
           {(selectedBookingSeatedTime || selectedBookingLeftTime || selectedBookingNoShowTime) && (
             <p className="mt-1 text-xs text-gray-500">
               {selectedBookingSeatedTime ? `Seated ${selectedBookingSeatedTime}` : null}
@@ -160,6 +168,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         {canEdit && !selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
           <BookingActions
             selectedBooking={selectedBooking}
+            selectedBookingIsOutside={selectedBookingIsOutside}
             bookingActionInFlight={bookingActionInFlight}
             showCancelBookingConfirmation={showCancelBookingConfirmation}
             showNoShowConfirmation={showNoShowConfirmation}
@@ -194,6 +203,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
 // Inner component for the action buttons section
 function BookingActions(props: {
   selectedBooking: FohBooking
+  selectedBookingIsOutside: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
   showNoShowConfirmation: boolean
@@ -215,6 +225,7 @@ function BookingActions(props: {
 }) {
   const {
     selectedBooking,
+    selectedBookingIsOutside,
     bookingActionInFlight,
     showCancelBookingConfirmation,
     showNoShowConfirmation,
@@ -394,52 +405,58 @@ function BookingActions(props: {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <select
-          value={selectedMoveTarget}
-          disabled={Boolean(bookingActionInFlight) || loadingSelectedMoveOptions || selectedMoveOptions.length === 0}
-          onChange={(event) => onMoveTargetChange(selectedBooking.id, event.target.value)}
-          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
-        >
-          <option value="">
-            {loadingSelectedMoveOptions
-              ? 'Loading available tables...'
-              : selectedMoveOptions.length === 0
-                ? 'No available tables'
-                : 'Move to table...'}
-          </option>
-          {selectedMoveOptions.map((table) => (
-            <option key={table.id} value={table.id}>
-              {table.name}
-              {table.table_number ? ` (${table.table_number})` : ''}
-              {table.capacity ? ` · cap ${table.capacity}` : ''}
+      {/* Outside bookings have no table, and the move endpoints 409 for them, so the
+          move action is hidden entirely (converting an outside booking to a table is v2). */}
+      {selectedBookingIsOutside ? (
+        <p className="text-xs text-gray-500">Outside booking — no table to move.</p>
+      ) : (
+        <div className="flex gap-2">
+          <select
+            value={selectedMoveTarget}
+            disabled={Boolean(bookingActionInFlight) || loadingSelectedMoveOptions || selectedMoveOptions.length === 0}
+            onChange={(event) => onMoveTargetChange(selectedBooking.id, event.target.value)}
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+          >
+            <option value="">
+              {loadingSelectedMoveOptions
+                ? 'Loading available tables...'
+                : selectedMoveOptions.length === 0
+                  ? 'No available tables'
+                  : 'Move to table...'}
             </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          disabled={!selectedMoveTarget || Boolean(bookingActionInFlight) || loadingSelectedMoveOptions}
-          onClick={() => {
-            if (!selectedMoveTarget) return
-            const target = selectedMoveOptions.find((table) => table.id === selectedMoveTarget)
-            if (!target) return
-            void (async () => {
-              const ok = await onRunAction(
-                () =>
-                  postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
-                    table_ids: target.table_ids?.length ? target.table_ids : [target.id]
-                  }),
-                'Table assignment moved',
-                'move'
-              )
-              if (ok) onClose()
-            })()
-          }}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {bookingActionInFlight === 'move' ? 'Moving...' : 'Move'}
-        </button>
-      </div>
+            {selectedMoveOptions.map((table) => (
+              <option key={table.id} value={table.id}>
+                {table.name}
+                {table.table_number ? ` (${table.table_number})` : ''}
+                {table.capacity ? ` · cap ${table.capacity}` : ''}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!selectedMoveTarget || Boolean(bookingActionInFlight) || loadingSelectedMoveOptions}
+            onClick={() => {
+              if (!selectedMoveTarget) return
+              const target = selectedMoveOptions.find((table) => table.id === selectedMoveTarget)
+              if (!target) return
+              void (async () => {
+                const ok = await onRunAction(
+                  () =>
+                    postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
+                      table_ids: target.table_ids?.length ? target.table_ids : [target.id]
+                    }),
+                  'Table assignment moved',
+                  'move'
+                )
+                if (ok) onClose()
+              })()
+            }}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {bookingActionInFlight === 'move' ? 'Moving...' : 'Move'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

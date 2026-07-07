@@ -39,7 +39,7 @@ export async function getDailySummaryAction(date: string) {
       PrivateBookingService.getBookings({ fromDate: parsed.data, toDate: parsed.data }),
       adminClient
         .from('table_bookings')
-        .select('id, booking_time, booking_type, party_size, status')
+        .select('id, booking_time, booking_type, party_size, status, high_chair_count, is_outside_seating')
         .eq('booking_date', parsed.data)
         .neq('status', 'cancelled')
         .order('booking_time', { ascending: true }),
@@ -72,8 +72,23 @@ export async function getDailySummaryAction(date: string) {
     if (tableBookings.length > 0) {
       const totalCovers = tableBookings.reduce((sum: number, b: { party_size: number }) => sum + b.party_size, 0);
       const noShows = tableBookings.filter((b: { status: string }) => b.status === 'no_show').length;
+      const highChairsReserved = tableBookings.reduce(
+        (sum: number, b: { high_chair_count?: number | null }) => sum + (b.high_chair_count ?? 0),
+        0,
+      );
+      const outsideCovers = tableBookings.reduce(
+        (sum: number, b: { party_size: number; is_outside_seating?: boolean | null }) =>
+          sum + (b.is_outside_seating ? b.party_size : 0),
+        0,
+      );
       summaryParts.push('TABLE BOOKINGS:');
       summaryParts.push(`${tableBookings.length} booking${tableBookings.length !== 1 ? 's' : ''} (${totalCovers} covers)${noShows > 0 ? `, ${noShows} no-show${noShows !== 1 ? 's' : ''}` : ''}`);
+      if (highChairsReserved > 0) {
+        summaryParts.push(`High chairs reserved: ${highChairsReserved}`);
+      }
+      if (outsideCovers > 0) {
+        summaryParts.push(`Outside covers: ${outsideCovers}`);
+      }
       summaryParts.push('');
     }
 

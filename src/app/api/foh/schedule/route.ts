@@ -174,6 +174,8 @@ type PrivateBlockForTable = {
     end_datetime: string
     is_private_block: true
     private_booking_id: string
+    high_chair_count: number
+    is_outside_seating: boolean
   }
 }
 
@@ -192,7 +194,7 @@ async function loadScheduleBookingRows(
   date: string,
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
   ]
@@ -547,7 +549,9 @@ export async function GET(request: NextRequest) {
               start_datetime: bookingWindow.startIso,
               end_datetime: bookingWindow.endIso,
               is_private_block: true as const,
-              private_booking_id: privateBooking.id
+              private_booking_id: privateBooking.id,
+              high_chair_count: 0,
+              is_outside_seating: false
             }
 
             const current = privateBlocksByTableId.get(tableId) || []
@@ -657,7 +661,9 @@ export async function GET(request: NextRequest) {
       is_private_block: false,
       event_seating_type: 'seated',
       capacity_label: capacityLabel,
-      is_communal_event_block: true
+      is_communal_event_block: true,
+      high_chair_count: 0,
+      is_outside_seating: false
     }
 
     const current = communalBookingsByTableId.get(group.tableId) || []
@@ -707,7 +713,9 @@ export async function GET(request: NextRequest) {
           assignment_count: visibleAssignments.length,
           start_datetime: assignment?.start_datetime || booking.start_datetime || null,
           end_datetime: assignment?.end_datetime || booking.end_datetime || null,
-          is_private_block: false
+          is_private_block: false,
+          high_chair_count: booking.high_chair_count ?? 0,
+          is_outside_seating: booking.is_outside_seating ?? false
         }
       })
 
@@ -729,7 +737,7 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  const unassignedBookings = bookings
+  const untabledBookings = bookings
     .filter((booking) => {
       const assignments = assignmentsByBooking.get(booking.id)
       if (!assignments || assignments.length === 0) {
@@ -765,8 +773,16 @@ export async function GET(request: NextRequest) {
       no_show_at: booking.no_show_at || null,
       start_datetime: booking.start_datetime || null,
       end_datetime: booking.end_datetime || null,
-      is_private_block: false
+      is_private_block: false,
+      high_chair_count: booking.high_chair_count ?? 0,
+      is_outside_seating: booking.is_outside_seating ?? false
     }))
+
+  // Outside bookings hold no table assignment, so they land in the untabled bucket.
+  // Split them into a dedicated, non-interactive Outside lane; genuinely-untabled
+  // indoor bookings stay in unassigned_bookings.
+  const outsideBookings = untabledBookings.filter((booking) => booking.is_outside_seating === true)
+  const unassignedBookings = untabledBookings.filter((booking) => booking.is_outside_seating !== true)
 
   const standingEventBookings = (standingRows as any[])
     .filter((booking) => isActiveEventBookingForCapacity(booking))
@@ -810,16 +826,35 @@ export async function GET(request: NextRequest) {
         start_datetime: startIso,
         end_datetime: endIso,
         is_private_block: false,
-        event_seating_type: 'standing'
+        event_seating_type: 'standing',
+        high_chair_count: 0,
+        is_outside_seating: false
       }
     })
+
+  // Virtual, non-interactive lane holding outside bookings (no physical table).
+  // Only surfaced when at least one outside booking exists for the day.
+  const outsideLane = {
+    table_id: '__outside__',
+    table_name: 'Outside',
+    table_number: null,
+    capacity: null,
+    area_id: null,
+    area: null,
+    is_bookable: false,
+    bookings: [...outsideBookings].sort((a, b) =>
+      (a.start_datetime || '').localeCompare(b.start_datetime || '')
+    )
+  }
+
+  const lanesWithOutside = outsideBookings.length > 0 ? [...lanes, outsideLane] : lanes
 
   return NextResponse.json({
     success: true,
     data: {
       date,
       service_window: serviceWindow,
-      lanes,
+      lanes: lanesWithOutside,
       unassigned_bookings: [...unassignedBookings, ...standingEventBookings]
     }
   })

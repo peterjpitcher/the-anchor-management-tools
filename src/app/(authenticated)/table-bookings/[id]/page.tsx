@@ -35,6 +35,7 @@ export default async function BookingDetailPage({ params }: Props) {
       dietary_requirements, allergies, celebration_type,
       seated_at, left_at, no_show_at, no_show_marked_at, confirmed_at, cancelled_at, completed_at,
       start_datetime, end_datetime, duration_minutes,
+      high_chair_count, is_outside_seating,
       deposit_waived, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, MessageSquare } from 'lucide-react'
-import { Button } from '@/ds'
+import { Badge, Button } from '@/ds'
 import { EmptyState } from '@/ds'
 import toast from 'react-hot-toast'
 import { MessageGuestsModal } from './MessageGuestsModal'
@@ -68,6 +68,8 @@ type BohBooking = {
   deposit_amount: number | null
   deposit_amount_locked: number | null
   deposit_waived: boolean | null
+  high_chair_count: number | null
+  is_outside_seating: boolean | null
   created_at: string | null
   updated_at: string | null
   customer: {
@@ -898,15 +900,24 @@ export function BohBookingsClient({
                           {booking.event_name}
                         </div>
                       )}
+                      {(booking.high_chair_count ?? 0) > 0 && (
+                        <div className="mt-1">
+                          <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                        </div>
+                      )}
                     </td>
                     <td className="hidden px-3 py-2 text-gray-700 whitespace-nowrap lg:table-cell">{booking.booking_reference || '—'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <span className="text-base font-bold text-gray-900">{booking.party_size || 0}</span>
                     </td>
                     <td className="px-3 py-2 text-gray-700">
-                      <div className="max-w-[220px] truncate font-medium" title={booking.table_names.join(', ')}>
-                        {booking.table_names.length > 0 ? booking.table_names.join(', ') : 'Unassigned'}
-                      </div>
+                      {booking.is_outside_seating ? (
+                        <Badge tone="info">Outside</Badge>
+                      ) : (
+                        <div className="max-w-[220px] truncate font-medium" title={booking.table_names.join(', ')}>
+                          {booking.table_names.length > 0 ? booking.table_names.join(', ') : 'Unassigned'}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
                       <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(visualState)}`}>

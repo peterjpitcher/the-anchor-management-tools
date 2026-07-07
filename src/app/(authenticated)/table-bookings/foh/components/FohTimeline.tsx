@@ -3,6 +3,7 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 import { DndContext, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
+import { Badge } from '@/ds'
 import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
 import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
 import { DragConfirmationModal } from '@/components/foh/DragConfirmationModal'
@@ -55,6 +56,20 @@ type FohTimelineProps = {
   onCancelMove: () => void
   onBookingClick: (booking: FohBooking, laneTableId: string, laneTableName: string) => void
   onLaneClick: (lane: { table_id: string; table_name: string }) => void
+}
+
+// Outside + high-chair badges. Rendered identically on FOH blocks and the detail modal
+// (and matched on BOH) so seating context reads the same everywhere. Exact props are
+// coordinated across surfaces — do not change tone or label wording independently.
+function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
+  const highChairs = booking.high_chair_count ?? 0
+  if (!booking.is_outside_seating && highChairs <= 0) return null
+  return (
+    <span className={cn('inline-flex flex-wrap items-center gap-1', className)}>
+      {booking.is_outside_seating ? <Badge tone="info">Outside</Badge> : null}
+      {highChairs > 0 ? <Badge tone="neutral">High chair ×{highChairs}</Badge> : null}
+    </span>
+  )
 }
 
 export const FohTimeline = React.memo(function FohTimeline(props: FohTimelineProps) {
@@ -267,6 +282,96 @@ const LaneRow = React.memo(function LaneRow(props: {
     onLaneClick,
   } = props
 
+  // The synthetic Outside lane has no physical table: it must never be a drop
+  // target, must not open the walk-in flow on click, and its blocks are locked
+  // (moving an outside booking to a table is v2, and the endpoints 409 anyway).
+  const isOutsideLane = lane.table_id === '__outside__' || lane.is_outside_seating === true
+  const laneCanEdit = canEdit && !isOutsideLane
+
+  const trackContent = (
+    <>
+      {timeline.ticks.map((minute) => {
+        const left = ((minute - timeline.startMin) / timelineDuration) * 100
+        return (
+          <div key={`tick-${lane.table_id}-${minute}`} className="absolute inset-y-0" style={{ left: `${left}%` }}>
+            <div className="h-full border-l border-gray-200" />
+          </div>
+        )
+      })}
+
+      {lane.bookings.map((booking) => {
+        const window = resolveBookingWindowMinutes(booking, schedule?.date || date)
+        if (!window) return null
+
+        const clippedStart = Math.max(window.start, timeline.startMin)
+        const clippedEnd = Math.min(window.end, timeline.endMin)
+        if (clippedEnd <= clippedStart) return null
+
+        const leftPct = ((clippedStart - timeline.startMin) / timelineDuration) * 100
+        const widthPct = Math.max(2.2, ((clippedEnd - clippedStart) / timelineDuration) * 100)
+        const visualState = getBookingVisualState(booking)
+        const visualLabel = getBookingVisualLabel(booking)
+        const visualClassName = statusBlockClass(visualState)
+        const isEventOnlyBlock = Boolean(booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-'))
+        // Outside bookings are locked exactly like event-only blocks (no drag).
+        const isLockedBlock = isEventOnlyBlock || booking.is_outside_seating === true
+        const detailLine = booking.capacity_label
+          ? `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.capacity_label}`
+          : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
+
+        return (
+          <DraggableBookingBlock
+            key={`${lane.table_id}-${booking.id}`}
+            bookingId={booking.id}
+            bookingLabel={booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+            fromTime={booking.booking_time}
+            tableId={lane.table_id}
+            tableName={lane.table_name}
+            durationMinutes={window.end - window.start}
+            timelineStartMin={timeline.startMin}
+            timelineEndMin={timeline.endMin}
+            leftPct={leftPct}
+            widthPct={widthPct}
+            canEdit={canEdit && !isLockedBlock}
+            status={booking.status}
+            isPrivateBlock={Boolean(booking.is_private_block)}
+            assignmentCount={booking.assignment_count ?? null}
+            styleVariant={styleVariant}
+            className={cn(bookingBlockBaseClass, visualClassName)}
+            statusClassName={visualClassName}
+            title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onBookingClick(booking, lane.table_id, lane.table_name)
+            }}
+          >
+            <p className="truncate font-semibold">
+              {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+            </p>
+            <p className="truncate">
+              {booking.is_private_block
+                ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
+                : detailLine}
+            </p>
+            <BookingBadges booking={booking} className="mt-0.5" />
+          </DraggableBookingBlock>
+        )
+      })}
+
+      {currentTimelineLeftPct != null && (
+        <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: `${currentTimelineLeftPct}%` }}>
+          <div className="h-full w-0.5 -translate-x-1/2 bg-red-500/75" />
+        </div>
+      )}
+
+      {lane.bookings.length === 0 && (
+        <div className={laneEmptyClass}>
+          {laneCanEdit ? 'Tap lane to add walk-in' : 'Available for entire visible service window'}
+        </div>
+      )}
+    </>
+  )
+
   return (
     <div className="grid grid-cols-[220px_1fr] border-b border-gray-200 last:border-b-0">
       <div className={cn(laneMetaCellClass, 'sticky left-0 z-10')}>
@@ -276,102 +381,43 @@ const LaneRow = React.memo(function LaneRow(props: {
             {lane.table_number ? <span className="ml-1 text-xs text-gray-500">({lane.table_number})</span> : null}
           </p>
           <p className="text-[11px] text-gray-500">
-            Capacity {lane.capacity || '-'}
-            {lane.area ? ` · ${lane.area}` : ''}
-            {lane.is_bookable === false ? ' · not bookable' : ''}
+            {isOutsideLane ? (
+              <>No physical table</>
+            ) : (
+              <>
+                Capacity {lane.capacity || '-'}
+                {lane.area ? ` · ${lane.area}` : ''}
+                {lane.is_bookable === false ? ' · not bookable' : ''}
+              </>
+            )}
           </p>
         </div>
       </div>
 
-      <DroppableLaneTimeline
-        tableId={lane.table_id}
-        tableName={lane.table_name}
-        className={laneTimelineClass}
-        canEdit={canEdit}
-        onLaneClick={() => {
-          onLaneClick({
-            table_id: lane.table_id,
-            table_name: lane.table_name
-          })
-        }}
-      >
-        {timeline.ticks.map((minute) => {
-          const left = ((minute - timeline.startMin) / timelineDuration) * 100
-          return (
-            <div key={`tick-${lane.table_id}-${minute}`} className="absolute inset-y-0" style={{ left: `${left}%` }}>
-              <div className="h-full border-l border-gray-200" />
-            </div>
-          )
-        })}
-
-        {lane.bookings.map((booking) => {
-          const window = resolveBookingWindowMinutes(booking, schedule?.date || date)
-          if (!window) return null
-
-          const clippedStart = Math.max(window.start, timeline.startMin)
-          const clippedEnd = Math.min(window.end, timeline.endMin)
-          if (clippedEnd <= clippedStart) return null
-
-          const leftPct = ((clippedStart - timeline.startMin) / timelineDuration) * 100
-          const widthPct = Math.max(2.2, ((clippedEnd - clippedStart) / timelineDuration) * 100)
-          const visualState = getBookingVisualState(booking)
-          const visualLabel = getBookingVisualLabel(booking)
-          const visualClassName = statusBlockClass(visualState)
-          const isEventOnlyBlock = Boolean(booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-'))
-          const detailLine = booking.capacity_label
-            ? `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.capacity_label}`
-            : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
-
-          return (
-            <DraggableBookingBlock
-              key={`${lane.table_id}-${booking.id}`}
-              bookingId={booking.id}
-              bookingLabel={booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
-              fromTime={booking.booking_time}
-              tableId={lane.table_id}
-              tableName={lane.table_name}
-              durationMinutes={window.end - window.start}
-              timelineStartMin={timeline.startMin}
-              timelineEndMin={timeline.endMin}
-              leftPct={leftPct}
-              widthPct={widthPct}
-              canEdit={canEdit && !isEventOnlyBlock}
-              status={booking.status}
-              isPrivateBlock={Boolean(booking.is_private_block)}
-              assignmentCount={booking.assignment_count ?? null}
-              styleVariant={styleVariant}
-              className={cn(bookingBlockBaseClass, visualClassName)}
-              statusClassName={visualClassName}
-              title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
-              onClick={(event) => {
-                event.stopPropagation()
-                onBookingClick(booking, lane.table_id, lane.table_name)
-              }}
-            >
-              <p className="truncate font-semibold">
-                {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
-              </p>
-              <p className="truncate">
-                {booking.is_private_block
-                  ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
-                  : detailLine}
-              </p>
-            </DraggableBookingBlock>
-          )
-        })}
-
-        {currentTimelineLeftPct != null && (
-          <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: `${currentTimelineLeftPct}%` }}>
-            <div className="h-full w-0.5 -translate-x-1/2 bg-red-500/75" />
-          </div>
-        )}
-
-        {lane.bookings.length === 0 && (
-          <div className={laneEmptyClass}>
-            {canEdit ? 'Tap lane to add walk-in' : 'Available for entire visible service window'}
-          </div>
-        )}
-      </DroppableLaneTimeline>
+      {isOutsideLane ? (
+        // Plain, non-droppable, non-clickable container (no useDroppable registration).
+        <div
+          className={cn(laneTimelineClass, 'cursor-default hover:bg-gray-50/60')}
+          aria-label={`${lane.table_name} bookings`}
+        >
+          {trackContent}
+        </div>
+      ) : (
+        <DroppableLaneTimeline
+          tableId={lane.table_id}
+          tableName={lane.table_name}
+          className={laneTimelineClass}
+          canEdit={laneCanEdit}
+          onLaneClick={() => {
+            onLaneClick({
+              table_id: lane.table_id,
+              table_name: lane.table_name
+            })
+          }}
+        >
+          {trackContent}
+        </DroppableLaneTimeline>
+      )}
     </div>
   )
 })

@@ -166,6 +166,7 @@ function createSearchBlob(input: {
   visual_status: string
   customer_mobile: string | null
   table_names: string[]
+  is_outside_seating: boolean
 }): string {
   return [
     input.booking_reference,
@@ -177,7 +178,8 @@ function createSearchBlob(input: {
     input.status,
     input.visual_status,
     input.customer_mobile,
-    input.table_names.join(' ')
+    input.table_names.join(' '),
+    input.is_outside_seating ? 'outside' : null
   ]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join(' ')
@@ -199,7 +201,7 @@ async function loadBookingsRows(
   input: { startDate: string; endDate: string }
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, deposit_waived, special_requirements, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
+    'id, booking_reference, booking_date, booking_time, party_size, committed_party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, deposit_waived, special_requirements, high_chair_count, is_outside_seating, seated_at, left_at, no_show_at, cancelled_at, cancelled_by, start_datetime, end_datetime, duration_minutes, hold_expires_at, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, deposit_waived, special_requirements, seated_at, left_at, no_show_at, cancelled_at, start_datetime, end_datetime, duration_minutes, created_at, updated_at, customer_id, event_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number,sms_status)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, status, special_requirements, duration_minutes, no_show_at, cancelled_at, created_at, updated_at, customer_id, customer:customers!table_bookings_customer_id_fkey(id,first_name,last_name,mobile_number)'
@@ -485,6 +487,8 @@ export async function GET(request: NextRequest) {
         deposit_amount: row.deposit_amount ?? null,
         deposit_amount_locked: row.deposit_amount_locked ?? null,
         deposit_waived: row.deposit_waived ?? null,
+        high_chair_count: typeof row.high_chair_count === 'number' ? row.high_chair_count : 0,
+        is_outside_seating: row.is_outside_seating === true,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null,
         customer,
@@ -507,7 +511,8 @@ export async function GET(request: NextRequest) {
           status: row.status || null,
           visual_status: visualStatus,
           customer_mobile: customer?.mobile_number || null,
-          table_names: tableNames
+          table_names: tableNames,
+          is_outside_seating: row.is_outside_seating === true
         })
       }
     })
