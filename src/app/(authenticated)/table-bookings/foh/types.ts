@@ -27,6 +27,8 @@ export type FohBooking = {
   event_seating_type?: 'seated' | 'standing' | null
   capacity_label?: string | null
   is_communal_event_block?: boolean
+  high_chair_count?: number
+  is_outside_seating?: boolean
 }
 
 export type FohLane = {
@@ -38,6 +40,8 @@ export type FohLane = {
   area: string | null
   is_bookable?: boolean
   bookings: FohBooking[]
+  high_chair_count?: number
+  is_outside_seating?: boolean
 }
 
 export type ServiceWindow = {

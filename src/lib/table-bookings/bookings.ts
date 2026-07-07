@@ -49,6 +49,9 @@ export type TableBookingRpcResult = {
   hold_expires_at?: string
   sunday_lunch?: boolean
   sunday_preorder_cutoff_at?: string | null
+  high_chairs_granted?: number
+  high_chair_count?: number
+  is_outside_seating?: boolean
 }
 
 export type TablePaymentTokenResult = {

@@ -61,6 +61,8 @@ export type TableBookingForFoh = {
   duration_minutes: number | null
   start_datetime: string | null
   end_datetime: string | null
+  high_chair_count?: number
+  is_outside_seating?: boolean
 }
 
 export async function getTableBookingForFoh(
