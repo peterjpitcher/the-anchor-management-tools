@@ -61,6 +61,10 @@ const CreateTableBookingSchema = z.object({
   sunday_lunch: z.boolean().optional(),
   dietary_requirements: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   allergies: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  // High-chair request (hard cap of 2; the DB grants atomically and may clamp
+  // below the request). `outside_seating` holds no indoor table but still paces.
+  high_chair_count: z.coerce.number().int().min(0).max(2).optional(),
+  outside_seating: z.boolean().optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   skip_customer_sms: z.boolean().optional(),
   communication_consent: OptionalCommunicationConsentSchema
@@ -88,6 +92,10 @@ type TableBookingResponseData = {
   deposit_amount: number | null
   fallback_payment_url: string | null
   notification_channel: NotificationChannelMeta
+  // Granted high-chair count (may be below the requested count when inventory
+  // is short) and whether the booking holds an outside table instead of indoor.
+  high_chairs_granted: number | null
+  is_outside_seating: boolean | null
 }
 
 async function recordTableBookingAnalyticsSafe(
@@ -184,6 +192,11 @@ export async function POST(request: NextRequest) {
       notes: payload.notes || null,
       dietary_requirements: payload.dietary_requirements ?? null,
       allergies: payload.allergies ?? null,
+      // Vary the idempotency key when the chair/outside request changes so a
+      // repeat with different chairs/outside mints a fresh key rather than
+      // replaying the earlier booking.
+      high_chair_count: payload.high_chair_count ?? null,
+      outside_seating: payload.outside_seating ?? null,
       communication_consent: consentHashPayload(payload.communication_consent)
     })
 
@@ -237,7 +250,11 @@ export async function POST(request: NextRequest) {
         // Sunday-lunch flag is legacy; new public bookings always use the
         // regular table-booking path.
         p_sunday_lunch: false,
-        p_source: 'brand_site'
+        p_source: 'brand_site',
+        // High chairs are granted atomically inside the RPC (never via the
+        // post-insert UPDATE below); outside bookings hold no indoor table.
+        p_high_chair_count: payload.high_chair_count ?? 0,
+        p_outside_seating: payload.outside_seating ?? false
       })
 
       let bookingResult: TableBookingRpcResult
@@ -544,6 +561,17 @@ export async function POST(request: NextRequest) {
           deposit_amount: canonicalDeposit,
           fallback_payment_url: fallbackPaymentUrl,
           notification_channel: notificationChannel,
+          // Granted count comes straight from the RPC jsonb (the atomic grant),
+          // not the requested figure. Null when the RPC did not return one
+          // (e.g. blocked results) so the website can fall back gracefully.
+          high_chairs_granted:
+            typeof bookingResult.high_chairs_granted === 'number'
+              ? bookingResult.high_chairs_granted
+              : null,
+          is_outside_seating:
+            typeof bookingResult.is_outside_seating === 'boolean'
+              ? bookingResult.is_outside_seating
+              : null,
         } satisfies TableBookingResponseData,
         meta: {
           status_code: responseStatus,

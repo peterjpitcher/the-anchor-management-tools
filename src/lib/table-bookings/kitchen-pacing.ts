@@ -1,12 +1,30 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { shouldCountBooking } from './load'
+
+const LONDON_TIMEZONE = 'Europe/London'
+
+// Fallback inventory when the `high_chair_inventory` setting is missing (mirrors the SQL default).
+export const DEFAULT_HIGH_CHAIR_INVENTORY = 2
 
 export type KitchenBookingRow = {
   booking_time: string | null
   booking_purpose?: string | null
   party_size: number | null
   committed_party_size: number | null
+  status: string | null
+  left_at: string | null
+  hold_expires_at: string | null
+  payment_status: string | null
+}
+
+// Chair-hold rows carry the full seating span so remaining chairs are computed by
+// true start/end overlap (spec A3) — not the pacing centred-window model.
+export type HighChairHoldRow = {
+  start_datetime: string | null
+  end_datetime: string | null
+  high_chair_count: number | null
   status: string | null
   left_at: string | null
   hold_expires_at: string | null
@@ -33,7 +51,14 @@ export type PublicKitchenPacingSettings = {
 
 export type KitchenPacingOverride = { paceCovers: number | null; walkInReserve: number | null } | null
 
-export type KitchenAvailabilitySlot = { time: string; covers: number; remaining: number }
+export type KitchenAvailabilitySlot = {
+  time: string
+  covers: number
+  remaining: number
+  // Advisory per-slot high chairs left (inventory − overlapping holds). The RPC's
+  // atomic grant is the real gate, so a missing/stale value can never oversell.
+  high_chairs_remaining?: number
+}
 
 const DEFAULTS: KitchenPacingSettings = {
   enabled: false,
@@ -157,6 +182,72 @@ export function buildKitchenAvailabilitySlots(
   return out
 }
 
+// Converts a London-local HH:MM on `dateStr` to epoch milliseconds (DST-safe).
+function slotEpochMs(dateStr: string, minutes: number): number | null {
+  const hh = String(Math.floor(minutes / 60)).padStart(2, '0')
+  const mm = String(minutes % 60).padStart(2, '0')
+  const utc = fromZonedTime(`${dateStr}T${hh}:${mm}:00`, LONDON_TIMEZONE)
+  const ms = utc.getTime()
+  return Number.isNaN(ms) ? null : ms
+}
+
+function coerceChairCount(value: number | null | undefined): number {
+  const n = coerceInt(value)
+  return n !== null && n > 0 ? n : 0
+}
+
+/**
+ * Enrich each availability slot with `high_chairs_remaining` = max(0, inventory − held),
+ * where `held` sums the GRANTED chair counts of any booking whose seating span overlaps
+ * the slot window [slotStart, slotStart+stepMinutes). Eligibility mirrors `shouldCountBooking`
+ * (spec A5) so the read-out agrees with the SQL `count_high_chairs_in_window` primitive.
+ *
+ * This figure is advisory only — the RPC's atomic grant is the authoritative gate.
+ */
+export function enrichSlotsWithHighChairsRemaining(
+  slots: KitchenAvailabilitySlot[],
+  holds: HighChairHoldRow[],
+  inventory: number,
+  dateStr: string,
+  stepMinutes: number,
+  now: Date = new Date()
+): KitchenAvailabilitySlot[] {
+  const safeInventory = Math.max(0, Number.isFinite(inventory) ? Math.trunc(inventory) : DEFAULT_HIGH_CHAIR_INVENTORY)
+
+  // Pre-parse eligible chair holds once (span + granted count) to avoid re-work per slot.
+  const parsedHolds = holds
+    .map((row) => {
+      const chairs = coerceChairCount(row.high_chair_count)
+      if (chairs <= 0) return null
+      // shouldCountBooking takes the load.ts BookingLoadRow shape; our fields are a superset.
+      if (!shouldCountBooking(row as never, now)) return null
+      const startMs = row.start_datetime ? Date.parse(row.start_datetime) : NaN
+      const endMs = row.end_datetime ? Date.parse(row.end_datetime) : NaN
+      if (Number.isNaN(startMs) || Number.isNaN(endMs)) return null
+      return { startMs, endMs, chairs }
+    })
+    .filter((h): h is { startMs: number; endMs: number; chairs: number } => h !== null)
+
+  return slots.map((slot) => {
+    const [h, m] = slot.time.split(':').map((part) => Number.parseInt(part, 10))
+    if (Number.isNaN(h) || Number.isNaN(m)) {
+      return { ...slot, high_chairs_remaining: safeInventory }
+    }
+    const slotStartMs = slotEpochMs(dateStr, h * 60 + m)
+    if (slotStartMs === null) {
+      return { ...slot, high_chairs_remaining: safeInventory }
+    }
+    const slotEndMs = slotStartMs + stepMinutes * 60 * 1000
+    let used = 0
+    for (const hold of parsedHolds) {
+      if (hold.startMs < slotEndMs && hold.endMs > slotStartMs) {
+        used += hold.chairs
+      }
+    }
+    return { ...slot, high_chairs_remaining: Math.max(0, safeInventory - used) }
+  })
+}
+
 export function toPublicKitchenPacingSettings(s: KitchenPacingSettings): PublicKitchenPacingSettings {
   return {
     enabled: s.enabled,
@@ -239,6 +330,23 @@ export async function saveKitchenPacingSettings(
   ]
   const { error } = await supabase.from('system_settings').upsert(rows, { onConflict: 'key' })
   return error ? { ok: false, error: 'Failed to save kitchen pacing settings' } : { ok: true }
+}
+
+// Total high chairs the venue owns. Stored as `{"value": N}` under key
+// `high_chair_inventory`; falls back to the default when unset (mirrors the SQL COALESCE).
+export async function getHighChairInventory(
+  supabase: SupabaseClient = createAdminClient()
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('system_settings')
+    .select('key, value')
+    .eq('key', 'high_chair_inventory')
+    .maybeSingle()
+  if (error || !data) {
+    return DEFAULT_HIGH_CHAIR_INVENTORY
+  }
+  const byKey = new Map<string, unknown>([[data.key as string, data.value]])
+  return coerceInt(byKey.get('high_chair_inventory')) ?? DEFAULT_HIGH_CHAIR_INVENTORY
 }
 
 export async function getKitchenPacingOverrideForDate(

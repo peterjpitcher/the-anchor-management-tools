@@ -112,6 +112,8 @@ type TableBookingNotificationRow = {
   status: string | null
   source: string | null
   special_requirements: string | null
+  high_chair_count: number | null
+  is_outside_seating: boolean | null
 }
 
 type CustomerNotificationRow = {
@@ -293,6 +295,8 @@ function buildTableBookingCustomerEmail(input: {
   manageLink?: string | null
   paymentLink?: string | null
   depositLabel?: string | null
+  highChairCount?: number | null
+  isOutsideSeating?: boolean | null
 }): { subject: string; html: string; text: string } {
   const safeFirstName = escapeHtml(input.firstName)
   const safeBookingMoment = escapeHtml(input.bookingMoment)
@@ -300,13 +304,21 @@ function buildTableBookingCustomerEmail(input: {
   const safeSeatWord = escapeHtml(input.seatWord)
   const safeReference = input.bookingReference ? escapeHtml(input.bookingReference) : null
   const isPendingPayment = input.state === 'pending_payment'
+  const isOutside = Boolean(input.isOutsideSeating)
+  const grantedHighChairs = Math.max(0, Number(input.highChairCount ?? 0))
+  // Outside bookings hold no indoor table — never tell the guest their "table" is held/confirmed.
+  const bookingNoun = isOutside ? 'outside booking' : 'table'
   const subject = isPendingPayment
-    ? 'Secure your table at The Anchor'
-    : 'Your table booking at The Anchor is confirmed'
+    ? isOutside
+      ? 'Secure your outside booking at The Anchor'
+      : 'Secure your table at The Anchor'
+    : isOutside
+      ? 'Your outside booking at The Anchor is confirmed'
+      : 'Your table booking at The Anchor is confirmed'
 
   const intro = isPendingPayment
-    ? `Hi ${safeFirstName}, please pay your ${escapeHtml(input.depositLabel || 'table deposit')} to secure your table.`
-    : `Hi ${safeFirstName}, your table booking is confirmed.`
+    ? `Hi ${safeFirstName}, please pay your ${escapeHtml(input.depositLabel || 'deposit')} to secure your ${bookingNoun}.`
+    : `Hi ${safeFirstName}, your ${bookingNoun} is confirmed.`
 
   const cta = isPendingPayment
     ? input.paymentLink
@@ -323,6 +335,10 @@ function buildTableBookingCustomerEmail(input: {
     safeReference ? `<li><strong>Reference:</strong> ${safeReference}</li>` : '',
     `<li><strong>When:</strong> ${safeBookingMoment}</li>`,
     `<li><strong>Party size:</strong> ${safePartySize} ${safeSeatWord}</li>`,
+    grantedHighChairs > 0
+      ? `<li><strong>High chair reserved:</strong> &times;${escapeHtml(String(grantedHighChairs))}</li>`
+      : '',
+    isOutside ? '<li><strong>Outside seating</strong> (weather permitting)</li>' : '',
     '</ul>',
     cta,
     '<p>If you need to change anything, reply to this email or call the pub.</p>',
@@ -332,11 +348,13 @@ function buildTableBookingCustomerEmail(input: {
 
   const textLines = [
     isPendingPayment
-      ? `Hi ${input.firstName}, please pay your ${input.depositLabel || 'table deposit'} to secure your table.`
-      : `Hi ${input.firstName}, your table booking is confirmed.`,
+      ? `Hi ${input.firstName}, please pay your ${input.depositLabel || 'deposit'} to secure your ${bookingNoun}.`
+      : `Hi ${input.firstName}, your ${bookingNoun} is confirmed.`,
     input.bookingReference ? `Reference: ${input.bookingReference}` : null,
     `When: ${input.bookingMoment}`,
     `Party size: ${input.partySize} ${input.seatWord}`,
+    grantedHighChairs > 0 ? `High chair reserved x${grantedHighChairs}` : null,
+    isOutside ? 'Outside seating (weather permitting)' : null,
     isPendingPayment
       ? input.paymentLink
         ? `Pay now: ${input.paymentLink}`
@@ -385,7 +403,9 @@ export async function sendManagerTableBookingCreatedEmailIfAllowed(
         booking_purpose,
         status,
         source,
-        special_requirements
+        special_requirements,
+        high_chair_count,
+        is_outside_seating
       `
     )
     .eq('id', input.tableBookingId)
@@ -444,6 +464,15 @@ export async function sendManagerTableBookingCreatedEmailIfAllowed(
     `<li><strong>Phone:</strong> ${escapeHtml(customerPhone)}</li>`,
     `<li><strong>Email:</strong> ${escapeHtml(customerEmail)}</li>`
   ]
+
+  const grantedHighChairs = Math.max(0, Number(booking.high_chair_count ?? 0))
+  if (grantedHighChairs > 0) {
+    details.push(`<li><strong>High chairs:</strong> ${escapeHtml(String(grantedHighChairs))}</li>`)
+  }
+
+  if (booking.is_outside_seating) {
+    details.push('<li><strong>Seating:</strong> Outside</li>')
+  }
 
   if (booking.special_requirements) {
     details.push(`<li><strong>Notes:</strong> ${escapeHtml(booking.special_requirements)}</li>`)
@@ -848,14 +877,22 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     }
   }
 
+  // Render the server-GRANTED chair count (never the requested value) and outside-safe wording.
+  const isOutside = Boolean(input.bookingResult.is_outside_seating)
+  const grantedHighChairs = Math.max(0, Number(input.bookingResult.high_chair_count ?? 0))
+  const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
+  const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
+
   let smsBody: string
   if (input.bookingResult.state === 'pending_payment') {
     const depositKindLabel = input.bookingResult.sunday_lunch ? 'Sunday lunch deposit' : 'table deposit'
-    const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your table for ${partySize} ${seatWord} on ${bookingMoment}.`
+    const secureNoun = isOutside ? 'outside booking' : 'table'
+    const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your ${secureNoun} for ${partySize} ${seatWord} on ${bookingMoment}.`
     const cta = input.nextStepUrl ? `Pay now: ${input.nextStepUrl}` : 'We will text your payment link shortly.'
-    smsBody = `${base} ${cta}`
+    smsBody = `${base}${highChairSuffix}${outsideSuffix} ${cta}`
   } else {
-    smsBody = `The Anchor: Hi ${firstName}, your table booking for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+    const bookingNoun = isOutside ? 'outside booking' : 'table booking'
+    smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${highChairSuffix}${outsideSuffix}${manageLink ? ` Manage booking: ${manageLink}` : ''}`
   }
 
   const templateKey = input.bookingResult.state === 'pending_payment'
@@ -871,6 +908,8 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     manageLink,
     paymentLink: input.nextStepUrl || null,
     depositLabel,
+    highChairCount: grantedHighChairs,
+    isOutsideSeating: isOutside,
   })
 
   let notificationResult: Awaited<ReturnType<typeof notifyCustomer>>
@@ -1011,7 +1050,7 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
 ): Promise<SmsSafetyMeta> {
   const { data: booking, error: bookingError } = await supabase
     .from('table_bookings')
-    .select('id, customer_id, party_size, booking_date, booking_time, start_datetime, status, booking_type')
+    .select('id, customer_id, party_size, booking_date, booking_time, start_datetime, status, booking_type, high_chair_count, is_outside_seating')
     .eq('id', tableBookingId)
     .maybeSingle()
 
@@ -1056,7 +1095,13 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
     manageLink = null
   }
 
-  const composedMessage = `The Anchor: ${firstName}! Deposit sorted — your table for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${manageLink ? ` ${manageLink}` : ''}`
+  // Outside bookings hold no indoor table — render booking/outside wording and the granted chair count.
+  const isOutside = Boolean(booking.is_outside_seating)
+  const grantedHighChairs = Math.max(0, Number(booking.high_chair_count ?? 0))
+  const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
+  const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
+  const bookingNoun = isOutside ? 'outside booking' : 'table'
+  const composedMessage = `The Anchor: ${firstName}! Deposit sorted — your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${highChairSuffix}${outsideSuffix}${manageLink ? ` ${manageLink}` : ''}`
   const templateKey = 'table_booking_deposit_confirmed'
 
   const body = ensureReplyInstruction(composedMessage, supportPhone)

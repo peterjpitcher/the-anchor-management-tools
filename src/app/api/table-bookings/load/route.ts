@@ -12,10 +12,13 @@ import {
 } from '@/lib/table-bookings/load'
 import {
   buildKitchenAvailabilitySlots,
+  enrichSlotsWithHighChairsRemaining,
+  getHighChairInventory,
   getKitchenPacingOverrideForDate,
   getKitchenPacingSettings,
   isSundayDate,
   resolveKitchenCeiling,
+  type HighChairHoldRow,
   type KitchenBookingRow,
 } from '@/lib/table-bookings/kitchen-pacing'
 import { getKitchenWindowForDate } from '@/services/business-hours'
@@ -55,6 +58,30 @@ async function getKitchenBookingRowsForDate(
   return (data || []) as KitchenBookingRow[]
 }
 
+async function getHighChairHoldRowsForDate(
+  date: string,
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<HighChairHoldRow[]> {
+  // Chairs are a venue-wide pool shared across overlapping windows, so a booking on the
+  // previous evening can hold a chair into an early slot. Widen the fetch by one day either
+  // side and let the JS span-overlap decide which holds touch each slot.
+  const dayMs = 24 * 60 * 60 * 1000
+  const from = new Date(`${date}T00:00:00Z`).getTime() - dayMs
+  const to = new Date(`${date}T00:00:00Z`).getTime() + 2 * dayMs
+  const { data, error } = await supabase
+    .from('table_bookings')
+    .select('start_datetime, end_datetime, high_chair_count, status, left_at, hold_expires_at, payment_status')
+    .gt('high_chair_count', 0)
+    .gte('start_datetime', new Date(from).toISOString())
+    .lt('start_datetime', new Date(to).toISOString())
+
+  if (error) {
+    throw new Error('Failed to load high chair holds')
+  }
+
+  return (data || []) as HighChairHoldRow[]
+}
+
 export async function OPTIONS() {
   return createApiResponse({}, 200)
 }
@@ -75,6 +102,8 @@ export async function GET(request: NextRequest) {
       kitchenOverride,
       kitchenWindow,
       kitchenRows,
+      highChairHolds,
+      highChairInventory,
     ] = await Promise.all([
       getPacingSettings(supabase),
       getBookingLoadForDate(date, supabase),
@@ -82,6 +111,8 @@ export async function GET(request: NextRequest) {
       getKitchenPacingOverrideForDate(date, supabase),
       getKitchenWindowForDate(date, supabase),
       getKitchenBookingRowsForDate(date, supabase),
+      getHighChairHoldRowsForDate(date, supabase),
+      getHighChairInventory(supabase),
     ])
 
     const publicSettings = toPublicPacingSettings(settings)
@@ -90,7 +121,7 @@ export async function GET(request: NextRequest) {
     // These fields are safe to ignore when `capacity.enabled` is false — the
     // website should keep showing all slots until pacing is switched on.
     const ceilingCovers = resolveKitchenCeiling(kitchenSettings, date, kitchenOverride)
-    const slots = kitchenWindow
+    const baseSlots = kitchenWindow
       ? buildKitchenAvailabilitySlots(
           kitchenRows,
           kitchenSettings,
@@ -101,6 +132,16 @@ export async function GET(request: NextRequest) {
           kitchenOverride
         )
       : []
+
+    // Advisory per-slot high chairs left (inventory − overlapping holds). Computed by true
+    // start/end span overlap (spec §6, A3); the RPC's atomic grant remains the real gate.
+    const slots = enrichSlotsWithHighChairsRemaining(
+      baseSlots,
+      highChairHolds,
+      highChairInventory,
+      date,
+      SLOT_STEP_MINUTES
+    )
 
     return createApiResponse(
       {
@@ -121,7 +162,10 @@ export async function GET(request: NextRequest) {
       },
       200,
       {
-        'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
+        // Chairs are a 2-unit physical resource — this response now carries
+        // `high_chairs_remaining` per slot, so it must never be served from a
+        // stale/CDN copy (spec §6). Overrides the default GET cache header.
+        'Cache-Control': 'no-store',
       },
       req.method
     )

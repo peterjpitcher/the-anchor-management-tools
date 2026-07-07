@@ -39,7 +39,9 @@ export async function GET(
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   }
 
-  if (['cancelled', 'no_show'].includes(booking.status)) {
+  if (['cancelled', 'no_show'].includes(booking.status) || booking.is_outside_seating === true) {
+    // Outside bookings hold no table — return an empty tables list so the UI hides
+    // the move-table action entirely.
     return NextResponse.json({
       success: true,
       data: {
@@ -103,6 +105,13 @@ export async function POST(
   if (['cancelled', 'no_show'].includes(booking.status)) {
     return NextResponse.json(
       { error: 'Cannot move table for this booking status' },
+      { status: 409 }
+    )
+  }
+
+  if (booking.is_outside_seating === true) {
+    return NextResponse.json(
+      { error: 'Outside bookings hold no table; convert to indoor first.' },
       { status: 409 }
     )
   }

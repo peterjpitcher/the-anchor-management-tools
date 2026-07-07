@@ -9,6 +9,7 @@ export type MoveTableBooking = {
   end_datetime: string | null
   duration_minutes: number | null
   party_size: number | null
+  is_outside_seating?: boolean
 }
 
 type MoveTableCandidateTable = {
@@ -83,6 +84,19 @@ export async function getMoveTableAvailability(
   booking: MoveTableBooking
 ): Promise<MoveTableAvailability> {
   const { startIso, endIso } = computeBookingWindow(booking)
+
+  // Outside bookings hold no table. Never offer any move target — the UI hides the
+  // action when the tables list is empty, and the assignments RPC refuses the write
+  // as the last line of defence.
+  if (booking.is_outside_seating === true) {
+    return {
+      startIso,
+      endIso,
+      assignedTableIds: [],
+      tables: []
+    }
+  }
+
   const partySize = Math.max(1, Number(booking.party_size || 1))
 
   const [tablesResult, existingAssignmentsResult, joinLinksResult] = await Promise.all([

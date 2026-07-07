@@ -25,6 +25,7 @@ export type TableManagePreviewResult = {
   table_ids?: string[]
   table_name?: string | null
   table_capacity?: number | null
+  is_outside_seating?: boolean
   can_cancel?: boolean
   can_edit?: boolean
 }
@@ -144,9 +145,17 @@ async function maybeMoveTableForPartySizeIncrease(
     startIso: string
     endIso: string
     requiredPartySize: number
+    isOutsideSeating?: boolean
   }
 ): Promise<{ moved: boolean; tableId: string | null }> {
   const { bookingId, currentTableIds, currentTableId, startIso, endIso, requiredPartySize } = input
+
+  // Defence in depth: an outside booking holds no table and must never be given an
+  // assignment row here. The caller already skips this function for outside bookings;
+  // this guard ensures the INSERT branch below can never fire for one.
+  if (input.isOutsideSeating === true) {
+    return { moved: false, tableId: currentTableId || null }
+  }
   const currentIds = new Set([
     ...(currentTableIds || []),
     ...(currentTableId ? [currentTableId] : [])
@@ -391,7 +400,7 @@ export async function getTableManagePreviewByRawToken(
 
   const { data: booking } = await supabase.from('table_bookings')
     .select(
-      'id, customer_id, booking_reference, status, party_size, committed_party_size, special_requirements, booking_type, booking_purpose, start_datetime, end_datetime'
+      'id, customer_id, booking_reference, status, party_size, committed_party_size, special_requirements, booking_type, booking_purpose, start_datetime, end_datetime, is_outside_seating'
     )
     .eq('id', tokenRow.table_booking_id)
     .maybeSingle()
@@ -436,6 +445,7 @@ export async function getTableManagePreviewByRawToken(
     table_ids: assignment?.table_ids || [],
     table_name: assignment?.table_name || null,
     table_capacity: assignment?.table_capacity || null,
+    is_outside_seating: booking.is_outside_seating === true,
     can_cancel: canCancel,
     can_edit: canEdit
   }
@@ -669,7 +679,10 @@ export async function updateTableBookingByRawToken(
     nextCommittedSize = newPartySize
   }
 
-  if (newPartySize > oldPartySize) {
+  // Outside bookings hold no table, so a party-size increase must never trigger
+  // table allocation — we only update the party size. Skip the capacity/move check
+  // entirely for them (they have no assignment rows and can't be given one here).
+  if (newPartySize > oldPartySize && preview.is_outside_seating !== true) {
     const tableCapacity = Math.max(0, Number(preview.table_capacity || 0))
 
     if (newPartySize > tableCapacity) {
@@ -686,7 +699,8 @@ export async function updateTableBookingByRawToken(
         currentTableId: preview.table_id,
         startIso: preview.start_datetime,
         endIso: preview.end_datetime,
-        requiredPartySize: newPartySize
+        requiredPartySize: newPartySize,
+        isOutsideSeating: preview.is_outside_seating === true
       })
 
       if (!moveResult.tableId) {
