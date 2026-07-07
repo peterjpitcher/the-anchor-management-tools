@@ -1,6 +1,61 @@
 # Task Tracker
 
-## Current Task: Premium hourly rates (time-and-a-half / double-time) (2026-07-07)
+## Current Task: Private-booking prices → VAT-inclusive everywhere (2026-07-07)
+
+Stored prices are NET; customer-payable price is GROSS (`gross_total`, a VIEW-only column on
+`private_bookings_with_details`, = net + 20% VAT). Several customer-facing surfaces still
+showed NET. Adversarial audit (13 agents, 37 money sites) → 7 confirmed net-shown-as-price
+bugs (charged amounts were already gross — no under-charging). All fixed to the canonical
+`gross_total ?? calculated_total ?? total_amount` pattern:
+
+- [x] Bookings list — desktop + mobile total (`PrivateBookingsClient.tsx` 639, 778)
+- [x] Customer profile — timeline "Value" + "Private booking value" insight (`customers/[id]/page.tsx`); base table lacks the money cols + `source`, so enriched via a companion `private_bookings_with_details` query merged by id (keeps `source`)
+- [x] Balance-reminder SMS `{balance_due}` (`PrivateBookingMessagesClient.tsx` 186 + `getBookingByIdForMessages` now selects gross_total/vat_amount + normalizeBooking)
+- [x] Provisional-hold email total (`private-booking-emails.ts` 116/117) — fixed at both callers (`payments.ts` 262, `mutations.ts` 1400) to pass gross like the sibling deposit/balance emails; passes null when no positive total (no £0 row)
+- [x] Verify: tsc 0 errors, lint clean, 28+25 tests pass; live-DB proof gross = net×1.20 and legacy total_amount=£0 on priced bookings (customer profile was showing £0!)
+
+Scope: PRIVATE BOOKINGS ONLY (events/table-bookings/OJ-invoices have separate VAT handling —
+deliberately untouched). NOT committed/deployed. Behaviour note: provisional-hold email will
+now show the gross event cost where before it showed nothing — flagged to owner.
+
+## Previous Task: Private booking contract PDF layout fix (2026-07-07)
+
+Template: `src/lib/contract-template.ts` (HTML → Chrome print-to-PDF). Each `.sheet` is a
+fixed 210×297mm box; body content overflows the pinned footer on the static pages.
+
+Measured overflow (headless-Chrome harness, print media, webfonts loaded):
+- Page 4 (Terms & conditions continued + company line): **17.6mm** into footer
+- Page 5 (self-catering annex): **27.9mm** into footer
+- Pages 1–3: fit (content is static → this collides on every contract, not just Paula's)
+
+Plan: tighten type/spacing density on the two overflowing blocks (shared `.tc-*` used by
+pages 3 & 4; annex-only `ol.contract`/`.clause-h`/`ol.sub`) until ≥3mm clearance, keeping
+the 4-page + annex pagination. Re-measure to prove fit; no content removed.
+
+- [x] Tighten T&C two-column density (`.tc-sec`, `.tc-h`, `.tc-sec p`, `.addr`)
+- [x] Tighten annex clause density (`.clause-h`, `ol.contract > li`, `ol.sub > li`, title block, sign-intro)
+- [x] Re-measure: all 5 sheets clear the footer with margin
+- [x] Lint + typecheck + existing contract tests pass
+
+### Review — DONE
+Root cause: fixed-height A4 `.sheet` boxes; when a page's body content exceeds the
+space above the pinned footer, `.body` (no `overflow:hidden`) spilled over the footer.
+Static content, so it overlapped on **every** contract (page 4) and every self-catering
+contract (annex), not just Paula's. Fix = pure CSS density reduction on the two dense
+blocks; no clauses/content removed, pagination unchanged (4 pages + annex).
+
+Proof (headless-Chrome harness, print media, webfonts loaded), footer clearance:
+| Page | Before | After |
+|---|---|---|
+| 4 (terms cont.) | −17.6mm overlap | +18.5mm clear |
+| 5 (annex) | −27.9mm overlap | +10.4mm clear |
+| 1/2/3 | fit | 28.8 / 72 / 70mm clear (unchanged) |
+
+Verified: measurement + visual PDF render of pages 4–5; 18/18 contract tests, lint clean,
+tsc clean. NOT committed/deployed. Existing stored contract snapshots keep old layout
+(immutable per SOP §28) — only re-generated contracts get the fix.
+
+## Previous Task: Premium hourly rates (time-and-a-half / double-time) (2026-07-07)
 
 Spec: [premium-rate-spec.md](premium-rate-spec.md) · Plan: [premium-rate-impl-plan.md](premium-rate-impl-plan.md)
 Orchestrated via implement-plan (code mode), 2 waves / 5 agents.
