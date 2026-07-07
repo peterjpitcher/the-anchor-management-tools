@@ -336,26 +336,26 @@ export function generateContractHTML(data: ContractData): string {
 
   /* ---------- numbered clauses (waiver) ---------- */
   ol.contract{ list-style:none; margin:0; padding:0; counter-reset:l1; }
-  ol.contract > li{ counter-increment:l1; margin:0 0 2.6mm; break-inside:avoid; }
+  ol.contract > li{ counter-increment:l1; margin:0 0 1.7mm; break-inside:avoid; }
   ol.contract > li:last-child{ margin-bottom:0; }
-  .clause-h{ position:relative; padding-left:7mm; font-weight:700; font-size:11.5px; color:var(--ink); margin:0 0 1.2mm; line-height:1.2; }
+  .clause-h{ position:relative; padding-left:6.5mm; font-weight:700; font-size:10.5px; color:var(--ink); margin:0 0 0.8mm; line-height:1.2; }
   .clause-h::before{ content:counter(l1) "."; position:absolute; left:0; top:0; width:6mm; font-weight:700; }
   ol.sub{ list-style:none; margin:0; padding:0; counter-reset:l2; }
-  ol.sub > li{ counter-increment:l2; position:relative; padding-left:9mm; font-size:9.6px; line-height:1.38; color:var(--ink-soft); margin:0 0 0.9mm; }
+  ol.sub > li{ counter-increment:l2; position:relative; padding-left:8.5mm; font-size:9px; line-height:1.3; color:var(--ink-soft); margin:0 0 0.6mm; }
   ol.sub > li::before{ content:counter(l1) "." counter(l2); position:absolute; left:0; top:0; font-weight:600; color:var(--ink); font-size:9px; }
   ol.sub > li:last-child{ margin-bottom:0; }
   ol.sub b{ color:var(--ink); font-weight:600; }
 
   /* ---------- prose (deposit info, agreement) ---------- */
-  .tc > p{ font-size:10.4px; line-height:1.44; color:var(--ink-soft); margin:0 0 1.5mm; }
+  .tc > p{ font-size:10.1px; line-height:1.4; color:var(--ink-soft); margin:0 0 1.4mm; }
   .tc > p:last-child{ margin-bottom:0; }
   .tc b{ color:var(--ink); font-weight:600; }
 
   /* ---------- two-column terms ---------- */
   .tc-cols{ columns:2; column-gap:7mm; }
-  .tc-sec{ break-inside:avoid; margin:0 0 2.8mm; }
-  .tc-h{ font-weight:700; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink); margin:0 0 1.3mm; padding-bottom:1mm; border-bottom:1px solid var(--rule); }
-  .tc-sec p{ font-size:9.1px; line-height:1.38; color:var(--ink-soft); margin:0 0 1.1mm; }
+  .tc-sec{ break-inside:avoid; margin:0 0 2.1mm; }
+  .tc-h{ font-weight:700; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink); margin:0 0 0.9mm; padding-bottom:0.8mm; border-bottom:1px solid var(--rule); }
+  .tc-sec p{ font-size:8.8px; line-height:1.3; color:var(--ink-soft); margin:0 0 0.9mm; }
   .tc-sec p:last-child{ margin-bottom:0; }
   .tc-sec b{ color:var(--ink); font-weight:600; }
 
@@ -365,7 +365,7 @@ export function generateContractHTML(data: ContractData): string {
   ul.points > li::before{ content:""; position:absolute; left:0; top:1.8mm; width:2.2mm; border-top:1px solid var(--ink); }
   ul.points > li b{ color:var(--ink); font-weight:600; }
 
-  .addr{ font-size:10.5px; line-height:1.5; color:var(--ink); font-weight:500; border-left:2px solid var(--ink); padding-left:4mm; margin:2mm 0 0; }
+  .addr{ font-size:9.4px; line-height:1.4; color:var(--ink); font-weight:500; border-left:2px solid var(--ink); padding-left:4mm; margin:2mm 0 0; }
 
   /* ---------- signatures ---------- */
   .sign-intro{ font-size:10.4px; line-height:1.5; color:var(--ink-soft); margin:0 0 3.4mm; }
@@ -663,10 +663,10 @@ ${hasOwnFood ? `
         ${runHead('Self-catering &amp; outside food agreement', `Optional annex &middot; Ref <b>${ref}/W</b>`)}
         <div class="body">
           <p class="cover-kicker">Optional annex &middot; complete only where outside food, self-catering, cake or external catering is approved</p>
-          <h1 class="cover-title" style="font-size:26px; margin-bottom:1.6mm;">Self-catering and outside food responsibility agreement</h1>
-          <p class="cover-script" style="font-size:17px; margin-bottom:3mm;">Signed separately from the private booking contract</p>
+          <h1 class="cover-title" style="font-size:23px; margin-bottom:1.2mm;">Self-catering and outside food responsibility agreement</h1>
+          <p class="cover-script" style="font-size:15px; margin-bottom:2.4mm;">Signed separately from the private booking contract</p>
 
-          <div class="tc" style="margin-bottom:3mm;">
+          <div class="tc" style="margin-bottom:2.4mm;">
             <p>This self-catering and outside food responsibility agreement is entered into between the undersigned Event Organiser and <b>${company.name}</b> (&ldquo;The Anchor&rdquo;). It applies where the Event Organiser provides, arranges or allows any outside food at The Anchor, including self-catered food, external caterer food, buffet food, hot food, cakes or other food not supplied by The Anchor. By signing, the Event Organiser confirms that they understand and accept responsibility for outside food at the event, subject to the limits set out below.</p>
           </div>
 
@@ -743,7 +743,7 @@ ${hasOwnFood ? `
             </li>
           </ol>
 
-          <p class="sign-intro" style="margin:4mm 0 3mm;">By signing below, the Event Organiser confirms agreement to the terms above. <b>This signature is separate from, and additional to, the signature on the private booking contract.</b></p>
+          <p class="sign-intro" style="margin:2.6mm 0 2.2mm;">By signing below, the Event Organiser confirms agreement to the terms above. <b>This signature is separate from, and additional to, the signature on the private booking contract.</b></p>
 
           <div class="sign-grid">
             <div class="sign-card">
