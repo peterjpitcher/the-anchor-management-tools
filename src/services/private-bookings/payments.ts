@@ -259,7 +259,22 @@ export async function sendBookingConfirmedSideEffects(input: {
   }
 
   if (booking.contact_email) {
-    sendBookingConfirmationEmail(booking).catch(e =>
+    // Stored prices are net; the confirmation email must show the VAT-inclusive gross
+    // total (view-only column). Pass null when there is no positive total so the
+    // "Total event cost" row is omitted rather than shown as £0.00.
+    let confirmationGrossTotal: number | null = null
+    try {
+      const { data: viewRow } = await db
+        .from('private_bookings_with_details')
+        .select('gross_total, calculated_total')
+        .eq('id', bookingId)
+        .maybeSingle()
+      const g = toNumber(viewRow?.gross_total ?? viewRow?.calculated_total)
+      confirmationGrossTotal = g > 0 ? g : null
+    } catch (grossError) {
+      logger.error('Failed to resolve gross total for confirmation email', { error: grossError instanceof Error ? grossError : new Error(String(grossError)) })
+    }
+    sendBookingConfirmationEmail({ ...booking, total_amount: confirmationGrossTotal }).catch(e =>
       logger.error('Failed to send booking confirmation email', { error: e instanceof Error ? e : new Error(String(e)) })
     )
     sendBookingCalendarInvite(booking).catch(e =>

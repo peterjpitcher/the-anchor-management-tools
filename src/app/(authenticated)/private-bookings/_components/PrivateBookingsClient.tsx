@@ -636,7 +636,7 @@ export default function PrivateBookingsClient({
 
                       <TableCell>
                         <div className="text-[13px] text-text-strong">
-                          {formatCurrency(toNumber(booking.calculated_total ?? booking.total_amount))}
+                          {formatCurrency(toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount))}
                         </div>
                         {booking.final_payment_date ? (
                           <div className="text-[11px] text-success-fg font-medium">Fully paid</div>
@@ -775,7 +775,7 @@ export default function PrivateBookingsClient({
                     </div>
                     <div className="text-right">
                       <span className="font-medium text-text-strong">
-                        {formatCurrency(toNumber(booking.calculated_total ?? booking.total_amount))}
+                        {formatCurrency(toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount))}
                       </span>
                       {booking.final_payment_date ? (
                         <div className="text-xs text-success-fg font-medium">Fully paid</div>
