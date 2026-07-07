@@ -700,7 +700,9 @@ export async function updateTableBookingByRawToken(
         startIso: preview.start_datetime,
         endIso: preview.end_datetime,
         requiredPartySize: newPartySize,
-        isOutsideSeating: preview.is_outside_seating === true
+        // This branch only runs when preview.is_outside_seating !== true (guarded
+        // above), so the booking is provably indoor here.
+        isOutsideSeating: false
       })
 
       if (!moveResult.tableId) {
