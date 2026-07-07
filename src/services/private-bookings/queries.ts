@@ -501,6 +501,8 @@ export async function getBookingByIdForMessages(id: string): Promise<PrivateBook
         discount_reason,
         internal_notes,
         calculated_total,
+        vat_amount,
+        gross_total,
         days_until_event,
         deposit_status
       `
