@@ -7,6 +7,11 @@ import { logger } from '@/lib/logger'
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const bookingId = searchParams.get('bookingId')
+  // `format=pdf` returns a server-rendered PDF instead of HTML. This is immune to
+  // the viewer's browser print settings (e.g. a minimum font size, which inflates
+  // the contract's fine print and makes content overflow the footer). Staff should
+  // download the PDF rather than use the browser's Print button.
+  const wantsPdf = searchParams.get('format') === 'pdf'
 
   if (!bookingId) {
     return new NextResponse('Booking ID required', { status: 400 })
@@ -33,6 +38,26 @@ export async function GET(request: NextRequest) {
       performedBy: user.id,
       ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
     })
+
+    if (wantsPdf) {
+      // Same settings as the emailed contract PDF (contract CSS owns the A4 page
+      // via @page{ size:A4; margin:0 }). Rendered server-side with no minimum
+      // font size, so the layout is exactly as designed regardless of the viewer.
+      const { generatePDFFromHTML } = await import('@/lib/pdf-generator')
+      const pdf = await generatePDFFromHTML(html, {
+        format: 'A4',
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      })
+      return new NextResponse(pdf as unknown as BodyInit, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="The-Anchor-contract-${bookingId.slice(0, 8)}.pdf"`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+      })
+    }
 
     return new NextResponse(html, {
       headers: {
