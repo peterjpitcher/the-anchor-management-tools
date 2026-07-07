@@ -85,6 +85,10 @@ export async function GET(request: Request) {
       reason = 'fallback_0500';
     }
 
+    // Premium columns are deliberately NOT touched here: the session keeps
+    // whatever premium it inherited from its linked shift at clock-in (or none,
+    // ×1.0). An open premium window (premium_end_at NULL) runs to this new
+    // clock-out via the pay calculator's overlap, so no re-clamp is needed.
     const { error: updateError } = await supabase
       .from('timeclock_sessions')
       .update({

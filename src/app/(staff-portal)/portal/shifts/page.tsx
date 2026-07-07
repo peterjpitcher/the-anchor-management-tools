@@ -8,8 +8,18 @@ import {
   type PayrollPeriodRecord as PayrollPeriod,
 } from '@/lib/rota/payroll-period-store';
 import { generateCalendarToken } from '@/lib/portal/calendar-token';
-import { getBatchHourlyRates, calculatePaidHours, calculateActualPaidHours } from '@/lib/rota/pay-calculator';
-import type { RateResolver } from '@/lib/rota/pay-calculator';
+import {
+  getBatchHourlyRates,
+  calculatePaidHours,
+  calculateActualPaidHours,
+  computePlannedShiftPremiumPay,
+  computeSessionPremiumPay,
+  resolveSessionPremium,
+  resolveShiftWindowInstants,
+  premiumLabel,
+  hasPremium,
+} from '@/lib/rota/pay-calculator';
+import type { RateResolver, ShiftPremium, SessionPremium } from '@/lib/rota/pay-calculator';
 import { HOLIDAY_PAY_PERCENTAGE } from '@/lib/rota/constants';
 import { format, parseISO } from 'date-fns';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
@@ -43,6 +53,11 @@ type PortalShift = {
   acceptance_decided_at: string | null;
   auto_accept_reason: string | null;
   employee_name?: string | null;
+  rate_multiplier: number | null;
+  rate_override: number | null;
+  premium_reason: string | null;
+  premium_start_time: string | null;
+  premium_end_time: string | null;
 };
 
 type CouldntWorkRecord = {
@@ -103,6 +118,73 @@ function deptColour(dept: string): string {
 
 function employeeDisplayName(employee: { first_name: string | null; last_name: string | null } | null | undefined): string {
   return [employee?.first_name, employee?.last_name].filter(Boolean).join(' ') || 'Staff member';
+}
+
+type ShiftPremiumRow = {
+  rate_multiplier: number | string | null;
+  rate_override: number | string | null;
+  premium_reason: string | null;
+  premium_start_time: string | null;
+  premium_end_time: string | null;
+};
+
+/**
+ * Coerce a premium numeric column to a number, or null when absent.
+ *
+ * PostgREST returns `numeric` columns as STRINGS, so a multiplier stored as
+ * `1.50` arrives as the string "1.50". Left as a string it breaks `=== 1.5`
+ * badge comparisons and silently coerces during arithmetic. The shared pay
+ * helper is defensive about this too, but we coerce at the DB boundary here so
+ * every ShiftPremium/SessionPremium the portal builds already holds numbers.
+ */
+function toPremiumNumber(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Map a published-shift row to the ShiftPremium shape the pay helper expects. */
+function toShiftPremium(row: ShiftPremiumRow): ShiftPremium {
+  return {
+    rateMultiplier: toPremiumNumber(row.rate_multiplier),
+    rateOverride: toPremiumNumber(row.rate_override),
+    premiumReason: row.premium_reason,
+    premiumStartTime: row.premium_start_time,
+    premiumEndTime: row.premium_end_time,
+  };
+}
+
+/**
+ * A non-numeric badge label for a shift's premium, e.g. "Double time" or
+ * "Double time after 00:00" when only part of the shift is at premium.
+ * Returns null when there is no premium, so no badge is shown.
+ */
+function premiumBadgeLabel(row: ShiftPremiumRow): string | null {
+  // Coerce the numeric-as-string columns so a "1.50" behaves as 1.5 for the
+  // multiplier comparisons inside premiumLabel (×1.5 → "Time and a half").
+  const rateMultiplier = toPremiumNumber(row.rate_multiplier);
+  const rateOverride = toPremiumNumber(row.rate_override);
+
+  if (!hasPremium({ rateMultiplier, rateOverride })) return null;
+
+  // baseRate isn't needed for the label unless an override is used without a
+  // multiplier; the portal shows a friendly name, so pass a nominal base of 0
+  // (premiumLabel falls back to "Premium" when it can't derive a factor).
+  const label = premiumLabel(
+    rateMultiplier,
+    rateOverride,
+    row.premium_reason,
+    rateOverride ?? 0,
+    0,
+  ) || 'Premium';
+
+  const start = row.premium_start_time ? formatTime12Hour(row.premium_start_time) : null;
+  const end = row.premium_end_time ? formatTime12Hour(row.premium_end_time) : null;
+
+  if (start && end) return `${label} ${start}-${end}`;
+  if (start) return `${label} after ${start}`;
+  if (end) return `${label} until ${end}`;
+  return label;
 }
 
 function roleNameFromRow(row: UserRoleRow): string | null {
@@ -202,6 +284,37 @@ async function findAdjacentPeriod(
   return null;
 }
 
+type PlannedShiftRow = {
+  id: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  unpaid_break_minutes: number;
+  is_overnight: boolean;
+  status: string;
+  is_open_shift: boolean;
+  acceptance_status: string | null;
+  // numeric columns arrive from PostgREST as STRINGS — coerce before use.
+  rate_multiplier: number | string | null;
+  rate_override: number | string | null;
+  premium_reason: string | null;
+  premium_start_time: string | null;
+  premium_end_time: string | null;
+};
+
+type SessionRow = {
+  work_date: string;
+  clock_in_at: string;
+  clock_out_at: string | null;
+  linked_shift_id: string | null;
+  // numeric columns arrive from PostgREST as STRINGS — coerce before use.
+  rate_multiplier: number | string | null;
+  rate_override: number | string | null;
+  premium_reason: string | null;
+  premium_start_at: string | null;
+  premium_end_at: string | null;
+};
+
 async function buildPeriodSummary(
   supabase: SupabaseServerClient,
   employeeId: string,
@@ -215,15 +328,24 @@ async function buildPeriodSummary(
 
   const { data: shifts } = await supabase
     .from('rota_published_shifts')
-    .select('shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, status, is_open_shift, acceptance_status')
+    .select('id, shift_date, start_time, end_time, unpaid_break_minutes, is_overnight, status, is_open_shift, acceptance_status, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
     .eq('employee_id', employeeId)
     .gte('shift_date', period.period_start)
     .lte('shift_date', period.period_end)
     .eq('status', 'scheduled')
-    .eq('is_open_shift', false);
+    .eq('is_open_shift', false)
+    .returns<PlannedShiftRow[]>();
+
+  // Index published shifts by id so a worked session with no premium of its own
+  // can fall back to the premium on the shift it is linked to (decision D4).
+  const shiftPremiumById = new Map<string, PlannedShiftRow>();
+  for (const shift of shifts ?? []) {
+    shiftPremiumById.set(shift.id, shift);
+  }
 
   let plannedHours = 0;
   let plannedPay: number | null = null;
+  let plannedPremiumPay = 0;
 
   for (const shift of shifts ?? []) {
     if (shift.acceptance_status === 'rejected') continue;
@@ -232,34 +354,101 @@ async function buildPeriodSummary(
     );
     plannedHours += hours;
     const rateInfo = rateResolver.resolve(shift.shift_date);
-    if (rateInfo) plannedPay = (plannedPay ?? 0) + hours * rateInfo.rate;
+    if (rateInfo) {
+      const result = computePlannedShiftPremiumPay(
+        shift.shift_date,
+        shift.start_time,
+        shift.end_time,
+        shift.unpaid_break_minutes,
+        rateInfo.rate,
+        toShiftPremium(shift),
+        shift.is_overnight,
+      );
+      plannedPay = (plannedPay ?? 0) + result.pay;
+      // Premium uplift = pay above what the flat base rate would have cost.
+      plannedPremiumPay += result.premiumHours * (result.effectiveRate - rateInfo.rate);
+    }
   }
 
   const actualCutoff = period.period_end < todayIso ? period.period_end : todayIso;
   const { data: sessions } = await supabase
     .from('timeclock_sessions')
-    .select('work_date, clock_in_at, clock_out_at')
+    .select('work_date, clock_in_at, clock_out_at, linked_shift_id, rate_multiplier, rate_override, premium_reason, premium_start_at, premium_end_at')
     .eq('employee_id', employeeId)
     .gte('work_date', period.period_start)
     .lte('work_date', actualCutoff)
     .eq('is_reviewed', true)
-    .not('clock_out_at', 'is', null);
+    .not('clock_out_at', 'is', null)
+    .returns<SessionRow[]>();
 
   let actualHours = 0;
   let actualPay: number | null = null;
+  let actualPremiumPay = 0;
 
   for (const session of sessions ?? []) {
+    // Break intentionally not deducted here — matches payroll's actual-session
+    // maths (calculateActualPaidHours called with no break arg in payroll.ts).
     const hours = calculateActualPaidHours(session.clock_in_at, session.clock_out_at);
-    if (hours !== null) {
-      actualHours += hours;
-      const rateInfo = rateResolver.resolve(session.work_date);
-      if (rateInfo) actualPay = (actualPay ?? 0) + hours * rateInfo.rate;
+    if (hours === null || session.clock_out_at === null) continue;
+    actualHours += hours;
+    const rateInfo = rateResolver.resolve(session.work_date);
+    if (!rateInfo) continue;
+
+    // Precedence: session's own premium → linked shift's premium → none (×1.0).
+    // Coerce numeric-as-string columns so multiplier/override behave numerically.
+    const sessionPremium: SessionPremium = {
+      rateMultiplier: toPremiumNumber(session.rate_multiplier),
+      rateOverride: toPremiumNumber(session.rate_override),
+      premiumReason: session.premium_reason,
+      premiumStartAt: session.premium_start_at,
+      premiumEndAt: session.premium_end_at,
+    };
+
+    // Linked-shift fallback ONLY (no proximity matching), so this agrees with
+    // the linked-only payroll rule: an un-overridden session inherits premium
+    // from the PUBLISHED shift it is explicitly linked to, and nothing else.
+    let linkedShiftPremium: SessionPremium | null = null;
+    if (!hasPremium(sessionPremium) && session.linked_shift_id) {
+      const linkedShift = shiftPremiumById.get(session.linked_shift_id);
+      const linkedMultiplier = toPremiumNumber(linkedShift?.rate_multiplier);
+      const linkedOverride = toPremiumNumber(linkedShift?.rate_override);
+      if (linkedShift && hasPremium({ rateMultiplier: linkedMultiplier, rateOverride: linkedOverride })) {
+        const { premiumStartAt, premiumEndAt } = resolveShiftWindowInstants(
+          linkedShift.shift_date,
+          linkedShift.start_time,
+          linkedShift.end_time,
+          linkedShift.is_overnight,
+          linkedShift.premium_start_time,
+          linkedShift.premium_end_time,
+        );
+        linkedShiftPremium = {
+          rateMultiplier: linkedMultiplier,
+          rateOverride: linkedOverride,
+          premiumReason: linkedShift.premium_reason,
+          premiumStartAt,
+          premiumEndAt,
+        };
+      }
     }
+
+    const effectivePremium = resolveSessionPremium(sessionPremium, linkedShiftPremium);
+    const result = computeSessionPremiumPay(
+      session.clock_in_at, session.clock_out_at, hours, rateInfo.rate, effectivePremium,
+    );
+    actualPay = (actualPay ?? 0) + result.pay;
+    actualPremiumPay += result.premiumHours * (result.effectiveRate - rateInfo.rate);
   }
 
   const holidayPay = actualPay !== null
     ? Math.round(actualPay * HOLIDAY_PAY_PERCENTAGE * 100) / 100
     : null;
+
+  // Premium UPLIFT (the extra above base) shown to staff = actual where it
+  // exists, else planned. This is the uplift only — NOT the full premium-portion
+  // pay that payroll's PayrollRow.premiumPay represents.
+  const premiumUpliftPay = actualPay !== null
+    ? Math.round(actualPremiumPay * 100) / 100
+    : (plannedPay !== null ? Math.round(plannedPremiumPay * 100) / 100 : null);
 
   return {
     periodLabel,
@@ -268,6 +457,7 @@ async function buildPeriodSummary(
     plannedPay: plannedPay !== null ? Math.round(plannedPay * 100) / 100 : null,
     actualPay: actualPay !== null ? Math.round(actualPay * 100) / 100 : null,
     holidayPay,
+    premiumUpliftPay: premiumUpliftPay !== null && premiumUpliftPay > 0 ? premiumUpliftPay : null,
   };
 }
 
@@ -540,6 +730,14 @@ export default async function MyShiftsPage({
                                 {shift.unpaid_break_minutes} min break
                               </span>
                             )}
+                            {(() => {
+                              const badge = premiumBadgeLabel(shift);
+                              return badge ? (
+                                <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${isOtherStaffShift ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                  {badge}
+                                </span>
+                              ) : null;
+                            })()}
                           </div>
                           {shift.notes && (
                             <p className={`mt-1 text-xs ${isOtherStaffShift ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -586,11 +784,19 @@ export default async function MyShiftsPage({
                       {formatFullDate(shift.shift_date)} · {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
                       {shift.is_overnight ? ' (+1)' : ''}
                     </p>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
                       <span className={`text-xs px-1.5 py-0.5 rounded border ${deptColour(shift.department)} font-medium`}>
                         {shift.department}
                       </span>
                       <span className="text-xs text-gray-500">{paidHours.toFixed(1)}h paid</span>
+                      {(() => {
+                        const badge = premiumBadgeLabel(shift);
+                        return badge ? (
+                          <span className="text-xs px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 font-medium">
+                            {badge}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                   <OpenShiftRequestButton shiftId={shift.id} alreadyRequested={requestedOpenShiftIds.has(shift.id)} />

@@ -5,6 +5,13 @@ export interface PeriodSummary {
   plannedPay: number | null;
   actualPay: number | null;
   holidayPay: number | null;
+  /**
+   * Premium UPLIFT already included in the pay figures above (null when none):
+   * premiumHours × (effectiveRate − baseRate), i.e. the extra ABOVE base.
+   * This is NOT payroll's PayrollRow.premiumPay (the full premium-portion pay) —
+   * do not treat the two identically-shaped fields as interchangeable.
+   */
+  premiumUpliftPay: number | null;
 }
 
 interface PaySummaryCardProps {
@@ -60,6 +67,13 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
           <div className="px-4 py-1.5 flex justify-between">
             <span className="text-sm text-gray-600">Actual Pay</span>
             <span className="text-sm font-semibold text-gray-900">{fmtPay(period.actualPay)}</span>
+          </div>
+        )}
+
+        {period.premiumUpliftPay !== null && (
+          <div className="px-4 py-1.5 flex justify-between">
+            <span className="text-sm text-gray-600">incl. premium uplift</span>
+            <span className="text-sm font-semibold text-amber-700">{fmtPay(period.premiumUpliftPay)}</span>
           </div>
         )}
 

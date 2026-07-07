@@ -14,6 +14,7 @@ import { updateShift, deleteShift } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
 import MarkSickModal from './MarkSickModal';
+import { PremiumControl, usePremiumControl } from './CreateShiftModal';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
@@ -44,6 +45,28 @@ function formatDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
+}
+
+/** A calm, human summary of a shift's premium for the read view, or null when none. */
+function describePremium(shift: RotaShift): string | null {
+  if (shift.rate_multiplier == null && shift.rate_override == null) return null;
+
+  // `numeric` DB columns arrive as STRINGS — coerce before comparing/formatting
+  // so a ×1.5 shift is labelled correctly and `.toFixed` never runs on a string.
+  const multiplier = shift.rate_multiplier != null ? Number(shift.rate_multiplier) : null;
+  const override = shift.rate_override != null ? Number(shift.rate_override) : null;
+
+  let label: string;
+  if (override != null) label = `£${override.toFixed(2)}/hr`;
+  else if (multiplier === 1.5) label = 'Time and a half (×1.5)';
+  else if (multiplier === 2) label = 'Double time (×2.0)';
+  else label = `×${multiplier}`;
+
+  if (shift.premium_reason) label += ` · ${shift.premium_reason}`;
+  if (shift.premium_start_time && shift.premium_end_time) {
+    label += ` (${formatTime12Hour(shift.premium_start_time)}–${formatTime12Hour(shift.premium_end_time)})`;
+  }
+  return label;
 }
 
 const DEPT_BADGE: Record<string, 'info' | 'warning'> = { bar: 'info', kitchen: 'warning' };
@@ -81,6 +104,11 @@ const FIELD_LABELS: Record<string, string> = {
   acceptance_decided_by: 'Accepted/rejected by',
   acceptance_note: 'Acceptance note',
   auto_accept_reason: 'Auto-accept reason',
+  rate_multiplier: 'Rate multiplier',
+  rate_override: 'Custom rate',
+  premium_reason: 'Premium reason',
+  premium_start_time: 'Premium from',
+  premium_end_time: 'Premium to',
 };
 
 function formatDateTime(iso: string): string {
@@ -155,6 +183,13 @@ export default function ShiftDetailModal({
   const [department, setDepartment] = useState<string>(shift.department);
   const [notes, setNotes] = useState(shift.notes ?? '');
   const [overnight, setOvernight] = useState(shift.is_overnight);
+  const premium = usePremiumControl({
+    rateMultiplier: shift.rate_multiplier,
+    rateOverride: shift.rate_override,
+    premiumReason: shift.premium_reason,
+    premiumStartTime: shift.premium_start_time,
+    premiumEndTime: shift.premium_end_time,
+  });
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -165,6 +200,7 @@ export default function ShiftDetailModal({
     : 'Unknown employee';
 
   const paidH = paidHoursNum(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+  const premiumSummary = describePremium(shift);
   const isCouldntWork = shift.status === 'sick';
   const acceptanceStatus = shift.acceptance_status
     ? ACCEPTANCE_LABEL[shift.acceptance_status] ?? shift.acceptance_status
@@ -178,6 +214,8 @@ export default function ShiftDetailModal({
 
   const handleSaveEdit = () => {
     if (!startTime || !endTime) { setError('Start and end time are required'); return; }
+    const premiumFields = premium.toFields();
+    if (!premiumFields.ok) { setError(premiumFields.error); return; }
     setError('');
     startTransition(async () => {
       const result = await updateShift(shift.id, {
@@ -187,6 +225,11 @@ export default function ShiftDetailModal({
         department,
         notes: notes || null,
         is_overnight: overnight,
+        rate_multiplier: premiumFields.values.rateMultiplier,
+        rate_override: premiumFields.values.rateOverride,
+        premium_reason: premiumFields.values.premiumReason,
+        premium_start_time: premiumFields.values.premiumStartTime,
+        premium_end_time: premiumFields.values.premiumEndTime,
       });
       if (!result.success) { toast.error(result.error); return; }
       toast.success('Shift updated');
@@ -259,6 +302,12 @@ export default function ShiftDetailModal({
                       <dt className="text-gray-500">Paid hours</dt>
                       <dd className="text-gray-900 font-medium">{paidH.toFixed(1)}h</dd>
                     </div>
+                    {premiumSummary && (
+                      <div className="flex justify-between text-sm">
+                        <dt className="text-gray-500">Premium</dt>
+                        <dd className="text-gray-900 text-right max-w-[260px]">{premiumSummary}</dd>
+                      </div>
+                    )}
                   </>
                 )}
                 <div className="flex justify-between text-sm">
@@ -430,6 +479,8 @@ export default function ShiftDetailModal({
                 />
                 <label htmlFor="sd-overnight" className="text-gray-700">Overnight shift</label>
               </div>
+
+              <PremiumControl state={premium} idPrefix="sd" />
 
               <FormGroup label="Notes (optional)" htmlFor="sd-notes">
                 <Input
