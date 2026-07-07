@@ -3,7 +3,6 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 import { DndContext, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
-import { Badge } from '@/ds'
 import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
 import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
 import { DragConfirmationModal } from '@/components/foh/DragConfirmationModal'
@@ -61,13 +60,21 @@ type FohTimelineProps = {
 // Outside + high-chair badges. Rendered identically on FOH blocks and the detail modal
 // (and matched on BOH) so seating context reads the same everywhere. Exact props are
 // coordinated across surfaces — do not change tone or label wording independently.
+// Compact pills sized for the height-constrained timeline block (the full @/ds
+// Badge is too tall and gets clipped by the block's fixed height). Same design
+// tokens as Badge so the colours stay consistent with BOH/detail views.
 function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
   const highChairs = booking.high_chair_count ?? 0
   if (!booking.is_outside_seating && highChairs <= 0) return null
+  const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-[9px] font-medium leading-none'
   return (
-    <span className={cn('inline-flex flex-wrap items-center gap-1', className)}>
-      {booking.is_outside_seating ? <Badge tone="info">Outside</Badge> : null}
-      {highChairs > 0 ? <Badge tone="neutral">High chair ×{highChairs}</Badge> : null}
+    <span className={cn('flex flex-wrap items-center gap-1 leading-none', className)}>
+      {booking.is_outside_seating ? (
+        <span className={cn(pill, 'border-transparent bg-info-soft text-info-fg')}>Outside</span>
+      ) : null}
+      {highChairs > 0 ? (
+        <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>High chair ×{highChairs}</span>
+      ) : null}
     </span>
   )
 }
@@ -345,10 +352,10 @@ const LaneRow = React.memo(function LaneRow(props: {
               onBookingClick(booking, lane.table_id, lane.table_name)
             }}
           >
-            <p className="truncate font-semibold">
+            <p className="truncate font-semibold leading-tight">
               {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
             </p>
-            <p className="truncate">
+            <p className="truncate leading-tight">
               {booking.is_private_block
                 ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
                 : detailLine}
