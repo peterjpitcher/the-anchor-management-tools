@@ -53,6 +53,7 @@ export default function CreateShiftModal({
   const [department, setDepartment] = useState<string>(departments[0]?.name ?? 'bar');
   const [overnight, setOvernight] = useState(false);
   const [notes, setNotes] = useState('');
+  const premium = usePremiumControl();
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
 
@@ -60,17 +61,22 @@ export default function CreateShiftModal({
 
   const handleSubmit = () => {
     if (!startTime || !endTime) { setError('Start and end time are required'); return; }
+    const premiumFields = premium.toFields();
+    if (!premiumFields.ok) { setError(premiumFields.error); return; }
     setError('');
     startTransition(async () => {
       const result = await createShift(
         isOpenShift
-          ? { weekId, isOpenShift: true, name: name || null, shiftDate, startTime, endTime, unpaidBreakMinutes: parseInt(breakMins) || 0, department, isOvernight: overnight, notes: notes || null }
-          : { weekId, isOpenShift: false, employeeId, name: name || null, shiftDate, startTime, endTime, unpaidBreakMinutes: parseInt(breakMins) || 0, department, isOvernight: overnight, notes: notes || null },
+          ? { weekId, isOpenShift: true, name: name || null, shiftDate, startTime, endTime, unpaidBreakMinutes: parseInt(breakMins) || 0, department, isOvernight: overnight, notes: notes || null, ...premiumFields.values }
+          : { weekId, isOpenShift: false, employeeId, name: name || null, shiftDate, startTime, endTime, unpaidBreakMinutes: parseInt(breakMins) || 0, department, isOvernight: overnight, notes: notes || null, ...premiumFields.values },
       );
       if (!result.success) { toast.error(result.error); return; }
       onCreated(result.data);
     });
   };
+  // usePremiumControl + PremiumControl are defined at the bottom of this file
+  // (kept co-located here and mirrored in ShiftDetailModal to respect the
+  // rota write-path ownership boundary — no shared component file added).
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
@@ -131,6 +137,8 @@ export default function CreateShiftModal({
             <label htmlFor="cs-overnight" className="text-gray-700">Overnight shift</label>
           </div>
 
+          <PremiumControl state={premium} idPrefix="cs" />
+
           <FormGroup label="Notes (optional)" htmlFor="cs-notes">
             <Input
               id="cs-notes"
@@ -156,6 +164,196 @@ export default function CreateShiftModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Premium-rate control (shared with ShiftDetailModal)
+//
+// Kept co-located here rather than in a separate component file so the rota
+// write-path change stays inside its ownership boundary. ShiftDetailModal holds
+// a byte-identical copy; keep the two in sync.
+// ---------------------------------------------------------------------------
+
+export interface PremiumFieldValues {
+  rateMultiplier: number | null;
+  rateOverride: number | null;
+  premiumReason: string | null;
+  premiumStartTime: string | null;
+  premiumEndTime: string | null;
+}
+
+export type PremiumMode = 'none' | '1.5' | '2' | 'custom';
+
+export interface PremiumControlState {
+  mode: PremiumMode;
+  setMode: (mode: PremiumMode) => void;
+  customRate: string;
+  setCustomRate: (value: string) => void;
+  reason: string;
+  setReason: (value: string) => void;
+  useWindow: boolean;
+  setUseWindow: (value: boolean) => void;
+  windowStart: string;
+  setWindowStart: (value: string) => void;
+  windowEnd: string;
+  setWindowEnd: (value: string) => void;
+  toFields: () => PremiumToFieldsResult;
+}
+
+export type PremiumToFieldsResult =
+  | { ok: true; values: PremiumFieldValues; error?: undefined }
+  | { ok: false; values?: undefined; error: string };
+
+const RATE_OPTIONS: Array<{ value: PremiumMode; label: string }> = [
+  { value: 'none', label: 'Standard rate' },
+  { value: '1.5', label: 'Time and a half (×1.5)' },
+  { value: '2', label: 'Double time (×2.0)' },
+  { value: 'custom', label: 'Custom rate…' },
+];
+
+export function initialPremiumMode(rateMultiplier: number | null, rateOverride: number | null): PremiumMode {
+  if (rateOverride != null) return 'custom';
+  if (rateMultiplier == null) return 'none';
+  // `numeric` DB columns arrive as STRINGS, so "1.50" === 1.5 is false. Coerce
+  // before comparing so a ×1.5 / ×2 shift seeds the matching preset instead of
+  // mis-opening as 'Custom' with a blank rate.
+  const multiplier = Number(rateMultiplier);
+  if (multiplier === 1.5) return '1.5';
+  if (multiplier === 2) return '2';
+  return 'custom';
+}
+
+export function usePremiumControl(initial?: Partial<PremiumFieldValues>): PremiumControlState {
+  const startMultiplier = initial?.rateMultiplier ?? null;
+  const startOverride = initial?.rateOverride ?? null;
+  const [mode, setMode] = useState<PremiumMode>(initialPremiumMode(startMultiplier, startOverride));
+  // `startOverride` may arrive as a numeric STRING from the DB; coerce through
+  // Number so the custom-rate box shows a clean value (e.g. "18.5", not "18.500").
+  const [customRate, setCustomRate] = useState<string>(startOverride != null ? String(Number(startOverride)) : '');
+  const [reason, setReason] = useState<string>(initial?.premiumReason ?? '');
+  const [useWindow, setUseWindow] = useState<boolean>(Boolean(initial?.premiumStartTime || initial?.premiumEndTime));
+  const [windowStart, setWindowStart] = useState<string>((initial?.premiumStartTime ?? '').slice(0, 5));
+  const [windowEnd, setWindowEnd] = useState<string>((initial?.premiumEndTime ?? '').slice(0, 5));
+
+  const toFields: PremiumControlState['toFields'] = () => {
+    if (mode === 'none') {
+      return { ok: true, values: { rateMultiplier: null, rateOverride: null, premiumReason: null, premiumStartTime: null, premiumEndTime: null } };
+    }
+
+    let rateMultiplier: number | null = null;
+    let rateOverride: number | null = null;
+    if (mode === '1.5') rateMultiplier = 1.5;
+    else if (mode === '2') rateMultiplier = 2;
+    else {
+      const parsed = Number(customRate);
+      if (!customRate.trim() || Number.isNaN(parsed) || parsed <= 0) {
+        return { ok: false, error: 'Enter a custom rate greater than £0' };
+      }
+      rateOverride = Math.round(parsed * 100) / 100;
+    }
+
+    let premiumStartTime: string | null = null;
+    let premiumEndTime: string | null = null;
+    if (useWindow) {
+      if (!windowStart || !windowEnd) {
+        return { ok: false, error: 'Enter both a premium start and end time, or turn the window off' };
+      }
+      premiumStartTime = windowStart;
+      premiumEndTime = windowEnd;
+    }
+
+    return {
+      ok: true,
+      values: { rateMultiplier, rateOverride, premiumReason: reason.trim() || null, premiumStartTime, premiumEndTime },
+    };
+  };
+
+  return {
+    mode, setMode,
+    customRate, setCustomRate,
+    reason, setReason,
+    useWindow, setUseWindow,
+    windowStart, setWindowStart,
+    windowEnd, setWindowEnd,
+    toFields,
+  };
+}
+
+interface PremiumControlProps {
+  state: PremiumControlState;
+  idPrefix: string;
+}
+
+/**
+ * A calm, subtle premium-rate control: a rate select, a custom £/hr input when
+ * "Custom" is chosen, an optional reason, and an optional "applies from–to"
+ * window (default = whole shift). No warning blocks — house style.
+ */
+export function PremiumControl({ state, idPrefix }: PremiumControlProps) {
+  const showPremiumDetail = state.mode !== 'none';
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+      <FormGroup label="Pay rate" htmlFor={`${idPrefix}-rate`}>
+        <Select
+          id={`${idPrefix}-rate`}
+          value={state.mode}
+          onChange={e => state.setMode(e.target.value as PremiumMode)}
+          options={RATE_OPTIONS}
+        />
+      </FormGroup>
+
+      {state.mode === 'custom' && (
+        <FormGroup label="Custom rate (£/hr)" htmlFor={`${idPrefix}-custom`}>
+          <Input
+            id={`${idPrefix}-custom`}
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="e.g. 18.50"
+            value={state.customRate}
+            onChange={e => state.setCustomRate(e.target.value)}
+          />
+        </FormGroup>
+      )}
+
+      {showPremiumDetail && (
+        <>
+          <FormGroup label="Reason (optional)" htmlFor={`${idPrefix}-reason`}>
+            <Input
+              id={`${idPrefix}-reason`}
+              placeholder='e.g. "Bank holiday"'
+              value={state.reason}
+              onChange={e => state.setReason(e.target.value)}
+            />
+          </FormGroup>
+
+          <div className="flex items-center gap-2 text-sm">
+            <input
+              id={`${idPrefix}-window`}
+              type="checkbox"
+              checked={state.useWindow}
+              onChange={e => state.setUseWindow(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600"
+            />
+            <label htmlFor={`${idPrefix}-window`} className="text-gray-700">Applies to part of the shift only</label>
+          </div>
+
+          {state.useWindow && (
+            <div className="grid grid-cols-2 gap-3">
+              <FormGroup label="From" htmlFor={`${idPrefix}-win-start`}>
+                <Input id={`${idPrefix}-win-start`} type="time" value={state.windowStart} onChange={e => state.setWindowStart(e.target.value)} />
+              </FormGroup>
+              <FormGroup label="To" htmlFor={`${idPrefix}-win-end`}>
+                <Input id={`${idPrefix}-win-end`} type="time" value={state.windowEnd} onChange={e => state.setWindowEnd(e.target.value)} />
+              </FormGroup>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

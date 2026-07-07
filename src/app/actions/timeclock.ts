@@ -11,6 +11,7 @@ import {
   phoneLastFourMatchesPin,
   verifyTimeclockPin,
 } from '@/lib/timeclock/pin';
+import { hasPremium } from '@/lib/rota/pay-calculator';
 
 // Timeclock uses the service-role (admin) client so that clock in/out works
 // on the public kiosk without Supabase auth session.
@@ -18,6 +19,17 @@ const createClient = () => createAdminClient();
 
 const TIMEZONE = 'Europe/London';
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub';
+
+/**
+ * PostgREST returns `numeric` columns as STRINGS ("1.50"), which breaks strict
+ * equality checks (=== 1.5) downstream. Coerce a premium multiplier/override to
+ * a finite number, or null when absent/blank/NaN.
+ */
+function coercePremiumNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 async function canManageTimeclock(options?: { allowPayrollApprove?: boolean }): Promise<boolean> {
   const canEdit = await checkUserPermission('timeclock', 'edit');
@@ -119,9 +131,41 @@ export type TimeclockSession = {
   is_reviewed: boolean;
   notes: string | null;
   manager_note: string | null;
+  // Premium hourly rate (time-and-a-half / double-time / bespoke). NULL multiplier
+  // AND NULL override => no premium (×1.0). rate_override wins over rate_multiplier.
+  // NULL window (start/end) with a premium set => premium applies to the whole session.
+  // Window is stored as timestamptz so overlap across midnight is unambiguous.
+  rate_multiplier: number | null;
+  rate_override: number | null;
+  premium_reason: string | null;
+  premium_start_at: string | null;
+  premium_end_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/**
+ * The five session premium fields a manager may set/override on a timeclock
+ * entry. Passed as camelCase and mapped to snake_case columns on write.
+ *
+ * Semantics: NULL multiplier AND NULL override => clear any premium (×1.0).
+ * rateOverride wins over rateMultiplier. NULL window (start/end) with a premium
+ * set => whole session. Window values are ISO timestamptz strings.
+ */
+export type SessionPremiumInput = {
+  rateMultiplier: number | null;
+  rateOverride: number | null;
+  premiumReason: string | null;
+  premiumStartAt: string | null;
+  premiumEndAt: string | null;
+};
+
+// Columns selected for a timeclock session row, including premium fields.
+const SESSION_COLUMNS =
+  'id, employee_id, work_date, clock_in_at, clock_out_at, linked_shift_id, ' +
+  'is_unscheduled, is_auto_close, auto_close_reason, is_reviewed, notes, ' +
+  'manager_note, rate_multiplier, rate_override, premium_reason, ' +
+  'premium_start_at, premium_end_at, created_at, updated_at';
 
 // ---------------------------------------------------------------------------
 // Clock in
@@ -307,14 +351,16 @@ async function linkSessionToShift(
 ): Promise<void> {
   const supabase = await createClient();
 
-  const { data: shifts } = await supabase
+  const { data: shiftsRaw } = await supabase
     .from('rota_shifts')
-    .select('id, start_time')
+    .select('id, start_time, end_time, shift_date, is_overnight')
     .eq('employee_id', employeeId)
     .eq('shift_date', workDate)
     .eq('status', 'scheduled');
 
-  if (!shifts?.length) {
+  const shifts = (shiftsRaw ?? []) as unknown as LinkableShift[];
+
+  if (!shifts.length) {
     // Mark as unscheduled
     await supabase
       .from('timeclock_sessions')
@@ -325,7 +371,7 @@ async function linkSessionToShift(
 
   // Find the shift whose start time is closest to clock-in, within ±2 hours
   const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-  let bestShiftId: string | null = null;
+  let bestShift: (typeof shifts)[number] | null = null;
   let bestDiff = Infinity;
 
   for (const shift of shifts) {
@@ -338,14 +384,20 @@ async function linkSessionToShift(
     const diff = Math.abs(clockInAt.getTime() - shiftStartUtc.getTime());
     if (diff < TWO_HOURS_MS && diff < bestDiff) {
       bestDiff = diff;
-      bestShiftId = shift.id;
+      bestShift = shift;
     }
   }
 
-  if (bestShiftId) {
+  if (bestShift) {
+    // Link only. We deliberately do NOT copy the shift's premium onto the
+    // session — the session premium columns represent an EXPLICIT manager
+    // override, and un-overridden sessions resolve their premium LIVE from the
+    // linked shift (payroll/portal both do this via resolveSessionPremium).
+    // Copying at clock-in caused stale premiums (shift edited later) and
+    // inherited-promotion bugs (a shift premium looked like a manual override).
     await supabase
       .from('timeclock_sessions')
-      .update({ linked_shift_id: bestShiftId })
+      .update({ linked_shift_id: bestShift.id })
       .eq('id', sessionId);
   } else {
     await supabase
@@ -353,6 +405,47 @@ async function linkSessionToShift(
       .update({ is_unscheduled: true })
       .eq('id', sessionId);
   }
+}
+
+/** A scheduled shift row shape used when linking a session to it. */
+type LinkableShift = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  shift_date: string;
+  is_overnight: boolean | null;
+};
+
+/**
+ * Clamp a premium window (timestamptz instants) to a session's worked interval.
+ * A NULL bound stays NULL (open-ended: start=NULL means "from clock-in",
+ * end=NULL means "to clock-out"), so a whole-session premium (both NULL) is
+ * preserved. When clockOut is not yet known, the end bound is left unclamped.
+ */
+function clampPremiumWindow(
+  premiumStartAt: Date | null,
+  premiumEndAt: Date | null,
+  clockInAt: Date,
+  clockOutAt: Date | null,
+): { startAt: string | null; endAt: string | null } {
+  const inMs = clockInAt.getTime();
+  const outMs = clockOutAt ? clockOutAt.getTime() : null;
+
+  let startAt: string | null = null;
+  if (premiumStartAt) {
+    let ms = Math.max(premiumStartAt.getTime(), inMs);
+    if (outMs != null) ms = Math.min(ms, outMs);
+    startAt = new Date(ms).toISOString();
+  }
+
+  let endAt: string | null = null;
+  if (premiumEndAt) {
+    let ms = Math.max(premiumEndAt.getTime(), inMs);
+    if (outMs != null) ms = Math.min(ms, outMs);
+    endAt = new Date(ms).toISOString();
+  }
+
+  return { startAt, endAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -365,6 +458,15 @@ export type TimeclockSessionWithEmployee = TimeclockSession & {
   clock_out_local: string | null;
   planned_start: string | null; // HH:MM from linked rota_shift
   planned_end: string | null;   // HH:MM from linked rota_shift
+  // Premium as scheduled on the linked shift, so the manager review UI can offer
+  // the shift default and show whether the session already differs from it.
+  shift_rate_multiplier: number | null;
+  shift_rate_override: number | null;
+  shift_premium_reason: string | null;
+  shift_premium_start_time: string | null; // HH:MM local, NULL = whole shift
+  shift_premium_end_time: string | null;   // HH:MM local, NULL = whole shift
+  premium_start_local: string | null;      // HH:MM Europe/London, NULL = whole session
+  premium_end_local: string | null;        // HH:MM Europe/London, NULL = whole session
 };
 
 export async function getTimeclockSessionsForWeek(
@@ -379,9 +481,9 @@ export async function getTimeclockSessionsForWeek(
   const { data, error } = await supabase
     .from('timeclock_sessions')
     .select(`
-      *,
+      ${SESSION_COLUMNS},
       employees!timeclock_sessions_employee_id_fkey(first_name, last_name),
-      rota_shifts!linked_shift_id(start_time, end_time)
+      rota_shifts!linked_shift_id(start_time, end_time, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time)
     `)
     .gte('work_date', weekStart)
     .lte('work_date', weekEnd)
@@ -392,19 +494,41 @@ export async function getTimeclockSessionsForWeek(
 
   const result = (data ?? []).map((row: Record<string, unknown>) => {
     const emp = row.employees as { first_name: string | null; last_name: string | null } | null;
-    const shift = row.rota_shifts as { start_time: string; end_time: string } | null;
+    const shift = row.rota_shifts as {
+      start_time: string;
+      end_time: string;
+      rate_multiplier: number | null;
+      rate_override: number | null;
+      premium_reason: string | null;
+      premium_start_time: string | null;
+      premium_end_time: string | null;
+    } | null;
     const clockIn = new Date(row.clock_in_at as string);
     const clockOut = row.clock_out_at ? new Date(row.clock_out_at as string) : null;
+    const premiumStart = row.premium_start_at ? new Date(row.premium_start_at as string) : null;
+    const premiumEnd = row.premium_end_at ? new Date(row.premium_end_at as string) : null;
 
     const fmt = (d: Date) => formatInTimeZone(d, TIMEZONE, 'HH:mm');
 
     return {
       ...(row as TimeclockSession),
+      // PostgREST returns `numeric` columns as STRINGS. Coerce every premium
+      // multiplier/override to a real number so the UI's `=== 1.5 / === 2`
+      // choice detection doesn't silently fall through to 'none' and wipe it.
+      rate_multiplier: coercePremiumNumber(row.rate_multiplier),
+      rate_override: coercePremiumNumber(row.rate_override),
       employee_name: [emp?.first_name, emp?.last_name].filter(Boolean).join(' ') || 'Unknown',
       clock_in_local: fmt(clockIn),
       clock_out_local: clockOut ? fmt(clockOut) : null,
       planned_start: shift?.start_time?.slice(0, 5) ?? null,
       planned_end: shift?.end_time?.slice(0, 5) ?? null,
+      shift_rate_multiplier: coercePremiumNumber(shift?.rate_multiplier),
+      shift_rate_override: coercePremiumNumber(shift?.rate_override),
+      shift_premium_reason: shift?.premium_reason ?? null,
+      shift_premium_start_time: shift?.premium_start_time ? shift.premium_start_time.slice(0, 5) : null,
+      shift_premium_end_time: shift?.premium_end_time ? shift.premium_end_time.slice(0, 5) : null,
+      premium_start_local: premiumStart ? fmt(premiumStart) : null,
+      premium_end_local: premiumEnd ? fmt(premiumEnd) : null,
     };
   });
 
@@ -421,7 +545,7 @@ export async function createTimeclockSession(
   clockInTime: string,         // HH:MM local
   clockOutTime: string | null, // HH:MM local or null
   notes?: string | null,
-  options?: { allowPayrollApprove?: boolean },
+  options?: { allowPayrollApprove?: boolean; premium?: SessionPremiumInput | null },
 ): Promise<{ success: true; data: TimeclockSessionWithEmployee } | { success: false; error: string }> {
   const canManage = await canManageTimeclock(options);
   if (!canManage) return { success: false, error: 'Permission denied' };
@@ -444,6 +568,14 @@ export async function createTimeclockSession(
     clockOutUtc = new Date(clockOutUtc.getTime() + 24 * 60 * 60 * 1000);
   }
 
+  const premiumValidation = validateSessionPremium(options?.premium);
+  if (!premiumValidation.ok) return { success: false, error: premiumValidation.error };
+
+  // Persist premium clamped to the new worked interval when the caller supplies it.
+  const premiumColumns = options?.premium
+    ? normalizeSessionPremiumColumns(options.premium, clockInUtc, clockOutUtc)
+    : {};
+
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
@@ -455,8 +587,9 @@ export async function createTimeclockSession(
       clock_out_at: clockOutUtc?.toISOString() ?? null,
       is_reviewed: false,
       notes: notes ?? null,
+      ...premiumColumns,
     })
-    .select(`*, employees!timeclock_sessions_employee_id_fkey(first_name, last_name)`)
+    .select(`${SESSION_COLUMNS}, employees!timeclock_sessions_employee_id_fkey(first_name, last_name)`)
     .single();
 
   if (error) return { success: false, error: error.message };
@@ -464,14 +597,26 @@ export async function createTimeclockSession(
   const row = data as Record<string, unknown>;
   const emp = row.employees as { first_name: string | null; last_name: string | null } | null;
   const fmt = (d: Date) => formatInTimeZone(d, TIMEZONE, 'HH:mm');
+  const premiumStart = row.premium_start_at ? new Date(row.premium_start_at as string) : null;
+  const premiumEnd = row.premium_end_at ? new Date(row.premium_end_at as string) : null;
 
   const session: TimeclockSessionWithEmployee = {
     ...(row as TimeclockSession),
+    // Coerce PostgREST numeric strings back to numbers (see coercePremiumNumber).
+    rate_multiplier: coercePremiumNumber(row.rate_multiplier),
+    rate_override: coercePremiumNumber(row.rate_override),
     employee_name: [emp?.first_name, emp?.last_name].filter(Boolean).join(' ') || 'Unknown',
     clock_in_local: fmt(clockInUtc),
     clock_out_local: clockOutUtc ? fmt(clockOutUtc) : null,
     planned_start: null,
     planned_end: null,
+    shift_rate_multiplier: null,
+    shift_rate_override: null,
+    shift_premium_reason: null,
+    shift_premium_start_time: null,
+    shift_premium_end_time: null,
+    premium_start_local: premiumStart ? fmt(premiumStart) : null,
+    premium_end_local: premiumEnd ? fmt(premiumEnd) : null,
   };
 
   void logAuditEvent({
@@ -479,7 +624,12 @@ export async function createTimeclockSession(
     resource_type: 'timeclock_session',
     resource_id: data.id,
     operation_status: 'success',
-    additional_info: { employee_id: employeeId, work_date: workDate, manual: true },
+    additional_info: {
+      employee_id: employeeId,
+      work_date: workDate,
+      manual: true,
+      ...(options?.premium ? { premium: premiumColumns } : {}),
+    },
   });
 
   await invalidatePayrollApprovalsForDate(supabase, workDate);
@@ -499,7 +649,7 @@ export async function updateTimeclockSession(
   clockInTime: string,        // HH:MM local
   clockOutTime: string | null, // HH:MM local or null
   notes?: string | null,
-  options?: { allowPayrollApprove?: boolean },
+  options?: { allowPayrollApprove?: boolean; premium?: SessionPremiumInput | null },
 ): Promise<{ success: true; data: TimeclockSession } | { success: false; error: string }> {
   const canManage = await canManageTimeclock(options);
   if (!canManage) return { success: false, error: 'Permission denied' };
@@ -522,7 +672,34 @@ export async function updateTimeclockSession(
     clockOutUtc = new Date(clockOutUtc.getTime() + 24 * 60 * 60 * 1000);
   }
 
+  const premiumValidation = validateSessionPremium(options?.premium);
+  if (!premiumValidation.ok) return { success: false, error: premiumValidation.error };
+
   const supabase = createAdminClient();
+
+  // Read the current premium so we can PRESERVE it across a pure time/notes edit
+  // and re-clamp its stored window to the (possibly moved) worked interval.
+  const { data: existing } = await supabase
+    .from('timeclock_sessions')
+    .select('rate_multiplier, rate_override, premium_reason, premium_start_at, premium_end_at')
+    .eq('id', sessionId)
+    .single();
+
+  const oldPremium = {
+    rate_multiplier: existing?.rate_multiplier ?? null,
+    rate_override: existing?.rate_override ?? null,
+    premium_reason: existing?.premium_reason ?? null,
+    premium_start_at: existing?.premium_start_at ?? null,
+    premium_end_at: existing?.premium_end_at ?? null,
+  };
+
+  // Premium is only changed when explicitly provided by the caller. On a
+  // times/notes-only edit we keep whatever premium is already on the session,
+  // re-clamping its window to the new interval so a time move doesn't leave the
+  // premium window outside the worked hours.
+  const premiumColumns = options?.premium
+    ? normalizeSessionPremiumColumns(options.premium, clockInUtc, clockOutUtc)
+    : reclampExistingPremiumColumns(oldPremium, clockInUtc, clockOutUtc);
 
   const { data, error } = await supabase
     .from('timeclock_sessions')
@@ -532,17 +709,148 @@ export async function updateTimeclockSession(
       // If a manager has set a clock-out manually, clear the auto-close flag
       ...(clockOutUtc ? { is_auto_close: false, auto_close_reason: null } : {}),
       notes: notes ?? null,
+      ...premiumColumns,
     })
     .eq('id', sessionId)
-    .select('*')
+    .select(SESSION_COLUMNS)
     .single();
 
   if (error) return { success: false, error: error.message };
 
+  void logAuditEvent({
+    operation_type: 'update',
+    resource_type: 'timeclock_session',
+    resource_id: sessionId,
+    operation_status: 'success',
+    additional_info: {
+      work_date: workDate,
+      ...(options?.premium
+        ? { premium_old: oldPremium, premium_new: premiumColumns }
+        : {}),
+    },
+  });
+
   await invalidatePayrollApprovalsForDate(supabase, workDate);
 
   revalidatePath('/rota/timeclock');
-  return { success: true, data: data as TimeclockSession };
+  return { success: true, data: data as unknown as TimeclockSession };
+}
+
+// ---------------------------------------------------------------------------
+// Premium helpers (session write path)
+// ---------------------------------------------------------------------------
+
+/** A £/hr override is capped so a fat-fingered rate can't slip past. */
+const RATE_OVERRIDE_MAX = 100;
+/** Free-text reason length cap (mirrors the sensible bound on the shift path). */
+const PREMIUM_REASON_MAX = 200;
+
+/**
+ * Validate a caller-supplied session premium. Mirrors the DB CHECK constraints
+ * so a bad value is rejected with a clear message before hitting the database.
+ * Numeric fields may arrive as PostgREST strings, so coerce before comparing.
+ */
+function validateSessionPremium(
+  premium: SessionPremiumInput | null | undefined,
+): { ok: true } | { ok: false; error: string } {
+  if (!premium) return { ok: true };
+
+  const rateMultiplier = premium.rateMultiplier == null ? null : Number(premium.rateMultiplier);
+  const rateOverride = premium.rateOverride == null ? null : Number(premium.rateOverride);
+
+  if (rateMultiplier != null && (Number.isNaN(rateMultiplier) || rateMultiplier < 1 || rateMultiplier > 3)) {
+    return { ok: false, error: 'Rate multiplier must be between 1.0 and 3.0' };
+  }
+  if (rateOverride != null && (Number.isNaN(rateOverride) || rateOverride <= 0 || rateOverride > RATE_OVERRIDE_MAX)) {
+    return { ok: false, error: `Rate override must be greater than £0 and at most £${RATE_OVERRIDE_MAX.toFixed(2)}/hr` };
+  }
+
+  // A window with both bounds must run forwards. NULL bounds are open-ended
+  // (start=NULL from clock-in, end=NULL to clock-out) so they never reverse.
+  if (premium.premiumStartAt && premium.premiumEndAt) {
+    const startMs = new Date(premium.premiumStartAt).getTime();
+    const endMs = new Date(premium.premiumEndAt).getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+      return { ok: false, error: 'Premium time window is invalid' };
+    }
+    if (endMs <= startMs) {
+      return { ok: false, error: 'The premium end time must be after the premium start time' };
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Convert a caller-supplied premium into the DB columns to write, clamping the
+ * window to the worked interval. When neither multiplier nor override is set the
+ * premium is cleared entirely (all five columns NULL => ×1.0).
+ */
+function normalizeSessionPremiumColumns(
+  premium: SessionPremiumInput,
+  clockInUtc: Date,
+  clockOutUtc: Date | null,
+): {
+  rate_multiplier: number | null;
+  rate_override: number | null;
+  premium_reason: string | null;
+  premium_start_at: string | null;
+  premium_end_at: string | null;
+} {
+  if (!hasPremium({ rateMultiplier: premium.rateMultiplier, rateOverride: premium.rateOverride })) {
+    return {
+      rate_multiplier: null,
+      rate_override: null,
+      premium_reason: null,
+      premium_start_at: null,
+      premium_end_at: null,
+    };
+  }
+
+  const startAt = premium.premiumStartAt ? new Date(premium.premiumStartAt) : null;
+  const endAt = premium.premiumEndAt ? new Date(premium.premiumEndAt) : null;
+  const clamped = clampPremiumWindow(startAt, endAt, clockInUtc, clockOutUtc);
+
+  const trimmedReason = premium.premiumReason?.trim() || null;
+
+  return {
+    // Coerce in case the caller passed a PostgREST string ("1.50").
+    rate_multiplier: premium.rateMultiplier == null ? null : Number(premium.rateMultiplier),
+    rate_override: premium.rateOverride == null ? null : Number(premium.rateOverride),
+    premium_reason: trimmedReason ? trimmedReason.slice(0, PREMIUM_REASON_MAX) : null,
+    premium_start_at: clamped.startAt,
+    premium_end_at: clamped.endAt,
+  };
+}
+
+/**
+ * Re-clamp a session's already-stored premium window to a (possibly moved)
+ * worked interval, preserving the rate/reason untouched. Used on times-only
+ * edits so a clock-time move keeps the premium window inside the worked hours.
+ */
+function reclampExistingPremiumColumns(
+  existing: {
+    rate_multiplier: number | null;
+    rate_override: number | null;
+    premium_reason: string | null;
+    premium_start_at: string | null;
+    premium_end_at: string | null;
+  },
+  clockInUtc: Date,
+  clockOutUtc: Date | null,
+): {
+  premium_start_at: string | null;
+  premium_end_at: string | null;
+} {
+  // No premium on the session: nothing to re-clamp (leave columns as-is).
+  if (!hasPremium({ rateMultiplier: existing.rate_multiplier, rateOverride: existing.rate_override })) {
+    return { premium_start_at: null, premium_end_at: null };
+  }
+
+  const startAt = existing.premium_start_at ? new Date(existing.premium_start_at) : null;
+  const endAt = existing.premium_end_at ? new Date(existing.premium_end_at) : null;
+  const clamped = clampPremiumWindow(startAt, endAt, clockInUtc, clockOutUtc);
+  return { premium_start_at: clamped.startAt, premium_end_at: clamped.endAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -551,8 +859,9 @@ export async function updateTimeclockSession(
 
 export async function approveTimeclockSession(
   sessionId: string,
+  options?: { allowPayrollApprove?: boolean },
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const canManage = await canManageTimeclock();
+  const canManage = await canManageTimeclock(options);
   if (!canManage) return { success: false, error: 'Permission denied' };
 
   const supabase = createAdminClient();

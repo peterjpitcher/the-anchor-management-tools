@@ -4,7 +4,14 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
-import { calculateActualPaidHours, calculatePaidHours } from '@/lib/rota/pay-calculator';
+import {
+  calculateActualPaidHours,
+  calculatePaidHours,
+  computeSessionPremiumPay,
+  resolveSessionPremium,
+  resolveShiftWindowInstants,
+  type SessionPremium,
+} from '@/lib/rota/pay-calculator';
 import { updateTimeclockSession, createTimeclockSession, deleteTimeclockSession } from '@/app/actions/timeclock';
 import { buildPayrollWorkbook, getPayrollFilename, type PayrollRow } from '@/lib/rota/excel-export';
 import { buildPayrollEmailHtml, buildEarningsAlertEmailHtml, type PayrollEmployeeSummary, type LeavingEmployee } from '@/lib/rota/email-templates';
@@ -265,6 +272,106 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
     return { rate: Number(bandRate.hourly_rate), source: 'age_band' };
   }
 
+  // Postgres `numeric` columns come back over the wire as STRINGS (e.g. "1.50"),
+  // not JS numbers. Coerce them so `rateMultiplier`/`rateOverride` are real
+  // numbers everywhere downstream (===, arithmetic, the frozen snapshot). Empty /
+  // null / NaN all collapse to null ("no premium").
+  function toNumericOrNull(value: unknown): number | null {
+    if (value == null || value === '') return null;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Read the five session premium columns off a raw timeclock_sessions row.
+  // These arrive via `select('*')`; NULL multiplier + NULL override = no premium.
+  function sessionPremiumFromRow(session: Record<string, unknown>): SessionPremium {
+    return {
+      rateMultiplier: toNumericOrNull(session.rate_multiplier),
+      rateOverride: toNumericOrNull(session.rate_override),
+      premiumReason: (session.premium_reason as string | null) ?? null,
+      premiumStartAt: (session.premium_start_at as string | null) ?? null,
+      premiumEndAt: (session.premium_end_at as string | null) ?? null,
+    };
+  }
+
+  // Convert a matched shift's time-of-day premium window into instants clamped
+  // onto the shift date (overnight-aware), so the paid path can measure overlap
+  // against the actual clock-in/out. Returns null when the shift carries no
+  // premium, so the precedence resolver falls through to ×1.0.
+  function linkedShiftPremiumFromShift(shift: Record<string, unknown>): SessionPremium | null {
+    const rateMultiplier = toNumericOrNull(shift.rate_multiplier);
+    const rateOverride = toNumericOrNull(shift.rate_override);
+    if (rateMultiplier == null && rateOverride == null) return null;
+
+    const { premiumStartAt, premiumEndAt } = resolveShiftWindowInstants(
+      shift.shift_date as string,
+      shift.start_time as string,
+      shift.end_time as string,
+      Boolean(shift.is_overnight),
+      (shift.premium_start_time as string | null) ?? null,
+      (shift.premium_end_time as string | null) ?? null,
+    );
+
+    return {
+      rateMultiplier,
+      rateOverride,
+      premiumReason: (shift.premium_reason as string | null) ?? null,
+      premiumStartAt,
+      premiumEndAt,
+    };
+  }
+
+  // Cost a worked session, applying the resolved premium (session → shift → ×1.0).
+  // Returns null when there is nothing to cost (no hours worked or no base rate,
+  // i.e. salaried/undeterminable), leaving totalPay null as before.
+  function costRow(
+    session: Record<string, unknown> | null,
+    actualHours: number | null,
+    baseRate: number | null,
+    linkedShift: Record<string, unknown> | null,
+  ): {
+    totalPay: number | null;
+    standardHours: number | null;
+    premiumHours: number | null;
+    multiplier: number | null;
+    effectiveRate: number | null;
+    premiumReason: string | null;
+    premiumPay: number | null;
+  } {
+    if (session == null || actualHours == null || baseRate == null) {
+      return {
+        totalPay: null,
+        standardHours: null,
+        premiumHours: null,
+        multiplier: null,
+        effectiveRate: null,
+        premiumReason: null,
+        premiumPay: null,
+      };
+    }
+
+    const sessionPremium = sessionPremiumFromRow(session);
+    const linkedShiftPremium = linkedShift ? linkedShiftPremiumFromShift(linkedShift) : null;
+    const eff = resolveSessionPremium(sessionPremium, linkedShiftPremium);
+    const res = computeSessionPremiumPay(
+      session.clock_in_at as string,
+      (session.clock_out_at as string | null) ?? (session.clock_in_at as string),
+      actualHours,
+      baseRate,
+      eff,
+    );
+
+    return {
+      totalPay: res.pay,
+      standardHours: res.baseHours,
+      premiumHours: res.premiumHours,
+      multiplier: res.multiplier,
+      effectiveRate: res.effectiveRate,
+      premiumReason: res.premiumReason,
+      premiumPay: Math.round(res.premiumHours * res.effectiveRate * 100) / 100,
+    };
+  }
+
   const rows: PayrollRow[] = [];
   const allSessions = (sessions ?? []) as Array<Record<string, unknown>>;
   const consumedSessionIds = new Set<string>();
@@ -364,9 +471,17 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
 
     const rateResult = getHourlyRateSync(shift.employee_id, shift.shift_date);
     const hourlyRate = rateResult?.rate ?? null;
-    const totalPay = actualHours !== null && hourlyRate !== null
-      ? Math.round(actualHours * hourlyRate * 100) / 100
+    // Linked-only shift premium: the linked shift's premium is only applied to a
+    // session that is GENUINELY linked to it (linked_shift_id set). Sessions matched
+    // by proximity (takeBestUnlinkedSession) carry no linked_shift_id, so they get
+    // no shift premium — only their own explicit premium, else base. This mirrors
+    // the portal (which only falls back to the shift for linked sessions), so an
+    // employee's portal figure and the accountant total agree.
+    const linkedShift = session && (session.linked_shift_id as string | null)
+      ? (shift as Record<string, unknown>)
       : null;
+    const cost = costRow(session, actualHours, hourlyRate, linkedShift);
+    const totalPay = cost.totalPay;
 
     const flagParts: string[] = [];
     if (session?.is_auto_close) flagParts.push('auto_close');
@@ -399,6 +514,12 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       note: null, // populated after note fetch below
       sessionNote: [session?.notes, session?.manager_note].filter(Boolean).join(' · ') || null,
       sickReason: isCouldntWork ? sickReason : null,
+      standardHours: cost.standardHours,
+      premiumHours: cost.premiumHours,
+      multiplier: cost.multiplier,
+      effectiveRate: cost.effectiveRate,
+      premiumReason: cost.premiumReason,
+      premiumPay: cost.premiumPay,
     });
   }
 
@@ -421,9 +542,9 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
     const actualHours = calculateActualPaidHours(session.clock_in_at as string, (session.clock_out_at as string | null) ?? null) ?? null;
     const rateResult = getHourlyRateSync(session.employee_id as string, session.work_date as string);
     const hourlyRate = rateResult?.rate ?? null;
-    const totalPay = actualHours !== null && hourlyRate !== null
-      ? Math.round(actualHours * hourlyRate * 100) / 100
-      : null;
+    // Unmatched/unscheduled sessions have no linked shift — session premium only.
+    const cost = costRow(session, actualHours, hourlyRate, null);
+    const totalPay = cost.totalPay;
 
     const flagParts: string[] = [];
     if ((session.is_unscheduled as boolean) || !(session.linked_shift_id as string | null)) {
@@ -452,6 +573,12 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
       note: null,
       sessionNote: [session.notes, session.manager_note].filter(Boolean).join(' · ') || null,
       sickReason: null,
+      standardHours: cost.standardHours,
+      premiumHours: cost.premiumHours,
+      multiplier: cost.multiplier,
+      effectiveRate: cost.effectiveRate,
+      premiumReason: cost.premiumReason,
+      premiumPay: cost.premiumPay,
     });
   }
 
@@ -474,23 +601,42 @@ export async function getPayrollMonthData(year: number, month: number): Promise<
     }
   }
 
-  // Aggregate per-employee summaries for email body
+  // Aggregate per-employee summaries for email body. Hours split into standard
+  // vs premium so the accountant sees the breakdown; totalPay stays inclusive.
   const byEmployee = new Map<string, PayrollEmployeeSummary>();
   for (const row of rows) {
+    // Back-compat guard mirrors the Excel builder: when a row carries no premium
+    // fields, all its actual hours count as standard.
+    const rowPremiumHours = row.premiumHours ?? 0;
+    const rowStandardHours = row.standardHours ?? row.actualHours ?? 0;
     const existing = byEmployee.get(row.employeeId);
     if (existing) {
       existing.plannedHours += row.plannedHours ?? 0;
       existing.actualHours += row.actualHours ?? 0;
+      existing.standardHours = (existing.standardHours ?? 0) + rowStandardHours;
+      existing.premiumHours = (existing.premiumHours ?? 0) + rowPremiumHours;
       existing.totalPay = (existing.totalPay ?? 0) + (row.totalPay ?? 0);
     } else {
       byEmployee.set(row.employeeId, {
         name: row.employeeName,
         plannedHours: row.plannedHours ?? 0,
         actualHours: row.actualHours ?? 0,
+        standardHours: rowStandardHours,
+        premiumHours: rowPremiumHours,
         hourlyRate: row.hourlyRate,
         totalPay: row.totalPay,
       });
     }
+  }
+
+  // Round aggregated hours to 2dp so floating-point accumulation doesn't leak
+  // into the email figures.
+  for (const summary of byEmployee.values()) {
+    summary.plannedHours = Math.round(summary.plannedHours * 100) / 100;
+    summary.actualHours = Math.round(summary.actualHours * 100) / 100;
+    if (summary.standardHours != null) summary.standardHours = Math.round(summary.standardHours * 100) / 100;
+    if (summary.premiumHours != null) summary.premiumHours = Math.round(summary.premiumHours * 100) / 100;
+    if (summary.totalPay != null) summary.totalPay = Math.round(summary.totalPay * 100) / 100;
   }
 
   return { success: true, data: rows, employees: Array.from(byEmployee.values()) };
@@ -737,6 +883,16 @@ export async function updatePayrollRowTimes(
   const canApprove = await checkUserPermission('payroll', 'approve');
   if (!canApprove) return { success: false, error: 'Permission denied' };
 
+  // The payroll screen edits times only — it never supplies a premium here.
+  //  - UPDATE branch: omitting `premium` makes updateTimeclockSession PRESERVE the
+  //    session's existing premium (re-clamped to the new interval), so a time edit
+  //    never silently drops an override.
+  //  - CREATE branch: omitting `premium` inserts the session with NO premium
+  //    columns (all NULL). That is deliberate — the row carries no spurious premium
+  //    and, because its premium columns are null, payroll resolves premium LIVE.
+  //    Such a create is unlinked (no linked_shift_id), so under the linked-only rule
+  //    it pays base unless it later gains its own explicit override — matching the
+  //    portal. If the payroll screen ever edits premium, forward it via `premium`.
   const result = sessionId
     ? await updateTimeclockSession(sessionId, workDate, clockInTime, clockOutTime, undefined, { allowPayrollApprove: true })
     : await createTimeclockSession(employeeId, workDate, clockInTime, clockOutTime, undefined, { allowPayrollApprove: true });
