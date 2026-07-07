@@ -47,3 +47,20 @@
   common real-world retry scenario.
 - **Browser screenshots are downscaled**: click coordinates read from a 1512px screenshot
   need rescaling to the real 1800px viewport (×1/0.84) or use in-viewport ref clicks.
+
+## 2026-07-07 — Cached local builds masked a type error that failed Vercel
+
+**Mistake:** Reported the AMS branch "green (tsc 0, lint 0, build 0)" and pushed to
+`main`; the Vercel build ERRORED on a real TS2367 at `manage-booking.ts:703`
+(`preview.is_outside_seating === true` where the value was narrowed to
+`false | undefined` inside a `!== true` guard). A Wave-2 subagent had flagged this exact
+line; I dismissed it as a "parallel-execution timing artifact" because my later
+`npx tsc --noEmit` and `npm run build` both passed — they reused the worktree's `.next`
+cache and `.tsbuildinfo`, which skip re-checking unchanged/cached files.
+
+**Rule:** (1) Never dismiss a subagent-flagged type error without reproducing it from a
+CLEAN state. (2) Before claiming a build is green ahead of a deploy, run an
+UNCACHED build: `rm -rf .next && npm run build` (and delete `*.tsbuildinfo` before a
+definitive `tsc --noEmit`). Incremental caches make "works locally" unreliable; the
+authoritative gate is what Vercel runs — a cold build. This is doubly true in a fresh
+git worktree, where a stale cache can carry a pre-edit clean result forward.
