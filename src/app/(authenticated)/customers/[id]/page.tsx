@@ -104,7 +104,11 @@ type CustomerPrivateBooking = {
   status: string | null
   event_type: string | null
   guest_count: number | null
+  // total_amount is the legacy NET total; calculated_total is NET, gross_total is
+  // VAT-inclusive. Customer-facing values must prefer gross_total (stored prices are net).
   total_amount: number | null
+  calculated_total: number | null
+  gross_total: number | null
   deposit_amount: number | null
   source: string | null
   created_at: string | null
@@ -485,6 +489,20 @@ export default function CustomerViewPage() {
         setPrivateBookings([])
       } else {
         const rows = Array.isArray(customerPrivateBookings) ? customerPrivateBookings : []
+        // Stored private-booking prices are NET. The VAT-inclusive gross_total /
+        // calculated_total live on the private_bookings_with_details view (not the
+        // base table, which lacks `source`), so fetch them separately and merge by id
+        // to keep customer-facing values VAT-inclusive without dropping `source`.
+        const grossById = new Map<string, { gross: number | null; calc: number | null }>()
+        if (rows.length > 0) {
+          const { data: grossRows } = await supabase
+            .from('private_bookings_with_details')
+            .select('id, gross_total, calculated_total')
+            .in('id', rows.map((r: any) => r.id))
+          for (const g of (grossRows ?? []) as any[]) {
+            grossById.set(g.id, { gross: g.gross_total ?? null, calc: g.calculated_total ?? null })
+          }
+        }
         setPrivateBookings(
           rows.map((row: any) => ({
             id: row.id,
@@ -494,6 +512,8 @@ export default function CustomerViewPage() {
             event_type: row.event_type || null,
             guest_count: row.guest_count ?? null,
             total_amount: row.total_amount ?? null,
+            calculated_total: grossById.get(row.id)?.calc ?? null,
+            gross_total: grossById.get(row.id)?.gross ?? null,
             deposit_amount: row.deposit_amount ?? null,
             source: row.source || null,
             created_at: row.created_at || null
@@ -761,7 +781,7 @@ export default function CustomerViewPage() {
         status: formatLabel(booking.status, 'Unknown'),
         interest: formatLabel(booking.event_type, 'Private Event'),
         party_size: booking.guest_count ?? null,
-        amount: booking.total_amount ?? null,
+        amount: booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? null,
         booking_datetime: bookingDateTime,
         booking_timestamp: bookingTimestamp,
         booking_display: formatDateTimeWithFallback(bookingDateTime, booking.event_date, booking.start_time),
@@ -890,7 +910,7 @@ export default function CustomerViewPage() {
     }, 0)
 
     const reminderOnlyEvents = eventBookings.filter((booking) => booking.is_reminder_only || (booking.seats ?? 0) <= 0).length
-    const totalPrivateValue = privateBookings.reduce((sum, booking) => sum + (booking.total_amount ?? 0), 0)
+    const totalPrivateValue = privateBookings.reduce((sum, booking) => sum + ((booking.gross_total ?? booking.calculated_total ?? booking.total_amount) ?? 0), 0)
 
     const topTablePurposeMap = new Map<string, number>()
     tableBookings.forEach((booking) => {
