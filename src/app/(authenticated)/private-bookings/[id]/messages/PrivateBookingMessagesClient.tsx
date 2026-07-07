@@ -99,6 +99,7 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
   const guestCount = booking.guest_count === null || booking.guest_count === undefined ? undefined : toNumber(booking.guest_count)
   const discountAmount = booking.discount_amount === null || booking.discount_amount === undefined ? undefined : toNumber(booking.discount_amount)
   const calculatedTotal = booking.calculated_total === null || booking.calculated_total === undefined ? undefined : toNumber(booking.calculated_total)
+  const grossTotal = booking.gross_total === null || booking.gross_total === undefined ? undefined : toNumber(booking.gross_total)
 
   return {
     ...booking,
@@ -106,7 +107,8 @@ const normalizeBooking = (booking: PrivateBookingWithDetails): PrivateBookingWit
     deposit_amount: toNumber(booking.deposit_amount),
     total_amount: toNumber(booking.total_amount),
     discount_amount: discountAmount,
-    calculated_total: calculatedTotal
+    calculated_total: calculatedTotal,
+    gross_total: grossTotal
   }
 }
 
@@ -183,7 +185,7 @@ export default function PrivateBookingMessagesClient({
       event_date: booking.event_date ? formatDateFull(booking.event_date) : '',
       event_type: booking.event_type || 'event',
       deposit_amount: booking.deposit_amount?.toFixed(2) || '0.00',
-      balance_due: (booking.calculated_total || 0).toFixed(2),
+      balance_due: (booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0).toFixed(2),
       balance_due_date: booking.balance_due_date ? formatDateFull(booking.balance_due_date) : '',
       start_time: booking.start_time ? formatTime12Hour(booking.start_time) : '',
       guest_count: booking.guest_count?.toString() || '',
