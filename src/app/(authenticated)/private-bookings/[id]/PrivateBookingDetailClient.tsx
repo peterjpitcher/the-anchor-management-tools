@@ -34,6 +34,7 @@ import {
   Bars3Icon,
   LinkIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import {
   DndContext,
@@ -1685,6 +1686,7 @@ export default function PrivateBookingDetailClient({
   const [sendingCalendarInvite, setSendingCalendarInvite] = useState(false);
   // SOP §11: contract + terms are emailed to the customer before payment
   const [sendingContract, setSendingContract] = useState(false);
+  const [downloadingContract, setDownloadingContract] = useState(false);
   // PayPal deposit state
   const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
   const [paypalCaptureHandled, setPaypalCaptureHandled] = useState(false);
@@ -2001,6 +2003,37 @@ export default function PrivateBookingDetailClient({
       setSendingContract(false);
     }
   }, [bookingId, sendingContract, router]);
+
+  // Download the server-rendered contract PDF straight to the browser's downloads.
+  // Uses the ?format=pdf route (rendered server-side with fixed A4 / no minimum
+  // font size) so the layout is exact regardless of the viewer's print settings.
+  const handleDownloadContract = useCallback(async () => {
+    if (!bookingId || downloadingContract) return;
+    setDownloadingContract(true);
+    try {
+      const response = await fetch(`/api/private-bookings/contract?bookingId=${bookingId}&format=pdf`);
+      if (!response.ok) {
+        const message = await response.text().catch(() => '');
+        throw new Error(message || 'Failed to generate contract PDF');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      const customerName = (booking?.customer_full_name || booking?.customer_name || 'contract').trim();
+      anchor.download = `The Anchor - Private Booking Contract - ${customerName}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Contract downloaded');
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to download contract');
+    } finally {
+      setDownloadingContract(false);
+    }
+  }, [bookingId, downloadingContract, booking?.customer_full_name, booking?.customer_name, router]);
 
   const handleCopyPortalLink = useCallback(async () => {
     if (!bookingId || isCopyingLink) return;
@@ -3135,16 +3168,18 @@ export default function PrivateBookingDetailClient({
                   </Link>
                 )}
 
-                <Link
-                  href={`/private-bookings/${bookingId}/contract`}
-                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100"
+                <button
+                  type="button"
+                  onClick={handleDownloadContract}
+                  disabled={downloadingContract}
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center">
                     <DocumentIcon className="h-5 w-5 mr-3 text-blue-600" />
-                    Generate Contract
+                    {downloadingContract ? 'Preparing contract…' : 'Download Contract'}
                   </div>
-                  <ChevronRightIcon className="h-4 w-4 text-gray-400" />
-                </Link>
+                  <ArrowDownTrayIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                </button>
 
                 <a
                   href={`/api/private-bookings/event-sheet?bookingId=${bookingId}`}
