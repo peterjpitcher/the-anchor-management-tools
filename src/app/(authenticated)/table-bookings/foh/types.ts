@@ -62,9 +62,14 @@ export type FohScheduleResponse = {
     service_window: ServiceWindow
     lanes: FohLane[]
     unassigned_bookings: FohBooking[]
+    // Outside bookings (no physical table) — rendered as cards via the Outside view
+    // toggle. Optional so existing schedule fixtures keep compiling; consumers read `?? []`.
+    outside_bookings?: FohBooking[]
   }
   error?: string
 }
+
+export type FohViewMode = 'inside' | 'outside'
 
 export type FohCreateBookingResponse = {
   success: boolean

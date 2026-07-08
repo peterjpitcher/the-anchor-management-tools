@@ -3,7 +3,7 @@
 import React from 'react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
-import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode } from '../types'
+import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohViewMode } from '../types'
 import { formatNextEventUrgency, getLondonDateIso, shiftIsoDate } from '../utils'
 
 type FohHeaderProps = {
@@ -13,6 +13,9 @@ type FohHeaderProps = {
   styleVariant: FohStyleVariant
   clockNow: Date
   totals: { bookings: number; covers: number }
+  viewMode: FohViewMode
+  outsideCount: number
+  onViewModeChange: (mode: FohViewMode) => void
   nextUpcomingEvent: FohUpcomingEvent | null
   upcomingEventsLoaded: boolean
   submittingFoodOrderAlert: boolean
@@ -37,6 +40,9 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     styleVariant,
     clockNow,
     totals,
+    viewMode,
+    outsideCount,
+    onViewModeChange,
     nextUpcomingEvent,
     upcomingEventsLoaded,
     submittingFoodOrderAlert,
@@ -107,6 +113,18 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     'rounded-md border border-gray-300 text-sm',
     isManagerKioskStyle ? 'px-1.5 py-1 text-xs' : 'px-3 py-2'
   )
+  const viewToggleGroupClass = cn(
+    'inline-flex items-center rounded-md border border-gray-300 bg-gray-100 p-0.5',
+    isManagerKioskStyle && 'border-green-300 bg-green-50'
+  )
+  const viewToggleSegmentClass = (active: boolean) =>
+    cn(
+      'rounded-md font-medium transition focus:outline-none focus:ring-2 focus:ring-sidebar/40',
+      isManagerKioskStyle ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-sm',
+      active
+        ? 'bg-white text-gray-900 shadow-sm'
+        : 'text-gray-600 hover:text-gray-900'
+    )
 
   return (
     <div className={serviceCardClass}>
@@ -202,8 +220,8 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
           </div>
         </div>
 
-        {canEdit && (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canEdit && (
             <button
               type="button"
               onClick={onSendFoodOrderAlert}
@@ -224,32 +242,57 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
               />
               <span>{submittingFoodOrderAlert ? 'Sending...' : 'Food Order'}</span>
             </button>
+          )}
+
+          {/* View toggle — always visible (view control, not gated by canEdit). */}
+          <div className={viewToggleGroupClass} role="group" aria-label="Seating view">
             <button
               type="button"
-              onClick={() => openNowCreateModal('walk_in')}
-              className={cn(
-                'rounded-md px-4 py-2 text-sm text-white',
-                isManagerKioskStyle
-                  ? 'bg-sidebar px-2.5 py-1 text-[11px] font-semibold hover:bg-green-700'
-                  : 'bg-sidebar font-medium hover:bg-sidebar/90'
-              )}
+              onClick={() => onViewModeChange('inside')}
+              aria-pressed={viewMode === 'inside'}
+              className={viewToggleSegmentClass(viewMode === 'inside')}
             >
-              Walk-in
+              Inside
             </button>
             <button
               type="button"
-              onClick={() => openNowCreateModal('booking')}
-              className={cn(
-                'rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50',
-                isManagerKioskStyle
-                  ? 'px-2.5 py-1 text-[11px]'
-                  : ''
-              )}
+              onClick={() => onViewModeChange('outside')}
+              aria-pressed={viewMode === 'outside'}
+              className={viewToggleSegmentClass(viewMode === 'outside')}
             >
-              Add booking
+              Outside ({outsideCount})
             </button>
           </div>
-        )}
+
+          {canEdit && (
+            <>
+              <button
+                type="button"
+                onClick={() => openNowCreateModal('walk_in')}
+                className={cn(
+                  'rounded-md px-4 py-2 text-sm text-white',
+                  isManagerKioskStyle
+                    ? 'bg-sidebar px-2.5 py-1 text-[11px] font-semibold hover:bg-green-700'
+                    : 'bg-sidebar font-medium hover:bg-sidebar/90'
+                )}
+              >
+                Walk-in
+              </button>
+              <button
+                type="button"
+                onClick={() => openNowCreateModal('booking')}
+                className={cn(
+                  'rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50',
+                  isManagerKioskStyle
+                    ? 'px-2.5 py-1 text-[11px]'
+                    : ''
+                )}
+              >
+                Add booking
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {!viewingToday && (

@@ -289,12 +289,6 @@ const LaneRow = React.memo(function LaneRow(props: {
     onLaneClick,
   } = props
 
-  // The synthetic Outside lane has no physical table: it must never be a drop
-  // target, must not open the walk-in flow on click, and its blocks are locked
-  // (moving an outside booking to a table is v2, and the endpoints 409 anyway).
-  const isOutsideLane = lane.table_id === '__outside__' || lane.is_outside_seating === true
-  const laneCanEdit = canEdit && !isOutsideLane
-
   const trackContent = (
     <>
       {timeline.ticks.map((minute) => {
@@ -320,8 +314,7 @@ const LaneRow = React.memo(function LaneRow(props: {
         const visualLabel = getBookingVisualLabel(booking)
         const visualClassName = statusBlockClass(visualState)
         const isEventOnlyBlock = Boolean(booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-'))
-        // Outside bookings are locked exactly like event-only blocks (no drag).
-        const isLockedBlock = isEventOnlyBlock || booking.is_outside_seating === true
+        const isLockedBlock = isEventOnlyBlock
         const detailLine = booking.capacity_label
           ? `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.capacity_label}`
           : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
@@ -373,7 +366,7 @@ const LaneRow = React.memo(function LaneRow(props: {
 
       {lane.bookings.length === 0 && (
         <div className={laneEmptyClass}>
-          {laneCanEdit ? 'Tap lane to add walk-in' : 'Available for entire visible service window'}
+          {canEdit ? 'Tap lane to add walk-in' : 'Available for entire visible service window'}
         </div>
       )}
     </>
@@ -388,43 +381,27 @@ const LaneRow = React.memo(function LaneRow(props: {
             {lane.table_number ? <span className="ml-1 text-xs text-gray-500">({lane.table_number})</span> : null}
           </p>
           <p className="text-[11px] text-gray-500">
-            {isOutsideLane ? (
-              <>No physical table</>
-            ) : (
-              <>
-                Capacity {lane.capacity || '-'}
-                {lane.area ? ` · ${lane.area}` : ''}
-                {lane.is_bookable === false ? ' · not bookable' : ''}
-              </>
-            )}
+            Capacity {lane.capacity || '-'}
+            {lane.area ? ` · ${lane.area}` : ''}
+            {lane.is_bookable === false ? ' · not bookable' : ''}
           </p>
         </div>
       </div>
 
-      {isOutsideLane ? (
-        // Plain, non-droppable, non-clickable container (no useDroppable registration).
-        <div
-          className={cn(laneTimelineClass, 'cursor-default hover:bg-gray-50/60')}
-          aria-label={`${lane.table_name} bookings`}
-        >
-          {trackContent}
-        </div>
-      ) : (
-        <DroppableLaneTimeline
-          tableId={lane.table_id}
-          tableName={lane.table_name}
-          className={laneTimelineClass}
-          canEdit={laneCanEdit}
-          onLaneClick={() => {
-            onLaneClick({
-              table_id: lane.table_id,
-              table_name: lane.table_name
-            })
-          }}
-        >
-          {trackContent}
-        </DroppableLaneTimeline>
-      )}
+      <DroppableLaneTimeline
+        tableId={lane.table_id}
+        tableName={lane.table_name}
+        className={laneTimelineClass}
+        canEdit={canEdit}
+        onLaneClick={() => {
+          onLaneClick({
+            table_id: lane.table_id,
+            table_name: lane.table_name
+          })
+        }}
+      >
+        {trackContent}
+      </DroppableLaneTimeline>
     </div>
   )
 })

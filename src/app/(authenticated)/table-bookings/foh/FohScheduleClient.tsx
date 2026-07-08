@@ -10,6 +10,7 @@ import type {
   FohMoveTableAvailabilityResponse,
   FohMoveTableOption,
   FohStyleVariant,
+  FohViewMode,
   SelectedBookingContext,
 } from './types'
 import {
@@ -29,6 +30,7 @@ import { useFohDrag } from './useFohDrag'
 import { FohHeader } from './components/FohHeader'
 import { FohTimeline } from './components/FohTimeline'
 import { FohUnassignedBookings } from './components/FohUnassignedBookings'
+import { FohOutsideBookings } from './components/FohOutsideBookings'
 import { FohBookingDetailModal } from './components/FohBookingDetailModal'
 import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
@@ -65,6 +67,7 @@ export function FohScheduleClient({
   const [walkoutBookingId, setWalkoutBookingId] = useState<string | null>(null)
   const [submittingFoodOrderAlert, setSubmittingFoodOrderAlert] = useState(false)
   const [clockNow, setClockNow] = useState(() => new Date())
+  const [viewMode, setViewMode] = useState<FohViewMode>('inside')
 
   const lastInteractionAtMsRef = useRef(Date.now())
   const timelineRef = useRef<HTMLDivElement | null>(null)
@@ -112,6 +115,7 @@ export function FohScheduleClient({
     const uniqueBookings = new Map<string, FohBooking>()
     for (const lane of schedule.lanes) for (const b of lane.bookings) if (!uniqueBookings.has(b.id)) uniqueBookings.set(b.id, b)
     for (const b of schedule.unassigned_bookings || []) if (!uniqueBookings.has(b.id)) uniqueBookings.set(b.id, b)
+    for (const b of schedule.outside_bookings || []) if (!uniqueBookings.has(b.id)) uniqueBookings.set(b.id, b)
     const active = Array.from(uniqueBookings.values()).filter((b) => {
       if (b.is_private_block) return false
       const s = (b.status || '').toLowerCase()
@@ -230,7 +234,12 @@ export function FohScheduleClient({
     setSchedule((cur) => {
       if (!cur) return cur
       const p = (bs: FohBooking[]) => bs.map((b) => b.id === patch.id ? { ...b, ...patch } : b)
-      return { ...cur, lanes: cur.lanes.map((l) => ({ ...l, bookings: p(l.bookings) })), unassigned_bookings: p(cur.unassigned_bookings) }
+      return {
+        ...cur,
+        lanes: cur.lanes.map((l) => ({ ...l, bookings: p(l.bookings) })),
+        unassigned_bookings: p(cur.unassigned_bookings),
+        outside_bookings: cur.outside_bookings ? p(cur.outside_bookings) : cur.outside_bookings,
+      }
     })
     setSelectedBookingContext((cur) => {
       if (!cur || cur.booking.id !== patch.id) return cur
@@ -327,6 +336,9 @@ export function FohScheduleClient({
         styleVariant={styleVariant}
         clockNow={clockNow}
         totals={totals}
+        viewMode={viewMode}
+        outsideCount={schedule?.outside_bookings?.length ?? 0}
+        onViewModeChange={setViewMode}
         nextUpcomingEvent={nextUpcomingEvent}
         upcomingEventsLoaded={upcomingEventsLoaded}
         submittingFoodOrderAlert={submittingFoodOrderAlert}
@@ -337,40 +349,51 @@ export function FohScheduleClient({
         onOpenCreateModal={createBooking.openCreateModal}
       />
 
-      <FohUnassignedBookings
-        bookings={schedule?.unassigned_bookings || []}
-        styleVariant={styleVariant}
-        onBookingClick={(booking) => openBookingDetails(booking, { laneTableId: null, laneTableName: null })}
-      />
+      {viewMode === 'inside' ? (
+        <>
+          <FohUnassignedBookings
+            bookings={schedule?.unassigned_bookings || []}
+            styleVariant={styleVariant}
+            onBookingClick={(booking) => openBookingDetails(booking, { laneTableId: null, laneTableName: null })}
+          />
 
-      <FohTimeline
-        schedule={schedule}
-        date={date}
-        timeline={timeline}
-        canEdit={canEdit}
-        loading={loading}
-        styleVariant={styleVariant}
-        currentTimelineLeftPct={currentTimelineLeftPct}
-        sensors={sensors}
-        activeDragData={activeDragData}
-        pointerPosition={pointerPosition}
-        liveSnapTime={liveSnapTime}
-        isOutOfBounds={isOutOfBounds}
-        pendingMove={pendingMove}
-        isSubmitting={isSubmitting}
-        confirmError={confirmError}
-        timelineRef={timelineRef}
-        onDragStart={onDragStart}
-        onDragMove={onDragMove}
-        onDragEnd={onDragEnd}
-        onConfirmMove={confirmMove}
-        onCancelMove={cancelMove}
-        onBookingClick={(booking, tid, tname) => openBookingDetails(booking, { laneTableId: tid, laneTableName: tname })}
-        onLaneClick={(lane) => {
-          if (!canEdit) return
-          createBooking.openCreateModal({ mode: 'walk_in', laneTableId: lane.table_id, laneTableName: lane.table_name })
-        }}
-      />
+          <FohTimeline
+            schedule={schedule}
+            date={date}
+            timeline={timeline}
+            canEdit={canEdit}
+            loading={loading}
+            styleVariant={styleVariant}
+            currentTimelineLeftPct={currentTimelineLeftPct}
+            sensors={sensors}
+            activeDragData={activeDragData}
+            pointerPosition={pointerPosition}
+            liveSnapTime={liveSnapTime}
+            isOutOfBounds={isOutOfBounds}
+            pendingMove={pendingMove}
+            isSubmitting={isSubmitting}
+            confirmError={confirmError}
+            timelineRef={timelineRef}
+            onDragStart={onDragStart}
+            onDragMove={onDragMove}
+            onDragEnd={onDragEnd}
+            onConfirmMove={confirmMove}
+            onCancelMove={cancelMove}
+            onBookingClick={(booking, tid, tname) => openBookingDetails(booking, { laneTableId: tid, laneTableName: tname })}
+            onLaneClick={(lane) => {
+              if (!canEdit) return
+              createBooking.openCreateModal({ mode: 'walk_in', laneTableId: lane.table_id, laneTableName: lane.table_name })
+            }}
+          />
+        </>
+      ) : (
+        <FohOutsideBookings
+          bookings={schedule?.outside_bookings || []}
+          canEdit={canEdit}
+          styleVariant={styleVariant}
+          onBookingClick={(booking) => openBookingDetails(booking, { laneTableId: null, laneTableName: null })}
+        />
+      )}
 
       <FohBookingDetailModal
         selectedBookingContext={selectedBookingContext}

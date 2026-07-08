@@ -779,9 +779,16 @@ export async function GET(request: NextRequest) {
     }))
 
   // Outside bookings hold no table assignment, so they land in the untabled bucket.
-  // Split them into a dedicated, non-interactive Outside lane; genuinely-untabled
+  // They are returned as their own `outside_bookings` list (rendered as cards by the
+  // Outside view toggle, not as a virtual swimlane — two overlapping outside bookings
+  // would otherwise draw on top of each other in a single lane). Genuinely-untabled
   // indoor bookings stay in unassigned_bookings.
-  const outsideBookings = untabledBookings.filter((booking) => booking.is_outside_seating === true)
+  const outsideBookings = untabledBookings
+    .filter((booking) => booking.is_outside_seating === true)
+    // Stable order even when start_datetime is null: fall back to booking_time then id.
+    .sort((a, b) =>
+      (a.start_datetime || a.booking_time || a.id).localeCompare(b.start_datetime || b.booking_time || b.id)
+    )
   const unassignedBookings = untabledBookings.filter((booking) => booking.is_outside_seating !== true)
 
   const standingEventBookings = (standingRows as any[])
@@ -832,30 +839,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
-  // Virtual, non-interactive lane holding outside bookings (no physical table).
-  // Only surfaced when at least one outside booking exists for the day.
-  const outsideLane = {
-    table_id: '__outside__',
-    table_name: 'Outside',
-    table_number: null,
-    capacity: null,
-    area_id: null,
-    area: null,
-    is_bookable: false,
-    bookings: [...outsideBookings].sort((a, b) =>
-      (a.start_datetime || '').localeCompare(b.start_datetime || '')
-    )
-  }
-
-  const lanesWithOutside = outsideBookings.length > 0 ? [...lanes, outsideLane] : lanes
-
   return NextResponse.json({
     success: true,
     data: {
       date,
       service_window: serviceWindow,
-      lanes: lanesWithOutside,
-      unassigned_bookings: [...unassignedBookings, ...standingEventBookings]
+      lanes,
+      unassigned_bookings: [...unassignedBookings, ...standingEventBookings],
+      outside_bookings: outsideBookings
     }
   })
 }
