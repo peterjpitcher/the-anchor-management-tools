@@ -51,6 +51,9 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'booking_confirmed',
   'booking_completed',
   'date_changed',
+  // A moved balance deadline must reach the customer without waiting on
+  // manual approval — same corrective class as 'date_changed'.
+  'balance_due_date_changed',
   // Retained for backward compatibility with historical queue rows. New
   // cancellation writes use the four variant triggers below.
   'booking_cancelled',
@@ -72,7 +75,8 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'manual',
 ]);
 
-function shouldAutoSendPrivateBookingSms(triggerType: string): boolean {
+/** Exported for tests: a trigger absent from the set queues as `pending` and never dispatches. */
+export function shouldAutoSendPrivateBookingSms(triggerType: string): boolean {
   return PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS.has(triggerType);
 }
 

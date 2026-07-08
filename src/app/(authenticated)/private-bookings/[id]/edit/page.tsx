@@ -352,7 +352,10 @@ export default function EditPrivateBookingPage({
                 />
               </FormGroup>
 
-              <FormGroup label="Balance & Final Details Due">
+              <FormGroup
+                label="Balance & Final Details Due"
+                help="Clear to auto-recalculate (14 days before the event). The customer is texted when this date changes."
+              >
                 <Input
                   type="date"
                   name="balance_due_date"

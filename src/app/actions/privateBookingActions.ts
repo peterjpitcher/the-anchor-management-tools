@@ -1349,6 +1349,8 @@ export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30, re
           action: 'extend_booking_hold',
           days,
           reason,
+          granted_expiry: result.newExpiry,
+          capped_at_balance_due: result.capped,
         },
       })
     } catch (auditError) {

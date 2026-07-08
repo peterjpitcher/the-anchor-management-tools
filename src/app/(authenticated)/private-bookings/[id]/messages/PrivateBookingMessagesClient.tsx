@@ -192,7 +192,14 @@ export default function PrivateBookingMessagesClient({
       setup_time: booking.setup_time ? formatTime12Hour(booking.setup_time) : ''
     }
 
-    const message = template.template.replace(/\{([^}]+)\}/g, (_, key) => replacements[key] || '')
+    // Balance Reminder: when no due date is set, drop the "by {date}" clause so
+    // the prefill still reads as a full sentence rather than "…settle by to keep…".
+    let templateText = template.template
+    if (template.id === 'balance_reminder' && !booking.balance_due_date) {
+      templateText = templateText.replace(' by {balance_due_date}', '')
+    }
+
+    const message = templateText.replace(/\{([^}]+)\}/g, (_, key) => replacements[key] || '')
     setCustomMessage(message)
   }
 

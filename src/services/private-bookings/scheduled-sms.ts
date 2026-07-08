@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import {
   depositReminder7DayMessage,
   depositReminder3DayMessage,
@@ -48,6 +48,70 @@ export type ScheduledSmsPreview = {
   expected_fire_at: string | null
   preview_body: string
   suppression_reason: ScheduledSmsSuppressionReason | null
+}
+
+export type DepositReminderTrigger =
+  | 'deposit_reminder_7day'
+  | 'deposit_reminder_3day'
+  | 'deposit_reminder_1day'
+
+export type BalanceReminderTrigger =
+  | 'balance_reminder_21day'
+  | 'balance_reminder_16day'
+  | 'balance_reminder_15day'
+  | 'balance_reminder_due'
+
+/**
+ * Deposit/hold-expiry reminder windows, keyed off whole days until
+ * `hold_expiry` (SOP §10: reminders at 7, 3 and 1 days before expiry).
+ * Single source of truth shared by the private-booking-monitor cron (Pass 1)
+ * and the Communications-tab preview below, so the two can never drift
+ * (discovery 2026-07-08: the preview advertised 4-10/2-3/0-1 windows while
+ * the cron actually sent at 4-7/2-3/1). Day 0 returns null — expiry itself is
+ * handled by the dedicated expire-holds cron, not a reminder.
+ */
+export function classifyDepositReminderWindow(
+  daysUntilExpiry: number,
+): DepositReminderTrigger | null {
+  if (daysUntilExpiry <= 7 && daysUntilExpiry > 3) return 'deposit_reminder_7day'
+  if (daysUntilExpiry <= 3 && daysUntilExpiry > 1) return 'deposit_reminder_3day'
+  if (daysUntilExpiry <= 1 && daysUntilExpiry > 0) return 'deposit_reminder_1day'
+  return null
+}
+
+/**
+ * Balance & final-details reminder schedule, keyed off calendar days until
+ * `balance_due_date` (SOP §13: 7, 2 and 1 days before the deadline and on the
+ * day itself). Shared by the cron (Pass 3) and the preview below. Returns
+ * null outside 0-7 days — past-due balances are never auto-chased; they
+ * surface in the weekly digest and dashboard for manager review.
+ */
+export function classifyBalanceReminderWindow(
+  daysUntilDue: number,
+): BalanceReminderTrigger | null {
+  if (daysUntilDue < 0 || daysUntilDue > 7) return null
+  if (daysUntilDue >= 3) return 'balance_reminder_21day'
+  if (daysUntilDue === 2) return 'balance_reminder_16day'
+  if (daysUntilDue === 1) return 'balance_reminder_15day'
+  return 'balance_reminder_due'
+}
+
+/**
+ * PostgREST `or=` filter for the cron's legacy queue dedup: a prior
+ * `private_booking_sms_queue` row only blocks a reminder when it was armed
+ * for the SAME deadline (its `metadata` carries the ISO date it was keyed
+ * to), so moving `balance_due_date` / `hold_expiry` re-arms the reminder for
+ * the new date. Rows without the metadata key — anything queued before
+ * deadline keying existed (jsonb `->>` yields NULL for missing keys) — keep
+ * blocking exactly as before, so nobody already in-window is double-sent on
+ * deploy. `reserveCronSmsSend` applies the same date as its window key, so
+ * both dedup layers agree.
+ */
+export function reminderDedupDateFilter(
+  metadataField: 'balance_due_date' | 'hold_expiry_date',
+  windowKey: string,
+): string {
+  return `metadata->>${metadataField}.is.null,metadata->>${metadataField}.eq.${windowKey}`
 }
 
 /**
@@ -129,15 +193,19 @@ export async function getBookingScheduledSms(
     const daysUntilExpiry = diffDaysCeil(holdExpiry, now)
     const holdExpiryReadable = formatReadableDate(booking.hold_expiry)
     const holdExpiryWindowKey = toIsoDateSlice(booking.hold_expiry)
+    // Same classifier as the cron — the preview must only advertise sends
+    // the cron would actually make.
+    const depositTrigger = classifyDepositReminderWindow(daysUntilExpiry)
 
-    // 7-day: window 4-10 days (covers catch-up after a missed cron run).
-    if (daysUntilExpiry >= 4 && daysUntilExpiry <= 10) {
+    // 7-day: window 4-7 days.
+    if (depositTrigger === 'deposit_reminder_7day') {
       const triggerType = 'deposit_reminder_7day'
       const body = depositReminder7DayMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
         eventDate: eventDateReadable,
         depositAmount,
         daysRemaining: daysUntilExpiry,
+        holdExpiry: holdExpiryReadable,
       })
       const suppression = decideSuppression({
         triggerType,
@@ -158,12 +226,13 @@ export async function getBookingScheduledSms(
     }
 
     // 3-day: window 2-3 days (SOP §10: reminders at 7, 3 and 1 days).
-    if (daysUntilExpiry >= 2 && daysUntilExpiry <= 3) {
+    if (depositTrigger === 'deposit_reminder_3day') {
       const triggerType = 'deposit_reminder_3day'
       const body = depositReminder3DayMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
         eventDate: eventDateReadable,
         depositAmount,
+        holdExpiry: holdExpiryReadable,
       })
       const suppression = decideSuppression({
         triggerType,
@@ -183,13 +252,14 @@ export async function getBookingScheduledSms(
       })
     }
 
-    // 1-day: window 0-1 days.
-    if (daysUntilExpiry >= 0 && daysUntilExpiry <= 1) {
+    // 1-day: window 1 day only — day-of expiry is the expire-holds cron's job.
+    if (depositTrigger === 'deposit_reminder_1day') {
       const triggerType = 'deposit_reminder_1day'
       const body = depositReminder1DayMessage({
         customerFirstName: booking.customer_first_name ?? booking.customer_name ?? null,
         eventDate: eventDateReadable,
         depositAmount,
+        holdExpiry: holdExpiryReadable,
       })
       const suppression = decideSuppression({
         triggerType,
@@ -239,39 +309,42 @@ export async function getBookingScheduledSms(
       ? diffDaysDateOnly(String(booking.balance_due_date), now)
       : null
 
-    if (balanceOutstanding > 0 && daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 7) {
+    // Same classifier as the cron — the preview must only advertise sends
+    // the cron would actually make.
+    const balanceTrigger =
+      daysUntilDue !== null ? classifyBalanceReminderWindow(daysUntilDue) : null
+
+    if (balanceOutstanding > 0 && balanceTrigger) {
       const customerFirstName = booking.customer_first_name ?? booking.customer_name ?? null
-      let triggerType: string
+      const triggerType: string = balanceTrigger
       let body: string
-      if (daysUntilDue >= 3) {
-        triggerType = 'balance_reminder_21day'
+      if (balanceTrigger === 'balance_reminder_21day') {
         body = balanceReminder21DayMessage({
           customerFirstName,
           eventDate: eventDateReadable,
           balanceAmount: balanceOutstanding,
           balanceDueDate: balanceDueDateReadable,
         })
-      } else if (daysUntilDue === 2) {
-        triggerType = 'balance_reminder_16day'
+      } else if (balanceTrigger === 'balance_reminder_16day') {
         body = balanceReminder16DayMessage({
           customerFirstName,
           eventDate: eventDateReadable,
           balanceAmount: balanceOutstanding,
           balanceDueDate: balanceDueDateReadable,
         })
-      } else if (daysUntilDue === 1) {
-        triggerType = 'balance_reminder_15day'
+      } else if (balanceTrigger === 'balance_reminder_15day') {
         body = balanceReminder15DayMessage({
           customerFirstName,
           eventDate: eventDateReadable,
           balanceAmount: balanceOutstanding,
+          balanceDueDate: balanceDueDateReadable,
         })
       } else {
-        triggerType = 'balance_reminder_due'
         body = balanceReminderDueMessage({
           customerFirstName,
           eventDate: eventDateReadable,
           balanceAmount: balanceOutstanding,
+          balanceDueDate: balanceDueDateReadable,
         })
       }
 
@@ -440,7 +513,9 @@ function diffDaysCeil(target: Date, now: Date): number {
 /** Calendar-day difference between an ISO date (YYYY-MM-DD) and now, London-agnostic date-only maths. */
 function diffDaysDateOnly(isoDate: string, now: Date): number {
   const target = Math.floor(Date.parse(`${isoDate.slice(0, 10)}T00:00:00Z`) / 86400000)
-  const today = Math.floor(Date.parse(`${toIsoDateSlice(now.toISOString())}T00:00:00Z`) / 86400000)
+  // "Today" must be the London day, matching the cron's getLondonRunKey —
+  // a UTC day would drift the preview by one day during BST small hours.
+  const today = Math.floor(Date.parse(`${toLocalIsoDate(now)}T00:00:00Z`) / 86400000)
   return target - today
 }
 

@@ -23,10 +23,13 @@ export function privateBookingCreatedMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   depositAmount: number
-  holdExpiry: string
+  holdExpiry: string | null
 }): string {
+  const securesPart = input.holdExpiry
+    ? `${money(input.depositAmount)} deposit secures it by ${input.holdExpiry}.`
+    : `${money(input.depositAmount)} deposit secures it.`
   return cap(
-    `Hi ${name(input.customerFirstName)} — your date at The Anchor on ${input.eventDate} is penciled in. ${money(input.depositAmount)} deposit secures it by ${input.holdExpiry}. We'll be in touch with next steps.`
+    `Hi ${name(input.customerFirstName)} — your date at The Anchor on ${input.eventDate} is penciled in. ${securesPart} We'll be in touch with next steps.`
   )
 }
 
@@ -35,9 +38,14 @@ export function depositReminder7DayMessage(input: {
   eventDate: string
   depositAmount: number
   daysRemaining: number
+  /** The actual expiry date — states the deadline and varies the body so a moved expiry re-arms dedup. */
+  holdExpiry?: string | null
 }): string {
+  const expiresPart = input.holdExpiry
+    ? `expires in ${input.daysRemaining} days, on ${input.holdExpiry}`
+    : `expires in ${input.daysRemaining} days`
   return cap(
-    `Hi ${name(input.customerFirstName)} — quick nudge. Your hold on ${input.eventDate} expires in ${input.daysRemaining} days. ${money(input.depositAmount)} deposit and the date's yours.`
+    `Hi ${name(input.customerFirstName)} — quick nudge. Your hold on ${input.eventDate} ${expiresPart}. ${money(input.depositAmount)} deposit and the date's yours.`
   )
 }
 
@@ -45,9 +53,12 @@ export function depositReminder3DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   depositAmount: number
+  /** The actual expiry date — states the deadline and varies the body so a moved expiry re-arms dedup. */
+  holdExpiry?: string | null
 }): string {
+  const expiresPart = input.holdExpiry ? ` expires on ${input.holdExpiry}` : ' is expiring soon'
   return cap(
-    `Hi ${name(input.customerFirstName)} — your hold on ${input.eventDate} is expiring soon. ${money(input.depositAmount)} deposit locks the date in before it's released.`
+    `Hi ${name(input.customerFirstName)} — your hold on ${input.eventDate}${expiresPart}. ${money(input.depositAmount)} deposit locks the date in before it's released.`
   )
 }
 
@@ -55,9 +66,12 @@ export function depositReminder1DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   depositAmount: number
+  /** The actual expiry date — states the deadline and varies the body so a moved expiry re-arms dedup. */
+  holdExpiry?: string | null
 }): string {
+  const datePart = input.holdExpiry ? ` (${input.holdExpiry})` : ''
   return cap(
-    `Hi ${name(input.customerFirstName)} — your hold on ${input.eventDate} expires tomorrow. Get the ${money(input.depositAmount)} deposit in today and you're locked in.`
+    `Hi ${name(input.customerFirstName)} — your hold on ${input.eventDate} expires tomorrow${datePart}. Get the ${money(input.depositAmount)} deposit in today and you're locked in.`
   )
 }
 
@@ -108,9 +122,12 @@ export function balanceReminder15DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   balanceAmount: number
+  /** The actual deadline, so "tomorrow" is anchored to a date the customer can check. */
+  balanceDueDate?: string | null
 }): string {
+  const datePart = input.balanceDueDate ? ` (${input.balanceDueDate})` : ''
   return cap(
-    `Hi ${name(input.customerFirstName)} — your ${money(input.balanceAmount)} balance and final details for ${input.eventDate} are due tomorrow.`
+    `Hi ${name(input.customerFirstName)} — your ${money(input.balanceAmount)} balance and final details for ${input.eventDate} are due tomorrow${datePart}.`
   )
 }
 
@@ -118,9 +135,12 @@ export function balanceReminderDueMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
   balanceAmount: number
+  /** The actual deadline, so "today" is anchored to a date the customer can check. */
+  balanceDueDate?: string | null
 }): string {
+  const datePart = input.balanceDueDate ? ` (${input.balanceDueDate})` : ''
   return cap(
-    `Hi ${name(input.customerFirstName)} — ${money(input.balanceAmount)} balance and your final details for ${input.eventDate} are due today. Get them in and you're all set.`
+    `Hi ${name(input.customerFirstName)} — ${money(input.balanceAmount)} balance and your final details for ${input.eventDate} are due today${datePart}. Get them in and you're all set.`
   )
 }
 
@@ -145,9 +165,30 @@ export function setupReminderMessage(input: {
 export function dateChangedMessage(input: {
   customerFirstName: string | null | undefined
   newEventDate: string
+  /** Included when the balance & final-details deadline moved with the event. */
+  balanceDueDate?: string | null
+}): string {
+  const duePart = input.balanceDueDate
+    ? ` Balance and final details are now due by ${input.balanceDueDate}.`
+    : ''
+  return cap(
+    `Hi ${name(input.customerFirstName)} — your booking's moved to ${input.newEventDate}.${duePart} All sorted our end.`
+  )
+}
+
+/**
+ * Sent when the balance & final-details deadline moves without the event
+ * itself moving — a customer who was told one date must hear the new one
+ * (discovery 2026-07-08: silent due-date changes produced contradictory
+ * contract/email dates).
+ */
+export function balanceDueDateChangedMessage(input: {
+  customerFirstName: string | null | undefined
+  eventDate: string
+  balanceDueDate: string
 }): string {
   return cap(
-    `Hi ${name(input.customerFirstName)} — your booking's moved to ${input.newEventDate}. All sorted our end.`
+    `Hi ${name(input.customerFirstName)} — quick update for ${input.eventDate}: your balance and final details are now due by ${input.balanceDueDate}. Everything else stays the same.`
   )
 }
 
