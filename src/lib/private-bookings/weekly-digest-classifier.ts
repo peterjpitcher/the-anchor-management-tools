@@ -1,10 +1,12 @@
 /**
  * Weekly digest tier classification for private bookings.
  *
- * Pure function — no external dependencies. Takes a booking row and
- * context (dates, SMS counts) and returns an urgency tier (1-3) with
- * human-readable labels explaining why.
+ * Pure function — only depends on dateUtils for London-formatted labels.
+ * Takes a booking row and context (dates, SMS counts) and returns an
+ * urgency tier (1-3) with human-readable labels explaining why.
  */
+
+import { formatDateInLondon, formatDateTime } from '@/lib/dateUtils'
 
 export type WeeklyDigestBookingRow = {
   id: string
@@ -60,13 +62,18 @@ function formatGBP(amount: number): string {
   return `£${amount.toFixed(2)}`
 }
 
-/** Format a hold_expiry ISO string as "YYYY-MM-DD HH:MM" */
+/** Format a YYYY-MM-DD due date as e.g. "25 March 2026" (London) */
+function formatDueDate(dateKey: string): string {
+  return formatDateInLondon(dateKey, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+/** Format a hold_expiry ISO string as e.g. "23 Mar 2026, 10:00" (London time) */
 function formatHoldExpiry(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  const date = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
-  const time = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
-  return `${date} ${time}`
+  return formatDateTime(iso)
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +106,9 @@ function collectTier1Labels(
 
   // Balance overdue
   if (outstanding && row.balance_due_date !== null && row.balance_due_date < ctx.todayDateKey) {
-    labels.push(`Balance overdue: ${formatGBP(row.balance_remaining!)}`)
+    labels.push(
+      `Balance overdue: ${formatGBP(row.balance_remaining!)} (due ${formatDueDate(row.balance_due_date)})`
+    )
   }
 
   // Stale draft (not updated in 7+ days)
@@ -127,7 +136,9 @@ function collectTier1Labels(
     row.balance_due_date >= ctx.todayDateKey &&
     row.balance_due_date <= ctx.endOfWeekDateKey
   ) {
-    labels.push(`Balance due: ${formatGBP(row.balance_remaining!)} by ${row.balance_due_date}`)
+    labels.push(
+      `Balance due: ${formatGBP(row.balance_remaining!)} by ${formatDueDate(row.balance_due_date)}`
+    )
   }
 
   return labels

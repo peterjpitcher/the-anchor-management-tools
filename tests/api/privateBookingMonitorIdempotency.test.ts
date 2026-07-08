@@ -191,7 +191,10 @@ describe('private booking monitor idempotency guard', () => {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   eq: vi.fn(() => ({
-                    in: vi.fn().mockResolvedValue({ count: 0, error: null }),
+                    // .or(...) keys the legacy dedup to the reminder's date
+                    or: vi.fn(() => ({
+                      in: vi.fn().mockResolvedValue({ count: 0, error: null }),
+                    })),
                   })),
                 })),
               })),
@@ -373,7 +376,10 @@ describe('private booking monitor idempotency guard', () => {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   eq: vi.fn(() => ({
-                    in: vi.fn().mockResolvedValue({ count: 0, error: null }),
+                    // .or(...) keys the legacy dedup to the reminder's date
+                    or: vi.fn(() => ({
+                      in: vi.fn().mockResolvedValue({ count: 0, error: null }),
+                    })),
                   })),
                 })),
               })),

@@ -149,16 +149,14 @@ export function generateContractHTML(data: ContractData): string {
   const eventPriceGross = money.grossTotal
   const totalToPay = round2(eventPriceGross + depositAmount)
 
-  // Balance-due date — prefer explicit field, else 14 days before the event
+  // Balance-due date — the stored column is the single source of truth. The contract
+  // never computes its own date: a stored date wins even over a stale TBD marker,
+  // and a null column renders as "To be confirmed" rather than an invented deadline.
   let balanceDueDate = 'To be confirmed'
-  if (isTbd) {
-    balanceDueDate = 'To be confirmed (date TBD)'
-  } else if (booking.balance_due_date) {
+  if (booking.balance_due_date) {
     balanceDueDate = formatDate(booking.balance_due_date)
-  } else if (booking.event_date) {
-    const eventDateObj = new Date(booking.event_date)
-    const dueDate = new Date(eventDateObj.getTime() - 14 * 24 * 60 * 60 * 1000)
-    balanceDueDate = formatDate(dueDate.toISOString())
+  } else if (isTbd) {
+    balanceDueDate = 'To be confirmed (date TBD)'
   }
 
   // ---- pre-escaped / composed values ----
@@ -502,11 +500,11 @@ ${depositRequired ? `            <p>A booking and damage deposit is required to 
           <div class="tc">
 ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited trading as The Anchor Pub to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
             <p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT) and the separate booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>. I understand that the deposit is separate from and additional to the event price and cannot be used towards the event balance or any other charge.</p>
-            <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, being 14 calendar days before the event, unless The Anchor has agreed a different written deadline.</p>
+            <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, unless The Anchor has agreed a different written deadline.</p>
             <p>If I provide final details late, I understand The Anchor will try to help where reasonably possible, but preferred menus, suppliers, layouts, timings, equipment or other options may no longer be available. If essential details or payment remain outstanding after reminder and General Manager review, The Anchor may treat the booking as cancelled by me.</p>
             <p>By signing below, paying the deposit, or otherwise confirming the booking in writing after receiving this Agreement, I confirm that I have read, understood and agree to be bound by this Agreement and its terms and conditions.</p>` : `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited trading as The Anchor Pub to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
             <p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT). No booking and damage deposit is required for this event.</p>
-            <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, being 14 calendar days before the event, unless The Anchor has agreed a different written deadline.</p>
+            <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, unless The Anchor has agreed a different written deadline.</p>
             <p>If I provide final details late, I understand The Anchor will try to help where reasonably possible, but preferred menus, suppliers, layouts, timings, equipment or other options may no longer be available. If essential details or payment remain outstanding after reminder and General Manager review, The Anchor may treat the booking as cancelled by me.</p>
             <p>By signing below or otherwise confirming the booking in writing after receiving this Agreement, I confirm that I have read, understood and agree to be bound by this Agreement and its terms and conditions.</p>`}
           </div>
@@ -568,7 +566,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             </div>
             <div class="tc-sec">
               <p class="tc-h">Payment and final details</p>
-              <p>The full event balance must be paid no later than <b>14 calendar days</b> before the event unless The Anchor agrees otherwise in writing. Final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements must also be confirmed by that date.</p>
+              <p>The full event balance must be paid no later than <b>14 calendar days</b> before the event unless otherwise stated in this contract. Final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements must also be confirmed by that date.</p>
               <p>After the final details deadline, The Anchor may commit staffing, catering, stock and suppliers based on the information provided. Reductions after the deadline do not automatically reduce the event price. Increases are subject to capacity, staffing, stock, supplier availability and any additional charges. Late requirements cannot always be guaranteed, but The Anchor will consider reasonable adjustments and practical changes where possible.</p>
             </div>
             <div class="tc-sec">

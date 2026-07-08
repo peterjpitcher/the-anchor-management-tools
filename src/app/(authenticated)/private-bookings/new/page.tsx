@@ -382,8 +382,8 @@ export default function NewPrivateBookingPage() {
                 />
               </FormGroup>
               <FormGroup
-                label="Deposit Due Date"
-                help="Date deposit is required by"
+                label="Deposit Due (Hold Expiry)"
+                help="The provisional hold is released if the deposit hasn't arrived by this date"
               >
                 <Input
                   type="date"

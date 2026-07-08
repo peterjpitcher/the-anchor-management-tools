@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { toLocalIsoDate } from '@/lib/dateUtils';
 import type {
   BookingStatus,
   BookingLayout,
@@ -81,6 +82,24 @@ export function balanceDueMoment(eventDate: Date): Date {
   const due = new Date(eventDate);
   due.setDate(due.getDate() - BALANCE_DUE_DAYS_BEFORE_EVENT);
   return due;
+}
+
+/**
+ * The single source of truth for a booking's balance & final-details due
+ * date as stored in `private_bookings.balance_due_date` (SOP §13):
+ * 14 calendar days before the event, never in the past — bookings created
+ * or rescheduled inside the window are due immediately — and never after the
+ * event itself. The DB trigger `calculate_balance_due_date()` mirrors this
+ * formula exactly; renderers must only ever read the stored column.
+ */
+export function computeBalanceDueDateIso(eventDate: string | Date, now: Date = new Date()): string {
+  const event = eventDate instanceof Date ? eventDate : new Date(eventDate);
+  const dueMoment = balanceDueMoment(event);
+  const clampedToToday = now.getTime() > dueMoment.getTime() ? toLocalIsoDate(now) : toLocalIsoDate(dueMoment);
+  const eventIso = toLocalIsoDate(event);
+  // A past-dated event must not receive a deadline after its own event date —
+  // that would leave the cron chasing a balance for an event already held.
+  return clampedToToday > eventIso ? eventIso : clampedToToday;
 }
 
 /**
