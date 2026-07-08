@@ -95,7 +95,7 @@ describe('BOH table booking edit routes', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload).toEqual({ success: true, data: { id: BOOKING_ID } })
+    expect(payload).toEqual({ success: true, data: { id: BOOKING_ID, high_chair_count: 0 } })
     expect(assignmentUpdate).toHaveBeenCalledWith(expect.objectContaining({
       start_datetime: expect.any(String),
       end_datetime: expect.any(String),
