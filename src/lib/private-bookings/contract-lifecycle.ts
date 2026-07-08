@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateContractHTML, bookingRequiresWaiverAnnex } from '@/lib/contract-template'
+import { CONTRACT_LOGO_DATA_URI } from '@/lib/private-bookings/contract-logo'
 import { logger } from '@/lib/logger'
 
 /**
@@ -91,7 +92,7 @@ export async function generateContractDocument(
 
   const html = generateContractHTML({
     booking,
-    logoUrl: '/logo-black.png',
+    logoUrl: CONTRACT_LOGO_DATA_URI,
     contractVersion: version,
     companyDetails: CONTRACT_COMPANY_DETAILS,
   })

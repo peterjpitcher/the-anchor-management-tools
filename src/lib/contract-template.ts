@@ -220,11 +220,13 @@ export function generateContractHTML(data: ContractData): string {
           </div>
         </header>`
 
-  const runFoot = (reg: string, pageLabel: string) => `
+  // showInitials: the multi-page contract is initialled per page; the single-page
+  // self-catering annex is signed once by the organiser, so it omits the initials.
+  const runFoot = (reg: string, pageLabel: string, showInitials = true) => `
         <footer class="run-foot">
           <p class="foot-reg">${reg}</p>
           <div class="foot-right">
-            <span class="foot-init">Initials <span class="init-box"></span> <span class="init-box"></span></span>
+            ${showInitials ? '<span class="foot-init">Initials <span class="init-box"></span> <span class="init-box"></span></span>' : ''}
             <span class="foot-page">${pageLabel} <b class="pageno">1</b> of <b class="pagetot">1</b></span>
           </div>
         </footer>`
@@ -764,7 +766,7 @@ ${hasOwnFood ? `
             </div>
           </div>
         </div>
-        ${runFoot(regWaiver, 'Waiver page')}
+        ${runFoot(regWaiver, 'Waiver page', false)}
       </div>
     </section>
 ` : ''}
