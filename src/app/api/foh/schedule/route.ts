@@ -674,6 +674,9 @@ export async function GET(request: NextRequest) {
   const lanes = tables.map((table) => {
     const tableBookings = bookings
       .filter((booking) => {
+        // Outside bookings hold no indoor table — never draw them on a lane, even if a
+        // stray assignment row existed (the create RPC and move guards prevent that).
+        if (booking.is_outside_seating === true) return false
         const assignments = assignmentsByBooking.get(booking.id) || []
         return assignments.some((row) => row.table_id === table.id)
       })
@@ -739,6 +742,10 @@ export async function GET(request: NextRequest) {
 
   const untabledBookings = bookings
     .filter((booking) => {
+      // Outside bookings always count as untabled so they reach outside_bookings.
+      if (booking.is_outside_seating === true) {
+        return true
+      }
       const assignments = assignmentsByBooking.get(booking.id)
       if (!assignments || assignments.length === 0) {
         return true
@@ -783,12 +790,34 @@ export async function GET(request: NextRequest) {
   // Outside view toggle, not as a virtual swimlane — two overlapping outside bookings
   // would otherwise draw on top of each other in a single lane). Genuinely-untabled
   // indoor bookings stay in unassigned_bookings.
+  // Sort key: `start_datetime` is a UTC timestamptz while `booking_time` is London-local,
+  // so the two can never be string-compared (they disagree by the BST offset). Normalise
+  // both to epoch ms off the raw rows, which still carry booking_date.
+  const outsideSortMsById = new Map<string, number>()
+  for (const row of bookings as any[]) {
+    const fromStart = row.start_datetime ? Date.parse(row.start_datetime) : Number.NaN
+    if (!Number.isNaN(fromStart)) {
+      outsideSortMsById.set(row.id, fromStart)
+      continue
+    }
+    if (row.booking_date && row.booking_time) {
+      const zoned = fromZonedTime(`${row.booking_date}T${row.booking_time}`, 'Europe/London').getTime()
+      if (!Number.isNaN(zoned)) {
+        outsideSortMsById.set(row.id, zoned)
+        continue
+      }
+    }
+    outsideSortMsById.set(row.id, Number.POSITIVE_INFINITY) // unknown time sorts last
+  }
+
   const outsideBookings = untabledBookings
     .filter((booking) => booking.is_outside_seating === true)
-    // Stable order even when start_datetime is null: fall back to booking_time then id.
-    .sort((a, b) =>
-      (a.start_datetime || a.booking_time || a.id).localeCompare(b.start_datetime || b.booking_time || b.id)
-    )
+    .sort((a, b) => {
+      const msA = outsideSortMsById.get(a.id) ?? Number.POSITIVE_INFINITY
+      const msB = outsideSortMsById.get(b.id) ?? Number.POSITIVE_INFINITY
+      if (msA !== msB) return msA < msB ? -1 : 1
+      return a.id.localeCompare(b.id) // stable tie-break, incl. both-unknown
+    })
   const unassignedBookings = untabledBookings.filter((booking) => booking.is_outside_seating !== true)
 
   const standingEventBookings = (standingRows as any[])
