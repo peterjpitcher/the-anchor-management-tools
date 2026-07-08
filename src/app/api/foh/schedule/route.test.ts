@@ -163,6 +163,57 @@ describe('GET /api/foh/schedule — outside bookings', () => {
     expect(outsideIds).toEqual(['outside-a', 'outside-b'])
   })
 
+  it('should order a null-start_datetime booking by its London-local time, not as a string', async () => {
+    // Regression: start_datetime is a UTC timestamptz but booking_time is London-local.
+    // The old `start_datetime || booking_time` string compare put C first, because
+    // '19:00' sorts before '2026-…'. In BST: A = 18:00 London (17:00Z),
+    // C = 19:00 London (18:00Z) → A must come first.
+    const OUTSIDE_BOOKING_C = {
+      ...OUTSIDE_BOOKING_A,
+      id: 'outside-c',
+      booking_reference: 'TB-OUTC',
+      booking_time: '19:00',
+      start_datetime: null,
+      end_datetime: null,
+      customer: { first_name: 'Cara', last_name: 'Outside' },
+    }
+    const db = createSupabaseMock({
+      tables: { data: [INDOOR_TABLE], error: null },
+      table_bookings: { data: [OUTSIDE_BOOKING_C, OUTSIDE_BOOKING_A], error: null },
+    })
+    mockAuthSuccess(db)
+
+    const res = await GET(makeRequest())
+    const payload = await res.json()
+
+    const outsideIds = (payload.data.outside_bookings as Array<{ id: string }>).map((b) => b.id)
+    expect(outsideIds).toEqual(['outside-a', 'outside-c'])
+  })
+
+  it('should keep an outside booking out of the lanes even if a stray table assignment exists', async () => {
+    // Defence-in-depth: the create RPC and the move guards stop an outside booking ever
+    // holding a table, but the view must not depend on that invariant.
+    const db = createSupabaseMock({
+      tables: { data: [INDOOR_TABLE], error: null },
+      table_bookings: { data: [OUTSIDE_BOOKING_A], error: null },
+      booking_table_assignments: {
+        data: [{ table_booking_id: 'outside-a', table_id: 'table-1' }],
+        error: null,
+      },
+    })
+    mockAuthSuccess(db)
+
+    const res = await GET(makeRequest())
+    const payload = await res.json()
+
+    const laneBookingIds = (payload.data.lanes as Array<{ bookings: Array<{ id: string }> }>)
+      .flatMap((lane) => lane.bookings.map((b) => b.id))
+    expect(laneBookingIds).not.toContain('outside-a')
+    expect((payload.data.outside_bookings as Array<{ id: string }>).map((b) => b.id)).toEqual([
+      'outside-a',
+    ])
+  })
+
   it('keeps genuinely-untabled indoor bookings in unassigned_bookings, not outside', async () => {
     const indoorUntabled = {
       ...OUTSIDE_BOOKING_A,

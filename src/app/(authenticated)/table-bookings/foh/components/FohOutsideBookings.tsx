@@ -10,17 +10,13 @@ import { formatBookingWindow, getBookingVisualState, getBookingVisualLabel } fro
 type FohOutsideBookingsProps = {
   bookings: FohBooking[]
   canEdit: boolean
+  loading: boolean
   styleVariant: FohStyleVariant
   onBookingClick: (booking: FohBooking) => void
 }
 
-// Sort key mirrors the schedule route: stable even when start_datetime is null.
-function outsideSortKey(booking: FohBooking): string {
-  return booking.start_datetime || booking.booking_time || booking.id
-}
-
 export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: FohOutsideBookingsProps) {
-  const { bookings, canEdit, styleVariant, onBookingClick } = props
+  const { bookings, canEdit, loading, styleVariant, onBookingClick } = props
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
 
   const panelSurfaceClass = isManagerKioskStyle
@@ -28,10 +24,12 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
     : 'rounded-lg border border-gray-200 bg-white'
   const cardWrapperClass = cn(panelSurfaceClass, isManagerKioskStyle ? 'p-2' : 'p-4')
 
-  const sorted = [...bookings].sort((a, b) => outsideSortKey(a).localeCompare(outsideSortKey(b)))
+  // Order comes from the schedule route, which sorts on an epoch key (start_datetime is
+  // UTC while booking_time is London-local, so they cannot be compared here — FohBooking
+  // does not carry booking_date). Render in the given order.
 
   return (
-    <div className={cardWrapperClass}>
+    <div className={cn(cardWrapperClass, 'relative')}>
       <div className={cn('flex items-center justify-between', isManagerKioskStyle ? 'mb-2' : 'mb-3')}>
         <h3 className="text-sm font-semibold text-gray-900">Outside bookings</h3>
         <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[10px]' : 'text-xs')}>
@@ -39,13 +37,15 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
         </p>
       </div>
 
-      {sorted.length === 0 ? (
-        <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[11px]' : 'text-sm')}>
-          No outside bookings for this service.
-        </p>
+      {bookings.length === 0 ? (
+        loading ? null : (
+          <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[11px]' : 'text-sm')}>
+            No outside bookings for this service.
+          </p>
+        )
       ) : (
         <div className={cn('grid gap-2 sm:grid-cols-2 lg:grid-cols-3', isManagerKioskStyle && 'gap-1.5')}>
-          {sorted.map((booking) => {
+          {bookings.map((booking) => {
             const visualState = getBookingVisualState(booking)
             const visualLabel = getBookingVisualLabel(booking)
             const highChairs = booking.high_chair_count ?? 0
@@ -85,6 +85,12 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
               </button>
             )
           })}
+        </div>
+      )}
+
+      {loading && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/70">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-sidebar" />
         </div>
       )}
     </div>

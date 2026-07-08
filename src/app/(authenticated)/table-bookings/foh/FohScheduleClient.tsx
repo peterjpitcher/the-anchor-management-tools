@@ -390,6 +390,7 @@ export function FohScheduleClient({
         <FohOutsideBookings
           bookings={schedule?.outside_bookings || []}
           canEdit={canEdit}
+          loading={loading}
           styleVariant={styleVariant}
           onBookingClick={(booking) => openBookingDetails(booking, { laneTableId: null, laneTableName: null })}
         />
