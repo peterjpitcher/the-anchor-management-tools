@@ -87,7 +87,7 @@
     "knip": "^6.23.0",
     "patch-package": "^8.0.1",
     "postcss": "^8.4.38",
-    "supabase": "^2.58.5",
+    "supabase": "^2.109.1",
     "tsx": "^4.21.0",
     "typescript": "^5.8.3",
     "vitest": "^4.0.17"
