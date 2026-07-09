@@ -150,10 +150,20 @@ export function ScheduleCalendarMonth({
                                 <div
                                     key={day.toISOString()}
                                     className={cn(
-                                        'bg-white p-1 flex flex-col gap-1 min-h-[80px]',
+                                        'group bg-white p-1 flex flex-col gap-1 min-h-[80px]',
                                         di > 0 && 'border-l border-gray-200',
-                                        !inMonth && 'bg-gray-50 text-gray-400'
+                                        !inMonth && 'bg-gray-50 text-gray-400',
+                                        onEmptyDayClick && 'cursor-pointer'
                                     )}
+                                    onClick={
+                                        onEmptyDayClick
+                                            ? (ev) => {
+                                                  // Only a click on the empty part of the cell adds a
+                                                  // note — clicks on entries or buttons handle themselves.
+                                                  if (ev.target === ev.currentTarget) onEmptyDayClick(day)
+                                              }
+                                            : undefined
+                                    }
                                 >
                                     <div className="flex items-center justify-between">
                                         <button
@@ -168,11 +178,14 @@ export function ScheduleCalendarMonth({
                                                 isToday(day) &&
                                                     'bg-primary text-primary-fg text-center font-semibold'
                                             )}
-                                            onClick={(ev) => {
-                                                if (ev.target === ev.currentTarget && onEmptyDayClick) {
-                                                    onEmptyDayClick(day)
-                                                }
-                                            }}
+                                            onClick={
+                                                onEmptyDayClick
+                                                    ? (ev) => {
+                                                          ev.stopPropagation()
+                                                          onEmptyDayClick(day)
+                                                      }
+                                                    : undefined
+                                            }
                                         >
                                             {format(day, 'd')}
                                         </button>
@@ -185,6 +198,19 @@ export function ScheduleCalendarMonth({
                                             renderTooltip={renderTooltip}
                                         />
                                     ))}
+                                    {onEmptyDayClick && (
+                                        <button
+                                            type="button"
+                                            aria-label={`Add note for ${format(day, 'EEE d MMM')}`}
+                                            onClick={(ev) => {
+                                                ev.stopPropagation()
+                                                onEmptyDayClick(day)
+                                            }}
+                                            className="mt-auto flex items-center gap-1 self-start rounded-sm px-1 py-0.5 text-[11px] text-text-muted opacity-0 transition-opacity hover:bg-surface-hover group-hover:opacity-100 focus-visible:opacity-100"
+                                        >
+                                            <span aria-hidden="true">+</span> Note
+                                        </button>
+                                    )}
                                 </div>
                             )
                         })}
