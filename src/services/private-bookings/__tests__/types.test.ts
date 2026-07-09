@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { balanceDueMoment, computeHoldExpiry, BALANCE_DUE_DAYS_BEFORE_EVENT } from '../types'
+import { balanceDueMoment, computeHoldExpiry, computeBalanceDueDateIso, BALANCE_DUE_DAYS_BEFORE_EVENT } from '../types'
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -39,5 +39,31 @@ describe('computeHoldExpiry', () => {
   it('should cap a short-notice hold at the event start', () => {
     const expiry = computeHoldExpiry(event, new Date('2026-07-18T00:00:00Z'))
     expect(expiry.getTime()).toBe(event.getTime())
+  })
+})
+
+describe('computeBalanceDueDateIso', () => {
+  it('should be event - 14 days when the event is far away', () => {
+    expect(computeBalanceDueDateIso('2026-07-19', new Date('2026-06-01T12:00:00Z'))).toBe('2026-07-05')
+  })
+
+  it('should clamp to today when computed inside the 14-day window (never a past date)', () => {
+    // Paula regression: backfill/reschedule inside the window must land on
+    // "today", not a date already gone.
+    expect(computeBalanceDueDateIso('2026-07-19', new Date('2026-07-08T12:00:00Z'))).toBe('2026-07-08')
+  })
+
+  it('should accept a Date event input', () => {
+    expect(computeBalanceDueDateIso(new Date('2026-08-10T00:00:00Z'), new Date('2026-06-01T12:00:00Z'))).toBe('2026-07-27')
+  })
+
+  it('should never return a date after the event itself (past-dated event)', () => {
+    // Clamping forward to "today" must not push the deadline past the event —
+    // that would leave the cron chasing a balance for an event already held.
+    expect(computeBalanceDueDateIso('2026-07-01', new Date('2026-07-08T12:00:00Z'))).toBe('2026-07-01')
+  })
+
+  it('should return the event date when the event is today', () => {
+    expect(computeBalanceDueDateIso('2026-07-08', new Date('2026-07-08T12:00:00Z'))).toBe('2026-07-08')
   })
 })

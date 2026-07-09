@@ -25,6 +25,12 @@ import {
   reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { formatDateInLondon } from '@/lib/dateUtils'
+import {
+  classifyBalanceReminderWindow,
+  classifyDepositReminderWindow,
+  reminderDedupDateFilter,
+} from '@/services/private-bookings/scheduled-sms'
 
 const JOB_NAME = 'private-booking-monitor'
 const LONDON_TZ = 'Europe/London'
@@ -94,13 +100,11 @@ function getLondonRunKey(now: Date = new Date()): string {
   }).format(now)
 }
 
+// Customer-facing dates must always carry the year and go through the shared
+// London formatter (discovery 2026-07-08: year-less/relative-only dates were
+// one source of the due-date confusion).
 function formatLondonDate(value: string | Date): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: LONDON_TZ,
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(value))
+  return formatDateInLondon(value, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 /**
@@ -507,15 +511,22 @@ export async function GET(request: Request) {
         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
 
         const eventDateReadable = formatLondonDate(booking.event_date)
+        const holdExpiryReadable = formatLondonDate(booking.hold_expiry)
 
         // Window key for idempotency: anchor on hold_expiry ISO date. Same
-        // booking + same expiry day + same trigger = same send cycle.
+        // booking + same expiry day + same trigger = same send cycle. Also
+        // written into queue metadata so the legacy dedup below re-arms when
+        // the hold expiry moves.
         const holdExpiryWindowKey = booking.hold_expiry
           ? new Date(booking.hold_expiry).toISOString().slice(0, 10)
           : 'unknown'
 
+        // Shared window classifier — also drives the Communications-tab
+        // preview (scheduled-sms.ts), so the two can never drift.
+        const depositTrigger = classifyDepositReminderWindow(diffDays)
+
         // 1. Check 7-Day Reminder (Window: 4-7 days)
-        if (diffDays <= 7 && diffDays > 3) {
+        if (depositTrigger === 'deposit_reminder_7day') {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -527,6 +538,9 @@ export async function GET(request: Request) {
             .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
+            // Re-arm on hold-expiry change: only a prior row for the SAME
+            // expiry date (or a legacy row with no keyed date) blocks.
+            .or(reminderDedupDateFilter('hold_expiry_date', holdExpiryWindowKey))
             .in('status', ['pending', 'approved', 'sent'])
 
           if (duplicateCheckError) {
@@ -554,6 +568,10 @@ export async function GET(request: Request) {
               eventDate: eventDateReadable,
               depositAmount,
               daysRemaining: diffDays,
+              // States the deadline and varies the body so the sms-queue
+              // body-identity dedup can't swallow a re-armed send after a
+              // hold-expiry change.
+              holdExpiry: holdExpiryReadable,
             })
 
             const result = await SmsQueueService.queueAndSend({
@@ -563,7 +581,8 @@ export async function GET(request: Request) {
               message_body: messageBody,
               customer_phone: contactPhone,
               customer_name: booking.customer_name,
-              priority: 2
+              priority: 2,
+              metadata: { hold_expiry_date: holdExpiryWindowKey }
             })
 
             if (result.error) {
@@ -587,7 +606,7 @@ export async function GET(request: Request) {
 
         // 2. Check 3-Day Reminder (Window: 2-3 days) — SOP §10 hold reminders
         // run at 7, 3 and 1 days before expiry.
-        if (diffDays <= 3 && diffDays > 1) {
+        if (depositTrigger === 'deposit_reminder_3day') {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -599,6 +618,9 @@ export async function GET(request: Request) {
             .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
+            // Re-arm on hold-expiry change: only a prior row for the SAME
+            // expiry date (or a legacy row with no keyed date) blocks.
+            .or(reminderDedupDateFilter('hold_expiry_date', holdExpiryWindowKey))
             .in('status', ['pending', 'approved', 'sent'])
 
           if (duplicateCheckError) {
@@ -625,6 +647,10 @@ export async function GET(request: Request) {
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               depositAmount,
+              // States the deadline and varies the body so the sms-queue
+              // body-identity dedup can't swallow a re-armed send after a
+              // hold-expiry change.
+              holdExpiry: holdExpiryReadable,
             })
 
             const result = await SmsQueueService.queueAndSend({
@@ -634,7 +660,8 @@ export async function GET(request: Request) {
               message_body: messageBody,
               customer_phone: contactPhone,
               customer_name: booking.customer_name,
-              priority: 2
+              priority: 2,
+              metadata: { hold_expiry_date: holdExpiryWindowKey }
             })
 
             if (result.error) {
@@ -657,7 +684,7 @@ export async function GET(request: Request) {
         }
 
         // 3. Check 1-Day Reminder (Window: <= 1 day)
-        if (diffDays <= 1 && diffDays > 0) {
+        if (depositTrigger === 'deposit_reminder_1day') {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -669,6 +696,9 @@ export async function GET(request: Request) {
             .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
+            // Re-arm on hold-expiry change: only a prior row for the SAME
+            // expiry date (or a legacy row with no keyed date) blocks.
+            .or(reminderDedupDateFilter('hold_expiry_date', holdExpiryWindowKey))
             .in('status', ['pending', 'approved', 'sent'])
 
           if (duplicateCheckError) {
@@ -695,6 +725,10 @@ export async function GET(request: Request) {
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               depositAmount,
+              // States the deadline and varies the body so the sms-queue
+              // body-identity dedup can't swallow a re-armed send after a
+              // hold-expiry change.
+              holdExpiry: holdExpiryReadable,
             })
 
             const result = await SmsQueueService.queueAndSend({
@@ -704,7 +738,8 @@ export async function GET(request: Request) {
               message_body: messageBody,
               customer_phone: contactPhone,
               customer_name: booking.customer_name,
-              priority: 2
+              priority: 2,
+              metadata: { hold_expiry_date: holdExpiryWindowKey }
             })
 
             if (result.error) {
@@ -779,7 +814,16 @@ export async function GET(request: Request) {
 
           if (!booking.balance_due_date) continue
           const daysUntilDue = toDayNumber(String(booking.balance_due_date)) - toDayNumber(todayLondonIso)
-          if (daysUntilDue < 0 || daysUntilDue > 7) continue
+
+          // Shared window classifier — also drives the Communications-tab
+          // preview (scheduled-sms.ts), so the two can never drift.
+          const triggerType = classifyBalanceReminderWindow(daysUntilDue)
+          if (!triggerType) continue
+
+          // Window key: the due date — one send cycle per trigger per
+          // deadline. Written into queue metadata so the legacy dedup below
+          // re-arms when the deadline moves.
+          const balanceWindowKey = String(booking.balance_due_date).slice(0, 10)
 
           // Customer-payable total is VAT-inclusive (stored prices are net)
           const totalAmount = Number(booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0)
@@ -793,41 +837,34 @@ export async function GET(request: Request) {
           const eventDateReadable = formatLondonDate(booking.event_date);
           const dueDateReadable = formatLondonDate(booking.balance_due_date)
 
-          let triggerType:
-            | 'balance_reminder_21day'
-            | 'balance_reminder_16day'
-            | 'balance_reminder_15day'
-            | 'balance_reminder_due'
           let messageBody: string
-          if (daysUntilDue >= 3) {
-            triggerType = 'balance_reminder_21day'
+          if (triggerType === 'balance_reminder_21day') {
             messageBody = balanceReminder21DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
               balanceDueDate: dueDateReadable,
             })
-          } else if (daysUntilDue === 2) {
-            triggerType = 'balance_reminder_16day'
+          } else if (triggerType === 'balance_reminder_16day') {
             messageBody = balanceReminder16DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
               balanceDueDate: dueDateReadable,
             })
-          } else if (daysUntilDue === 1) {
-            triggerType = 'balance_reminder_15day'
+          } else if (triggerType === 'balance_reminder_15day') {
             messageBody = balanceReminder15DayMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
+              balanceDueDate: dueDateReadable,
             })
           } else {
-            triggerType = 'balance_reminder_due'
             messageBody = balanceReminderDueMessage({
               customerFirstName: booking.customer_first_name,
               eventDate: eventDateReadable,
               balanceAmount: balanceDue,
+              balanceDueDate: dueDateReadable,
             })
           }
 
@@ -837,6 +874,9 @@ export async function GET(request: Request) {
             .select('id', { count: 'exact', head: true })
             .eq('booking_id', booking.id)
             .eq('trigger_type', triggerType)
+            // Re-arm on due-date change: only a prior row for the SAME
+            // deadline (or a legacy row with no keyed date) blocks.
+            .or(reminderDedupDateFilter('balance_due_date', balanceWindowKey))
             .in('status', ['pending', 'approved', 'sent']);
 
           if (duplicateCheckError) {
@@ -858,9 +898,6 @@ export async function GET(request: Request) {
             break
           }
 
-          // Window key: the due date — one send cycle per trigger per deadline.
-          const balanceWindowKey = String(booking.balance_due_date).slice(0, 10)
-
           const reservation = await reserveCronSmsSend(supabase, {
             bookingId: booking.id,
             triggerType,
@@ -876,7 +913,8 @@ export async function GET(request: Request) {
             customer_phone: contactPhone,
             customer_name: booking.customer_name,
             customer_id: booking.customer_id ?? undefined,
-            priority: 1
+            priority: 1,
+            metadata: { balance_due_date: balanceWindowKey }
           });
 
           if (result.error) {

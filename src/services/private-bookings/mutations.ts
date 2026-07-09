@@ -26,6 +26,7 @@ import {
   toNumber,
   computeHoldExpiry,
   balanceDueMoment,
+  computeBalanceDueDateIso,
   DATE_TBD_NOTE,
   DEFAULT_TBD_TIME,
   PRIVATE_BOOKING_INTAKE_FIELDS,
@@ -44,6 +45,7 @@ import {
   bookingConfirmedMessage,
   setupReminderMessage,
   dateChangedMessage,
+  balanceDueDateChangedMessage,
   bookingCompletedThanksMessage,
   bookingExpiredMessage,
   holdExtendedMessage,
@@ -81,12 +83,15 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
 
   const depositAmount = toNumber(booking.deposit_amount);
 
-  // Calculate hold expiry (14 days from creation)
-  const holdExpiryDate = booking.hold_expiry ? new Date(booking.hold_expiry) : new Date();
-  const expiryReadable = formatPrivateBookingDate(holdExpiryDate, {
-    day: 'numeric',
-    month: 'long'
-  });
+  // Quote the stored hold expiry (deposit deadline). No fabricated fallback —
+  // a missing expiry must not read as "due today" (discovery 2026-07-08).
+  const expiryReadable = booking.hold_expiry
+    ? formatPrivateBookingDate(new Date(booking.hold_expiry), {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    : null;
 
   const smsMessage = privateBookingCreatedMessage({
     customerFirstName: booking.customer_first_name,
@@ -625,9 +630,7 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
   // (SOP §13). Bookings created inside that window are due immediately.
   let balanceDueDate = input.balance_due_date;
   if (!balanceDueDate && finalEventDate && !input.date_tbd) {
-    balanceDueDate = isShortNotice
-      ? toLocalIsoDate(currentDateTime)
-      : toLocalIsoDate(dueMoment);
+    balanceDueDate = computeBalanceDueDateIso(actualEventDate, currentDateTime);
   }
 
   const depositAmount = input.deposit_amount ?? 250;
@@ -1011,6 +1014,12 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     updatePayload.cleardown_time = null;
   }
 
+  // balance_due_date is a date column — an empty string means "clear it";
+  // the DB trigger then refills it (event − 14 days, never in the past).
+  if (typeof updatePayload.balance_due_date === 'string' && updatePayload.balance_due_date.trim() === '') {
+    updatePayload.balance_due_date = null;
+  }
+
   // SOP §18: re-derive risk status when risk-relevant intake changes — but
   // never overwrite a GM decision ('approved' / 'rejected').
   const riskInputsTouched =
@@ -1048,6 +1057,18 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     delete updatePayload.deposit_waived_reason
   }
 
+  // An explicit staff choice always wins over any automatic recompute below.
+  // The edit form echoes the stored value back, so "staff set a date" only
+  // counts when the submitted value differs from what was stored.
+  const submittedBalanceDue =
+    typeof input.balance_due_date === 'string' && input.balance_due_date.trim() !== ''
+      ? input.balance_due_date.trim()
+      : null;
+  const storedBalanceDue = currentBooking.balance_due_date
+    ? String(currentBooking.balance_due_date).slice(0, 10)
+    : null;
+  const staffChangedBalanceDue = submittedBalanceDue !== null && submittedBalanceDue !== storedBalanceDue;
+
   // Handle TBD transitions
   const wasTbd = isBookingDateTbd(currentBooking);
   if (input.date_tbd === true && !wasTbd) {
@@ -1056,9 +1077,12 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     updatePayload.hold_expiry = null;
     updatePayload.balance_due_date = null;
   } else if (input.date_tbd === false && wasTbd) {
-    // TBD -> real date transition
+    // TBD -> real date transition. Keep a date the staff typed in this same
+    // submit; otherwise null it and let the trigger recalculate.
     updatePayload.date_tbd = false;
-    updatePayload.balance_due_date = null; // trigger will recalculate
+    if (!staffChangedBalanceDue) {
+      updatePayload.balance_due_date = null; // trigger will recalculate
+    }
     // Compute hold_expiry for the now-real date
     if (currentBooking.status === 'draft') {
       const newEventDate = new Date(finalEventDate);
@@ -1068,6 +1092,13 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     // Still TBD — keep nulls
     updatePayload.balance_due_date = null;
     updatePayload.hold_expiry = null;
+  }
+
+  // Rescheduling moves the balance & final-details deadline with the event
+  // (discovery 2026-07-08: stale due dates survived event moves).
+  const nextDateTbd = input.date_tbd ?? wasTbd;
+  if (dateChanged && !nextDateTbd && !staffChangedBalanceDue) {
+    updatePayload.balance_due_date = computeBalanceDueDateIso(finalEventDate);
   }
 
   if (!hasDateTbdColumn) {
@@ -1281,6 +1312,26 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // 4. Side Effects
 
+  // The customer must hear about a moved balance/final-details deadline —
+  // silent changes are how Paula got contradictory dates (discovery
+  // 2026-07-08). Compare against the post-trigger row so DB-side refills
+  // count too.
+  const previousBalanceDueIso = currentBooking.balance_due_date
+    ? String(currentBooking.balance_due_date).slice(0, 10)
+    : null
+  const nextBalanceDueIso = updatedBooking.balance_due_date
+    ? String(updatedBooking.balance_due_date).slice(0, 10)
+    : null
+  const balanceDueChanged = previousBalanceDueIso !== nextBalanceDueIso
+  const balanceDueReadable =
+    balanceDueChanged &&
+    nextBalanceDueIso &&
+    updatedBooking.status === 'confirmed' &&
+    !updatedBooking.final_payment_date &&
+    !isBookingDateTbd(updatedBooking)
+      ? formatPrivateBookingDate(nextBalanceDueIso)
+      : null
+
   // Send Date Change SMS: drafts get it when the hold was reset; confirmed
   // bookings get it on any real date change (SOP §15.6).
   const shouldSendDateChangeSms =
@@ -1291,13 +1342,14 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
     const expiryReadable = holdExpiryIso
       ? formatPrivateBookingDate(new Date(holdExpiryIso), {
-          day: 'numeric', month: 'long'
+          day: 'numeric', month: 'long', year: 'numeric'
         })
       : null;
 
     const smsMessage = dateChangedMessage({
       customerFirstName: updatedBooking.customer_first_name,
       newEventDate: eventDateReadable,
+      balanceDueDate: balanceDueReadable,
     });
 
     const result = await SmsQueueService.queueAndSend({
@@ -1313,10 +1365,43 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       metadata: {
         template: 'private_booking_date_changed',
         new_date: eventDateReadable,
-        new_expiry: expiryReadable
+        new_expiry: expiryReadable,
+        new_balance_due_date: nextBalanceDueIso
       }
     })
     captureSmsSideEffect('date_changed', 'private_booking_date_changed', result)
+  }
+
+  // Corrective SMS when the deadline moved on its own (no event-date change
+  // SMS to carry it) — e.g. a staff edit to balance_due_date, or a clear
+  // that the DB trigger refilled.
+  if (!abortSmsSideEffects && !shouldSendDateChangeSms && balanceDueReadable) {
+    const eventDateReadable = formatPrivateBookingDate(updatedBooking.event_date);
+
+    const smsMessage = balanceDueDateChangedMessage({
+      customerFirstName: updatedBooking.customer_first_name,
+      eventDate: eventDateReadable,
+      balanceDueDate: balanceDueReadable,
+    });
+
+    const result = await SmsQueueService.queueAndSend({
+      booking_id: updatedBooking.id,
+      trigger_type: 'balance_due_date_changed',
+      template_key: 'private_booking_balance_due_date_changed',
+      message_body: smsMessage,
+      customer_phone: updatedBooking.contact_phone,
+      customer_name: updatedBooking.customer_name,
+      customer_id: updatedBooking.customer_id,
+      created_by: performedByUserId,
+      priority: 2,
+      metadata: {
+        template: 'private_booking_balance_due_date_changed',
+        event_date: eventDateReadable,
+        old_balance_due_date: previousBalanceDueIso,
+        new_balance_due_date: nextBalanceDueIso
+      }
+    })
+    captureSmsSideEffect('balance_due_date_changed', 'private_booking_balance_due_date_changed', result)
   }
 
   const statusChanged = updatedBooking.status && updatedBooking.status !== currentBooking.status;
@@ -2075,7 +2160,7 @@ export async function extendHold(
   days: 7 | 14 | 30,
   extendedBy?: string,
   reason?: string
-): Promise<{ success: true; newExpiry: string; smsSent: boolean }> {
+): Promise<{ success: true; newExpiry: string; smsSent: boolean; capped: boolean }> {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
 
@@ -2103,12 +2188,16 @@ export async function extendHold(
 
   // Cap at the balance & final-details due date — a hold must never run past
   // it (SOP §10). Extensions inside the 14-day window cap at the event start.
+  // The cap is reported back so staff learn the granted expiry differs from
+  // the days they picked; the customer SMS below already quotes the capped date.
+  let capped = false;
   if (booking.event_date) {
     const eventDate = new Date(booking.event_date);
     const dueMoment = balanceDueMoment(eventDate);
     const cap = new Date() > dueMoment ? eventDate : dueMoment;
     if (newExpiry > cap) {
       newExpiry.setTime(cap.getTime());
+      capped = true;
     }
   }
 
@@ -2175,7 +2264,7 @@ export async function extendHold(
     smsSent = Boolean(!smsResult?.error && 'sent' in smsResult && smsResult.sent);
   }
 
-  return { success: true, newExpiry: newExpiryIso, smsSent };
+  return { success: true, newExpiry: newExpiryIso, smsSent, capped };
 }
 
 // ---------------------------------------------------------------------------

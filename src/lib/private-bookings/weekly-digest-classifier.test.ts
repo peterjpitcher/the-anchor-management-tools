@@ -100,8 +100,8 @@ describe('classifyBookingTier', () => {
     expect(result.labels).toContainEqual(expect.stringMatching(/Event in 7 days — still draft/))
   })
 
-  // 4. Overdue balance → Tier 1
-  it('returns Tier 1 with "Balance overdue" for overdue balance', () => {
+  // 4. Overdue balance → Tier 1 (label keeps the London-formatted due date)
+  it('returns Tier 1 with "Balance overdue" including the due date for overdue balance', () => {
     const row = makeRow({
       balance_due_date: '2026-03-20', // 2 days ago
       balance_remaining: 150,
@@ -109,7 +109,9 @@ describe('classifyBookingTier', () => {
     })
     const result = classifyBookingTier(row, ctx)
     expect(result.tier).toBe(1)
-    expect(result.labels).toContainEqual(expect.stringMatching(/Balance overdue: £150\.00/))
+    expect(result.labels).toContainEqual(
+      expect.stringMatching(/Balance overdue: £150\.00 \(due 20 March 2026\)/)
+    )
   })
 
   // 5. Stale draft (not updated 7+ days) → Tier 1
@@ -150,7 +152,7 @@ describe('classifyBookingTier', () => {
     })
     const result = classifyBookingTier(row, ctx)
     expect(result.tier).toBe(1)
-    expect(result.labels).toContainEqual(expect.stringMatching(/Balance due: £200\.00 by 2026-03-25/))
+    expect(result.labels).toContainEqual(expect.stringMatching(/Balance due: £200\.00 by 25 March 2026/))
   })
 
   // 9. Multiple triggers on same booking → all labels present
@@ -171,7 +173,7 @@ describe('classifyBookingTier', () => {
     expect(result.labels).toContainEqual(expect.stringMatching(/Missing:.*guest count/))
   })
 
-  // 10. Hold expiring within 48h → Tier 2
+  // 10. Hold expiring within 48h → Tier 2 (London-formatted expiry)
   it('returns Tier 2 with "Hold expires" for hold expiring within 48h', () => {
     const row = makeRow({
       status: 'draft',
@@ -181,7 +183,25 @@ describe('classifyBookingTier', () => {
     })
     const result = classifyBookingTier(row, ctx)
     expect(result.tier).toBe(2)
-    expect(result.labels).toContainEqual(expect.stringMatching(/Hold expires 2026-03-23/))
+    expect(result.labels).toContainEqual(expect.stringMatching(/Hold expires 23 Mar 2026, 10:00/))
+  })
+
+  // 10b. Hold expiry rendered in London time, not UTC (BST offset)
+  it('renders hold expiry in London time during BST', () => {
+    const row = makeRow({
+      status: 'draft',
+      hold_expiry: '2026-04-01T17:00:00Z', // 18:00 London (BST)
+      event_date: '2026-06-01',
+      updated_at: '2026-03-31T10:00:00Z',
+    })
+    const bstCtx = makeCtx({
+      now: new Date('2026-03-31T20:00:00Z'),
+      todayDateKey: '2026-03-31',
+      endOfWeekDateKey: '2026-04-05',
+    })
+    const result = classifyBookingTier(row, bstCtx)
+    expect(result.tier).toBe(2)
+    expect(result.labels).toContainEqual(expect.stringMatching(/Hold expires 1 Apr 2026, 18:00/))
   })
 
   // 11. Pending SMS → Tier 2
@@ -240,7 +260,7 @@ describe('classifyBookingTier', () => {
     })
     const result = classifyBookingTier(row, ctx)
     expect(result.tier).toBe(1)
-    expect(result.labels).toContainEqual(expect.stringMatching(/Balance due: £100\.00 by 2026-03-25/))
+    expect(result.labels).toContainEqual(expect.stringMatching(/Balance due: £100\.00 by 25 March 2026/))
     // Should NOT also have the T2 "Outstanding" label
     expect(result.labels).not.toContainEqual(expect.stringMatching(/Outstanding/))
   })

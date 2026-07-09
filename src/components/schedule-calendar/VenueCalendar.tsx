@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
+import { formatDateInLondon } from '@/lib/dateUtils'
 import { CalendarDaysIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
@@ -266,7 +267,8 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
         )}
         {td.eventDate && (
           <div>
-            <span className="font-medium">Event date:</span> {td.eventDate}
+            <span className="font-medium">Event date:</span>{' '}
+            {formatDateInLondon(td.eventDate, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
           </div>
         )}
       </div>
