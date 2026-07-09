@@ -402,6 +402,12 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
       }
     });
 
+    // Push the new event to the Pub Ops Google Calendar immediately so it does not
+    // have to wait for the first booking, an edit, or the reconciliation cron.
+    await syncPubOpsEventCalendarByEventId(createAdminClient(), event.id, {
+      context: 'event_created',
+    })
+
     revalidatePath('/events');
     revalidateTag('dashboard')
     return { success: true, data: event as Event, warning: marketingLinksWarning || undefined };
