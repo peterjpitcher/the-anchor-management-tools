@@ -118,6 +118,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/pub-ops-event-calendar-sync",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/parking-notifications",
       "schedule": "*/15 * * * *"
     },
