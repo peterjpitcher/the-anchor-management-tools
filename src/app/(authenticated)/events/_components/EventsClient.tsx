@@ -52,6 +52,7 @@ interface EventsClientProps {
   initialCalendarBookings?: VenueCalendarBooking[]
   initialCalendarNotes?: VenueCalendarNote[]
   initialCalendarParking?: VenueCalendarParking[]
+  canCreateCalendarNote?: boolean
 }
 
 export default function EventsClient({
@@ -62,6 +63,7 @@ export default function EventsClient({
   initialCalendarBookings,
   initialCalendarNotes,
   initialCalendarParking,
+  canCreateCalendarNote,
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
@@ -340,6 +342,8 @@ export default function EventsClient({
             privateBookings={calendarBookings}
             calendarNotes={calendarNotes}
             parkingBookings={calendarParking}
+            canCreateCalendarNote={canCreateCalendarNote}
+            onNoteCreated={fetchCalendarData}
           />
         )}
 
