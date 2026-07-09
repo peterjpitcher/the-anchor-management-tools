@@ -34,6 +34,7 @@ export default async function EventsPage() {
     parkingResult,
     todosResult,
     canManageEvents,
+    canManageCalendarNotes,
   ] = await Promise.all([
     getEvents({ status: 'all', dateFrom: getTodayIsoDate(), page: 1, pageSize: 25 }),
     getActiveEventCategories(),
@@ -48,6 +49,7 @@ export default async function EventsPage() {
         >,
     ),
     checkUserPermission('events', 'manage'),
+    checkUserPermission('settings', 'manage'),
   ])
 
   return (
@@ -62,6 +64,7 @@ export default async function EventsPage() {
             initialCalendarBookings={'data' in bookingsResult && bookingsResult.data ? bookingsResult.data as VenueCalendarBooking[] : []}
             initialCalendarNotes={notesResult.data ?? []}
             initialCalendarParking={'data' in parkingResult && parkingResult.data ? parkingResult.data as VenueCalendarParking[] : []}
+            canCreateCalendarNote={canManageCalendarNotes}
           />
         </div>
         <aside className="xl:w-80 xl:shrink-0">
