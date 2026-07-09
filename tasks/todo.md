@@ -1,28 +1,28 @@
 # Task Tracker
 
-## Current Task: Events → Google Calendar staleness fix (2026-07-09)
+## Current Task: Restore calendar "add note" affordance (2026-07-09)
 
 ### Problem
-Owner sees stale ("old content") entries in the Pub Ops Event Bookings Google Calendar.
+After the calendar redesign (wave 2, cdfce422), adding a note became undiscoverable
+on /dashboard (only a click on the bare day-number worked; no visible control) and
+was entirely absent on /events (VenueCalendar rendered without the note props).
+Not a permissions issue — owner is super_admin (passes every check).
 
-### Root cause (confirmed)
-1. `pub-ops-event-calendar-sync` reconciliation cron exists but was **never scheduled** in `vercel.json`
-   (git confirms it never appeared there). No automatic drift healing.
-2. All sync failures are swallowed (`logger.warn` + result ignored at every call site), so a single
-   transient Google API failure leaves an event's calendar entry permanently stale.
-3. `createEvent` never calls the sync (events.ts:367-414), so brand-new events are absent until the
-   first booking/edit.
-
-### Ruled out
-- `start_datetime` staleness: DB trigger `trg_sync_event_start_datetime` keeps it correct (0 drift / 29 upcoming).
-- Orphaned duplicates from changed ID formula: `generatePubOpsEventCalendarEventId` unchanged since 4 May 2026.
-
-### Fix
-- [ ] Schedule `pub-ops-event-calendar-sync` in `vercel.json` (every 15 min) — the missing safety net.
-      Reconciles ALL upcoming events every cycle (overwrites stale, creates missing, deletes cancelled).
-- [ ] (Optional) Sync on `createEvent` for immediacy of brand-new events.
-- [ ] Immediate heal: one-off GET of the backfill endpoint with CRON_SECRET.
+### Fix (chosen affordance: clickable day + hover hint)
+- [x] Lift the add-note modal + createCalendarNote flow into shared `VenueCalendar`
+      (so dashboard + events behave identically). Added optional `onNoteCreated`
+      callback (events refetches; dashboard falls back to router.refresh()).
+- [x] `ScheduleCalendarMonth`: empty-day cell is now clickable (cursor + guarded
+      empty-area click), plus a hover/focus "+ Note" hint per day; day-number
+      button still works for keyboard.
+- [x] Simplify dashboard `UpcomingScheduleCalendar` to a thin pass-through
+      (removed its duplicate modal).
+- [x] Wire /events: page computes `checkUserPermission('settings','manage')`,
+      passes `canCreateCalendarNote` through EventsClient → VenueCalendar.
 
 ### Verification
-- [ ] JSON valid; build passes.
-- [ ] After deploy: confirm cron listed in Vercel; check an event's "Last synced:" line advances.
+- [x] typecheck / lint / build all clean
+- [x] New test `ScheduleCalendarMonth.test.tsx` (3 passing): empty-day click →
+      onEmptyDayClick with correct date; hint present when enabled; absent when not.
+- [ ] Live UI is auth-gated → not driven in preview; covered by tests instead.
+- [ ] Deploy + verify Ready + prod alias moved.

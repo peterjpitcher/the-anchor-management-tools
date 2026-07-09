@@ -1,10 +1,12 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { CalendarDaysIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
+import { Modal, Button, FormGroup, Input, Textarea, toast } from '@/ds'
+import { createCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
 import {
   eventToEntry,
@@ -21,6 +23,10 @@ import type {
   ScheduleCalendarView,
   ScheduleDailyOps,
 } from './types'
+
+function toLocalIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 export interface VenueCalendarEvent {
   id: string
@@ -104,6 +110,11 @@ export interface VenueCalendarProps {
   parkingBookings: VenueCalendarParking[]
   canCreateCalendarNote?: boolean
   onEmptyDayClick?: (date: Date) => void
+  /** Called after a calendar note is created. When omitted, VenueCalendar falls
+   * back to router.refresh() (correct when notes are passed straight from a
+   * server component). Client components that hold notes in local state should
+   * pass their own refetch here. */
+  onNoteCreated?: () => void
   dailyOps?: ScheduleDailyOps
   header?: ReactNode
   className?: string
@@ -357,12 +368,58 @@ export function VenueCalendar({
   parkingBookings,
   canCreateCalendarNote,
   onEmptyDayClick,
+  onNoteCreated,
   dailyOps,
   header,
   className,
 }: VenueCalendarProps): ReactNode {
   const router = useRouter()
   const [view, setView] = useState<ScheduleCalendarView>('month')
+
+  // Quick "add calendar note" flow, shared by every surface that renders the
+  // full calendar (dashboard, events). Enabled only when the caller passes
+  // canCreateCalendarNote. A caller may still pass its own onEmptyDayClick to
+  // override this default behaviour.
+  const [newNoteDate, setNewNoteDate] = useState<string | null>(null)
+  const [newNoteForm, setNewNoteForm] = useState({ title: '', notes: '', color: '#0EA5E9', end_date: '' })
+  const [isSavingNote, startSavingNote] = useTransition()
+
+  function openNewNoteModal(date: Date) {
+    const iso = toLocalIsoDate(date)
+    setNewNoteDate(iso)
+    setNewNoteForm({ title: '', notes: '', color: '#0EA5E9', end_date: iso })
+  }
+
+  function closeNewNoteModal() {
+    setNewNoteDate(null)
+  }
+
+  function handleNewNoteSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!newNoteDate || !newNoteForm.title.trim()) return
+    startSavingNote(async () => {
+      const result = await createCalendarNote({
+        note_date: newNoteDate,
+        end_date: newNoteForm.end_date || newNoteDate,
+        title: newNoteForm.title.trim(),
+        notes: newNoteForm.notes.trim() || null,
+        color: newNoteForm.color,
+      })
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Calendar note added.')
+      closeNewNoteModal()
+      if (onNoteCreated) {
+        onNoteCreated()
+      } else {
+        router.refresh()
+      }
+    })
+  }
+
+  const handleEmptyDayClick = canCreateCalendarNote ? (onEmptyDayClick ?? openNewNoteModal) : undefined
 
   const entries = useMemo(
     () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings),
@@ -402,7 +459,7 @@ export function VenueCalendar({
         view={view}
         onViewChange={setView}
         canCreateCalendarNote={canCreateCalendarNote}
-        onEmptyDayClick={onEmptyDayClick}
+        onEmptyDayClick={handleEmptyDayClick}
         onEntryClick={(entry) => {
           if (entry.onClickHref) router.push(entry.onClickHref)
         }}
@@ -414,6 +471,76 @@ export function VenueCalendar({
 
       {hiddenCount > 0 && (
         <p className="mt-2 text-xs text-gray-500">{hiddenCount} without a date (not shown)</p>
+      )}
+
+      {canCreateCalendarNote && newNoteDate && (
+        <Modal
+          open={Boolean(newNoteDate)}
+          onClose={closeNewNoteModal}
+          title="Add calendar note"
+          description={`Adding a note for ${format(new Date(newNoteDate + 'T00:00:00'), 'EEE d MMM yyyy')}`}
+        >
+          <form onSubmit={handleNewNoteSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <FormGroup label="Start date" required>
+                <Input
+                  type="date"
+                  value={newNoteDate}
+                  onChange={(e) => {
+                    const d = e.target.value
+                    setNewNoteDate(d)
+                    setNewNoteForm((f) => ({ ...f, end_date: f.end_date < d ? d : f.end_date }))
+                  }}
+                  required
+                />
+              </FormGroup>
+              <FormGroup label="End date" required>
+                <Input
+                  type="date"
+                  value={newNoteForm.end_date}
+                  min={newNoteDate}
+                  onChange={(e) => setNewNoteForm((f) => ({ ...f, end_date: e.target.value }))}
+                  required
+                />
+              </FormGroup>
+            </div>
+            <FormGroup label="Title" required>
+              <Input
+                type="text"
+                placeholder="e.g. St Patrick's Day"
+                value={newNoteForm.title}
+                onChange={(e) => setNewNoteForm((f) => ({ ...f, title: e.target.value }))}
+                maxLength={160}
+                required
+                autoFocus
+              />
+            </FormGroup>
+            <FormGroup label="Color">
+              <Input
+                type="color"
+                value={newNoteForm.color}
+                onChange={(e) => setNewNoteForm((f) => ({ ...f, color: e.target.value }))}
+              />
+            </FormGroup>
+            <FormGroup label="Notes">
+              <Textarea
+                rows={3}
+                placeholder="Optional detail."
+                value={newNoteForm.notes}
+                onChange={(e) => setNewNoteForm((f) => ({ ...f, notes: e.target.value }))}
+                maxLength={4000}
+              />
+            </FormGroup>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" type="button" onClick={closeNewNoteModal} disabled={isSavingNote}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={isSavingNote} leftIcon={<CalendarDaysIcon className="h-4 w-4" />}>
+                Add note
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   )
