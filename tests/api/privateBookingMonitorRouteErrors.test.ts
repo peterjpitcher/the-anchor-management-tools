@@ -231,10 +231,13 @@ describe('private booking monitor route error payloads', () => {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
-                in: vi.fn().mockResolvedValue({
-                  count: null,
-                  error: { message: 'duplicate lookup failed' },
-                }),
+                // .or(...) keys the legacy dedup to the reminder's date
+                or: vi.fn(() => ({
+                  in: vi.fn().mockResolvedValue({
+                    count: null,
+                    error: { message: 'duplicate lookup failed' },
+                  }),
+                })),
               })),
             })),
           })),
@@ -377,7 +380,10 @@ describe('private booking monitor route error payloads', () => {
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   eq: vi.fn(() => ({
-                    in: vi.fn().mockResolvedValue({ count: 0, error: null }),
+                    // .or(...) keys the legacy dedup to the reminder's date
+                    or: vi.fn(() => ({
+                      in: vi.fn().mockResolvedValue({ count: 0, error: null }),
+                    })),
                   })),
                 })),
               })),

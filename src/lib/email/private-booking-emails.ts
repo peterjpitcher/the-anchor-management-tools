@@ -79,6 +79,8 @@ export async function sendBookingConfirmationEmail(booking: {
   guest_count?: number | null;
   deposit_amount?: number | null;
   total_amount?: number | null;
+  hold_expiry?: string | null;
+  deposit_paid_date?: string | null;
 }): Promise<void> {
   if (!booking.contact_email) return;
 
@@ -90,6 +92,13 @@ export async function sendBookingConfirmationEmail(booking: {
 
     const eventLabel = booking.event_type || 'Your Event';
     const dateFormatted = formatDate(booking.event_date);
+    // Only assert a concrete deposit deadline while it is still a live deadline:
+    // a past expiry, or a deposit already paid, would state something untrue.
+    const holdExpiryIsLive =
+      Boolean(booking.hold_expiry) &&
+      !booking.deposit_paid_date &&
+      new Date(booking.hold_expiry as string).getTime() > Date.now();
+    const holdExpiryFormatted = holdExpiryIsLive ? formatDate(booking.hold_expiry as string) : null;
     const subject = `Provisional Booking Hold — ${eventLabel} on ${dateFormatted}`;
 
     const timeRow =
@@ -117,7 +126,7 @@ export async function sendBookingConfirmationEmail(booking: {
     ${booking.total_amount != null ? row('Event balance due', formatCurrency(booking.total_amount)) : ''}
   </table>
   <p style="font-family: ${FONT_FAMILY};">Your date is currently on temporary hold. This hold is provisional only and your booking is not confirmed until we receive your deposit in cleared funds.</p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Unless we agree otherwise in writing, the temporary hold may be released if the deposit is not received in cleared funds by the hold expiry date we've given you.</p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Unless we agree otherwise in writing, the temporary hold may be released if the deposit is not received in cleared funds by ${holdExpiryFormatted ?? "the hold expiry date we've given you"}.</p>
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Paying the deposit confirms that you accept the booking Terms and Conditions set out in your contract, including the cancellation and refund policy. The deposit is separate from your event balance, which is payable separately nearer the time.</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">

@@ -207,6 +207,54 @@ describe('deposit rendering', () => {
   })
 })
 
+describe('balance due date', () => {
+  // Base booking event date is 2026-07-19, so an invented event−14 fallback
+  // would render 5 July 2026 — the assertions below prove it never appears.
+
+  it('prints the stored balance_due_date verbatim', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { balance_due_date: '2026-07-12' } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toMatch(/due no later than <b>[^<]*12 July 2026<\/b>/)
+    expect(html).not.toMatch(/\b5 July 2026/)
+  })
+
+  it('prints the stored date even when a stale TBD marker is present', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { balance_due_date: '2026-07-12', date_tbd: true } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toMatch(/due no later than <b>[^<]*12 July 2026<\/b>/)
+    expect(html).not.toContain('To be confirmed (date TBD)')
+  })
+
+  it('renders "To be confirmed" when no date is stored and the booking is not TBD — never a computed fallback', () => {
+    const html = generateContractHTML(baseData(makeBooking()))
+    expect(html).toContain('due no later than <b>To be confirmed</b>')
+    expect(html).not.toMatch(/\b5 July 2026/)
+  })
+
+  it('renders "To be confirmed (date TBD)" when the booking is date-TBD with no stored date', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { date_tbd: true } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toContain('due no later than <b>To be confirmed (date TBD)</b>')
+  })
+
+  it('never asserts the printed date is 14 days before the event', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { balance_due_date: '2026-07-12' } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).not.toContain('being 14 calendar days')
+  })
+
+  it('states the 14-day policy in the T&Cs with the contract-override caveat', () => {
+    const html = generateContractHTML(baseData(makeBooking()))
+    expect(html).toContain(
+      'no later than <b>14 calendar days</b> before the event unless otherwise stated in this contract',
+    )
+  })
+})
+
 describe('matchesSelfCateringPackageName', () => {
   it('matches bring your own, self-catering and BYO variants case-insensitively', () => {
     expect(matchesSelfCateringPackageName('Bring Your Own Food')).toBe(true)
