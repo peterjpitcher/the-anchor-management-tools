@@ -878,8 +878,10 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             supabase
               .from('calendar_notes')
               .select('id, note_date, end_date, title, notes, source, start_time, end_time, color')
-              .lte('note_date', calendarNotesHorizonIso)
-              .or(`end_date.gte.${eventsLookbackIso},end_date.is.null`)
+              // Calendar notes are long-range reminders. Load the complete
+              // note set so future dates remain visible when users navigate
+              // the calendar; rolling horizons still apply to other dashboard
+              // datasets below.
               .order('note_date', { ascending: true })
               .order('end_date', { ascending: true })
               .order('start_time', { ascending: true, nullsFirst: true })
