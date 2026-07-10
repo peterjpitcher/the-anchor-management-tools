@@ -49,7 +49,7 @@ Most-referenced tables (from `.from('…')` usage in `'use server'` files; via-s
 | menu_dishes (+ menu ingredients/recipes via lib) | menu-management.ts, `src/lib/menu/*` |
 | customer_labels / customer_label_assignments | customer-labels.ts, customer-labels-bulk.ts |
 | message_templates | messageTemplates.ts |
-| calendar_notes | calendar-notes.ts, rota-day-info.ts, dashboard-data.ts |
+| calendar_notes / calendar_note_google_sync_queue | calendar-notes.ts, rota-day-info.ts, dashboard-data.ts, `src/lib/google-calendar-notes.ts` |
 | business_hours / special_hours | business-hours.ts, missing-cashups.ts |
 | api_keys | `settings/api-keys/actions.ts`; validated by external API routes |
 | audit_logs | audit.ts (writer used by ~60 action files), auditLogs.ts (reader), portalPayPalActions.ts |
@@ -69,7 +69,7 @@ Most-referenced tables (from `.from('…')` usage in `'use server'` files; via-s
 | PayPal | `src/lib/paypal.ts` (orders + `verifyPayPalWebhook`), `src/lib/paypal-refund-webhook.ts` | table-booking deposits (`src/lib/table-bookings/paypal-deposit.ts`), parking (`src/lib/parking/payments.ts`), private bookings (portalPayPalActions.ts), event payments (`src/lib/events/event-payments.ts`); 4 webhook routes + `/api/cron/paypal-deposit-reconciliation` |
 | Stripe | `src/lib/table-bookings/{charge-approvals,refunds,bookings}.ts` | card capture (`/g/[token]/card-capture`), charge requests (`/m/[token]/charge-request`), `/api/stripe/webhook` |
 | OpenAI | `src/lib/openai.ts`, `src/lib/openai/config.ts` | receipts classification (`src/lib/receipts/ai-classification.ts`), recruitment CV parsing (`src/lib/recruitment/ai.ts`), menu AI parse (`/api/menu/ai-parse`), event content (ai model env overrides) |
-| Google Calendar | `src/lib/google-calendar.ts`, `google-calendar-rota.ts`, `google-calendar-events.ts` | rota shift sync (`/api/rota/resync-calendar`), interview bookings, `/api/cron/pub-ops-event-calendar-sync`, `/api/cron/recruitment-calendar-retry` |
+| Google Calendar | `src/lib/google-calendar.ts`, `google-calendar-rota.ts`, `google-calendar-events.ts`, `google-calendar-notes.ts` | rota shift sync (`/api/rota/resync-calendar`), interview bookings, event sync (`/api/cron/pub-ops-event-calendar-sync`), calendar-note sync (`/api/cron/pub-ops-calendar-note-sync`), `/api/cron/recruitment-calendar-retry` |
 | Puppeteer PDF | `src/lib/pdf-generator.ts` | invoice/quote PDFs (`/api/invoices/[id]/pdf`, `/api/quotes/[id]/pdf`), contracts |
 | PDFKit | `src/lib/receipts/export/claim-summary-pdf.ts` | receipts/expense claim exports |
 | ExcelJS | `src/lib/rota/excel-export.ts`, `src/lib/pnl/spreadsheet-export.ts` | `/api/rota/export`, P&L export |

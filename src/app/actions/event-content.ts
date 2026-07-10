@@ -14,6 +14,7 @@ import {
 import type { SeoValidationIssue } from '@/lib/seo-validation'
 import {
   buildEventSeoFacts,
+  describeKitchenServiceForEvent,
   preflightCheck,
   ANCHOR_VENUE_CONTEXT,
   CONTENT_RETRY_CONFIG,
@@ -23,6 +24,7 @@ import {
 } from '@/lib/event-seo/generation'
 import type { BuildFactsInput, BuildFactsDbData } from '@/lib/event-seo/generation'
 import { buildGenerationMessages, buildRepairMessages } from '@/lib/event-seo/prompts'
+import { getKitchenWindowForDate } from '@/services/business-hours'
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -151,6 +153,7 @@ type EventSeoContentInput = {
   name: string
   date?: string | null
   time?: string | null
+  endTime?: string | null
   categoryName?: string | null
   capacity?: number | null
   brief?: string | null
@@ -243,6 +246,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     name: input.name,
     date: input.date,
     time: input.time,
+    endTime: input.endTime,
     categoryName: input.categoryName,
     capacity: input.capacity,
     brief: input.brief,
@@ -272,6 +276,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         name,
         date,
         time,
+        end_time,
         capacity,
         category_details:event_categories(name),
         performer_name,
@@ -293,6 +298,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         name: data.name,
         date: data.date,
         start_time: data.time,
+        end_time: data.end_time,
         category_name: categoryName ?? null,
         capacity: data.capacity,
         description: null,
@@ -303,6 +309,25 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         booking_url: data.booking_url ?? null,
         brief: data.brief ?? null,
       }
+    }
+  }
+
+  const resolvedDate = input.date?.trim() || dbData?.date?.trim() || null
+  const resolvedStartTime = input.time?.trim() || dbData?.start_time?.trim() || null
+  const resolvedEndTime = input.endTime?.trim() || dbData?.end_time?.trim() || null
+
+  if (resolvedDate) {
+    try {
+      const kitchenWindow = await getKitchenWindowForDate(resolvedDate)
+      factsInput.kitchenService = describeKitchenServiceForEvent(
+        kitchenWindow,
+        resolvedStartTime,
+        resolvedEndTime,
+      )
+    } catch (error) {
+      console.error('Failed to resolve kitchen hours for event content', error)
+      factsInput.kitchenService =
+        'Kitchen hours could not be verified. Do not say food or the menu is available.'
     }
   }
 
