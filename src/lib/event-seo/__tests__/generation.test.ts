@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildEventSeoFacts,
+  describeKitchenServiceForEvent,
   preflightCheck,
   ANCHOR_VENUE_CONTEXT,
   CONTENT_RETRY_CONFIG,
@@ -31,9 +32,11 @@ function completeInput(): BuildFactsInput {
     name: 'Live Music — Jessica Lovelock',
     date: '2026-06-14',
     time: '7:00 PM',
+    endTime: '10:00 PM',
     categoryName: 'Live Music',
     capacity: 80,
     brief: 'An evening of acoustic folk and indie covers.',
+    kitchenService: 'The kitchen is closed on this event date.',
     performerName: 'Jessica Lovelock',
     performerType: 'Singer-Songwriter',
     price: '£10',
@@ -56,6 +59,7 @@ function completeDbData(): BuildFactsDbData {
     name: 'DB Event Name',
     date: '2026-06-15',
     start_time: '8:00 PM',
+    end_time: '10:00 PM',
     category_name: 'DB Category',
     capacity: 100,
     description: 'DB description text.',
@@ -77,6 +81,7 @@ describe('buildEventSeoFacts', () => {
     expect(facts.name).toBe('Live Music — Jessica Lovelock')
     expect(facts.date).toBe('2026-06-14')
     expect(facts.time).toBe('7:00 PM')
+    expect(facts.endTime).toBe('10:00 PM')
     expect(facts.categoryName).toBe('Live Music')
     expect(facts.capacity).toBe(80)
     expect(facts.pricingLabel).toBe('£10')
@@ -84,6 +89,7 @@ describe('buildEventSeoFacts', () => {
     expect(facts.performerType).toBe('Singer-Songwriter')
     expect(facts.bookingUrlPresent).toBe(true)
     expect(facts.brief).toBe('An evening of acoustic folk and indie covers.')
+    expect(facts.kitchenService).toBe('The kitchen is closed on this event date.')
     expect(facts.isFree).toBe(false)
     expect(facts.existingContent.metaTitle).toBe('Old Title')
     expect(facts.existingContent.highlights).toEqual(['Great atmosphere', 'Free parking'])
@@ -110,6 +116,7 @@ describe('buildEventSeoFacts', () => {
     expect(facts.name).toBe('DB Event Name')
     expect(facts.date).toBe('2026-06-15')
     expect(facts.time).toBe('8:00 PM')
+    expect(facts.endTime).toBe('10:00 PM')
     expect(facts.categoryName).toBe('DB Category')
     expect(facts.capacity).toBe(100)
     expect(facts.performerName).toBe('DB Performer')
@@ -130,11 +137,13 @@ describe('buildEventSeoFacts', () => {
 
     expect(facts.date).toBeNull()
     expect(facts.time).toBeNull()
+    expect(facts.endTime).toBeNull()
     expect(facts.categoryName).toBeNull()
     expect(facts.capacity).toBeNull()
     expect(facts.performerName).toBeNull()
     expect(facts.performerType).toBeNull()
     expect(facts.brief).toBeNull()
+    expect(facts.kitchenService).toBeNull()
     expect(facts.pricingLabel).toBeNull()
     expect(facts.bookingUrlPresent).toBe(false)
   })
@@ -190,6 +199,31 @@ describe('buildEventSeoFacts', () => {
     const facts = buildEventSeoFacts({ name: 'Test' })
     expect(facts.venue).toBe(ANCHOR_VENUE_CONTEXT)
     expect(facts.venue.phone).toBe('01753 682707')
+  })
+})
+
+describe('describeKitchenServiceForEvent', () => {
+  const weekdayWindow = { openMinutes: 16 * 60, closeMinutes: 21 * 60 }
+
+  it('promotes the full menu when an event overlaps kitchen hours', () => {
+    const result = describeKitchenServiceForEvent(weekdayWindow, '19:00', '23:00')
+
+    expect(result).toContain('full menu is available from 4:00pm to 9:00pm')
+    expect(result).toContain('event overlaps')
+    expect(result).toContain('not pizza on its own')
+  })
+
+  it('does not claim food is available when an event starts after the kitchen closes', () => {
+    const result = describeKitchenServiceForEvent(weekdayWindow, '21:00', '23:00')
+
+    expect(result).toContain('does not overlap')
+    expect(result).toContain('Do not say food or the menu is available')
+  })
+
+  it('treats a closed kitchen as unavailable', () => {
+    expect(describeKitchenServiceForEvent(null, '19:00', '21:00')).toContain(
+      'kitchen is closed'
+    )
   })
 })
 
@@ -394,6 +428,8 @@ describe('buildFactsJson', () => {
     const parsed = JSON.parse(json)
     expect(parsed.name).toBe('Live Music — Jessica Lovelock')
     expect(parsed.date).toBe('2026-06-14')
+    expect(parsed.end_time).toBe('10:00 PM')
+    expect(parsed.kitchen_service).toBe('The kitchen is closed on this event date.')
     expect(parsed.performer_name).toBe('Jessica Lovelock')
     expect(parsed.venue.phone).toBe('01753 682707')
   })
@@ -472,6 +508,13 @@ describe('prompt constants', () => {
   it('ANCHOR_VENUE_CONTEXT_PROMPT includes address and phone', () => {
     expect(ANCHOR_VENUE_CONTEXT_PROMPT).toContain('01753 682707')
     expect(ANCHOR_VENUE_CONTEXT_PROMPT).toContain('TW19 6AQ')
+  })
+
+  it('uses full-menu wording and makes food conditional on kitchen hours', () => {
+    expect(ANCHOR_VENUE_CONTEXT_PROMPT).toContain('Full menu available while the kitchen is open')
+    expect(ANCHOR_VENUE_CONTEXT_PROMPT).not.toContain('Kitchen serves pizza on event nights')
+    expect(FIELD_RULES).toContain('only when FACTS_JSON.kitchen_service confirms')
+    expect(FIELD_RULES).toContain('Never present pizza as the only food available')
   })
 
   it('OUTPUT_RUBRIC bans filler phrases', () => {

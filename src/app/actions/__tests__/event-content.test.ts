@@ -30,6 +30,10 @@ vi.mock('@/lib/openai/config', () => ({
   }),
 }))
 
+vi.mock('@/services/business-hours', () => ({
+  getKitchenWindowForDate: vi.fn().mockResolvedValue(null),
+}))
+
 // Mock retry to just call the function directly (no delay)
 vi.mock('@/lib/retry', () => ({
   retry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
@@ -66,8 +70,8 @@ function buildValidSeoResponse(): Record<string, unknown> {
     'Expect an intimate atmosphere where every note resonates through the venue during this acoustic night performance. Jessica brings a unique blend of folk and contemporary acoustic sounds that create the perfect backdrop for a relaxed evening out with friends and family. Her setlist spans original compositions and carefully selected covers that showcase her remarkable vocal range and impressive guitar skills. The warmth of the room combined with the quality of the sound system make every seat feel like the best in the house for this live music experience.',
     // Para 3: ~85 words, performer
     'Jessica Lovelock has been captivating audiences across the south of England for over a decade with her live music performances at venues large and small. Known for her warm stage presence and natural ability to connect with every listener in the room, she transforms each performance into a shared experience that leaves lasting memories for all who attend. Her latest album received critical acclaim from music publications across the country and her touring schedule continues to grow as word spreads about her extraordinary talent and engaging stage presence.',
-    // Para 4: ~80 words, food/drink/venue, includes local keyword
-    'The Anchor provides the ideal setting for an acoustic night out at this popular pub near Heathrow, with a welcoming bar serving a selection of craft beers, wines, and cocktails throughout the evening. The kitchen will be open serving freshly made pizza so you can enjoy great food alongside the live music. The relaxed and friendly atmosphere makes The Anchor the perfect venue for enjoying quality entertainment in a comfortable Surrey setting.',
+    // Para 4: ~70 words, drink/venue, includes local keyword; kitchen is closed on Monday
+    'The Anchor provides the ideal setting for an acoustic night out at this popular pub near Heathrow, with a welcoming bar serving a selection of craft beers, wines, and cocktails throughout the evening. Settle in with a drink and enjoy the music in a relaxed, friendly local where it is easy to feel at home. The comfortable Surrey setting makes it a great place to catch up with friends while enjoying the live performance.',
     // Para 5: ~80 words, practical + booking
     'Tickets for this live music event are priced at just fifteen pounds per person, offering exceptional value for an evening of quality entertainment at The Anchor. With limited capacity available at the venue, early booking is strongly recommended to avoid disappointment and secure your preferred table position. Reserve your spot now to guarantee your place at what is expected to be one of the most popular live music events of the summer season.',
     // Para 6: ~85 words, local context
@@ -81,7 +85,7 @@ function buildValidSeoResponse(): Record<string, unknown> {
     longDescription: longParas.join('\n\n'),
     highlights: [
       'live music by jessica lovelock performing acoustic favourites',
-      'intimate acoustic night venue atmosphere with craft beers and pizza',
+      'intimate acoustic night venue atmosphere with craft beers',
       'free parking and just seven minutes from heathrow terminal five',
       'limited capacity so book early to secure your spot',
     ],
@@ -138,6 +142,7 @@ const VALID_INPUT = {
   name: 'Jessica Lovelock',
   date: '2026-06-15',
   time: '20:00',
+  endTime: '22:00',
   categoryName: 'Live Music',
   capacity: 60,
   brief: 'Acoustic set by Jessica Lovelock',
