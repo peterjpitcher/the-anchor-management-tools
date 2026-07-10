@@ -61,7 +61,7 @@ RBAC check in actions: `checkUserPermission('module', 'action')`. Roles: `super_
 | Stripe (8) | `src/lib/table-bookings/{refunds,charge-approvals,bookings}.ts` | Card capture/charges/refunds; webhook |
 | PayPal (REST, no SDK) | `src/lib/paypal.ts`, `src/lib/paypal-refund-webhook.ts`, `src/lib/table-bookings/paypal-deposit.ts`, `src/lib/parking/payments.ts` | Deposits/payments for table bookings, parking, private bookings, events; 4 webhooks |
 | OpenAI (7) | `src/lib/openai.ts`, `src/lib/receipts/ai-classification.ts`, `src/lib/recruitment/ai.ts` | Receipt classification, recruitment CV parsing, event content |
-| Google Calendar (3) | `src/lib/google-calendar.ts`, `-rota.ts`, `-events.ts` | Rota/interview/event calendar sync |
+| Google Calendar (4) | `src/lib/google-calendar.ts`, `-rota.ts`, `-events.ts`, `-notes.ts` | Rota/interview/event/calendar-note sync |
 | Resend (2) | `src/lib/email/emailService.ts` | Alternate email provider + svix-verified webhook |
 | Puppeteer / PDFKit / ExcelJS | `src/lib/pdf-generator.ts`, `src/lib/receipts/export/claim-summary-pdf.ts`, `src/lib/rota/excel-export.ts`, `src/lib/pnl/spreadsheet-export.ts` | PDF/Excel generation |
 | QR codes | `src/services/event-marketing.ts` | Event marketing short-link QRs |
