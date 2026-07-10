@@ -106,7 +106,7 @@ async function getEventChecklistProgress(eventIds: string[]): Promise<{ success:
   }
 
   statuses?.forEach((status) => {
-    if (!status.completed_at) return
+    if (!status.completed_at || !EVENT_CHECKLIST_TASK_KEYS.has(status.task_key)) return
     const current = progress[status.event_id]
     if (!current) {
       progress[status.event_id] = { completed: 1, total: EVENT_CHECKLIST_DEFINITIONS.length }

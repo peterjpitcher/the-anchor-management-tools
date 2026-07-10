@@ -58,7 +58,7 @@ longDescription: 5-6 short paragraphs separated by double newlines (\\n\\n), aro
   Paragraph 1: hook them. What the night is and why it is a good time, plus the event name, date and time. Work a primary keyword in naturally.
   Paragraph 2: what actually happens on the night — the format, the rounds, the music, whatever the facts say.
   Paragraph 3: the host or performer and what they bring.
-  Paragraph 4: food, drink and the feel of the room, using VENUE_CONTEXT.
+  Paragraph 4: drinks and the feel of the room, using VENUE_CONTEXT. Mention food only when FACTS_JSON.kitchen_service confirms the event overlaps kitchen hours. When it does, say the full menu is available and state when service ends. Never present pizza as the only food available. If the kitchen is closed or the event does not overlap its hours, do not claim food is available.
   Paragraph 5: the practical bits — price, booking, capacity, when to arrive, walk-ins.
   Paragraph 6: where to find us — Stanwell Moor, parking, nearby areas. Mention Heathrow only if it genuinely adds something.
   Write it the way you'd tell a regular. No section labels, no posh words, no padding.
@@ -96,6 +96,7 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   obj.name = facts.name
   if (facts.date) obj.date = facts.date
   if (facts.time) obj.time = facts.time
+  if (facts.endTime) obj.end_time = facts.endTime
   if (facts.categoryName) obj.category = facts.categoryName
   if (facts.capacity != null) obj.capacity = facts.capacity
   if (facts.pricingLabel) obj.pricing = facts.pricingLabel
@@ -103,6 +104,7 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   if (facts.performerType) obj.performer_type = facts.performerType
   obj.booking_url_present = facts.bookingUrlPresent
   if (facts.brief) obj.brief = facts.brief
+  if (facts.kitchenService) obj.kitchen_service = facts.kitchenService
   obj.is_free = facts.isFree
 
   // Existing content — only non-empty fields
@@ -182,7 +184,7 @@ export function buildRepairMessages(
         '',
         currentWordCount > 700
           ? `LENGTH: the long description is ${currentWordCount} words — too long. Tighten it to under 700 by cutting anything repetitive or padded. Keep the voice punchy.`
-          : `LENGTH: the long description is only ${currentWordCount} words — too thin to be useful. Add real, specific detail from FACTS_JSON and VENUE_CONTEXT (the format, the host, food and drink, parking) to reach about 280-360 words. Keep sentences short and human; never pad with filler or hype.`,
+          : `LENGTH: the long description is only ${currentWordCount} words — too thin to be useful. Add real, specific detail from FACTS_JSON and VENUE_CONTEXT (the format, the host, drinks, kitchen service when confirmed, parking) to reach about 280-360 words. Keep sentences short and human; never pad with filler or hype.`,
       ].join('\n')
     : ''
 

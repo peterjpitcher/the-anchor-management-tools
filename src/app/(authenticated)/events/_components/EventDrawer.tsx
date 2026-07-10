@@ -496,6 +496,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         name: name.trim(),
         date: date || null,
         time: time || null,
+        endTime: endTime || null,
         categoryName: selectedCategory?.name ?? null,
         capacity: bookingMode === 'communal'
           ? (Number.parseInt(seatedCapacity || '0', 10) || 0) + (Number.parseInt(standingCapacity || '0', 10) || 0)

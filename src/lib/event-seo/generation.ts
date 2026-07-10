@@ -36,7 +36,7 @@ export const ANCHOR_VENUE_CONTEXT: VenueContext = {
   accessibility: 'Ground-floor venue with step-free access from car park',
   facilities: [
     'Dog and family friendly',
-    'Kitchen serves pizza on event nights',
+    'Full menu available while the kitchen is open',
   ],
   nearby: [
     'Stanwell Moor',
@@ -52,6 +52,7 @@ export type EventSeoFacts = {
   name: string
   date: string | null
   time: string | null
+  endTime: string | null
   categoryName: string | null
   capacity: number | null
   pricingLabel: string | null
@@ -59,6 +60,7 @@ export type EventSeoFacts = {
   performerType: string | null
   bookingUrlPresent: boolean
   brief: string | null
+  kitchenService: string | null
   isFree: boolean
   existingContent: {
     metaTitle: string | null
@@ -80,9 +82,11 @@ export type BuildFactsInput = {
   name: string
   date?: string | null
   time?: string | null
+  endTime?: string | null
   categoryName?: string | null
   capacity?: number | null
   brief?: string | null
+  kitchenService?: string | null
   performerName?: string | null
   performerType?: string | null
   price?: string | null
@@ -103,6 +107,7 @@ export type BuildFactsDbData = {
   name?: string | null
   date?: string | null
   start_time?: string | null
+  end_time?: string | null
   category_name?: string | null
   capacity?: number | null
   description?: string | null
@@ -112,6 +117,11 @@ export type BuildFactsDbData = {
   is_free?: boolean
   booking_url?: string | null
   brief?: string | null
+}
+
+export type EventKitchenWindow = {
+  openMinutes: number
+  closeMinutes: number
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -204,6 +214,85 @@ function buildPricingLabel(
   return null
 }
 
+function parseClockMinutes(value: string | null | undefined): number | null {
+  if (!value) return null
+
+  const normalized = value.trim().toLowerCase()
+  const twelveHour = normalized.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/)
+  if (twelveHour) {
+    let hours = Number(twelveHour[1])
+    const minutes = Number(twelveHour[2])
+    if (hours < 1 || hours > 12 || minutes > 59) return null
+    if (hours === 12) hours = 0
+    if (twelveHour[3] === 'pm') hours += 12
+    return hours * 60 + minutes
+  }
+
+  const twentyFourHour = normalized.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/)
+  if (!twentyFourHour) return null
+
+  const hours = Number(twentyFourHour[1])
+  const minutes = Number(twentyFourHour[2])
+  if (hours > 23 || minutes > 59) return null
+  return hours * 60 + minutes
+}
+
+function formatClockMinutes(totalMinutes: number): string {
+  const minutesInDay = 24 * 60
+  const normalized = ((totalMinutes % minutesInDay) + minutesInDay) % minutesInDay
+  const hours24 = Math.floor(normalized / 60)
+  const minutes = normalized % 60
+  const suffix = hours24 >= 12 ? 'pm' : 'am'
+  const hours12 = hours24 % 12 || 12
+  return `${hours12}:${String(minutes).padStart(2, '0')}${suffix}`
+}
+
+/**
+ * Build a date-specific menu fact for the content generator. The kitchen window
+ * comes from business_hours/special_hours, so generated copy follows live hours
+ * and never falls back to a pizza-only claim.
+ */
+export function describeKitchenServiceForEvent(
+  window: EventKitchenWindow | null,
+  startTime?: string | null,
+  endTime?: string | null,
+): string {
+  if (!window) {
+    return 'The kitchen is closed on this event date. Do not say food or the menu is available.'
+  }
+
+  const opens = formatClockMinutes(window.openMinutes)
+  const closes = formatClockMinutes(window.closeMinutes)
+  const hours = `${opens} to ${closes}`
+  const startMinutes = parseClockMinutes(startTime)
+  const parsedEndMinutes = parseClockMinutes(endTime)
+
+  if (startMinutes === null) {
+    return `The full menu is available from ${hours}. Only mention it if the event overlaps these kitchen hours. Never describe the food offer as pizza-only.`
+  }
+
+  let overlap: boolean | null = null
+  if (parsedEndMinutes !== null) {
+    let endMinutes = parsedEndMinutes
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60
+    overlap = startMinutes < window.closeMinutes && endMinutes > window.openMinutes
+  } else if (startMinutes >= window.openMinutes && startMinutes < window.closeMinutes) {
+    overlap = true
+  } else if (startMinutes >= window.closeMinutes) {
+    overlap = false
+  }
+
+  if (overlap === false) {
+    return `The full menu hours on this event date are ${hours}, but the event does not overlap them. Do not say food or the menu is available during the event.`
+  }
+
+  if (overlap === true) {
+    return `The full menu is available from ${hours}, and the event overlaps these kitchen hours. Mention the full menu, not pizza on its own, and make the kitchen closing time clear if the event continues later.`
+  }
+
+  return `The full menu is available from ${hours}. Only mention it if the event overlaps these kitchen hours. Never describe the food offer as pizza-only.`
+}
+
 // ── Facts builder ───────────────────────────────────────────
 
 export function buildEventSeoFacts(
@@ -224,6 +313,7 @@ export function buildEventSeoFacts(
     name: coalesce(input.name, db?.name) ?? input.name,
     date: coalesce(input.date, db?.date),
     time: coalesce(input.time, db?.start_time),
+    endTime: coalesce(input.endTime, db?.end_time),
     categoryName: coalesce(input.categoryName, db?.category_name),
     capacity: coalesceNumber(input.capacity, db?.capacity),
     pricingLabel: buildPricingLabel(price, isFree),
@@ -233,6 +323,7 @@ export function buildEventSeoFacts(
       nonEmpty(input.bookingUrl) ?? nonEmpty(db?.booking_url)
     ),
     brief: coalesce(input.brief, db?.brief ?? db?.description),
+    kitchenService: nonEmpty(input.kitchenService),
     isFree,
     existingContent: {
       metaTitle: nonEmpty(input.existingMetaTitle) ?? null,
