@@ -55,7 +55,7 @@ const TODAY = '2026-05-21'
 function makeItem(overrides: Partial<ChecklistTodoItem> = {}): ChecklistTodoItem {
   return {
     key: 'write_event_brief',
-    label: 'Write event brief',
+    label: 'Write Event Brief',
     offsetDays: -28,
     channel: 'Admin',
     required: true,
@@ -110,43 +110,43 @@ describe('EventTodosWidget', () => {
   })
 
   it('gives each checkbox an accessible name', () => {
-    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write event brief' })]} canManage todayIso={TODAY} />)
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write Event Brief' })]} canManage todayIso={TODAY} />)
     expect(
-      screen.getByRole('checkbox', { name: 'Mark "Write event brief" complete' }),
+      screen.getByRole('checkbox', { name: 'Mark "Write Event Brief" complete' }),
     ).toBeInTheDocument()
   })
 
   it('optimistically removes a todo on successful completion', async () => {
     mockToggle.mockResolvedValue({ success: true })
     const user = userEvent.setup()
-    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write event brief' })]} canManage todayIso={TODAY} />)
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write Event Brief' })]} canManage todayIso={TODAY} />)
 
-    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write event brief" complete' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write Event Brief" complete' }))
 
-    await waitFor(() => expect(screen.queryByText('Write event brief')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('Write Event Brief')).not.toBeInTheDocument())
     expect(mockToggle).toHaveBeenCalledWith('evt-1', 'write_event_brief', true)
   })
 
   it('restores the todo and shows a toast when completion fails', async () => {
     mockToggle.mockResolvedValue({ success: false, error: 'nope' })
     const user = userEvent.setup()
-    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write event brief' })]} canManage todayIso={TODAY} />)
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write Event Brief' })]} canManage todayIso={TODAY} />)
 
-    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write event brief" complete' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write Event Brief" complete' }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('nope'))
-    expect(screen.getByText('Write event brief')).toBeInTheDocument()
+    expect(screen.getByText('Write Event Brief')).toBeInTheDocument()
   })
 
   it('restores the todo and shows a toast when the action throws/rejects', async () => {
     mockToggle.mockRejectedValue(new Error('network'))
     const user = userEvent.setup()
-    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write event brief' })]} canManage todayIso={TODAY} />)
+    render(<EventTodosWidget initialTodos={[makeItem({ label: 'Write Event Brief' })]} canManage todayIso={TODAY} />)
 
-    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write event brief" complete' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Mark "Write Event Brief" complete' }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
-    expect(screen.getByText('Write event brief')).toBeInTheDocument()
+    expect(screen.getByText('Write Event Brief')).toBeInTheDocument()
   })
 
   it('restores only the failed item when an earlier completion fails after a later one succeeds', async () => {

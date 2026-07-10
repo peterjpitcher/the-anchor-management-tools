@@ -19,7 +19,7 @@ export default async function CalendarNotesSettingsPage() {
   return (
     <PageLayout
       title="Calendar Notes"
-      subtitle="Manage important dates and generate AI-assisted calendar notes for holidays and key occasions."
+      subtitle="Manage important dates and generate AI-assisted notes. Saved notes sync to the shared Pub Ops Google Calendar."
       backButton={{ label: 'Back to Settings', href: '/settings' }}
     >
       <Section
