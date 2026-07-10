@@ -6,6 +6,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getOpenAIConfig } from '@/lib/openai/config'
+import {
+  isPubOpsCalendarNoteSyncQueueAvailable,
+  processPubOpsCalendarNoteQueueItem,
+} from '@/lib/google-calendar-notes'
 import { logAuditEvent } from './audit'
 
 const DEFAULT_NOTE_COLOR = '#0EA5E9'
@@ -378,6 +382,11 @@ export async function createCalendarNote(input: CalendarNoteCreateInput): Promis
       console.error('Failed to write calendar note create audit log:', auditError)
     }
 
+    await processPubOpsCalendarNoteQueueItem(admin, note.id, {
+      operation: 'upsert',
+      context: { context: 'calendar_note_created' },
+    })
+
     revalidateCalendarSurfaces()
     return { data: note }
   } catch (error) {
@@ -478,6 +487,11 @@ export async function updateCalendarNote(noteId: string, input: CalendarNoteUpda
       console.error('Failed to write calendar note update audit log:', auditError)
     }
 
+    await processPubOpsCalendarNoteQueueItem(admin, note.id, {
+      operation: 'upsert',
+      context: { context: 'calendar_note_updated' },
+    })
+
     revalidateCalendarSurfaces()
     return { data: note }
   } catch (error) {
@@ -514,6 +528,10 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
       return { error: 'Calendar note not found.' }
     }
 
+    if (!await isPubOpsCalendarNoteSyncQueueAvailable(admin)) {
+      return { error: 'Calendar sync is not ready. The note was not deleted.' }
+    }
+
     const { data: deleted, error: deleteError } = await calendarNotesTable(admin)
       .delete()
       .eq('id', idParse.data)
@@ -543,6 +561,11 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
     } catch (auditError) {
       console.error('Failed to write calendar note delete audit log:', auditError)
     }
+
+    await processPubOpsCalendarNoteQueueItem(admin, noteId, {
+      operation: 'delete',
+      context: { context: 'calendar_note_deleted' },
+    })
 
     revalidateCalendarSurfaces()
     return { success: true }
@@ -821,6 +844,9 @@ export async function generateCalendarNotesWithAI(
     console.error('Failed to write AI calendar note generation audit log:', auditError)
   }
 
+  // The database trigger queues every inserted note. The scheduled Pub Ops
+  // worker processes the batch without blocking this request or bursting the
+  // Google Calendar API.
   revalidateCalendarSurfaces()
 
   return {
