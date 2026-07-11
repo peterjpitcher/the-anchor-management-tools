@@ -10,6 +10,11 @@ vi.mock('@/lib/foh/api-auth', () => ({
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), info: vi.fn() },
 }))
+// The rescheduled-notification side effect is exercised in its own tests; mock it
+// here so this route test doesn't run the real helper against the minimal DB mock.
+vi.mock('@/lib/table-bookings/bookings', () => ({
+  sendTableBookingRescheduledNotificationIfAllowed: vi.fn().mockResolvedValue(undefined),
+}))
 
 const VALID_UUID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 

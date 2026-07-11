@@ -274,19 +274,17 @@ export const RightToWorkSchema = z.object({
 });
 
 export const ONBOARDING_CHECKLIST_FIELDS = [
-  'wheniwork_invite_sent', 'private_whatsapp_added', 'team_whatsapp_added', 'till_system_setup',
-  'training_flow_setup', 'employment_agreement_drafted', 'employee_agreement_accepted'
+  'private_whatsapp_added', 'team_whatsapp_added', 'till_system_setup',
+  'training_flow_setup', 'employee_agreement_accepted'
 ] as const;
 
 export type OnboardingChecklistField = typeof ONBOARDING_CHECKLIST_FIELDS[number];
 
 export const ONBOARDING_FIELD_CONFIG: Record<OnboardingChecklistField, { label: string; dateField: string }> = {
-  wheniwork_invite_sent: { label: 'WhenIWork Invite Sent', dateField: 'wheniwork_invite_date' },
   private_whatsapp_added: { label: 'Added to Private WhatsApp', dateField: 'private_whatsapp_date' },
   team_whatsapp_added: { label: 'Added to Team WhatsApp', dateField: 'team_whatsapp_date' },
   till_system_setup: { label: 'Till System Setup', dateField: 'till_system_date' },
   training_flow_setup: { label: 'Training in Flow Setup', dateField: 'training_flow_date' },
-  employment_agreement_drafted: { label: 'Employment Agreement Drafted', dateField: 'employment_agreement_date' },
   employee_agreement_accepted: { label: 'Employee Agreement Accepted', dateField: 'employee_agreement_accepted_date' }
 };
 

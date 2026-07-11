@@ -87,7 +87,6 @@ export default function EmployeesClient({ initialData, initialError, permissions
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { hasPermission } = usePermissions()
   const canManageSettings = hasPermission('settings', 'manage')
 
@@ -97,8 +96,6 @@ export default function EmployeesClient({ initialData, initialError, permissions
   const currentPage = initialData.pagination.page
   const pageSize = initialData.pagination.pageSize
   const currentEmployees = roster.employees
-
-  const selectedEmployee = selectedId ? currentEmployees.find(e => e.employee_id === selectedId) : null
 
   const updateFilters = useCallback((updates: { status?: EmployeeStatus; search?: string; page?: number }) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -142,7 +139,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
           subtitle={`${roster.statusCounts.active} active · ${roster.statusCounts.former} former · ${roster.statusCounts.onboarding} onboarding`}
           className="mb-0"
           actions={
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
               <Link href="/employees/reliability">
                 <Button variant="secondary" size="sm">Reliability</Button>
               </Link>
@@ -174,7 +171,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-4 gap-4">
           <Stat label="Active" value={String(roster.statusCounts.active)} />
           <Stat label="Onboarding" value={String(roster.statusCounts.onboarding)} />
           <Stat label="Former" value={String(roster.statusCounts.former)} />
@@ -197,9 +194,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
           <div className="p-3 bg-danger-soft text-danger-fg rounded-lg text-sm">{initialError}</div>
         )}
 
-        {/* Master-detail layout */}
-        <div className={`grid gap-4 ${selectedEmployee ? 'grid-cols-1 md:grid-cols-[1fr_380px]' : 'grid-cols-1'}`}>
-          {/* Left: Table */}
+        <div>
           <Card>
             <div className="flex items-center gap-2 p-3 border-b border-border">
               <SearchInput
@@ -219,9 +214,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
               </CardBody>
             ) : (
               <>
-                {/* Desktop table */}
-                <div className="hidden md:block">
-                  <Table className="[--spacing-row-h:10px]">
+                <Table className="[--spacing-row-h:10px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Employee</TableHead>
@@ -235,8 +228,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
                     {currentEmployees.map(emp => (
                       <TableRow
                         key={emp.employee_id}
-                        className={`cursor-pointer ${selectedId === emp.employee_id ? 'bg-primary-soft' : ''}`}
-                        onClick={() => setSelectedId(emp.employee_id)}
+                        onClick={() => router.push(`/employees/${emp.employee_id}`)}
                       >
                         <TableCell>
                           <div className="flex items-center gap-2.5">
@@ -264,40 +256,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
                       </TableRow>
                     ))}
                   </TableBody>
-                  </Table>
-                </div>
-
-                {/* Mobile card list */}
-                <div className="divide-y divide-border md:hidden">
-                  {currentEmployees.map(emp => (
-                    <div key={emp.employee_id}>
-                      <Link href={`/employees/${emp.employee_id}`} className="flex items-center gap-3 p-3">
-                        <Avatar name={employeeDisplayName(emp)} size="md" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="min-w-0 truncate text-sm font-semibold text-text-strong">
-                              {employeeDisplayName(emp)}
-                              {!emp.first_name && <span className="ml-1 text-[11px] font-normal text-text-subtle">(pending)</span>}
-                            </span>
-                            <span className="flex-shrink-0">
-                              <Badge tone={statusBadgeTone(emp.status)} dot>{emp.status}</Badge>
-                            </span>
-                          </div>
-                          <div className="truncate text-xs text-text-muted">{emp.job_title || 'No role'}</div>
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-subtle">
-                            <span>Start {emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</span>
-                            <span>{emp.holiday_days_current_year ?? 0} days holiday</span>
-                          </div>
-                        </div>
-                        <Icon name="chevronRight" size={16} className="flex-shrink-0 text-text-subtle" />
-                      </Link>
-                      {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (
-                        <div className="-mt-1 px-3 pb-3"><PortalInviteButton employeeId={emp.employee_id} /></div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
+                </Table>
                 {roster.pagination.totalPages > 1 && (
                   <TablePagination
                     page={currentPage}
@@ -310,33 +269,6 @@ export default function EmployeesClient({ initialData, initialError, permissions
               </>
             )}
           </Card>
-
-          {/* Right: Detail panel */}
-          {selectedEmployee && (
-            <Card>
-              <CardBody className="flex flex-col items-center text-center gap-3 pb-4 border-b border-border">
-                <Avatar name={employeeDisplayName(selectedEmployee)} size="lg" />
-                <div>
-                  <div className="text-base font-semibold text-text-strong">{employeeDisplayName(selectedEmployee)}</div>
-                  <div className="text-xs text-text-muted">{selectedEmployee.job_title || 'No role'}</div>
-                </div>
-                <Badge tone={statusBadgeTone(selectedEmployee.status)} dot>{selectedEmployee.status}</Badge>
-              </CardBody>
-              <CardBody className="flex flex-col gap-3 text-[13px]">
-                <DetailRow label="Email" value={selectedEmployee.email_address} />
-                <DetailRow label="Mobile" value={selectedEmployee.mobile_number || '--'} />
-                <DetailRow label="Start Date" value={selectedEmployee.employment_start_date ? formatDate(selectedEmployee.employment_start_date) : '--'} />
-                <DetailRow label="Service" value={calculateLengthOfService(selectedEmployee.employment_start_date)} />
-                <DetailRow label="Holiday" value={`${selectedEmployee.holiday_days_current_year ?? 0} days`} />
-                <DetailRow label="Portal" value={selectedEmployee.auth_user_id ? 'Set up' : 'Not set up'} />
-                <div className="flex gap-2 pt-3 border-t border-border">
-                  <Link href={`/employees/${selectedEmployee.employee_id}`} className="flex-1">
-                    <Button variant="primary" size="sm" className="w-full">View Profile</Button>
-                  </Link>
-                </div>
-              </CardBody>
-            </Card>
-          )}
         </div>
       </div>
 
@@ -347,14 +279,5 @@ export default function EmployeesClient({ initialData, initialError, permissions
         />
       )}
     </>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-text-strong font-medium">{value}</span>
-    </div>
   )
 }

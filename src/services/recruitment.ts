@@ -124,6 +124,15 @@ function nullIfBlank(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null
 }
 
+export function normalizeRecruitmentName(value: string | null | undefined): string | null {
+  const trimmed = nullIfBlank(value)?.replace(/\s+/g, ' ')
+  if (!trimmed) return null
+
+  return trimmed
+    .toLocaleLowerCase('en-GB')
+    .replace(/(^|[\s\-'’])\p{L}/gu, match => match.toLocaleUpperCase('en-GB'))
+}
+
 function normalizePhoneForLookup(value: string | null | undefined): string | null {
   const trimmed = nullIfBlank(value)
   if (!trimmed) return null
@@ -962,8 +971,8 @@ export async function updateRecruitmentCandidateProfile(
       : undefined
 
   const updatePayload: Record<string, unknown> = {
-    first_name: nullIfBlank(parsed.first_name),
-    last_name: nullIfBlank(parsed.last_name),
+    first_name: normalizeRecruitmentName(parsed.first_name),
+    last_name: normalizeRecruitmentName(parsed.last_name),
     email: normalizeEmail(parsed.email),
     phone: nullIfBlank(parsed.phone),
     phone_e164: nullIfBlank(parsed.phone_e164),
@@ -1146,8 +1155,8 @@ export async function processRecruitmentApplicationAi(
       const { data: updatedCandidate, error: candidateError } = await supabase
         .from('recruitment_candidates')
         .update({
-          first_name: candidate.first_name ?? extracted.first_name,
-          last_name: candidate.last_name ?? extracted.last_name,
+          first_name: normalizeRecruitmentName(candidate.first_name ?? extracted.first_name),
+          last_name: normalizeRecruitmentName(candidate.last_name ?? extracted.last_name),
           email: candidate.email ?? normalizeEmail(extracted.email),
           phone: candidate.phone ?? extracted.phone,
           location: candidate.location ?? extracted.location,
@@ -1255,8 +1264,8 @@ export async function reprocessRecruitmentCandidateCv(
   const { error: updateError } = await supabase
     .from('recruitment_candidates')
     .update({
-      first_name: candidate.first_name ?? extracted?.first_name ?? null,
-      last_name: candidate.last_name ?? extracted?.last_name ?? null,
+      first_name: normalizeRecruitmentName(candidate.first_name ?? extracted?.first_name),
+      last_name: normalizeRecruitmentName(candidate.last_name ?? extracted?.last_name),
       email: candidate.email ?? normalizeEmail(extracted?.email),
       phone: candidate.phone ?? extracted?.phone ?? null,
       location: candidate.location ?? extracted?.location ?? null,
@@ -1469,8 +1478,10 @@ export async function createRecruitmentApplication(
 
   const extracted = preExtraction?.result ?? null
   const candidateEmail = suppliedEmail ?? normalizeEmail(extracted?.email)
-  const firstName = nullIfBlank(parsed.candidate.first_name) ?? nullIfBlank(extracted?.first_name)
-  const lastName = nullIfBlank(parsed.candidate.last_name) ?? nullIfBlank(extracted?.last_name)
+  const firstName = normalizeRecruitmentName(parsed.candidate.first_name)
+    ?? normalizeRecruitmentName(extracted?.first_name)
+  const lastName = normalizeRecruitmentName(parsed.candidate.last_name)
+    ?? normalizeRecruitmentName(extracted?.last_name)
   const phone = nullIfBlank(parsed.candidate.phone) ?? nullIfBlank(extracted?.phone)
   const phoneE164 = nullIfBlank(parsed.candidate.phone_e164) ?? normalizePhoneForLookup(phone)
   const phoneNormalized = phoneDigits(phoneE164 ?? phone)
@@ -1519,8 +1530,8 @@ export async function createRecruitmentApplication(
     const { data, error } = await supabase
       .from('recruitment_candidates')
       .update({
-        first_name: firstName ?? candidate.first_name,
-        last_name: lastName ?? candidate.last_name,
+        first_name: firstName ?? normalizeRecruitmentName(candidate.first_name),
+        last_name: lastName ?? normalizeRecruitmentName(candidate.last_name),
         email: candidate.email ?? candidateEmail,
         phone: phone ?? candidate.phone,
         phone_e164: phoneE164 ?? candidate.phone_e164,
@@ -1662,8 +1673,8 @@ export async function createRecruitmentApplication(
       const { data, error } = await supabase
         .from('recruitment_candidates')
         .update({
-          first_name: candidate.first_name ?? extracted.first_name,
-          last_name: candidate.last_name ?? extracted.last_name,
+          first_name: normalizeRecruitmentName(candidate.first_name ?? extracted.first_name),
+          last_name: normalizeRecruitmentName(candidate.last_name ?? extracted.last_name),
           email: candidate.email ?? normalizeEmail(extracted.email),
           phone: candidate.phone ?? extracted.phone,
           location: candidate.location ?? extracted.location,

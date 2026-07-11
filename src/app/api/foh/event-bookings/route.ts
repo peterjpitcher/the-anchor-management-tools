@@ -16,6 +16,7 @@ import { EventBookingService } from '@/services/event-bookings'
 const CreateFohEventBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32).optional(),
+  email: z.string().trim().email().max(255).optional(),
   first_name: z.string().trim().min(1).max(80).optional(),
   last_name: z.string().trim().min(1).max(80).optional(),
   walk_in: z.boolean().optional(),
@@ -105,11 +106,17 @@ async function createWalkInCustomer(
     firstName?: string
     lastName?: string
     guestName?: string
+    email?: string | null
   }
 ): Promise<{ customerId: string; syntheticPhone: string }> {
   const guestNameParts = splitWalkInGuestName(input.guestName)
   const firstName = input.firstName?.trim() || guestNameParts.firstName || 'Walk-in'
   const lastName = input.lastName?.trim() || guestNameParts.lastName || 'Guest'
+  const sanitizedEmail = typeof input.email === 'string' ? input.email.trim().toLowerCase() || null : null
+  // Email is optional enrichment — never let a lower(email) unique-index
+  // collision block walk-in creation. On such a 23505 we drop the email and
+  // retry so the booking still succeeds.
+  let includeEmail = Boolean(sanitizedEmail)
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const suffix = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
@@ -122,7 +129,8 @@ async function createWalkInCustomer(
         mobile_number: syntheticPhone,
         mobile_e164: syntheticPhone,
         sms_opt_in: false,
-        sms_status: 'sms_deactivated'
+        sms_status: 'sms_deactivated',
+        ...(includeEmail && sanitizedEmail ? { email: sanitizedEmail } : {})
       })
       .select('id')
       .maybeSingle()
@@ -134,7 +142,11 @@ async function createWalkInCustomer(
       }
     }
 
-    if ((error as { code?: string } | null)?.code === '23505') {
+    const errorRecord = error as { code?: string; message?: string } | null
+    if (errorRecord?.code === '23505') {
+      if (includeEmail && /email/i.test(errorRecord.message || '')) {
+        includeEmail = false
+      }
       continue
     }
 
@@ -250,7 +262,7 @@ export async function POST(request: NextRequest) {
   if (payload.customer_id) {
     const { data: selectedCustomer, error: selectedCustomerError } = await auth.supabase
       .from('customers')
-      .select('id, mobile_e164, mobile_number')
+      .select('id, mobile_e164, mobile_number, email')
       .eq('id', payload.customer_id)
       .maybeSingle()
 
@@ -298,6 +310,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Backfill email only when the customer has none. Best-effort: a
+    // lower(email) unique-index collision (another customer owns this email)
+    // must never block the booking, so we log and continue rather than 500.
+    if (payload.email && !selectedCustomer.email?.trim()) {
+      const { error: emailBackfillError } = await auth.supabase
+        .from('customers')
+        .update({ email: payload.email.toLowerCase(), updated_at: new Date().toISOString() })
+        .eq('id', selectedCustomer.id)
+
+      if (emailBackfillError) {
+        logger.warn('Failed to backfill selected customer email for FOH event booking', {
+          metadata: {
+            userId: auth.userId,
+            customerId: selectedCustomer.id,
+            error: emailBackfillError.message || String(emailBackfillError),
+          },
+        })
+      }
+    }
+
     if (!normalizedPhone) {
       if (payload.walk_in === true) {
         shouldSendBookingSms = false
@@ -319,7 +351,8 @@ export async function POST(request: NextRequest) {
 
     const customerResolution = await ensureCustomerForPhone(auth.supabase, normalizedPhone, {
       firstName: fallbackFirstName,
-      lastName: fallbackLastName
+      lastName: fallbackLastName,
+      email: payload.email
     })
     customerId = customerResolution.customerId
   } else if (payload.walk_in === true) {
@@ -327,7 +360,8 @@ export async function POST(request: NextRequest) {
       const walkInCustomer = await createWalkInCustomer(auth.supabase, {
         firstName: fallbackFirstName,
         lastName: fallbackLastName,
-        guestName: payload.walk_in_guest_name
+        guestName: payload.walk_in_guest_name,
+        email: payload.email
       })
       customerId = walkInCustomer.customerId
       normalizedPhone = walkInCustomer.syntheticPhone

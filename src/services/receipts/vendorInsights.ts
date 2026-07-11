@@ -44,7 +44,9 @@ export function normalizeReceiptVendorMovementRange(value: unknown): ReceiptVend
 }
 
 export function normalizeReceiptVendorMovementComparison(value: unknown): ReceiptVendorMovementComparison {
-  return value === 'mom' || value === 'yoy' ? value : DEFAULT_MOVEMENT_COMPARISON
+  return value === 'mom' || value === 'yoy' || value === 'rolling_3m'
+    ? value
+    : DEFAULT_MOVEMENT_COMPARISON
 }
 
 export function receiptVendorMovementRangeMonths(range: ReceiptVendorMovementRange): number | null {
@@ -309,7 +311,9 @@ function hasPriorSpendBefore(monthMap: Map<string, ReceiptVendorTrendMonth>, mon
 }
 
 function comparisonLabel(comparison: ReceiptVendorMovementComparison): string {
-  return comparison === 'mom' ? 'MoM' : 'YoY'
+  if (comparison === 'mom') return 'MoM'
+  if (comparison === 'rolling_3m') return 'rolling three-month'
+  return 'YoY'
 }
 
 function buildMovementSignal(input: {
@@ -481,9 +485,13 @@ export function buildReceiptVendorMovementSummaries(
 ): ReceiptVendorMovementSummary[] {
   const range = normalizeReceiptVendorMovementRange(options.range)
   const comparison = normalizeReceiptVendorMovementComparison(options.comparison)
-  const latestMonth =
-    (options.referenceMonthStart ? toMonthStart(options.referenceMonthStart) : null) ??
-    latestMovementMonth(vendors)
+  const latestDataMonth = latestMovementMonth(vendors)
+  const completedMonthCutoff = addUtcMonths(toMonthStart(new Date())!, -1)
+  const latestMonth = options.referenceMonthStart
+    ? toMonthStart(options.referenceMonthStart)
+    : latestDataMonth && latestDataMonth < completedMonthCutoff
+      ? latestDataMonth
+      : completedMonthCutoff
   const earliestMonth = earliestMovementMonth(vendors)
 
   if (!latestMonth || !earliestMonth) {
@@ -505,21 +513,51 @@ export function buildReceiptVendorMovementSummaries(
         analysisStartMonth,
       })
       const latest = months[months.length - 1] ?? null
-      const signal = latest
-        ? (comparison === 'mom' ? latest.momSignal : latest.yoySignal)
-        : null
-      const baselineOutgoing = latest
+      let latestOutgoing = latest?.totalOutgoing ?? 0
+      let latestTransactionCount = latest?.transactionCount ?? 0
+      let baselineOutgoing = latest
         ? (comparison === 'mom' ? latest.momBaselineOutgoing : latest.yoyBaselineOutgoing)
         : null
-      const baselineMonthStart = latest
+      let baselineMonthStart = latest
         ? (comparison === 'mom' ? latest.momBaselineMonthStart : latest.yoyBaselineMonthStart)
         : null
-      const delta = latest
+      let delta = latest
         ? (comparison === 'mom' ? latest.momDelta : latest.yoyDelta)
         : null
-      const percentageChange = latest
+      let percentageChange = latest
         ? (comparison === 'mom' ? latest.momPercentageChange : latest.yoyPercentageChange)
         : null
+      let signal = latest
+        ? (comparison === 'mom' ? latest.momSignal : latest.yoySignal)
+        : null
+
+      if (comparison === 'rolling_3m' && latest) {
+        const recentMonths = months.slice(-3)
+        const previousMonths = months.slice(-6, -3)
+        const hasBaseline = previousMonths.length === 3 && addUtcMonths(latest.monthStart, -5) >= analysisStartMonth
+        const average = (items: ReceiptVendorMovementMonth[]) =>
+          items.reduce((sum, month) => sum + month.totalOutgoing, 0) / Math.max(items.length, 1)
+
+        latestOutgoing = roundMovementValue(average(recentMonths))
+        latestTransactionCount = recentMonths.reduce((sum, month) => sum + month.transactionCount, 0)
+        baselineOutgoing = hasBaseline ? roundMovementValue(average(previousMonths)) : null
+        baselineMonthStart = hasBaseline ? addUtcMonths(latest.monthStart, -5) : null
+        delta = baselineOutgoing === null ? null : roundMovementValue(latestOutgoing - baselineOutgoing)
+        percentageChange = baselineOutgoing === null
+          ? null
+          : roundMovementValue(movementPercentage(latestOutgoing, baselineOutgoing))
+        signal = baselineOutgoing === null
+          ? null
+          : buildMovementSignal({
+            vendorLabel: vendor.vendorLabel,
+            comparison,
+            monthStart: latest.monthStart,
+            currentOutgoing: latestOutgoing,
+            baselineOutgoing,
+            baselineMonthStart,
+            hadPriorSpendBeforeCurrent: hasPriorSpendBefore(monthMapForMovement(vendor.months), addUtcMonths(latest.monthStart, -2)),
+          })
+      }
       const totalOutgoing = roundMovementValue(months.reduce((sum, month) => sum + month.totalOutgoing, 0))
       const transactionCount = months.reduce((sum, month) => sum + month.transactionCount, 0)
 
@@ -533,8 +571,8 @@ export function buildReceiptVendorMovementSummaries(
         comparison,
         months,
         latestMonthStart: latest?.monthStart ?? null,
-        latestOutgoing: latest?.totalOutgoing ?? 0,
-        latestTransactionCount: latest?.transactionCount ?? 0,
+        latestOutgoing,
+        latestTransactionCount,
         baselineMonthStart,
         baselineOutgoing,
         delta,
@@ -546,14 +584,9 @@ export function buildReceiptVendorMovementSummaries(
     })
     .filter((summary): summary is ReceiptVendorMovementSummary => Boolean(summary))
     .sort((a, b) => {
-      if (a.signal?.severity !== b.signal?.severity) {
-        if (a.signal?.severity === 'high') return -1
-        if (b.signal?.severity === 'high') return 1
-      }
-
-      const aSignalDelta = a.signal?.absoluteDelta ?? Math.abs(a.delta ?? 0)
-      const bSignalDelta = b.signal?.absoluteDelta ?? Math.abs(b.delta ?? 0)
-      if (aSignalDelta !== bSignalDelta) return bSignalDelta - aSignalDelta
+      const aAbsoluteDelta = Math.abs(a.delta ?? 0)
+      const bAbsoluteDelta = Math.abs(b.delta ?? 0)
+      if (aAbsoluteDelta !== bAbsoluteDelta) return bAbsoluteDelta - aAbsoluteDelta
 
       return b.latestOutgoing - a.latestOutgoing
     })
