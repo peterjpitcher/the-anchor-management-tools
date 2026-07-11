@@ -58,7 +58,7 @@ const ONLINE_DISCOUNT_OPTIONS = [
 
 const BOOKING_MODE_OPTIONS = [
   { value: 'table', label: 'Table bookings' },
-  { value: 'general', label: 'General entry only' },
+  { value: 'general', label: 'Tickets (no assigned seats)' },
   { value: 'mixed', label: 'Mixed (table + general)' },
   { value: 'communal', label: 'Communal table seating' },
 ]

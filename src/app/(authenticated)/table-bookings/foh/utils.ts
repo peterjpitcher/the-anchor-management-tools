@@ -373,7 +373,7 @@ export function formatEventPaymentMode(paymentMode: FohEventOption['payment_mode
 export function formatEventBookingMode(mode: FohEventOption['booking_mode']): string {
   switch (mode) {
     case 'general':
-      return 'General entry'
+      return 'Tickets (no assigned seats)'
     case 'mixed':
       return 'Mixed'
     case 'communal':
