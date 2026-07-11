@@ -39,6 +39,8 @@ export type {
   
   ReceiptVendorDetail,
   ReceiptVendorWatchlistItem,
+  ReceiptVendorReviewItem,
+  ReceiptVendorReviewStatus,
   
   
   ReceiptBulkReviewData,
@@ -64,6 +66,7 @@ import {
   queryReceiptVendorCostReview,
   queryReceiptVendorAiSummary,
   queryReceiptVendorWatchlist,
+  queryReceiptVendorReviews,
   queryReceiptMissingExpenseSummary,
   queryAIUsageBreakdown,
   queryPreviewReceiptRule,
@@ -83,6 +86,7 @@ import {
   performApplyReceiptGroupClassification,
   performRequeueUnclassifiedTransactions,
   performSetReceiptVendorWatched,
+  performSetReceiptVendorReviewStatus,
   performApproveReceiptRuleSuggestion,
   performApproveReceiptRuleSuggestions,
   performDeclineReceiptRuleSuggestion,
@@ -115,6 +119,8 @@ import type {
   ReceiptVendorMovementSignal,
   ReceiptVendorMovementSummary,
   ReceiptVendorWatchlistItem,
+  ReceiptVendorReviewItem,
+  ReceiptVendorReviewStatus,
   ReceiptMissingExpenseSummaryItem,
   AIUsageBreakdown,
   RulePreviewResult,
@@ -377,6 +383,36 @@ export async function setReceiptVendorWatched(input: {
 
   const { user_id } = await requireCurrentUser()
   const result = await performSetReceiptVendorWatched(user_id, input)
+
+  if (result.success) {
+    revalidatePath('/receipts/vendors')
+  }
+
+  return result
+}
+
+export async function getReceiptVendorReviews(): Promise<ReceiptVendorReviewItem[]> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
+  const { user_id } = await requireCurrentUser()
+  return queryReceiptVendorReviews(user_id)
+}
+
+export async function setReceiptVendorReviewStatus(input: {
+  vendorLabel: string
+  comparison: ReceiptVendorMovementComparison
+  monthStart: string
+  status: ReceiptVendorReviewStatus
+}): Promise<{ success?: boolean; item?: ReceiptVendorReviewItem; error?: string }> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    return { error: 'Insufficient permissions' }
+  }
+
+  const { user_id } = await requireCurrentUser()
+  const result = await performSetReceiptVendorReviewStatus(user_id, input)
 
   if (result.success) {
     revalidatePath('/receipts/vendors')

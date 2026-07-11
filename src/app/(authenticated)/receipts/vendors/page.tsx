@@ -1,4 +1,4 @@
-import { getReceiptVendorSummary, getReceiptVendorWatchlist } from '@/app/actions/receipts'
+import { getReceiptVendorReviews, getReceiptVendorSummary, getReceiptVendorWatchlist } from '@/app/actions/receipts'
 import { Card } from '@/ds'
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
 import { redirect } from 'next/navigation'
@@ -13,9 +13,10 @@ export default async function ReceiptsVendorsPage() {
     redirect('/unauthorized')
   }
 
-  const [vendors, watchlist] = await Promise.all([
+  const [vendors, watchlist, reviews] = await Promise.all([
     getReceiptVendorSummary(12),
     getReceiptVendorWatchlist(),
+    getReceiptVendorReviews(),
   ])
 
   return (
@@ -29,7 +30,7 @@ export default async function ReceiptsVendorsPage() {
           <p className="text-sm text-gray-500">No vendor data available yet. Import statements to see trends.</p>
         </Card>
       ) : (
-        <VendorSummaryGrid vendors={vendors} initialWatchlist={watchlist} />
+        <VendorSummaryGrid vendors={vendors} initialWatchlist={watchlist} initialReviews={reviews} />
       )}
     </ReceiptsPageChrome>
   )

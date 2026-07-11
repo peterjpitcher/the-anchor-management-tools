@@ -37,6 +37,8 @@ import type {
   ReceiptVendorMovementSignal,
   ReceiptVendorMovementSummary,
   ReceiptVendorWatchlistItem,
+  ReceiptVendorReviewItem,
+  ReceiptVendorReviewStatus,
   ReceiptMissingExpenseSummaryItem,
   AIUsageBreakdown,
   RpcDetailGroupRow,
@@ -1459,6 +1461,44 @@ export async function queryReceiptVendorWatchlist(userId: string): Promise<Recei
     userId: row.user_id,
     vendorKey: row.vendor_key,
     vendorLabel: row.vendor_label,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }))
+}
+
+export async function queryReceiptVendorReviews(userId: string): Promise<ReceiptVendorReviewItem[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('receipt_vendor_reviews')
+    .select('user_id, vendor_key, vendor_label, comparison, month_start, status, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('month_start', { ascending: false })
+
+  if (error) {
+    if ((error as { code?: string }).code === '42P01') {
+      console.warn('Receipt vendor reviews table is not available yet; returning no review states.')
+      return []
+    }
+    console.error('Failed to load receipt vendor reviews', error)
+    throw error
+  }
+
+  return ((data ?? []) as Array<{
+    user_id: string
+    vendor_key: string
+    vendor_label: string
+    comparison: ReceiptVendorMovementComparison
+    month_start: string
+    status: ReceiptVendorReviewStatus
+    created_at: string
+    updated_at: string
+  }>).map((row) => ({
+    userId: row.user_id,
+    vendorKey: row.vendor_key,
+    vendorLabel: row.vendor_label,
+    comparison: row.comparison,
+    monthStart: String(row.month_start).slice(0, 10),
+    status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))

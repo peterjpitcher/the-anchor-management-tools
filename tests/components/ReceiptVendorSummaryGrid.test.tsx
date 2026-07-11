@@ -7,6 +7,7 @@ vi.mock('@/app/actions/receipts', () => ({
   getReceiptVendorDetail: vi.fn(),
   getReceiptVendorMovements: vi.fn(),
   getReceiptVendorMonthTransactions: vi.fn(),
+  setReceiptVendorReviewStatus: vi.fn(),
   setReceiptVendorWatched: vi.fn(),
 }))
 
@@ -14,11 +15,13 @@ import VendorSummaryGrid from '@/app/(authenticated)/receipts/vendors/_component
 import {
   getReceiptVendorDetail,
   getReceiptVendorMovements,
+  setReceiptVendorReviewStatus,
   setReceiptVendorWatched,
 } from '@/app/actions/receipts'
 
 const mockedGetReceiptVendorDetail = getReceiptVendorDetail as unknown as Mock
 const mockedGetReceiptVendorMovements = getReceiptVendorMovements as unknown as Mock
+const mockedSetReceiptVendorReviewStatus = setReceiptVendorReviewStatus as unknown as Mock
 const mockedSetReceiptVendorWatched = setReceiptVendorWatched as unknown as Mock
 
 const vendors = [
@@ -47,11 +50,33 @@ const vendors = [
   },
 ]
 
+const movement = (vendorLabel: string, delta: number, signal: Record<string, unknown> | null = null) => ({
+  vendorLabel,
+  range: '36m',
+  comparison: 'rolling_3m',
+  months: [],
+  latestMonthStart: '2026-06-01',
+  latestOutgoing: 300 + delta,
+  latestTransactionCount: 2,
+  baselineMonthStart: '2026-01-01',
+  baselineOutgoing: 300,
+  delta,
+  percentageChange: (delta / 300) * 100,
+  signal,
+  totalOutgoing: 1_000,
+  transactionCount: 6,
+})
+
 describe('VendorSummaryGrid', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedSetReceiptVendorWatched.mockResolvedValue({ success: true, watched: true })
-    mockedGetReceiptVendorMovements.mockResolvedValue({ success: true, movements: [], signals: [] })
+    mockedSetReceiptVendorReviewStatus.mockResolvedValue({ success: true })
+    mockedGetReceiptVendorMovements.mockResolvedValue({
+      success: true,
+      movements: [movement('Brewery A', 200), movement('Food Supplier', -250)],
+      signals: [],
+    })
   })
 
   it('opens the vendor detail drawer and displays loaded transactions', async () => {
@@ -108,9 +133,12 @@ describe('VendorSummaryGrid', () => {
       },
     })
 
-    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} />)
+    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: /view details/i })[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'All vendors' }))
+    const breweryRow = screen.getAllByRole('row').find((row) => within(row).queryByText('Brewery A'))
+    expect(breweryRow).toBeDefined()
+    fireEvent.click(within(breweryRow!).getByRole('button', { name: /view details/i }))
 
     await waitFor(() => expect(mockedGetReceiptVendorDetail).toHaveBeenCalledWith({
       vendorLabel: 'Brewery A',
@@ -124,87 +152,34 @@ describe('VendorSummaryGrid', () => {
     expect(screen.getByText('Entertainment')).toBeInTheDocument()
   })
 
-  it('updates the vendor movement table controls', async () => {
+  it('ranks movements by absolute pounds and updates the comparison', async () => {
     mockedGetReceiptVendorMovements
       .mockResolvedValueOnce({
         success: true,
         signals: [],
         movements: [
-          {
-            vendorLabel: 'Brewery A',
-            range: '36m',
-            comparison: 'yoy',
-            months: [],
-            latestMonthStart: '2026-06-01',
-            latestOutgoing: 300,
-            latestTransactionCount: 2,
-            baselineMonthStart: '2025-06-01',
-            baselineOutgoing: 100,
-            delta: 200,
-            percentageChange: 200,
-            signal: null,
-            totalOutgoing: 300,
-            transactionCount: 2,
-          },
-          {
-            vendorLabel: 'Food Supplier',
-            range: '36m',
-            comparison: 'yoy',
-            months: [],
-            latestMonthStart: '2026-06-01',
-            latestOutgoing: 500,
-            latestTransactionCount: 1,
-            baselineMonthStart: '2025-06-01',
-            baselineOutgoing: 250,
-            delta: 250,
-            percentageChange: 100,
-            signal: null,
-            totalOutgoing: 500,
-            transactionCount: 1,
-          },
+          movement('Brewery A', 200),
+          movement('Food Supplier', -250),
         ],
       })
       .mockResolvedValueOnce({
         success: true,
         signals: [],
-        movements: [{
-          vendorLabel: 'Brewery A',
-          range: '12m',
-          comparison: 'yoy',
-          months: [],
-          latestMonthStart: '2026-06-01',
-          latestOutgoing: 300,
-          latestTransactionCount: 2,
-          baselineMonthStart: '2025-06-01',
-          baselineOutgoing: 100,
-          delta: 200,
-          percentageChange: 200,
-          signal: null,
-          totalOutgoing: 300,
-          transactionCount: 2,
-        }],
+        movements: [{ ...movement('Brewery A', 200), comparison: 'yoy' }],
       })
 
-    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} />)
+    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
 
-    expect(await screen.findByText('Vendor movement')).toBeInTheDocument()
-    expect(await screen.findByText('+£200.00')).toBeInTheDocument()
-    expect(screen.queryByText('AI cost review')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /spend/i }))
-    let rows = screen.getAllByRole('row')
+    expect(await screen.findByText('Spend movement overview')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'All vendors' }))
+    const rows = screen.getAllByRole('row')
     expect(within(rows[1]).getByText('Food Supplier')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /spend/i }))
-    rows = screen.getAllByRole('row')
-    expect(within(rows[1]).getByText('Brewery A')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '12m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Year on year' }))
 
     await waitFor(() => expect(mockedGetReceiptVendorMovements).toHaveBeenLastCalledWith({
-      range: '12m',
+      range: '36m',
       comparison: 'yoy',
-      watchedOnly: false,
     }))
   })
 
@@ -219,13 +194,47 @@ describe('VendorSummaryGrid', () => {
           createdAt: '2026-06-01T00:00:00.000Z',
           updatedAt: '2026-06-01T00:00:00.000Z',
         }]}
+        initialReviews={[]}
       />,
     )
 
     await waitFor(() => expect(mockedGetReceiptVendorMovements).toHaveBeenCalled())
-    fireEvent.click(screen.getAllByRole('button', { name: 'Watched' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Watched (1)' }))
 
-    expect(screen.getByText('Brewery A')).toBeInTheDocument()
-    expect(screen.queryByText('Food Supplier')).not.toBeInTheDocument()
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows.some((row) => within(row).queryByText('Brewery A'))).toBe(true)
+    expect(rows.some((row) => within(row).queryByText('Food Supplier'))).toBe(false)
+  })
+
+  it('saves an action status for the current comparison period', async () => {
+    mockedGetReceiptVendorMovements.mockResolvedValue({
+      success: true,
+      movements: [movement('Brewery A', 200, {
+        vendorLabel: 'Brewery A',
+        severity: 'high',
+        direction: 'spike',
+        comparison: 'rolling_3m',
+        monthStart: '2026-06-01',
+        currentOutgoing: 500,
+        baselineOutgoing: 300,
+        baselineMonthStart: '2026-01-01',
+        absoluteDelta: 200,
+        percentageChange: 66.7,
+        reason: 'Spend increased.',
+      })],
+      signals: [],
+    })
+
+    render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
+
+    const statusControls = await screen.findAllByRole('combobox', { name: 'Review status for Brewery A' })
+    fireEvent.change(statusControls[0], { target: { value: 'action_required' } })
+
+    await waitFor(() => expect(mockedSetReceiptVendorReviewStatus).toHaveBeenCalledWith({
+      vendorLabel: 'Brewery A',
+      comparison: 'rolling_3m',
+      monthStart: '2026-06-01',
+      status: 'action_required',
+    }))
   })
 })
