@@ -127,6 +127,7 @@ function RateHistory({
       {rates.length === 0 ? (
         <p className="text-sm text-gray-400 italic">No rates set yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-xs text-gray-400 border-b border-gray-100">
@@ -190,6 +191,7 @@ function RateHistory({
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {showForm && canManage && (
