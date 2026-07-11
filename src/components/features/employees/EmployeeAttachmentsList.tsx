@@ -206,18 +206,18 @@ export default function EmployeeAttachmentsList({
         const categoryName = attachment.category_id ? categoryLookup[attachment.category_id] : 'Uncategorized'
         return (
           <li key={attachment.attachment_id} className="py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <PaperClipIcon className="h-5 w-5 text-gray-400" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{attachment.file_name}</p>
-                  <p className="text-xs text-gray-500">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center space-x-3">
+                <PaperClipIcon className="h-5 w-5 flex-shrink-0 text-gray-400" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">{attachment.file_name}</p>
+                  <p className="truncate text-xs text-gray-500">
                     {categoryName} • {formatBytes(attachment.file_size_bytes || 0)} •{' '}
                     {formatDateInLondon(attachment.uploaded_at)}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-shrink-0 items-center space-x-2">
                 {isViewable(attachment.mime_type) && (
                   <button
                     type="button"
