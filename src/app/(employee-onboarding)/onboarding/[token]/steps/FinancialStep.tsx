@@ -82,13 +82,15 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
   const field = (
     id: keyof FinancialData,
     label: string,
-    type = 'text'
+    type = 'text',
+    inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
   ) => (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <input
         id={id}
         type={type}
+        inputMode={inputMode}
         value={data[id]}
         onChange={(e) => setData({ ...data, [id]: e.target.value })}
         className={`block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500 ${
@@ -112,14 +114,14 @@ export default function FinancialStep({ token, initialData, onSuccess }: Financi
 
       <hr className="border-gray-200" />
 
-      <div className="grid grid-cols-2 gap-4">
-        {field('bank_sort_code', 'Sort Code')}
-        {field('bank_sort_code_confirm', 'Confirm Sort Code')}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {field('bank_sort_code', 'Sort Code', 'text', 'numeric')}
+        {field('bank_sort_code_confirm', 'Confirm Sort Code', 'text', 'numeric')}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {field('bank_account_number', 'Account Number')}
-        {field('bank_account_number_confirm', 'Confirm Account Number')}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {field('bank_account_number', 'Account Number', 'text', 'numeric')}
+        {field('bank_account_number_confirm', 'Confirm Account Number', 'text', 'numeric')}
       </div>
 
       {globalError && <p className="text-sm text-red-600">{globalError}</p>}

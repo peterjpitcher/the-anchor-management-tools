@@ -172,12 +172,12 @@ export default function LoginClient() {
             />
           </Field>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <a href="/auth/reset-password" className="auth__link text-xs">
               Forgot password?
             </a>
             {redirectTo !== '/dashboard' && (
-              <span className="text-xs text-text-subtle">After sign in: {redirectTo}</span>
+              <span className="min-w-0 truncate text-xs text-text-subtle">After sign in: {redirectTo}</span>
             )}
           </div>
 

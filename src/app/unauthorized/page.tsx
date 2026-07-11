@@ -23,7 +23,7 @@ function UnauthorizedContent() {
           You do not have permission to view this page. Contact your manager if you believe this is an error.
         </p>
 
-        <div className="bg-surface-hover rounded-lg p-3 font-mono text-sm text-text-muted text-center mb-4">
+        <div className="bg-surface-hover rounded-lg p-3 font-mono text-sm text-text-muted text-center mb-4 break-words">
           {attemptedPath}
         </div>
 

@@ -87,7 +87,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {field('first_name', 'First Name', 'text', true)}
         {field('last_name', 'Last Name', 'text', true)}
       </div>
