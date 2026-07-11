@@ -449,7 +449,7 @@ export default function ShiftDetailModal({
             <div className="space-y-3">
               {error && <Alert variant="error">{error}</Alert>}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormGroup label="Start time" htmlFor="sd-start" required>
                   <Input id="sd-start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
                 </FormGroup>

@@ -71,7 +71,7 @@ export default function MarkSickModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-xl bg-white shadow-xl"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
         onClick={event => event.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-gray-200 p-5">

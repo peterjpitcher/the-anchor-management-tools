@@ -120,12 +120,12 @@ function LeaveRequestRow({
           </Badge>
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{empName}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 truncate">
               {formatDate(request.start_date)} – {formatDate(request.end_date)} · {days} day{days !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 ml-3 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 ml-3 shrink-0">
           {canApprove && request.status === 'pending' && !expanded && (
             <>
               <button
@@ -268,7 +268,7 @@ function LeaveRequestRow({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="space-y-1 text-xs font-medium text-gray-600">
                       Start date
                       <Input

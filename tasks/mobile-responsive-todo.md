@@ -7,47 +7,47 @@ Marker `[x]` done, `[ ]` outstanding. Spec: `docs/superpowers/specs/2026-07-11-m
 
 ## Tier 0 — Systemic (shared surfaces, fix once)
 
-- [x]A [ ]F [ ]V  `src/ds` primitives — Table / DataTable / responsive wrapper
-- [x]A [ ]F [ ]V  `src/ds` Modal / drawer fit on mobile
-- [x]A [ ]F [ ]V  `src/ds` page container / Section / Card default gutters + max-width
-- [x]A [ ]F [ ]V  `globals.css` mobile media queries + `min-width` overrides
-- [x]A [ ]F [ ]V  Nav shell (AppShell/Sidebar/Topbar/MobileChrome) — VERIFY only
-- [x]A [ ]F [ ]V  `min-w-[720–1040px]` grid offenders (rota grid, FOH timeline, receipts charts/grids, invoice detail)
+- [x]A [x]F [ ]V  `src/ds` primitives — Table / DataTable / responsive wrapper
+- [x]A [x]F [ ]V  `src/ds` Modal / drawer fit on mobile
+- [x]A [x]F [ ]V  `src/ds` page container / Section / Card default gutters + max-width
+- [x]A [x]F [ ]V  `globals.css` mobile media queries + `min-width` overrides
+- [x]A [x]F [ ]V  Nav shell (AppShell/Sidebar/Topbar/MobileChrome) — VERIFY only
+- [x]A [x]F [ ]V  `min-w-[720–1040px]` grid offenders (rota grid, FOH timeline, receipts charts/grids, invoice detail)
 
 ## Tier 1 — Daily manager (priority)
 
 ### Dashboard
-- [x]A [ ]F [ ]V  `/dashboard`
+- [x]A [x]F [ ]V  `/dashboard`
 ### Messages
-- [x]A [ ]F [ ]V  `/messages`
-- [x]A [ ]F [ ]V  `/messages/bulk`
-- [x]A [ ]F [ ]V  `/messages/holding`
+- [x]A [x]F [ ]V  `/messages`
+- [x]A [x]F [ ]V  `/messages/bulk`
+- [x]A [x]F [ ]V  `/messages/holding`
 ### Customers
-- [x]A [ ]F [ ]V  `/customers`
-- [x]A [ ]F [ ]V  `/customers/[id]`
-- [x]A [ ]F [ ]V  `/customers/insights`
+- [x]A [x]F [ ]V  `/customers`
+- [x]A [x]F [ ]V  `/customers/[id]`
+- [x]A [x]F [ ]V  `/customers/insights`
 ### Events
-- [x]A [ ]F [ ]V  `/events`
-- [x]A [ ]F [ ]V  `/events/[id]`
-- [x]A [ ]F [ ]V  `/events/todo`
-- [x]A [ ]F [ ]V  `/events/[id]/check-in` (kiosk, chromeless)
+- [x]A [x]F [ ]V  `/events`
+- [x]A [x]F [ ]V  `/events/[id]`
+- [x]A [x]F [ ]V  `/events/todo`
+- [x]A [x]F [ ]V  `/events/[id]/check-in` (kiosk, chromeless)
 ### Private bookings
-- [x]A [ ]F [ ]V  `/private-bookings`
-- [x]A [ ]F [ ]V  `/private-bookings/new`
-- [x]A [ ]F [ ]V  `/private-bookings/calendar`
-- [x]A [ ]F [ ]V  `/private-bookings/sms-queue`
-- [x]A [ ]F [ ]V  `/private-bookings/[id]`
-- [x]A [ ]F [ ]V  `/private-bookings/[id]/edit`
-- [x]A [ ]F [ ]V  `/private-bookings/[id]/communications`
-- [x]A [ ]F [ ]V  `/private-bookings/[id]/contract`
-- [x]A [ ]F [ ]V  `/private-bookings/[id]/items`
-- [x]A [ ]F [ ]V  `/private-bookings/[id]/messages`
-- [x]A [ ]F [ ]V  `/private-bookings/settings`
-- [x]A [ ]F [ ]V  `/private-bookings/settings/catering`
-- [x]A [ ]F [ ]V  `/private-bookings/settings/spaces`
-- [x]A [ ]F [ ]V  `/private-bookings/settings/vendors`
-- [x]A [ ]F [ ]V  `/private-booking/[id]`
-- [x]A [ ]F [ ]V  `/private-booking/[id]/edit`
+- [x]A [x]F [ ]V  `/private-bookings`
+- [x]A [x]F [ ]V  `/private-bookings/new`
+- [x]A [x]F [ ]V  `/private-bookings/calendar`
+- [x]A [x]F [ ]V  `/private-bookings/sms-queue`
+- [x]A [x]F [ ]V  `/private-bookings/[id]`
+- [x]A [x]F [ ]V  `/private-bookings/[id]/edit`
+- [x]A [x]F [ ]V  `/private-bookings/[id]/communications`
+- [x]A [x]F [ ]V  `/private-bookings/[id]/contract`
+- [x]A [x]F [ ]V  `/private-bookings/[id]/items`
+- [x]A [x]F [ ]V  `/private-bookings/[id]/messages`
+- [x]A [x]F [ ]V  `/private-bookings/settings`
+- [x]A [x]F [ ]V  `/private-bookings/settings/catering`
+- [x]A [x]F [ ]V  `/private-bookings/settings/spaces`
+- [x]A [x]F [ ]V  `/private-bookings/settings/vendors`
+- [x]A [x]F [ ]V  `/private-booking/[id]`
+- [x]A [x]F [ ]V  `/private-booking/[id]/edit`
 
 ## Tier 2 — On-the-floor
 

@@ -77,7 +77,7 @@ export default async function MyLeavePage() {
         <h2 className="text-xl font-semibold text-gray-900">My Holiday</h2>
         <a
           href="/portal/leave/new"
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700"
+          className="touch-target inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700"
         >
           Request holiday
         </a>
