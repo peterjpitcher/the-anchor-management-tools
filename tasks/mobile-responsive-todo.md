@@ -7,213 +7,213 @@ Marker `[x]` done, `[ ]` outstanding. Spec: `docs/superpowers/specs/2026-07-11-m
 
 ## Tier 0 — Systemic (shared surfaces, fix once)
 
-- [ ]A [ ]F [ ]V  `src/ds` primitives — Table / DataTable / responsive wrapper
-- [ ]A [ ]F [ ]V  `src/ds` Modal / drawer fit on mobile
-- [ ]A [ ]F [ ]V  `src/ds` page container / Section / Card default gutters + max-width
-- [ ]A [ ]F [ ]V  `globals.css` mobile media queries + `min-width` overrides
-- [ ]A [ ]F [ ]V  Nav shell (AppShell/Sidebar/Topbar/MobileChrome) — VERIFY only
-- [ ]A [ ]F [ ]V  `min-w-[720–1040px]` grid offenders (rota grid, FOH timeline, receipts charts/grids, invoice detail)
+- [x]A [ ]F [ ]V  `src/ds` primitives — Table / DataTable / responsive wrapper
+- [x]A [ ]F [ ]V  `src/ds` Modal / drawer fit on mobile
+- [x]A [ ]F [ ]V  `src/ds` page container / Section / Card default gutters + max-width
+- [x]A [ ]F [ ]V  `globals.css` mobile media queries + `min-width` overrides
+- [x]A [ ]F [ ]V  Nav shell (AppShell/Sidebar/Topbar/MobileChrome) — VERIFY only
+- [x]A [ ]F [ ]V  `min-w-[720–1040px]` grid offenders (rota grid, FOH timeline, receipts charts/grids, invoice detail)
 
 ## Tier 1 — Daily manager (priority)
 
 ### Dashboard
-- [ ]A [ ]F [ ]V  `/dashboard`
+- [x]A [ ]F [ ]V  `/dashboard`
 ### Messages
-- [ ]A [ ]F [ ]V  `/messages`
-- [ ]A [ ]F [ ]V  `/messages/bulk`
-- [ ]A [ ]F [ ]V  `/messages/holding`
+- [x]A [ ]F [ ]V  `/messages`
+- [x]A [ ]F [ ]V  `/messages/bulk`
+- [x]A [ ]F [ ]V  `/messages/holding`
 ### Customers
-- [ ]A [ ]F [ ]V  `/customers`
-- [ ]A [ ]F [ ]V  `/customers/[id]`
-- [ ]A [ ]F [ ]V  `/customers/insights`
+- [x]A [ ]F [ ]V  `/customers`
+- [x]A [ ]F [ ]V  `/customers/[id]`
+- [x]A [ ]F [ ]V  `/customers/insights`
 ### Events
-- [ ]A [ ]F [ ]V  `/events`
-- [ ]A [ ]F [ ]V  `/events/[id]`
-- [ ]A [ ]F [ ]V  `/events/todo`
-- [ ]A [ ]F [ ]V  `/events/[id]/check-in` (kiosk, chromeless)
+- [x]A [ ]F [ ]V  `/events`
+- [x]A [ ]F [ ]V  `/events/[id]`
+- [x]A [ ]F [ ]V  `/events/todo`
+- [x]A [ ]F [ ]V  `/events/[id]/check-in` (kiosk, chromeless)
 ### Private bookings
-- [ ]A [ ]F [ ]V  `/private-bookings`
-- [ ]A [ ]F [ ]V  `/private-bookings/new`
-- [ ]A [ ]F [ ]V  `/private-bookings/calendar`
-- [ ]A [ ]F [ ]V  `/private-bookings/sms-queue`
-- [ ]A [ ]F [ ]V  `/private-bookings/[id]`
-- [ ]A [ ]F [ ]V  `/private-bookings/[id]/edit`
-- [ ]A [ ]F [ ]V  `/private-bookings/[id]/communications`
-- [ ]A [ ]F [ ]V  `/private-bookings/[id]/contract`
-- [ ]A [ ]F [ ]V  `/private-bookings/[id]/items`
-- [ ]A [ ]F [ ]V  `/private-bookings/[id]/messages`
-- [ ]A [ ]F [ ]V  `/private-bookings/settings`
-- [ ]A [ ]F [ ]V  `/private-bookings/settings/catering`
-- [ ]A [ ]F [ ]V  `/private-bookings/settings/spaces`
-- [ ]A [ ]F [ ]V  `/private-bookings/settings/vendors`
-- [ ]A [ ]F [ ]V  `/private-booking/[id]`
-- [ ]A [ ]F [ ]V  `/private-booking/[id]/edit`
+- [x]A [ ]F [ ]V  `/private-bookings`
+- [x]A [ ]F [ ]V  `/private-bookings/new`
+- [x]A [ ]F [ ]V  `/private-bookings/calendar`
+- [x]A [ ]F [ ]V  `/private-bookings/sms-queue`
+- [x]A [ ]F [ ]V  `/private-bookings/[id]`
+- [x]A [ ]F [ ]V  `/private-bookings/[id]/edit`
+- [x]A [ ]F [ ]V  `/private-bookings/[id]/communications`
+- [x]A [ ]F [ ]V  `/private-bookings/[id]/contract`
+- [x]A [ ]F [ ]V  `/private-bookings/[id]/items`
+- [x]A [ ]F [ ]V  `/private-bookings/[id]/messages`
+- [x]A [ ]F [ ]V  `/private-bookings/settings`
+- [x]A [ ]F [ ]V  `/private-bookings/settings/catering`
+- [x]A [ ]F [ ]V  `/private-bookings/settings/spaces`
+- [x]A [ ]F [ ]V  `/private-bookings/settings/vendors`
+- [x]A [ ]F [ ]V  `/private-booking/[id]`
+- [x]A [ ]F [ ]V  `/private-booking/[id]/edit`
 
 ## Tier 2 — On-the-floor
 
 ### Table bookings
-- [ ]A [ ]F [ ]V  `/table-bookings`
-- [ ]A [ ]F [ ]V  `/table-bookings/[id]`
-- [ ]A [ ]F [ ]V  `/table-bookings/boh`
-- [ ]A [ ]F [ ]V  `/table-bookings/foh`
-- [ ]A [ ]F [ ]V  `/table-bookings/reports`
+- [x]A [ ]F [ ]V  `/table-bookings`
+- [x]A [ ]F [ ]V  `/table-bookings/[id]`
+- [x]A [ ]F [ ]V  `/table-bookings/boh`
+- [x]A [ ]F [ ]V  `/table-bookings/foh`
+- [x]A [ ]F [ ]V  `/table-bookings/reports`
 ### Timeclock
-- [ ]A [ ]F [ ]V  `/timeclock` (kiosk, chromeless)
+- [x]A [ ]F [ ]V  `/timeclock` (kiosk, chromeless)
 ### Rota
-- [ ]A [ ]F [ ]V  `/rota`
-- [ ]A [ ]F [ ]V  `/rota/dashboard`
-- [ ]A [ ]F [ ]V  `/rota/hours`
-- [ ]A [ ]F [ ]V  `/rota/leave`
-- [ ]A [ ]F [ ]V  `/rota/payroll`
-- [ ]A [ ]F [ ]V  `/rota/print`
-- [ ]A [ ]F [ ]V  `/rota/templates`
-- [ ]A [ ]F [ ]V  `/rota/timeclock`
+- [x]A [ ]F [ ]V  `/rota`
+- [x]A [ ]F [ ]V  `/rota/dashboard`
+- [x]A [ ]F [ ]V  `/rota/hours`
+- [x]A [ ]F [ ]V  `/rota/leave`
+- [x]A [ ]F [ ]V  `/rota/payroll`
+- [x]A [ ]F [ ]V  `/rota/print`
+- [x]A [ ]F [ ]V  `/rota/templates`
+- [x]A [ ]F [ ]V  `/rota/timeclock`
 ### Staff portal (own shell)
-- [ ]A [ ]F [ ]V  `/portal`
-- [ ]A [ ]F [ ]V  `/portal/shifts`
-- [ ]A [ ]F [ ]V  `/portal/leave`
-- [ ]A [ ]F [ ]V  `/portal/leave/new`
+- [x]A [ ]F [ ]V  `/portal`
+- [x]A [ ]F [ ]V  `/portal/shifts`
+- [x]A [ ]F [ ]V  `/portal/leave`
+- [x]A [ ]F [ ]V  `/portal/leave/new`
 
 ## Tier 3 — Money / admin
 
 ### Invoices
-- [ ]A [ ]F [ ]V  `/invoices`
-- [ ]A [ ]F [ ]V  `/invoices/new`
-- [ ]A [ ]F [ ]V  `/invoices/catalog`
-- [ ]A [ ]F [ ]V  `/invoices/export`
-- [ ]A [ ]F [ ]V  `/invoices/vendors`
-- [ ]A [ ]F [ ]V  `/invoices/recurring`
-- [ ]A [ ]F [ ]V  `/invoices/recurring/new`
-- [ ]A [ ]F [ ]V  `/invoices/recurring/[id]`
-- [ ]A [ ]F [ ]V  `/invoices/recurring/[id]/edit`
-- [ ]A [ ]F [ ]V  `/invoices/[id]`
-- [ ]A [ ]F [ ]V  `/invoices/[id]/edit`
-- [ ]A [ ]F [ ]V  `/invoices/[id]/payment`
+- [x]A [ ]F [ ]V  `/invoices`
+- [x]A [ ]F [ ]V  `/invoices/new`
+- [x]A [ ]F [ ]V  `/invoices/catalog`
+- [x]A [ ]F [ ]V  `/invoices/export`
+- [x]A [ ]F [ ]V  `/invoices/vendors`
+- [x]A [ ]F [ ]V  `/invoices/recurring`
+- [x]A [ ]F [ ]V  `/invoices/recurring/new`
+- [x]A [ ]F [ ]V  `/invoices/recurring/[id]`
+- [x]A [ ]F [ ]V  `/invoices/recurring/[id]/edit`
+- [x]A [ ]F [ ]V  `/invoices/[id]`
+- [x]A [ ]F [ ]V  `/invoices/[id]/edit`
+- [x]A [ ]F [ ]V  `/invoices/[id]/payment`
 ### Quotes
-- [ ]A [ ]F [ ]V  `/quotes`
-- [ ]A [ ]F [ ]V  `/quotes/new`
-- [ ]A [ ]F [ ]V  `/quotes/[id]`
-- [ ]A [ ]F [ ]V  `/quotes/[id]/edit`
-- [ ]A [ ]F [ ]V  `/quotes/[id]/convert`
+- [x]A [ ]F [ ]V  `/quotes`
+- [x]A [ ]F [ ]V  `/quotes/new`
+- [x]A [ ]F [ ]V  `/quotes/[id]`
+- [x]A [ ]F [ ]V  `/quotes/[id]/edit`
+- [x]A [ ]F [ ]V  `/quotes/[id]/convert`
 ### Receipts
-- [ ]A [ ]F [ ]V  `/receipts`
-- [ ]A [ ]F [ ]V  `/receipts/bulk`
-- [ ]A [ ]F [ ]V  `/receipts/missing-expense`
-- [ ]A [ ]F [ ]V  `/receipts/monthly`
-- [ ]A [ ]F [ ]V  `/receipts/pnl`
-- [ ]A [ ]F [ ]V  `/receipts/vendors`
+- [x]A [ ]F [ ]V  `/receipts`
+- [x]A [ ]F [ ]V  `/receipts/bulk`
+- [x]A [ ]F [ ]V  `/receipts/missing-expense`
+- [x]A [ ]F [ ]V  `/receipts/monthly`
+- [x]A [ ]F [ ]V  `/receipts/pnl`
+- [x]A [ ]F [ ]V  `/receipts/vendors`
 ### Cashing-up
-- [ ]A [ ]F [ ]V  `/cashing-up/daily`
-- [ ]A [ ]F [ ]V  `/cashing-up/dashboard`
-- [ ]A [ ]F [ ]V  `/cashing-up/weekly`
-- [ ]A [ ]F [ ]V  `/cashing-up/import`
-- [ ]A [ ]F [ ]V  `/cashing-up/insights`
+- [x]A [ ]F [ ]V  `/cashing-up/daily`
+- [x]A [ ]F [ ]V  `/cashing-up/dashboard`
+- [x]A [ ]F [ ]V  `/cashing-up/weekly`
+- [x]A [ ]F [ ]V  `/cashing-up/import`
+- [x]A [ ]F [ ]V  `/cashing-up/insights`
 ### Expenses / Mileage / MGD
-- [ ]A [ ]F [ ]V  `/expenses`
-- [ ]A [ ]F [ ]V  `/expenses/insights`
-- [ ]A [ ]F [ ]V  `/mileage`
-- [ ]A [ ]F [ ]V  `/mileage/destinations`
-- [ ]A [ ]F [ ]V  `/mileage/insights`
-- [ ]A [ ]F [ ]V  `/mgd`
-- [ ]A [ ]F [ ]V  `/mgd/insights`
+- [x]A [ ]F [ ]V  `/expenses`
+- [x]A [ ]F [ ]V  `/expenses/insights`
+- [x]A [ ]F [ ]V  `/mileage`
+- [x]A [ ]F [ ]V  `/mileage/destinations`
+- [x]A [ ]F [ ]V  `/mileage/insights`
+- [x]A [ ]F [ ]V  `/mgd`
+- [x]A [ ]F [ ]V  `/mgd/insights`
 ### Menu management
-- [ ]A [ ]F [ ]V  `/menu-management`
-- [ ]A [ ]F [ ]V  `/menu-management/dishes`
-- [ ]A [ ]F [ ]V  `/menu-management/ingredients`
-- [ ]A [ ]F [ ]V  `/menu-management/recipes`
+- [x]A [ ]F [ ]V  `/menu-management`
+- [x]A [ ]F [ ]V  `/menu-management/dishes`
+- [x]A [ ]F [ ]V  `/menu-management/ingredients`
+- [x]A [ ]F [ ]V  `/menu-management/recipes`
 ### OJ Projects
-- [ ]A [ ]F [ ]V  `/oj-projects`
-- [ ]A [ ]F [ ]V  `/oj-projects/clients`
-- [ ]A [ ]F [ ]V  `/oj-projects/entries`
-- [ ]A [ ]F [ ]V  `/oj-projects/projects`
-- [ ]A [ ]F [ ]V  `/oj-projects/projects/[id]`
-- [ ]A [ ]F [ ]V  `/oj-projects/work-types`
+- [x]A [ ]F [ ]V  `/oj-projects`
+- [x]A [ ]F [ ]V  `/oj-projects/clients`
+- [x]A [ ]F [ ]V  `/oj-projects/entries`
+- [x]A [ ]F [ ]V  `/oj-projects/projects`
+- [x]A [ ]F [ ]V  `/oj-projects/projects/[id]`
+- [x]A [ ]F [ ]V  `/oj-projects/work-types`
 ### Short links
-- [ ]A [ ]F [ ]V  `/short-links`
-- [ ]A [ ]F [ ]V  `/short-links/insights`
-- [ ]A [ ]F [ ]V  `/short-links/legacy-domain`
+- [x]A [ ]F [ ]V  `/short-links`
+- [x]A [ ]F [ ]V  `/short-links/insights`
+- [x]A [ ]F [ ]V  `/short-links/legacy-domain`
 ### Employees / recruitment
-- [ ]A [ ]F [ ]V  `/employees`
-- [ ]A [ ]F [ ]V  `/employees/new`
-- [ ]A [ ]F [ ]V  `/employees/[employee_id]`
-- [ ]A [ ]F [ ]V  `/employees/[employee_id]/edit`
-- [ ]A [ ]F [ ]V  `/employees/birthdays`
-- [ ]A [ ]F [ ]V  `/employees/reliability`
-- [ ]A [ ]F [ ]V  `/recruitment`
+- [x]A [ ]F [ ]V  `/employees`
+- [x]A [ ]F [ ]V  `/employees/new`
+- [x]A [ ]F [ ]V  `/employees/[employee_id]`
+- [x]A [ ]F [ ]V  `/employees/[employee_id]/edit`
+- [x]A [ ]F [ ]V  `/employees/birthdays`
+- [x]A [ ]F [ ]V  `/employees/reliability`
+- [x]A [ ]F [ ]V  `/recruitment`
 ### Core / other
-- [ ]A [ ]F [ ]V  `/profile`
-- [ ]A [ ]F [ ]V  `/profile/change-password`
-- [ ]A [ ]F [ ]V  `/users`
-- [ ]A [ ]F [ ]V  `/roles`
-- [ ]A [ ]F [ ]V  `/roles/new`
-- [ ]A [ ]F [ ]V  `/roles/[id]/edit`
-- [ ]A [ ]F [ ]V  `/feedback-inbox`
-- [ ]A [ ]F [ ]V  `/parking`
+- [x]A [ ]F [ ]V  `/profile`
+- [x]A [ ]F [ ]V  `/profile/change-password`
+- [x]A [ ]F [ ]V  `/users`
+- [x]A [ ]F [ ]V  `/roles`
+- [x]A [ ]F [ ]V  `/roles/new`
+- [x]A [ ]F [ ]V  `/roles/[id]/edit`
+- [x]A [ ]F [ ]V  `/feedback-inbox`
+- [x]A [ ]F [ ]V  `/parking`
 ### Settings
-- [ ]A [ ]F [ ]V  `/settings`
-- [ ]A [ ]F [ ]V  `/settings/api-keys`
-- [ ]A [ ]F [ ]V  `/settings/audit-logs`
-- [ ]A [ ]F [ ]V  `/settings/background-jobs`
-- [ ]A [ ]F [ ]V  `/settings/budgets`
-- [ ]A [ ]F [ ]V  `/settings/business-hours`
-- [ ]A [ ]F [ ]V  `/settings/calendar-notes`
-- [ ]A [ ]F [ ]V  `/settings/categories`
-- [ ]A [ ]F [ ]V  `/settings/customer-labels`
-- [ ]A [ ]F [ ]V  `/settings/design-system`
-- [ ]A [ ]F [ ]V  `/settings/event-categories`
-- [ ]A [ ]F [ ]V  `/settings/gdpr`
-- [ ]A [ ]F [ ]V  `/settings/import-messages`
-- [ ]A [ ]F [ ]V  `/settings/menu-target`
-- [ ]A [ ]F [ ]V  `/settings/message-templates`
-- [ ]A [ ]F [ ]V  `/settings/pay-bands`
-- [ ]A [ ]F [ ]V  `/settings/rota`
-- [ ]A [ ]F [ ]V  `/settings/sms-failures`
-- [ ]A [ ]F [ ]V  `/settings/table-bookings`
+- [x]A [ ]F [ ]V  `/settings`
+- [x]A [ ]F [ ]V  `/settings/api-keys`
+- [x]A [ ]F [ ]V  `/settings/audit-logs`
+- [x]A [ ]F [ ]V  `/settings/background-jobs`
+- [x]A [ ]F [ ]V  `/settings/budgets`
+- [x]A [ ]F [ ]V  `/settings/business-hours`
+- [x]A [ ]F [ ]V  `/settings/calendar-notes`
+- [x]A [ ]F [ ]V  `/settings/categories`
+- [x]A [ ]F [ ]V  `/settings/customer-labels`
+- [x]A [ ]F [ ]V  `/settings/design-system`
+- [x]A [ ]F [ ]V  `/settings/event-categories`
+- [x]A [ ]F [ ]V  `/settings/gdpr`
+- [x]A [ ]F [ ]V  `/settings/import-messages`
+- [x]A [ ]F [ ]V  `/settings/menu-target`
+- [x]A [ ]F [ ]V  `/settings/message-templates`
+- [x]A [ ]F [ ]V  `/settings/pay-bands`
+- [x]A [ ]F [ ]V  `/settings/rota`
+- [x]A [ ]F [ ]V  `/settings/sms-failures`
+- [x]A [ ]F [ ]V  `/settings/table-bookings`
 
 ## Tier 4 — Public / booking (chromeless)
 
 ### Public + auth
-- [ ]A [ ]F [ ]V  `/` (root)
-- [ ]A [ ]F [ ]V  `/login`
-- [ ]A [ ]F [ ]V  `/auth/login`
-- [ ]A [ ]F [ ]V  `/auth/recover`
-- [ ]A [ ]F [ ]V  `/auth/reset`
-- [ ]A [ ]F [ ]V  `/auth/reset-password`
-- [ ]A [ ]F [ ]V  `/error`
-- [ ]A [ ]F [ ]V  `/unauthorized`
-- [ ]A [ ]F [ ]V  `/privacy`
+- [x]A [ ]F [ ]V  `/` (root)
+- [x]A [ ]F [ ]V  `/login`
+- [x]A [ ]F [ ]V  `/auth/login`
+- [x]A [ ]F [ ]V  `/auth/recover`
+- [x]A [ ]F [ ]V  `/auth/reset`
+- [x]A [ ]F [ ]V  `/auth/reset-password`
+- [x]A [ ]F [ ]V  `/error`
+- [x]A [ ]F [ ]V  `/unauthorized`
+- [x]A [ ]F [ ]V  `/privacy`
 ### Table booking (public)
-- [ ]A [ ]F [ ]V  `/table-booking`
-- [ ]A [ ]F [ ]V  `/table-booking/[reference]`
-- [ ]A [ ]F [ ]V  `/table-booking/[reference]/payment`
-- [ ]A [ ]F [ ]V  `/table-booking/success`
+- [x]A [ ]F [ ]V  `/table-booking`
+- [x]A [ ]F [ ]V  `/table-booking/[reference]`
+- [x]A [ ]F [ ]V  `/table-booking/[reference]/payment`
+- [x]A [ ]F [ ]V  `/table-booking/success`
 ### Booking tokens
-- [ ]A [ ]F [ ]V  `/booking-confirmation/[token]`
-- [ ]A [ ]F [ ]V  `/booking-portal/[token]`
-- [ ]A [ ]F [ ]V  `/booking-success/[id]`
+- [x]A [ ]F [ ]V  `/booking-confirmation/[token]`
+- [x]A [ ]F [ ]V  `/booking-portal/[token]`
+- [x]A [ ]F [ ]V  `/booking-success/[id]`
 ### Parking guest
-- [ ]A [ ]F [ ]V  `/parking/guest/[id]`
-- [ ]A [ ]F [ ]V  `/parking/payment-error`
+- [x]A [ ]F [ ]V  `/parking/guest/[id]`
+- [x]A [ ]F [ ]V  `/parking/payment-error`
 ### Recruitment (public)
-- [ ]A [ ]F [ ]V  `/recruitment/book/[token]`
+- [x]A [ ]F [ ]V  `/recruitment/book/[token]`
 ### Guest-token cluster `/g/[token]/…`
-- [ ]A [ ]F [ ]V  `/g/[token]/card-capture`
-- [ ]A [ ]F [ ]V  `/g/[token]/event-payment`
-- [ ]A [ ]F [ ]V  `/g/[token]/manage-booking`
-- [ ]A [ ]F [ ]V  `/g/[token]/private-feedback`
-- [ ]A [ ]F [ ]V  `/g/[token]/sunday-preorder`
-- [ ]A [ ]F [ ]V  `/g/[token]/table-manage`
-- [ ]A [ ]F [ ]V  `/g/[token]/table-payment`
-- [ ]A [ ]F [ ]V  `/g/[token]/waitlist-offer`
+- [x]A [ ]F [ ]V  `/g/[token]/card-capture`
+- [x]A [ ]F [ ]V  `/g/[token]/event-payment`
+- [x]A [ ]F [ ]V  `/g/[token]/manage-booking`
+- [x]A [ ]F [ ]V  `/g/[token]/private-feedback`
+- [x]A [ ]F [ ]V  `/g/[token]/sunday-preorder`
+- [x]A [ ]F [ ]V  `/g/[token]/table-manage`
+- [x]A [ ]F [ ]V  `/g/[token]/table-payment`
+- [x]A [ ]F [ ]V  `/g/[token]/waitlist-offer`
 ### Misc token
-- [ ]A [ ]F [ ]V  `/m/[token]/charge-request`
+- [x]A [ ]F [ ]V  `/m/[token]/charge-request`
 ### Feedback (own shell)
-- [ ]A [ ]F [ ]V  `/feedback`
-- [ ]A [ ]F [ ]V  `/feedback/tell-us`
-- [ ]A [ ]F [ ]V  `/feedback/thanks`
+- [x]A [ ]F [ ]V  `/feedback`
+- [x]A [ ]F [ ]V  `/feedback/tell-us`
+- [x]A [ ]F [ ]V  `/feedback/thanks`
 ### Onboarding (own shell)
-- [ ]A [ ]F [ ]V  `/onboarding/[token]`
-- [ ]A [ ]F [ ]V  `/onboarding/success`
+- [x]A [ ]F [ ]V  `/onboarding/[token]`
+- [x]A [ ]F [ ]V  `/onboarding/success`
 
 ---
 
