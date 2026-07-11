@@ -397,7 +397,7 @@ export default function MenuManagementClient(): React.ReactElement {
       />
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card><CardBody><Stat label="Total Dishes" value={stats.totalDishes} hint={showActive === 'active' ? `${stats.activeDishes} active` : undefined} /></CardBody></Card>
         <Card><CardBody><Stat label="Below GP Target" value={stats.belowTargetCount} hint={stats.belowTargetCount > 0 ? 'Needs attention' : 'On track'} /></CardBody></Card>
         <Card><CardBody><Stat label="Missing Costing" value={stats.missingCostingCount} hint={stats.missingCostingCount > 0 ? 'Needs costing data' : 'All costed'} /></CardBody></Card>
@@ -405,7 +405,7 @@ export default function MenuManagementClient(): React.ReactElement {
       </div>
 
       {/* Main content: sidebar + table */}
-      <div className="grid grid-cols-[240px_1fr] gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
         {/* Left sidebar: menu sections */}
         <div className="space-y-4">
           <Card>
@@ -463,7 +463,7 @@ export default function MenuManagementClient(): React.ReactElement {
         {/* Right content */}
         <div className="space-y-4">
           {/* Filter bar + view toggle */}
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               {selectedMenu !== 'all' && availableCategories.length > 0 && (
                 <Select

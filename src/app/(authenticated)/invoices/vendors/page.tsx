@@ -454,18 +454,16 @@ export default function VendorsPage() {
               ) },
             ]}
             renderMobileCard={(v: InvoiceVendor) => (
-              <div className="p-3">
-                <div className="flex justify-between items-start mb-2">
+              <div className="space-y-3 p-3">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium">{v.name}</div>
                     {v.vat_number && (<div className="text-sm text-gray-500">VAT: {v.vat_number}</div>)}
-                    <div className="text-sm text-gray-600">{v.email || '-'}</div>
+                    <div className="text-sm text-gray-600 break-all">{v.email || '-'}</div>
                     {v.phone && (<div className="text-sm text-gray-600">{v.phone}</div>)}
+                    <div className="mt-1 text-sm text-gray-600">Terms: {v.payment_terms} days</div>
                   </div>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <div>Terms: {v.payment_terms} days</div>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     <Button
                       size="sm"
                       variant="secondary"
@@ -490,6 +488,15 @@ export default function VendorsPage() {
                     </Button>
                   </div>
                 </div>
+                <Button
+                  size="sm"
+                  fullWidth
+                  onClick={() => openContacts(v)}
+                  aria-label="Manage contacts"
+                  leftIcon={<Users className="h-4 w-4" />}
+                >
+                  Contacts
+                </Button>
               </div>
             )}
           />

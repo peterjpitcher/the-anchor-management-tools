@@ -105,7 +105,11 @@ interface RowProps {
   onUpdated: (id: string, status: FeedbackStatus, staffNotes: string | null) => void
 }
 
-function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
+/**
+ * Shared status/notes controls, used by both the desktop table row and the
+ * mobile card so the interactive behaviour stays identical across layouts.
+ */
+function FeedbackControls({ item, canManage, onUpdated }: RowProps) {
   const [status, setStatus] = useState<FeedbackStatus>(item.status)
   const [noteDraft, setNoteDraft] = useState('')
   const [savingStatus, setSavingStatus] = useState(false)
@@ -145,6 +149,62 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
     if (!ok) setStatus(previous)
   }
 
+  if (!canManage) {
+    return (
+      <div className="flex flex-col gap-1">
+        <Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>
+        {item.staffNotes && (
+          <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
+            {item.staffNotes}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Select
+        label="Status"
+        value={status}
+        onChange={handleStatusChange}
+        disabled={savingStatus}
+        options={STATUS_OPTIONS}
+        aria-label={`Status for feedback from ${formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}`}
+      />
+      <div className="flex flex-col gap-1">
+        {item.staffNotes && (
+          <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
+            {item.staffNotes}
+          </p>
+        )}
+        <Textarea
+          label="Add a note"
+          value={noteDraft}
+          onChange={(event) => setNoteDraft(event.target.value)}
+          rows={2}
+          placeholder="Add a note..."
+          disabled={savingNotes}
+          aria-label="Add a note"
+        />
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={savingNotes}
+            disabled={savingNotes || !noteDraft.trim()}
+            onClick={() => persist(status, noteDraft.trim(), 'notes')}
+          >
+            Add note
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
   return (
     <TableRow>
       <TableCell className="py-2 align-top text-xs text-text-muted whitespace-nowrap">
@@ -164,57 +224,35 @@ function FeedbackRow({ item, canManage, onUpdated }: RowProps) {
         <ContactCell item={item} />
       </TableCell>
       <TableCell className="py-2 align-top">
-        {canManage ? (
-          <div className="flex flex-col gap-2">
-            <Select
-              label="Status"
-              value={status}
-              onChange={handleStatusChange}
-              disabled={savingStatus}
-              options={STATUS_OPTIONS}
-              aria-label={`Status for feedback from ${formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}`}
-            />
-            <div className="flex flex-col gap-1">
-              {item.staffNotes && (
-                <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
-                  {item.staffNotes}
-                </p>
-              )}
-              <Textarea
-                label="Add a note"
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                rows={2}
-                placeholder="Add a note..."
-                disabled={savingNotes}
-                aria-label="Add a note"
-              />
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={savingNotes}
-                  disabled={savingNotes || !noteDraft.trim()}
-                  onClick={() => persist(status, noteDraft.trim(), 'notes')}
-                >
-                  Add note
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            <Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>
-            {item.staffNotes && (
-              <p className="whitespace-pre-line break-words text-xs text-text-muted [overflow-wrap:anywhere]">
-                {item.staffNotes}
-              </p>
-            )}
-          </div>
-        )}
+        <FeedbackControls item={item} canManage={canManage} onUpdated={onUpdated} />
       </TableCell>
     </TableRow>
+  )
+}
+
+/** Mobile layout: one stacked card per feedback item. */
+function FeedbackCard({ item, canManage, onUpdated }: RowProps) {
+  return (
+    <div className="space-y-3 py-4 first:pt-0 last:pb-0">
+      <div className="flex items-start justify-between gap-2">
+        <StarRating rating={item.rating} />
+        <span className="whitespace-nowrap text-xs text-text-muted">
+          {formatDateInLondon(item.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}
+        </span>
+      </div>
+      {item.comments ? (
+        <p className="break-words text-[13px] text-text [overflow-wrap:anywhere]">{item.comments}</p>
+      ) : (
+        <p className="text-xs text-text-subtle">No comment</p>
+      )}
+      <div>
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-text-muted">Contact</p>
+        <ContactCell item={item} />
+      </div>
+      <div className="border-t border-border pt-3">
+        <FeedbackControls item={item} canManage={canManage} onUpdated={onUpdated} />
+      </div>
+    </div>
   )
 }
 
@@ -324,7 +362,24 @@ export function FeedbackInboxClient({
         </Alert>
       )}
 
+      {(() => {
+        const emptyContent = (
+          <div className="flex flex-col items-center gap-1 text-text-muted">
+            <Icon name="message" size={24} className="text-text-subtle" />
+            <span className="text-sm font-medium">
+              {showResolved ? 'No feedback yet' : 'No open feedback'}
+            </span>
+            <span className="text-xs text-text-subtle">
+              {showResolved
+                ? 'Guest feedback submitted through the review funnel will appear here.'
+                : 'Resolved and dismissed items are hidden — use "Show resolved" to see them.'}
+            </span>
+          </div>
+        )
+        return (
       <Card>
+        {/* Desktop: full table */}
+        <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -339,17 +394,7 @@ export function FeedbackInboxClient({
             {items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} align="center" className="py-10 text-center">
-                  <div className="flex flex-col items-center gap-1 text-text-muted">
-                    <Icon name="message" size={24} className="text-text-subtle" />
-                    <span className="text-sm font-medium">
-                      {showResolved ? 'No feedback yet' : 'No open feedback'}
-                    </span>
-                    <span className="text-xs text-text-subtle">
-                      {showResolved
-                        ? 'Guest feedback submitted through the review funnel will appear here.'
-                        : 'Resolved and dismissed items are hidden — use "Show resolved" to see them.'}
-                    </span>
-                  </div>
+                  {emptyContent}
                 </TableCell>
               </TableRow>
             ) : (
@@ -364,6 +409,25 @@ export function FeedbackInboxClient({
             )}
           </TableBody>
         </Table>
+        </div>
+
+        {/* Mobile: stacked cards */}
+        <div className="md:hidden">
+          {items.length === 0 ? (
+            <div className="py-6">{emptyContent}</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {items.map((item) => (
+                <FeedbackCard
+                  key={item.id}
+                  item={item}
+                  canManage={canManage}
+                  onUpdated={handleUpdated}
+                />
+              ))}
+            </div>
+          )}
+        </div>
         {hasMore && (
           <div className="flex justify-center border-t border-border py-3">
             <Button
@@ -379,6 +443,8 @@ export function FeedbackInboxClient({
           </div>
         )}
       </Card>
+        )
+      })()}
     </div>
   )
 }

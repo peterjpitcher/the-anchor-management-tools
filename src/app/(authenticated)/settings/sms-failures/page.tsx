@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatErrorMessage } from '@/lib/sms-status'
-import { Badge, Button, Card, PageLayout, Section, Stat } from '@/ds'
+import { Badge, Button, Card, LinkButton, PageLayout, Section, Stat } from '@/ds'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
 
 type SmsFailureRow = {
@@ -169,15 +169,27 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       headerActions={
         <div className="flex flex-wrap gap-2">
-          <Link href="/settings/sms-failures?window=24h" className="text-sm font-medium text-primary hover:underline">
+          <LinkButton
+            href="/settings/sms-failures?window=24h"
+            size="sm"
+            variant={windowHours === 24 ? 'primary' : 'secondary'}
+          >
             24h
-          </Link>
-          <Link href="/settings/sms-failures?window=7d" className="text-sm font-medium text-primary hover:underline">
+          </LinkButton>
+          <LinkButton
+            href="/settings/sms-failures?window=7d"
+            size="sm"
+            variant={windowHours === 7 * 24 ? 'primary' : 'secondary'}
+          >
             7d
-          </Link>
-          <Link href="/settings/sms-failures?window=30d" className="text-sm font-medium text-primary hover:underline">
+          </LinkButton>
+          <LinkButton
+            href="/settings/sms-failures?window=30d"
+            size="sm"
+            variant={windowHours === 30 * 24 ? 'primary' : 'secondary'}
+          >
             30d
-          </Link>
+          </LinkButton>
         </div>
       }
     >
@@ -201,7 +213,71 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
             {rows.length === 0 ? (
               <div className="py-10 text-center text-sm text-text-muted">No failed SMS messages found for this window.</div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Mobile: stacked cards (one per failed message) */}
+              <div className="space-y-3 p-4 md:hidden">
+                {rows.map((row) => {
+                  const source = getSource(row)
+                  const code = getFailureCode(row)
+
+                  return (
+                    <div key={row.id} className="rounded-default border border-border p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={`/customers/${row.customer_id}`} className="font-medium text-primary hover:underline">
+                          {getCustomerName(row)}
+                        </Link>
+                        <span className="shrink-0 text-xs text-text-muted">
+                          {new Date(row.created_at).toLocaleString('en-GB')}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {code && <Badge tone="danger">{code}</Badge>}
+                        {row.message_sid.startsWith('local-fail-') && <Badge tone="warning">not sent</Badge>}
+                      </div>
+                      <p className="mt-2 text-sm text-text-muted">{getFailureMessage(row)}</p>
+                      <dl className="mt-3 space-y-1.5 text-sm">
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-text-muted">Source</dt>
+                          <dd className="text-right">
+                            {source.href ? (
+                              <Link href={source.href} className="text-primary hover:underline">
+                                {source.label}
+                              </Link>
+                            ) : (
+                              source.label
+                            )}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-text-muted">To</dt>
+                          <dd className="font-mono text-xs text-text-muted">{maskPhone(row.to_number)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-text-muted">Message</dt>
+                          <dd className="mt-1 text-text-muted">{truncate(row.body)}</dd>
+                        </div>
+                      </dl>
+                      <div className="mt-3 flex gap-2">
+                        <form action={retrySmsFailureFromForm} className="flex-1">
+                          <input type="hidden" name="message_id" value={row.id} />
+                          <Button type="submit" size="sm" variant="secondary" fullWidth>
+                            Retry
+                          </Button>
+                        </form>
+                        <form action={dismissSmsFailureFromForm} className="flex-1">
+                          <input type="hidden" name="message_id" value={row.id} />
+                          <Button type="submit" size="sm" variant="ghost" fullWidth>
+                            Dismiss
+                          </Button>
+                        </form>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Desktop: full table */}
+              <div className="hidden overflow-x-auto md:block">
                 <table className="min-w-full divide-y divide-border text-sm">
                   <thead className="bg-surface-2 text-left text-xs font-semibold text-text-muted">
                     <tr>
@@ -271,6 +347,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </Card>
         </Section>

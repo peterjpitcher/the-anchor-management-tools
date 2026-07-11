@@ -89,7 +89,8 @@ const dayName = (dateStr: string): string => {
 const numberInputNoSpinnerClass =
   '[appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none'
 
-const compactAmountInputClass = `${numberInputNoSpinnerClass} h-8 py-1 text-xs`
+// Compact height on desktop; bumped to a 44px tap target on mobile (sm:min-h-0 restores desktop).
+const compactAmountInputClass = `${numberInputNoSpinnerClass} h-8 min-h-[44px] py-1 text-xs sm:min-h-0`
 
 const amountInputValue = (value?: number | null): string => {
   if (!value) return ''
@@ -498,7 +499,7 @@ export function DailyClient({
                   type="date"
                   value={sessionDate}
                   onChange={onDateChange}
-                  className="rounded-default border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="min-h-[44px] rounded-default border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text focus:outline-none focus:ring-2 focus:ring-primary/50 sm:min-h-0"
                 />
                 <Badge tone="neutral">
                   {format(parseISO(sessionDate), 'EEEE')}
@@ -524,7 +525,7 @@ export function DailyClient({
                   step="0.01"
                   value={targetAmount}
                   onChange={(event) => setTargetAmount(event.target.value)}
-                  className={`${numberInputNoSpinnerClass} h-7 w-24 py-1 text-right text-xs font-mono`}
+                  className={`${numberInputNoSpinnerClass} h-7 min-h-[44px] w-24 py-1 text-right text-xs font-mono sm:min-h-0`}
                 />
               </Field>
               <Button
@@ -665,7 +666,7 @@ export function DailyClient({
                     key={denom.value}
                     className="flex items-center justify-between bg-surface-2 px-1.5 py-0.5 rounded-default border border-border"
                   >
-                    <span className="text-[11px] font-medium text-text-muted w-7 text-center">
+                    <span className="text-xs sm:text-[11px] font-medium text-text-muted w-7 text-center">
                       {denom.label}
                     </span>
                     <div className="flex items-center gap-0.5">
@@ -680,7 +681,7 @@ export function DailyClient({
                         onChange={(e) => handleCashValueChange(denom.value, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, nextId)}
                         onWheel={(e) => e.currentTarget.blur()}
-                        className={`${numberInputNoSpinnerClass} h-6 w-14 p-0 text-right text-xs bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
+                        className={`${numberInputNoSpinnerClass} h-6 min-h-[44px] sm:min-h-0 w-16 sm:w-14 px-1 sm:p-0 text-right text-xs bg-transparent border-none focus:outline-none focus:ring-0 font-mono`}
                         disabled={fieldsDisabled}
                       />
                     </div>
@@ -709,7 +710,7 @@ export function DailyClient({
                     onChange={(e) => setCashExpected(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, 'input-card-total')}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className={`${numberInputNoSpinnerClass} h-7 w-24 p-0 text-right text-xs font-mono`}
+                    className={`${numberInputNoSpinnerClass} h-7 min-h-[44px] sm:min-h-0 w-24 px-1 sm:p-0 text-right text-xs font-mono`}
                     disabled={fieldsDisabled}
                   />
                 </div>
@@ -830,7 +831,7 @@ export function DailyClient({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Enter your notes here..."
-                className="h-8 py-1 text-xs"
+                className="h-8 min-h-[44px] sm:min-h-0 py-1 text-xs"
                 disabled={fieldsDisabled}
               />
             </Field>

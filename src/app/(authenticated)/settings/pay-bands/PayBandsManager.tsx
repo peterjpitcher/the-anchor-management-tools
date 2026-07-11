@@ -198,7 +198,7 @@ function RateHistory({
         <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
           <p className="text-xs font-medium text-gray-600">Add new effective-dated rate</p>
           {error && <p className="text-xs text-red-600">{error}</p>}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormGroup label="Hourly rate (£)" htmlFor={`rate-${bandId}`}>
               <Input
                 id={`rate-${bandId}`}
@@ -320,7 +320,7 @@ function BandCard({
               {editingBand ? (
                 <div className="space-y-3">
                   {editError && <p className="text-xs text-red-600">{editError}</p>}
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                     <Input label="Label" value={editLabel} onChange={e => setEditLabel(e.target.value)} />
                     <Input label="Min age" type="number" min="0" max="100" value={editMinAge} onChange={e => setEditMinAge(e.target.value)} />
                     <Input label="Max age" type="number" min="1" max="100" value={editMaxAge} onChange={e => setEditMaxAge(e.target.value)} />
@@ -449,7 +449,7 @@ export default function PayBandsManager({ canManage, initialBands, initialRates 
         <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
           <p className="text-sm font-medium text-gray-700">New age band</p>
           {formError && <Alert variant="error">{formError}</Alert>}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <div className="sm:col-span-2">
               <FormGroup label="Band label" htmlFor="band-label" required>
                 <Input

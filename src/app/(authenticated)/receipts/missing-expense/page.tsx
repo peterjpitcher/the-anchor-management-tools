@@ -1,5 +1,5 @@
 import { getReceiptMissingExpenseSummary } from '@/app/actions/receipts'
-import { Card } from '@/ds'
+import { Card, LinkButton } from '@/ds'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -44,7 +44,8 @@ export default async function ReceiptsMissingExpensePage() {
           <SummaryCard label="Uncategorised incoming" value={formatCurrency(totalIncoming)} tone="income" />
         </div>
 
-        <Card>
+        {/* Desktop / tablet: table (unchanged at >=768px) */}
+        <Card className="hidden md:block">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -87,6 +88,51 @@ export default async function ReceiptsMissingExpensePage() {
             </table>
           </div>
         </Card>
+
+        {/* Mobile: stacked cards (below 768px) */}
+        <div className="space-y-3 md:hidden">
+          {summary.length === 0 ? (
+            <Card variant="bordered">
+              <p className="py-4 text-center text-sm text-gray-500">
+                All transactions have an expense category assigned.
+              </p>
+            </Card>
+          ) : (
+            summary.map((item) => (
+              <Card key={item.vendorLabel} variant="bordered">
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold leading-snug text-gray-900">{item.vendorLabel}</h3>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Transactions</dt>
+                      <dd className="mt-0.5 font-medium text-gray-900 tabular-nums">{item.transactionCount}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Latest activity</dt>
+                      <dd className="mt-0.5 font-medium text-gray-600">{formatDate(item.latestTransaction)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Total out</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-rose-700">{formatCurrency(item.totalOutgoing)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Total in</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-emerald-700">{formatCurrency(item.totalIncoming)}</dd>
+                    </div>
+                  </dl>
+                  <LinkButton
+                    href={`/receipts?needsExpense=1${item.vendorLabel !== 'Unassigned vendor' ? `&search=${encodeURIComponent(item.vendorLabel)}` : ''}`}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Review
+                  </LinkButton>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
     </ReceiptsPageChrome>
   )

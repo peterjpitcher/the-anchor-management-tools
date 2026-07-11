@@ -430,6 +430,7 @@ export default function NewRecurringInvoicePage() {
                         size="sm"
                         onClick={() => removeLineItem(index)}
                         iconOnly
+                        aria-label="Remove line item"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -516,11 +517,12 @@ export default function NewRecurringInvoicePage() {
         </Card>
 
         {/* Actions */}
-        <div className="flex justify-end gap-4">
+        <div className="flex flex-col justify-end gap-3 sm:flex-row sm:gap-4">
           <Button
             type="button"
             variant="secondary"
             onClick={() => router.push('/invoices/recurring')}
+            className="w-full sm:w-auto"
           >
             Cancel
           </Button>
@@ -528,6 +530,7 @@ export default function NewRecurringInvoicePage() {
             type="submit"
             disabled={submitting || !vendorId || lineItems.length === 0 || !canCreate}
             loading={submitting}
+            className="w-full sm:w-auto"
           >
             {submitting ? 'Creating...' : 'Create Recurring Invoice'}
           </Button>

@@ -142,7 +142,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
           subtitle={`${roster.statusCounts.active} active · ${roster.statusCounts.former} former · ${roster.statusCounts.onboarding} onboarding`}
           className="mb-0"
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Link href="/employees/reliability">
                 <Button variant="secondary" size="sm">Reliability</Button>
               </Link>
@@ -174,7 +174,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Stat label="Active" value={String(roster.statusCounts.active)} />
           <Stat label="Onboarding" value={String(roster.statusCounts.onboarding)} />
           <Stat label="Former" value={String(roster.statusCounts.former)} />
@@ -198,7 +198,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
         )}
 
         {/* Master-detail layout */}
-        <div className={`grid gap-4 ${selectedEmployee ? 'grid-cols-[1fr_380px]' : 'grid-cols-1'}`}>
+        <div className={`grid gap-4 ${selectedEmployee ? 'grid-cols-1 md:grid-cols-[1fr_380px]' : 'grid-cols-1'}`}>
           {/* Left: Table */}
           <Card>
             <div className="flex items-center gap-2 p-3 border-b border-border">
@@ -219,7 +219,9 @@ export default function EmployeesClient({ initialData, initialError, permissions
               </CardBody>
             ) : (
               <>
-                <Table className="[--spacing-row-h:10px]">
+                {/* Desktop table */}
+                <div className="hidden md:block">
+                  <Table className="[--spacing-row-h:10px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Employee</TableHead>
@@ -262,7 +264,40 @@ export default function EmployeesClient({ initialData, initialError, permissions
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
+
+                {/* Mobile card list */}
+                <div className="divide-y divide-border md:hidden">
+                  {currentEmployees.map(emp => (
+                    <div key={emp.employee_id}>
+                      <Link href={`/employees/${emp.employee_id}`} className="flex items-center gap-3 p-3">
+                        <Avatar name={employeeDisplayName(emp)} size="md" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="min-w-0 truncate text-sm font-semibold text-text-strong">
+                              {employeeDisplayName(emp)}
+                              {!emp.first_name && <span className="ml-1 text-[11px] font-normal text-text-subtle">(pending)</span>}
+                            </span>
+                            <span className="flex-shrink-0">
+                              <Badge tone={statusBadgeTone(emp.status)} dot>{emp.status}</Badge>
+                            </span>
+                          </div>
+                          <div className="truncate text-xs text-text-muted">{emp.job_title || 'No role'}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-subtle">
+                            <span>Start {emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</span>
+                            <span>{emp.holiday_days_current_year ?? 0} days holiday</span>
+                          </div>
+                        </div>
+                        <Icon name="chevronRight" size={16} className="flex-shrink-0 text-text-subtle" />
+                      </Link>
+                      {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (
+                        <div className="-mt-1 px-3 pb-3"><PortalInviteButton employeeId={emp.employee_id} /></div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
                 {roster.pagination.totalPages > 1 && (
                   <TablePagination
                     page={currentPage}

@@ -401,7 +401,7 @@ export function RecipeDrawer({
             />
           </FormGroup>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Yield quantity" required>
               <Input
                 type="number"

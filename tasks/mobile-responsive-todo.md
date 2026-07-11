@@ -52,123 +52,123 @@ Marker `[x]` done, `[ ]` outstanding. Spec: `docs/superpowers/specs/2026-07-11-m
 ## Tier 2 — On-the-floor
 
 ### Table bookings
-- [x]A [ ]F [ ]V  `/table-bookings`
-- [x]A [ ]F [ ]V  `/table-bookings/[id]`
-- [x]A [ ]F [ ]V  `/table-bookings/boh`
-- [x]A [ ]F [ ]V  `/table-bookings/foh`
-- [x]A [ ]F [ ]V  `/table-bookings/reports`
+- [x]A [x]F [ ]V  `/table-bookings`
+- [x]A [x]F [ ]V  `/table-bookings/[id]`
+- [x]A [x]F [ ]V  `/table-bookings/boh`
+- [x]A [x]F [ ]V  `/table-bookings/foh`
+- [x]A [x]F [ ]V  `/table-bookings/reports`
 ### Timeclock
-- [x]A [ ]F [ ]V  `/timeclock` (kiosk, chromeless)
+- [x]A [x]F [ ]V  `/timeclock` (kiosk, chromeless)
 ### Rota
-- [x]A [ ]F [ ]V  `/rota`
-- [x]A [ ]F [ ]V  `/rota/dashboard`
-- [x]A [ ]F [ ]V  `/rota/hours`
-- [x]A [ ]F [ ]V  `/rota/leave`
-- [x]A [ ]F [ ]V  `/rota/payroll`
-- [x]A [ ]F [ ]V  `/rota/print`
-- [x]A [ ]F [ ]V  `/rota/templates`
-- [x]A [ ]F [ ]V  `/rota/timeclock`
+- [x]A [x]F [ ]V  `/rota`
+- [x]A [x]F [ ]V  `/rota/dashboard`
+- [x]A [x]F [ ]V  `/rota/hours`
+- [x]A [x]F [ ]V  `/rota/leave`
+- [x]A [x]F [ ]V  `/rota/payroll`
+- [x]A [x]F [ ]V  `/rota/print`
+- [x]A [x]F [ ]V  `/rota/templates`
+- [x]A [x]F [ ]V  `/rota/timeclock`
 ### Staff portal (own shell)
-- [x]A [ ]F [ ]V  `/portal`
-- [x]A [ ]F [ ]V  `/portal/shifts`
-- [x]A [ ]F [ ]V  `/portal/leave`
-- [x]A [ ]F [ ]V  `/portal/leave/new`
+- [x]A [x]F [ ]V  `/portal`
+- [x]A [x]F [ ]V  `/portal/shifts`
+- [x]A [x]F [ ]V  `/portal/leave`
+- [x]A [x]F [ ]V  `/portal/leave/new`
 
 ## Tier 3 — Money / admin
 
 ### Invoices
-- [x]A [ ]F [ ]V  `/invoices`
-- [x]A [ ]F [ ]V  `/invoices/new`
-- [x]A [ ]F [ ]V  `/invoices/catalog`
-- [x]A [ ]F [ ]V  `/invoices/export`
-- [x]A [ ]F [ ]V  `/invoices/vendors`
-- [x]A [ ]F [ ]V  `/invoices/recurring`
-- [x]A [ ]F [ ]V  `/invoices/recurring/new`
-- [x]A [ ]F [ ]V  `/invoices/recurring/[id]`
-- [x]A [ ]F [ ]V  `/invoices/recurring/[id]/edit`
-- [x]A [ ]F [ ]V  `/invoices/[id]`
-- [x]A [ ]F [ ]V  `/invoices/[id]/edit`
-- [x]A [ ]F [ ]V  `/invoices/[id]/payment`
+- [x]A [x]F [ ]V  `/invoices`
+- [x]A [x]F [ ]V  `/invoices/new`
+- [x]A [x]F [ ]V  `/invoices/catalog`
+- [x]A [x]F [ ]V  `/invoices/export`
+- [x]A [x]F [ ]V  `/invoices/vendors`
+- [x]A [x]F [ ]V  `/invoices/recurring`
+- [x]A [x]F [ ]V  `/invoices/recurring/new`
+- [x]A [x]F [ ]V  `/invoices/recurring/[id]`
+- [x]A [x]F [ ]V  `/invoices/recurring/[id]/edit`
+- [x]A [x]F [ ]V  `/invoices/[id]`
+- [x]A [x]F [ ]V  `/invoices/[id]/edit`
+- [x]A [x]F [ ]V  `/invoices/[id]/payment`
 ### Quotes
-- [x]A [ ]F [ ]V  `/quotes`
-- [x]A [ ]F [ ]V  `/quotes/new`
-- [x]A [ ]F [ ]V  `/quotes/[id]`
-- [x]A [ ]F [ ]V  `/quotes/[id]/edit`
-- [x]A [ ]F [ ]V  `/quotes/[id]/convert`
+- [x]A [x]F [ ]V  `/quotes`
+- [x]A [x]F [ ]V  `/quotes/new`
+- [x]A [x]F [ ]V  `/quotes/[id]`
+- [x]A [x]F [ ]V  `/quotes/[id]/edit`
+- [x]A [x]F [ ]V  `/quotes/[id]/convert`
 ### Receipts
-- [x]A [ ]F [ ]V  `/receipts`
-- [x]A [ ]F [ ]V  `/receipts/bulk`
-- [x]A [ ]F [ ]V  `/receipts/missing-expense`
-- [x]A [ ]F [ ]V  `/receipts/monthly`
-- [x]A [ ]F [ ]V  `/receipts/pnl`
-- [x]A [ ]F [ ]V  `/receipts/vendors`
+- [x]A [x]F [ ]V  `/receipts`
+- [x]A [x]F [ ]V  `/receipts/bulk`
+- [x]A [x]F [ ]V  `/receipts/missing-expense`
+- [x]A [x]F [ ]V  `/receipts/monthly`
+- [x]A [x]F [ ]V  `/receipts/pnl`
+- [x]A [x]F [ ]V  `/receipts/vendors`
 ### Cashing-up
-- [x]A [ ]F [ ]V  `/cashing-up/daily`
-- [x]A [ ]F [ ]V  `/cashing-up/dashboard`
-- [x]A [ ]F [ ]V  `/cashing-up/weekly`
-- [x]A [ ]F [ ]V  `/cashing-up/import`
-- [x]A [ ]F [ ]V  `/cashing-up/insights`
+- [x]A [x]F [ ]V  `/cashing-up/daily`
+- [x]A [x]F [ ]V  `/cashing-up/dashboard`
+- [x]A [x]F [ ]V  `/cashing-up/weekly`
+- [x]A [x]F [ ]V  `/cashing-up/import`
+- [x]A [x]F [ ]V  `/cashing-up/insights`
 ### Expenses / Mileage / MGD
-- [x]A [ ]F [ ]V  `/expenses`
-- [x]A [ ]F [ ]V  `/expenses/insights`
-- [x]A [ ]F [ ]V  `/mileage`
-- [x]A [ ]F [ ]V  `/mileage/destinations`
-- [x]A [ ]F [ ]V  `/mileage/insights`
-- [x]A [ ]F [ ]V  `/mgd`
-- [x]A [ ]F [ ]V  `/mgd/insights`
+- [x]A [x]F [ ]V  `/expenses`
+- [x]A [x]F [ ]V  `/expenses/insights`
+- [x]A [x]F [ ]V  `/mileage`
+- [x]A [x]F [ ]V  `/mileage/destinations`
+- [x]A [x]F [ ]V  `/mileage/insights`
+- [x]A [x]F [ ]V  `/mgd`
+- [x]A [x]F [ ]V  `/mgd/insights`
 ### Menu management
-- [x]A [ ]F [ ]V  `/menu-management`
-- [x]A [ ]F [ ]V  `/menu-management/dishes`
-- [x]A [ ]F [ ]V  `/menu-management/ingredients`
-- [x]A [ ]F [ ]V  `/menu-management/recipes`
+- [x]A [x]F [ ]V  `/menu-management`
+- [x]A [x]F [ ]V  `/menu-management/dishes`
+- [x]A [x]F [ ]V  `/menu-management/ingredients`
+- [x]A [x]F [ ]V  `/menu-management/recipes`
 ### OJ Projects
-- [x]A [ ]F [ ]V  `/oj-projects`
-- [x]A [ ]F [ ]V  `/oj-projects/clients`
-- [x]A [ ]F [ ]V  `/oj-projects/entries`
-- [x]A [ ]F [ ]V  `/oj-projects/projects`
-- [x]A [ ]F [ ]V  `/oj-projects/projects/[id]`
-- [x]A [ ]F [ ]V  `/oj-projects/work-types`
+- [x]A [x]F [ ]V  `/oj-projects`
+- [x]A [x]F [ ]V  `/oj-projects/clients`
+- [x]A [x]F [ ]V  `/oj-projects/entries`
+- [x]A [x]F [ ]V  `/oj-projects/projects`
+- [x]A [x]F [ ]V  `/oj-projects/projects/[id]`
+- [x]A [x]F [ ]V  `/oj-projects/work-types`
 ### Short links
-- [x]A [ ]F [ ]V  `/short-links`
-- [x]A [ ]F [ ]V  `/short-links/insights`
-- [x]A [ ]F [ ]V  `/short-links/legacy-domain`
+- [x]A [x]F [ ]V  `/short-links`
+- [x]A [x]F [ ]V  `/short-links/insights`
+- [x]A [x]F [ ]V  `/short-links/legacy-domain`
 ### Employees / recruitment
-- [x]A [ ]F [ ]V  `/employees`
-- [x]A [ ]F [ ]V  `/employees/new`
-- [x]A [ ]F [ ]V  `/employees/[employee_id]`
-- [x]A [ ]F [ ]V  `/employees/[employee_id]/edit`
-- [x]A [ ]F [ ]V  `/employees/birthdays`
-- [x]A [ ]F [ ]V  `/employees/reliability`
-- [x]A [ ]F [ ]V  `/recruitment`
+- [x]A [x]F [ ]V  `/employees`
+- [x]A [x]F [ ]V  `/employees/new`
+- [x]A [x]F [ ]V  `/employees/[employee_id]`
+- [x]A [x]F [ ]V  `/employees/[employee_id]/edit`
+- [x]A [x]F [ ]V  `/employees/birthdays`
+- [x]A [x]F [ ]V  `/employees/reliability`
+- [x]A [x]F [ ]V  `/recruitment`
 ### Core / other
-- [x]A [ ]F [ ]V  `/profile`
-- [x]A [ ]F [ ]V  `/profile/change-password`
-- [x]A [ ]F [ ]V  `/users`
-- [x]A [ ]F [ ]V  `/roles`
-- [x]A [ ]F [ ]V  `/roles/new`
-- [x]A [ ]F [ ]V  `/roles/[id]/edit`
-- [x]A [ ]F [ ]V  `/feedback-inbox`
-- [x]A [ ]F [ ]V  `/parking`
+- [x]A [x]F [ ]V  `/profile`
+- [x]A [x]F [ ]V  `/profile/change-password`
+- [x]A [x]F [ ]V  `/users`
+- [x]A [x]F [ ]V  `/roles`
+- [x]A [x]F [ ]V  `/roles/new`
+- [x]A [x]F [ ]V  `/roles/[id]/edit`
+- [x]A [x]F [ ]V  `/feedback-inbox`
+- [x]A [x]F [ ]V  `/parking`
 ### Settings
-- [x]A [ ]F [ ]V  `/settings`
-- [x]A [ ]F [ ]V  `/settings/api-keys`
-- [x]A [ ]F [ ]V  `/settings/audit-logs`
-- [x]A [ ]F [ ]V  `/settings/background-jobs`
-- [x]A [ ]F [ ]V  `/settings/budgets`
-- [x]A [ ]F [ ]V  `/settings/business-hours`
-- [x]A [ ]F [ ]V  `/settings/calendar-notes`
-- [x]A [ ]F [ ]V  `/settings/categories`
-- [x]A [ ]F [ ]V  `/settings/customer-labels`
-- [x]A [ ]F [ ]V  `/settings/design-system`
-- [x]A [ ]F [ ]V  `/settings/event-categories`
-- [x]A [ ]F [ ]V  `/settings/gdpr`
-- [x]A [ ]F [ ]V  `/settings/import-messages`
-- [x]A [ ]F [ ]V  `/settings/menu-target`
-- [x]A [ ]F [ ]V  `/settings/message-templates`
-- [x]A [ ]F [ ]V  `/settings/pay-bands`
-- [x]A [ ]F [ ]V  `/settings/rota`
-- [x]A [ ]F [ ]V  `/settings/sms-failures`
-- [x]A [ ]F [ ]V  `/settings/table-bookings`
+- [x]A [x]F [ ]V  `/settings`
+- [x]A [x]F [ ]V  `/settings/api-keys`
+- [x]A [x]F [ ]V  `/settings/audit-logs`
+- [x]A [x]F [ ]V  `/settings/background-jobs`
+- [x]A [x]F [ ]V  `/settings/budgets`
+- [x]A [x]F [ ]V  `/settings/business-hours`
+- [x]A [x]F [ ]V  `/settings/calendar-notes`
+- [x]A [x]F [ ]V  `/settings/categories`
+- [x]A [x]F [ ]V  `/settings/customer-labels`
+- [x]A [x]F [ ]V  `/settings/design-system`
+- [x]A [x]F [ ]V  `/settings/event-categories`
+- [x]A [x]F [ ]V  `/settings/gdpr`
+- [x]A [x]F [ ]V  `/settings/import-messages`
+- [x]A [x]F [ ]V  `/settings/menu-target`
+- [x]A [x]F [ ]V  `/settings/message-templates`
+- [x]A [x]F [ ]V  `/settings/pay-bands`
+- [x]A [x]F [ ]V  `/settings/rota`
+- [x]A [x]F [ ]V  `/settings/sms-failures`
+- [x]A [x]F [ ]V  `/settings/table-bookings`
 
 ## Tier 4 — Public / booking (chromeless)
 

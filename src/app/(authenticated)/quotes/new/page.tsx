@@ -305,9 +305,11 @@ export default function NewQuotePage() {
             <div className="flex gap-2">
               {catalogItems.length > 0 && (
                 <Dropdown
-                  label="Add from Catalog"
-                  variant="secondary"
-                  size="sm"
+                  trigger={
+                    <span className="inline-flex items-center min-h-[44px] text-sm font-medium md:min-h-0">
+                      Add from Catalog
+                    </span>
+                  }
                   items={catalogItems.map(item => ({
                     key: item.id,
                     label: (
@@ -358,7 +360,7 @@ export default function NewQuotePage() {
                         </FormGroup>
                       </div>
 
-                      <div className="col-span-4 md:col-span-2">
+                      <div className="col-span-12 md:col-span-2">
                         <FormGroup label="Quantity">
                           <Input
                             type="number"
@@ -371,7 +373,7 @@ export default function NewQuotePage() {
                         </FormGroup>
                       </div>
 
-                      <div className="col-span-4 md:col-span-2">
+                      <div className="col-span-12 md:col-span-2">
                         <FormGroup label="Unit Price (£)">
                           <Input
                             type="number"
@@ -384,7 +386,7 @@ export default function NewQuotePage() {
                         </FormGroup>
                       </div>
 
-                      <div className="col-span-2 md:col-span-1">
+                      <div className="col-span-12 md:col-span-1">
                         <FormGroup label="Disc %">
                           <Input
                             type="number"
@@ -397,7 +399,7 @@ export default function NewQuotePage() {
                         </FormGroup>
                       </div>
 
-                      <div className="col-span-2 md:col-span-1">
+                      <div className="col-span-12 md:col-span-1">
                         <FormGroup label="VAT %">
                           <Input
                             type="number"

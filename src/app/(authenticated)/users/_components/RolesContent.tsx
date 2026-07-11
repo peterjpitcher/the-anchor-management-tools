@@ -194,7 +194,7 @@ export function RolesContent() {
   const selectedRole = roles.find((r) => r.id === selectedRoleId)
 
   return (
-    <div className="grid grid-cols-[260px_1fr] gap-6">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-[260px_1fr]">
       {/* Left: Role list sidebar */}
       <Card>
         <CardHeader title="Roles" />

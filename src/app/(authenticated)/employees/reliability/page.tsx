@@ -132,7 +132,67 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
         </Card>
       </div>
 
-      <Card>
+      {/* Mobile card list */}
+      <div className="space-y-3 md:hidden">
+        {rows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span className="text-text-muted">Sort:</span>
+            <SortLink sort="score" active={sortBy} includeFormer={includeFormer}>Score</SortLink>
+            <SortLink sort="manual_accept_rate" active={sortBy} includeFormer={includeFormer}>Manual accept</SortLink>
+            <SortLink sort="rejection_rate" active={sortBy} includeFormer={includeFormer}>Reject rate</SortLink>
+            <SortLink sort="couldnt_work" active={sortBy} includeFormer={includeFormer}>Couldn&apos;t Work</SortLink>
+            <SortLink sort="late_holidays" active={sortBy} includeFormer={includeFormer}>Late holidays</SortLink>
+          </div>
+        )}
+        {rows.map(row => (
+          <div key={row.employeeId} className="rounded-lg border border-border bg-surface p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <Link href={`/employees/${row.employeeId}`} className="font-semibold text-primary hover:underline">
+                  {row.employeeName}
+                </Link>
+                <div className="text-xs text-text-muted">{row.jobTitle || 'No role'} · {row.status}</div>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1.5">
+                <span className="text-xs text-text-muted">#{row.rank ?? '--'}</span>
+                <Badge tone={scoreTone(row.recent.score)}>{row.recent.score}</Badge>
+              </div>
+            </div>
+            {row.recent.isLowSample && (
+              <div className="mt-1.5"><Badge tone="warning">Low sample</Badge></div>
+            )}
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div className="flex justify-between gap-2">
+                <dt className="text-text-muted">Manual accept</dt>
+                <dd className="text-text">{formatPercent(row.recent.rates.manualAcceptRate)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-text-muted">Reject rate</dt>
+                <dd className="text-text">{formatPercent(row.recent.rates.rejectionRate)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-text-muted">Couldn&apos;t Work</dt>
+                <dd className="text-text">{row.recent.counts.couldntWork}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-text-muted">Late holidays</dt>
+                <dd className="text-text">{row.recent.counts.lateHolidays}</dd>
+              </div>
+              <div className="col-span-2 flex justify-between gap-2">
+                <dt className="text-text-muted">Sample</dt>
+                <dd className="text-text">{row.recent.counts.eligibleShiftSignals} signals</dd>
+              </div>
+            </dl>
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-text-muted">
+            No employees found for this view.
+          </p>
+        )}
+      </div>
+
+      <Card className="hidden md:block">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-text-muted">
