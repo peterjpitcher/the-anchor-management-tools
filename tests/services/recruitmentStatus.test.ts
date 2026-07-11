@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { isRecruitmentTransitionAllowed } from '@/services/recruitment'
+import { isRecruitmentTransitionAllowed, normalizeRecruitmentName } from '@/services/recruitment'
+
+describe('recruitment candidate names', () => {
+  it('normalises capitalisation and whitespace', () => {
+    expect(normalizeRecruitmentName('  PAUL  ')).toBe('Paul')
+    expect(normalizeRecruitmentName('coelho')).toBe('Coelho')
+    expect(normalizeRecruitmentName("ANNE-MARIE O'NEILL")).toBe("Anne-Marie O'Neill")
+    expect(normalizeRecruitmentName('  mary   jane  ')).toBe('Mary Jane')
+  })
+
+  it('keeps missing names empty', () => {
+    expect(normalizeRecruitmentName(null)).toBeNull()
+    expect(normalizeRecruitmentName('   ')).toBeNull()
+  })
+})
 
 describe('recruitment status transitions', () => {
   it('allows normal forward transitions', () => {

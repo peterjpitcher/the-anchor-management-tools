@@ -1,28 +1,33 @@
-# Task Tracker
+# Build — Table booking & customer comms (2026-07-11)
 
-## Current Task: Restore calendar "add note" affordance (2026-07-09)
+Branch note: working tree has unrelated parallel-session changes (recruitment/vendor). Touch ONLY table-booking + customer-comms files. Do not stash/switch. Stage explicit files only when committing (with approval).
 
-### Problem
-After the calendar redesign (wave 2, cdfce422), adding a note became undiscoverable
-on /dashboard (only a click on the bare day-number worked; no visible control) and
-was entirely absent on /events (VenueCalendar rendered without the note props).
-Not a permissions issue — owner is super_admin (passes every check).
+## Issue 2 — Email a customer from /customers/[id]
+- [x] New server action `sendCustomerEmail(customerId, subject, body)` in `src/app/actions/customerEmailActions.ts` (permission + audit, uses existing `sendEmail`, auto-logs to email_messages)
+- [x] "Email customer" button + "Email {name}" modal on the customer page (shown when email on file + messaging permission)
+- [x] 4 unit tests
 
-### Fix (chosen affordance: clickable day + hover hint)
-- [x] Lift the add-note modal + createCalendarNote flow into shared `VenueCalendar`
-      (so dashboard + events behave identically). Added optional `onNoteCreated`
-      callback (events refetches; dashboard falls back to router.refresh()).
-- [x] `ScheduleCalendarMonth`: empty-day cell is now clickable (cursor + guarded
-      empty-area click), plus a hover/focus "+ Note" hint per day; day-number
-      button still works for keyboard.
-- [x] Simplify dashboard `UpcomingScheduleCalendar` to a thin pass-through
-      (removed its duplicate modal).
-- [x] Wire /events: page computes `checkUserPermission('settings','manage')`,
-      passes `canCreateCalendarNote` through EventsClient → VenueCalendar.
+## Issue 1 — Capture email when adding a table booking
+- [x] Email input on `FohCreateBookingModal` (shared FOH/BOH modal)
+- [x] Threaded through `useFohCreateBooking` POST body (food/drinks + event)
+- [x] `email` added to Zod schema in both `/api/foh/bookings` and `/api/foh/event-bookings`; passed to `ensureCustomerForPhone`; existing-customer backfill + walk-in insert (unique-index safe)
+- [x] 3 unit tests
 
-### Verification
-- [x] typecheck / lint / build all clean
-- [x] New test `ScheduleCalendarMonth.test.tsx` (3 passing): empty-day click →
-      onEmptyDayClick with correct date; hint present when enabled; absent when not.
-- [ ] Live UI is auth-gated → not driven in preview; covered by tests instead.
-- [ ] Deploy + verify Ready + prod alias moved.
+## Issue 3 — Reschedule confirmation (SMS + email)
+- [x] New helper `sendTableBookingRescheduledNotificationIfAllowed` in `lib/table-bookings/bookings.ts` — re-reads booking fresh, dispatches via `notifyCustomer({ policy: 'email_first' })` (one message on best channel), audits, never rethrows
+- [x] Dedicated `buildTableBookingRescheduledEmail` + `template_key: 'table_booking_rescheduled'`
+- [x] Wired into BOH edit route — fires on real date/time/duration change (normalised comparison, NOT on metadata-only edits)
+- [x] Wired into FOH drag time route — fires only when time actually changes
+- [x] move-table (internal reassignment) + party-size deliberately NOT wired
+- [x] 4 wiring tests (2 BOH, 2 FOH)
+
+## Verify
+- [x] lint (changed files, --max-warnings=0): clean
+- [x] typecheck (`tsc --noEmit`, whole project): exit 0
+- [x] tests: 12 feature + 278 api tests pass, no regressions
+- [x] build (`npm run build`): exit 0
+
+## Review notes
+- Parallel session was live throughout (recruitment/employee/vendor + music-bingo migrations). Touched ONLY table-booking + customer-comms files. NOT committed — awaiting owner go-ahead; when committing, stage explicit files only.
+- Reschedule uses the same `notifyCustomer` dual-channel dispatch, opt-in/suppression/rate-limit guards as the create-confirmation, so it's consistent (incl. walk-ins).
+- Notification helper swallows all errors — a send failure can never fail the edit/move.

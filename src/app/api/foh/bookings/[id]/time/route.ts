@@ -4,6 +4,7 @@ import { fromZonedTime } from 'date-fns-tz'
 import { requireFohPermission, getLondonDateIso } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -155,6 +156,13 @@ export async function PATCH(
     const moveResult = (moveResultRaw || {}) as { state?: string; reason?: string; assignment_count?: number }
     if (moveResult.state === 'blocked' && moveResult.reason === 'booking_not_found') {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
+
+    // Confirm the new time to the customer, but only when the time actually changed.
+    // Awaited (not fire-and-forget) so the send completes before this serverless
+    // function is frozen; the helper swallows its own errors and never fails the move.
+    if (fromTime !== newTime) {
+      await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, { tableBookingId: bookingId })
     }
 
     return NextResponse.json({ success: true, assignment_count: moveResult.assignment_count ?? assignmentRows.length })

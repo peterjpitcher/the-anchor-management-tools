@@ -225,7 +225,7 @@ export type ReceiptVendorCostSignal = {
 
 export type ReceiptVendorMovementRange = '12m' | '24m' | '36m' | 'all'
 
-export type ReceiptVendorMovementComparison = 'mom' | 'yoy'
+export type ReceiptVendorMovementComparison = 'mom' | 'yoy' | 'rolling_3m'
 
 type ReceiptVendorMovementDirection = 'spike' | 'drop' | 'new' | 'resumed'
 
@@ -337,6 +337,19 @@ export type ReceiptVendorWatchlistItem = {
   userId: string
   vendorKey: string
   vendorLabel: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type ReceiptVendorReviewStatus = 'needs_review' | 'expected' | 'action_required' | 'reviewed'
+
+export type ReceiptVendorReviewItem = {
+  userId: string
+  vendorKey: string
+  vendorLabel: string
+  comparison: ReceiptVendorMovementComparison
+  monthStart: string
+  status: ReceiptVendorReviewStatus
   createdAt: string
   updatedAt: string
 }

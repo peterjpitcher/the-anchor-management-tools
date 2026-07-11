@@ -503,73 +503,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
             description={selectedVendorId ? 'No entries found for this client.' : 'No time entries recorded yet.'}
           />
         ) : (
-          <>
-            {/* Mobile card list */}
-            <div className="divide-y divide-border md:hidden">
-              {entries.map((entry) => {
-                const cardTypeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
-                let cardValue = ''
-                if (entry.entry_type === 'time') {
-                  cardValue = `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
-                } else if (entry.entry_type === 'mileage') {
-                  cardValue = `${entry.miles} mi`
-                }
-                const cardBillable = isEntryBillable(entry)
-
-                return (
-                  <div key={entry.id} className="flex flex-col gap-2 px-4 py-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-text">{entry.project?.project_name || 'Unknown'}</p>
-                        <p className="text-xs text-text-muted">
-                          {entry.vendor?.name || 'Unknown'} &middot; {formatDateDdMmmmYyyy(entry.entry_date)}
-                        </p>
-                      </div>
-                      <Badge tone={cardTypeTone}>{entry.entry_type}</Badge>
-                    </div>
-                    {entry.description && (
-                      <p className="text-sm text-text-muted [overflow-wrap:anywhere]">{entry.description}</p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                      {cardValue && <span className="text-text-muted">{cardValue}</span>}
-                      <span className="font-medium">{formatCurrency(entryAmount(entry))}</span>
-                      <Badge tone={cardBillable ? 'success' : 'neutral'}>
-                        {cardBillable ? 'Billable' : 'Non-billable'}
-                      </Badge>
-                      <Badge tone={entryStatusTone(entry.status)}>{entry.status}</Badge>
-                      {entry.invoice?.invoice_number && (
-                        <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
-                          {entry.invoice.invoice_number}
-                        </Link>
-                      )}
-                    </div>
-                    {isEntryEditable(entry) && (canEdit || canDelete) && (
-                      <div className="flex gap-1">
-                        {canEdit && (
-                          <IconButton
-                            icon={<Icon name="edit" size={16} />}
-                            size="sm"
-                            label={entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice'}
-                            onClick={() => openEdit(entry)}
-                          />
-                        )}
-                        {canDelete && (
-                          <IconButton
-                            icon={<Icon name="trash" size={16} />}
-                            size="sm"
-                            label={entry.status === 'unbilled' ? 'Delete entry' : 'Delete and revise invoice'}
-                            onClick={() => setDeleteId(entry.id)}
-                          />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Desktop table */}
-            <Table className="hidden md:block">
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
@@ -652,8 +586,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 )
               })}
             </TableBody>
-            </Table>
-          </>
+          </Table>
         )}
       </Card>
 
