@@ -573,7 +573,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               value={categoryId}
               onChange={(e) => handleCategoryChange(e.target.value)}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <DateTimePicker
                 type="date"
                 value={date}
@@ -588,7 +588,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               />
             </div>
             {bookingMode === 'communal' ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input
                   label="Seated capacity"
                   type="number"
@@ -634,7 +634,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
         {/* ── Time & Schedule ── */}
         <Section title="Time & Schedule">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <DateTimePicker
               type="time"
               value={time}
@@ -648,7 +648,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               aria-label="End time"
             />
           </div>
-          <div className="grid grid-cols-3 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
             <DateTimePicker
               type="time"
               value={doorsTime}
@@ -676,7 +676,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
         {/* ── Performer ── */}
         <Section title="Performer">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Performer Name"
               value={performerName}
@@ -694,7 +694,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
         {/* ── Pricing & Booking ── */}
         <Section title="Pricing & Booking">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Ticket price (£)"
               type="number"
@@ -727,7 +727,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               className="mt-3"
             />
           ) : null}
-          <div className="grid grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <Select
               label="Payment Mode"
               options={PAYMENT_MODE_OPTIONS}
@@ -855,7 +855,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           )}
 
           {/* Meta & URL */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="URL Slug"
               value={slug}

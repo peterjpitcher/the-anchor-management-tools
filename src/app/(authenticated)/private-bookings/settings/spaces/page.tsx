@@ -313,9 +313,24 @@ export default async function VenueSpacesPage({
               description="Add your first space using the form above."
             />
           ) : (
-            <div className="divide-y divide-gray-200">
+            <div className="space-y-4 md:space-y-0 md:divide-y md:divide-gray-200">
               {spaces?.map((space) => (
-                <div key={space.id} className="py-6 first:pt-0 last:pb-0">
+                <div
+                  key={space.id}
+                  className="rounded-xl border border-gray-200 p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
+                >
+                  {/* Mobile-only summary header so each space reads as a distinct card */}
+                  <div className="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="truncate text-base font-medium text-gray-900">{space.name}</h4>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        Seated {space.capacity_seated} · Standing {space.capacity_standing ?? space.capacity_seated} · £{space.rate_per_hour}/hr
+                      </p>
+                    </div>
+                    <Badge variant={space.active ? 'success' : 'secondary'}>
+                      {space.active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </div>
                   <form action={handleUpdateSpace} className="space-y-4">
                     <input type="hidden" name="spaceId" value={space.id} />
                     
@@ -433,7 +448,7 @@ export default async function VenueSpacesPage({
                     </FormGroup>
                   </form>
                   
-                  <div className="mt-4 flex justify-between items-center">
+                  <div className="mt-4 flex flex-wrap justify-between items-center gap-2">
                     <div className="flex items-center gap-2">
                       <Badge
                         variant={space.active ? 'success' : 'secondary'}

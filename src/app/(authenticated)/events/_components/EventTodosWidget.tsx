@@ -76,11 +76,13 @@ export default function EventTodosWidget({
                   )}
                 >
                   {canManage && (
-                    <Checkbox
-                      aria-label={`Mark "${item.label}" complete`}
-                      checked={false}
-                      onChange={() => handleComplete(item)}
-                    />
+                    <label className="-m-3.5 inline-flex shrink-0 cursor-pointer p-3.5">
+                      <Checkbox
+                        aria-label={`Mark "${item.label}" complete`}
+                        checked={false}
+                        onChange={() => handleComplete(item)}
+                      />
+                    </label>
                   )}
                   <Link href={`/events/${item.eventId}`} className="group block min-w-0 flex-1">
                     <span className="block truncate text-sm text-text group-hover:underline">
