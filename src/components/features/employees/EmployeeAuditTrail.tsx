@@ -326,23 +326,23 @@ export function EmployeeAuditTrail({
                         <div className="flex-1 space-y-1">
                           {isAudit ? (
                             <>
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-gray-900">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="min-w-0 break-words text-sm font-medium text-gray-900">
                                   {log!.user_email ?? 'System'} {getActionLabel(log!)}
                                 </p>
-                                <p className="text-xs text-gray-500">{formatDateTime(log!.created_at)}</p>
+                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{formatDateTime(log!.created_at)}</p>
                               </div>
                               {formatDetails(log!) && (
-                                <p className="text-sm text-gray-500">{formatDetails(log!)}</p>
+                                <p className="text-sm text-gray-500 break-words">{formatDetails(log!)}</p>
                               )}
                             </>
                           ) : (
                             <>
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-gray-900">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="min-w-0 break-words text-sm font-medium text-gray-900">
                                   {note!.author_name} added a note
                                 </p>
-                                <p className="text-xs text-gray-500">{formatDateTime(note!.created_at)}</p>
+                                <p className="flex-shrink-0 whitespace-nowrap text-xs text-gray-500">{formatDateTime(note!.created_at)}</p>
                               </div>
                               <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">
                                 {note!.note_text}
