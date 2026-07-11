@@ -126,13 +126,14 @@ nav[aria-label="Mobile navigation"],
   padding-bottom: constant(safe-area-inset-bottom, 0);
 }
 
-/* Ensure proper touch targets (48px minimum) */
+/* Ensure proper touch targets (44px minimum) */
 @media (max-width: 768px) {
-  button:not(.sidebar-item),
+  button:not(.sidebar-item):not([role="switch"]),
   a[role="button"],
   [role="button"],
+  select,
   .touch-target {
-    min-height: 48px;
+    min-height: 44px;
     min-width: 44px;
   }
 
@@ -273,13 +274,6 @@ nav[aria-label="Mobile navigation"],
   @media (min-width: 1024px) {
     padding-left: 2rem;
     padding-right: 2rem;
-  }
-}
-
-@utility overflow-x-safe {
-  overflow-x: hidden;
-  @media (min-width: 640px) {
-    overflow-x: auto;
   }
 }
 
@@ -1244,9 +1238,10 @@ nav[aria-label="Mobile navigation"],
     font-size: 16px !important;
   }
 
-  button:not(.ds-sidebar button),
+  button:not(.ds-sidebar button):not([role="switch"]),
   a[role="button"],
   [role="button"],
+  select,
   .touch-target {
     min-height: 44px;
     min-width: 44px;

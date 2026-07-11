@@ -98,7 +98,7 @@ export function RefundHistoryTable({ sourceType, sourceId }: RefundHistoryTableP
   return (
     <div className="space-y-3">
       <h4 className="text-sm font-semibold text-text px-3 pt-3">Refund History</h4>
-      <div className="overflow-hidden rounded-md border border-border">
+      <div className="overflow-x-auto rounded-md border border-border">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-surface-hover">
             <tr>

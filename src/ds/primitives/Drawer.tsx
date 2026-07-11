@@ -96,7 +96,7 @@ export function Drawer({
                   : 'top-0 h-full',
                 !isBottom && (isRight ? 'right-0' : 'left-0')
               )}
-              style={isBottom ? undefined : { width: resolvedWidth }}
+              style={isBottom ? undefined : { width: resolvedWidth, maxWidth: '100vw' }}
             >
               {title && (
                 <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
