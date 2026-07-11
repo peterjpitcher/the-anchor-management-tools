@@ -481,7 +481,7 @@ export function VenueCalendar({
           description={`Adding a note for ${format(new Date(newNoteDate + 'T00:00:00'), 'EEE d MMM yyyy')}`}
         >
           <form onSubmit={handleNewNoteSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormGroup label="Start date" required>
                 <Input
                   type="date"

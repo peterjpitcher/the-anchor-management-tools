@@ -529,7 +529,9 @@ function VendorMovementPanel({ onViewDetails }: { onViewDetails: (vendorLabel: s
           {state.error}
         </Alert>
       ) : state.movements.length ? (
-        <div className="mt-4 overflow-x-auto">
+        <>
+        {/* Desktop / tablet: table (unchanged at >=768px) */}
+        <div className="mt-4 hidden overflow-x-auto md:block">
           <table className="min-w-full divide-y divide-gray-200 text-xs">
             <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
               <tr>
@@ -583,6 +585,64 @@ function VendorMovementPanel({ onViewDetails }: { onViewDetails: (vendorLabel: s
             </tbody>
           </table>
         </div>
+
+        {/* Mobile: stacked cards (below 768px) */}
+        <div className="mt-4 space-y-3 md:hidden">
+          {sortedMovements.map((movement) => (
+            <div
+              key={`m-${movement.vendorLabel}-${movement.range}-${movement.comparison}`}
+              className="rounded-lg border border-gray-200 bg-white p-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="min-w-0 flex-1 text-sm font-semibold text-gray-900">{movement.vendorLabel}</h4>
+                {movement.signal ? (
+                  <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${signalTone(movement.signal)}`}>
+                    {movement.signal.direction}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Latest month: {movement.latestMonthStart ? formatMonth(movement.latestMonthStart) : '-'}
+              </p>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-gray-500">Spend</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatCurrency(movement.latestOutgoing)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-gray-500">{baselineLabel}</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums text-gray-700">
+                    {movement.baselineOutgoing === null ? `No ${comparison === 'mom' ? 'prior month' : 'prior year'}` : formatCurrency(movement.baselineOutgoing)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-gray-500">Delta</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatSignedCurrency(movement.delta)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-gray-500">Change</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatSignedPercent(movement.percentageChange)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-gray-500">Txns</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums text-gray-700">{movement.latestTransactionCount.toLocaleString('en-GB')}</dd>
+                </div>
+              </dl>
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => onViewDetails(movement.vendorLabel)}
+                >
+                  View details
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        </>
       ) : (
         <p className="mt-4 text-sm text-gray-500">No vendor movement found for this view.</p>
       )}
@@ -957,42 +1017,84 @@ function MonthlyMovementTable({ months }: { months: ReceiptVendorDetail['movemen
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 text-xs">
-        <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
-          <tr>
-            <th scope="col" className="px-2 py-2">Month</th>
-            <th scope="col" className="px-2 py-2 text-right">Spend</th>
-            <th scope="col" className="px-2 py-2 text-right">Txns</th>
-            <th scope="col" className="px-2 py-2 text-right">MoM</th>
-            <th scope="col" className="px-2 py-2 text-right">MoM %</th>
-            <th scope="col" className="px-2 py-2 text-right">YoY</th>
-            <th scope="col" className="px-2 py-2 text-right">YoY %</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 text-gray-700">
-          {rows.map((month) => (
-            <tr key={month.monthStart}>
-              <td className="whitespace-nowrap px-2 py-2 text-gray-600">{formatMonth(month.monthStart)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(month.totalOutgoing)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-700">{month.transactionCount.toLocaleString('en-GB')}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
-                {month.momBaselineAvailable ? formatSignedCurrency(month.momDelta) : 'No prior month'}
-              </td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
-                {month.momBaselineAvailable ? formatSignedPercent(month.momPercentageChange) : '-'}
-              </td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
-                {month.yoyBaselineAvailable ? formatSignedCurrency(month.yoyDelta) : 'No prior year'}
-              </td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
-                {month.yoyBaselineAvailable ? formatSignedPercent(month.yoyPercentageChange) : '-'}
-              </td>
+    <>
+      {/* Desktop / tablet: table (unchanged at >=768px) */}
+      <div className="hidden overflow-x-auto md:block">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th scope="col" className="px-2 py-2">Month</th>
+              <th scope="col" className="px-2 py-2 text-right">Spend</th>
+              <th scope="col" className="px-2 py-2 text-right">Txns</th>
+              <th scope="col" className="px-2 py-2 text-right">MoM</th>
+              <th scope="col" className="px-2 py-2 text-right">MoM %</th>
+              <th scope="col" className="px-2 py-2 text-right">YoY</th>
+              <th scope="col" className="px-2 py-2 text-right">YoY %</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-gray-100 text-gray-700">
+            {rows.map((month) => (
+              <tr key={month.monthStart}>
+                <td className="whitespace-nowrap px-2 py-2 text-gray-600">{formatMonth(month.monthStart)}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(month.totalOutgoing)}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-700">{month.transactionCount.toLocaleString('en-GB')}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+                  {month.momBaselineAvailable ? formatSignedCurrency(month.momDelta) : 'No prior month'}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+                  {month.momBaselineAvailable ? formatSignedPercent(month.momPercentageChange) : '-'}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+                  {month.yoyBaselineAvailable ? formatSignedCurrency(month.yoyDelta) : 'No prior year'}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+                  {month.yoyBaselineAvailable ? formatSignedPercent(month.yoyPercentageChange) : '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: stacked cards (below 768px) */}
+      <div className="space-y-3 md:hidden">
+        {rows.map((month) => (
+          <div key={`mm-${month.monthStart}`} className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <h5 className="text-sm font-semibold text-gray-900">{formatMonth(month.monthStart)}</h5>
+              <span className="text-sm font-semibold tabular-nums text-gray-900">{formatCurrency(month.totalOutgoing)}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-gray-500">{month.transactionCount.toLocaleString('en-GB')} txns</p>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">MoM</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-gray-900">
+                  {month.momBaselineAvailable ? formatSignedCurrency(month.momDelta) : 'No prior month'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">MoM %</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-gray-900">
+                  {month.momBaselineAvailable ? formatSignedPercent(month.momPercentageChange) : '-'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">YoY</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-gray-900">
+                  {month.yoyBaselineAvailable ? formatSignedCurrency(month.yoyDelta) : 'No prior year'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-gray-500">YoY %</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-gray-900">
+                  {month.yoyBaselineAvailable ? formatSignedPercent(month.yoyPercentageChange) : '-'}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -1008,40 +1110,73 @@ function TransactionTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 text-xs">
-        <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
-          <tr>
-            <th scope="col" className="px-2 py-2">Date</th>
-            <th scope="col" className="px-2 py-2">Details</th>
-            <th scope="col" className="px-2 py-2">Type</th>
-            <th scope="col" className="px-2 py-2 text-right">Out</th>
-            <th scope="col" className="px-2 py-2 text-right">In</th>
-            <th scope="col" className="px-2 py-2">Status</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 text-gray-700">
-          {transactions.map((transaction) => (
-            <tr key={transaction.id}>
-              <td className="whitespace-nowrap px-2 py-2 text-gray-600">
-                {includeYear ? formatHistoryDate(transaction.transaction_date) : formatDate(transaction.transaction_date)}
-              </td>
-              <td className="max-w-[14rem] truncate px-2 py-2 text-gray-900" title={transaction.details ?? undefined}>
-                {transaction.details || '-'}
-              </td>
-              <td className="px-2 py-2 text-gray-500">{transaction.transaction_type || '-'}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(transaction.amount_out)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(transaction.amount_in)}</td>
-              <td className="px-2 py-2">
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${statusTone[transaction.status]}`}>
-                  {statusLabels[transaction.status]}
-                </span>
-              </td>
+    <>
+      {/* Desktop / tablet: table (unchanged at >=768px) */}
+      <div className="hidden overflow-x-auto md:block">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
+            <tr>
+              <th scope="col" className="px-2 py-2">Date</th>
+              <th scope="col" className="px-2 py-2">Details</th>
+              <th scope="col" className="px-2 py-2">Type</th>
+              <th scope="col" className="px-2 py-2 text-right">Out</th>
+              <th scope="col" className="px-2 py-2 text-right">In</th>
+              <th scope="col" className="px-2 py-2">Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-gray-100 text-gray-700">
+            {transactions.map((transaction) => (
+              <tr key={transaction.id}>
+                <td className="whitespace-nowrap px-2 py-2 text-gray-600">
+                  {includeYear ? formatHistoryDate(transaction.transaction_date) : formatDate(transaction.transaction_date)}
+                </td>
+                <td className="max-w-[14rem] truncate px-2 py-2 text-gray-900" title={transaction.details ?? undefined}>
+                  {transaction.details || '-'}
+                </td>
+                <td className="px-2 py-2 text-gray-500">{transaction.transaction_type || '-'}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(transaction.amount_out)}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(transaction.amount_in)}</td>
+                <td className="px-2 py-2">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${statusTone[transaction.status]}`}>
+                    {statusLabels[transaction.status]}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: stacked cards (below 768px) */}
+      <div className="space-y-2 md:hidden">
+        {transactions.map((transaction) => (
+          <div key={`tx-${transaction.id}`} className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-900" title={transaction.details ?? undefined}>
+                  {transaction.details || '-'}
+                </p>
+                <p className="mt-0.5 text-gray-500">
+                  {includeYear ? formatHistoryDate(transaction.transaction_date) : formatDate(transaction.transaction_date)}
+                  {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
+                </p>
+              </div>
+              <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium ${statusTone[transaction.status]}`}>
+                {statusLabels[transaction.status]}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              <span className="text-gray-500">
+                Out <span className="font-medium tabular-nums text-gray-900">{formatCurrency(transaction.amount_out)}</span>
+              </span>
+              <span className="text-gray-500">
+                In <span className="font-medium tabular-nums text-gray-900">{formatCurrency(transaction.amount_in)}</span>
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 

@@ -346,8 +346,9 @@ export default function EditInvoicePage() {
                       <Package className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="grid grid-cols-12 items-start gap-2">
-                    <div className="col-span-4">
+                  <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-12 lg:gap-2">
+                    <div className="lg:col-span-4">
+                      <label className="mb-1 block text-sm font-medium lg:hidden">Description</label>
                       <Input
                         type="text"
                         value={item.description}
@@ -356,7 +357,8 @@ export default function EditInvoicePage() {
                         required
                       />
                     </div>
-                    <div className="col-span-1">
+                    <div className="lg:col-span-1">
+                      <label className="mb-1 block text-sm font-medium lg:hidden">Quantity</label>
                       <Input
                         type="number"
                         value={item.quantity}
@@ -366,7 +368,8 @@ export default function EditInvoicePage() {
                         required
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="lg:col-span-2">
+                      <label className="mb-1 block text-sm font-medium lg:hidden">Unit Price (£)</label>
                       <Input
                         type="number"
                         value={item.unit_price}
@@ -376,7 +379,8 @@ export default function EditInvoicePage() {
                         required
                       />
                     </div>
-                    <div className="col-span-1">
+                    <div className="lg:col-span-1">
+                      <label className="mb-1 block text-sm font-medium lg:hidden">Disc %</label>
                       <Input
                         type="number"
                         value={item.discount_percentage}
@@ -387,7 +391,8 @@ export default function EditInvoicePage() {
                         max="100"
                       />
                     </div>
-                    <div className="col-span-1">
+                    <div className="lg:col-span-1">
+                      <label className="mb-1 block text-sm font-medium lg:hidden">VAT %</label>
                       <Input
                         type="number"
                         value={item.vat_rate}
@@ -397,16 +402,18 @@ export default function EditInvoicePage() {
                         required
                       />
                     </div>
-                    <div className="col-span-2 pt-2 text-right">
-                      £{(invoiceTotals.lineBreakdown[index]?.total ?? 0).toFixed(2)}
+                    <div className="flex items-center justify-between border-t border-border pt-3 lg:col-span-2 lg:block lg:border-0 lg:pt-2 lg:text-right">
+                      <span className="text-sm font-medium lg:hidden">Line Total</span>
+                      <span>£{(invoiceTotals.lineBreakdown[index]?.total ?? 0).toFixed(2)}</span>
                     </div>
-                    <div className="col-span-1">
+                    <div className="flex lg:col-span-1 lg:items-start">
                       <Button
                         type="button"
                         variant="danger"
                         onClick={() => removeLineItem(index)}
                         size="sm"
                         iconOnly
+                        aria-label="Remove line item"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

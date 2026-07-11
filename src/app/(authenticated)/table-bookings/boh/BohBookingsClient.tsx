@@ -674,6 +674,7 @@ export function BohBookingsClient({
               <Button
                 variant="primary"
                 size="sm"
+                className="w-full sm:w-auto"
                 icon={<Plus className="h-4 w-4" aria-hidden="true" />}
                 onClick={() => createBooking.openCreateModal({ mode: 'booking', prefill: { booking_date: focusDate } })}
               >
@@ -684,6 +685,7 @@ export function BohBookingsClient({
               <Button
                 variant="secondary"
                 size="sm"
+                className="w-full sm:w-auto"
                 icon={<MessageSquare className="h-4 w-4" aria-hidden="true" />}
                 onClick={() => setIsMessageModalOpen(true)}
               >
@@ -841,7 +843,95 @@ export function BohBookingsClient({
           )}
 
           {!loading && !error && sortedBookings.length > 0 && (
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <>
+            {/* Mobile card list — the 9-column table is unusable at phone width, so below md
+                each booking renders as a stacked card with the key fields as label/value pairs. */}
+            <ul className="divide-y divide-gray-100 md:hidden">
+              {sortedBookings.map((booking) => {
+                const visualState = getTableBookingVisualState(booking)
+                const depositState = getTableBookingDepositState(booking)
+
+                return (
+                  <li key={booking.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900" title={booking.guest_name || ''}>
+                          {booking.guest_name || 'Unknown guest'}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500">{formatBookingDateTime(booking)}</p>
+                      </div>
+                      <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusBadgeClasses(visualState)}`}>
+                        {getStatusLabel(visualState)}
+                      </span>
+                    </div>
+
+                    {booking.event_name && (
+                      <p className="mt-1 truncate text-xs text-gray-500" title={booking.event_name}>
+                        {booking.event_name}
+                      </p>
+                    )}
+
+                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                      <div>
+                        <dt className="text-xs text-gray-500">Party</dt>
+                        <dd className="font-semibold text-gray-900">{booking.party_size || 0}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">Tables</dt>
+                        <dd className="font-medium text-gray-900">
+                          {booking.is_outside_seating
+                            ? 'Outside'
+                            : booking.table_names.length > 0
+                              ? booking.table_names.join(', ')
+                              : 'Unassigned'}
+                        </dd>
+                      </div>
+                      {booking.customer?.mobile_number && (
+                        <div>
+                          <dt className="text-xs text-gray-500">Phone</dt>
+                          <dd className="font-medium text-gray-900">{booking.customer.mobile_number}</dd>
+                        </div>
+                      )}
+                      {booking.booking_reference && (
+                        <div>
+                          <dt className="text-xs text-gray-500">Ref</dt>
+                          <dd className="font-medium text-gray-900">{booking.booking_reference}</dd>
+                        </div>
+                      )}
+                    </dl>
+
+                    {((booking.high_chair_count ?? 0) > 0 || depositState.kind !== 'none') && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(booking.high_chair_count ?? 0) > 0 && (
+                          <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+                        )}
+                        {depositState.kind !== 'none' && (
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getTableBookingDepositBadgeClasses(depositState.kind)}`}>
+                            {depositState.label}
+                            {depositState.amount != null ? ` · ${formatGbp(depositState.amount)}` : ''}
+                            {depositState.methodLabel ? ` · ${depositState.methodLabel}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-3">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-full"
+                        aria-label={`Manage booking for ${booking.guest_name || booking.booking_reference || 'unknown guest'}`}
+                        onClick={() => router.push(`/table-bookings/${booking.id}`)}
+                      >
+                        Manage
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+
+            <table className="hidden min-w-full divide-y divide-gray-200 text-sm md:table">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr>
                   <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">
@@ -949,6 +1039,7 @@ export function BohBookingsClient({
                 })}
               </tbody>
             </table>
+            </>
           )}
         </div>
       </div>

@@ -19,6 +19,7 @@ import {
   Empty,
   Alert,
   ProgressBar,
+  Modal,
 } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import {
@@ -397,43 +398,37 @@ export function ExpensesClient({
         </div>
       </div>
 
-      {/* Form modal */}
+      {/* Form modal — shared ds Modal gives a mobile bottom-sheet, focus trap and Escape-to-close */}
       {showForm && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false) }}
-          role="dialog"
-          aria-modal="true"
-          aria-label={editingExpense ? 'Edit expense' : 'New expense'}
+        <Modal
+          open
+          onClose={() => setShowForm(false)}
+          title={editingExpense ? 'Edit Expense' : 'New Expense'}
+          width="lg"
         >
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-surface p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-text">
-              {editingExpense ? 'Edit Expense' : 'New Expense'}
-            </h2>
-            <ExpenseForm
-              initialData={
-                editingExpense
-                  ? {
-                      id: editingExpense.id,
-                      expense_date: editingExpense.expense_date,
-                      company_ref: editingExpense.company_ref,
-                      justification: editingExpense.justification,
-                      amount: editingExpense.amount,
-                      vat_applicable: editingExpense.vat_applicable,
-                      vat_amount: editingExpense.vat_amount,
-                      notes: editingExpense.notes ?? '',
-                    }
-                  : undefined
-              }
-              existingFiles={editingFiles}
-              onSubmit={handleSubmit}
-              onUploadFiles={handleUploadFiles}
-              onDeleteFile={handleDeleteFile}
-              onCancel={() => setShowForm(false)}
-              isEditing={!!editingExpense}
-            />
-          </div>
-        </div>
+          <ExpenseForm
+            initialData={
+              editingExpense
+                ? {
+                    id: editingExpense.id,
+                    expense_date: editingExpense.expense_date,
+                    company_ref: editingExpense.company_ref,
+                    justification: editingExpense.justification,
+                    amount: editingExpense.amount,
+                    vat_applicable: editingExpense.vat_applicable,
+                    vat_amount: editingExpense.vat_amount,
+                    notes: editingExpense.notes ?? '',
+                  }
+                : undefined
+            }
+            existingFiles={editingFiles}
+            onSubmit={handleSubmit}
+            onUploadFiles={handleUploadFiles}
+            onDeleteFile={handleDeleteFile}
+            onCancel={() => setShowForm(false)}
+            isEditing={!!editingExpense}
+          />
+        </Modal>
       )}
 
       {/* File viewer */}

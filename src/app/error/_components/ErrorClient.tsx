@@ -23,7 +23,7 @@ export default function ErrorClient({ title, message, code }: ErrorClientProps) 
         <p className="auth__lead text-center">{message}</p>
 
         {code && (
-          <div className="bg-surface-hover rounded-lg p-3 font-mono text-sm text-text-muted text-center mb-4">
+          <div className="bg-surface-hover rounded-lg p-3 font-mono text-sm text-text-muted text-center mb-4 break-words">
             REF-{code}
           </div>
         )}

@@ -30,8 +30,8 @@ export default async function StaffPortalLayout({ children }: { children: ReactN
           </div>
           <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm scrollbar-hide sm:mx-0 sm:gap-4 sm:overflow-visible sm:px-0">
             <nav className="flex items-center gap-2 sm:gap-4">
-              <a href="/portal/shifts" className="shrink-0 rounded-lg px-2.5 py-2 text-gray-600 hover:text-gray-900 sm:rounded-none sm:px-0 sm:py-0">My Shifts</a>
-              <a href="/portal/leave" className="shrink-0 rounded-lg px-2.5 py-2 text-gray-600 hover:text-gray-900 sm:rounded-none sm:px-0 sm:py-0">Holiday</a>
+              <a href="/portal/shifts" className="touch-target inline-flex shrink-0 items-center justify-center rounded-lg px-2.5 py-2 text-gray-600 hover:text-gray-900 sm:rounded-none sm:px-0 sm:py-0">My Shifts</a>
+              <a href="/portal/leave" className="touch-target inline-flex shrink-0 items-center justify-center rounded-lg px-2.5 py-2 text-gray-600 hover:text-gray-900 sm:rounded-none sm:px-0 sm:py-0">Holiday</a>
             </nav>
             <form action={signOut}>
               <button

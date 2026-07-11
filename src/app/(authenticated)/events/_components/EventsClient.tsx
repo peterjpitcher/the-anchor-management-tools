@@ -294,7 +294,7 @@ export default function EventsClient({
         subtitle="Manage venue events and bookings"
         className="mb-0"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
             <Segmented
               options={VIEW_OPTIONS}
               value={view}

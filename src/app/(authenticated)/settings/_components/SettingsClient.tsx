@@ -136,7 +136,7 @@ function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; 
         <Card>
           <CardHeader title="Business Profile" subtitle="Your venue details" />
           <CardBody>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Business Name">
                 <Input
                   value={form.name}
@@ -166,7 +166,7 @@ function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; 
                   disabled={disabled}
                 />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Address">
                   <Input
                     value={form.address}
@@ -231,7 +231,7 @@ function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; 
 
       {/* Settings groups in 3-col grid */}
       <form onSubmit={handleSave}>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <Card>
             <CardHeader title="Booking Settings" />
             <CardBody>

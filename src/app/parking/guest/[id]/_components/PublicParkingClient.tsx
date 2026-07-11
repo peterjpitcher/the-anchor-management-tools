@@ -111,7 +111,7 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
           {booking.notes && (
             <div className="mt-5 bg-surface-2 rounded-lg border border-border p-4 text-sm text-text">
               <p className="font-medium text-text-strong mb-1">Notes</p>
-              <p className="whitespace-pre-wrap">{booking.notes}</p>
+              <p className="whitespace-pre-wrap break-words">{booking.notes}</p>
             </div>
           )}
 

@@ -414,7 +414,7 @@ export default function CustomersClient({
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Total customers" value={totalCount.toLocaleString()} />
         <Stat label="SMS Active" value={smsActiveCount.toLocaleString()} />
         <Stat label="SMS Deactivated" value={smsDeactivatedCount.toLocaleString()} />
@@ -438,13 +438,13 @@ export default function CustomersClient({
 
       {/* Filter/Search bar + Table */}
       <Card>
-        <div className="flex items-center gap-2 p-3 border-b border-border">
+        <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border">
           <SearchInput
             value={searchTerm}
             onChange={handleSearch}
             debounceDelay={350}
             placeholder="Search by name, phone, or email..."
-            className="w-80"
+            className="w-full sm:w-80"
           />
           <div className="flex-1" />
           {selected.size > 0 ? (
@@ -481,6 +481,8 @@ export default function CustomersClient({
           </CardBody>
         ) : (
           <>
+            {/* Desktop table (>=768px) */}
+            <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -566,6 +568,66 @@ export default function CustomersClient({
                 ))}
               </TableBody>
             </Table>
+            </div>
+
+            {/* Mobile cards (<768px) — stacked version of the list table */}
+            <div className="divide-y divide-border md:hidden">
+              {sortedCustomers.map(customer => (
+                <div key={customer.id} className="flex gap-3 p-3">
+                  <Checkbox
+                    aria-label="Select customer"
+                    checked={selected.has(customer.id)}
+                    onChange={() => toggleSel(customer.id)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2.5">
+                      <Avatar name={`${customer.first_name} ${customer.last_name || ''}`} size="md" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Link href={`/customers/${customer.id}`} className="text-sm font-semibold text-text-strong hover:text-primary">
+                            <CustomerName customer={customer} />
+                          </Link>
+                          {unreadCounts[customer.id] > 0 && (
+                            <Badge tone="primary">{unreadCounts[customer.id]}</Badge>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-xs text-text-muted">
+                          {customer.mobile_number || '--'}
+                        </div>
+                        {customer.email && (
+                          <div className="text-xs text-text-muted break-all">{customer.email}</div>
+                        )}
+                        {customer.sms_opt_in === false && (
+                          <Badge tone="danger" className="mt-1">SMS off</Badge>
+                        )}
+                      </div>
+                      {canManageCustomers && (
+                        <div className="flex flex-shrink-0 items-center gap-1">
+                          <IconButton icon={<PencilIcon />} label="Edit" size="sm" onClick={() => startEditCustomer(customer)} />
+                          <IconButton icon={<TrashIcon />} label="Delete" size="sm" variant="danger" onClick={() => handleDeleteCustomer(customer)} />
+                        </div>
+                      )}
+                    </div>
+
+                    {(customerLabels[customer.id]?.length || customerPreferences[customer.id]?.length) ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <CustomerLabelDisplay assignments={customerLabels[customer.id] || []} />
+                        {customerPreferences[customer.id]?.slice(0, 2).map(pref => (
+                          <Badge key={pref.category_id} tone="success">
+                            {pref.event_categories.name}
+                            {pref.times_attended > 1 && <span className="ml-0.5">x{pref.times_attended}</span>}
+                          </Badge>
+                        ))}
+                        {(customerPreferences[customer.id]?.length ?? 0) > 2 && (
+                          <span className="text-xs text-text-subtle">+{customerPreferences[customer.id].length - 2}</span>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {totalPages > 1 && (
               <TablePagination
                 page={currentPage}

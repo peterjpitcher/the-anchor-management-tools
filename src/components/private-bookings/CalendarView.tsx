@@ -50,7 +50,16 @@ export default function CalendarView({ bookings }: CalendarViewProps) {
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
-  
+
+  // On first mount, default mobile users to the agenda (list) view — the month
+  // grid's day-cell booking pills are too small to tap reliably at phone widths.
+  // Runs once; the user can still switch back to the calendar view.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      setViewMode('agenda')
+    }
+  }, [])
+
   // Get the first day of the month
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const lastDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)

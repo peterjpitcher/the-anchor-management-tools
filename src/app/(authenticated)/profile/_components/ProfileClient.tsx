@@ -256,9 +256,9 @@ export function ProfileClient() {
         tone="danger"
       />
 
-      <div className="grid grid-cols-[1fr_320px] gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px]">
         {/* Left column: form cards */}
-        <div className="space-y-6">
+        <div className="space-y-6 order-2 md:order-1">
           {/* Personal Details */}
           <Card>
             <CardHeader title="Personal Details" />
@@ -376,7 +376,7 @@ export function ProfileClient() {
         </div>
 
         {/* Right column: Avatar sidebar */}
-        <div>
+        <div className="order-1 md:order-2">
           <Card>
             <CardBody>
               <div className="flex flex-col items-center text-center space-y-4">

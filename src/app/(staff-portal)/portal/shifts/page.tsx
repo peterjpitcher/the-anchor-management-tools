@@ -643,7 +643,7 @@ export default async function MyShiftsPage({
       <div className="rounded-xl border border-gray-200 bg-white p-3">
         <div className="flex items-center justify-between gap-3">
           {previousPeriod ? (
-            <a href={periodHref(previousPeriod)} className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            <a href={periodHref(previousPeriod)} className="touch-target inline-flex items-center justify-center rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
               Previous
             </a>
           ) : (
@@ -660,7 +660,7 @@ export default async function MyShiftsPage({
           </div>
 
           {nextPeriod ? (
-            <a href={periodHref(nextPeriod)} className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            <a href={periodHref(nextPeriod)} className="touch-target inline-flex items-center justify-center rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
               Next
             </a>
           ) : (

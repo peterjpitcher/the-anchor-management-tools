@@ -1,0 +1,94 @@
+# Rota
+
+Section-wide note: none of the six rota modals (`AddShiftsModal`, `BookHolidayModal`, `CreateShiftModal`, `HolidayDetailModal`, `MarkSickModal`, `ShiftDetailModal`) import the shared `@/ds` `Modal` component (`src/ds/primitives/Modal.tsx`), which already gives bottom-sheet-on-mobile behaviour for free. They all hand-roll `fixed inset-0 flex items-center justify-center p-4 bg-black/50` overlays instead, so each one has to individually get max-height/scroll/close-button right — three of the six don't (see `/rota` findings below). This is a page-level pattern choice, not a shared-component bug, so it isn't listed under systemic issues, but it explains why the same class of bug (unbounded-height modal) recurs three times in one route.
+
+Section-wide note: `globals.css` has a `@media (max-width: 820px)` layer that forces `button:not(.ds-sidebar button)` to `min-height/min-width: 44px` and bumps `--spacing-btn-h*` tokens up. This mitigates raw tap-target-size complaints for on-`<button>` elements sitewide, so plain sizing issues are not repeated below unless the enforced 44px collides with a tight layout (noted where it does).
+
+## /rota
+
+Live files: `src/app/(authenticated)/rota/page.tsx` → `RotaGrid.tsx` (+ `RotaPublishStatus.tsx`, `RotaFeedButton.tsx`, `ShiftDetailModal.tsx`, `CreateShiftModal.tsx`, `BookHolidayModal.tsx`, `HolidayDetailModal.tsx`, `MarkSickModal.tsx`, `AddShiftsModal.tsx`). No dead duplicates found in this directory.
+
+- [H] item#1 — The entire weekly schedule (the page's core editing surface) is a drag-and-drop grid forced to `min-w-[1040px]` inside `overflow-x-auto`, with a `sticky left-0 w-[260px]` employee-name column. At 375px this technically satisfies "scrolls in its own container", but it means every single interaction (viewing a shift, dragging a shift to a new day, opening the day's sales-target editor) requires horizontal scrolling a ~2.8x-viewport-wide table with drag targets ~110px apart. There is no card/list fallback. — `src/app/(authenticated)/rota/RotaGrid.tsx:1127-1128` (grid wrapper), `:1128` (`min-w-[1040px]`), `:1131` (sticky 260px name column), `:1283` (per-row sticky name column)
+- [H] item#2 — Per-cell quick actions ("Add shift", "Book holiday", "Mark Couldn't Work") are `opacity-0` by default and only reach `opacity-100` via `group-hover/cell` or `group-focus-within/cell`. Touch devices have no hover state, so on mobile these controls are invisible — there is no visible affordance that they exist, even though they remain hit-testable (opacity doesn't remove pointer-events). A mobile manager cannot discover how to add a shift to an empty cell. — `src/app/(authenticated)/rota/RotaGrid.tsx:528-562` (`opacity-0 ... group-hover/cell:opacity-100 group-focus-within/cell:opacity-100`)
+- [H] item#3 — `CreateShiftModal`'s dialog card has no `max-h` / `overflow-y-auto` (unlike `ShiftDetailModal`, which has both). With the optional `PremiumControl` block expanded (rate select + custom-rate input + reason + from/to window) the form can easily exceed the height of a phone viewport; the outer wrapper is `items-center` with no scroll affordance, so the "Create shift" submit button becomes unreachable. — `src/app/(authenticated)/rota/CreateShiftModal.tsx:82-84` (`fixed inset-0 ... items-center` / `bg-white rounded-xl shadow-xl w-full max-w-md` — no `max-h`/`overflow-y-auto`)
+- [M] item#4 — `BookHolidayModal` and `MarkSickModal` dialog cards also have no `max-h`/`overflow-y-auto` safety net (content is shorter than CreateShiftModal's so less likely to overflow, but a landscape phone or a phone with the on-screen keyboard open for the note/reason field could still push the submit button off-screen with no scroll route back to it). — `src/app/(authenticated)/rota/BookHolidayModal.tsx:66-68`, `src/app/(authenticated)/rota/MarkSickModal.tsx:72-74`
+- [M] item#5 — `RotaFeedButton`'s calendar-subscribe popover is a fixed `w-96` (384px), wider than a 375px viewport, positioned `absolute right-0` off a small anchor button inside a `flex-wrap` header-actions row. Depending on where the trigger lands in the wrapped row, the popover's left portion (URL field / instructions) is clipped by the global `overflow-x:hidden` on `body`. Compare with `HoursByEmployeeClient`'s `EmployeeMultiSelect` popover, which correctly clamps via `min-w-[min(28rem,calc(100vw-2rem))]`. — `src/app/(authenticated)/rota/RotaFeedButton.tsx:97` (`w-96`)
+- [M] item#6 — `CreateShiftModal` (create + edit views) and `ShiftDetailModal`'s edit view lay out Start time / End time / Break / Department as a bare `grid-cols-2` with no base-breakpoint stacking; the `PremiumControl`'s "From/To" premium window is the same pattern. Functionally usable at ~145px per column (Input/Select are full-width so they shrink correctly) but cramped, and violates the "side-by-side fields must stack" rule. — `src/app/(authenticated)/rota/CreateShiftModal.tsx:109` and `:346` (window from/to), `src/app/(authenticated)/rota/ShiftDetailModal.tsx:452`
+- [L] item#7 — Extensive use of `text-[9px]`/`text-[10px]`/`text-[11px]` for shift-block labels, day-notes strip, and summary pills inside the grid. Given the grid is already viewed via horizontal scroll/zoom on mobile this compounds readability, though it's consistent with the grid being a dense desktop-style schedule. — `src/app/(authenticated)/rota/RotaGrid.tsx:114` (`text-[9px]` unpublished label), `:143-145` (`text-[10px]`/`text-[11px]` day-notes strip), `:297-299` (SummaryPill `text-[10px]`)
+
+REDESIGN: yes — the weekly grid is the primary workflow of this section and cannot be made to work at 375px by wrapping it in a scroll container alone; it needs a genuine mobile view (e.g. a per-day or per-employee card/agenda list with tap-to-assign, mirroring the pattern already used successfully in `LeaveManagerClient`'s collapsible row list) before the hidden hover-only actions and 1040px canvas are usable on a phone.
+
+## /rota/dashboard
+
+Live file: `src/app/(authenticated)/rota/dashboard/page.tsx` (server component, renders directly — no separate client file).
+
+- [L] item#1 — The summary-stat grid `grid-cols-2 sm:grid-cols-4` and the Revenue-vs-Labour grid `grid-cols-1 sm:grid-cols-3` both stack sensibly at 375px (2-up and 1-up respectively); no violation, noted only because the stat grid is 2-up rather than 1-up on the very smallest phones — acceptable per the "deliberate stat-tile grid" exemption. — `src/app/(authenticated)/rota/dashboard/page.tsx:272`, `:289`
+
+PASS (no mobile issues found) — straightforward stat cards and two `Section`/`Card` blocks, all single- or double-column at mobile widths, no tables, no fixed widths.
+
+## /rota/hours
+
+Live files: `src/app/(authenticated)/rota/hours/page.tsx` → `HoursByEmployeeClient.tsx`. No dead duplicates.
+
+- [L] item#1 — Filters row uses `grid gap-3 sm:grid-cols-2 xl:grid-cols-[180px_180px_...]`; with no base `grid-cols`, it correctly stacks to one column below `sm:` (640px), so all four filter controls (From, To, employee multi-select, Apply/Download) stack vertically at 375px. No violation — noted as a positive contrast to the `grid-cols-2`-at-base patterns flagged elsewhere in this section. — `src/app/(authenticated)/rota/hours/HoursByEmployeeClient.tsx:530`
+- [L] item#2 — The `EmployeeMultiSelect` popover correctly clamps its width with `min-w-[min(28rem,calc(100vw-2rem))]`, avoiding the overflow bug seen in `RotaFeedButton`. Noted as a good pattern, not an issue. — `src/app/(authenticated)/rota/hours/HoursByEmployeeClient.tsx:351`
+- [L] item#3 — "Holidays booked" / "Couldn't Work recorded" tables are simple 2–3 column tables correctly wrapped in `overflow-hidden` on the outer rounded border plus an inner `max-h-[420px] overflow-auto` scroll div — content scrolls vertically and, because the tables are narrow (2–3 short columns), doesn't need horizontal scroll at 375px. No violation.
+
+PASS (no mobile issues found) — filters stack correctly, popover is viewport-clamped, chart uses `ResponsiveContainer`, tables are narrow enough not to need horizontal scroll.
+
+## /rota/leave
+
+Live files: `src/app/(authenticated)/rota/leave/page.tsx` → `LeaveManagerClient.tsx`. No dead duplicates.
+
+- [H] item#1 — Each leave-request row header is `flex items-center justify-between` with a `shrink-0` icon-action cluster on the right (Approve + Decline when pending, Edit + Delete when `canEdit`, plus the expand chevron — up to 5 icon buttons) and no `flex-wrap`. Each raw `<button>` gets pushed to the global 44×44px minimum at mobile widths, so 5 buttons + gaps need >250px; combined with the left-hand block's un-truncated date-range text (`{formatDate(start)} – {formatDate(end)} · N days`, no `truncate`/`whitespace-nowrap` protection), the row's natural content width can exceed 375px. Because there's no `overflow-x-auto` wrapper around the row, overflow is clipped by the page's `overflow-x:hidden`, risking the rightmost action (Decline, or Delete) becoming unreachable for a manager who both approves and edits leave. — `src/app/(authenticated)/rota/leave/LeaveManagerClient.tsx:128-180` (action cluster), `:123-125` (unbounded date-range text)
+- [L] item#2 — Expanded row's "Edit dates" Start/End date inputs use `grid-cols-2` with no base-breakpoint stacking (same pattern as `/rota`'s modals); functionally fine since `Input` is full-width, just cramped (~145px per date input at 375px). — `src/app/(authenticated)/rota/leave/LeaveManagerClient.tsx:271`
+- [L] item#3 — The row itself is a good mobile pattern otherwise: card-style collapsible rows (not a raw table), `dl` detail grid stacks fine, `ConfirmDialog` used for destructive actions.
+
+REDESIGN: no — the row-list pattern is already the right shape for mobile; it just needs the action cluster to wrap (`flex-wrap` + `gap-1.5`) or to collapse into a single overflow/kebab menu below a breakpoint, and the date-range text needs `truncate` or to drop to a second line.
+
+## /rota/payroll
+
+Live files: `src/app/(authenticated)/rota/payroll/page.tsx` → `PayrollClient.tsx` (+ `PayrollSummaryBar.tsx`). No dead duplicates.
+
+- [H] item#1 — The "Daily breakdown" pivot table (7 columns: expand chevron, Date/Employee, Planned, Worked, Diff, Flags, row actions) is wrapped in `<div className="rounded-lg border border-gray-200 overflow-hidden">` — **`overflow-hidden`, not `overflow-x-auto`**. Combined with the global mobile CSS rule that forces all `<table>` elements to `min-width: 560px`, this table cannot fit 375px and has no scroll mechanism: overflowing columns (Flags, and the row-level Edit/Note/Delete action buttons, which are also `opacity-0 group-hover:opacity-100` so already hover-only) are silently clipped and completely inaccessible on mobile, with no way to scroll to them. This directly violates "no critical column hidden with no access." Contrast with `TimeclockManager.tsx:425`, which correctly uses `overflow-x-auto` for the same kind of table. — `src/app/(authenticated)/rota/payroll/PayrollClient.tsx:431-432`
+- [H] item#2 — Same table: the per-row action buttons (edit times, add/edit note, delete) are `opacity-0 group-hover:opacity-100` with no `group-focus-within` fallback at all (unlike the rota grid's cell actions, which at least have `group-focus-within`). On touch devices these are permanently invisible — even if a user managed to scroll the clipped table into view, the action buttons could never be revealed. — `src/app/(authenticated)/rota/payroll/PayrollClient.tsx:546` (`opacity-0 group-hover:opacity-100 transition-opacity`)
+- [L] item#3 — Employee summary card grid `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4` is a legitimate stat-tile grid; the global mobile CSS's `[class*="lg:grid-cols"] { grid-template-columns: 1fr !important }` rule actually forces this to a single column below 820px, which is a reasonable full-width card outcome — no action needed, noted for completeness. — `src/app/(authenticated)/rota/payroll/PayrollClient.tsx:695`
+
+REDESIGN: yes — the daily-breakdown table needs either a genuine mobile card view (one card per date, one row per employee inside it — the underlying data is already grouped by date) or, at minimum, the wrapper must change from `overflow-hidden` to `overflow-x-auto` and the row actions need to be always-visible (or a persistent affordance) rather than hover-only, since the fix above (item#1) will only restore scroll access, not fix the invisible-buttons problem in item#2.
+
+## /rota/print
+
+Live files: `src/app/(authenticated)/rota/print/page.tsx` → `PrintTrigger.tsx`. No dead duplicates. Not linked from anywhere else in the app (`grep` found no in-app links to `/rota/print`; it appears to be reached only by direct URL/bookmark, distinct from the RotaGrid's "Download PDF" link which hits `/api/rota/pdf`, an actual PDF file).
+
+- [M] item#1 — This is an on-screen print preview: a `position: fixed; inset: 0` overlay containing an inline-styled `<table>` whose columns are `minWidth: 72` each (7 day columns) plus a 100px employee column and 44px hours column — a hard-coded minimum table width of ~648px. The wrapping div sets only `overflowY: 'auto'`; per the CSS overflow-computed-value spec this causes the UA to also compute `overflow-x` as `auto`, so it is horizontally scrollable, but there is no visual affordance (no scrollbar styling, no "scroll for more" hint) telling a mobile user the table extends further right — a manager landing here on a phone is likely to believe the layout is simply broken/cut off rather than realise they can swipe. — `src/app/(authenticated)/rota/print/page.tsx:91` (`minWidth: 72` per day cell), `:195-207` (`position: fixed`, `overflowY: 'auto'`, no `overflowX`)
+- [L] item#2 — `PrintTrigger`'s inline-styled print button (`padding: '8px 18px'`, no explicit height) is not a real `<button>` styled via Tailwind/DS, so it isn't guaranteed the same treatment as the global 44px mobile tap-target rule beyond the generic `button` selector match — it likely still gets the forced `min-height:44px` since it is a literal `<button>` tag, so this is low-risk, noted for completeness. — `src/app/(authenticated)/rota/print/PrintTrigger.tsx:56-70`
+
+REDESIGN: no — this route is a print-formatted document (A4 landscape `@page` rule, "choose Landscape orientation" hint) rather than a page designed for on-screen mobile browsing; the acceptable fix is a horizontal-scroll hint/visible scrollbar, not a card redesign, since its purpose is a faithful print layout.
+
+## /rota/templates
+
+Live files: `src/app/(authenticated)/rota/templates/page.tsx` → `ShiftTemplatesManager.tsx`. No dead duplicates.
+
+- [L] item#1 — `TemplateForm`'s field grid (`grid-cols-2 gap-4 sm:grid-cols-4`) puts Name (spans 2 cols) / Department / Colour on one row and Start time / End time / Break / Paid-hours summary on the next, all without base-breakpoint stacking below `sm:`. At 375px each column is ~160px; workable for Select/Input (full-width) and the small colour swatch + "Clear" button, but cramped, particularly the colour-picker row (`h-9 w-14` colour input + Clear button in a ~160px column). Same pattern as flagged in `/rota` and `/rota/leave`. — `src/app/(authenticated)/rota/templates/ShiftTemplatesManager.tsx:122` (grid), `:143-154` (colour + Clear in one ~160px column)
+- [L] item#2 — `TemplateRow`'s right-hand action cluster (department Badge + Edit icon button + Delete icon button, `shrink-0`) sits opposite a `min-w-0` left block whose secondary text line (`{time} – {time} · {break} min break · {hours} paid`) has no `truncate`/wrap protection beyond natural text wrapping — unlike the leave-row finding, this text is allowed to wrap onto a second line (no `whitespace-nowrap`), so it degrades gracefully rather than overflowing. No violation, noted as a contrast to the `/rota/leave` bug above.
+
+PASS (no high/medium mobile issues found) — one low-severity cramped-columns finding; the template-row list itself is already a good card-list mobile pattern with graceful text wrapping.
+
+## /rota/timeclock
+
+Live files: `src/app/(authenticated)/rota/timeclock/page.tsx` → `TimeclockManager.tsx`. No dead duplicates.
+
+- [M] item#1 — The sessions table (7 columns: Employee, Clock In, Clock Out, Hours, Flags, Notes, actions) is correctly wrapped in `overflow-x-auto` (contained scroll, unlike the Payroll table), but has no mobile card fallback: at 375px a manager must scroll horizontally to reach the Notes column and the row action buttons (Edit/Approve/Delete), and the inline edit mode packs a premium-rate `<select>`, a custom-rate `<input>`, and two time-window inputs into one table cell — all workable but only after scrolling right and zooming in on very small cells (`w-20`/`w-24` inputs, `text-xs`). Meets the technical scroll-container bar but is a poor mobile editing experience for what is a common manager task (correcting a missed clock-out). — `src/app/(authenticated)/rota/timeclock/TimeclockManager.tsx:425-426` (`overflow-x-auto` wrapper — correct), `:556-594` (dense inline premium-edit controls inside one cell)
+- [L] item#2 — "Add entry" form uses `grid-cols-2 gap-3 sm:grid-cols-4` (Employee spans 2 cols, Date/blank/Clock-in/Clock-out each 1 col, Notes spans 2 cols) — same cramped-but-workable 2-column-at-base pattern flagged elsewhere. — `src/app/(authenticated)/rota/timeclock/TimeclockManager.tsx:352`
+- [L] item#3 — Row action icon buttons (`p-1` raw `<button>`s for Edit/Approve/Delete, and Confirm/Cancel during delete) rely entirely on the global mobile 44px CSS override for tap-target size; no page-level sizing, but this is the systemic mitigation working as intended, not a bug.
+
+REDESIGN: yes — same underlying problem as `/rota/payroll`'s daily breakdown: a dense multi-column editable table used for a routine mobile task (correcting a clock time) would be far more usable as a card-per-session list (Employee name + times as the card header, an "Edit" action that expands the card inline) grouped by day, rather than requiring horizontal scroll + tiny inline form controls.
+
+---
+
+# Summary
+
+- Routes audited: 8
+- Routes with at least one Medium/High finding: 6 (`/rota`, `/rota/leave`, `/rota/payroll`, `/rota/print`, `/rota/timeclock`, and `/rota/templates` only at Low — treated as passing)
+- Clean passes: `/rota/dashboard`, `/rota/hours`, `/rota/templates` (Low-only)
+- No issues were traced to a shared `src/ds/*` component or to `globals.css` itself — the global mobile layer (44px tap targets, forced single-column grids, `html/body overflow-x:hidden`) is working correctly and *mitigates* several would-be issues (e.g. icon button sizing). Every High/Medium finding here is page-local: bespoke modals that skip the shared `Modal` component and miss `max-h`/`overflow-y-auto`; a table wrapper that uses `overflow-hidden` instead of `overflow-x-auto`; hover-only (no touch equivalent) action buttons; and a fixed-width popover that doesn't clamp to the viewport.

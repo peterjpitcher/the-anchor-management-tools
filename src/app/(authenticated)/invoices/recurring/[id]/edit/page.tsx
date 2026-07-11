@@ -365,7 +365,7 @@ export default function EditRecurringInvoicePage() {
             <div className="space-y-4">
               {lineItems.map((item, index) => (
                 <div key={index} className="border rounded-lg p-4 space-y-4">
-                  <div className="flex items-start gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4">
                       <FormGroup label="Catalog Item" className="md:col-span-2">
                         <Select
@@ -460,7 +460,8 @@ export default function EditRecurringInvoicePage() {
                         variant="secondary"
                         size="sm"
                         onClick={() => removeLineItem(index)}
-                        className="mt-6"
+                        className="sm:mt-6"
+                        aria-label="Remove line item"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -523,11 +524,12 @@ export default function EditRecurringInvoicePage() {
             </div>
           </Card>
 
-          <div className="flex justify-end gap-4">
+          <div className="flex flex-col justify-end gap-3 sm:flex-row sm:gap-4">
             <Button
               type="button"
               variant="secondary"
               onClick={() => router.push('/invoices/recurring')}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -535,6 +537,7 @@ export default function EditRecurringInvoicePage() {
               type="submit"
               loading={submitting}
               disabled={!vendorId || lineItems.length === 0}
+              className="w-full sm:w-auto"
             >
               Update Recurring Invoice
             </Button>

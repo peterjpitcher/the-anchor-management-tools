@@ -643,6 +643,14 @@ export default function EventDetailClient({
         </div>
       </div>
 
+      {/* Checklist — mobile/tablet: shown inline below content since the sticky sidebar is hidden below lg */}
+      <div className="lg:hidden">
+        <EventChecklistCard
+          eventId={event.id}
+          eventName={event.name}
+        />
+      </div>
+
       {/* Cancel confirmation dialog */}
       <ConfirmDialog
         open={cancellingBookingId !== null}

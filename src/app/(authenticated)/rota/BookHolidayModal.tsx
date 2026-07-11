@@ -65,7 +65,7 @@ export default function BookHolidayModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-sm"
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between p-5 border-b border-gray-200">
@@ -81,7 +81,7 @@ export default function BookHolidayModal({
         <div className="p-5 space-y-3">
           {error && <Alert variant="error">{error}</Alert>}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="From" htmlFor="bh-start" required>
               <Input id="bh-start" type="date" value={startDate} onChange={e => {
                 setStartDate(e.target.value);

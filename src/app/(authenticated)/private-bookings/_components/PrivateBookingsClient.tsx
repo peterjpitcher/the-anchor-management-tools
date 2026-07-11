@@ -799,7 +799,7 @@ export default function PrivateBookingsClient({
                   <div className="flex justify-end items-center gap-2 pt-2 border-t border-border flex-wrap" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/private-bookings/${booking.id}`}
-                      className="text-sm font-medium text-primary hover:underline px-3 py-1"
+                      className="inline-flex min-h-[44px] md:min-h-0 items-center text-sm font-medium text-primary hover:underline px-3 py-1"
                     >
                       View Details
                     </Link>

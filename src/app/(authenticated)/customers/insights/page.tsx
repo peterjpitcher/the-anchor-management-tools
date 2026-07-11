@@ -335,7 +335,7 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
               {snapshot.win_back_candidates.length === 0 ? (
                 <p className="mt-4 text-sm text-gray-500">No dormant high-value candidates detected in current scoring data.</p>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <div className="mt-4 hidden overflow-x-auto md:block">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-gray-50">
                       <tr>
@@ -368,6 +368,43 @@ export default async function CustomersInsightsPage({ searchParams }: CustomerIn
                   </table>
                 </div>
               )}
+
+              {snapshot.win_back_candidates.length > 0 ? (
+                <div className="mt-4 space-y-3 md:hidden">
+                  {snapshot.win_back_candidates.map((candidate) => (
+                    <div key={candidate.customer_id} className="rounded-lg border border-gray-200 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900">{candidate.name}</p>
+                          {candidate.mobile ? <p className="text-xs text-gray-500">{candidate.mobile}</p> : null}
+                        </div>
+                        <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-900">
+                          Score {formatNumber(candidate.total_score)}
+                        </span>
+                      </div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <dt className="text-gray-500">90d bookings</dt>
+                          <dd className="font-medium text-gray-900">{formatNumber(candidate.bookings_last_90)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-500">365d bookings</dt>
+                          <dd className="font-medium text-gray-900">{formatNumber(candidate.bookings_last_365)}</dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-gray-500">Last booking</dt>
+                          <dd className="text-gray-700">
+                            {formatDate(candidate.last_booking_date)}
+                            {candidate.days_since_last_booking !== null ? (
+                              <span className="ml-1 text-xs text-gray-500">({candidate.days_since_last_booking}d ago)</span>
+                            ) : null}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </Card>
 
             {canManageCustomers && (

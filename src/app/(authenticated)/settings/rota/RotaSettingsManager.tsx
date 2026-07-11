@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { Button } from '@/ds';
 import { Input } from '@/ds';
+import { Select } from '@/ds';
 import { FormGroup } from '@/ds';
 import { updateRotaSettings, type RotaSettings } from '@/app/actions/rota-settings';
 
@@ -61,17 +62,16 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
         </p>
         <div className="flex flex-wrap items-end gap-4">
           <FormGroup label="Start month" htmlFor="holiday-month" className="min-w-[140px]">
-            <select
+            <Select
               id="holiday-month"
               value={holidayMonth}
               onChange={e => setHolidayMonth(e.target.value)}
               disabled={!canManage}
-              className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white disabled:bg-gray-50 disabled:text-gray-400"
             >
               {MONTHS.map((name, i) => (
                 <option key={i + 1} value={i + 1}>{name}</option>
               ))}
-            </select>
+            </Select>
           </FormGroup>
           <FormGroup label="Start day" htmlFor="holiday-day" className="w-24">
             <Input

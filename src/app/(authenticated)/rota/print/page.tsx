@@ -240,7 +240,13 @@ export default async function RotaPrintPage({ searchParams }: PrintPageProps) {
           </div>
         </div>
 
-        {/* Rota table */}
+        {/* Mobile-only hint: the table is wider than a phone screen and scrolls sideways */}
+        <p className="no-print sm:hidden" style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
+          Scroll sideways to see the full week →
+        </p>
+
+        {/* Rota table — scrolls horizontally on screen (too wide for phones), full-width in print */}
+        <div className="overflow-x-auto print:overflow-visible">
         <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', fontSize: 11 }}>
           <thead>
             <tr style={{ backgroundColor: '#f9fafb' }}>
@@ -314,6 +320,7 @@ export default async function RotaPrintPage({ searchParams }: PrintPageProps) {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* Legend */}
         <div style={{ marginTop: 10, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
