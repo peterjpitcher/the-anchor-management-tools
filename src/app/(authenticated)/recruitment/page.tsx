@@ -2,6 +2,9 @@ import { getRecruitmentPageData } from '@/app/actions/recruitment'
 import RecruitmentDashboardClient from './_components/RecruitmentDashboardClient'
 
 export const dynamic = 'force-dynamic'
+// Manual CV intake parses the document and runs two AI passes (profile extraction
+// and application scoring). Keep the Server Action alive long enough to finish.
+export const maxDuration = 120
 
 export default async function RecruitmentPage() {
   const pageData = await getRecruitmentPageData()
