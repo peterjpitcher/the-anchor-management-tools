@@ -203,8 +203,8 @@ export function SeoHealthIndicator({
         />
       </div>
 
-      {/* Checklist — 2-column grid */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+      {/* Checklist — stacks on mobile, 2-column grid from sm up */}
+      <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
         {checks.map((check) => (
           <div key={check.label} className="flex items-start gap-1.5">
             <span

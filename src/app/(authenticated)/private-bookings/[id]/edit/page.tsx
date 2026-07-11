@@ -438,7 +438,7 @@ export default function EditPrivateBookingPage({
             )}
 
             <div className="space-y-4">
-              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+              <label className="inline-flex min-h-[44px] md:min-h-0 items-center gap-2 text-sm font-medium text-gray-700">
                 <input
                   type="checkbox"
                   id="date_tbd"
@@ -597,10 +597,11 @@ export default function EditPrivateBookingPage({
             </div>
           </Section>
 
-          <div className="flex justify-end space-x-3 pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-6 sm:pt-4 border-t">
             <LinkButton
               variant="secondary"
               href={`/private-bookings/${id}`}
+              className="w-full sm:w-auto"
             >
               Cancel
             </LinkButton>
@@ -608,6 +609,8 @@ export default function EditPrivateBookingPage({
               type="submit"
               disabled={isPending}
               loading={isPending}
+              fullWidth
+              className="sm:w-auto"
             >
               Save Changes
             </Button>

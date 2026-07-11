@@ -233,9 +233,9 @@ export default function PaymentHistoryTable({
             return (
               <div
                 key={entry.id}
-                className="flex items-center justify-between text-xs text-gray-600"
+                className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-gray-600"
               >
-                <span>
+                <span className="min-w-0">
                   {formatDateInLondon(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
                   {' — '}
                   <span className="capitalize">{entry.type}</span>

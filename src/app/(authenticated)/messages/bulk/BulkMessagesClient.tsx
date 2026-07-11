@@ -581,7 +581,7 @@ export default function BulkMessagesClient({
           )}
 
           {/* Send controls */}
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-gray-500">
               {selectedKeys.size > 0
                 ? `${selectedKeys.size} recipient${selectedKeys.size !== 1 ? 's' : ''} selected`

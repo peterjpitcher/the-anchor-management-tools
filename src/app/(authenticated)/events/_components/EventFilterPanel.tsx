@@ -47,7 +47,7 @@ export function EventFilterPanel({
 
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <div className="w-56">
+      <div className="w-full sm:w-56">
         <SearchInput
           value={filters.searchTerm}
           onChange={(v) => update({ searchTerm: v })}
@@ -55,7 +55,7 @@ export function EventFilterPanel({
         />
       </div>
 
-      <div className="w-40">
+      <div className="w-full sm:w-40">
         <Select
           options={categoryOptions}
           value={filters.category}
@@ -63,7 +63,7 @@ export function EventFilterPanel({
         />
       </div>
 
-      <div className="w-40">
+      <div className="w-full sm:w-40">
         <Select
           options={STATUS_OPTIONS}
           value={filters.status}
@@ -71,7 +71,7 @@ export function EventFilterPanel({
         />
       </div>
 
-      <div className="w-36">
+      <div className="w-full sm:w-36">
         <DateTimePicker
           type="date"
           value={filters.dateFrom}
@@ -80,7 +80,7 @@ export function EventFilterPanel({
         />
       </div>
 
-      <div className="w-36">
+      <div className="w-full sm:w-36">
         <DateTimePicker
           type="date"
           value={filters.dateTo}
@@ -93,6 +93,8 @@ export function EventFilterPanel({
         <Button
           type="button"
           variant="secondary"
+          fullWidth
+          className="sm:w-auto"
           icon={<Icon name="download" size={16} />}
           loading={isExporting}
           onClick={onExportDateRange}
