@@ -108,6 +108,8 @@ export function EventListView({
         </div>
       )}
 
+      {/* Desktop table */}
+      <div className="hidden md:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -210,6 +212,105 @@ export function EventListView({
           )}
         </TableBody>
       </Table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="block md:hidden divide-y divide-border">
+        {events.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-text-muted">No events found</div>
+        ) : (
+          events.map((event) => {
+            const capacity = event.capacity ?? 0
+            const booked = (event as Event & { booked_count?: number }).booked_count ?? 0
+            const bookedRatio = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+            const linkClicks = (event as Event & { link_clicks?: number }).link_clicks ?? 0
+            return (
+              <div key={event.id} className="py-4">
+                <div className="flex items-start gap-2">
+                  <label className="-my-1.5 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
+                    <Checkbox
+                      label=""
+                      checked={selectedIds.has(event.id)}
+                      onChange={() => toggleOne(event.id)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => onEventClick(event)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="font-medium text-text-strong">{event.name}</div>
+                    <div className="text-xs text-text-muted">{event.id.slice(0, 8)}</div>
+                  </button>
+                  <Badge tone={getStatusTone(event.event_status)} dot>
+                    {formatStatusLabel(event.event_status)}
+                  </Badge>
+                </div>
+
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <dt className="text-xs font-medium text-text-muted">Date</dt>
+                    <dd className="mt-0.5 text-text">
+                      {formatDateInLondon(event.date)}
+                      {event.time ? <span className="text-text-muted"> · {event.time}</span> : null}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium text-text-muted">Category</dt>
+                    <dd className="mt-0.5">
+                      {event.event_type ? (
+                        <Badge tone="info">{event.event_type}</Badge>
+                      ) : (
+                        <span className="text-text-muted">-</span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium text-text-muted">Booked</dt>
+                    <dd className="mt-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-text-muted">
+                          {capacity > 0 ? `${booked}/${capacity}` : '-'}
+                        </span>
+                        {capacity > 0 && <BarMini value={bookedRatio} />}
+                      </div>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium text-text-muted">Clicks</dt>
+                    <dd className="mt-0.5 text-text">{linkClicks > 0 ? linkClicks.toLocaleString() : '-'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium text-text-muted">Price</dt>
+                    <dd className="mt-0.5 text-text">{formatEventPriceSummary(event)}</dd>
+                  </div>
+                </dl>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Icon name="externalLink" size={14} />}
+                    onClick={() => onEventClick(event)}
+                  >
+                    Open
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    icon={<Icon name="edit" size={14} />}
+                    onClick={() => onEditEvent(event)}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
 
       <TablePagination
         page={pagination.currentPage}

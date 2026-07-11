@@ -492,6 +492,24 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     }
   }
 
+  // Shared select handler for both the desktop table row and the mobile card.
+  const handleSelectBooking = (booking: ParkingBooking) => {
+    setSelectedBooking(booking)
+    setRefundPaymentId(null)
+    void loadNotifications(booking.id)
+    if (booking.payment_status === 'paid' && permissions.canRefund) {
+      import('@/app/actions/refundActions').then(({ getParkingPaymentForRefund }) =>
+        getParkingPaymentForRefund(booking.id).then((res) => {
+          if (res.data) {
+            setRefundPaymentId(res.data.paymentId)
+            setRefundPaymentAmount(res.data.amount)
+            setRefundHasCapture(res.data.hasCapture)
+          }
+        })
+      )
+    }
+  }
+
   /* ---------- Derived data ---------- */
 
   const upcomingCount = useMemo(() => bookings.filter((b) => new Date(b.start_at) > new Date() && ['pending_payment', 'confirmed'].includes(b.status)).length, [bookings])
@@ -516,7 +534,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       {pageError && <Alert tone="danger" title="We couldn't load everything">{pageError}</Alert>}
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card><CardBody><Stat label="Total Bookings" value={bookings.length} /></CardBody></Card>
         <Card><CardBody><Stat label="Upcoming" value={upcomingCount} /></CardBody></Card>
         <Card><CardBody><Stat label="Pending Payments" value={pendingPaymentCount} hint={pendingPaymentCount > 0 ? 'Requires attention' : undefined} /></CardBody></Card>
@@ -525,7 +543,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       <SectionNav items={sections} activeId={activeSection} onSelect={setActiveSection} />
 
       {activeSection === 'bookings' && (
-        <div className="grid grid-cols-[1fr_320px] gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px]">
           {/* Left: bookings table */}
           <Card>
             <CardHeader title="Bookings" action={<Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>Refresh</Button>}>
@@ -541,64 +559,94 @@ export default function ParkingClient({ permissions, initialError }: Props) {
               ) : bookings.length === 0 ? (
                 <Empty title="No bookings" description="No bookings found for the current filters." />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Reference</TableHead>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Start</TableHead>
-                        <TableHead>End</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Payment</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Due</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {bookings.map((booking) => (
-                        <TableRow
-                          key={booking.id}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            setSelectedBooking(booking)
-                            setRefundPaymentId(null)
-                            void loadNotifications(booking.id)
-                            if (booking.payment_status === 'paid' && permissions.canRefund) {
-                              import('@/app/actions/refundActions').then(({ getParkingPaymentForRefund }) =>
-                                getParkingPaymentForRefund(booking.id).then((res) => {
-                                  if (res.data) {
-                                    setRefundPaymentId(res.data.paymentId)
-                                    setRefundPaymentAmount(res.data.amount)
-                                    setRefundHasCapture(res.data.hasCapture)
-                                  }
-                                })
-                              )
-                            }
-                          }}
-                        >
-                          <TableCell className="font-medium">{booking.reference}</TableCell>
-                          <TableCell>
-                            <div onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}>
-                              <CustomerLink
-                                customerId={booking.customer_id ?? null}
-                                name={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim()}
-                                fallback="Unknown Customer"
-                                className="text-blue-600 hover:text-blue-700"
-                              />
-                            </div>
-                          </TableCell>
-                          <TableCell>{formatDateTime(booking.start_at)}</TableCell>
-                          <TableCell>{formatDateTime(booking.end_at)}</TableCell>
-                          <TableCell><Badge tone={statusBadgeTone[booking.status]}>{booking.status.replace('_', ' ')}</Badge></TableCell>
-                          <TableCell><Badge tone={paymentBadgeTone[booking.payment_status]}>{booking.payment_status}</Badge></TableCell>
-                          <TableCell>{formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}</TableCell>
-                          <TableCell>{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '—'}</TableCell>
+                <>
+                  {/* Desktop: full table */}
+                  <div className="hidden overflow-x-auto md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Reference</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>Start</TableHead>
+                          <TableHead>End</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Payment</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Due</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {bookings.map((booking) => (
+                          <TableRow
+                            key={booking.id}
+                            className="cursor-pointer"
+                            onClick={() => handleSelectBooking(booking)}
+                          >
+                            <TableCell className="font-medium">{booking.reference}</TableCell>
+                            <TableCell>
+                              <div onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}>
+                                <CustomerLink
+                                  customerId={booking.customer_id ?? null}
+                                  name={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim()}
+                                  fallback="Unknown Customer"
+                                  className="text-blue-600 hover:text-blue-700"
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell>{formatDateTime(booking.start_at)}</TableCell>
+                            <TableCell>{formatDateTime(booking.end_at)}</TableCell>
+                            <TableCell><Badge tone={statusBadgeTone[booking.status]}>{booking.status.replace('_', ' ')}</Badge></TableCell>
+                            <TableCell><Badge tone={paymentBadgeTone[booking.payment_status]}>{booking.payment_status}</Badge></TableCell>
+                            <TableCell>{formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}</TableCell>
+                            <TableCell>{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '—'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile: stacked cards */}
+                  <div className="divide-y divide-border md:hidden">
+                    {bookings.map((booking) => (
+                      <button
+                        key={booking.id}
+                        type="button"
+                        onClick={() => handleSelectBooking(booking)}
+                        className={`flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-hover ${
+                          selectedBooking?.id === booking.id ? 'bg-primary-soft' : ''
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium text-text-strong">{booking.reference}</span>
+                          <span className="text-sm font-medium text-text">
+                            {formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}
+                          </span>
+                        </div>
+                        <div className="text-sm text-text">
+                          {`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`.trim() || 'Unknown Customer'}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={statusBadgeTone[booking.status]}>{booking.status.replace('_', ' ')}</Badge>
+                          <Badge tone={paymentBadgeTone[booking.payment_status]}>{booking.payment_status}</Badge>
+                        </div>
+                        <dl className="space-y-1 text-xs text-text-muted">
+                          <div className="flex justify-between gap-2">
+                            <dt>Start</dt>
+                            <dd className="text-right text-text">{formatDateTime(booking.start_at)}</dd>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <dt>End</dt>
+                            <dd className="text-right text-text">{formatDateTime(booking.end_at)}</dd>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <dt>Due</dt>
+                            <dd className="text-right text-text">{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '—'}</dd>
+                          </div>
+                        </dl>
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </CardBody>
           </Card>

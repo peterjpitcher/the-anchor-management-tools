@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import type { PendingMove } from '@/app/(authenticated)/table-bookings/foh/useFohDrag'
 
 interface DragConfirmationModalProps {
@@ -17,6 +18,15 @@ export function DragConfirmationModal({
   isSubmitting,
   error,
 }: DragConfirmationModalProps) {
+  useEffect(() => {
+    if (!pendingMove) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pendingMove, onCancel])
+
   if (!pendingMove) return null
 
   const title = pendingMove.type === 'time' ? 'Change Booking Time' : 'Move to Different Table'
@@ -36,7 +46,7 @@ export function DragConfirmationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="drag-confirm-title"

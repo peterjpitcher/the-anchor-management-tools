@@ -319,13 +319,16 @@ export default async function VendorsPage({
                 title={type === 'dj' ? 'DJs' : type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
               >
                 
-                <div className="divide-y divide-gray-200">
+                <div className="space-y-4 md:space-y-0 md:divide-y md:divide-gray-200">
                   {vendorsByType[type]?.map((vendor: any) => (
-                    <div key={vendor.id} className="py-6 first:pt-0 last:pb-0">
+                    <div
+                      key={vendor.id}
+                      className="rounded-xl border border-gray-200 p-4 md:rounded-none md:border-0 md:p-0 md:py-6 md:first:pt-0 md:last:pb-0"
+                    >
                       <form action={handleUpdateVendor} className="space-y-4">
                         <input type="hidden" name="vendorId" value={vendor.id} />
-                        
-                        <div className="flex items-center gap-3 mb-4">
+
+                        <div className="flex flex-wrap items-center gap-2 mb-4">
                           <h4 className="text-lg font-medium text-gray-900">{vendor.name}</h4>
                           {vendor.preferred && (
                             <Badge variant="warning" icon={<StarIcon className="h-3 w-3" />}>

@@ -94,7 +94,7 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
           {/* Popover */}
-          <div ref={popoverRef} role="dialog" aria-modal="true" className="absolute right-0 top-full mt-2 z-50 w-96 bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3">
+          <div ref={popoverRef} role="dialog" aria-modal="true" className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900">Calendar feed</p>

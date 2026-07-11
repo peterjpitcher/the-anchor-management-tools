@@ -3462,6 +3462,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
                 {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
 
+                <div className="hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -3546,6 +3547,84 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                     ))}
                   </TableBody>
                 </Table>
+                </div>
+
+                {/* Mobile card list */}
+                <div className="space-y-3 md:hidden">
+                  {talentCandidates.map((candidate: any) => (
+                    <div key={candidate.id} className="space-y-2 rounded-lg border border-border bg-surface p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <button type="button" className="text-left font-medium text-text-strong hover:text-primary hover:underline" onClick={() => openTalentDetail(candidate)}>
+                            {candidateName(candidate)}
+                          </button>
+                          <p className="truncate text-xs text-text-muted">{candidate.email}</p>
+                        </div>
+                        <span className="flex-shrink-0">
+                          <Badge tone={cvStatusTone(candidate.cv_extraction_status)}>
+                            {candidate.cv_extraction_status?.replaceAll('_', ' ') ?? 'no cv'}
+                          </Badge>
+                        </span>
+                      </div>
+
+                      {(candidate.cv_file_path || candidate.converted_employee_id) && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {candidate.cv_file_path && (
+                            <Button type="button" size="xs" variant="secondary" onClick={() => openCv(candidate.id)}>
+                              CV
+                            </Button>
+                          )}
+                          {candidate.cv_file_path && ['failed', 'unsupported'].includes(candidate.cv_extraction_status) && permissions.canManage && (
+                            <ActionFeedbackForm action={cvRetryFormAction} successMessage="CV retry queued.">
+                              <input type="hidden" name="candidate_id" value={candidate.id} />
+                              <Button type="submit" size="xs" variant="secondary">Retry</Button>
+                            </ActionFeedbackForm>
+                          )}
+                          {candidate.converted_employee_id && <Badge tone="success">Converted</Badge>}
+                        </div>
+                      )}
+
+                      <div className="text-xs text-text">
+                        <p className="line-clamp-2">{profileSummary(candidate) ?? '-'}</p>
+                        <p className="mt-1 text-text-muted">Strengths: {textList(profileArray(candidate, 'strengths').slice(0, 3))}</p>
+                        <p className="mt-1 text-text-muted">Fit: {roleFitSummary(candidate)}</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-muted">
+                        <span>SMS {candidate.sms_consent ? 'yes' : 'no'}</span>
+                        <span>Future {candidate.future_recruitment_consent ? 'yes' : 'no'}</span>
+                      </div>
+
+                      {permissions.canManage && (
+                        <ActionFeedbackForm action={matchFormAction} className="flex flex-wrap items-center gap-2" successMessage="Candidate matched.">
+                          <input type="hidden" name="candidate_id" value={candidate.id} />
+                          <Select name="job_posting_id" className="min-w-[8rem] flex-1">
+                            {postings.map((posting: any) => (
+                              <option key={posting.id} value={posting.id}>{posting.title}</option>
+                            ))}
+                          </Select>
+                          <SubmitButton variant="secondary">Match</SubmitButton>
+                        </ActionFeedbackForm>
+                      )}
+
+                      {permissions.canDelete && !candidate.anonymised_at ? (
+                        <ActionFeedbackForm
+                          action={erasureFormAction}
+                          className="flex flex-wrap items-center gap-2"
+                          confirmTitle="Erase candidate"
+                          confirmMessage="This permanently anonymises the candidate record. Continue?"
+                          successMessage="Candidate erased."
+                        >
+                          <input type="hidden" name="candidate_id" value={candidate.id} />
+                          <Input name="reason" placeholder="Erase reason" className="min-w-[8rem] flex-1" />
+                          <SubmitButton variant="danger">Erase</SubmitButton>
+                        </ActionFeedbackForm>
+                      ) : candidate.anonymised_at ? (
+                        <p className="text-xs text-text-muted">Anonymised</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
 
                 {talentCandidates.length === 0 && (
                   <p className="py-6 text-center text-sm text-text-muted">

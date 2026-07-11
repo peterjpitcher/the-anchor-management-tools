@@ -592,7 +592,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
             {/* Balance summary */}
             <div>
               <h3 className="text-sm font-semibold text-text mb-3">Balance Summary</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="p-3 rounded-lg bg-surface-2">
                   <p className="text-xs text-text-muted">Unpaid Invoices</p>
                   <p className="text-lg font-semibold">{formatCurrency(balance.unpaidInvoiceBalance)}</p>
@@ -673,7 +673,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               </div>
 
               <form onSubmit={handleBillingSubmit} className="flex flex-col gap-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label="Client Code">
                     <Input
                       value={billingForm.client_code}
@@ -709,7 +709,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   </Field>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label="Hourly Rate ex VAT" required>
                     <Input
                       type="number"
@@ -735,7 +735,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   </Field>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label="Mileage Rate">
                     <Input
                       type="number"
@@ -845,7 +845,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
             {/* Statement generator */}
             <div className="border-t border-border pt-4">
               <h3 className="text-sm font-semibold text-text mb-3">Account Statement</h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-2">
                 <Field label="From">
                   <Input
                     type="date"
@@ -890,7 +890,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   {statement.transactions.length === 0 ? (
                     <p className="text-text-muted text-center py-2">No transactions in this period.</p>
                   ) : (
-                    <div className="max-h-[200px] overflow-y-auto">
+                    <div className="max-h-[200px] overflow-auto">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-border">
@@ -1051,7 +1051,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Amount ex VAT" required>
               <Input
                 type="number"
@@ -1075,7 +1075,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Frequency" required>
               <Select
                 value={chargeForm.frequency}

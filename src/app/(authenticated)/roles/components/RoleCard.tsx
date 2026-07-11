@@ -62,7 +62,7 @@ export default function RoleCard({ role, onEditPermissions, canManage }: RoleCar
         </div>
       </CardHeader>
 
-      <div className="px-4 py-3 sm:px-6 flex justify-between items-center border-t border-gray-200">
+      <div className="px-4 py-3 sm:px-6 flex flex-wrap justify-between items-center gap-2 border-t border-gray-200">
         <Button
           onClick={onEditPermissions}
           variant="secondary"

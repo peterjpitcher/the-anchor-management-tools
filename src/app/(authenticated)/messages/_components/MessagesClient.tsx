@@ -452,7 +452,7 @@ export function MessagesClient() {
             : 'All caught up'
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {canSendMessages && (
               <Button variant="primary" size="sm" onClick={() => router.push('/messages/bulk')}>
                 New Message

@@ -33,7 +33,7 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
       <div className="flex flex-wrap gap-2">
         <a
           href={webcalUrl}
-          className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
+          className="touch-target inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors"
         >
           <CalendarDaysIcon className="h-3.5 w-3.5" />
           Apple / Outlook
@@ -42,7 +42,7 @@ export default function CalendarSubscribeButton({ feedUrl }: { feedUrl: string }
           href={googleUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className="touch-target inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           Google Calendar
         </a>

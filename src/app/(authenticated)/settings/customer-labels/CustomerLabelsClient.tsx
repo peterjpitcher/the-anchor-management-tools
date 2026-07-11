@@ -220,7 +220,7 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
       subtitle="Organise customers with labels for better targeting and management"
       headerActions={
         canManageUI && (
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-3">
             <Button
               onClick={() => setShowForm(true)}
               leftIcon={<PlusIcon className="h-5 w-5" />}

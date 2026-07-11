@@ -114,7 +114,7 @@ function BudgetRow({
           </div>
         </div>
       ) : (
-        <div className="mt-2 sm:mt-0 sm:col-span-3 flex items-start justify-between gap-4">
+        <div className="mt-2 sm:mt-0 sm:col-span-3 flex flex-wrap items-start justify-between gap-4">
           {targets ? (
             <dl className="grid grid-cols-3 gap-4 text-sm">
               <div>

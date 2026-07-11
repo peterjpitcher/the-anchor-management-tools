@@ -262,7 +262,7 @@ export default async function ReceiptsMonthlyPage() {
           <InsightsFeed items={insightItems} />
         </div>
 
-        <Card variant="bordered" header={<h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>}>
+        <Card variant="bordered" className="hidden md:block" header={<h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>}>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -313,6 +313,60 @@ export default async function ReceiptsMonthlyPage() {
             </table>
           </div>
         </Card>
+
+        {/* Mobile: one card per month (below 768px) */}
+        <div className="space-y-3 md:hidden">
+          <h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>
+          {months.map((month) => {
+            const monthLabel = formatMonthLabel(month.monthStart)
+            const totalMonthReceipts = RECEIPT_STATUSES.reduce(
+              (sum, status) => sum + (month.statusCounts[status] ?? 0),
+              0,
+            )
+            const automatedMonthReceipts =
+              (month.statusCounts.auto_completed ?? 0) + (month.statusCounts.no_receipt_required ?? 0)
+            const automationRate = totalMonthReceipts > 0 ? automatedMonthReceipts / totalMonthReceipts : 0
+
+            return (
+              <Card key={month.monthStart} variant="bordered">
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-900">{monthLabel}</h3>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Income</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatCurrency(month.totalIncome)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Outgoings</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatCurrency(month.totalOutgoing)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Net cash</dt>
+                      <dd className={`mt-0.5 font-medium tabular-nums ${month.netCash >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {formatCurrency(month.netCash)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-gray-500">Automation</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-gray-900">
+                        {percentFormatter.format(automationRate)}
+                        <span className="ml-1 text-xs font-normal text-gray-500">({automatedMonthReceipts}/{totalMonthReceipts})</span>
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="border-t border-gray-100 pt-3">
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Top income sources</p>
+                    <TopList items={month.incomeBreakdown.slice(0, 3)} emptyLabel="No income recorded" badgeTone="income" />
+                  </div>
+                  <div className="border-t border-gray-100 pt-3">
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Top outgoing vendors</p>
+                    <TopList items={month.topOutgoing.slice(0, 3)} emptyLabel="No outgoings recorded" badgeTone="spend" />
+                  </div>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
       </section>
     </ReceiptsPageChrome>
   )

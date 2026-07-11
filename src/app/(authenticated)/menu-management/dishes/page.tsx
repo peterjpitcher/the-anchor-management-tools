@@ -583,7 +583,7 @@ export default function MenuDishesPage(): React.ReactElement {
   const [allergenCategory, setAllergenCategory] = useState<'all' | 'food' | 'drinks'>('all');
 
   const headerActions = (
-    <div className="flex items-end gap-2">
+    <div className="flex flex-wrap items-end gap-2">
       <div className="w-36">
         <Select
           aria-label="Allergen report category"
