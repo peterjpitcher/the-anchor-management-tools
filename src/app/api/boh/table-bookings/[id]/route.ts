@@ -4,7 +4,7 @@ import { fromZonedTime } from 'date-fns-tz'
 import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
-import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { logAuditEvent } from '@/app/actions/audit'
 
@@ -202,6 +202,21 @@ export async function PATCH(
     new_values: { ...updatePayload, high_chair_count: finalHighChairCount },
     additional_info: { action: 'admin_booking_edit' },
   }).catch(() => {})
+
+  // Confirm the amended booking to the customer whenever the date, time, or duration
+  // actually changed. Note: the `windowChanged` flag above compares the stored
+  // seconds-precision time ('18:00:00') against the form's 'HH:MM', so it is true on
+  // almost every save — fine for the idempotent high-chair re-grant, but it must NOT
+  // gate a customer message. Re-derive a normalised comparison so editing only notes,
+  // dietary requirements, etc. never messages the guest. Never fails the edit — the
+  // helper swallows its own errors.
+  const windowActuallyChanged =
+    existing.booking_date !== parsed.data.booking_date ||
+    (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time ||
+    existing.duration_minutes !== parsed.data.duration_minutes
+  if (windowActuallyChanged) {
+    await sendTableBookingRescheduledNotificationIfAllowed(auth.supabase, { tableBookingId: id })
+  }
 
   revalidatePath('/table-bookings')
   revalidatePath(`/table-bookings/${id}`)

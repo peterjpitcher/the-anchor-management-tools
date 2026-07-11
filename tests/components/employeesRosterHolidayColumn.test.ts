@@ -18,4 +18,14 @@ describe('employees roster holiday column', () => {
     expect(employeesClient).not.toContain('<TableHead>Birthday</TableHead>')
     expect(employeesClient).not.toContain('date_of_birth')
   })
+
+  it('opens employee profiles from the whole row without a detail shelf', () => {
+    const employeesClient = readRepoFile('src/app/(authenticated)/employees/_components/EmployeesClient.tsx')
+
+    expect(employeesClient).toContain('href={`/employees/${emp.employee_id}`}')
+    expect(employeesClient).toContain('onClick={() => router.push(`/employees/${emp.employee_id}`)}')
+    expect(employeesClient).not.toContain('selectedEmployee')
+    expect(employeesClient).not.toContain('setSelectedId')
+    expect(employeesClient).not.toContain('View Profile')
+  })
 })

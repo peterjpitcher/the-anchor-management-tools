@@ -87,7 +87,6 @@ export default function EmployeesClient({ initialData, initialError, permissions
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { hasPermission } = usePermissions()
   const canManageSettings = hasPermission('settings', 'manage')
 
@@ -97,8 +96,6 @@ export default function EmployeesClient({ initialData, initialError, permissions
   const currentPage = initialData.pagination.page
   const pageSize = initialData.pagination.pageSize
   const currentEmployees = roster.employees
-
-  const selectedEmployee = selectedId ? currentEmployees.find(e => e.employee_id === selectedId) : null
 
   const updateFilters = useCallback((updates: { status?: EmployeeStatus; search?: string; page?: number }) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -197,9 +194,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
           <div className="p-3 bg-danger-soft text-danger-fg rounded-lg text-sm">{initialError}</div>
         )}
 
-        {/* Master-detail layout */}
-        <div className={`grid gap-4 ${selectedEmployee ? 'grid-cols-[1fr_380px]' : 'grid-cols-1'}`}>
-          {/* Left: Table */}
+        <div>
           <Card>
             <div className="flex items-center gap-2 p-3 border-b border-border">
               <SearchInput
@@ -233,8 +228,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
                     {currentEmployees.map(emp => (
                       <TableRow
                         key={emp.employee_id}
-                        className={`cursor-pointer ${selectedId === emp.employee_id ? 'bg-primary-soft' : ''}`}
-                        onClick={() => setSelectedId(emp.employee_id)}
+                        onClick={() => router.push(`/employees/${emp.employee_id}`)}
                       >
                         <TableCell>
                           <div className="flex items-center gap-2.5">
@@ -275,33 +269,6 @@ export default function EmployeesClient({ initialData, initialError, permissions
               </>
             )}
           </Card>
-
-          {/* Right: Detail panel */}
-          {selectedEmployee && (
-            <Card>
-              <CardBody className="flex flex-col items-center text-center gap-3 pb-4 border-b border-border">
-                <Avatar name={employeeDisplayName(selectedEmployee)} size="lg" />
-                <div>
-                  <div className="text-base font-semibold text-text-strong">{employeeDisplayName(selectedEmployee)}</div>
-                  <div className="text-xs text-text-muted">{selectedEmployee.job_title || 'No role'}</div>
-                </div>
-                <Badge tone={statusBadgeTone(selectedEmployee.status)} dot>{selectedEmployee.status}</Badge>
-              </CardBody>
-              <CardBody className="flex flex-col gap-3 text-[13px]">
-                <DetailRow label="Email" value={selectedEmployee.email_address} />
-                <DetailRow label="Mobile" value={selectedEmployee.mobile_number || '--'} />
-                <DetailRow label="Start Date" value={selectedEmployee.employment_start_date ? formatDate(selectedEmployee.employment_start_date) : '--'} />
-                <DetailRow label="Service" value={calculateLengthOfService(selectedEmployee.employment_start_date)} />
-                <DetailRow label="Holiday" value={`${selectedEmployee.holiday_days_current_year ?? 0} days`} />
-                <DetailRow label="Portal" value={selectedEmployee.auth_user_id ? 'Set up' : 'Not set up'} />
-                <div className="flex gap-2 pt-3 border-t border-border">
-                  <Link href={`/employees/${selectedEmployee.employee_id}`} className="flex-1">
-                    <Button variant="primary" size="sm" className="w-full">View Profile</Button>
-                  </Link>
-                </div>
-              </CardBody>
-            </Card>
-          )}
         </div>
       </div>
 
@@ -312,14 +279,5 @@ export default function EmployeesClient({ initialData, initialError, permissions
         />
       )}
     </>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-text-strong font-medium">{value}</span>
-    </div>
   )
 }

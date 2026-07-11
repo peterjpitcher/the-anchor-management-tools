@@ -373,6 +373,72 @@ function buildTableBookingCustomerEmail(input: {
   }
 }
 
+// Customer email confirming an amended booking (date, time, or duration change).
+// Kept deliberately calm and factual — it restates the latest details rather than
+// shouting about a change, and works whether or not the visible time actually moved.
+function buildTableBookingRescheduledEmail(input: {
+  firstName: string
+  bookingMoment: string
+  partySize: number
+  seatWord: string
+  bookingReference?: string | null
+  manageLink?: string | null
+  highChairCount?: number | null
+  isOutsideSeating?: boolean | null
+}): { subject: string; html: string; text: string } {
+  const safeFirstName = escapeHtml(input.firstName)
+  const safeBookingMoment = escapeHtml(input.bookingMoment)
+  const safePartySize = escapeHtml(String(input.partySize))
+  const safeSeatWord = escapeHtml(input.seatWord)
+  const safeReference = input.bookingReference ? escapeHtml(input.bookingReference) : null
+  const isOutside = Boolean(input.isOutsideSeating)
+  const grantedHighChairs = Math.max(0, Number(input.highChairCount ?? 0))
+  const bookingNoun = isOutside ? 'outside booking' : 'table booking'
+  const subject = 'Your booking at The Anchor has been updated'
+
+  const cta = input.manageLink
+    ? `<p><a href="${escapeHtml(input.manageLink)}">Manage your booking</a></p>`
+    : ''
+
+  const html = [
+    '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">',
+    `<p>Hi ${safeFirstName}, your ${bookingNoun} has been updated. Here are the latest details:</p>`,
+    '<ul>',
+    safeReference ? `<li><strong>Reference:</strong> ${safeReference}</li>` : '',
+    `<li><strong>When:</strong> ${safeBookingMoment}</li>`,
+    `<li><strong>Party size:</strong> ${safePartySize} ${safeSeatWord}</li>`,
+    grantedHighChairs > 0
+      ? `<li><strong>High chair reserved:</strong> &times;${escapeHtml(String(grantedHighChairs))}</li>`
+      : '',
+    isOutside ? '<li><strong>Outside seating</strong> (weather permitting)</li>' : '',
+    '</ul>',
+    `<p>Your ${bookingNoun} is still confirmed.</p>`,
+    cta,
+    '<p>If this does not look right, reply to this email or call the pub.</p>',
+    '<p>The Anchor</p>',
+    '</div>',
+  ].join('')
+
+  const textLines = [
+    `Hi ${input.firstName}, your ${bookingNoun} has been updated. Here are the latest details:`,
+    input.bookingReference ? `Reference: ${input.bookingReference}` : null,
+    `When: ${input.bookingMoment}`,
+    `Party size: ${input.partySize} ${input.seatWord}`,
+    grantedHighChairs > 0 ? `High chair reserved x${grantedHighChairs}` : null,
+    isOutside ? 'Outside seating (weather permitting)' : null,
+    `Your ${bookingNoun} is still confirmed.`,
+    input.manageLink ? `Manage booking: ${input.manageLink}` : null,
+    'If this does not look right, reply to this email or call the pub.',
+    'The Anchor',
+  ].filter((line): line is string => Boolean(line))
+
+  return {
+    subject,
+    html,
+    text: textLines.join('\n'),
+  }
+}
+
 export async function sendManagerTableBookingCreatedEmailIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -1441,6 +1507,186 @@ export async function sendTableBookingCancelledSmsIfAllowed(
       },
     })
     // Do not rethrow — SMS failure must not affect the cancel/delete operation
+  }
+}
+
+// Confirm an amended booking to the customer after a date, time, or duration change.
+// Re-reads the booking fresh (post-update) and dispatches via notifyCustomer with an
+// email_first policy, so the customer gets one confirmation on their best channel
+// (email if on file, else SMS) with the same opt-in / suppression / rate-limit guards
+// as every other booking message. Never rethrows — a notification failure must not
+// affect the edit/move operation that triggered it. Only fired for live bookings and
+// on genuine time-window changes; internal table reassignments do NOT call this.
+export async function sendTableBookingRescheduledNotificationIfAllowed(
+  supabase: SupabaseClient<any, 'public', any>,
+  params: {
+    tableBookingId: string
+  }
+): Promise<void> {
+  try {
+    const { data: bookingRaw } = await supabase
+      .from('table_bookings')
+      .select('id, customer_id, booking_reference, start_datetime, party_size, status, high_chair_count, is_outside_seating')
+      .eq('id', params.tableBookingId)
+      .maybeSingle()
+
+    if (!bookingRaw || !bookingRaw.customer_id) {
+      return
+    }
+
+    const booking = bookingRaw as {
+      id: string
+      customer_id: string
+      booking_reference: string | null
+      start_datetime: string | null
+      party_size: number | null
+      status: string | null
+      high_chair_count: number | null
+      is_outside_seating: boolean | null
+    }
+
+    // Only confirm changes for live bookings — never message cancelled/closed ones.
+    const status = (booking.status || '').toLowerCase()
+    if (['cancelled', 'no_show', 'completed'].includes(status)) {
+      return
+    }
+
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('id, first_name, last_name, mobile_e164, mobile_number, email, sms_status, sms_opt_in, marketing_sms_opt_in, email_status, email_deactivated_at, marketing_email_opt_in')
+      .eq('id', booking.customer_id)
+      .maybeSingle()
+
+    if (!customer) {
+      return
+    }
+
+    const firstName = getSmartFirstName(customer.first_name)
+    const bookingMoment = formatLondonDateTime(booking.start_datetime)
+    const partySize = Math.max(1, Number(booking.party_size ?? 1))
+    const seatWord = partySize === 1 ? 'person' : 'people'
+    const isOutside = Boolean(booking.is_outside_seating)
+    const grantedHighChairs = Math.max(0, Number(booking.high_chair_count ?? 0))
+    const bookingNoun = isOutside ? 'outside booking' : 'table booking'
+
+    let manageLink: string | null = null
+    try {
+      const token = await createTableManageToken(supabase, {
+        customerId: customer.id,
+        tableBookingId: booking.id,
+        bookingStartIso: booking.start_datetime || null,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+      })
+      manageLink = token.url
+    } catch {
+      manageLink = null
+    }
+
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+    const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
+    const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
+    const smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} has been updated to ${bookingMoment} for ${partySize} ${seatWord}. It's still confirmed.${highChairSuffix}${outsideSuffix}${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+
+    const emailContent = buildTableBookingRescheduledEmail({
+      firstName,
+      bookingMoment,
+      partySize,
+      seatWord,
+      bookingReference: booking.booking_reference,
+      manageLink,
+      highChairCount: grantedHighChairs,
+      isOutsideSeating: isOutside,
+    })
+
+    const templateKey = 'table_booking_rescheduled'
+
+    let notificationResult: Awaited<ReturnType<typeof notifyCustomer>>
+    try {
+      notificationResult = await notifyCustomer({
+        supabase,
+        customerId: customer.id,
+        customer,
+        policy: 'email_first',
+        urgency: 'standard',
+        category: 'transactional',
+        email: {
+          to: customer.email,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          text: emailContent.text,
+          commType: templateKey,
+          tableBookingId: booking.id,
+          metadata: {
+            table_booking_id: booking.id,
+            template_key: templateKey,
+            channel_policy: 'email_first',
+          },
+        },
+        sms: {
+          to: customer.mobile_number || customer.mobile_e164 || undefined,
+          body: ensureReplyInstruction(smsBody, supportPhone),
+          options: {
+            customerId: customer.id,
+            metadata: {
+              table_booking_id: booking.id,
+              template_key: templateKey,
+            },
+          },
+        },
+      })
+    } catch (notifyError) {
+      logger.warn('Table booking rescheduled notification threw unexpectedly', {
+        metadata: {
+          tableBookingId: booking.id,
+          customerId: customer.id,
+          error: notifyError instanceof Error ? notifyError.message : String(notifyError),
+        },
+      })
+      await AuditService.logAuditEvent({
+        operation_type: 'table_booking.notification_failed',
+        resource_type: 'table_booking',
+        resource_id: booking.id,
+        operation_status: 'failure',
+        error_message: notifyError instanceof Error ? notifyError.message : String(notifyError),
+        additional_info: {
+          comm_type: templateKey,
+          customer_id: customer.id,
+        },
+      })
+      return
+    }
+
+    const smsAttempt = notificationResult.attempts.find((attempt) => attempt.channel === 'sms')
+    const emailAttempt = notificationResult.attempts.find((attempt) => attempt.channel === 'email')
+    const smsCode = typeof smsAttempt?.code === 'string' ? smsAttempt.code : null
+    const smsLogFailure = smsAttempt?.logFailure === true || smsCode === 'logging_failed'
+    const delivered =
+      smsAttempt?.success === true || smsLogFailure || emailAttempt?.success === true
+
+    await AuditService.logAuditEvent({
+      operation_type: delivered ? 'table_booking.notification_sent' : 'table_booking.notification_failed',
+      resource_type: 'table_booking',
+      resource_id: booking.id,
+      operation_status: delivered ? 'success' : 'failure',
+      error_message: delivered
+        ? undefined
+        : (smsAttempt?.error ?? emailAttempt?.error ?? notificationResult.noChannelReason ?? undefined),
+      additional_info: {
+        comm_type: templateKey,
+        customer_id: customer.id,
+        booking_reference: booking.booking_reference,
+        selected_channels: notificationResult.selectedChannels,
+        sms_code: smsCode,
+      },
+    })
+  } catch (error) {
+    logger.warn('Table booking rescheduled notification threw unexpectedly', {
+      metadata: {
+        tableBookingId: params.tableBookingId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+    // Do not rethrow — notification failure must not affect the edit/move operation.
   }
 }
 

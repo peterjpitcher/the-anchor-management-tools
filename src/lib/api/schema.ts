@@ -1,6 +1,7 @@
 // Schema.org structured data helpers
 import { format } from 'date-fns';
 import { resolveEventPriceAmount } from '@/lib/events/pricing';
+import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
 
 export interface SchemaEvent {
   '@type': 'Event';
@@ -193,9 +194,15 @@ function createOrganizer(): SchemaOrganization {
 
 // Convert database event to Schema.org format
 export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
-  const startDateTime = `${event.date}T${event.time}+00:00`;
-  const endDateTime = event.end_time 
-    ? `${event.date}T${event.end_time}+00:00`
+  const storedStart = event.start_datetime ? new Date(event.start_datetime) : null;
+  const startDateTime = storedStart && !Number.isNaN(storedStart.getTime())
+    ? storedStart.toISOString()
+    : parseLondonDateTimeLocalToIso(`${event.date}T${event.time}`) ?? `${event.date}T${event.time}`;
+  const endDate = event.end_time && event.time && event.end_time <= event.time
+    ? format(new Date(`${event.date}T12:00:00Z`).getTime() + 24 * 60 * 60 * 1000, 'yyyy-MM-dd')
+    : event.date;
+  const endDateTime = event.end_time
+    ? parseLondonDateTimeLocalToIso(`${endDate}T${event.end_time}`) ?? `${endDate}T${event.end_time}`
     : undefined;
   const offerPrice = resolveEventPriceAmount(event);
 
@@ -254,7 +261,9 @@ export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
     keywords: event.keywords?.join(', '),
     about: event.long_description,
     duration,
-    doorTime: event.doors_time ? `${event.date}T${event.doors_time}+00:00` : undefined,
+    doorTime: event.doors_time
+      ? parseLondonDateTimeLocalToIso(`${event.date}T${event.doors_time}`) ?? `${event.date}T${event.doors_time}`
+      : undefined,
     video: videos.length > 0 ? videos : undefined,
   };
   

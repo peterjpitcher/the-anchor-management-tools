@@ -25,6 +25,7 @@ export type CreateForm = {
   booking_date: string
   event_id: string
   phone: string
+  email: string
   customer_name: string
   first_name: string
   last_name: string
@@ -293,6 +294,19 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 value={createForm.phone}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, phone: event.target.value }))}
                 placeholder="+1 415 555 2671 or local format"
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+          )}
+
+          {(!selectedCustomer || selectedCustomerNeedsPhone) && (
+            <label className="text-xs font-medium text-gray-700">
+              Email (optional)
+              <input
+                type="email"
+                value={createForm.email}
+                onChange={(event) => onSetCreateForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="name@example.com"
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
             </label>
