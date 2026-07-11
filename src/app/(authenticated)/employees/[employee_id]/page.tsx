@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
-import { calculateLengthOfService } from '@/lib/employeeUtils'
+import { calculateAge, calculateLengthOfService } from '@/lib/employeeUtils'
 import { Badge } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
@@ -119,6 +119,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   const displayName = employee.first_name && employee.last_name
     ? `${employee.first_name} ${employee.last_name}`
     : employee.email_address
+  const age = calculateAge(employee.date_of_birth ?? null)
 
   const displayFields = [
     { label: 'Full Name', value: employee.first_name && employee.last_name ? `${employee.first_name} ${employee.last_name}` : '—' },
@@ -128,7 +129,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     { label: 'First Shift Date', value: employee.first_shift_date ? formatDate(employee.first_shift_date) : 'N/A' },
     { label: 'Start Date', value: employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A' },
     { label: 'End Date', value: employee.employment_end_date ? formatDate(employee.employment_end_date) : 'N/A' },
-    { label: 'Date of Birth', value: employee.date_of_birth ? formatDate(employee.date_of_birth) : 'N/A' },
+    {
+      label: 'Date of Birth',
+      value: employee.date_of_birth
+        ? `${formatDate(employee.date_of_birth)}${age === null ? '' : ` (${age} years old)`}`
+        : 'N/A',
+    },
     { label: 'Telephone', value: employee.phone_number || 'N/A', isPhone: true },
     { label: 'Mobile', value: employee.mobile_number || 'N/A', isPhone: true },
     { label: 'Post Code', value: employee.post_code || 'N/A' },
