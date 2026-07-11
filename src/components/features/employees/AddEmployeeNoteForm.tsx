@@ -16,7 +16,7 @@ interface AddEmployeeNoteFormProps {
 function SubmitNoteButton() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" variant="primary" size="md" disabled={pending}>
+    <Button type="submit" variant="primary" size="md" disabled={pending} className="w-full sm:w-auto">
       {pending ? 'Adding Note...' : 'Add Note'}
     </Button>
   )
@@ -68,7 +68,7 @@ export default function AddEmployeeNoteForm({ employeeId }: AddEmployeeNoteFormP
         <p className="mt-2 text-sm text-red-600">{state.message}</p>
       )}
 
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs text-gray-500">
           Notes are permanently recorded with a timestamp.
         </span>
