@@ -74,12 +74,17 @@ describe('recruitment audit source coverage', () => {
   })
 
   it('keeps awaiting-booking applications visible in the pipeline', () => {
+    const statusOptionsStart = dashboardClientSource.indexOf('const statusOptions')
+    const statusOptionsEnd = dashboardClientSource.indexOf('const completedApplicationStatuses', statusOptionsStart)
+    const statusOptionsBlock = dashboardClientSource.slice(statusOptionsStart, statusOptionsEnd)
     const pipelineStart = dashboardClientSource.indexOf('const pipeline = useMemo')
     const pipelineEnd = dashboardClientSource.indexOf('const selectedApplicationEvents', pipelineStart)
     const pipelineBlock = dashboardClientSource.slice(pipelineStart, pipelineEnd)
 
-    expect(pipelineBlock).toContain("'interview_invited'")
-    expect(pipelineBlock).toContain("'trial_offered'")
+    expect(statusOptionsBlock).toContain("'interview_invited'")
+    expect(statusOptionsBlock).toContain("'trial_offered'")
+    expect(pipelineBlock).toContain('populatedStatuses.has(status)')
+    expect(pipelineBlock).not.toContain('defaultPipelineStatuses')
     expect(pipelineBlock).not.toContain('.slice(0, 6)')
   })
 

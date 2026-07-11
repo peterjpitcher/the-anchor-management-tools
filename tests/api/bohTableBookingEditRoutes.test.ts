@@ -12,7 +12,16 @@ vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Preserve every real export from the bookings module, but stub the two customer
+// notification helpers so the edit route's wiring can be asserted without sending.
+vi.mock('@/lib/table-bookings/bookings', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/table-bookings/bookings')>()),
+  sendTableBookingRescheduledNotificationIfAllowed: vi.fn().mockResolvedValue(undefined),
+  sendTableBookingCancelledSmsIfAllowed: vi.fn().mockResolvedValue(undefined),
+}))
+
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
+import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 import { PATCH as patchBooking } from '@/app/api/boh/table-bookings/[id]/route'
 import { PATCH as patchPreorder } from '@/app/api/boh/table-bookings/[id]/preorder/route'
 
@@ -108,6 +117,75 @@ describe('BOH table booking edit routes', () => {
       dietary_requirements: ['vegetarian'],
       allergies: ['nuts'],
     }))
+    // Date/time changed → the customer is notified of the amended booking.
+    expect(sendTableBookingRescheduledNotificationIfAllowed).toHaveBeenCalledWith(
+      supabase,
+      { tableBookingId: BOOKING_ID },
+    )
+  })
+
+  it('does not notify the customer when only metadata changes (same window)', async () => {
+    const bookingUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: BOOKING_ID }, error: null })
+    const bookingUpdateSelect = vi.fn().mockReturnValue({ maybeSingle: bookingUpdateMaybeSingle })
+    const bookingUpdateEq = vi.fn().mockReturnValue({ select: bookingUpdateSelect })
+    const bookingUpdate = vi.fn().mockReturnValue({ eq: bookingUpdateEq })
+
+    const bookingLoadMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: BOOKING_ID,
+        status: 'confirmed',
+        booking_date: '2026-07-20',
+        booking_time: '18:00:00',
+        duration_minutes: 90,
+        customer_id: CUSTOMER_ID,
+        special_requirements: null,
+        dietary_requirements: [],
+        allergies: [],
+        celebration_type: null,
+        internal_notes: null,
+        high_chair_count: 0,
+        is_outside_seating: false,
+      },
+      error: null,
+    })
+    const bookingLoadEq = vi.fn().mockReturnValue({ maybeSingle: bookingLoadMaybeSingle })
+    const bookingSelect = vi.fn().mockReturnValue({ eq: bookingLoadEq })
+
+    const assignmentEq = vi.fn().mockResolvedValue({ error: null })
+    const assignmentUpdate = vi.fn().mockReturnValue({ eq: assignmentEq })
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'table_bookings') {
+          return { select: bookingSelect, update: bookingUpdate }
+        }
+        if (table === 'booking_table_assignments') {
+          return { update: assignmentUpdate }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      supabase,
+      userId: 'user-1',
+    })
+
+    // Same date/time/duration as stored (time submitted without seconds); only notes change.
+    const response = await patchBooking(jsonRequest({
+      booking_date: '2026-07-20',
+      booking_time: '18:00',
+      duration_minutes: 90,
+      customer_id: CUSTOMER_ID,
+      internal_notes: 'Updated a note only',
+    }) as any, {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(bookingUpdate).toHaveBeenCalled()
+    expect(sendTableBookingRescheduledNotificationIfAllowed).not.toHaveBeenCalled()
   })
 
   it('blocks preorder edits after cutoff', async () => {

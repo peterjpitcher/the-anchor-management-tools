@@ -125,12 +125,10 @@ type EmployeeSetupState = {
     document_photo: File | null
   }
   onboarding: {
-    wheniwork_invite_sent: boolean
     private_whatsapp_added: boolean
     team_whatsapp_added: boolean
     till_system_setup: boolean
     training_flow_setup: boolean
-    employment_agreement_drafted: boolean
     employee_agreement_accepted: boolean
   }
 }
@@ -196,12 +194,10 @@ const DEFAULT_STATE: EmployeeSetupState = {
     document_photo: null
   },
   onboarding: {
-    wheniwork_invite_sent: false,
     private_whatsapp_added: false,
     team_whatsapp_added: false,
     till_system_setup: false,
     training_flow_setup: false,
-    employment_agreement_drafted: false,
     employee_agreement_accepted: false
   }
 }
@@ -984,11 +980,6 @@ export default function NewEmployeeOnboardingClient() {
             <h3 className="text-base font-medium text-gray-900">Office Use Checklist</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Checkbox
-                checked={state.onboarding.wheniwork_invite_sent}
-                onChange={(checked) => updateOnboarding('wheniwork_invite_sent', checked)}
-                label="WhenIWork invite sent"
-              />
-              <Checkbox
                 checked={state.onboarding.private_whatsapp_added}
                 onChange={(checked) => updateOnboarding('private_whatsapp_added', checked)}
                 label="Added to private WhatsApp"
@@ -1007,11 +998,6 @@ export default function NewEmployeeOnboardingClient() {
                 checked={state.onboarding.training_flow_setup}
                 onChange={(checked) => updateOnboarding('training_flow_setup', checked)}
                 label="Training setup in Flow"
-              />
-              <Checkbox
-                checked={state.onboarding.employment_agreement_drafted}
-                onChange={(checked) => updateOnboarding('employment_agreement_drafted', checked)}
-                label="Employment agreement drafted"
               />
             </div>
           </div>

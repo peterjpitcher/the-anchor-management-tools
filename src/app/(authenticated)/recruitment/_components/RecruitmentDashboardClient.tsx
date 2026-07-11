@@ -113,6 +113,16 @@ const statusOptions = [
   'on_hold',
 ]
 
+const completedApplicationStatuses = new Set([
+  'hired',
+  'talent_pool',
+  'rejected',
+  'withdrawn',
+  'declined_duplicate',
+])
+
+const pipelineStatusOrder = statusOptions.filter(status => !completedApplicationStatuses.has(status))
+
 const DECISION_CONFIG: Record<'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold', { confirm: string; template: 'rejection'|'offer'|'already_considered' | null; danger?: boolean }> = {
   reject: { confirm: 'Reject candidate', template: 'rejection', danger: true },
   offer: { confirm: 'Make offer', template: 'offer' },
@@ -1447,16 +1457,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const filteredCommunications = communications
 
   const pipeline = useMemo(() => {
-    const columns = [
-      'new',
-      'ai_screened',
-      'shortlisted',
-      'interview_invited',
-      'interview_scheduled',
-      'trial_offered',
-      'trial_scheduled',
-      'offered',
-    ]
+    const populatedStatuses = new Set(filteredApplications.map((application: any) => application.status))
+    const columns = pipelineStatusOrder.filter(status => populatedStatuses.has(status))
+
     return columns.map(status => ({
       status,
       applications: filteredApplications.filter((application: any) => application.status === status),

@@ -90,6 +90,7 @@ export function useFohCreateBooking(input: {
     booking_date: date,
     event_id: '',
     phone: '',
+    email: '',
     customer_name: '',
     first_name: '',
     last_name: '',
@@ -250,7 +251,7 @@ export function useFohCreateBooking(input: {
   // --- Modal open/close ---
   function resetCreateModalState() {
     setCreateForm((current) => ({
-      booking_date: date, event_id: '', phone: '', customer_name: '', first_name: '', last_name: '',
+      booking_date: date, event_id: '', phone: '', email: '', customer_name: '', first_name: '', last_name: '',
       time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
@@ -309,7 +310,7 @@ export function useFohCreateBooking(input: {
         event_id: walkInMode ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? '' : options?.prefill?.event_id ?? current.event_id,
         seating_preference: 'seated',
         sunday_deposit_method: walkInMode ? 'payment_link' : current.sunday_deposit_method,
-        phone: walkInMode ? '' : current.phone, customer_name: walkInMode ? '' : current.customer_name,
+        phone: walkInMode ? '' : current.phone, email: walkInMode ? '' : current.email, customer_name: walkInMode ? '' : current.customer_name,
         first_name: walkInMode ? '' : current.first_name, last_name: walkInMode ? '' : current.last_name,
         notes: walkInMode ? '' : current.notes, waive_deposit: false, is_venue_event: false, bypass_pacing: false
       }
@@ -363,6 +364,7 @@ export function useFohCreateBooking(input: {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             customer_id: selectedCustomer?.id || undefined, phone: createForm.phone.trim() || undefined,
+            email: createForm.email.trim() || undefined,
             first_name: firstName, last_name: lastName, walk_in: isWalkIn || undefined,
             walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
             default_country_code: DEFAULT_COUNTRY_CODE, event_id: createForm.event_id, seats,
@@ -425,6 +427,7 @@ export function useFohCreateBooking(input: {
         body: JSON.stringify({
           customer_id: selectedCustomer?.id || undefined,
           phone: isManagement ? undefined : createForm.phone.trim() || undefined,
+          email: isManagement ? undefined : createForm.email.trim() || undefined,
           first_name: isManagement ? undefined : firstName, last_name: isManagement ? undefined : lastName,
           walk_in: isWalkIn || undefined, walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
           management_override: isManagement || undefined, default_country_code: DEFAULT_COUNTRY_CODE,

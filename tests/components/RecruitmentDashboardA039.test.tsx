@@ -113,6 +113,41 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(screen.getByText('Candidate 1 Test')).toBeInTheDocument()
   })
 
+  it('keeps every populated in-progress status visible on the pipeline', () => {
+    const data = makeInitialData()
+    data.applications = [
+      { ...data.applications[0], status: 'interviewed' },
+      { ...data.applications[1], status: 'trial_completed' },
+      { ...data.applications[2], status: 'on_hold' },
+    ]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+
+    expect(screen.getByRole('heading', { name: 'interviewed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'trial completed' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'on hold' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'new' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'offered' })).not.toBeInTheDocument()
+    expect(screen.getByText('Candidate 1 Test')).toBeInTheDocument()
+    expect(screen.getByText('Candidate 2 Test')).toBeInTheDocument()
+    expect(screen.getByText('Candidate 3 Test')).toBeInTheDocument()
+  })
+
+  it('does not add completed outcome columns to the active pipeline', () => {
+    const data = makeInitialData()
+    data.applications = [
+      { ...data.applications[0], status: 'hired' },
+      { ...data.applications[1], status: 'rejected' },
+      { ...data.applications[2], status: 'withdrawn' },
+    ]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+
+    expect(screen.queryByRole('heading', { name: 'hired' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'rejected' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'withdrawn' })).not.toBeInTheDocument()
+  })
+
   it('requires confirmation before erasing a candidate', () => {
     const data = makeInitialData()
     data.candidates = [{

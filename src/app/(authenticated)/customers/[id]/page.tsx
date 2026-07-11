@@ -17,6 +17,7 @@ import {
   getCustomerSmsStats
 } from '@/app/actions/customerSmsActions'
 import { markMessagesAsRead } from '@/app/actions/messageActions'
+import { sendCustomerEmail } from '@/app/actions/customerEmailActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout } from '@/ds'
@@ -28,6 +29,7 @@ import { DataTable } from '@/ds'
 import { Modal } from '@/ds'
 import { Select } from '@/ds'
 import { Textarea } from '@/ds'
+import { Input } from '@/ds'
 import { MessageThread } from '@/components/features/messages/MessageThread'
 import { CustomerForm } from '@/components/features/customers/CustomerForm'
 import { CustomerLabelSelector } from '@/components/features/customers/CustomerLabelSelector'
@@ -254,6 +256,7 @@ export default function CustomerViewPage() {
   const canManageWhatsAppOptIn = hasPermission('customers', 'manage_whatsapp_opt_in')
   const canViewConsentAudit = hasPermission('messages', 'view_consent_audit')
   const canExportConsentAudit = hasPermission('messages', 'export_consent_audit')
+  const canEmailCustomer = hasPermission('messages', 'send_transactional') || hasPermission('messages', 'manage')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
@@ -287,6 +290,10 @@ export default function CustomerViewPage() {
   const [availableLabels, setAvailableLabels] = useState<CustomerLabel[]>([])
   const [customerLabelAssignments, setCustomerLabelAssignments] = useState<CustomerLabelAssignment[]>([])
   const [isEditingCustomer, setIsEditingCustomer] = useState(false)
+  const [isEmailingCustomer, setIsEmailingCustomer] = useState(false)
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
   const [notesValue, setNotesValue] = useState('')
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [isSavingNotes, setIsSavingNotes] = useState(false)
@@ -671,6 +678,31 @@ export default function CustomerViewPage() {
     } catch (error) {
       console.error('Error updating customer:', error)
       toast.error('Failed to update customer')
+    }
+  }
+
+  const handleSendCustomerEmail = async () => {
+    if (!customer) return
+    if (!emailSubject.trim() || !emailBody.trim()) return
+
+    setSendingEmail(true)
+    try {
+      const result = await sendCustomerEmail(customer.id, emailSubject, emailBody)
+
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success('Email sent')
+      setIsEmailingCustomer(false)
+      setEmailSubject('')
+      setEmailBody('')
+    } catch (error) {
+      console.error('Error sending customer email:', error)
+      toast.error('Failed to send email')
+    } finally {
+      setSendingEmail(false)
     }
   }
 
@@ -1092,10 +1124,27 @@ export default function CustomerViewPage() {
       subtitle={customer.mobile_number || 'No mobile number'}
       backButton={{ label: 'Back to Customers', href: '/customers' }}
       headerActions={
-        canManageCustomers ? (
-          <Button variant="secondary" onClick={() => setIsEditingCustomer(true)}>
-            Edit Details
-          </Button>
+        (canEmailCustomer && customer.email) || canManageCustomers ? (
+          <div className="flex flex-wrap gap-2">
+            {canEmailCustomer && customer.email && (
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsEmailingCustomer(true)}
+              >
+                Email customer
+              </Button>
+            )}
+            {canManageCustomers && (
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsEditingCustomer(true)}
+              >
+                Edit Details
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >
@@ -1110,6 +1159,56 @@ export default function CustomerViewPage() {
             onSubmit={handleUpdateCustomer}
             onCancel={() => setIsEditingCustomer(false)}
           />
+        </Modal>
+
+        <Modal
+          open={isEmailingCustomer}
+          onClose={() => {
+            if (sendingEmail) return
+            setIsEmailingCustomer(false)
+          }}
+          title={`Email ${customerName}`}
+        >
+          <div className="space-y-4">
+            {customer.email && (
+              <p className="text-sm text-gray-500">
+                Sending to <span className="font-medium">{customer.email}</span>
+              </p>
+            )}
+            <Input
+              label="Subject"
+              value={emailSubject}
+              onChange={(event) => setEmailSubject(event.target.value)}
+              placeholder="Subject"
+              disabled={sendingEmail}
+            />
+            <Textarea
+              label="Message"
+              value={emailBody}
+              onChange={(event) => setEmailBody(event.target.value)}
+              placeholder="Write your message…"
+              rows={8}
+              disabled={sendingEmail}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsEmailingCustomer(false)}
+                disabled={sendingEmail}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={handleSendCustomerEmail}
+                disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
+              >
+                {sendingEmail ? 'Sending…' : 'Send email'}
+              </Button>
+            </div>
+          </div>
         </Modal>
 
         <div className="grid gap-6 xl:grid-cols-3">
