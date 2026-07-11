@@ -1138,6 +1138,7 @@ export async function processRecruitmentApplicationAi(
     const extraction = await extractRecruitmentCandidateFromCv(supabase, {
       candidateId: candidate.id,
       cvText: candidate.cv_text,
+      coverNote: application.cover_note,
     })
 
     if (extraction.result) {
@@ -1456,6 +1457,7 @@ export async function createRecruitmentApplication(
       preExtraction = await extractRecruitmentCandidateFromCv(supabase, {
         candidateId: null,
         cvText: preParsedCv.text,
+        coverNote: parsed.cover_note,
       })
       if (preExtraction.error) {
         cvExtractionError = preExtraction.error
@@ -1652,6 +1654,7 @@ export async function createRecruitmentApplication(
     const extraction = await extractRecruitmentCandidateFromCv(supabase, {
       candidateId: candidate.id,
       cvText: candidate.cv_text,
+      coverNote: parsed.cover_note,
     })
 
     if (extraction.result) {
