@@ -210,7 +210,7 @@ export function ProjectDetailClient({
           <Card>
             <CardHeader title="Budget" />
             <CardBody>
-              <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-3">
                 <div>
                   <p className="text-xs text-text-muted">Total (ex VAT)</p>
                   <p className="text-lg font-semibold">{formatCurrency(totals.totalExVat)}</p>
@@ -246,7 +246,7 @@ export function ProjectDetailClient({
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-3 gap-4 border-t border-border pt-4">
+              <div className="grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-3">
                 <div>
                   <p className="text-xs text-text-muted">Unbilled</p>
                   <p className="font-medium">{formatCurrency(totals.unbilled)}</p>
@@ -383,7 +383,7 @@ export function ProjectDetailClient({
             <Card>
               <CardHeader title="Payment History" />
               <CardBody>
-                <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-3">
                   <div>
                     <p className="text-xs text-text-muted">Billed</p>
                     <p className="text-sm font-semibold">{formatCurrency(payments.totals.totalBilled)}</p>

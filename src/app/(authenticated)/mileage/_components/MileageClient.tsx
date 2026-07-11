@@ -365,7 +365,7 @@ export function MileageClient({
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">
-          <Table className="[--spacing-row-h:10px]">
+          <Table className="[--spacing-row-h:10px] mx-0 px-0">
             <TableHeader>
               <TableRow>
                 <TableHead sortable sortDirection={tripSort.column === 'date' ? tripSort.direction : null} onSort={() => toggleTripSort('date')}>Date</TableHead>

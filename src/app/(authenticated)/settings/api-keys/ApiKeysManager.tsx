@@ -333,6 +333,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
                 <div className="flex justify-end gap-1">
                   <IconButton
                     variant="ghost"
+                    label="Edit key details"
                     onClick={() => { setEditingKeyId(k.id); setShowCreateForm(false); }}
                     title="Edit key details"
                   >
@@ -341,6 +342,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
                   {k.is_active && (
                     <IconButton
                       variant="ghost"
+                      label="Revoke API key"
                       onClick={() => setRevokeTarget(k)}
                       title="Revoke API key"
                     >
@@ -349,6 +351,7 @@ export default function ApiKeysManager({ initialKeys, canManage }: ApiKeysManage
                   )}
                   <IconButton
                     variant="ghost"
+                    label="Delete API key"
                     onClick={() => setDeleteTarget(k)}
                     title="Delete API key"
                   >

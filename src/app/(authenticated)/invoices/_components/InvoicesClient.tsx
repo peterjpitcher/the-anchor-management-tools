@@ -370,22 +370,22 @@ export default function InvoicesClient({
         <div className="border-b border-border bg-surface-2 px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex gap-3">
-              <div>
+              <div className="flex-1 sm:flex-none">
                 <label className="mb-1 block text-xs font-medium text-text-muted">Start date</label>
                 <Input
                   type="date"
                   value={exportStartDate}
                   onChange={(e) => { setExportStartDate(e.target.value); setExportError(null); updateUrl({ start_date: e.target.value, end_date: exportEndDate }) }}
-                  className="w-40"
+                  className="w-full sm:w-40"
                 />
               </div>
-              <div>
+              <div className="flex-1 sm:flex-none">
                 <label className="mb-1 block text-xs font-medium text-text-muted">End date</label>
                 <Input
                   type="date"
                   value={exportEndDate}
                   onChange={(e) => { setExportEndDate(e.target.value); setExportError(null); updateUrl({ start_date: exportStartDate, end_date: e.target.value }) }}
-                  className="w-40"
+                  className="w-full sm:w-40"
                 />
               </div>
             </div>

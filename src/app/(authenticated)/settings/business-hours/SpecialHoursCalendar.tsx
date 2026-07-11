@@ -188,6 +188,11 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
           </div>
         </div>
 
+        {/* On mobile the 7-column month grid keeps every date tappable inside
+            its own horizontal-scroll container so no cell/badge is clipped;
+            at md+ it reverts to full-width with no scroll. */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[640px] space-y-4 md:min-w-0">
         <div className="grid grid-cols-7 gap-2 text-sm font-medium text-gray-600">
           {WEEKDAY_LABELS.map((label) => (
             <div key={label} className="text-center uppercase tracking-wide">
@@ -273,6 +278,8 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
             })}
           </div>
         )}
+        </div>
+        </div>
       </Card>
 
       {selectedDate && (

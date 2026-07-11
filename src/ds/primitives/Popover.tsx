@@ -28,7 +28,7 @@ export function Popover({ trigger, children, align = 'left', placement: _placeme
 
       <PopoverPanel
         className={cn(
-          'absolute z-50 mt-2 rounded-lg bg-surface border border-border shadow-lg p-4',
+          'absolute z-50 mt-2 max-w-[calc(100vw-1rem)] rounded-lg bg-surface border border-border shadow-lg p-4',
           width ? '' : 'w-72',
           'focus:outline-none',
           'transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0',

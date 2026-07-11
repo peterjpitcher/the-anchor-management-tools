@@ -102,7 +102,7 @@ export function RecipeIngredientRow({
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
       {/* Compact row: ingredient, quantity, unit, expand/remove */}
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <FormGroup label="Ingredient" required className="min-w-0 flex-1">
           <Select
             value={row.ingredient_id}

@@ -523,7 +523,72 @@ export function EntriesClient({
         ) : (
           <>
             <div className={loadingPage ? 'opacity-60' : undefined}>
-              <Table>
+              {/* Mobile card list */}
+              <div className="divide-y divide-border md:hidden">
+                {filtered.map((entry) => {
+                  const cardBillable = isEntryBillable(entry)
+                  let cardValue = ''
+                  if (entry.entry_type === 'time') {
+                    cardValue = `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
+                  } else if (entry.entry_type === 'mileage') {
+                    cardValue = `${entry.miles} mi`
+                  }
+
+                  return (
+                    <div key={entry.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-text">{entry.project?.project_name || 'Unknown'}</p>
+                          <p className="text-xs text-text-muted">
+                            {entry.vendor?.name || 'Unknown'} &middot; {formatDateDdMmmmYyyy(entry.entry_date)}
+                            {entry.project?.project_code ? ` · ${entry.project.project_code}` : ''}
+                          </p>
+                        </div>
+                        <Badge tone={typeTone(entry.entry_type)}>{entry.entry_type}</Badge>
+                      </div>
+                      {entry.description && (
+                        <p className="text-sm text-text-muted [overflow-wrap:anywhere]">{entry.description}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                        {cardValue && <span className="text-text-muted">{cardValue}</span>}
+                        <span className="font-medium">{formatCurrency(entryAmount(entry))}</span>
+                        <Badge tone={cardBillable ? 'success' : 'neutral'}>
+                          {cardBillable ? 'Billable' : 'Non-billable'}
+                        </Badge>
+                        <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
+                        {entry.invoice?.invoice_number && (
+                          <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
+                            {entry.invoice.invoice_number}
+                          </Link>
+                        )}
+                      </div>
+                      {isEntryEditable(entry) && (canEdit || canDelete) && (
+                        <div className="flex gap-1">
+                          {canEdit && (
+                            <IconButton
+                              icon={<Icon name="edit" size={16} />}
+                              size="sm"
+                              label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
+                              onClick={() => openEdit(entry)}
+                            />
+                          )}
+                          {canDelete && (
+                            <IconButton
+                              icon={<Icon name="trash" size={16} />}
+                              size="sm"
+                              label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
+                              onClick={() => setDeleteId(entry.id)}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Desktop table */}
+              <Table className="hidden md:block">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>

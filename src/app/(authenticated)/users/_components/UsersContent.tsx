@@ -83,19 +83,19 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <SearchInput
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search users..."
-          className="w-64"
+          className="w-full sm:w-64"
         />
         <Select
           aria-label="Filter by role"
           options={roleOptions}
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="w-40"
+          className="w-full sm:w-40"
         />
       </div>
 

@@ -356,6 +356,109 @@ export default function RecurringInvoicesPage() {
                 )
               },
             ]}
+              renderMobileCard={(r) => (
+                <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900">{r.vendor?.name || 'Unknown Vendor'}</div>
+                      {r.vendor?.contact_name && (
+                        <div className="text-sm text-gray-500">{r.vendor.contact_name}</div>
+                      )}
+                    </div>
+                    {r.is_active ? (
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                        <Play className="mr-1 h-3 w-3" /> Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+                        <Pause className="mr-1 h-3 w-3" /> Inactive
+                      </span>
+                    )}
+                  </div>
+                  <dl className="grid gap-2 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-gray-500">Frequency</dt>
+                      <dd className="text-gray-900">{getFrequencyLabel(r.frequency)}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <dt className="text-gray-500">Next Invoice</dt>
+                      <dd className="text-right text-gray-900">
+                        <div>{getNextInvoiceLabel(r.next_invoice_date)}</div>
+                        <div className="text-xs text-gray-500">{formatDateInLondon(r.next_invoice_date)}</div>
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-gray-500">Reference</dt>
+                      <dd className="min-w-0 break-words text-right text-gray-900">{r.reference || '-'}</dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleToggleStatus(r.id, r.is_active)}
+                      disabled={processing === r.id || !canEdit}
+                      loading={processing === r.id}
+                      title={
+                        !canEdit
+                          ? 'You need invoice edit permission to change status.'
+                          : r.is_active
+                            ? 'Deactivate recurring invoice'
+                            : 'Activate recurring invoice'
+                      }
+                      aria-label={r.is_active ? 'Deactivate recurring invoice' : 'Activate recurring invoice'}
+                      iconOnly
+                    >
+                      {r.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleGenerateNow(r.id)}
+                      disabled={processing === r.id || !r.is_active || !canCreate}
+                      loading={processing === r.id}
+                      title={
+                        !canCreate
+                          ? 'You need invoice create permission to generate invoices.'
+                          : !r.is_active
+                            ? 'Activate the schedule before generating.'
+                            : 'Generate invoice now'
+                      }
+                      aria-label="Generate invoice now"
+                      iconOnly
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => router.push(`/invoices/recurring/${r.id}`)}
+                      disabled={processing === r.id}
+                      title="View details"
+                      aria-label="View details"
+                      iconOnly
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setShowDeleteConfirm(r.id)}
+                      disabled={processing === r.id || !canDelete}
+                      loading={processing === r.id}
+                      title={
+                        !canDelete
+                          ? 'You need invoice delete permission to remove recurring invoices.'
+                          : undefined
+                      }
+                      aria-label="Delete recurring invoice"
+                      iconOnly
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               emptyMessage="No recurring invoices"
             />
           </Card>

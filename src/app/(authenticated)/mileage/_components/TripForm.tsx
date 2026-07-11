@@ -336,20 +336,22 @@ export function TripForm({
                   </div>
                   <div className="flex items-center gap-2">
                     <ArrowRightIcon className="h-4 w-4 shrink-0 text-gray-400" />
-                    <Select
-                      className="w-full"
-                      value={stop.destinationId}
-                      onChange={(e) => handleDestinationChange(index, e.target.value)}
-                      aria-label={`Stop ${index + 1} destination`}
-                      error={stopErrors.has(index)}
-                      placeholder="Select destination..."
-                    >
-                      {nonHomeDestinations.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </Select>
+                    <div className="min-w-0 flex-1">
+                      <Select
+                        className="w-full"
+                        value={stop.destinationId}
+                        onChange={(e) => handleDestinationChange(index, e.target.value)}
+                        aria-label={`Stop ${index + 1} destination`}
+                        error={stopErrors.has(index)}
+                        placeholder="Select destination..."
+                      >
+                        {nonHomeDestinations.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
                     <Input
                       className="w-28 shrink-0"
                       value={stop.miles}

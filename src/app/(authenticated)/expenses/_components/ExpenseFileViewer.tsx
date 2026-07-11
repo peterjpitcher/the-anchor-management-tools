@@ -96,20 +96,20 @@ export function ExpenseFileViewer({
       aria-modal="true"
       aria-label="Receipt file viewer"
     >
-      <div className="relative flex max-h-[90vh] max-w-4xl flex-col rounded-lg bg-white shadow-xl dark:bg-gray-900">
+      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl dark:bg-gray-900 sm:w-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-300">
               {currentFile.file_name}
             </span>
             {files.length > 1 && (
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
                 {currentIndex + 1} of {files.length}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {onDelete && (
               <button
                 type="button"
@@ -154,7 +154,7 @@ export function ExpenseFileViewer({
             <img
               src={currentFile.signed_url}
               alt={currentFile.file_name}
-              className="mx-auto max-h-[70vh] rounded object-contain"
+              className="mx-auto max-h-[70vh] max-w-full rounded object-contain"
             />
           )}
           {isPdf && currentFile.signed_url && (

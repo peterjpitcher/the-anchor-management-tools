@@ -248,7 +248,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-medium">{category.category_name}</p>
                           <p className="text-xs text-gray-500">
@@ -261,7 +261,7 @@ export default function CategoriesClient({ initialCategories, canManage, initial
                           )}
                         </div>
                         {canManage && (
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Checkbox
                               label="Email on upload"
                               checked={category.email_on_upload}
