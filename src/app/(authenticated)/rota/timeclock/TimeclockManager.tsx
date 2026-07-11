@@ -349,7 +349,7 @@ export default function TimeclockManager({
       {showAddForm && (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
           <p className="text-sm font-medium text-gray-700">Manual timeclock entry</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-gray-600 mb-1">Employee</label>
               <select
@@ -374,7 +374,7 @@ export default function TimeclockManager({
                 className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white"
               />
             </div>
-            <div />
+            <div className="hidden sm:block" />
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Clock in</label>
               <input

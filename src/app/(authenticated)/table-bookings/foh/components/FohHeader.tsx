@@ -75,7 +75,9 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     isManagerKioskStyle && 'sr-only'
   )
   const serviceDateControlsClass = cn(
-    'flex items-center gap-2 whitespace-nowrap overflow-x-auto',
+    // Mobile: wrap onto multiple lines so "Today" is never pushed off-screen.
+    // sm+ (incl. the manager kiosk tablet): keep the original single-row scroll behaviour.
+    'flex flex-wrap items-center gap-2 sm:flex-nowrap sm:whitespace-nowrap sm:overflow-x-auto',
     isManagerKioskStyle ? 'mt-0' : 'mt-1'
   )
   const totalsBadgeClass = cn(

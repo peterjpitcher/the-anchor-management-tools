@@ -35,7 +35,7 @@ export default function PaySummaryCard({ current }: PaySummaryCardProps): React.
       {/* Period Navigator */}
       <div className="bg-gray-50 border-b border-gray-100 px-4 py-2 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">{period.periodLabel}</span>
-        <a href="#pay-disclaimer" className="p-1 text-gray-400 hover:text-gray-600" title="Pay disclaimer">
+        <a href="#pay-disclaimer" className="touch-target flex items-center justify-center p-1 text-gray-400 hover:text-gray-600" title="Pay disclaimer">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
             <path d="M8 7V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

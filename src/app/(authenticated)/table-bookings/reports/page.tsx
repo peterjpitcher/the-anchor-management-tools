@@ -115,7 +115,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
                     key={option.key}
                     href={`/table-bookings/reports?window=${option.key}`}
                     aria-current={active ? 'page' : undefined}
-                    className={`rounded-md border px-3 py-1.5 text-xs transition ${
+                    className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-xs transition max-[820px]:min-h-[44px] ${
                       active
                         ? 'border-blue-600 bg-blue-50 font-semibold text-blue-700'
                         : 'font-medium border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:text-gray-800'
@@ -182,7 +182,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <h3 className="text-base font-semibold text-gray-900">Event Conversion and Waitlist</h3>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-gray-500">Bookings Created</dt>
                 <dd className="font-semibold text-gray-900">{formatNumber(snapshot.event_conversion_and_waitlist.bookings_created)}</dd>
@@ -212,7 +212,7 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
 
           <Card>
             <h3 className="text-base font-semibold text-gray-900">Charge Request Outcomes</h3>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-gray-500">Total Requests</dt>
                 <dd className="font-semibold text-gray-900">{formatNumber(snapshot.charge_request_outcomes.total_requests)}</dd>

@@ -81,7 +81,7 @@ export default function CreateShiftModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-md"
+        className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between p-5 border-b border-gray-200">
@@ -106,7 +106,7 @@ export default function CreateShiftModal({
             />
           </FormGroup>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormGroup label="Start time" htmlFor="cs-start" required>
               <Input id="cs-start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
             </FormGroup>
@@ -343,7 +343,7 @@ export function PremiumControl({ state, idPrefix }: PremiumControlProps) {
           </div>
 
           {state.useWindow && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormGroup label="From" htmlFor={`${idPrefix}-win-start`}>
                 <Input id={`${idPrefix}-win-start`} type="time" value={state.windowStart} onChange={e => state.setWindowStart(e.target.value)} />
               </FormGroup>
