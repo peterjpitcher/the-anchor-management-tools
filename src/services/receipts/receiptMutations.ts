@@ -32,6 +32,9 @@ import type {
   RuleMutationResult,
   BulkStatus,
   ReceiptVendorWatchlistItem,
+  ReceiptVendorReviewItem,
+  ReceiptVendorReviewStatus,
+  ReceiptVendorMovementComparison,
 } from './types'
 import {
   RECEIPT_BUCKET,
@@ -147,6 +150,63 @@ export async function performSetReceiptVendorWatched(
       userId: data.user_id,
       vendorKey: data.vendor_key,
       vendorLabel: data.vendor_label,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// performSetReceiptVendorReviewStatus
+// ---------------------------------------------------------------------------
+
+export async function performSetReceiptVendorReviewStatus(
+  userId: string,
+  input: {
+    vendorLabel: string
+    comparison: ReceiptVendorMovementComparison
+    monthStart: string
+    status: ReceiptVendorReviewStatus
+  },
+): Promise<{ success?: boolean; item?: ReceiptVendorReviewItem; error?: string }> {
+  const vendorLabel = normalizeVendorInput(input.vendorLabel)
+  const vendorKey = normalizeReceiptVendorKey(vendorLabel)
+  const validStatuses: ReceiptVendorReviewStatus[] = ['needs_review', 'expected', 'action_required', 'reviewed']
+  const validComparisons: ReceiptVendorMovementComparison[] = ['mom', 'yoy', 'rolling_3m']
+  const monthStart = /^\d{4}-\d{2}-01$/.test(input.monthStart) ? input.monthStart : null
+
+  if (!vendorLabel || !vendorKey || !monthStart || !validStatuses.includes(input.status) || !validComparisons.includes(input.comparison)) {
+    return { error: 'Invalid vendor review provided' }
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('receipt_vendor_reviews')
+    .upsert({
+      user_id: userId,
+      vendor_key: vendorKey,
+      vendor_label: vendorLabel,
+      comparison: input.comparison,
+      month_start: monthStart,
+      status: input.status,
+    }, { onConflict: 'user_id,vendor_key,comparison,month_start' })
+    .select('user_id, vendor_key, vendor_label, comparison, month_start, status, created_at, updated_at')
+    .single()
+
+  if (error || !data) {
+    console.error('Failed to update vendor review status', error)
+    return { error: 'Failed to update vendor review status.' }
+  }
+
+  return {
+    success: true,
+    item: {
+      userId: data.user_id,
+      vendorKey: data.vendor_key,
+      vendorLabel: data.vendor_label,
+      comparison: data.comparison as ReceiptVendorMovementComparison,
+      monthStart: String(data.month_start).slice(0, 10),
+      status: data.status as ReceiptVendorReviewStatus,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     },
