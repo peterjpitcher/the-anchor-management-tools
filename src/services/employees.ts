@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { normalizePersonName } from '@/lib/names';
 import { z } from 'zod';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { formatPhoneForStorage } from '@/lib/utils';
@@ -346,8 +347,8 @@ export class EmployeeService {
 
     // Prepare payloads
     const employeeData = {
-      first_name: input.first_name,
-      last_name: input.last_name,
+      first_name: normalizePersonName(input.first_name),
+      last_name: normalizePersonName(input.last_name),
       email_address: input.email_address,
       job_title: input.job_title,
       employment_start_date: input.employment_start_date,
@@ -444,9 +445,15 @@ export class EmployeeService {
       }
     }
 
+    const normalizedUpdate = {
+      ...updateData,
+      first_name: normalizePersonName(updateData.first_name),
+      last_name: normalizePersonName(updateData.last_name),
+    }
+
     const { data: updatedEmployee, error } = await adminClient
       .from('employees')
-      .update(updateData)
+      .update(normalizedUpdate)
       .eq('employee_id', employeeId)
       .select('*')
       .maybeSingle();
@@ -474,7 +481,7 @@ export class EmployeeService {
       try {
         await syncBirthdayCalendarEvent({
           ...oldEmployee,
-          ...updateData,
+          ...normalizedUpdate,
           employee_id: employeeId
         });
       } catch (calendarError) {
