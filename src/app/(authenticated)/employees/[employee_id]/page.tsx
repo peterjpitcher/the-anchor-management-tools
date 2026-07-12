@@ -7,6 +7,7 @@ import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { EmployeeDetailTabs } from './_components/EmployeeDetailTabs'
 import { EmployeeHeaderActions } from './_components/EmployeeHeaderActions'
+import { QuickAddNoteSheet } from './_components/QuickAddNoteSheet'
 import { Alert } from '@/ds'
 import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
@@ -336,6 +337,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       headerActions={headerActions}
     >
+      {/* Mobile fast path: add a note from the top without scrolling to the Notes section */}
+      {permissions.canEdit && (
+        <div className="mb-4 md:hidden">
+          <QuickAddNoteSheet employeeId={employee.employee_id} className="w-full" />
+        </div>
+      )}
       <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <section id="overview">
