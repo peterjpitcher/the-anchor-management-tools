@@ -361,6 +361,7 @@ export default function EmployeePayTab({
           {overrides.length === 0 ? (
             <p className="text-sm text-gray-400 italic">No individual overrides set. Rate is calculated from age band.</p>
           ) : (
+            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-gray-400 border-b border-gray-100">
@@ -428,6 +429,7 @@ export default function EmployeePayTab({
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}

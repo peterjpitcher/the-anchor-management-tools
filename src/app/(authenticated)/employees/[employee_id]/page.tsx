@@ -5,7 +5,8 @@ import { Badge } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
-import { Tabs } from '@/ds'
+import { EmployeeDetailTabs } from './_components/EmployeeDetailTabs'
+import { EmployeeHeaderActions } from './_components/EmployeeHeaderActions'
 import { Alert } from '@/ds'
 import DeleteEmployeeButton from '@/components/features/employees/DeleteEmployeeButton'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
@@ -278,53 +279,54 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     }
   ]
 
-  const headerActions = (
-    <>
-      {!isOnboarding && (
-        <>
-          <LinkButton
-            href={`/api/employees/${employee.employee_id}/starter-pack`}
-            size="sm"
-            variant="secondary"
-            target="_blank"
-            leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-          >
-            <span className="hidden sm:inline">New Starter PDF</span>
-            <span className="sm:hidden">Starter PDF</span>
-          </LinkButton>
+  const editAction = permissions.canEdit ? (
+    <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
+      Edit Employee
+    </LinkButton>
+  ) : undefined
 
-          <LinkButton
-            href={`/api/employees/${employee.employee_id}/employment-contract`}
-            size="sm"
-            variant="secondary"
-            target="_blank"
-            leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-          >
-            <span className="hidden sm:inline">Casual Worker Agreement</span>
-            <span className="sm:hidden">Agreement</span>
-          </LinkButton>
-        </>
-      )}
-
-      <EmployeeStatusActions
+  const secondaryActions = [
+    !isOnboarding ? (
+      <LinkButton
+        key="starter-pack"
+        href={`/api/employees/${employee.employee_id}/starter-pack`}
+        size="sm"
+        variant="secondary"
+        target="_blank"
+        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+      >
+        New Starter PDF
+      </LinkButton>
+    ) : null,
+    !isOnboarding ? (
+      <LinkButton
+        key="contract"
+        href={`/api/employees/${employee.employee_id}/employment-contract`}
+        size="sm"
+        variant="secondary"
+        target="_blank"
+        leftIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+      >
+        Casual Worker Agreement
+      </LinkButton>
+    ) : null,
+    <EmployeeStatusActions
+      key="status"
+      employeeId={employee.employee_id}
+      status={employee.status}
+      canEdit={permissions.canEdit}
+    />,
+    permissions.canDelete ? (
+      <DeleteEmployeeButton
+        key="delete"
         employeeId={employee.employee_id}
-        status={employee.status}
-        canEdit={permissions.canEdit}
+        employeeName={displayName}
       />
+    ) : null,
+  ].filter(Boolean)
 
-      {permissions.canEdit && (
-        <LinkButton href={`/employees/${employee.employee_id}/edit`} size="sm" variant="primary">
-          Edit Employee
-        </LinkButton>
-      )}
-
-      {permissions.canDelete && (
-        <DeleteEmployeeButton
-          employeeId={employee.employee_id}
-          employeeName={displayName}
-        />
-      )}
-    </>
+  const headerActions = (
+    <EmployeeHeaderActions primary={editAction} secondary={secondaryActions} />
   )
 
   return (
@@ -334,8 +336,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       headerActions={headerActions}
     >
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <section id="overview">
             <Card>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -375,7 +377,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
           <section id="details">
             <Card>
-              <Tabs items={tabs} />
+              <EmployeeDetailTabs tabs={tabs} />
             </Card>
           </section>
 
@@ -432,7 +434,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           </Section>
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <section id="audit">
             <Card>
               <EmployeeAuditTrail
