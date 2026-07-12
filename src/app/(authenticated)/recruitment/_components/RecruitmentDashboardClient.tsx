@@ -1396,8 +1396,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const aiRuns = initialData.aiRuns ?? []
   const dashboard = initialData.dashboard
   const activeApplications = applications.filter((application: any) => (
-    application.status !== 'talent_pool'
-    && application.status !== 'declined_duplicate'
+    !completedApplicationStatuses.has(application.status)
     && !application.duplicate_of_application_id
     && !application.archived_at
   ))
@@ -1438,7 +1437,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
       const archivedMatches = showArchived ? Boolean(application.archived_at) : !application.archived_at
       const matchesStatus = statusFilter
         ? application.status === statusFilter && !isDuplicate
-        : application.status !== 'talent_pool' && !isDuplicate
+        : !completedApplicationStatuses.has(application.status) && !isDuplicate
       return archivedMatches && (!query || haystack.includes(query)) && matchesStatus
     }).sort((a: any, b: any) => {
       const scoreDiff = (b.ai_score ?? -1) - (a.ai_score ?? -1)
