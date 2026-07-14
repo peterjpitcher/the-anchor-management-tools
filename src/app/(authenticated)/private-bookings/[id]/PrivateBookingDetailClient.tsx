@@ -966,7 +966,7 @@ function AddItemModal({
   const [selectedItem, setSelectedItem] = useState<
     VenueSpace | CateringPackage | Vendor | null
   >(null);
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState("1");
   const [customDescription, setCustomDescription] = useState("");
   const [customPrice, setCustomPrice] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
@@ -986,7 +986,7 @@ function AddItemModal({
 
     // Reset quantity for all except electricity (which is always 1)
     if (itemType !== "electricity") {
-      setQuantity(1);
+      setQuantity("1");
     }
 
     loadOptions();
@@ -1000,7 +1000,7 @@ function AddItemModal({
       "pricing_model" in selectedItem &&
       selectedItem.pricing_model === "total_value"
     ) {
-      setQuantity(1);
+      setQuantity("1");
     }
   }, [selectedItem, itemType]);
 
@@ -1018,7 +1018,7 @@ function AddItemModal({
       // Electricity is a fixed charge, no options to load
       setCustomDescription("Additional Electricity Supply");
       setCustomPrice("25");
-      setQuantity(1);
+      setQuantity("1");
     }
   }, [itemType]);
 
@@ -1054,6 +1054,13 @@ function AddItemModal({
       }
     }
 
+    const parsedQuantity = Number.parseFloat(quantity);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      toast.error("Quantity must be greater than 0");
+      setIsSubmitting(false);
+      return;
+    }
+
     // For total_value pricing model, quantity should be 1
     const finalQuantity =
       itemType === "catering" &&
@@ -1061,7 +1068,7 @@ function AddItemModal({
       "pricing_model" in selectedItem &&
       selectedItem.pricing_model === "total_value"
         ? 1
-        : quantity;
+        : parsedQuantity;
 
     const data = {
       booking_id: bookingId,
@@ -1084,7 +1091,7 @@ function AddItemModal({
       onClose();
       // Reset form
       setSelectedItem(null);
-      setQuantity(1);
+      setQuantity("1");
       setCustomDescription("");
       setCustomPrice("");
       setDiscountAmount("");
@@ -1253,8 +1260,9 @@ function AddItemModal({
               <Input
                 type="number"
                 value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                min="1"
+                onChange={(e) => setQuantity(e.target.value)}
+                min={itemType === "catering" ? "1" : "0.01"}
+                step={itemType === "catering" ? "1" : "0.01"}
                 required
                 readOnly={itemType === "electricity"}
               />
@@ -1504,7 +1512,7 @@ function EditItemModal({
   item,
   onSuccess,
 }: EditItemModalProps) {
-  const [quantity, setQuantity] = useState(item.quantity);
+  const [quantity, setQuantity] = useState(item.quantity.toString());
   const [unitPrice, setUnitPrice] = useState(item.unit_price.toString());
   const [discountValue, setDiscountValue] = useState(
     item.discount_value?.toString() || "",
@@ -1517,7 +1525,7 @@ function EditItemModal({
 
   useEffect(() => {
     // Reset form when item changes
-    setQuantity(item.quantity);
+    setQuantity(item.quantity.toString());
     setUnitPrice(item.unit_price.toString());
     setDiscountValue(item.discount_value?.toString() || "");
     setDiscountType(item.discount_type || "percent");
@@ -1525,7 +1533,7 @@ function EditItemModal({
   }, [item]);
 
   const calculateLineTotal = () => {
-    const qty = quantity || 0;
+    const qty = Number.parseFloat(quantity) || 0;
     const price = parseFloat(unitPrice) || 0;
     const discount = parseFloat(discountValue) || 0;
 
@@ -1546,8 +1554,15 @@ function EditItemModal({
     e.preventDefault();
     setIsSubmitting(true);
 
+    const parsedQuantity = Number.parseFloat(quantity);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      toast.error("Quantity must be greater than 0");
+      setIsSubmitting(false);
+      return;
+    }
+
     const result = await updateBookingItem(item.id, {
-      quantity,
+      quantity: parsedQuantity,
       unit_price: parseFloat(unitPrice),
       discount_value: discountValue ? parseFloat(discountValue) : undefined,
       discount_type: discountValue ? discountType : undefined,
@@ -1578,8 +1593,9 @@ function EditItemModal({
             <Input
               type="number"
               value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-              min="1"
+              onChange={(e) => setQuantity(e.target.value)}
+              min={item.item_type === "catering" ? "1" : "0.01"}
+              step={item.item_type === "catering" ? "1" : "0.01"}
               required
             />
           </FormGroup>
