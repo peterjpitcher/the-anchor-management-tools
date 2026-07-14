@@ -138,7 +138,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
   const [packages, setPackages] = useState<CateringPackage[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [selectedItem, setSelectedItem] = useState<VenueSpace | CateringPackage | Vendor | null>(null)
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState('1')
   const [customDescription, setCustomDescription] = useState('')
   const [customPrice, setCustomPrice] = useState('')
   const [discountAmount, setDiscountAmount] = useState('')
@@ -148,7 +148,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
 
   useEffect(() => {
     setSelectedItem(null)
-    setQuantity(1)
+    setQuantity('1')
     setCustomDescription('')
     setCustomPrice('')
     setDiscountAmount('')
@@ -214,7 +214,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
   // Set quantity to 1 for total_value items
   useEffect(() => {
     if (itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value') {
-      setQuantity(1)
+      setQuantity('1')
     }
   }, [selectedItem, itemType])
 
@@ -257,10 +257,17 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       }
     }
 
+    const parsedQuantity = Number.parseFloat(quantity)
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      toast.error('Quantity must be greater than 0')
+      setIsSubmitting(false)
+      return
+    }
+
     // For total_value pricing model, quantity should be 1
     const finalQuantity = itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value' 
       ? 1 
-      : quantity
+      : parsedQuantity
 
     const data = {
       booking_id: bookingId,
@@ -284,7 +291,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
       onClose()
       // Reset form
       setSelectedItem(null)
-      setQuantity(1)
+      setQuantity('1')
       setCustomDescription('')
       setCustomPrice('')
       setDiscountAmount('')
@@ -325,7 +332,7 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
     const basePrice = resolveBasePrice()
     const effectiveQuantity = itemType === 'catering' && selectedItem && 'pricing_model' in selectedItem && selectedItem.pricing_model === 'total_value'
       ? 1
-      : quantity
+      : Number.parseFloat(quantity) || 0
 
     let total = basePrice * effectiveQuantity
 
@@ -488,8 +495,9 @@ function AddItemModal({ isOpen, onClose, bookingId, onItemAdded }: AddItemModalP
               <Input
                 type="number"
                 value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                min="1"
+                onChange={(e) => setQuantity(e.target.value)}
+                min={itemType === 'catering' ? '1' : '0.01'}
+                step={itemType === 'catering' ? '1' : '0.01'}
                 required
               />
             </FormGroup>
@@ -595,7 +603,7 @@ interface EditItemModalProps {
 }
 
 function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalProps) {
-  const [quantity, setQuantity] = useState(item.quantity)
+  const [quantity, setQuantity] = useState(item.quantity.toString())
   const [unitPrice, setUnitPrice] = useState(item.unit_price.toString())
   const [discountAmount, setDiscountAmount] = useState(item.discount_value?.toString() || '')
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(item.discount_type || 'percent')
@@ -606,8 +614,15 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
     e.preventDefault()
     setIsSubmitting(true)
 
+    const parsedQuantity = Number.parseFloat(quantity)
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      toast.error('Quantity must be greater than 0')
+      setIsSubmitting(false)
+      return
+    }
+
     const result = await updateBookingItem(item.id, {
-      quantity,
+      quantity: parsedQuantity,
       unit_price: parseFloat(unitPrice),
       discount_value: discountAmount ? parseFloat(discountAmount) : undefined,
       discount_type: discountAmount ? discountType : undefined,
@@ -645,8 +660,9 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
             <Input
               type="number"
               value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-              min="1"
+              onChange={(e) => setQuantity(e.target.value)}
+              min={item.item_type === 'catering' ? '1' : '0.01'}
+              step={item.item_type === 'catering' ? '1' : '0.01'}
               required
             />
           </FormGroup>
