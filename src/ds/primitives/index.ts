@@ -37,3 +37,4 @@ export { Accordion } from './Accordion'
 
 export { Pagination } from './Pagination'
 
+export { FormSubmitButton } from './FormSubmitButton'

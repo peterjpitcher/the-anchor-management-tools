@@ -46,20 +46,27 @@ export function Switch({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative inline-flex items-center rounded-pill transition-colors duration-200 shrink-0',
+          'inline-flex shrink-0 items-center justify-center rounded-default',
+          'max-[820px]:h-11 max-[820px]:w-11',
           'focus-visible:outline-none focus-visible:shadow-ring',
-          trackSizes[size],
-          checked ? 'bg-primary' : 'bg-border-strong'
         )}
       >
         <span
           className={cn(
-            'inline-block rounded-full bg-white shadow-sm transition-transform duration-200',
-            thumbSizes[size].base,
-            checked ? thumbSizes[size].translate : 'translate-x-0.5'
+            'relative inline-flex shrink-0 items-center rounded-pill transition-colors duration-200',
+            trackSizes[size],
+            checked ? 'bg-primary' : 'bg-border-strong',
           )}
           aria-hidden="true"
-        />
+        >
+          <span
+            className={cn(
+              'inline-block rounded-full bg-white shadow-sm transition-transform duration-200',
+              thumbSizes[size].base,
+              checked ? thumbSizes[size].translate : 'translate-x-0.5'
+            )}
+          />
+        </span>
       </button>
 
       {label && (

@@ -11,7 +11,7 @@ import {
   TableRow,
   TableHead,
   TableCell,
-  TablePagination,
+  Pagination,
   Badge,
   Button,
   SearchInput,
@@ -22,7 +22,7 @@ import {
   Textarea,
   Empty,
   ConfirmDialog,
-  IconButton,
+  RowActions,
   Checkbox,
   toast,
 } from '@/ds'
@@ -557,30 +557,29 @@ export function EntriesClient({
                         </Badge>
                         <Badge tone={statusTone(entry.status)}>{entry.status}</Badge>
                         {entry.invoice?.invoice_number && (
-                          <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
+                          <Link href={`/invoices/${entry.invoice.id}`} className="touch-target inline-flex items-center text-xs text-primary hover:underline">
                             {entry.invoice.invoice_number}
                           </Link>
                         )}
                       </div>
-                      {isEntryEditable(entry) && (canEdit || canDelete) && (
-                        <div className="flex gap-1">
-                          {canEdit && (
-                            <IconButton
-                              icon={<Icon name="edit" size={16} />}
-                              size="sm"
-                              label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
-                              onClick={() => openEdit(entry)}
-                            />
-                          )}
-                          {canDelete && (
-                            <IconButton
-                              icon={<Icon name="trash" size={16} />}
-                              size="sm"
-                              label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
-                              onClick={() => setDeleteId(entry.id)}
-                            />
-                          )}
-                        </div>
+                      {isEntryEditable(entry) && (
+                        <RowActions
+                          actions={[
+                            canEdit && {
+                              key: 'edit',
+                              label: entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice',
+                              icon: <Icon name="edit" size={16} />,
+                              onSelect: () => openEdit(entry),
+                            },
+                            canDelete && {
+                              key: 'delete',
+                              label: entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice',
+                              icon: <Icon name="trash" size={16} />,
+                              tone: 'danger',
+                              onSelect: () => setDeleteId(entry.id),
+                            },
+                          ]}
+                        />
                       )}
                     </div>
                   )
@@ -646,7 +645,7 @@ export function EntriesClient({
                             {entry.invoice?.invoice_number && (
                               <Link
                                 href={`/invoices/${entry.invoice.id}`}
-                                className="text-xs text-primary hover:underline"
+                                className="touch-target inline-flex items-center text-xs text-primary hover:underline"
                               >
                                 {entry.invoice.invoice_number}
                               </Link>
@@ -655,24 +654,23 @@ export function EntriesClient({
                         </TableCell>
                         <TableCell>
                           {isEntryEditable(entry) && (
-                            <div className="flex gap-1">
-                              {canEdit && (
-                                <IconButton
-                                  icon={<Icon name="edit" size={16} />}
-                                  size="sm"
-                                  label={entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice'}
-                                  onClick={() => openEdit(entry)}
-                                />
-                              )}
-                              {canDelete && (
-                                <IconButton
-                                  icon={<Icon name="trash" size={16} />}
-                                  size="sm"
-                                  label={entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice'}
-                                  onClick={() => setDeleteId(entry.id)}
-                                />
-                              )}
-                            </div>
+                            <RowActions
+                              actions={[
+                                canEdit && {
+                                  key: 'edit',
+                                  label: entry.status === 'unbilled' ? 'Edit' : 'Edit and revise invoice',
+                                  icon: <Icon name="edit" size={16} />,
+                                  onSelect: () => openEdit(entry),
+                                },
+                                canDelete && {
+                                  key: 'delete',
+                                  label: entry.status === 'unbilled' ? 'Delete' : 'Delete and revise invoice',
+                                  icon: <Icon name="trash" size={16} />,
+                                  tone: 'danger',
+                                  onSelect: () => setDeleteId(entry.id),
+                                },
+                              ]}
+                            />
                           )}
                         </TableCell>
                       </TableRow>
@@ -682,11 +680,12 @@ export function EntriesClient({
               </Table>
             </div>
             {entriesTotal > pageSize && (
-              <TablePagination
-                page={entryPage}
+              <Pagination
+                currentPage={entryPage}
                 totalPages={totalPages}
-                pageSize={pageSize}
+                itemsPerPage={pageSize}
                 totalItems={entriesTotal}
+                className="border-t border-border px-3 py-4"
                 onPageChange={(page) => {
                   void goToEntriesPage(page)
                 }}

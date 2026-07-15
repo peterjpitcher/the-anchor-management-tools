@@ -210,7 +210,12 @@ export default function InvoicesClient({
       if (value === undefined || value === '') params.delete(key)
       else params.set(key, value)
     })
-    if (!newParams.page && (newParams.status !== undefined || newParams.search !== undefined || newParams.vendor !== undefined)) {
+    if (
+      !newParams.page &&
+      ['status', 'search', 'vendor', 'start_date', 'end_date'].some(
+        (key) => newParams[key] !== undefined,
+      )
+    ) {
       params.set('page', '1')
     }
     router.push(`${pathname}?${params.toString()}`)
@@ -427,7 +432,6 @@ export default function InvoicesClient({
                     <TableHead>Due</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead align="right">Amount</TableHead>
-                    <TableHead align="right">Balance</TableHead>
                     <TableHead align="right" className="w-14"><span className="sr-only">Actions</span></TableHead>
                   </TableRow>
                 </TableHeader>

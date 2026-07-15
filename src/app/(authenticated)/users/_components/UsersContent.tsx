@@ -16,12 +16,10 @@ import {
 import {
   Avatar,
   Badge,
-  Button,
   SearchInput,
   Select,
   Empty,
-  Dropdown,
-  DropdownItem,
+  RowActions,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import UserRolesModal from '../components/UserRolesModal'
@@ -162,17 +160,16 @@ export function UsersContent({ users, roles, canManageRoles }: UsersContentProps
                   </TableCell>
                   <TableCell>
                     {canManageRoles && (
-                      <Dropdown
-                        trigger={
-                          <Button variant="ghost" size="sm">
-                            <Icon name="moreHorizontal" size={16} />
-                          </Button>
-                        }
-                      >
-                        <DropdownItem onClick={() => handleManageRoles(user)}>
-                          Manage Roles
-                        </DropdownItem>
-                      </Dropdown>
+                      <RowActions
+                        actions={[
+                          {
+                            key: 'manage-roles',
+                            label: 'Manage roles',
+                            icon: <Icon name="edit" size={16} />,
+                            onSelect: () => handleManageRoles(user),
+                          },
+                        ]}
+                      />
                     )}
                   </TableCell>
                 </TableRow>
