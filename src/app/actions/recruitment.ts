@@ -1386,6 +1386,7 @@ export async function sendRecruitmentDecisionEmailAction(formData: FormData): Pr
     const user = await requireRecruitmentPermission('send')
     const applicationId = formString(formData, 'application_id')
     const type = formString(formData, 'type') as RecruitmentTemplateType | null
+    const aiRunId = formString(formData, 'ai_run_id')
     if (!applicationId || !type) throw new Error('Application and email type are required.')
 
     const result = await sendRecruitmentTemplateEmail(applicationId, type, {
@@ -1393,6 +1394,8 @@ export async function sendRecruitmentDecisionEmailAction(formData: FormData): Pr
       subjectOverride: formString(formData, 'subject'),
       bodyOverride: formString(formData, 'body'),
       offerTerms: formString(formData, 'offer_terms'),
+      aiRunId,
+      wasAiAssisted: Boolean(aiRunId),
     })
     const statusTransition = EMAIL_STATUS_TRANSITIONS[type]
     let statusUpdateError: string | null = null

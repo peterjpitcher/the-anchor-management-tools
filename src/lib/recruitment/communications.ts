@@ -532,6 +532,10 @@ export async function draftRecruitmentEmailForApplication(
     application: {
       cover_note: application.cover_note,
       source: application.source,
+      availability: application.availability,
+      relevant_experience: application.relevant_experience_answer,
+      travel: application.travel_answer,
+      start_availability: application.start_availability,
     },
     role_title: roleTitle(application),
     ai_strengths: application.ai_strengths,
@@ -541,10 +545,15 @@ export async function draftRecruitmentEmailForApplication(
   }
 
   if (!isDeclineEmail) {
-    aiContext.ai_score = application.ai_score
-    aiContext.ai_recommendation = application.ai_recommendation
-    aiContext.ai_rationale = application.ai_rationale
     aiContext.ai_concerns = application.ai_concerns
+    aiContext.ai_flags = application.ai_flags
+    aiContext.role_requirements = application.job_posting?.requirements ?? null
+    aiContext.manager_screening_notes = application.job_posting?.ai_scoring_notes ?? null
+    if (type !== 'concerns_follow_up') {
+      aiContext.ai_score = application.ai_score
+      aiContext.ai_recommendation = application.ai_recommendation
+      aiContext.ai_rationale = application.ai_rationale
+    }
   }
 
   const draft = await draftRecruitmentEmail(supabase, {
