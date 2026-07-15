@@ -515,6 +515,7 @@ export async function draftRecruitmentEmail(
     context: Record<string, unknown>
   }
 ): Promise<{ runId: string | null; result: RecruitmentDraftResult | null; error?: string }> {
+  const isConcernsFollowUp = input.type === 'concerns_follow_up'
   const requestInput = {
     type: input.type,
     templateSubject: input.templateSubject,
@@ -532,6 +533,14 @@ export async function draftRecruitmentEmail(
       'Never invent logistics, pay, hours, or booking links.',
       'Use only supplied context.',
       'For rejection and already_considered emails, wish them the best of luck and do not include scores, recommendations, rejection reasons, internal concerns, gaps, or negative details.',
+      ...(isConcernsFollowUp ? [
+        'For a concerns follow-up email, ask no more than four clear, neutral, job-relevant questions based only on the supplied application evidence, recorded concerns, role requirements, and manager screening notes.',
+        'Do not mention AI, scores, flags, internal notes, concerns, doubts, screening, or prerequisites to the candidate.',
+        'Do not ask for information the candidate has already clearly supplied.',
+        'Do not ask about or infer protected characteristics, including age, nationality, disability, ethnicity, religion, pregnancy, sexuality, or family status.',
+        'Keep right-to-work wording limited to whether the candidate can provide acceptable evidence; never ask about nationality or immigration history.',
+        'Do not promise an interview or imply that the application has progressed.',
+      ] : []),
     ].join(' '),
     user: `Email context:\n${JSON.stringify(requestInput, null, 2)}`,
     schema: {

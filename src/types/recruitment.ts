@@ -30,6 +30,7 @@ const recruitmentCommunicationChannels = ['email', 'sms'] as const
 const recruitmentDeliveryStatuses = ['queued', 'sent', 'failed', 'bounced', 'suppressed'] as const
 const recruitmentTemplateTypes = [
   'interview_invite',
+  'concerns_follow_up',
   'rejection',
   'already_considered',
   'trial_invite',
