@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import UserList from '@/app/(authenticated)/users/components/UserList'
+import { UsersContent } from '@/app/(authenticated)/users/_components/UsersContent'
 import UserRolesModal from '@/app/(authenticated)/users/components/UserRolesModal'
 
 vi.mock('next/navigation', () => ({
@@ -34,6 +34,7 @@ describe('User management UI gating', () => {
     email: 'user@example.com',
     created_at: '2024-01-01T00:00:00Z',
     last_sign_in_at: '2024-01-02T00:00:00Z',
+    roles: [],
   }
 
   const sampleRoles = [
@@ -45,15 +46,15 @@ describe('User management UI gating', () => {
   })
 
   it('hides the manage roles action for read-only viewers', () => {
-    render(<UserList users={[sampleUser]} roles={sampleRoles} canManageRoles={false} />)
+    render(<UsersContent users={[sampleUser]} roles={sampleRoles} canManageRoles={false} />)
 
     expect(screen.queryByText('Manage Roles')).not.toBeInTheDocument()
   })
 
   it('shows the manage roles action when permitted', () => {
-    render(<UserList users={[sampleUser]} roles={sampleRoles} canManageRoles />)
+    render(<UsersContent users={[sampleUser]} roles={sampleRoles} canManageRoles />)
 
-    expect(screen.getByRole('button', { name: 'Manage Roles' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Manage roles' })).toBeInTheDocument()
   })
 
   it('renders the modal in read-only mode without fetching roles', async () => {

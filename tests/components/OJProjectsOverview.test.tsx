@@ -125,8 +125,8 @@ describe('ProjectsOverview', () => {
       },
     ])
 
-    expect(screen.getByText('Billable')).toBeInTheDocument()
-    expect(screen.getByText('Non-billable')).toBeInTheDocument()
+    expect(screen.getAllByText('Billable').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Non-billable').length).toBeGreaterThan(0)
     const stat = screen.getByText('Billable Unbilled').closest('div')
     expect(stat).not.toBeNull()
     expect(within(stat as HTMLElement).getByText('1')).toBeInTheDocument()

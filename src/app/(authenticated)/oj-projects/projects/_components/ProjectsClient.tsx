@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import {
   Card,
   Table,
@@ -21,7 +22,7 @@ import {
   ProgressBar,
   Empty,
   ConfirmDialog,
-  IconButton,
+  RowActions,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -246,7 +247,76 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
         {filtered.length === 0 ? (
           <Empty title="No projects" description="No projects match your filters." />
         ) : (
-          <Table>
+          <>
+            <div className="divide-y divide-border md:hidden">
+              {filtered.map((project) => {
+                const budgetHours = Number(project.budget_hours || 0)
+                const usedHours = Number(project.total_hours_used || 0)
+                const budgetMoney = Number(project.budget_ex_vat || 0)
+                const spentMoney = Number(project.total_spend_ex_vat || 0)
+                const hasBudget = budgetHours > 0 || budgetMoney > 0
+                const progress = budgetHours > 0
+                  ? Math.min((usedHours / budgetHours) * 100, 100)
+                  : budgetMoney > 0
+                    ? Math.min((spentMoney / budgetMoney) * 100, 100)
+                    : 0
+
+                return (
+                  <div key={project.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/oj-projects/projects/${project.id}`}
+                          className="font-medium text-text hover:text-primary hover:underline"
+                        >
+                          {project.project_name}
+                        </Link>
+                        <p className="text-xs text-text-muted">
+                          {project.project_code} &middot; {project.vendor?.name || 'Unknown'}
+                        </p>
+                      </div>
+                      <RowActions
+                        actions={[
+                          canEdit && {
+                            key: 'edit',
+                            label: 'Edit',
+                            icon: <Icon name="edit" size={16} />,
+                            onSelect: () => openEdit(project),
+                          },
+                          canDelete && {
+                            key: 'delete',
+                            label: 'Delete',
+                            icon: <Icon name="trash" size={16} />,
+                            tone: 'danger',
+                            onSelect: () => setDeleteId(project.id),
+                          },
+                        ]}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+                      <span className="text-text-muted">{usedHours.toFixed(1)}h logged</span>
+                      <span className="text-text-muted">
+                        Updated {project.updated_at ? formatDateDdMmmmYyyy(project.updated_at) : '-'}
+                      </span>
+                    </div>
+                    {hasBudget ? (
+                      <div className="flex flex-col gap-1">
+                        <ProgressBar value={progress} tone={progress > 90 ? 'danger' : 'primary'} />
+                        <span className="text-xs text-text-muted">
+                          {budgetHours > 0 && budgetMoney === 0
+                            ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
+                            : `${formatCurrency(spentMoney)} / ${formatCurrency(budgetMoney)}`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs italic text-text-muted">No budget</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <Table className="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Project Name</TableHead>
@@ -309,30 +379,30 @@ export function ProjectsClient({ initialProjects, clients }: ProjectsClientProps
                       {project.updated_at ? formatDateDdMmmmYyyy(project.updated_at) : '-'}
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        {canEdit && (
-                          <IconButton
-                            icon={<Icon name="edit" size={16} />}
-                            size="sm"
-                            label="Edit"
-                            onClick={() => openEdit(project)}
-                          />
-                        )}
-                        {canDelete && (
-                          <IconButton
-                            icon={<Icon name="trash" size={16} />}
-                            size="sm"
-                            label="Delete"
-                            onClick={() => setDeleteId(project.id)}
-                          />
-                        )}
-                      </div>
+                      <RowActions
+                        actions={[
+                          canEdit && {
+                            key: 'edit',
+                            label: 'Edit',
+                            icon: <Icon name="edit" size={16} />,
+                            onSelect: () => openEdit(project),
+                          },
+                          canDelete && {
+                            key: 'delete',
+                            label: 'Delete',
+                            icon: <Icon name="trash" size={16} />,
+                            tone: 'danger',
+                            onSelect: () => setDeleteId(project.id),
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 )
               })}
             </TableBody>
-          </Table>
+            </Table>
+          </>
         )}
       </Card>
 

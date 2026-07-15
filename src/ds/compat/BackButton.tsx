@@ -8,6 +8,7 @@
 import { ButtonHTMLAttributes, forwardRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { Icon } from '../icons'
 
 export interface BackButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label?: string
@@ -18,18 +19,6 @@ export interface BackButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   showLabelOnMobile?: boolean
   iconOnly?: boolean
 }
-
-const ArrowLeft = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-  </svg>
-)
-
-const ChevronLeft = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-  </svg>
-)
 
 const sizeClasses = {
   sm: 'text-xs px-2 py-1 gap-1',
@@ -72,8 +61,6 @@ export const BackButton = forwardRef<HTMLButtonElement, BackButtonProps>(
       }
     }
 
-    const IconComponent = icon === 'chevron' ? ChevronLeft : icon === 'arrow' ? ArrowLeft : null
-
     return (
       <button
         ref={ref}
@@ -88,7 +75,7 @@ export const BackButton = forwardRef<HTMLButtonElement, BackButtonProps>(
         aria-label={iconOnly ? label : undefined}
         {...props}
       >
-        {IconComponent && <IconComponent />}
+        {icon !== 'none' && <Icon name="chevronLeft" size={20} />}
         {!iconOnly && (
           <span className={cn(!showLabelOnMobile && 'hidden sm:inline')}>{label}</span>
         )}
@@ -98,23 +85,3 @@ export const BackButton = forwardRef<HTMLButtonElement, BackButtonProps>(
 )
 
 BackButton.displayName = 'BackButton'
-
-function BackLink(props: BackButtonProps) {
-  return <BackButton {...props} />
-}
-
-function MobileBackButton({
-  label = 'Back',
-  onBack,
-  className,
-}: {
-  label?: string
-  onBack?: () => void
-  className?: string
-}) {
-  return (
-    <div className={cn('sm:hidden', className)}>
-      <BackButton label={label} onBack={onBack} size="sm" icon="chevron" showLabelOnMobile />
-    </div>
-  )
-}

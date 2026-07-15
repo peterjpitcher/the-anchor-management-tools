@@ -1219,7 +1219,7 @@ nav[aria-label="Mobile navigation"],
    ================================================ */
 @media (max-width: 820px) {
   :root {
-    --spacing-input-h: 42px;
+    --spacing-input-h: 44px;
     --spacing-btn-h: 42px;
     --spacing-btn-h-sm: 34px;
     --spacing-btn-h-lg: 48px;
