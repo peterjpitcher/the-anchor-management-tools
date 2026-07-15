@@ -514,8 +514,8 @@ BEGIN
   -- ===== KITCHEN PACING GATE =====
   -- Runs for inside AND outside bookings (outside food still paces the kitchen).
   -- Mirrors src/lib/table-bookings/kitchen-pacing.ts. Skips entirely when the caller
-  -- bypasses (walk-ins / manager override) or when the feature is disabled.
-  IF NOT COALESCE(p_bypass_pacing, false) THEN
+  -- is for drinks, bypasses (walk-ins / manager override), or the feature is disabled.
+  IF v_purpose = 'food' AND NOT COALESCE(p_bypass_pacing, false) THEN
     SELECT COALESCE((value ->> 'value')::boolean, false)
       INTO v_pacing_enabled
       FROM public.system_settings WHERE key = 'kitchen_pacing_enabled';

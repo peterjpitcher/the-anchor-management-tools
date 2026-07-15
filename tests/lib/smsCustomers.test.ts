@@ -264,7 +264,7 @@ describe('ensureCustomerForPhone', () => {
     })
   })
 
-  it("uses a non-numeric placeholder last name when lastName is missing", async () => {
+  it('stores an empty last name when the customer does not provide one', async () => {
     const { client, inserts } = createSupabaseMock()
 
     await ensureCustomerForPhone(client, '07700900180', {
@@ -274,7 +274,7 @@ describe('ensureCustomerForPhone', () => {
     expect(inserts).toHaveLength(1)
     expect(inserts[0]).toMatchObject({
       first_name: 'Jane',
-      last_name: 'Guest'
+      last_name: ''
     })
   })
 

@@ -208,11 +208,10 @@ export default function EventCheckInClient({ event }: { event: EventRecord }) {
           required
         />
         <Input
-          label="Last name"
+          label="Last name (optional)"
           value={newGuestDetails.lastName}
           onChange={(e) => setNewGuestDetails((current) => ({ ...current, lastName: e.target.value }))}
           autoComplete="family-name"
-          required
         />
       </div>
       <Input

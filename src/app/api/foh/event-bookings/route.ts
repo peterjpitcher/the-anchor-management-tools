@@ -18,7 +18,7 @@ const CreateFohEventBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32).optional(),
   email: z.string().trim().email().max(255).optional(),
   first_name: z.string().trim().min(1).max(80).optional(),
-  last_name: z.string().trim().min(1).max(80).optional(),
+  last_name: z.string().trim().max(80).optional(),
   walk_in: z.boolean().optional(),
   walk_in_guest_name: z.string().trim().max(120).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
@@ -41,12 +41,6 @@ const CreateFohEventBookingSchema = z.object({
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Enter the customer first name'
-      })
-    }
-    if (!value.last_name?.trim()) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Enter the customer last name'
       })
     }
   }
@@ -111,7 +105,7 @@ async function createWalkInCustomer(
 ): Promise<{ customerId: string; syntheticPhone: string }> {
   const guestNameParts = splitWalkInGuestName(input.guestName)
   const firstName = input.firstName?.trim() || guestNameParts.firstName || 'Walk-in'
-  const lastName = input.lastName?.trim() || guestNameParts.lastName || 'Guest'
+  const lastName = input.lastName?.trim() || guestNameParts.lastName || ''
   const sanitizedEmail = typeof input.email === 'string' ? input.email.trim().toLowerCase() || null : null
   // Email is optional enrichment — never let a lower(email) unique-index
   // collision block walk-in creation. On such a 23505 we drop the email and
