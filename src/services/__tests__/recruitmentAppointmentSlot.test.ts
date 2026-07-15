@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createRecruitmentAppointmentSlot, createRecruitmentAppointmentSlots } from '../recruitment'
+import {
+  createRecruitmentAppointmentSlot,
+  createRecruitmentAppointmentSlots,
+  restoreRecruitmentAppointmentSlot,
+} from '../recruitment'
 
 function createInsertMock() {
   const select = vi.fn().mockResolvedValue({ data: [], error: null })
@@ -86,5 +90,33 @@ describe('recruitment appointment slots', () => {
         ends_at: '2099-01-01T16:00:00.000Z',
       }),
     ])
+  })
+
+  it('reopens a future cancelled slot when it is restored', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'slot-1', status: 'cancelled', starts_at: '2099-01-01T12:00:00.000Z' },
+      error: null,
+    })
+    const existingEq = vi.fn(() => ({ maybeSingle }))
+    const existingSelect = vi.fn(() => ({ eq: existingEq }))
+    const single = vi.fn().mockResolvedValue({
+      data: { id: 'slot-1', status: 'open', archived_at: null, archived_by: null },
+      error: null,
+    })
+    const updateSelect = vi.fn(() => ({ single }))
+    const updateEq = vi.fn(() => ({ select: updateSelect }))
+    const update = vi.fn(() => ({ eq: updateEq }))
+    const from = vi.fn()
+      .mockReturnValueOnce({ select: existingSelect })
+      .mockReturnValueOnce({ update })
+
+    const slot = await restoreRecruitmentAppointmentSlot('slot-1', { from } as any)
+
+    expect(update).toHaveBeenCalledWith({
+      status: 'open',
+      archived_at: null,
+      archived_by: null,
+    })
+    expect(slot).toEqual(expect.objectContaining({ id: 'slot-1', status: 'open' }))
   })
 })
