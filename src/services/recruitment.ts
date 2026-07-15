@@ -1965,6 +1965,35 @@ export async function cancelRecruitmentAppointmentSlot(
   return data
 }
 
+export async function restoreRecruitmentAppointmentSlot(
+  slotId: string,
+  supabase: GenericClient = createAdminClient()
+) {
+  const { data: slot, error: slotError } = await supabase
+    .from('recruitment_appointment_slots')
+    .select('id, status, starts_at')
+    .eq('id', slotId)
+    .maybeSingle()
+
+  if (slotError) throw slotError
+  if (!slot) throw new Error('Slot not found.')
+  if (new Date(slot.starts_at) <= new Date()) throw new Error('Past slots cannot be restored.')
+
+  const { data, error } = await supabase
+    .from('recruitment_appointment_slots')
+    .update({
+      status: slot.status === 'cancelled' ? 'open' : slot.status,
+      archived_at: null,
+      archived_by: null,
+    })
+    .eq('id', slotId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export async function setRecruitmentArchiveState(
   table: 'recruitment_applications' | 'recruitment_appointment_slots' | 'recruitment_candidate_appointments',
   id: string,

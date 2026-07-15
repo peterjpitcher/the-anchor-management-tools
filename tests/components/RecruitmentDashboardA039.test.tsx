@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RecruitmentDashboardClient from '@/app/(authenticated)/recruitment/_components/RecruitmentDashboardClient'
-import { scheduleRecruitmentInterviewForCandidateAction } from '@/app/actions/recruitment'
+import {
+  cancelRecruitmentSlotAction,
+  scheduleRecruitmentInterviewForCandidateAction,
+} from '@/app/actions/recruitment'
 
 vi.mock('@/app/actions/recruitment', () => {
   const ok = vi.fn().mockResolvedValue({ success: true, message: 'Done.' })
@@ -217,6 +220,66 @@ describe('RecruitmentDashboardClient A-039', () => {
     expect(screen.getByRole('columnheader', { name: 'Closes' })).toBeInTheDocument()
     expect(screen.getByText('Wed, 1 Jul 2026, 12:00')).toBeInTheDocument()
     expect(screen.getByText('Wed, 1 Jul 2026, 14:00')).toBeInTheDocument()
+  })
+
+  it('shows clear edit and delete controls for open slots', async () => {
+    const data = makeInitialData()
+    data.slots = [{
+      id: 'slot-1',
+      type: 'interview',
+      starts_at: '2099-07-01T11:00:00.000Z',
+      ends_at: '2099-07-01T12:00:00.000Z',
+      location: 'The Anchor',
+      status: 'open',
+      archived_at: null,
+    }]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+    fireEvent.click(screen.getByRole('tab', { name: /Schedule/i }))
+
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByRole('button', { name: 'Save slot' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete', exact: true }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete slot' })
+    expect(cancelRecruitmentSlotAction).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => expect(cancelRecruitmentSlotAction).toHaveBeenCalledTimes(1))
+    const formData = (cancelRecruitmentSlotAction as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData
+    expect(formData.get('slot_id')).toBe('slot-1')
+  })
+
+  it('routes booked slots to the appointment instead of allowing deletion', () => {
+    const data = makeInitialData()
+    data.slots = [{
+      id: 'slot-1',
+      type: 'interview',
+      starts_at: '2099-07-01T11:00:00.000Z',
+      ends_at: '2099-07-01T12:00:00.000Z',
+      location: 'The Anchor',
+      status: 'booked',
+      archived_at: null,
+    }]
+    data.appointments = [{
+      id: 'appointment-1',
+      slot_id: 'slot-1',
+      type: 'interview',
+      status: 'scheduled',
+      scheduled_start: '2099-07-01T11:00:00.000Z',
+      calendar_sync_status: 'synced',
+      candidate: { first_name: 'Megan', last_name: 'Daily' },
+      application: { job_posting: { title: 'Kitchen Team' } },
+    }]
+
+    render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
+    fireEvent.click(screen.getByRole('tab', { name: /Schedule/i }))
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete', exact: true })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage booking' }))
+    expect(screen.getByRole('dialog', { name: 'Megan Daily' })).toBeInTheDocument()
   })
 
   it('lets managers schedule an interview from the candidate drawer', () => {
