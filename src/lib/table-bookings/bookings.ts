@@ -184,6 +184,7 @@ export function mapTableBookingBlockedReason(reason?: string | null):
   | 'too_large_party'
   | 'customer_conflict'
   | 'in_past'
+  | 'slot_full'
   | 'blocked' {
   switch (reason) {
     case 'too_large_party':
@@ -198,6 +199,8 @@ export function mapTableBookingBlockedReason(reason?: string | null):
       return 'customer_conflict'
     case 'in_past':
       return 'in_past'
+    case 'slot_full':
+      return 'slot_full'
     case 'outside_hours':
     case 'hours_not_configured':
     case 'outside_service_window':

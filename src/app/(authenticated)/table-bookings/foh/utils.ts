@@ -236,6 +236,8 @@ export function mapFohBlockedReason(blockedReason?: string | null, reason?: stri
       return 'This customer already has an event booking at that time.'
     case 'in_past':
       return 'Selected time has already passed. Pick the current or next available time.'
+    case 'slot_full':
+      return 'This kitchen arrival window is full. Choose another time or use the pacing override if appropriate.'
     default:
       return 'Booking could not be created for the selected details.'
   }

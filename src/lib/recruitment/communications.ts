@@ -136,7 +136,7 @@ function formatSlotClock(value: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
+    hourCycle: 'h12',
     timeZone,
   }).formatToParts(value)
   const hour = parts.find(part => part.type === 'hour')?.value ?? ''

@@ -46,7 +46,7 @@ type NotificationChannelMeta = TableBookingNotificationChannel
 const CreateTableBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32),
   first_name: z.string().trim().min(1).max(100).optional(),
-  last_name: z.string().trim().min(1).max(100).optional(),
+  last_name: z.string().trim().max(100).optional(),
   email: z.string().trim().email().max(320).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/),
@@ -83,6 +83,7 @@ type TableBookingResponseData = {
     | 'too_large_party'
     | 'customer_conflict'
     | 'in_past'
+    | 'slot_full'
     | 'blocked'
     | null
   next_step_url: string | null
@@ -251,6 +252,8 @@ export async function POST(request: NextRequest) {
         // regular table-booking path.
         p_sunday_lunch: false,
         p_source: 'brand_site',
+        // Drinks do not use kitchen capacity.
+        p_bypass_pacing: payload.purpose === 'drinks',
         // High chairs are granted atomically inside the RPC (never via the
         // post-insert UPDATE below); outside bookings hold no indoor table.
         p_high_chair_count: payload.high_chair_count ?? 0,

@@ -187,6 +187,27 @@ describe('POST /api/table-bookings — structured persistence', () => {
     expect(supabase._tableBookingsUpdateEq).toHaveBeenCalledWith('id', BOOKING_ID)
   })
 
+  it('accepts an empty last name and bypasses kitchen pacing for drinks', async () => {
+    const supabase = buildSupabase()
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(supabase)
+
+    const response = await POST(buildRequest({
+      phone: '+447000000000',
+      first_name: 'Sam',
+      last_name: '',
+      date: '2026-04-24',
+      time: '19:00',
+      party_size: 4,
+      purpose: 'drinks',
+    }) as any)
+
+    expect(response.status).toBeLessThan(500)
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'create_table_booking_v05',
+      expect.objectContaining({ p_bypass_pacing: true }),
+    )
+  })
+
   // Sunday pre-order fields are now legacy input. The public POST path no
   // longer persists or validates those line items, regardless of flag value.
   it('does NOT call saveSundayPreorderByBookingId from the public POST path even with sunday_lunch=true', async () => {

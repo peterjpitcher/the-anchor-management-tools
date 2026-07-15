@@ -153,6 +153,46 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
     )
   })
 
+  it('bypasses kitchen pacing for a drinks booking', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 4,
+        purpose: 'drinks',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(db.rpc).toHaveBeenCalledWith(
+      'create_table_booking_v05',
+      expect.objectContaining({ p_bypass_pacing: true }),
+    )
+  })
+
+  it('creates a new customer booking without a last name', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        phone: '07700900000',
+        first_name: 'Sam',
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(db.rpc).toHaveBeenCalledTimes(1)
+  })
+
   it('returns 403 when a non-manager sets bypass_pacing and never calls the RPC', async () => {
     const db = createSupabaseMock({ roleRows: [{ roles: { name: 'staff' } }] })
     mockAuthSuccess(db)

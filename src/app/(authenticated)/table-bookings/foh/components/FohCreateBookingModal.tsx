@@ -274,10 +274,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
 
           {!selectedCustomer && createMode !== 'walk_in' && (
             <label className="text-xs font-medium text-gray-700">
-              Last name
+              Last name (optional)
               <input
                 type="text"
-                required={createMode !== 'management'}
                 value={createForm.last_name}
                 onChange={(event) => onSetCreateForm((current) => ({ ...current, last_name: event.target.value }))}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"

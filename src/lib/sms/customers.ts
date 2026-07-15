@@ -274,11 +274,11 @@ export async function ensureCustomerForPhone(
       ? providedFirstName
       : 'Unknown'
 
-    // Keep fallbacks compatible with customer validation rules (letters/spaces/-/').
-    // Numeric placeholders (e.g. last 4 digits) break `/customers` updates.
+    // The database column is non-null, but an empty string correctly records
+    // that the customer chose not to provide a last name.
     const fallbackLastName = providedLastName
       ? providedLastName
-      : 'Guest'
+      : ''
 
     const insertPayload = {
       first_name: fallbackFirstName,

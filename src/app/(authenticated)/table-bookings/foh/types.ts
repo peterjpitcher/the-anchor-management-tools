@@ -86,6 +86,7 @@ export type FohCreateBookingResponse = {
       | 'too_large_party'
       | 'customer_conflict'
       | 'in_past'
+      | 'slot_full'
       | 'blocked'
       | null
     next_step_url: string | null
