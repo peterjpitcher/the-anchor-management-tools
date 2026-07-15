@@ -14,6 +14,11 @@ import { logger } from '@/lib/logger'
 // Maximum seats bookable via SMS reply (groups larger than this are handled by phone)
 const SMS_REPLY_MAX_SEATS = 10
 
+// How far back to look for a promo the customer was sent, to decide whether a
+// numeric reply with no live booking window deserves a helpful fallback reply
+// (rather than silence). Keeps ordinary conversations from being hijacked.
+const FALLBACK_PROMO_LOOKBACK_DAYS = 45
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PromoContextRow = {
@@ -94,6 +99,133 @@ export async function findActivePromoContext(phoneNumber: string): Promise<Promo
   }
 }
 
+// ─── Late / Unmatched Reply Fallback ──────────────────────────────────────────
+
+type RecentPromoRow = {
+  event_id: string
+  customer_id: string
+  template_key: string
+  created_at: string
+}
+
+/**
+ * Find the most recent promo context for a phone number regardless of whether
+ * its reply window is still open. Used only to decide whether a numeric reply
+ * with no *active* window came from someone we actually promoted.
+ */
+async function findRecentPromoContext(phoneNumber: string): Promise<RecentPromoRow | null> {
+  try {
+    const db = createAdminClient()
+    const since = new Date(
+      Date.now() - FALLBACK_PROMO_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString()
+    const { data, error } = await db
+      .from('sms_promo_context' as any) // not in generated types yet
+      .select('event_id, customer_id, template_key, created_at')
+      .eq('phone_number', phoneNumber)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('reply-to-book fallback: recent promo lookup failed', {
+        metadata: { phoneNumber, error: error.message },
+      })
+      return null
+    }
+
+    return (data as RecentPromoRow | null) ?? null
+  } catch (err) {
+    logger.error('reply-to-book fallback: unexpected error looking up recent promo', {
+      error: err instanceof Error ? err : new Error(String(err)),
+      metadata: { phoneNumber },
+    })
+    return null
+  }
+}
+
+/**
+ * Flag the inbound message so staff tools can surface booking replies that the
+ * system could not auto-book. Best-effort — never throws.
+ */
+async function markInboundNeedsAttention(
+  db: ReturnType<typeof createAdminClient>,
+  inboundMessageId?: string | null
+): Promise<void> {
+  if (!inboundMessageId) return
+  try {
+    const { data: row } = await db
+      .from('messages')
+      .select('metadata')
+      .eq('id', inboundMessageId)
+      .maybeSingle()
+
+    const existing =
+      row && typeof (row as { metadata?: unknown }).metadata === 'object' && (row as { metadata?: unknown }).metadata
+        ? ((row as { metadata: Record<string, unknown> }).metadata)
+        : {}
+
+    await db
+      .from('messages')
+      .update({ metadata: { ...existing, reply_to_book_unbooked: true } })
+      .eq('id', inboundMessageId)
+  } catch (err) {
+    logger.warn('reply-to-book fallback: failed to flag inbound message', {
+      metadata: { inboundMessageId, error: err instanceof Error ? err.message : String(err) },
+    })
+  }
+}
+
+/**
+ * When a customer sends a seat count but there is no live booking window, don't
+ * go silent. If they were promoted recently, send a gentle "give us a ring"
+ * fallback and flag the message for staff. If they were never promoted, stay
+ * silent (return null) so normal conversations are left alone.
+ */
+async function buildLateReplyFallback(
+  phoneNumber: string,
+  options: ReplyToBookOptions
+): Promise<{ handled: true; response: string } | null> {
+  const recent = await findRecentPromoContext(phoneNumber)
+  if (!recent) return null
+
+  const db = createAdminClient()
+  const venuePhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || ''
+
+  const { data: eventRow } = await db
+    .from('events')
+    .select('name, start_datetime')
+    .eq('id', recent.event_id)
+    .maybeSingle()
+
+  const eventName = (eventRow as { name?: string } | null)?.name ?? 'that event'
+  const startIso = (eventRow as { start_datetime?: string | null } | null)?.start_datetime
+  const isUpcoming = startIso ? new Date(startIso).getTime() > Date.now() : true
+
+  // If they already have a live booking for this event, tell them that instead.
+  const { data: existingBooking } = await db
+    .from('bookings')
+    .select('id')
+    .eq('event_id', recent.event_id)
+    .eq('customer_id', recent.customer_id)
+    .in('status', ['confirmed', 'pending_payment'])
+    .maybeSingle()
+
+  await markInboundNeedsAttention(db, options.inboundMessageId)
+
+  let response: string
+  if (existingBooking) {
+    response = `Looks like you're already booked in for ${eventName}! See you there.`
+  } else if (isUpcoming) {
+    response = `Thanks! We couldn't add that automatically — give us a ring on ${venuePhone} and we'll get you booked in for ${eventName}.`
+  } else {
+    response = `Thanks for your reply! ${eventName} has already been and gone — give us a ring on ${venuePhone} for what's coming up next.`
+  }
+
+  return { handled: true, response }
+}
+
 // ─── Reply-to-Book Handler ────────────────────────────────────────────────────
 
 /**
@@ -116,9 +248,14 @@ export async function handleReplyToBook(
   const seats = parseSeatCount(messageBody)
   if (seats === null) return { handled: false }
 
-  // 2. Find active promo context — if none, this is not a reply-to-book message
+  // 2. Find active promo context. If none, avoid a silent failure: when the
+  //    sender was promoted recently, send a helpful fallback and flag the
+  //    message for staff; otherwise fall through to normal inbound handling.
   const promo = await findActivePromoContext(phoneNumber)
-  if (!promo) return { handled: false }
+  if (!promo) {
+    const fallback = await buildLateReplyFallback(phoneNumber, options)
+    return fallback ?? { handled: false }
+  }
 
   const venuePhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || ''
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || ''

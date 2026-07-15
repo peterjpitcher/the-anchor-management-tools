@@ -69,6 +69,7 @@ const EVENT_ROW = {
 function buildDbMock(overrides: {
   promoContextData?: unknown
   promoContextError?: unknown
+  recentPromoData?: unknown
   capacityRows?: unknown
   capacityError?: unknown
   eventData?: unknown
@@ -80,6 +81,7 @@ function buildDbMock(overrides: {
   const {
     promoContextData = PROMO_CONTEXT,
     promoContextError = null,
+    recentPromoData = null,
     capacityRows = [CAPACITY_ROW],
     capacityError = null,
     eventData = EVENT_ROW,
@@ -91,18 +93,29 @@ function buildDbMock(overrides: {
 
   // Chainable builder that tracks the table being accessed
   let currentTable = ''
+  // Distinguish the active-window lookup (filters on reply_window_expires_at via
+  // .gt) from the recent-promo fallback lookup (filters on created_at via .gte).
+  let promoQueryKind: 'active' | 'recent' = 'active'
 
   const chain: Record<string, unknown> = {}
 
   chain.from = vi.fn().mockImplementation((table: string) => {
     currentTable = table
+    if (table === 'sms_promo_context') promoQueryKind = 'active'
     return chain
   })
 
   chain.select = vi.fn().mockReturnThis()
   chain.eq = vi.fn().mockReturnThis()
   chain.in = vi.fn().mockReturnThis()
-  chain.gt = vi.fn().mockReturnThis()
+  chain.gt = vi.fn().mockImplementation((field: string) => {
+    if (field === 'reply_window_expires_at') promoQueryKind = 'active'
+    return chain
+  })
+  chain.gte = vi.fn().mockImplementation((field: string) => {
+    if (field === 'created_at') promoQueryKind = 'recent'
+    return chain
+  })
   chain.order = vi.fn().mockReturnThis()
   chain.limit = vi.fn().mockReturnThis()
   chain.update = vi.fn().mockReturnThis()
@@ -112,6 +125,9 @@ function buildDbMock(overrides: {
       if (chain.update && (chain.update as ReturnType<typeof vi.fn>).mock.calls.length > 0) {
         // This is the UPDATE call to mark booking_created = true
         return Promise.resolve({ data: { id: PROMO_CONTEXT.id }, error: updatePromoError })
+      }
+      if (promoQueryKind === 'recent') {
+        return Promise.resolve({ data: recentPromoData, error: null })
       }
       return Promise.resolve({ data: promoContextError ? null : promoContextData, error: promoContextError })
     }
@@ -206,13 +222,57 @@ describe('handleReplyToBook', () => {
     expect(mockCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('returns handled=false when no active promo context exists', async () => {
-    const db = buildDbMock({ promoContextData: null })
+  it('returns handled=false when no active promo context exists and sender was never promoted', async () => {
+    const db = buildDbMock({ promoContextData: null, recentPromoData: null })
     mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
 
     const result = await handleReplyToBook(PHONE, '2')
 
     expect(result).toEqual({ handled: false })
+    expect(mockCreateBooking).not.toHaveBeenCalled()
+  })
+
+  it('sends a fallback instead of going silent when a promoted customer replies after the window', async () => {
+    const db = buildDbMock({
+      promoContextData: null, // window closed → not an active booking reply
+      recentPromoData: {
+        event_id: 'event-uuid-001',
+        customer_id: 'cust-uuid-001',
+        template_key: 'event_cross_promo_7d',
+        created_at: '2026-07-10T08:00:00Z',
+      },
+      eventData: { id: 'event-uuid-001', name: 'Quiz Night', start_datetime: '2099-01-01T19:00:00Z' },
+      existingBookingData: null,
+    })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    const result = await handleReplyToBook(PHONE, '2')
+
+    expect(result.handled).toBe(true)
+    expect(result.response).toContain('give us a ring')
+    expect(result.response).toContain('Quiz Night')
+    expect(mockCreateBooking).not.toHaveBeenCalled()
+  })
+
+  it('tells an already-booked customer they are booked in, via the fallback', async () => {
+    const db = buildDbMock({
+      promoContextData: null,
+      recentPromoData: {
+        event_id: 'event-uuid-001',
+        customer_id: 'cust-uuid-001',
+        template_key: 'event_cross_promo_7d',
+        created_at: '2026-07-10T08:00:00Z',
+      },
+      eventData: { id: 'event-uuid-001', name: 'Quiz Night', start_datetime: '2099-01-01T19:00:00Z' },
+      existingBookingData: { id: 'booking-uuid-001' },
+    })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    const result = await handleReplyToBook(PHONE, '2')
+
+    expect(result.handled).toBe(true)
+    expect(result.response).toContain('already booked')
+    expect(mockCreateBooking).not.toHaveBeenCalled()
   })
 
   it('returns handled=true with big-group response when seats > 10', async () => {

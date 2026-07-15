@@ -7,13 +7,16 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { formatDateInLondon, startOfLondonDayUtc } from '@/lib/dateUtils'
+import { formatDateInLondon, startOfLondonDayUtc, parseLondonDateTimeLocal } from '@/lib/dateUtils'
 import { sendSMS } from '@/lib/twilio'
 import { EventMarketingService } from '@/services/event-marketing'
 import { logger } from '@/lib/logger'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 
-const EVENT_PROMO_REPLY_WINDOW_HOURS = parsePositiveIntEnv('EVENT_PROMO_REPLY_WINDOW_HOURS', 48)
+// Reply-to-book windows stay open until the event starts (see computeReplyWindowExpiry),
+// bounded above by this safety cap for when the start time is unknown or far off.
+const EVENT_PROMO_REPLY_WINDOW_MAX_HOURS = parsePositiveIntEnv('EVENT_PROMO_REPLY_WINDOW_MAX_HOURS', 336)
+const EVENT_PROMO_REPLY_WINDOW_FLOOR_HOURS = 2
 const EVENT_PROMO_MIN_CAPACITY = parsePositiveIntEnv('EVENT_PROMO_MIN_CAPACITY', 10)
 const EVENT_PROMO_FREQUENCY_CAP_DAYS = parsePositiveIntEnv('EVENT_PROMO_FREQUENCY_CAP_DAYS', 7)
 const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv(
@@ -47,6 +50,66 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
   if (!raw) return fallback
   const parsed = Number.parseInt(raw, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+type EventTimingRow = {
+  start_datetime?: string | null
+  date?: string | null
+  time?: string | null
+}
+
+/**
+ * Resolve an event's start instant from its stored timing columns.
+ * Prefers start_datetime; falls back to date + time (London wall clock);
+ * finally date-only (end of the event day, so same-day replies still count).
+ */
+export function resolveEventStart(row: EventTimingRow | null | undefined): Date | null {
+  if (!row) return null
+  if (row.start_datetime) {
+    const d = new Date(row.start_datetime)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  if (row.date) {
+    const hhmm = row.time && /^\d{1,2}:\d{2}/.test(row.time) ? row.time.slice(0, 5) : '23:59'
+    return parseLondonDateTimeLocal(`${row.date}T${hhmm}`)
+  }
+  return null
+}
+
+/**
+ * Compute the reply-to-book window expiry. The window stays open right up until
+ * the event starts, so a customer who replies days after the promo (but before
+ * the event) still books automatically. Bounded below by a small floor (for
+ * near-now events) and above by EVENT_PROMO_REPLY_WINDOW_MAX_HOURS (safety cap
+ * used when the start time is unknown or unusually far off).
+ */
+export function computeReplyWindowExpiry(eventStart: Date | null, now: Date = new Date()): string {
+  const nowMs = now.getTime()
+  const capMs = nowMs + EVENT_PROMO_REPLY_WINDOW_MAX_HOURS * 60 * 60 * 1000
+  const floorMs = nowMs + EVENT_PROMO_REPLY_WINDOW_FLOOR_HOURS * 60 * 60 * 1000
+  const target = eventStart && !Number.isNaN(eventStart.getTime()) ? eventStart.getTime() : capMs
+  const bounded = Math.min(Math.max(target, floorMs), capMs)
+  return new Date(bounded).toISOString()
+}
+
+async function loadEventStart(
+  db: ReturnType<typeof createAdminClient>,
+  eventId: string
+): Promise<Date | null> {
+  const { data, error } = await db
+    .from('events')
+    .select('start_datetime, date, time')
+    .eq('id', eventId)
+    .maybeSingle()
+
+  if (error) {
+    logger.warn('Reply-window: failed to load event start; falling back to max window', {
+      metadata: { eventId, error: error.message },
+    })
+    return null
+  }
+
+  return resolveEventStart(data as EventTimingRow | null)
 }
 
 function withPromoOptOut(message: string): string {
@@ -298,9 +361,8 @@ export async function sendCrossPromoForEvent(
   })
 
   const isPaid = isPaidEvent(event.payment_mode)
-  const replyWindowExpiresAt = new Date(
-    Date.now() + EVENT_PROMO_REPLY_WINDOW_HOURS * 60 * 60 * 1000
-  ).toISOString()
+  const eventStart = await loadEventStart(db, event.id)
+  const replyWindowExpiresAt = computeReplyWindowExpiry(eventStart)
 
   // 4. Send to each customer
   for (const recipient of audienceRows) {
@@ -440,9 +502,8 @@ export async function sendFollowUpForEvent(
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
 
-  const replyWindowExpiresAt = new Date(
-    Date.now() + EVENT_PROMO_REPLY_WINDOW_HOURS * 60 * 60 * 1000
-  ).toISOString()
+  const eventStart = await loadEventStart(db, event.id)
+  const replyWindowExpiresAt = computeReplyWindowExpiry(eventStart)
 
   const templateKey = isPaid ? TEMPLATE_REMINDER_24H_PAID : TEMPLATE_REMINDER_24H_FREE
   const touchColumn = 'touch_24h_sent_at'

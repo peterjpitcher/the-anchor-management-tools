@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { sendCrossPromoForEvent, hasReachedDailyPromoLimit, sendFollowUpForEvent } from '../cross-promo'
+import { sendCrossPromoForEvent, hasReachedDailyPromoLimit, sendFollowUpForEvent, resolveEventStart, computeReplyWindowExpiry } from '../cross-promo'
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -37,6 +37,7 @@ vi.mock('@/lib/dateUtils', () => ({
     return 'Saturday, 18 April 2026'
   }),
   startOfLondonDayUtc: vi.fn().mockReturnValue(new Date('2026-04-16T00:00:00Z')),
+  parseLondonDateTimeLocal: vi.fn((v: string | null | undefined) => (v ? new Date('2026-07-17T18:00:00Z') : null)),
 }))
 
 // getSmartFirstName is pure — mock it simply
@@ -149,6 +150,10 @@ function buildDbMock(overrides: {
     is: vi.fn().mockImplementation(() => db),
     gt: vi.fn().mockReturnValue(Promise.resolve({ error: null })),
     gte: vi.fn().mockReturnValue(Promise.resolve({ count: 0, error: null })),
+    // Used by loadEventStart() to read the event's timing columns
+    maybeSingle: vi.fn().mockReturnValue(
+      Promise.resolve({ data: { start_datetime: null, date: FREE_EVENT.date, time: null }, error: null })
+    ),
   }
 
   return db
@@ -635,5 +640,70 @@ describe('sendFollowUpForEvent', () => {
       (call: string[]) => call[0] === 'promo_sequence'
     )
     expect(promoSequenceCalls.length).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Reply-window helpers
+// ---------------------------------------------------------------------------
+
+describe('resolveEventStart', () => {
+  it('prefers start_datetime when present', () => {
+    const result = resolveEventStart({ start_datetime: '2026-07-17T19:00:00Z', date: '2026-07-17', time: '19:00' })
+    expect(result?.toISOString()).toBe('2026-07-17T19:00:00.000Z')
+  })
+
+  it('falls back to date + time when start_datetime is missing', () => {
+    const result = resolveEventStart({ start_datetime: null, date: '2026-07-17', time: '19:00' })
+    // parseLondonDateTimeLocal is mocked to return a fixed instant for any input
+    expect(result?.toISOString()).toBe('2026-07-17T18:00:00.000Z')
+  })
+
+  it('falls back to date-only (end of day) when time is missing', () => {
+    const result = resolveEventStart({ date: '2026-07-17' })
+    expect(result?.toISOString()).toBe('2026-07-17T18:00:00.000Z')
+  })
+
+  it('returns null when there is no timing information', () => {
+    expect(resolveEventStart(null)).toBeNull()
+    expect(resolveEventStart({})).toBeNull()
+  })
+})
+
+describe('computeReplyWindowExpiry', () => {
+  const NOW = new Date('2026-07-10T08:00:00Z')
+
+  it('keeps the window open until the event starts when within the cap', () => {
+    const eventStart = new Date('2026-07-17T19:00:00Z') // 7 days out
+    expect(computeReplyWindowExpiry(eventStart, NOW)).toBe(eventStart.toISOString())
+  })
+
+  it('caps the window at the max hours when the event is far off', () => {
+    const eventStart = new Date('2026-08-30T19:00:00Z') // ~51 days out, beyond 336h cap
+    const expected = new Date(NOW.getTime() + 336 * 60 * 60 * 1000).toISOString()
+    expect(computeReplyWindowExpiry(eventStart, NOW)).toBe(expected)
+  })
+
+  it('applies the floor for events that are effectively now/past', () => {
+    const eventStart = new Date('2026-07-10T08:30:00Z') // 30 min out, below 2h floor
+    const expected = new Date(NOW.getTime() + 2 * 60 * 60 * 1000).toISOString()
+    expect(computeReplyWindowExpiry(eventStart, NOW)).toBe(expected)
+  })
+
+  it('falls back to the cap when the event start is unknown', () => {
+    const expected = new Date(NOW.getTime() + 336 * 60 * 60 * 1000).toISOString()
+    expect(computeReplyWindowExpiry(null, NOW)).toBe(expected)
+  })
+
+  it('would have booked the reported real-world case (reply 3 days after a 7-day promo)', () => {
+    // Promo context created 2026-07-09 23:00, event 2026-07-17 19:00.
+    // Under the old flat 48h window this expired 2026-07-11 23:00 and the
+    // customer's reply on 2026-07-13 was ignored. The new window stays open
+    // until the event starts, so the same reply now lands inside it.
+    const contextCreated = new Date('2026-07-09T23:00:00Z')
+    const eventStart = new Date('2026-07-17T19:00:00Z')
+    const reply = new Date('2026-07-13T11:22:00Z')
+    const expiry = new Date(computeReplyWindowExpiry(eventStart, contextCreated))
+    expect(reply.getTime()).toBeLessThan(expiry.getTime())
   })
 })
