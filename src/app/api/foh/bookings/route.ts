@@ -27,7 +27,7 @@ const CreateFohTableBookingSchema = z.object({
   phone: z.string().trim().min(7).max(32).optional(),
   email: z.string().trim().email().max(255).optional(),
   first_name: z.string().trim().min(1).max(80).optional(),
-  last_name: z.string().trim().min(1).max(80).optional(),
+  last_name: z.string().trim().max(80).optional(),
   walk_in: z.boolean().optional(),
   walk_in_guest_name: z.string().trim().max(120).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -65,12 +65,6 @@ const CreateFohTableBookingSchema = z.object({
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Enter the customer first name'
-      })
-    }
-    if (!value.last_name?.trim()) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Enter the customer last name'
       })
     }
   }
@@ -139,7 +133,7 @@ async function createWalkInCustomer(
 ): Promise<{ customerId: string; syntheticPhone: string }> {
   const guestNameParts = splitWalkInGuestName(input.guestName)
   const firstName = input.firstName?.trim() || guestNameParts.firstName || 'Walk-in'
-  const lastName = input.lastName?.trim() || guestNameParts.lastName || 'Guest'
+  const lastName = input.lastName?.trim() || guestNameParts.lastName || ''
   const sanitizedEmail = typeof input.email === 'string' ? input.email.trim().toLowerCase() || null : null
   // Email is optional enrichment — never let a lower(email) unique-index
   // collision block walk-in creation. On such a 23505 we drop the email and
@@ -781,6 +775,7 @@ type FohCreateBookingResponseData = {
     | 'too_large_party'
     | 'customer_conflict'
     | 'in_past'
+    | 'slot_full'
     | 'blocked'
     | null
   next_step_url: string | null
@@ -1154,9 +1149,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Walk-ins are at-arrival and always bypass pacing; advance FOH bookings are
-  // subject to pacing unless a manager/super_admin explicitly overrides.
-  let bypassPacing = payload.walk_in === true
+  // Walk-ins and drinks never consume kitchen pacing. Advance food bookings
+  // are subject to pacing unless a manager/super_admin explicitly overrides.
+  // Drinks do not add kitchen covers, so they must never be blocked by the
+  // food-only kitchen pacing gate.
+  let bypassPacing = payload.walk_in === true || payload.purpose === 'drinks'
   if (payload.bypass_pacing === true && payload.walk_in !== true) {
     const { data: roleRows } = await auth.supabase
       .from('user_roles')
