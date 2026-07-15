@@ -27,7 +27,7 @@ const CreateEventWaitlistSchema = z.object({
   event_id: z.string().uuid(),
   phone: z.string().trim().min(7).max(32),
   first_name: z.string().trim().min(1).max(100).optional(),
-  last_name: z.string().trim().min(1).max(100).optional(),
+  last_name: z.string().trim().max(100).optional(),
   email: z.string().trim().email().max(320).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   requested_seats: z.preprocess(

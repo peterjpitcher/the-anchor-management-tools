@@ -350,8 +350,8 @@ export function useFohCreateBooking(input: {
     const walkInNameParts = splitName(createForm.customer_name)
     const firstName = createForm.first_name.trim() || (isWalkIn ? walkInNameParts.firstName : undefined)
     const lastName = createForm.last_name.trim() || (isWalkIn ? walkInNameParts.lastName : undefined)
-    if (!isWalkIn && !isManagement && !selectedCustomer && (!firstName || !lastName)) {
-      setErrorMessage('Enter first name and last name for the new customer'); return
+    if (!isWalkIn && !isManagement && !selectedCustomer && !firstName) {
+      setErrorMessage('Enter a first name for the new customer'); return
     }
 
     if (createForm.purpose === 'event') {

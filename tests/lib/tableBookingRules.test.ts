@@ -6,6 +6,7 @@ describe('mapTableBookingBlockedReason', () => {
     expect(mapTableBookingBlockedReason('too_large_party')).toBe('too_large_party')
     expect(mapTableBookingBlockedReason('no_table')).toBe('no_table')
     expect(mapTableBookingBlockedReason('cut_off')).toBe('cut_off')
+    expect(mapTableBookingBlockedReason('slot_full')).toBe('slot_full')
   })
 
   it('maps hours-related reasons', () => {

@@ -32,7 +32,7 @@ const registerNewSchema = z.object({
   eventId: z.string().uuid(),
   phone: z.string().trim().min(3),
   firstName: z.string().trim().min(1, 'First name is required').max(80),
-  lastName: z.string().trim().min(1, 'Last name is required').max(80),
+  lastName: z.string().trim().max(80).optional(),
   email: z.string().trim().email('Enter a valid email').optional().or(z.literal('')),
 })
 
@@ -1059,7 +1059,7 @@ export async function registerNewGuest(input: z.infer<typeof registerNewSchema>)
   }
 
   const firstName = cleanName(parsed.data.firstName)
-  const lastName = cleanName(parsed.data.lastName)
+  const lastName = cleanName(parsed.data.lastName ?? '')
   const email = parsed.data.email ? parsed.data.email.trim().toLowerCase() : null
   const admin = createAdminClient()
   const customerResolution = await ensureCustomerForPhone(admin, normalizedPhone, {

@@ -36,7 +36,7 @@ const BookingItemSchema = z.object({
 
 const PublicBookingSchema = z.object({
     customer_first_name: z.string().min(1, 'First name is required').max(100),
-    customer_last_name: z.string().min(1).max(100).optional(),
+    customer_last_name: z.string().trim().max(100).optional(),
     contact_phone: z.string().min(5, 'Phone number is required'),
     contact_email: z.string().email().max(320).optional(),
     default_country_code: z.string().regex(/^\d{1,4}$/, 'default_country_code must be 1 to 4 digits').optional(),
