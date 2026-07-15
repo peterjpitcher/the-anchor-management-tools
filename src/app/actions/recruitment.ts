@@ -37,6 +37,7 @@ import {
   recordRecruitmentAppointmentOutcome,
   rescheduleRecruitmentAppointmentByStaff,
   rescoreRecruitmentApplication,
+  restoreRecruitmentAppointmentSlot,
   runRecruitmentRetentionCleanup,
   saveRecruitmentEmailTemplate,
   scheduleRecruitmentAppointmentByStaff,
@@ -908,9 +909,9 @@ export async function cancelRecruitmentSlotAction(formData: FormData): Promise<A
       newValues: { status: (slot as any).status ?? 'cancelled' },
     })
     revalidatePath('/recruitment')
-    return { success: true, data: slot, message: 'Slot cancelled.' }
+    return { success: true, data: slot, message: 'Slot deleted.' }
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to cancel slot.' }
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete slot.' }
   }
 }
 
@@ -982,7 +983,7 @@ export async function restoreRecruitmentSlotAction(formData: FormData): Promise<
     const user = await requireRecruitmentPermission('edit')
     const slotId = formString(formData, 'slot_id')
     if (!slotId) throw new Error('Slot ID is required.')
-    const slot = await setRecruitmentArchiveState('recruitment_appointment_slots', slotId, false, user.id)
+    const slot = await restoreRecruitmentAppointmentSlot(slotId)
     await auditRecruitmentMutation({
       user,
       operation: 'restore',

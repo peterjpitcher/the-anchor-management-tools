@@ -42,7 +42,6 @@ import {
   addRecruitmentCandidateNoteAction,
   archiveRecruitmentApplicationAction,
   archiveRecruitmentAppointmentAction,
-  archiveRecruitmentSlotAction,
   bulkRecruitmentApplicationsAction,
   cancelRecruitmentAppointmentAction,
   cancelRecruitmentSlotAction,
@@ -1373,7 +1372,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const archiveApplicationFormAction = archiveRecruitmentApplicationAction as unknown as (formData: FormData) => Promise<void>
   const restoreApplicationFormAction = restoreRecruitmentApplicationAction as unknown as (formData: FormData) => Promise<void>
   const cancelSlotFormAction = cancelRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
-  const archiveSlotFormAction = archiveRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
   const restoreSlotFormAction = restoreRecruitmentSlotAction as unknown as (formData: FormData) => Promise<void>
   const cancelAppointmentFormAction = cancelRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
   const rescheduleAppointmentFormAction = rescheduleRecruitmentAppointmentAction as unknown as (formData: FormData) => Promise<void>
@@ -1403,6 +1401,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const selectedPosting = postings.find((posting: any) => posting.id === selectedPostingId) ?? null
   const selectedApplication = applications.find((application: any) => application.id === selectedApplicationId) ?? null
   const selectedSlot = slots.find((slot: any) => slot.id === selectedSlotId) ?? null
+  const selectedSlotAppointment = appointments.find((appointment: any) => (
+    appointment.slot_id === selectedSlot?.id && appointment.status === 'scheduled'
+  )) ?? null
   const selectedAppointment = appointments.find((appointment: any) => appointment.id === selectedAppointmentId) ?? null
   const selectedCommunication = communications.find((communication: any) => communication.id === selectedCommunicationId) ?? null
   const selectedTalentCandidate = talentCandidates.find((candidate: any) => candidate.id === selectedTalentCandidateId)
@@ -1774,6 +1775,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   function openSlotDetail(slot: any) {
     setSelectedSlotId(slot.id)
     setSlotDrawerOpen(true)
+  }
+
+  function openBookedSlotAppointment(slot: any) {
+    const appointment = appointments.find((candidateAppointment: any) => (
+      candidateAppointment.slot_id === slot.id && candidateAppointment.status === 'scheduled'
+    ))
+    if (appointment) {
+      openAppointmentDetail(appointment)
+      return
+    }
+    openSlotDetail(slot)
   }
 
   function openAppointmentDetail(appointment: any) {
@@ -3177,6 +3189,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <TableHead>Closes</TableHead>
                       <TableHead>Location</TableHead>
                       <TableHead>Status</TableHead>
+                      {permissions.canEdit && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -3191,6 +3204,46 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <TableCell>{formatSlotDateTime(slot.ends_at)}</TableCell>
                         <TableCell>{slot.location}</TableCell>
                         <TableCell>{slot.archived_at ? 'archived' : slot.status}</TableCell>
+                        {permissions.canEdit && (
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {!slot.archived_at && slot.status === 'open' && (
+                                <>
+                                  <Button type="button" size="sm" variant="secondary" onClick={() => openSlotDetail(slot)}>
+                                    Edit
+                                  </Button>
+                                  <ActionFeedbackForm
+                                    action={cancelSlotFormAction}
+                                    confirmTitle="Delete slot"
+                                    confirmMessage="Delete this slot? It will no longer be available for booking."
+                                    successMessage="Slot deleted."
+                                    onSuccess={() => router.refresh()}
+                                  >
+                                    <input type="hidden" name="slot_id" value={slot.id} />
+                                    <SubmitButton variant="danger">Delete</SubmitButton>
+                                  </ActionFeedbackForm>
+                                </>
+                              )}
+                              {!slot.archived_at && slot.status === 'booked' && (
+                                <Button type="button" size="sm" variant="secondary" onClick={() => openBookedSlotAppointment(slot)}>
+                                  Manage booking
+                                </Button>
+                              )}
+                              {slot.archived_at && (
+                                <ActionFeedbackForm
+                                  action={restoreSlotFormAction}
+                                  confirmTitle="Restore slot"
+                                  confirmMessage="Restore this slot?"
+                                  successMessage="Slot restored."
+                                  onSuccess={() => router.refresh()}
+                                >
+                                  <input type="hidden" name="slot_id" value={slot.id} />
+                                  <SubmitButton variant="secondary">Restore</SubmitButton>
+                                </ActionFeedbackForm>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -3298,7 +3351,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   <p>{selectedSlot.archived_at ? 'archived' : selectedSlot.status}</p>
                 </div>
               </div>
-              {permissions.canEdit && (
+              {permissions.canEdit && !selectedSlot.archived_at && selectedSlot.status === 'open' && (
                 <form action={slotUpdateAction} className="space-y-3">
                   <input type="hidden" name="slot_id" value={selectedSlot.id} />
                   <Field label="Type">
@@ -3318,25 +3371,53 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   </div>
                 </form>
               )}
-              {permissions.canEdit && (
+              {!selectedSlot.archived_at && selectedSlot.status === 'booked' && (
+                <div className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
+                  <p>This slot is booked. Reschedule or cancel the appointment before changing the slot.</p>
+                  {selectedSlotAppointment && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="mt-3"
+                      onClick={() => {
+                        setSlotDrawerOpen(false)
+                        openAppointmentDetail(selectedSlotAppointment)
+                      }}
+                    >
+                      Manage booking
+                    </Button>
+                  )}
+                </div>
+              )}
+              {permissions.canEdit && !selectedSlot.archived_at && selectedSlot.status === 'open' && (
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                   <ActionFeedbackForm
                     action={cancelSlotFormAction}
-                    confirmTitle="Cancel slot"
-                    confirmMessage="Cancel this recruitment slot?"
-                    successMessage="Slot cancelled."
+                    confirmTitle="Delete slot"
+                    confirmMessage="Delete this slot? It will no longer be available for booking."
+                    successMessage="Slot deleted."
+                    onSuccess={() => {
+                      setSlotDrawerOpen(false)
+                      router.refresh()
+                    }}
                   >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
-                    <SubmitButton variant="secondary">Cancel slot</SubmitButton>
+                    <SubmitButton variant="danger">Delete slot</SubmitButton>
                   </ActionFeedbackForm>
+                </div>
+              )}
+              {permissions.canEdit && selectedSlot.archived_at && (
+                <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                   <ActionFeedbackForm
-                    action={selectedSlot.archived_at ? restoreSlotFormAction : archiveSlotFormAction}
-                    confirmTitle={selectedSlot.archived_at ? 'Restore slot' : 'Archive slot'}
-                    confirmMessage={selectedSlot.archived_at ? 'Restore this slot?' : 'Archive this slot?'}
-                    successMessage={selectedSlot.archived_at ? 'Slot restored.' : 'Slot archived.'}
+                    action={restoreSlotFormAction}
+                    confirmTitle="Restore slot"
+                    confirmMessage="Restore this slot?"
+                    successMessage="Slot restored."
+                    onSuccess={() => router.refresh()}
                   >
                     <input type="hidden" name="slot_id" value={selectedSlot.id} />
-                    <SubmitButton variant="secondary">{selectedSlot.archived_at ? 'Restore slot' : 'Archive slot'}</SubmitButton>
+                    <SubmitButton variant="secondary">Restore slot</SubmitButton>
                   </ActionFeedbackForm>
                 </div>
               )}
