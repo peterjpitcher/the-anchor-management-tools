@@ -1345,7 +1345,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [communicationDrawerOpen, setCommunicationDrawerOpen] = useState(false)
   const [selectedTalentCandidateId, setSelectedTalentCandidateId] = useState<string | null>(null)
   const [talentDrawerOpen, setTalentDrawerOpen] = useState(false)
-  const [emailDraft, setEmailDraft] = useState<{ type: string; subject: string; body: string; error?: string } | null>(null)
+  const [emailDraft, setEmailDraft] = useState<{ type: string; subject: string; body: string; runId?: string | null; error?: string } | null>(null)
   const [emailSendState, setEmailSendState] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [printableText, setPrintableText] = useState<string | null>(null)
   const [clientMessage, setClientMessage] = useState<string | null>(null)
@@ -1591,6 +1591,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
       type,
       subject: (result.data as any).subject,
       body: (result.data as any).body,
+      runId: (result.data as any).runId ?? null,
     })
   }
 
@@ -2158,6 +2159,36 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
                   {drawerTab === 'overview' && (
                     <div className="space-y-4">
+                      <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Interview booking link</p>
+                        {!permissions.canSend ? (
+                          <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
+                        ) : !candidateHasEmail ? (
+                          <p className="text-sm text-text-muted">Add an email address before sending a booking link.</p>
+                        ) : !canSendInterviewBooking ? (
+                          <p className="text-sm text-text-muted">An interview booking link is not available at this stage.</p>
+                        ) : (
+                          <>
+                            {selectedApplicationOpenInterviewSlots.length === 0 && (
+                              <p className="text-sm text-warning">No open interview slots are currently available.</p>
+                            )}
+                            <ActionFeedbackForm
+                              action={bookingInviteFormAction}
+                              successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
+                              confirmTitle={interviewInviteSent ? 'Resend interview link' : undefined}
+                              confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
+                              onSuccess={() => router.refresh()}
+                            >
+                              <input type="hidden" name="application_id" value={selectedApplication.id} />
+                              <input type="hidden" name="type" value="interview" />
+                              <SubmitButton variant={interviewInviteSent ? 'secondary' : 'primary'}>
+                                {interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link'}
+                              </SubmitButton>
+                            </ActionFeedbackForm>
+                          </>
+                        )}
+                      </div>
+
                       {permissions.canEdit && (
                         <div className="space-y-2">
                           <p className="text-xs font-semibold uppercase text-text-muted">Stage</p>
@@ -2268,6 +2299,59 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <p className="text-xs font-semibold uppercase text-text-muted">Concerns</p>
                           <p className="text-sm text-text">{textList(selectedConcerns)}</p>
                         </div>
+                      </div>
+                      <div className="space-y-3 rounded border border-border bg-surface-2 p-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-text-muted">Ask about concerns</p>
+                          <p className="mt-1 text-sm text-text-muted">Drafts neutral questions from the application, recorded concerns, and the role requirements. Review everything before sending.</p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div>
+                            <p className="text-xs font-medium text-text-muted">Available concerns</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-text">{textList(selectedConcerns)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-text-muted">Role prerequisites</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-text">{selectedApplication.job_posting?.requirements || 'No role prerequisites recorded.'}</p>
+                            {selectedApplication.job_posting?.ai_scoring_notes && (
+                              <p className="mt-2 whitespace-pre-wrap text-xs text-text-muted">Screening notes: {selectedApplication.job_posting.ai_scoring_notes}</p>
+                            )}
+                          </div>
+                        </div>
+                        {!permissions.canSend ? (
+                          <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
+                        ) : !candidateHasEmail ? (
+                          <p className="text-sm text-text-muted">Add an email address before drafting this follow-up.</p>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            icon={<SparklesIcon className="h-4 w-4" />}
+                            onClick={() => draftEmail(selectedApplication.id, 'concerns_follow_up')}
+                          >
+                            Draft concerns email
+                          </Button>
+                        )}
+                        {emailDraft?.type === 'concerns_follow_up' && emailDraft.error && (
+                          <p className="text-xs text-danger">{emailDraft.error}</p>
+                        )}
+                        <ActionStateMessage state={emailSendState} />
+                        {emailDraft?.type === 'concerns_follow_up' && !emailDraft.error && (
+                          <form key={emailDraft.runId ?? emailDraft.type} action={sendDecisionEmail} className="space-y-2">
+                            <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            <input type="hidden" name="type" value="concerns_follow_up" />
+                            {emailDraft.runId && <input type="hidden" name="ai_run_id" value={emailDraft.runId} />}
+                            <Input name="subject" defaultValue={emailDraft.subject} aria-label="Concerns email subject" />
+                            <Textarea name="body" defaultValue={emailDraft.body} rows={8} aria-label="Concerns email body" />
+                            {duplicateEmailWarning && (
+                              <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                                {duplicateEmailWarning}
+                              </p>
+                            )}
+                            <SubmitButton>Send reviewed email</SubmitButton>
+                          </form>
+                        )}
                       </div>
                       {extractedProfile(selectedApplication.candidate) && (
                         <div className="rounded border border-border bg-surface-2 p-3">
@@ -2529,7 +2613,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         <p className="text-xs font-semibold uppercase text-text-muted">Email composer</p>
                         {permissions.canSend ? (
                           <div className="flex flex-wrap gap-2">
-                            {['interview_invite', 'trial_invite', 'rejection', 'already_considered', 'offer'].map(type => (
+                            {['interview_invite', 'concerns_follow_up', 'trial_invite', 'rejection', 'already_considered', 'offer'].map(type => (
                               <Button
                                 key={type}
                                 type="button"
@@ -2548,10 +2632,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         {emailDraft?.error && <p className="text-xs text-danger">{emailDraft.error}</p>}
                         <ActionStateMessage state={emailSendState} />
                         {emailDraft && !emailDraft.error && (
-                          <form action={sendDecisionEmail} className="space-y-2">
+                          <form key={emailDraft.runId ?? emailDraft.type} action={sendDecisionEmail} className="space-y-2">
                             <input type="hidden" name="application_id" value={selectedApplication.id} />
+                            {emailDraft.runId && <input type="hidden" name="ai_run_id" value={emailDraft.runId} />}
                             <Select name="type" defaultValue={emailDraft.type}>
                               <option value="interview_invite">Interview invite</option>
+                              <option value="concerns_follow_up">Concerns follow-up</option>
                               <option value="trial_invite">Trial invite</option>
                               <option value="rejection">Rejection</option>
                               <option value="already_considered">Already considered</option>
@@ -3713,6 +3799,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                       <Field label="Type">
                         <Select name="type" defaultValue={template.type}>
                           <option value="interview_invite">Interview invite</option>
+                          <option value="concerns_follow_up">Concerns follow-up</option>
                           <option value="trial_invite">Trial invite</option>
                           <option value="rejection">Rejection</option>
                           <option value="already_considered">Already considered</option>

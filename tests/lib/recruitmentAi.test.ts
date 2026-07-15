@@ -252,4 +252,47 @@ describe('recruitment AI guardrails', () => {
       status: 'success',
     }))
   })
+
+  it('turns concerns into neutral candidate questions without exposing internal assessment', async () => {
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'gpt-4o-mini',
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              subject: 'A few questions about your application',
+              body: 'Hi Jane, could you confirm your evening availability?',
+            }),
+          },
+        }],
+        usage: {
+          prompt_tokens: 80,
+          completion_tokens: 30,
+          total_tokens: 110,
+        },
+      }),
+    })
+
+    const { supabase } = mockSupabase()
+
+    const result = await draftRecruitmentEmail(supabase, {
+      applicationId: 'application-1',
+      candidateId: 'candidate-1',
+      type: 'concerns_follow_up',
+      templateSubject: 'A few questions about your application',
+      templateBody: 'Hi {{first_name}}, please answer a few questions.',
+      context: {
+        ai_concerns: ['Evening availability is unclear'],
+        role_requirements: 'Must be available on Friday and Saturday evenings.',
+      },
+    })
+
+    expect(result.result?.body).toContain('confirm your evening availability')
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.messages[0].content).toContain('ask no more than four clear, neutral, job-relevant questions')
+    expect(body.messages[0].content).toContain('Do not mention AI, scores, flags, internal notes, concerns')
+    expect(body.messages[0].content).toContain('Do not ask about or infer protected characteristics')
+    expect(body.messages[0].content).toContain('Do not promise an interview')
+  })
 })

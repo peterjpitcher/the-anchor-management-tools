@@ -97,6 +97,8 @@ const application = {
   job_posting: {
     title: 'Bartender',
     application_closing_date: '2026-07-31',
+    requirements: 'Must be available for evenings and weekends.',
+    ai_scoring_notes: 'Confirm reliable travel after late shifts.',
   },
 }
 
@@ -494,6 +496,51 @@ describe('recruitment communications safety', () => {
         'I enjoy busy customer-facing work.',
         'bar experience',
       ]),
+    })
+  })
+
+  it('grounds concerns follow-up drafts in the application and role prerequisites', async () => {
+    draftRecruitmentEmail.mockResolvedValue({
+      runId: 'run-concerns',
+      result: {
+        subject: 'A few questions about your application',
+        body: 'Hi {{first_name}}, could you confirm your evening availability and travel plans?',
+      },
+    })
+
+    const supabase = mockSupabase({
+      recruitment_applications: maybeSingleChain({ data: {
+        ...application,
+        availability: 'Weekdays only',
+        relevant_experience_answer: 'One year in a cafe',
+        travel_answer: 'Travel details not supplied',
+        start_availability: 'Immediately',
+        ai_flags: ['availability_check'],
+      }, error: null }),
+      recruitment_email_templates: maybeSingleChain({
+        data: {
+          subject: 'A few questions about your application to The Anchor',
+          body: 'Hi {{first_name}}, please answer a few questions about {{role_title}}.',
+        },
+        error: null,
+      }),
+    })
+
+    const result = await draftRecruitmentEmailForApplication('application-1', 'concerns_follow_up', {}, supabase)
+
+    expect(result).toMatchObject({ success: true, runId: 'run-concerns' })
+    const context = draftRecruitmentEmail.mock.calls[0][1].context
+    expect(context).toMatchObject({
+      application: {
+        availability: 'Weekdays only',
+        relevant_experience: 'One year in a cafe',
+        travel: 'Travel details not supplied',
+        start_availability: 'Immediately',
+      },
+      ai_concerns: application.ai_concerns,
+      ai_flags: ['availability_check'],
+      role_requirements: 'Must be available for evenings and weekends.',
+      manager_screening_notes: 'Confirm reliable travel after late shifts.',
     })
   })
 })
