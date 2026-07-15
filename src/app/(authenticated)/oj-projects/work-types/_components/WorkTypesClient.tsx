@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react'
 import {
   Card,
-  CardHeader,
   Table,
   TableHeader,
   TableBody,
@@ -18,7 +17,7 @@ import {
   Switch,
   Empty,
   ConfirmDialog,
-  IconButton,
+  RowActions,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -149,7 +148,49 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
         {workTypes.length === 0 ? (
           <Empty title="No work types" description="Add a work type to categorize time entries." />
         ) : (
-          <Table>
+          <>
+            <div className="divide-y divide-border md:hidden">
+              {workTypes.map((wt) => (
+                <div key={wt.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="font-medium text-text">{wt.name}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                      <span>Order {wt.sort_order ?? 0}</span>
+                      <Badge tone={wt.is_active ? 'success' : 'neutral'}>
+                        {wt.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {canEdit && (
+                      <Switch
+                        checked={wt.is_active}
+                        onChange={() => handleToggleActive(wt)}
+                        size="sm"
+                      />
+                    )}
+                    <RowActions
+                      actions={[
+                        canEdit && {
+                          key: 'edit',
+                          label: 'Edit',
+                          icon: <Icon name="edit" size={16} />,
+                          onSelect: () => openEdit(wt),
+                        },
+                        canEdit && wt.is_active && {
+                          key: 'disable',
+                          label: 'Disable',
+                          icon: <Icon name="trash" size={16} />,
+                          tone: 'danger',
+                          onSelect: () => setDisableId(wt.id),
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Table className="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -179,29 +220,29 @@ export function WorkTypesClient({ initialWorkTypes }: WorkTypesClientProps): Rea
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                      {canEdit && (
-                        <IconButton
-                          icon={<Icon name="edit" size={16} />}
-                          size="sm"
-                          label="Edit"
-                          onClick={() => openEdit(wt)}
-                        />
-                      )}
-                      {canEdit && wt.is_active && (
-                        <IconButton
-                          icon={<Icon name="trash" size={16} />}
-                          size="sm"
-                          label="Disable"
-                          onClick={() => setDisableId(wt.id)}
-                        />
-                      )}
-                    </div>
+                    <RowActions
+                      actions={[
+                        canEdit && {
+                          key: 'edit',
+                          label: 'Edit',
+                          icon: <Icon name="edit" size={16} />,
+                          onSelect: () => openEdit(wt),
+                        },
+                        canEdit && wt.is_active && {
+                          key: 'disable',
+                          label: 'Disable',
+                          icon: <Icon name="trash" size={16} />,
+                          tone: 'danger',
+                          onSelect: () => setDisableId(wt.id),
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+            </Table>
+          </>
         )}
       </Card>
 

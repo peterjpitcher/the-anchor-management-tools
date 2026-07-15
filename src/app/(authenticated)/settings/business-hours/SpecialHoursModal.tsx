@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Modal, ModalActions, ConfirmModal } from '@/ds'
+import { Modal, ModalActions, ConfirmDialog } from '@/ds'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
 import { Checkbox } from '@/ds'
@@ -225,7 +225,7 @@ export function SpecialHoursModal({
 
   return (
     <>
-    <ConfirmModal
+    <ConfirmDialog
       open={showDeleteConfirm}
       onClose={() => setShowDeleteConfirm(false)}
       onConfirm={handleDeleteConfirmed}

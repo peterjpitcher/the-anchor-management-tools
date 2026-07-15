@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import {
   Drawer, Button, Input, Select, Textarea, DateTimePicker,
-  Checkbox, Spinner, toast, Toggle,
+  Checkbox, Spinner, toast, Switch,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { createEvent, updateEvent } from '@/app/actions/events'
@@ -754,12 +754,12 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
             className="mt-3"
           />
           <div className="flex flex-col gap-3 mt-4">
-            <Toggle
+            <Switch
               label="Accept bookings"
               checked={bookingsEnabled}
               onChange={setBookingsEnabled}
             />
-            <Toggle
+            <Switch
               label="Promotional SMS"
               checked={promoSmsEnabled}
               onChange={setPromoSmsEnabled}

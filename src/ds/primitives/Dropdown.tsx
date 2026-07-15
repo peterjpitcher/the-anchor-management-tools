@@ -1,7 +1,9 @@
 'use client'
 
+import { Fragment } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { cn } from '@/lib/utils'
+import { Button } from './Button'
 
 export interface DropdownProps {
   trigger?: React.ReactNode
@@ -22,11 +24,14 @@ export interface DropdownProps {
 }
 
 export function Dropdown({ trigger, label, icon: _icon, items, disabled: _disabled, variant: _variant, size: _size, children, align = 'right' }: DropdownProps) {
-  // Build trigger from label if not provided
-  const resolvedTrigger = trigger ?? (label ? <span className="text-sm font-medium">{label}</span> : <span>...</span>)
+  const resolvedTrigger = trigger ?? (
+    <Button type="button" variant="ghost" size="sm" disabled={_disabled}>
+      {label ?? 'More actions'}
+    </Button>
+  )
   return (
     <Menu as="div" className="relative inline-block text-left">
-      <MenuButton as="div" className="inline-flex">
+      <MenuButton as={Fragment}>
         {resolvedTrigger}
       </MenuButton>
 
@@ -53,18 +58,21 @@ interface DropdownItemProps {
   onClick?: () => void
   icon?: React.ReactNode
   danger?: boolean
+  disabled?: boolean
   children: React.ReactNode
 }
 
-export function DropdownItem({ onClick, icon, danger, children }: DropdownItemProps) {
+export function DropdownItem({ onClick, icon, danger, disabled, children }: DropdownItemProps) {
   return (
-    <MenuItem>
+    <MenuItem disabled={disabled}>
       <button
         type="button"
         onClick={onClick}
+        disabled={disabled}
         className={cn(
           'flex w-full items-center gap-2 px-3 py-2 text-sm',
           'data-[focus]:bg-surface-hover transition-colors',
+          'disabled:cursor-not-allowed disabled:opacity-50',
           danger ? 'text-danger' : 'text-text'
         )}
       >

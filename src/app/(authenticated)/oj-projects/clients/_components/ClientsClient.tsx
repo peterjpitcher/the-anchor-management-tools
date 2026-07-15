@@ -21,6 +21,7 @@ import {
   Checkbox,
   Empty,
   ConfirmDialog,
+  RowActions,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -517,7 +518,50 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
         {filtered.length === 0 ? (
           <Empty title="No clients" description="No clients found." />
         ) : (
-          <Table>
+          <>
+            <div className="divide-y divide-border md:hidden">
+              {filtered.map((client) => (
+                <div key={client.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="font-medium text-text">{client.name}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <Badge tone="info">
+                        {client.projectCount} project{client.projectCount !== 1 ? 's' : ''}
+                      </Badge>
+                      {client.retainerHours ? (
+                        <Badge tone="success">{client.retainerHours}h / month</Badge>
+                      ) : (
+                        <span className="text-xs text-text-muted">No retainer</span>
+                      )}
+                    </div>
+                  </div>
+                  <RowActions
+                    actions={[
+                      {
+                        key: 'view',
+                        label: 'View',
+                        icon: <Icon name="eye" size={16} />,
+                        onSelect: () => openDrawer(client),
+                      },
+                      canEditClients && {
+                        key: 'edit',
+                        label: 'Edit',
+                        icon: <Icon name="edit" size={16} />,
+                        onSelect: () => openEditClient(client),
+                      },
+                      canDeleteClients && {
+                        key: 'delete',
+                        label: 'Delete',
+                        icon: <Icon name="trash" size={16} />,
+                        tone: 'danger',
+                        onSelect: () => setDeleteClientId(client.id),
+                      },
+                    ]}
+                  />
+                </div>
+              ))}
+            </div>
+            <Table className="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Client Name</TableHead>
@@ -541,40 +585,35 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openDrawer(client)}
-                      >
-                        View
-                      </Button>
-                      {canEditClients && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<Icon name="edit" size={14} />}
-                          onClick={() => openEditClient(client)}
-                        >
-                          Edit
-                        </Button>
-                      )}
-                      {canDeleteClients && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={<Icon name="trash" size={14} />}
-                          onClick={() => setDeleteClientId(client.id)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
+                    <RowActions
+                      actions={[
+                        {
+                          key: 'view',
+                          label: 'View',
+                          icon: <Icon name="eye" size={16} />,
+                          onSelect: () => openDrawer(client),
+                        },
+                        canEditClients && {
+                          key: 'edit',
+                          label: 'Edit',
+                          icon: <Icon name="edit" size={16} />,
+                          onSelect: () => openEditClient(client),
+                        },
+                        canDeleteClients && {
+                          key: 'delete',
+                          label: 'Delete',
+                          icon: <Icon name="trash" size={16} />,
+                          tone: 'danger',
+                          onSelect: () => setDeleteClientId(client.id),
+                        },
+                      ]}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+            </Table>
+          </>
         )}
       </Card>
 
@@ -814,26 +853,24 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                         </div>
 
                         {canEditRecurringCharges && (
-                          <div className="mt-3 flex gap-2">
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              icon={<Icon name="edit" size={14} />}
-                              onClick={() => openEditCharge(charge)}
-                            >
-                              Edit
-                            </Button>
-                            {charge.is_active && (
-                              <Button
-                                variant="ghost"
-                                size="xs"
-                                icon={<Icon name="x" size={14} />}
-                                onClick={() => setDisableChargeId(charge.id)}
-                              >
-                                Disable
-                              </Button>
-                            )}
-                          </div>
+                          <RowActions
+                            className="mt-3"
+                            actions={[
+                              {
+                                key: 'edit',
+                                label: 'Edit',
+                                icon: <Icon name="edit" size={16} />,
+                                onSelect: () => openEditCharge(charge),
+                              },
+                              charge.is_active && {
+                                key: 'disable',
+                                label: 'Disable',
+                                icon: <Icon name="x" size={16} />,
+                                tone: 'danger',
+                                onSelect: () => setDisableChargeId(charge.id),
+                              },
+                            ]}
+                          />
                         )}
                       </div>
                     )

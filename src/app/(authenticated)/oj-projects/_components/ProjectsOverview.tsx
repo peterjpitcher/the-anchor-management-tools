@@ -24,7 +24,7 @@ import {
   Select,
   Checkbox,
   Segmented,
-  IconButton,
+  RowActions,
   ConfirmDialog,
   toast,
 } from '@/ds'
@@ -429,7 +429,56 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
         {activeProjects.length === 0 ? (
           <Empty title="No active projects" description="No projects are currently active." />
         ) : (
-          <Table>
+          <>
+            <div className="divide-y divide-border px-[var(--spacing-pad-card)] py-3 md:hidden">
+              {activeProjects.map((project) => {
+                const budgetHours = Number(project.budget_hours || 0)
+                const usedHours = Number(project.total_hours_used || 0)
+                const budgetMoney = Number(project.budget_ex_vat || 0)
+                const spentMoney = Number(project.total_spend_ex_vat || 0)
+                const billedThisMonth = Number(project.billed_this_month_ex_vat || 0)
+                const hasBudget = budgetHours > 0 || budgetMoney > 0
+                const progress = budgetHours > 0
+                  ? Math.min((usedHours / budgetHours) * 100, 100)
+                  : budgetMoney > 0
+                    ? Math.min((spentMoney / budgetMoney) * 100, 100)
+                    : 0
+
+                return (
+                  <div key={project.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/oj-projects/projects/${project.id}`}
+                          className="font-medium text-text hover:text-primary hover:underline"
+                        >
+                          {project.project_name}
+                        </Link>
+                        <p className="text-xs text-text-muted">{project.vendor?.name || 'Unknown'}</p>
+                      </div>
+                      <Badge tone={statusTone(project.status)}>{project.status}</Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                      <span><span className="text-text-muted">Billed:</span> {formatCurrency(billedThisMonth)}</span>
+                      <span><span className="text-text-muted">Hours:</span> {usedHours.toFixed(1)}h</span>
+                    </div>
+                    {hasBudget ? (
+                      <div className="flex flex-col gap-1">
+                        <ProgressBar value={progress} tone={progress > 90 ? 'danger' : 'primary'} />
+                        <span className="text-xs text-text-muted">
+                          {budgetHours > 0
+                            ? `${usedHours.toFixed(1)}h / ${budgetHours.toFixed(1)}h`
+                            : `${formatCurrency(spentMoney)} / ${formatCurrency(budgetMoney)}`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs italic text-text-muted">No budget</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <Table className="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -488,7 +537,8 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 )
               })}
             </TableBody>
-          </Table>
+            </Table>
+          </>
         )}
       </Card>
 
@@ -503,7 +553,66 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
             description={selectedVendorId ? 'No entries found for this client.' : 'No time entries recorded yet.'}
           />
         ) : (
-          <Table>
+          <>
+            <div className="divide-y divide-border px-[var(--spacing-pad-card)] py-3 md:hidden">
+              {entries.map((entry) => {
+                const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
+                const valueDisplay = entry.entry_type === 'time'
+                  ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
+                  : entry.entry_type === 'mileage'
+                    ? `${entry.miles} mi`
+                    : '-'
+                const billable = isEntryBillable(entry)
+
+                return (
+                  <div key={entry.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-text">{entry.project?.project_name || 'Unknown'}</p>
+                        <p className="text-xs text-text-muted">
+                          {entry.vendor?.name || 'Unknown'} &middot; {formatDateDdMmmmYyyy(entry.entry_date)}
+                        </p>
+                      </div>
+                      <RowActions
+                        actions={isEntryEditable(entry) ? [
+                          canEdit && {
+                            key: 'edit',
+                            label: entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice',
+                            icon: <Icon name="edit" size={16} />,
+                            onSelect: () => openEdit(entry),
+                          },
+                          canDelete && {
+                            key: 'delete',
+                            label: entry.status === 'unbilled' ? 'Delete entry' : 'Delete and revise invoice',
+                            icon: <Icon name="trash" size={16} />,
+                            tone: 'danger',
+                            onSelect: () => setDeleteId(entry.id),
+                          },
+                        ] : []}
+                      />
+                    </div>
+                    {entry.description && (
+                      <p className="text-sm text-text-muted [overflow-wrap:anywhere]">{entry.description}</p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge tone={typeTone}>{entry.entry_type}</Badge>
+                      <span className="text-text-muted">{valueDisplay}</span>
+                      <span className="font-medium">{formatCurrency(entryAmount(entry))}</span>
+                      <Badge tone={billable ? 'success' : 'neutral'}>
+                        {billable ? 'Billable' : 'Non-billable'}
+                      </Badge>
+                      <Badge tone={entryStatusTone(entry.status)}>{entry.status}</Badge>
+                      {entry.invoice?.invoice_number && (
+                        <Link href={`/invoices/${entry.invoice.id}`} className="text-xs text-primary hover:underline">
+                          {entry.invoice.invoice_number}
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <Table className="hidden md:block">
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
@@ -562,31 +671,31 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                     </TableCell>
                     <TableCell>
                       {isEntryEditable(entry) && (
-                        <div className="flex gap-1">
-                          {canEdit && (
-                            <IconButton
-                              icon={<Icon name="edit" size={16} />}
-                              size="sm"
-                              label={entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice'}
-                              onClick={() => openEdit(entry)}
-                            />
-                          )}
-                          {canDelete && (
-                            <IconButton
-                              icon={<Icon name="trash" size={16} />}
-                              size="sm"
-                              label={entry.status === 'unbilled' ? 'Delete entry' : 'Delete and revise invoice'}
-                              onClick={() => setDeleteId(entry.id)}
-                            />
-                          )}
-                        </div>
+                        <RowActions
+                          actions={[
+                            canEdit && {
+                              key: 'edit',
+                              label: entry.status === 'unbilled' ? 'Edit entry' : 'Edit and revise invoice',
+                              icon: <Icon name="edit" size={16} />,
+                              onSelect: () => openEdit(entry),
+                            },
+                            canDelete && {
+                              key: 'delete',
+                              label: entry.status === 'unbilled' ? 'Delete entry' : 'Delete and revise invoice',
+                              icon: <Icon name="trash" size={16} />,
+                              tone: 'danger',
+                              onSelect: () => setDeleteId(entry.id),
+                            },
+                          ]}
+                        />
                       )}
                     </TableCell>
                   </TableRow>
                 )
               })}
             </TableBody>
-          </Table>
+            </Table>
+          </>
         )}
       </Card>
 

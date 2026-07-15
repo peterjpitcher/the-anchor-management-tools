@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import InvoicesClient from '@/app/(authenticated)/invoices/InvoicesClient'
+import InvoicesClient from '@/app/(authenticated)/invoices/_components/InvoicesClient'
 import type { InvoiceWithDetails } from '@/types/invoices'
 
 const routerPushMock = vi.hoisted(() => vi.fn())
@@ -154,7 +154,7 @@ describe('InvoicesClient', () => {
       />
     )
 
-    const downloadButton = screen.getByRole('button', { name: 'Download invoice INV-001' })
+    const [downloadButton] = screen.getAllByRole('button', { name: 'Download invoice INV-001' })
 
     expect(downloadButton).toBeInTheDocument()
   })
@@ -177,7 +177,7 @@ describe('InvoicesClient', () => {
       />
     )
 
-    const downloadButton = screen.getByRole('button', { name: 'Download invoice INV-001' })
+    const [downloadButton] = screen.getAllByRole('button', { name: 'Download invoice INV-001' })
     const downloadIcon = downloadButton.querySelector('svg')
 
     fireEvent.click(downloadIcon ?? downloadButton)

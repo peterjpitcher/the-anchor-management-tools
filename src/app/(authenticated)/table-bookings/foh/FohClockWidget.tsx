@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { Modal, ModalActions, ConfirmModal } from '@/ds';
+import { Modal, ModalActions, ConfirmDialog } from '@/ds';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
 import type { TimeclockSession } from '@/app/actions/timeclock';
 
@@ -144,7 +144,7 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
       </Modal>
 
       {/* Clock Out confirmation */}
-      <ConfirmModal
+      <ConfirmDialog
         open={!!confirmSession}
         onClose={() => setConfirmSession(null)}
         onConfirm={handleClockOut}
