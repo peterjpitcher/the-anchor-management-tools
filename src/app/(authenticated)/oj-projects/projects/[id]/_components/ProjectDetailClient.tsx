@@ -18,7 +18,7 @@ import {
   Empty,
   ConfirmDialog,
   Select,
-  IconButton,
+  RowActions,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -193,7 +193,7 @@ export function ProjectDetailClient({
           )}
           {canDelete && (
             <Button
-              variant="ghost"
+              variant="danger"
               size="sm"
               onClick={() => setDeleteProjectOpen(true)}
             >
@@ -269,7 +269,56 @@ export function ProjectDetailClient({
             {entries.length === 0 ? (
               <Empty title="No entries" description="No entries recorded yet." />
             ) : (
-              <Table>
+              <>
+                <div className="divide-y divide-border px-[var(--spacing-pad-card)] py-3 md:hidden">
+                  {entries.map((entry) => {
+                    const amount = entry.entry_type === 'time'
+                      ? (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
+                      : entry.entry_type === 'mileage'
+                        ? Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
+                        : Number(entry.amount_ex_vat_snapshot || 0)
+                    const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
+                    const statusEntryTone = entry.status === 'paid' ? 'success' : entry.status === 'billed' ? 'info' : 'warning'
+                    const value = entry.entry_type === 'time'
+                      ? `${(Number(entry.duration_minutes_rounded || 0) / 60).toFixed(1)}h`
+                      : entry.entry_type === 'mileage'
+                        ? `${entry.miles} mi`
+                        : null
+
+                    return (
+                      <div key={entry.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-text">{formatDateDdMmmmYyyy(entry.entry_date)}</p>
+                            {entry.description && (
+                              <p className="text-sm text-text-muted [overflow-wrap:anywhere]">{entry.description}</p>
+                            )}
+                          </div>
+                          {entry.status === 'unbilled' && canDelete && (
+                            <RowActions
+                              actions={[
+                                {
+                                  key: 'delete',
+                                  label: 'Delete',
+                                  icon: <Icon name="trash" size={16} />,
+                                  tone: 'danger',
+                                  onSelect: () => setDeleteEntryId(entry.id),
+                                },
+                              ]}
+                            />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <Badge tone={typeTone}>{entry.entry_type}</Badge>
+                          {value && <span className="text-text-muted">{value}</span>}
+                          <span className="font-medium">{formatCurrency(amount)}</span>
+                          <Badge tone={statusEntryTone}>{entry.status}</Badge>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <Table className="hidden md:block">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
@@ -313,11 +362,16 @@ export function ProjectDetailClient({
                         <TableCell><Badge tone={statusEntryTone}>{entry.status}</Badge></TableCell>
                         <TableCell>
                           {entry.status === 'unbilled' && canDelete && (
-                            <IconButton
-                              icon={<Icon name="trash" size={16} />}
-                              size="sm"
-                              label="Delete"
-                              onClick={() => setDeleteEntryId(entry.id)}
+                            <RowActions
+                              actions={[
+                                {
+                                  key: 'delete',
+                                  label: 'Delete',
+                                  icon: <Icon name="trash" size={16} />,
+                                  tone: 'danger',
+                                  onSelect: () => setDeleteEntryId(entry.id),
+                                },
+                              ]}
                             />
                           )}
                         </TableCell>
@@ -325,7 +379,8 @@ export function ProjectDetailClient({
                     )
                   })}
                 </TableBody>
-              </Table>
+                </Table>
+              </>
             )}
           </Card>
         </div>
@@ -364,11 +419,16 @@ export function ProjectDetailClient({
                         <p className="text-xs text-text-muted truncate">{tc.contact?.email || ''}</p>
                       </div>
                       {canEdit && (
-                        <IconButton
-                          icon={<Icon name="trash" size={16} />}
-                          size="sm"
-                          label="Remove"
-                          onClick={() => handleRemoveContact(tc.id)}
+                        <RowActions
+                          actions={[
+                            {
+                              key: 'remove',
+                              label: 'Remove',
+                              icon: <Icon name="trash" size={16} />,
+                              tone: 'danger',
+                              onSelect: () => handleRemoveContact(tc.id),
+                            },
+                          ]}
                         />
                       )}
                     </div>

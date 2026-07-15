@@ -4,6 +4,7 @@
  */
 
 import { cn } from '@/lib/utils'
+import { Icon } from '../icons'
 
 interface SortableHeaderProps {
   label: string
@@ -17,18 +18,6 @@ interface SortableHeaderProps {
   onSort?: (key: string) => void
   className?: string
 }
-
-const SortArrow = ({ direction }: { direction?: 'asc' | 'desc' }) => (
-  <svg className="w-3 h-3 ml-1 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    {direction === 'asc' ? (
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-    ) : direction === 'desc' ? (
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    ) : (
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-    )}
-  </svg>
-)
 
 export function SortableHeader({
   label,
@@ -55,7 +44,11 @@ export function SortableHeader({
       )}
     >
       {label}
-      <SortArrow direction={isActive ? currentDirection : undefined} />
+      <Icon
+        name={isActive && currentDirection === 'asc' ? 'chevronUp' : 'chevronDown'}
+        size={12}
+        className="ml-1"
+      />
     </button>
   )
 }
