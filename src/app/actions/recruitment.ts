@@ -53,6 +53,7 @@ import {
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
 import {
+  describeRecruitmentAppointmentCandidate,
   draftRecruitmentEmailForApplication,
   previewRecruitmentDecisionEmail,
   retryRecruitmentCommunication,
@@ -1013,11 +1014,14 @@ export async function recordRecruitmentAppointmentOutcomeAction(formData: FormDa
     }, user.id)
 
     if ((result as any).status === 'no_show') {
+      const noShowCandidate = await loadRecruitmentAppointment(appointmentId)
+        .then(describeRecruitmentAppointmentCandidate)
+        .catch(() => 'A candidate')
       await notifyRecruitmentManager({
         applicationId: (result as any).application_id,
         candidateId: (result as any).candidate_id,
         alertType: 'no-show action needed',
-        alertBody: 'A recruitment appointment was marked as no-show. Review the application and decide whether to rebook or close it.',
+        alertBody: `${noShowCandidate} was marked as a no-show for a recruitment appointment. Review the application and decide whether to rebook or close it.`,
         currentUserId: user.id,
       })
     }
@@ -1056,11 +1060,14 @@ export async function cancelRecruitmentAppointmentAction(formData: FormData): Pr
       status: 'success',
       newValues: { status: (appointment as any).status ?? 'cancelled' },
     })
+    const cancelledCandidate = await loadRecruitmentAppointment(appointmentId)
+      .then(describeRecruitmentAppointmentCandidate)
+      .catch(() => 'A candidate')
     await notifyRecruitmentManager({
       applicationId: (appointment as any).application_id,
       candidateId: (appointment as any).candidate_id,
       alertType: 'appointment cancelled',
-      alertBody: 'A recruitment appointment was cancelled by staff. The application is on hold — review and rebook or close it.',
+      alertBody: `${cancelledCandidate} — recruitment appointment cancelled by staff. The application is on hold — review and rebook or close it.`,
       currentUserId: user.id,
     })
     revalidatePath('/recruitment')

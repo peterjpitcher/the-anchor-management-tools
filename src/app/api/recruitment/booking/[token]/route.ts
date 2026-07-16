@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth'
 import {
   claimRecruitmentAppointmentSlot,
+  formatRecruitmentAppointmentTime,
   previewRecruitmentBookingToken,
 } from '@/services/recruitment'
 import {
@@ -9,7 +10,11 @@ import {
   loadRecruitmentAppointment,
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
-import { sendRecruitmentManagerAlert, sendRecruitmentTemplateEmail } from '@/lib/recruitment/communications'
+import {
+  describeRecruitmentAppointmentCandidate,
+  sendRecruitmentManagerAlert,
+  sendRecruitmentTemplateEmail,
+} from '@/lib/recruitment/communications'
 import { guardPublicRecruitmentRequest } from '@/lib/recruitment/public-security'
 
 type RouteContext = {
@@ -91,7 +96,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         applicationId: appointment.application_id,
         candidateId: appointment.candidate_id,
         alertType: appointment.type === 'trial_shift' ? 'trial booked' : 'interview booked',
-        alertBody: `${appointmentSubjectLabel(appointment.type)} booked for ${new Date(appointment.scheduled_start).toLocaleString('en-GB')} at ${appointment.location}.`,
+        alertBody: `${describeRecruitmentAppointmentCandidate(appointment)} — ${appointmentSubjectLabel(appointment.type)} booked for ${formatRecruitmentAppointmentTime(appointment)} at ${appointment.location}. Booked by the candidate.`,
       }),
     ])
 
