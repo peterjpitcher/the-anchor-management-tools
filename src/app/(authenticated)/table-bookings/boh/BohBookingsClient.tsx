@@ -10,6 +10,7 @@ import { MessageGuestsModal } from './MessageGuestsModal'
 import { FohCreateBookingModal } from '../foh/components/FohCreateBookingModal'
 import { useFohCreateBooking } from '../foh/hooks/useFohCreateBooking'
 import { buildTimelineRange } from '../foh/utils'
+import { downloadBlob, filenameFromContentDisposition } from '@/lib/download-file'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -375,6 +376,7 @@ export function BohBookingsClient({
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
   const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null)
   const [createStatusMessage, setCreateStatusMessage] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState<boolean>(false)
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const clockNow = useMemo(() => new Date(), [])
@@ -656,6 +658,61 @@ export function BohBookingsClient({
     return sortDirection === 'asc' ? '↑' : '↓'
   }
 
+  // `bookings` holds the whole loaded range (week/month), not one day — filter to the focused day.
+  // The list route applies no status filter, so it includes cancelled/no_show rows that the sheets
+  // route excludes. Without matching that exclusion the button enables on a day of only cancelled
+  // bookings and then 404s.
+  const printableBookingCount = bookings.filter(
+    (booking) =>
+      booking.booking_date === focusDate &&
+      booking.status !== 'cancelled' &&
+      booking.status !== 'no_show'
+  ).length
+  // Settled for *this* day: `loading === false` alone is not enough because focusDate drives the
+  // refetch. rangeStartDate/rangeEndDate are only ever set from a successful payload.
+  const scheduleSettled = !loading && !error && rangeStartDate <= focusDate && focusDate <= rangeEndDate
+  const isDayView = view === 'day'
+  const canDownload = isDayView && scheduleSettled && printableBookingCount > 0
+
+  async function handleDownloadPdf() {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      const response = await fetch(`/api/boh/table-bookings/booking-sheets?date=${focusDate}`)
+
+      if (!response.ok) {
+        toast.error(
+          response.status === 404 ? 'No bookings to print for this day'
+          : response.status === 422 ? 'Too many bookings to print in one PDF'
+          : response.status === 401 ? 'Your session has expired — please sign in again'
+          : response.status === 403 ? "You don't have permission to export booking sheets"
+          : 'Could not generate the booking sheets'
+        )
+        return
+      }
+
+      if (!response.headers.get('content-type')?.includes('application/pdf')) {
+        toast.error('Unexpected response — no PDF was downloaded')
+        return
+      }
+
+      const blob = await response.blob()
+      // The server-set filename is authoritative; the client value is only a fallback.
+      downloadBlob(
+        blob,
+        filenameFromContentDisposition(
+          response.headers.get('content-disposition'),
+          `table-bookings-${focusDate}.pdf`
+        )
+      )
+      toast.success(`Downloaded booking sheets for ${focusDate}`)
+    } catch {
+      toast.error('Could not generate the booking sheets')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -720,6 +777,17 @@ export function BohBookingsClient({
               loading={loading}
             >
               Refresh
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleDownloadPdf()}
+              loading={downloading}
+              disabled={!canDownload || downloading}
+              aria-busy={downloading}
+              title={!isDayView ? "Switch to Day view to print a day's sheets" : undefined}
+            >
+              Download PDF
             </Button>
             <div className="ml-2 flex rounded-md border border-gray-300 bg-gray-50 p-1">
               {(['day', 'week', 'month'] as BohViewMode[]).map((candidate) => (
