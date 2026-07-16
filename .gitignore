@@ -66,6 +66,7 @@ temp/*.csv
 temp/logs_result*.json
 temp/*.log
 temp/recruitment-cv-import-*.json
+temp/indeed-applicants-import-*.json
 
 # Playwright test artifacts
 .playwright-mcp/
