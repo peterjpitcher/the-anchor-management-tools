@@ -92,3 +92,15 @@ Complexity: 5/5, split into independently deployable batches. This batch does no
 - [x] Reduce compatibility implementations from 32 to 16
 - [x] Full verification: lint, TypeScript, 534 test files / 3,635 tests, and cold production build
 - [ ] Migrate the remaining 16 compatibility implementations and remove the public compatibility barrel
+
+---
+
+# Table-booking print sheets (one A4 page per booking)
+
+> **Superseded — see the spec.** The authoritative, implementation-ready spec is
+> [`tasks/table-booking-print-sheets-spec.md`](table-booking-print-sheets-spec.md),
+> with the review response at
+> [`tasks/table-booking-print-sheets-spec-review-response.md`](table-booking-print-sheets-spec-review-response.md).
+> The earlier discovery plan that used to live here (full-page navigation, empty-day
+> PDF, DS button, sort-by-table) was **wrong on four points** and has been removed to
+> avoid conflicting instructions. Build from the spec only.
