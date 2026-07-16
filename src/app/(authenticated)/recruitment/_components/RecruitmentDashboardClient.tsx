@@ -38,6 +38,7 @@ import {
   Textarea,
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
+import { formatAvailabilityAnswer } from '@/lib/recruitment/answers'
 import {
   addRecruitmentCandidateNoteAction,
   archiveRecruitmentApplicationAction,
@@ -2258,10 +2259,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           if (trimmed.length === 0 || trimmed === '{}' || trimmed === '[]' || trimmed === 'null') return
                           answerRows.push([label, trimmed])
                         }
-                        const availabilityText = a?.availability && typeof a.availability === 'object'
-                          ? (a.availability.raw ?? a.availability.text ?? null)
-                          : a?.availability
-                        pushAnswer('Availability', availabilityText)
+                        const { availability, preferredRole } = formatAvailabilityAnswer(a?.availability)
+                        pushAnswer('Availability', availability)
+                        pushAnswer('Preferred role', preferredRole)
                         pushAnswer('Experience', a?.relevant_experience_answer)
                         pushAnswer('Travel', a?.travel_answer)
                         pushAnswer('Can start', a?.start_availability)
@@ -2272,7 +2272,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                             <p className="text-xs font-semibold uppercase text-text-muted">Their answers</p>
                             <dl className="mt-1 space-y-1 text-sm text-text">
                               {answerRows.map(([label, value]) => (
-                                <div key={label}><span className="text-text-muted">{label}:</span> {value}</div>
+                                <div key={label} className="whitespace-pre-wrap"><span className="text-text-muted">{label}:</span> {value}</div>
                               ))}
                             </dl>
                           </div>
