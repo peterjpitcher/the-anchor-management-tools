@@ -215,7 +215,7 @@ function formatBookingDateTime(booking: BohBooking): string {
       month: 'short',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hourCycle: 'h12'
     }).format(new Date(startIso))
   }
 
@@ -237,7 +237,7 @@ function formatLifecycleTime(value: string | null): string | null {
     month: 'short',
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true
+    hourCycle: 'h12'
   }).format(parsed)
 }
 

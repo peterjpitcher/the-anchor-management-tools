@@ -31,7 +31,7 @@ function formatLondonDateTime(isoDateTime: string): string {
     month: 'short',
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true
+    hourCycle: 'h12'
   }).format(new Date(isoDateTime))
 }
 

@@ -850,7 +850,7 @@ export async function sendEventPaymentConfirmationSms(
           month: 'short',
           hour: 'numeric',
           minute: '2-digit',
-          hour12: true
+          hourCycle: 'h12'
         }).format(new Date(eventStartIso))
       } catch {
         eventDateFormatted = null

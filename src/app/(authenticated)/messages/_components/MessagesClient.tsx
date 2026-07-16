@@ -71,7 +71,7 @@ function getMessageTime(timestamp: string): string {
   return new Date(timestamp).toLocaleTimeString('en-GB', {
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
+    hourCycle: 'h12',
   })
 }
 

@@ -1310,7 +1310,7 @@ function formatEventDateForSms(date: string, time: string): string {
       month: 'short',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hourCycle: 'h12'
     }).format(new Date(iso))
   } catch {
     return 'the scheduled date'
