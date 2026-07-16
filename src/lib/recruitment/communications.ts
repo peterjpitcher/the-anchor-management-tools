@@ -367,6 +367,20 @@ async function loadRecruitmentApplicationForComms(
   return data
 }
 
+// Manager alerts are read in an inbox, away from the ATS, so the body has to say
+// who it is about — an alert that only gives a date and a venue is unactionable.
+// Takes an appointment loaded via loadRecruitmentAppointment (candidate + job_posting).
+export function describeRecruitmentAppointmentCandidate(appointment: {
+  candidate?: { first_name?: string | null; last_name?: string | null; email?: string | null } | null
+  application?: { job_posting?: { title?: string | null } | null } | null
+}): string {
+  const name = [appointment.candidate?.first_name, appointment.candidate?.last_name]
+    .filter(Boolean)
+    .join(' ') || appointment.candidate?.email || 'A candidate'
+  const roleTitle = appointment.application?.job_posting?.title
+  return roleTitle ? `${name} (${roleTitle})` : name
+}
+
 export async function sendRecruitmentManagerAlert(
   input: {
     alertType: string

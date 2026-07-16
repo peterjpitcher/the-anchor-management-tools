@@ -1,12 +1,16 @@
 import { NextRequest } from 'next/server'
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth'
-import { rescheduleRecruitmentAppointment } from '@/services/recruitment'
+import { formatRecruitmentAppointmentTime, rescheduleRecruitmentAppointment } from '@/services/recruitment'
 import {
   generateRecruitmentAppointmentIcs,
   loadRecruitmentAppointment,
   syncRecruitmentAppointmentCalendar,
 } from '@/lib/recruitment/calendar'
-import { sendRecruitmentManagerAlert, sendRecruitmentTemplateEmail } from '@/lib/recruitment/communications'
+import {
+  describeRecruitmentAppointmentCandidate,
+  sendRecruitmentManagerAlert,
+  sendRecruitmentTemplateEmail,
+} from '@/lib/recruitment/communications'
 import { guardPublicRecruitmentRequest } from '@/lib/recruitment/public-security'
 
 type RouteContext = {
@@ -51,7 +55,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         applicationId: appointment.application_id,
         candidateId: appointment.candidate_id,
         alertType: appointment.type === 'trial_shift' ? 'trial rescheduled' : 'interview rescheduled',
-        alertBody: `${appointment.type === 'trial_shift' ? 'Trial shift' : 'Interview'} rescheduled to ${new Date(appointment.scheduled_start).toLocaleString('en-GB')} at ${appointment.location}.`,
+        alertBody: `${describeRecruitmentAppointmentCandidate(appointment)} — ${appointment.type === 'trial_shift' ? 'Trial shift' : 'Interview'} rescheduled to ${formatRecruitmentAppointmentTime(appointment)} at ${appointment.location}. Rescheduled by the candidate.`,
       }),
     ])
 
