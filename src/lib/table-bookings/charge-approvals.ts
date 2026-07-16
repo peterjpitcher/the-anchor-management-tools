@@ -105,7 +105,7 @@ function formatDateTime(dateIso?: string | null): string {
       month: 'short',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hourCycle: 'h12'
     }).format(new Date(dateIso))
   } catch {
     return 'Unknown time'

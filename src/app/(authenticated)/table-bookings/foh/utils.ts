@@ -31,7 +31,7 @@ export function formatBookingWindow(start?: string | null, end?: string | null, 
         timeZone: 'Europe/London',
         hour: 'numeric',
         minute: '2-digit',
-        hour12: true
+        hourCycle: 'h12'
       })
       return `${formatter.format(new Date(start))} - ${formatter.format(new Date(end))}`
     } catch {
@@ -68,7 +68,7 @@ export function formatLifecycleTime(isoValue?: string | null): string | null {
       timeZone: 'Europe/London',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hourCycle: 'h12'
     }).format(new Date(parsedMs))
   } catch {
     return null
@@ -291,7 +291,7 @@ export function formatEventOptionDateTime(event: FohEventOption): string {
         month: 'short',
         hour: 'numeric',
         minute: '2-digit',
-        hour12: true
+        hourCycle: 'h12'
       }).format(new Date(event.start_datetime))
     } catch {
       // Fall through to raw fields.
@@ -433,7 +433,7 @@ function eventPromptWindowLabel(eventOption: FohEventOption): string {
     timeZone: 'Europe/London',
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true
+    hourCycle: 'h12'
   })
   return `${formatter.format(new Date(startMs - 15 * 60 * 1000))} - ${formatter.format(new Date(endMs))}`
 }

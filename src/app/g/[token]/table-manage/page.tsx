@@ -18,7 +18,7 @@ function formatDateTime(value?: string | null): string {
       month: 'short',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
+      hourCycle: 'h12'
     }).format(new Date(value))
   } catch {
     return 'Unknown'

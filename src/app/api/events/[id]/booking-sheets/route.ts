@@ -106,7 +106,7 @@ function formatEventTime(value: string): string {
   return new Intl.DateTimeFormat('en-GB', {
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
+    hourCycle: 'h12',
     timeZone: 'UTC',
   }).format(date).replace(/\s/g, '').toLowerCase()
 }
