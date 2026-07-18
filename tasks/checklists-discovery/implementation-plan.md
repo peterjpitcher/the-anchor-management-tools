@@ -8,7 +8,7 @@ typecheck, test, build, `db push --dry-run`) before every merge.
 
 - [ ] `src/lib/foh/__tests__/user-mode.test.ts`: pin current `isFohOnlyUser` behaviour
       BEFORE anything else touches it
-- [ ] Migration: 11 tables per spec §3 (checklists, task_templates, task_instances,
+- [ ] Migration: 10 tables per spec §3 (checklists, task_templates, task_instances,
       spot_checks, todos, email_outbox, settings singleton, hours_mismatches,
       spot_check_expectations, generation_runs), all §3.12 CHECK constraints, indexes,
       RLS enabled with NO policies (deny-all, service-role only), `ON DELETE RESTRICT`
@@ -73,7 +73,7 @@ typecheck, test, build, `db push --dry-run`) before every merge.
 
 Delivered dark: no UI, no cron, no jobs, all `checklist_settings` flags default false.
 
-- **Migration** `supabase/migrations/20260731000000_checklists_foundation.sql`: 11 tables,
+- **Migration** `supabase/migrations/20260731000000_checklists_foundation.sql`: 10 tables,
   the section 3.12 CHECK constraints, deny-all service-role-only RLS on all 10 tables, the
   `checklists` RBAC module seeded to super_admin/manager (view+manage) and staff (view).
   foh_staff deliberately not granted (Phase 2). Dry-run recognised it as the single pending
