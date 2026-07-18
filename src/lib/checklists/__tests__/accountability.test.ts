@@ -1,6 +1,6 @@
 // src/lib/checklists/__tests__/accountability.test.ts
 import { describe, it, expect } from 'vitest'
-import { resolveCloser } from '../accountability'
+import { resolveCloser, resolveCoverage } from '../accountability'
 import type { ShiftRow } from '../types'
 
 const s = (o: Partial<ShiftRow>): ShiftRow => ({
@@ -46,5 +46,24 @@ describe('resolveCloser (spec 6 ordering)', () => {
       s({ employeeId: null, isOpenShift: true, endTime: '23:00' }),
       s({ employeeId: 'real', endTime: '22:00' }),
     ])).toBe('real')
+  })
+})
+
+describe('resolveCoverage (spec 6, inclusive bounds)', () => {
+  const barClose = s({ employeeId: 'bar-close', shiftDate: '2026-07-17', department: 'bar', startTime: '16:00', endTime: '22:00' })
+  it('returns the covering shift employee when the due time is inside the shift', () => {
+    // 20:00 London on 2026-07-17 (BST) = 19:00Z, inside 16:00-22:00
+    expect(resolveCoverage([barClose], new Date('2026-07-17T19:00:00Z'), '2026-07-17', 'bar')).toBe('bar-close')
+  })
+  it('returns the covering employee at the exact start boundary (inclusive)', () => {
+    // 16:00 London = 15:00Z
+    expect(resolveCoverage([barClose], new Date('2026-07-17T15:00:00Z'), '2026-07-17', 'bar')).toBe('bar-close')
+  })
+  it('returns null when the due time is after the shift ends', () => {
+    // 23:00 London = 22:00Z, after the 22:00 close
+    expect(resolveCoverage([barClose], new Date('2026-07-17T22:00:00Z'), '2026-07-17', 'bar')).toBeNull()
+  })
+  it('returns null when no shift is in the task department', () => {
+    expect(resolveCoverage([barClose], new Date('2026-07-17T19:00:00Z'), '2026-07-17', 'kitchen')).toBeNull()
   })
 })
