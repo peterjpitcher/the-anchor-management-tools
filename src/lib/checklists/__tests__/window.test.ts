@@ -22,6 +22,11 @@ describe('expandInstants (spec 5.3)', () => {
   it('close past the 06:00 business-day end is invalid', () => {
     expect(expandInstants('2026-07-17', '16:00', '07:00')).toEqual({ error: 'invalid_hours' })
   })
+  it('close exactly on the 06:00 business-day boundary is valid', () => {
+    const r = expandInstants('2026-07-17', '16:00', '06:00')
+    if (!('opensAt' in r)) throw new Error('expected a window')
+    expect(r.closesAt.toISOString()).toBe('2026-07-18T05:00:00.000Z') // 06:00 next day BST
+  })
   it('handles HH:MM:SS input by normalising to HH:MM', () => {
     const r = expandInstants('2026-07-17', '16:00:00', '22:00:00')
     if (!('opensAt' in r)) throw new Error('expected a window')
