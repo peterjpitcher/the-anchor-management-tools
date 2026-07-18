@@ -1,4 +1,4 @@
--- Checklists foundation: 11 tables, constraints, RLS (deny-all service-role only), RBAC.
+-- Checklists foundation: 10 tables, constraints, RLS (deny-all service-role only), RBAC.
 -- Ships dark (every checklist_settings flag defaults false, no cron, no jobs, no UI).
 -- See tasks/checklists-discovery/spec.md v4 sections 3 and 12.
 
@@ -59,12 +59,18 @@ CREATE TABLE public.checklist_task_templates (
   ),
   CONSTRAINT cl_tpl_floating_shape CHECK (
     schedule_kind <> 'floating' OR (
-      interval_days >= 1 AND tolerance_days >= 0 AND first_due_on IS NOT NULL
+      interval_days IS NOT NULL AND interval_days >= 1
+      AND tolerance_days IS NOT NULL AND tolerance_days >= 0
+      AND first_due_on IS NOT NULL
       AND anchor = 'anytime' AND at_times IS NULL AND every_hours IS NULL
     )
   ),
-  CONSTRAINT cl_tpl_every_shape CHECK (anchor <> 'every' OR every_hours > 0),
-  CONSTRAINT cl_tpl_at_times_shape CHECK (anchor <> 'at_times' OR array_length(at_times, 1) >= 1),
+  CONSTRAINT cl_tpl_every_shape CHECK (
+    anchor <> 'every' OR (every_hours IS NOT NULL AND every_hours > 0)
+  ),
+  CONSTRAINT cl_tpl_at_times_shape CHECK (
+    anchor <> 'at_times' OR (at_times IS NOT NULL AND array_length(at_times, 1) >= 1)
+  ),
   CONSTRAINT cl_tpl_every_only CHECK (
     anchor = 'every' OR (every_hours IS NULL AND first_offset_minutes IS NULL AND not_before IS NULL)
   ),
@@ -86,7 +92,7 @@ CREATE TABLE public.checklist_generation_runs (
   business_date       date NOT NULL,
   attempt             int NOT NULL DEFAULT 1,
   status              text NOT NULL CHECK (status IN ('running','complete','failed','skipped_closed')),
-  window              jsonb,
+  window_json         jsonb,  -- resolved TradingWindow provenance ("window" is a reserved SQL keyword)
   instances_created   int,
   instances_updated   int,
   instances_retracted int,
