@@ -11,7 +11,7 @@
 engine as tested pure functions, plus the RBAC module. Ships completely dark: no UI, no
 cron, no jobs, nothing user-visible. Every switch in `checklist_settings` defaults false.
 
-**Architecture:** One migration creates 11 tables (RLS deny-all, service-role only) and
+**Architecture:** One migration creates 10 tables (RLS deny-all, service-role only) and
 seeds the `checklists` RBAC module for super_admin/manager/staff (NOT foh_staff, which is
 Phase 2). The engine lives in `src/lib/checklists/` as pure functions that take their data
 as arguments, so every rule is unit-tested with no database. Database-reading wrappers,
@@ -205,7 +205,7 @@ git commit -m "feat(checklists): shared engine types"
 
 ---
 
-## Task 2: The foundation migration (11 tables, constraints, RLS, RBAC)
+## Task 2: The foundation migration (10 tables, constraints, RLS, RBAC)
 
 The single load-bearing artifact. Build it whole, then dry-run it.
 
@@ -215,7 +215,7 @@ The single load-bearing artifact. Build it whole, then dry-run it.
 - [ ] **Step 1: Write the migration.** Transcribe spec 3 exactly. The full SQL:
 
 ```sql
--- Checklists foundation: 11 tables, constraints, RLS (deny-all service-role only), RBAC.
+-- Checklists foundation: 10 tables, constraints, RLS (deny-all service-role only), RBAC.
 -- Ships dark. See tasks/checklists-discovery/spec.md v4 sections 3 and 12.
 
 -- 1. checklists
@@ -523,7 +523,7 @@ all ten tables.
 
 ```bash
 git add supabase/migrations/20260731000000_checklists_foundation.sql
-git commit -m "feat(checklists): foundation migration (11 tables, RLS, RBAC), ships dark"
+git commit -m "feat(checklists): foundation migration (10 tables, RLS, RBAC), ships dark"
 ```
 
 ---

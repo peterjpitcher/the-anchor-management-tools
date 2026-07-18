@@ -2,7 +2,7 @@
 
 **Status:** v4, awaiting owner approval of the seed table (§17). No code written.
 **Date:** 2026-07-17
-**Complexity:** 5 (XL). New module, 11 tables, 4 screens, scheduling engine, scoring.
+**Complexity:** 5 (XL). New module, 10 tables, 4 screens, scheduling engine, scoring.
 Split into phases, see [§14](#14-delivery-phases).
 
 **v4** applies the external developer review
@@ -525,12 +525,17 @@ pushes the next one out (drift is the point).
 
 **Worked example** (`interval_days=4, tolerance_days=2`, first_due_on Mon 6th):
 
+The "miss date" is the business date of `grace_until` (the day tolerance runs out), and the
+next cycle starts `interval_days` after it. `due_at` for a floating instance is the end of
+the due business day (next 06:00), so with a Mon 6th due date and 2 days' tolerance,
+`grace_until` is 06:00 Thu 9th and its business date is the 9th.
+
 | Event | Result |
 |-------|--------|
-| Generated Mon 6th | due Mon, grace until end of Wed 8th |
+| Generated Mon 6th | due Mon 6th, grace runs to 06:00 Thu 9th (miss date = 9th) |
 | Done Tue 7th | on time. Next due `max(6th, 7th) + 4` = Sat 11th |
-| Done Sun 12th (one day past due, within a fresh cycle's grace) | on time, next due 16th |
-| Never touched | swept+locked at 06:00 Thu 9th as missed; next due Sat 13th |
+| Done Sun 12th (within the next cycle's grace) | on time, next due `12th + 4` = Thu 16th |
+| Never touched | swept + locked at 06:00 Thu 9th as missed; next due `9th + 4` = Mon 13th |
 
 - Floating instances never carry personal blame (§6): nobody is accountable for a
   "whenever" task. Their misses appear on the Problems tab against the venue, not a person.
@@ -772,12 +777,14 @@ ORDER BY (end_time <= start_time) DESC,   -- next-day finishes are latest
          end_time DESC,
          (department = 'bar') DESC,        -- preference, NOT a filter
          start_time ASC,
-         id ASC                            -- stable
+         employee_id ASC                   -- stable tail (the pure resolveCloser has no shift-row id)
 LIMIT 1
 ```
 
 - A non-bar shift can be the closer (40 real dates have no bar shift at the max finish; on
-  2 dates two bar shifts tie, hence the stable tail).
+  2 dates two bar shifts tie, hence the stable tail). The tail key is `employee_id` (not the
+  shift row id) so the SQL query and the pure `resolveCloser` pick the identical closer, since
+  the pure function receives shift rows without their database id.
 - The closer is resolved **for the business date**, not per instant, so "the closing shift
   ends exactly at close" boundary cases (F-06) cannot null it.
 - Monday and Wednesday bar are a single all-day shift named just `Monday`/`Wednesday`, so
@@ -1109,7 +1116,7 @@ under `permissions-${userId}`). Seeding: the defensive `DO $$` pattern
 
 ### RLS design (F-15)
 
-All eleven tables: **RLS enabled with no policies for `anon` or `authenticated`**
+All ten tables: **RLS enabled with no policies for `anon` or `authenticated`**
 (deny-all), `service_role` only. Every read and write goes through server components and
 server actions using the admin client **after** `checkUserPermission` (house pattern; the
 ESLint rule already blocks the admin client in client components). Consequences, stated:
@@ -1203,7 +1210,7 @@ ceremony for a two-person operation).
 
 ### Phase 1, foundation (score 3), ships dark
 
-Migrations (all 11 tables, constraints, RBAC seeding, settings singleton with **all flags
+Migrations (all 10 tables, constraints, RBAC seeding, settings singleton with **all flags
 false**), `trading-window.ts`, cadence/accountability/scoring as pure tested functions,
 `user-mode.test.ts` written. **Grants:** `checklists` to staff/manager/super_admin only,
 deliberately **not** `foh_staff` (the only role satisfying `isFohOnlyUser`); nothing is
