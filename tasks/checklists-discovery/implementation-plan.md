@@ -88,9 +88,18 @@ Delivered dark: no UI, no cron, no jobs, all `checklist_settings` flags default 
   before Phase 2 widens it.
 
 **Verification gate: all green.** lint 0 warnings, `tsc --noEmit` clean, full suite
-3798 tests pass, cold `npm run build` succeeds (the first build failed on a stale `.next`
-`/_document` cache artifact, cleared per the cold-build lesson), migration dry-run clean.
-Adversarial review of the migration + engine run separately.
+3803 tests pass, cold `npm run build` succeeds (the first build failed on a stale `.next`
+`/_document` cache artifact, cleared per the cold-build lesson).
+
+**Adversarial review done, all findings fixed.** It caught one release-blocker the dry-run
+could not: `window` is a reserved SQL keyword, so the real `db push` would fail (renamed to
+`window_json`). Also three template CHECK constraints had NULL-holes (a NULL CHECK is treated
+as satisfied), now guarded; and `expandInstants` rejected a close exactly on the 06:00
+boundary (`>=` to `>`). The closer tiebreak was aligned in the spec to the code's stable
+`employee_id` tail. The migration was then validated end to end by executing the whole thing
+in a **rolled-back transaction against live PG15**: 10 tables, 10 deny-all RLS policies, 2
+permissions, 5 role grants, 16 CHECK constraints, nothing persisted (confirmed zero leaked
+objects). NOT pushed to prod.
 
 **Deviations from the plan:** none material. `mismatch.ts` did not need to import `types.ts`
 (self-contained). Tasks committed per-task with explicit-path staging (this repo has a
