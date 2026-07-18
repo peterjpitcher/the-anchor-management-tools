@@ -69,4 +69,36 @@ typecheck, test, build, `db push --dry-run`) before every merge.
 
 ## Review section (filled as phases complete)
 
-(empty)
+### Phase 1, foundation, built 2026-07-18 (branch feat/checklists)
+
+Delivered dark: no UI, no cron, no jobs, all `checklist_settings` flags default false.
+
+- **Migration** `supabase/migrations/20260731000000_checklists_foundation.sql`: 11 tables,
+  the section 3.12 CHECK constraints, deny-all service-role-only RLS on all 10 tables, the
+  `checklists` RBAC module seeded to super_admin/manager (view+manage) and staff (view).
+  foh_staff deliberately not granted (Phase 2). Dry-run recognised it as the single pending
+  migration; NOT pushed to prod (that is a Phase 2/go-live step).
+- **RBAC** `src/types/rbac.ts`: `checklists` added to the ModuleName union.
+- **Engine** `src/lib/checklists/` (pure, fully unit-tested, 50 tests):
+  `types.ts`, `trading-window.ts` (5.1 truth table), `window.ts` (cross-midnight instants),
+  `cadence.ts` (anchors, seasons, every-N, floating), `accountability.ts` (closer/coverage),
+  `scoring.ts` (timeliness), `mismatch.ts` (section 8), `spot-draw.ts` (weighted, seedable).
+  Built by seven parallel TDD agents, each owning two disjoint files.
+- **Characterization test** `src/lib/foh/__tests__/user-mode.test.ts`: pins `isFohOnlyUser`
+  before Phase 2 widens it.
+
+**Verification gate: all green.** lint 0 warnings, `tsc --noEmit` clean, full suite
+3798 tests pass, cold `npm run build` succeeds (the first build failed on a stale `.next`
+`/_document` cache artifact, cleared per the cold-build lesson), migration dry-run clean.
+Adversarial review of the migration + engine run separately.
+
+**Deviations from the plan:** none material. `mismatch.ts` did not need to import `types.ts`
+(self-contained). Tasks committed per-task with explicit-path staging (this repo has a
+parallel-session git hazard; a concurrent edit to an unrelated oj-projects component was
+left untouched and never staged).
+
+### Phase 2 onward: needs the owner
+
+Phase 2 changes the live FOH iPad (`FOH_MODULES` widening + the foh_staff grant) and the
+spec requires an **iPad UAT sign-off** and the owner enabling the kill-switch flags on a
+quiet day. Those are owner gates, not autonomous steps.
