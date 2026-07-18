@@ -44,7 +44,8 @@ export function businessDayBounds(
 /**
  * Expand a trading window into UTC instants (spec 5.3). When `closes <= opens`
  * (string compare on HH:MM) the close falls on the next calendar day. A close
- * at or past the business-day end is rejected as `invalid_hours`.
+ * strictly past the business-day end is rejected as `invalid_hours`; a close
+ * landing exactly on the boundary (e.g. 06:00 next day) is valid (spec 5.3).
  */
 export function expandInstants(
   businessDate: string,
@@ -61,7 +62,7 @@ export function expandInstants(
   const closesAt = fromZonedTime(`${closeDate}T${closesNorm}:00`, TZ)
 
   const { end } = businessDayBounds(businessDate, businessDayStartHour)
-  if (closesAt.getTime() >= end.getTime()) {
+  if (closesAt.getTime() > end.getTime()) {
     return { error: 'invalid_hours' }
   }
 
