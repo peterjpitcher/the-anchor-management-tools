@@ -1,0 +1,1311 @@
+[
+ {
+  "topic": "Trail — site scoring formula (exact mechanics)",
+  "detail": "Trail scores every task: 10 points on-time, 5 points late, 0 incomplete. Points are averaged across all tasks to give a score out of 10. Colour bands: green ≥9.6, orange 7.6–9.5, red ≤7.5, grey = site still 'Setting Up'. The headline average covers the last 30 consecutive days and is compared against the previous 30. Scores are locked at end of business day — tasks not synced by then count as missed and Trail explicitly refuses retroactive recalculation ('We do not change scores for compliance reasons'). Only Manager/Admin users see scores, and managers only for their assigned sites.",
+  "why_it_matters": "This is the single most copyable mechanic found. It is dead simple (3-value scoring), needs no weighting config, and produces a defensible number. The 'no retroactive recalculation' stance is a deliberate integrity decision, not a limitation — it stops managers gaming the score after the fact.",
+  "decision_needed": "Do we adopt Trail's 10/5/0 on-time/late/incomplete model as-is, and do we lock scores at end of day with no retro edits?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Trail — five distinct schedule types, not just 'recurring'",
+  "detail": "Trail separates schedules into five types: (1) Repeat — daily/weekly/monthly/multi-month/yearly, stackable so a task can appear several times a day; (2) One-Off — specific appear/due dates, used for launches and announcements; (3) Ad Hoc — no schedule, staff pull it from the Complete Tasks page on demand; (4) Action — corrective-action templates triggered by another task's response; (5) Automatic — fired by external integrations (Zapier). Tasks have start AND end date/times so they cannot be completed prematurely, and work is bucketed into 'timeslots' derived from the site's configured business hours.",
+  "why_it_matters": "The timeslot concept is the key insight: hospitality doesn't run on clock times, it runs on 'open', 'changeover', 'close'. Modelling tasks against trading-day timeslots rather than absolute times is what makes these apps fit a pub. The start-time gate (can't tick the closing checks at 3pm) is an anti-gaming control we would be foolish to omit.",
+  "decision_needed": "Do we model task windows against configurable trading-day timeslots (open/mid/close) rather than absolute clock times?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Trail — 'Record Logs' are the must-input-a-value primitive",
+  "detail": "Trail splits data capture into Table format (multiple record rows in one task, with a settable minimum expected number of records and the option to stop teams adding/removing rows — recommended for fridge temperature rounds) and Form format (one record per task — for audits, accident reports). Six field types: Text, Number, Date & Time, Options, File/Photo, Section Title. Number fields take prefixes (£) and suffixes (°C).",
+  "why_it_matters": "The Table-vs-Form split is the industry answer to 'log five fridges' vs 'fill in one report'. The 'minimum expected number of records' + locked rows is what stops staff logging three fridges out of five and calling it done.",
+  "decision_needed": "Do we need both a repeating-rows table type and a single-form type at launch, or is table-only enough for v1?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Trail — out-of-range values auto-raise exceptions",
+  "detail": "Number fields support out-of-range warnings. Acceptable ranges can be driven conditionally by an Options field — e.g. selecting 'fridge' vs 'freezer' applies a different acceptable temperature band to the same numeric field. Values outside the band 'automatically count towards an exception', and a Corrective Action can be attached so the team must raise a follow-up action then and there.",
+  "why_it_matters": "This is the de-facto standard pattern and the whole point of digital temperature logs: capture → validate against a band → auto-exception → forced corrective action, in one flow. A temperature log that just stores a number is a paper log in a database. The option-driven range is what avoids building a separate task per appliance.",
+  "decision_needed": "Should acceptable ranges live on the appliance/asset record rather than the task template, so ranges are maintained in one place?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Jolt — Bluetooth probes produce 'un-editable' records",
+  "detail": "Jolt uses Bluetooth-enabled probes that sync directly into the app, creating instant records the company explicitly markets as 'un-editable'. It automates the timing of hot-holding and cooling readings and prompts staff when the next reading is due. Ranges tracked include hot-hold ≥135°F/57°C, fridge ≤41°F/5°C, freezer 0°F/-18°C, cooling 135→70°F within 2h then 70→41°F within 4h, reheat ≥165°F.",
+  "why_it_matters": "The selling point is not convenience, it is the removal of human hands from the number — i.e. anti-falsification. Any manual-entry temperature system is, to an auditor, a system where staff can type '4' from the car park. If we stay manual-entry we should be explicit about that trade-off and compensate elsewhere (timestamps, geofence, photo).",
+  "decision_needed": "Do we accept manual keyed temperatures for v1, and if so what compensating control (photo of the probe display? timestamp proximity?) do we use?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Jolt — cooling/time-bound processes with escalating visual countdown",
+  "detail": "For multi-stage checks (like cooling), Jolt runs a timed process with a colour-changing alert: green = process started, amber = check due in 15 min, red = due in 10 min, flashing red = due in 5 min, plus push notifications to team devices.",
+  "why_it_matters": "Reveals that some compliance tasks are not 'due at a time' but 'due N minutes after a triggering event', with a live countdown. That's a fundamentally different scheduling model from cron-style recurrence and is easy to overlook when designing the data model.",
+  "decision_needed": "Do we need event-triggered relative-time tasks (start a cooling process → next check due +2h), or is that out of scope for a pub?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Jolt — PIN login on shared devices is the standard attribution mechanism",
+  "detail": "Jolt has an explicit 'Shared Device Mode': multiple users log in and out via QR code or PIN. Employees tap Login, select their name, enter their PIN. Unique PINs let staff skip the name-selection step for faster login. Jolt attributes completion with photo-proof, time stamps and name stamps.",
+  "why_it_matters": "This is the de-facto industry standard and we would be foolish to omit it. The whole category assumes one wall-mounted tablet behind the bar, not personal phones. Individual accounts with email/password logins would collapse in a pub — attribution has to be a 4-digit PIN against a staff record, resolving to a name stamp on the record. Note the pattern: the device is authenticated persistently; the *person* is authenticated per-action.",
+  "decision_needed": "Do we implement a per-action PIN attribution model on a persistently-signed-in shared device, rather than per-user sessions?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Jolt — the accountability triad: photo-proof + time stamp + name stamp",
+  "detail": "Jolt markets 'complete team accountability' as exactly three things bound to every completion: a photo, a timestamp, and a name stamp. It also automates task assignment, corrective actions, and notifications for overdue/incomplete tasks.",
+  "why_it_matters": "Every vendor in this category converges on this same triad. It is the minimum viable evidence bundle. If our completion record does not carry all three, it is weaker than every competitor and weaker than what an EHO now expects to see.",
+  "decision_needed": "",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Trail — EHO/Primary Authority approval is a commercial moat, not a feature",
+  "detail": "Trail holds an assured Primary Authority partnership and states it is approved by EHOs for record keeping, positioning itself as proof of HACCP compliance in an inspection. It keeps a full digital audit log, comment threads and image uploads as proof for management and auditors.",
+  "why_it_matters": "For a UK pub this is the actual purchase reason. A Primary Authority partnership means an EHO has pre-blessed the record format. We cannot replicate that credential, but we can and should match the record format so our exports stand up in an inspection — the historical record, immutable and time-stamped, is the product.",
+  "decision_needed": "Is EHO-defensible record-keeping an explicit requirement for us, or are we building an internal ops tool that does not claim compliance?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Crunchtime Ops Execution (Zenput) — issue → auto-assigned corrective task → escalation to closure",
+  "detail": "Zenput schedules recurring and ad hoc work auto-assigned to employees. When an issue arises, staff are instantly assigned follow-up tasks and corrective actions, and managers receive alerts and status updates. Reports carry photos, notes and geo-tags and escalate instantly to supervisors. The platform tracks 'corrective action to closure' with escalation.",
+  "why_it_matters": "'To closure' is the load-bearing phrase. Flagging a problem is trivial; the industry standard is that a failure opens a tracked item with an owner and a deadline that cannot be silently dropped. Geo-tagging on reports is also notable — it proves the check happened at the site.",
+  "decision_needed": "Do exceptions become first-class tracked records with an owner and a due date, or just flags on a completed task?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Crunchtime/Zenput — cross-store benchmarking as the manager's primary view",
+  "detail": "Data from tasks, audits and incidents feeds analytics dashboards where leaders compare performance across stores, track completion rates and identify underperforming units. Reported outcomes: 20% improvement in audit scores, 24% reduction in compliance issues, 5 hrs/week saved for store employees and 8 hrs/week for field managers. Used across 60,000+ locations.",
+  "why_it_matters": "Confirms the buyer is the multi-site manager, and the killer view is a ranked comparison of sites. For a single-site operator like The Anchor the equivalent is ranking *people* or *shifts/day-parts*, not sites — the same mechanic pointed at a different axis.",
+  "decision_needed": "For a single site, do we rank by staff member, by day-part, or by task area?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "SafetyCulture/iAuditor — weighted scoring via response sets",
+  "detail": "Scoring works by assigning numeric values to multiple-choice answers within a response set — e.g. great=3, satisfactory=2, passable=1, negative=0 — which roll into an inspection scorecard. One response in the set (e.g. 'Non-Compliant') is designated the *failed response*; selecting it flags the item as failed and can trigger an Action.",
+  "why_it_matters": "This is the more sophisticated alternative to Trail's flat 10/5/0. It scores *quality of answer*, not just *did you do it*. Trail scores compliance-with-schedule; SafetyCulture scores compliance-with-standard. They are genuinely different products and we should pick deliberately — most operators eventually want both.",
+  "decision_needed": "Are we scoring 'did the task get done on time' (Trail model) or 'how well did the site perform' (SafetyCulture model)? These need different data models.",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "SafetyCulture — Actions can be assigned to people without an account",
+  "detail": "An Action raised from a flagged inspection item takes a due date, a priority level, and an assignee — and can be assigned to someone who does not have a SafetyCulture account.",
+  "why_it_matters": "Removes the classic dead-end where a failed check needs the plumber/landlord/contractor to fix it but they aren't a licensed user, so the action dies in someone's head. Worth copying for anything involving external contractors.",
+  "decision_needed": "",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "SafetyCulture — offline-first with configurable sync interval",
+  "detail": "Inspections can be stored locally on the device so they can be edited and reports generated with no connection. Syncing is automatic when online (Wi-Fi or cellular per settings) and the sync interval is user-configurable — e.g. every 1 minute, 30 minutes or 1 hour.",
+  "why_it_matters": "Offline is a hard requirement in this category — cellars, walk-in fridges and kitchens have no signal, and that is precisely where temperature checks happen. Note this collides directly with Trail's 'unsynced by end of day = missed' rule: an offline-first design must decide whether the completion timestamp is the capture time or the sync time. Capture time is the only honest answer.",
+  "decision_needed": "Do we commit to offline capture in v1, and do we timestamp on capture (correct, harder) or on sync (easy, wrong)?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Squadle — ZeroTouch probe, 83% faster temperature capture",
+  "detail": "Squadle (now part of Crunchtime) began as a tablet replacing paper logs and added patented ZeroTouch technology that transfers a reading from the thermometer into the digital checklist automatically, claiming food/equipment temperatures taken 83% faster than a manual thermometer. Personalised dashboards with text and email alerts give a real-time pulse on activity and compliance per store.",
+  "why_it_matters": "Quantifies why probe integration wins: it is a speed argument as much as an integrity one. Staff defeat slow systems. Any manual temperature flow we build must be brutally fast — the number of taps to log five fridges is the metric that decides whether the product gets used or quietly abandoned.",
+  "decision_needed": "",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Xenia — conditional logic driving corrective actions and notifications",
+  "detail": "Xenia's template builder embeds conditional logic in each step: a form response can trigger a corrective action on a failed inspection step, or notify management on out-of-range meter readings. Answering 'No' to a safety question reveals follow-up questions automatically. Audits support conditional visibility plus weighted-and-nullify scoring. Failed steps can spawn work orders, with corrective data stored inside the checklist submission for auditing.",
+  "why_it_matters": "'Nullify' scoring is subtle and important — an N/A question must be removed from the denominator, not scored zero, or sites get punished for equipment they don't have. Any scoring model needs an explicit N/A path. Also note corrective data is stored *inside* the submission, keeping the evidence bundle together.",
+  "decision_needed": "Does our scoring support N/A that nullifies (drops from denominator) rather than scoring zero?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Xenia — QR, no-login work order requests",
+  "detail": "Xenia supports 'QR no-login work orders' — a QR sticker on equipment lets anyone report a fault (the broken fryer at 11pm) and have it logged and routed without installing an app or logging in.",
+  "why_it_matters": "Clever friction removal for the report-a-problem path specifically. The insight: the person who *finds* a problem is often not a system user, and forcing a login means the problem never gets reported. Worth considering a QR-per-appliance pattern.",
+  "decision_needed": "",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "7shifts — tasks attached to shifts, not to dates",
+  "detail": "7shifts attaches recurring tasks to shifts created in the weekly schedule, divided by location, department or role. Once scheduled, employees see the tasks for their shift and are reminded during it. Managers see who completed each task and when. Completion types include photos, values and temperature readouts.",
+  "why_it_matters": "A genuinely different scheduling philosophy from Trail's: tasks hang off the rota rather than the calendar. Because we already own the rota (rota_shifts), this is the cheapest possible path to both scheduling AND attribution — if you're clocked into the shift, the tasks are yours and completion attributes to you automatically. This is likely our unfair advantage.",
+  "decision_needed": "Do we bind task assignment to rota shifts/roles (leveraging our existing rota) rather than building a parallel assignment system?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Checkit — sensors displace the manual check entirely",
+  "detail": "Checkit pairs a guided digital assistant on a handheld ('Memo') that displays scheduled tasks and auto-date-stamps actions, with handheld probes and wireless IoT sensors monitoring temperature, humidity or door status 24/7, alerting immediately when conditions stray beyond limits. It explicitly handles both scheduled and unscheduled tasks.",
+  "why_it_matters": "The strategic direction of the whole category: the best manual check is no manual check. Continuous sensor monitoring makes the 'log the fridge twice a day' task obsolete and produces better evidence. Trail confirms the same direction ('connects to fridges and sensors to automate repetitive checks'). Worth designing the data model so a reading's source can be human OR sensor from day one, even if we never ship sensors.",
+  "decision_needed": "Should the temperature reading model be source-agnostic (manual | probe | sensor) from the start to avoid a painful migration later?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "FoodDocs — 'smart prefill' of monitoring logs is a compliance anti-pattern",
+  "detail": "FoodDocs markets eliminating repetitive tasks via 'pre-filled monitoring checks based on previously inputted data (you simply confirm the logs or change them)', AI-generated pre-set monitoring tasks from the business profile, and a flexible schedule letting sites pause or skip monitoring during holidays or emergencies.",
+  "why_it_matters": "Flagging this as a deliberate DO-NOT-COPY. Pre-filling yesterday's fridge temperature and asking staff to confirm is functionally 'pencil-whipping' with a nicer UI — it trains staff to tap Confirm without looking, and it is exactly the falsification that Jolt's un-editable probe records and Squadle's ZeroTouch exist to prevent. Two vendors in this same list build their entire value proposition on preventing this. The pause/skip schedule is legitimate and useful though — pubs close.",
+  "decision_needed": "Confirm we will never pre-fill a measured value — but do we want a legitimate pause/skip for closure days?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Trail — access control on scores and task editing",
+  "detail": "Only admin-level users can edit task schedules via the Task Editor's Schedule tab. Site scores are Manager/Admin only, scoped to assigned sites, and gated behind the Standard Plan. Trail also ships Custom Roles for creating, editing and assigning tasks to sites.",
+  "why_it_matters": "Confirms the permission split we'd need: staff complete, managers verify and see scores, admins define templates and schedules. Critically, the person doing the task must not be able to edit the task or its schedule — that separation is the integrity control. Maps cleanly onto our existing RBAC (staff/manager/super_admin).",
+  "decision_needed": "",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Trail — reporting is export-oriented, built for the inspection moment",
+  "detail": "Trail provides live dashboards and reports for remote visibility, plus Task Reports to review site history and export/download data. Jolt likewise exports all temperature records to Excel or Google Sheets for audit compliance.",
+  "why_it_matters": "The reporting requirement is narrower than it first appears. Nobody wants BI — they want to hand an EHO a clean, complete, time-stamped history for a date range, on the spot. A well-built export against a date range covers most of the real need; dashboards are for the owner, not the inspector.",
+  "decision_needed": "Is the v1 reporting deliverable simply a date-range export of completions with evidence, rather than dashboards?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Category convergence — the non-negotiable feature floor",
+  "detail": "Across Trail, Jolt, Zenput, SafetyCulture, Xenia, Squadle, Checkit, MeazureUp and 7shifts, the same set recurs without exception: recurring + ad-hoc scheduling; time-windowed tasks; numeric entry with acceptable ranges; auto-exception on out-of-range; corrective action tracked to closure; photo evidence; name + time stamp on every completion; shared-device PIN attribution; offline capture; and a completion-rate score compared across sites/periods.",
+  "why_it_matters": "This is the answer to 'what would we be foolish to omit'. Anything missing from this list reads as an unfinished product to anyone who has used a competitor. Conversely, everything beyond this list (gamification, AI template generation, IoT) is differentiation, not table stakes.",
+  "decision_needed": "Do we agree this list is the v1 scope floor, with sensors/AI explicitly deferred?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "Yoobic — gamification with points, badges and leaderboards",
+  "detail": "Yoobic layers mobile-first training with gamification: quizzes, gamified head-to-head 'battles', points and badges, and a leaderboard showing top performers. It is an employee experience platform for frontline teams spanning comms, task management and training — but is only sold to businesses with 100+ locations or 1000+ users.",
+  "why_it_matters": "Gamification is real but is positioned as an engagement/training layer for large estates, not core ops — and no other vendor in this list leads with it. For a single pub, a leaderboard of staff task scores is socially risky (it can read as public shaming) and Trail's choice to hide scores from staff entirely is a deliberate counterpoint worth respecting.",
+  "decision_needed": "Do staff see their own completion score, or is scoring manager-only as in Trail?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "MeazureUp — the two-app split: daily checks vs periodic field audits",
+  "detail": "MeazureUp deliberately ships two separate products: DailyChex (a daily checklist app for the team on-site) and AuditApp (field inspections done by a visiting auditor/area manager), across 6000+ locations for brands like MOD Pizza and Spur. It emphasises setting benchmarks, trend analysis and historical reports.",
+  "why_it_matters": "The clearest statement in the research that the daily-checklist job and the manager-verification job are different products with different users, cadences and scoring. This maps directly to the 'manager verification / spot-check' requirement: a spot-check is not a task on the same list, it is a separate audit *of* the list, done by a different person, scored differently.",
+  "decision_needed": "Do we model manager spot-checks as a distinct audit entity that references and scores completed tasks, rather than as just another task type?",
+  "source": "competitor-tools"
+ },
+ {
+  "topic": "SFBB is the default legal route for a pub kitchen",
+  "detail": "Regulation (EC) 852/2004 requires a documented food safety management system based on HACCP principles. For small caterers the FSA's Safer Food Better Business (SFBB) pack is the recognised way to meet this. It covers six areas: cross-contamination, cleaning, chilling, cooking, management, and using the diary. The 'Safe Methods' sheets are the standing procedures; the Diary is the daily evidence they were followed.",
+  "why_it_matters": "A digital checklist system for a pub is really a digital SFBB. If it doesn't map onto the four Cs plus management plus diary, an EHO won't recognise it as the FSMS and the pub is technically operating without one.",
+  "decision_needed": "Do we model our checklist schema explicitly on the SFBB structure (safe methods + daily diary + 4-weekly review), or invent our own taxonomy?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Daily diary completion is the minimum bar",
+  "detail": "FSA guidance: the diary must be completed for all food operations, with daily records, as a minimum every day the business trades. The diary also contains a mandatory four-weekly review to confirm the system is still current and to spot recurring problems.",
+  "why_it_matters": "The system needs a per-trading-day completion concept (not just ad-hoc checks) and a separate recurring 4-weekly manager review artefact. Most checklist apps miss the 4-weekly review entirely.",
+  "decision_needed": "Do we build the 4-weekly review as a first-class scheduled record type with its own sign-off?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Digital records are explicitly accepted — FSA says so in writing",
+  "detail": "FSA/GOV.UK SFBB guidance explicitly offers two options: download the diary pages and 'store them electronically', or print them. Records may be kept on paper or electronically. Commercial digital SFBB products (SFBB+, SFBB Pro — the latter approved via a primary authority partnership with Dorset Council) are in active use and recognised by enforcement bodies.",
+  "why_it_matters": "There is no legal blocker to going fully paperless. This kills the most common objection from a cautious licensee or EHO. It also means the deliverable must be exportable/viewable on demand during an inspection.",
+  "decision_needed": "Should we pursue a Primary Authority partnership for formal EHO recognition, or rely on the generic FSA acceptance of electronic records?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "The inspector must be able to see the records on the day, on site",
+  "detail": "FSA guidance says store completed diary pages 'safely until your next visit from a local authority food safety officer' — officers 'may want to look at your diary pages'. Inspections are unannounced.",
+  "why_it_matters": "Availability is a hard requirement. A system that is offline, locked behind one manager's login, or needs head-office to export it will fail an inspection even if the data is perfect. Needs an on-site read-only 'inspector view' and offline resilience.",
+  "decision_needed": "Do we build a dedicated inspector/read-only mode and an instant PDF export of any date range?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Retention period is not fixed in law — and vendor claims conflict badly",
+  "detail": "Reg (EC) 852/2004 requires records 'commensurate with the nature and size of the business' retained for 'an appropriate period'; the FSA says it is for the business to decide, based on shelf life. FSA has indicated a minimum of around 3 months; most EH departments advise 12 months+. Traceability files for meat/shellfish/long-shelf-life goods: up to 5 years, or shelf life plus one year. One vendor blog claims a flat '6 years' obligation — this appears unsupported by the regulation and should not be relied on.",
+  "why_it_matters": "There is no single number to hard-code. Retention must be configurable, with a safe default. Deleting records at 3 months would be defensible in law but disastrous in an EHO conversation or a prosecution 18 months later.",
+  "decision_needed": "Set default retention to 24 months (safely beyond any EHO expectation and typical inspection cycles) and make it configurable — agreed?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Chilled food: 8°C is the legal maximum, not the target",
+  "detail": "Food Safety and Hygiene (England) Regulations 2013, Schedule 4: it is an offence to keep food that supports pathogen growth above 8°C. Industry best practice is 5°C or below, precisely to leave headroom before the legal limit is breached.",
+  "why_it_matters": "A checklist should treat 5°C as the 'green' target and 8°C as the hard fail, with an amber band between. Recording a fridge at 7.5°C as a plain 'pass' hides a system drifting toward an offence.",
+  "decision_needed": "Do we implement three-band thresholds (green/amber/red) rather than binary pass/fail on temperature checks?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Hot holding is 63°C, with a two-hour tolerance",
+  "detail": "Schedule 4: cooked/reheated food for service must be held at or above 63°C. A defence exists where food is held below 63°C for less than two hours and has not previously been held that way. Chilled display has a parallel four-hour rule (food out of chill for under four hours, not previously abused).",
+  "why_it_matters": "These are time-bounded defences, not standing permissions. A digital system can actually enforce them (start a timer at removal from chill/hot-hold) — something paper physically cannot do. Genuine differentiator.",
+  "decision_needed": "Do we build countdown timers for the 4-hour chilled display and 2-hour hot-hold defences?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "The 8°C rule has documented defences that need capturing",
+  "detail": "Schedule 4 defences include: manufacturer's recommendation of a higher temperature backed by well-founded scientific assessment and communicated to the operator; brief unavoidable exceedance during defrosting, processing practicalities, or temporary equipment breakdown, where consistent with food safety.",
+  "why_it_matters": "A red temperature reading is not automatically an offence. If the system only records 'FAIL' with no place to log the defence (breakdown, defrost cycle, manufacturer spec), it manufactures evidence against the pub.",
+  "decision_needed": "Should a failed reading force a structured corrective-action entry with a defence/reason category?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Cellar temperature is quality, not food safety law — different rules apply",
+  "detail": "Cask ale cellars run at 11–13°C; that is the trade/brewer standard (Beer Genius/Molson Coors best practice), driven by beer condition — too cold causes chill haze, too warm causes rapid spoilage. It is NOT the 8°C food safety limit. Beer lines should be cleaned every 7 days, and cask lines fully cleaned at every cask change.",
+  "why_it_matters": "Critical distinction: a cellar at 12°C is correct, not a breach. If the system applies the 8°C food rule to a cellar probe it will generate constant false failures and staff will learn to ignore alerts. Beer line cleaning is a separate 7-day recurring task.",
+  "decision_needed": "Do we type checkpoints by purpose (food-safety vs quality) so each carries its own thresholds and legal weight?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "FHRS scoring: three elements, and the lowest one caps your rating",
+  "detail": "Three scored elements: hygiene compliance, structural compliance, and confidence in management (scored 0/5/10/20/30 — lower is better). Totals map to ratings: 0–15 = 5, 20 = 4, 25–30 = 3, 35–40 = 2, 45–50 = 1, over 50 = 0. Crucially there is a per-element cap: no single element may exceed 5 points for a 5 rating, 10 for a 4, etc. A weak element cannot be offset by strong ones.",
+  "why_it_matters": "This is the commercial hook. Confidence in management is the element records most directly drive, and because of the cap, a bad management score alone drops the rating regardless of how clean the kitchen is. A 30 on management makes a 5 arithmetically impossible.",
+  "decision_needed": "Do we surface a live 'confidence in management' readiness indicator to the licensee as the headline value proposition?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Confidence in management is literally scored on the records you keep",
+  "detail": "EHOs score confidence in management on evidence that standards are sustained between visits, because an inspection is only a snapshot. Cited evidence: a documented food safety management system, staff training records, and logged storage temperature checks. Officers also interview staff to test understanding. Example given: a premises scores 20 (bad) because the FSMS is not documented and they don't understand how it should work; 5 (good) where hygiene, structural and management practices are all sound.",
+  "why_it_matters": "Complete digital records are the single highest-leverage input to the FHRS rating. This directly connects the checklist product to a number displayed on the pub's front door and on Just Eat/Deliveroo listings.",
+  "decision_needed": "Should the system also hold staff training records, given they are explicitly part of the same score?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Missing records are what an EHO looks for first — and they collapse the due diligence defence",
+  "detail": "Section 21 Food Safety Act 1990 gives a defence if the business proves it took all reasonable precautions and exercised all due diligence. Practitioner guidance: gaps in temperature records are among the first things an inspector flags; a two-week gap in fridge logs means 'the defence starts to crumble'. Corrective actions and retraining must also be recorded.",
+  "why_it_matters": "Gaps are the risk, not imperfect readings. The system's job is to make gaps visible and rare — and to record corrective actions, which are as legally important as the check itself and are usually the thing paper systems omit.",
+  "decision_needed": "Do we build a gap/exception dashboard for the licensee, so missed checks are chased same-day rather than discovered by an EHO?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Back-filled records are detected fast and actively harm the pub",
+  "detail": "Practitioner guidance: 'EHOs spot back-filled records in the first 15 minutes on site.' HACCP audit guidance lists classic tells: identical handwriting/one person completing every record with no variation, no gaps in an implausibly perfect run, and logged readings that don't match actual equipment readings.",
+  "why_it_matters": "A digital system that lets a manager retro-complete a week of checks at 5pm Friday actively creates evidence of falsification. Timestamps make the fraud provable in a way paper never did — this is a genuine liability if designed carelessly.",
+  "decision_needed": "Do we prohibit silent back-dating entirely — allow late entries but stamp them immutably as 'completed late' with the true server time and a reason?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Falsifying records is treated far more seriously than failing a check",
+  "detail": "In 2015 a chef and manager at an Essex hotel were jailed for perverting the course of justice by falsifying temperature and cooling records. Sentencing guidance reserves the highest penalties for deliberate breaches, ignored warnings, obstruction, and falsified records. Food safety offences carry unlimited fines and up to 2 years' imprisonment. Directors, owners and managers can be personally prosecuted where an offence occurred with their consent, connivance or neglect.",
+  "why_it_matters": "A late or missing check is a compliance failing. A faked one is potentially a custodial criminal offence with personal liability for the licensee. The product must make honest late entry the path of least resistance and make fabrication impossible.",
+  "decision_needed": "Do we make the audit trail immutable and non-editable (append-only corrections, never overwrites) as a core design principle?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "A late record is recoverable; a fabricated one is not",
+  "detail": "Synthesising the above: a genuine late entry with an honest timestamp and a recorded reason still evidences a functioning system and supports due diligence. A back-filled entry, once detected, destroys the credibility of every other record the business holds and pushes the case toward deliberate-breach sentencing and personal liability.",
+  "why_it_matters": "This is the core design philosophy for the whole product. The system should never punish honesty in a way that tempts staff to lie. An entry marked 'completed 3 hours late — probe was being recalibrated' is an asset; a clean fake is a criminal exhibit.",
+  "decision_needed": "Do we accept the principle that the system always accepts a late entry, never blocks it, but always marks it truthfully?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Traceability and allergen records are a separate legal duty",
+  "detail": "It is a legal requirement to record what food products were bought, from whom, quantity and date, plus allergen information. Traceability and waste transfer records are also legally required. Traceability files for meat, shellfish, or long-shelf-life products may need retaining up to 5 years, or shelf life plus one year.",
+  "why_it_matters": "This sits outside the daily-checks loop but an EHO will ask for it. It carries a materially longer retention period than daily diary records — so retention cannot be a single global setting.",
+  "decision_needed": "Do we scope traceability/allergen records into v1, or explicitly park them and set per-record-type retention now so the schema supports them later?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Licensing daily duties: no statutory daily check, but a refusals register is the practical norm",
+  "detail": "There are six mandatory conditions under the Licensing Act 2003 (irresponsible promotions, potable water, age verification policy, small measures, plus DPS requirements). Notably, daily physical checks are NOT a statutory mandatory condition — but licensing authorities and police routinely impose them as premises-specific conditions. An age verification policy is mandatory; Challenge 25 is the standard implementation, with posters required and refusals recorded 'whether on paper or in digital form'. The DPS must ensure alcohol sales follow the age verification policy.",
+  "why_it_matters": "Licensing conditions are per-premises, not universal — so the licensing side of the checklist must be configurable to the actual licence, not hard-coded. The refusals register is the one licensing record with explicit digital acceptance and is a natural fit.",
+  "decision_needed": "Do we build a configurable licensing-conditions module driven by the individual premises licence, with a digital refusals register as the anchor feature?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "H&S records a pub must keep, separate from food safety",
+  "detail": "Fire: recorded checks of alarm systems, emergency lighting, extinguishers and fire doors (weekly alarm test is standard practice). RIDDOR 2013: responsible persons must report AND keep records of reportable workplace accidents/injuries; accident investigations should retain initial reports, follow-ups, photos and statements. Legionella (HSE ACOP L8): bacteria grow between 20°C and 45°C, especially where water stagnates; temperature monitoring records per outlet marked pass/fail, hot and cold sections separated with location detail. Legionella risk is elevated in pubs by little-used guest room or function room outlets.",
+  "why_it_matters": "A pub's real daily/weekly checklist spans three regulators (EHO for food, licensing authority, HSE for H&S) — not one. Legionella outlet monitoring in particular has its own temperature logic (avoid 20–45°C) that is the inverse of food chilling logic, and is commonly neglected in pubs.",
+  "decision_needed": "Do we scope H&S (fire, RIDDOR, legionella) into the same system as food and licensing, or ship food-only first?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "Three different temperature regimes, three different rulebooks",
+  "detail": "Summary of the conflicting ranges a single pub must manage simultaneously: chilled food ≤8°C legal / ≤5°C best practice; freezer typically -18°C; hot holding ≥63°C; cooking core commonly 75°C; cask cellar 11–13°C (quality standard, not law); legionella danger zone 20–45°C (must AVOID, so hot water must be hot and cold water cold).",
+  "why_it_matters": "Any generic 'temperature check' field is wrong. Each checkpoint needs its own thresholds, its own direction of failure, its own legal basis, and its own consequence. Getting this wrong produces alert fatigue that undermines the entire system.",
+  "decision_needed": "Do we model checkpoints as typed templates with per-type thresholds, units, legal basis and failure direction, rather than a generic numeric field?",
+  "source": "uk-compliance"
+ },
+ {
+  "topic": "RRULE is a calendar-anchored generator, not a task scheduler",
+  "detail": "RFC 5545's RRULE expands from a fixed DTSTART anchor using FREQ/INTERVAL/BYxxx parts. Every occurrence is a pure function of (DTSTART, RRULE, RDATE, EXDATE) — nothing in the spec can reference the state of a previous instance, including whether it was done or when. VTODO has COMPLETED and PERCENT-COMPLETE properties, but RRULE expansion ignores them entirely. RFC 5545 also forbids COUNT and UNTIL in the same rule, and mandates that occurrences not matching DTSTART's value type are ignored.",
+  "why_it_matters": "This is the single hard boundary of the standard: if you adopt RRULE as your recurrence model, you have adopted calendar-based scheduling and cannot express 'due 14 days after it was last done' without inventing a non-standard extension. Most products that appear to do both actually run two separate engines and only export the RRULE half to iCal.",
+  "decision_needed": "Do we store recurrence as an RRULE string (interoperable, exports to iCal/Google Calendar) or as our own structured columns (expressive enough for completion-anchored rules, but no calendar export)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "The 'every-N' vs 'after-N' split is the cleanest available primitive",
+  "detail": "Home Assistant's Chore Helper models exactly two scheduling modes: every-n (\"scheduled based on start date\") and after-n (\"scheduled based on completion date\"). Grocy makes the same cut with period types manually / dynamic-regular / daily / weekly / monthly / yearly, where dynamic-regular means \"after you have performed the task it is scheduled again a set number of days after you last performed it\". MaintainX calls the same distinction fixed interval vs floating interval.",
+  "why_it_matters": "Four separate products in different domains converged on the same binary. That is strong evidence it is the right primitive rather than a quirk. It also means the schema needs one discriminator column (anchor: 'schedule' | 'completion') rather than a proliferation of recurrence types.",
+  "decision_needed": "Is the anchor mode a per-task setting, or fixed per task category (e.g. compliance checks always calendar-anchored, deep cleans always completion-anchored)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Floating/completion-anchored schedules drift, and the drift is the point — but it cuts both ways",
+  "detail": "With floating intervals, a 30-day task completed 5 days late schedules the next one 30 days from the completion, not from the original due date. MaintainX notes that the recalculation happens on completion and applies equally to early completion — finish early and the next due date pulls forward with it, so the schedule silently accelerates.",
+  "why_it_matters": "Drift is desirable for wear-based work (a deep clean done late genuinely doesn't need doing again 25 days later) and dangerous for compliance work (a monthly fire-alarm test that drifts 5 days each cycle falls out of a regulatory month within a year). Early completion also lets keen staff quietly increase the workload for everyone.",
+  "decision_needed": "Should completion-anchored tasks clamp — never schedule the next instance earlier than the original due date, so early completion doesn't accelerate the cadence?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Fixed intervals pile up work orders; floating intervals guarantee at most one",
+  "detail": "MaintainX's docs are explicit: fixed intervals can leave multiple work orders open simultaneously because the schedule keeps firing regardless of completion, whereas floating intervals \"attempt to keep only one work order open at a time\" because the next target isn't computed until the current one closes.",
+  "why_it_matters": "This is the real operational trade-off behind the anchor choice, and it's usually more visible to staff than the drift question. A neglected calendar-anchored daily task produces 30 angry red rows in a month; the same task floating produces exactly one. The first is an honest audit trail, the second is a usable to-do list.",
+  "decision_needed": "For calendar-anchored tasks that were never done, do we keep every missed instance as a row (auditable) or collapse them into one row with a miss count (usable)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Sub-daily cadence ('every 2 hours between open and close') is a window+frequency model, not a recurrence rule",
+  "detail": "RRULE can technically express this via FREQ=HOURLY;INTERVAL=2 or FREQ=DAILY;BYHOUR=10,12,14,16,18,20, but both bind the times to fixed clock hours from DTSTART. Neither can say 'between whenever we open today and whenever we close today'. Operational tools (Operandio, Jolt) instead model a schedule with start and due times and let staff complete within it, and hospitality checks are configured as per-shift frequencies rather than clock recurrences.",
+  "why_it_matters": "A toilet check every 2 hours between open and close is genuinely a different shape from a calendar recurrence: the count of instances depends on the day's trading hours, which vary by day of week and by season. Encoding it as BYHOUR forces you to duplicate the rule per opening pattern and re-edit every rule when hours change.",
+  "decision_needed": "Do we model intra-day cadence as (interval + bounded by the day's actual open/close from the trading-hours table) rather than as fixed clock times?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "'Roughly weekly, not on a fixed day' has no calendar representation at all",
+  "detail": "RRULE requires you to name the day (BYDAY=FR) or accept the DTSTART weekday. There is no 'about every 7 days, ±2, any day'. The available representations are: completion-anchored with an interval (Grocy dynamic-regular, period 7), or a due window (due between day 5 and day 9 from last completion) — i.e. an interval plus a tolerance, which is a two-number model, not a rule string.",
+  "why_it_matters": "This class of task is extremely common in a pub (change the barrel line clean, restock the cellar, check the bin store) and is the one most likely to be forced into a fake fixed-day rule, which then generates fake overdue noise every week the team did it on Thursday instead of Wednesday.",
+  "decision_needed": "Do we add a tolerance/slack field (interval_days + tolerance_days) so 'roughly weekly' is first-class rather than approximated?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Meter-based PM is the third anchor, and it generalises beyond machinery",
+  "detail": "CMMS tools schedule on usage thresholds — every 5,000 miles, every 500 run-hours — and these milestones stay fixed even when the previous work order was completed early or late. Combined plans fire \"when the time interval or usage threshold is reached, whichever comes first\".",
+  "why_it_matters": "A pub has meters even without machines: covers served, kegs pulled, cleans since last descale, days since last deep clean. Modelling 'whichever comes first' as a general OR over triggers means glasswasher descaling can be 'every 3 months OR every 2,000 cycles' without a bespoke feature. The catch: 'whichever comes first' needs a clear reset rule on completion or both counters drift out of step.",
+  "decision_needed": "Do we want a counter/meter trigger at all in v1, or is time-only sufficient until a concrete case (glasswasher, cellar cooler) demands it?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Due-date rollover: the option to make a task incapable of being overdue",
+  "detail": "Grocy ships a \"Due date rollover\" flag: when enabled \"the chore can never be overdue, the due date will shift forward each day when due\". It is a distinct concept from both anchors — the task stays perpetually due-today until someone does it.",
+  "why_it_matters": "This is the honest model for tasks where lateness is meaningless but the task must not disappear (e.g. 'replace the noticeboard poster'). It also prevents the overdue list becoming a graveyard that staff learn to ignore — the single biggest failure mode of checklist software.",
+  "decision_needed": "Which tasks are rollover (nag forever, never overdue) vs strict (one shot, then missed)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Overdue, missed and skipped are three different states and conflating them destroys the audit trail",
+  "detail": "Checklist tools distinguish results as pass, fail, not applicable, skipped, or needs follow-up. Overdue = past due, still actionable. Missed = the window closed unactioned, no longer completable. Skipped = a human deliberately declined it, ideally with a reason. Chore Helper never auto-completes — chores go to a negative day count and stay visible until someone calls complete.",
+  "why_it_matters": "Compliance value lives entirely in this distinction. 'Toilet check missed at 21:00' and 'toilet check skipped at 21:00 — venue closed early for a private event' are the same absence of a tick but opposite facts in an EHO inspection. Auto-expiring a missed task with no record is the worst option: it looks clean and proves nothing.",
+  "decision_needed": "Can staff skip with a mandatory reason, and does a skip satisfy the recurrence (advance the next due date) or not?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "'Due at' vs 'due by' are different contracts and need different UI and alerting",
+  "detail": "Operandio models tasks with both start and due times — staff are told which jobs they must complete \"and at what time they're due\", i.e. a window rather than an instant. A 'due at' task (open-up temperature check at 11:00) is a point obligation; a 'due by' task (bin store tidied by close) is a deadline over a window.",
+  "why_it_matters": "They alert differently. 'Due at' should nag near the instant and mark late almost immediately — its value is the timestamp. 'Due by' should be silent until near the deadline. Using one model for both either spams staff all afternoon or fails to catch a check done 3 hours off-schedule.",
+  "decision_needed": "Do we store window_start and due_at separately (supports both shapes) or just due_at plus a grace period (simpler, can't express a real window)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Grace periods are a lie about lateness unless the true timestamp is kept",
+  "detail": "A grace period is a display/alerting concession: the task is late but we're not going to say so yet. The dangerous implementation is one that mutates the due date or records the completion as on-time. The safe implementation records the actual completion timestamp, computes lateness truthfully, and applies the grace only to notification and to the red/amber state.",
+  "why_it_matters": "For anything with a compliance flavour, a grace period that rewrites history means the audit trail can never answer 'was this actually done on time?'. It also compounds with floating intervals: if grace shifts the recorded completion, the next due date is computed from a fictional date.",
+  "decision_needed": "Is grace strictly presentational (never touches stored completed_at or the next-due calculation)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "The business day must be a configurable boundary, not midnight",
+  "detail": "Time-and-attendance systems solve the past-midnight problem with an explicit Day Boundary setting — moved from midnight \"to a time when shifts are completed\", which stretches the period to include after-midnight hours. Scheduling tools take the parallel approach of attributing a midnight-crossing shift to a daypart by its start. Financial systems do the same thing with a trade-date roll at 20:00 rather than midnight.",
+  "why_it_matters": "A 00:30 close means the last toilet check of Friday night happens on Saturday by the calendar. If business_day is derived as (timestamp - boundary_offset)::date rather than timestamp::date, then close-down tasks, the day's checklist completion rate, and the manager's morning report all attribute correctly with no special-casing anywhere else. Get this wrong and every report is quietly off by one for the busiest hours of the week.",
+  "decision_needed": "Do we adopt a single configurable business-day start (e.g. 06:00 London) applied uniformly to task attribution and reporting, and store business_date as a derived column?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Tasks due on a closed day need a stated policy: skip, defer, or pull forward",
+  "detail": "Trading systems simply do not report activity on non-business days — the day is skipped entirely. Scheduling systems more often defer to the next open day. RRULE itself has no notion of a closed day; the only standard tool is EXDATE, which removes the occurrence and does not move it.",
+  "why_it_matters": "The right answer differs per task and cannot be a global setting. A daily toilet check on a closed Monday should vanish (skip — there were no customers). A weekly cellar clean falling on a closed Monday should move to Tuesday (defer — the work still needs doing). A monthly stock count due on a closed day probably should pull backward to the last open day (deadline-driven). Picking one policy for all three produces either phantom overdue tasks or silently dropped work.",
+  "decision_needed": "Do we add a per-task closed_day_policy of skip / defer_forward / pull_backward, defaulting to skip for daily operational checks and defer_forward for periodic ones?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Seasonal and conditional tasks: RRULE handles the seasonal case, not the conditional one",
+  "detail": "RRULE covers 'Autumn/Winter only' cleanly — FREQ=WEEKLY;BYMONTH=10,11,12,1,2,3 — and 'Fri-Sat only' with BYDAY=FR,SA, and the two compose. What it cannot express is a predicate over external state: only when the fire is lit, only when the garden is open, only when covers exceeded 200, only when it rained.",
+  "why_it_matters": "Seasonal is a filter on the generator (cheap, static, safe to precompute). Conditional is a runtime predicate that can only be evaluated on the day itself. Treating them the same forces either the loss of conditional tasks or the abandonment of any lookahead. The pragmatic split: generate seasonally-filtered instances ahead of time, and evaluate conditional predicates at instance-activation time, letting an instance be born already 'not applicable'.",
+  "decision_needed": "Do conditional tasks appear and then get marked N/A, or never appear at all? The former is auditable ('we considered it, it didn't apply'), the latter is cleaner for staff.",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Full materialisation of instances is the standard mistake",
+  "detail": "The prevailing design guidance is not to store individual recurring instances as rows: materialised approaches consume space, make updates cumbersome and slow, complicate exception handling — especially rescheduling — and are outright unworkable if you want indefinite forward visibility. The alternative is storing the pattern and expanding on read.",
+  "why_it_matters": "The pain is concentrated in edits, not storage. Change 'every Tuesday' to 'every Wednesday' on a fully materialised series and you must decide what happens to every already-generated future row, including any that were individually edited, reassigned or annotated. That migration logic is where these systems rot.",
+  "decision_needed": "None — this is a well-established constraint. It shapes the choice below.",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "The hybrid — pattern plus selectively materialised instances — is what mature tools converge on",
+  "detail": "TaskNotes stores an RRULE string with DTSTART and computes the next occurrence dynamically, while allowing optional materialised occurrence notes for a specific date when that occurrence needs its own checklist, status, time tracking or content. MaintainX achieves the same via a configurable scheduling horizon that \"configures how far ahead you want to plan work orders\" — materialise only inside the horizon, compute beyond it.",
+  "why_it_matters": "This gets both properties: infinite cheap forward visibility, and a real durable row the moment an instance acquires state (a tick, a photo, a temperature reading, an assignee, a skip reason). The rule is simple and enforceable — an instance is materialised on first write, never on read.",
+  "decision_needed": "Do we adopt materialise-on-first-write with a rolling horizon (e.g. 14 days) for instances that need to be visible and assignable before anyone touches them?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Completion-anchored tasks cannot be computed on the fly and must materialise — this splits the architecture",
+  "detail": "An 'every-N' series is a pure function of the pattern, so occurrence #500 is computable today. An 'after-N' series is a fold over history: the next due date exists only once the previous completion exists. Grocy's dynamic-regular therefore has exactly one due date at any moment — there is nothing to forecast. Chore Helper's calendar reflects this too: it shows projected future due dates for regular chores, but manual chores \"show limited forecasting since they lack predictable recurrence patterns\".",
+  "why_it_matters": "This is the deepest structural consequence in the whole design. The two anchor modes are not two values of one column — they are two different computational shapes. Calendar-anchored tasks support a forward calendar view; completion-anchored tasks fundamentally cannot, and any UI promising 'your next 4 weeks' will be lying about them.",
+  "decision_needed": "Are we prepared for completion-anchored tasks to be absent from forward-looking calendar views, or do we need a projected/provisional instance concept that assumes on-time completion?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Rescheduling one instance vs editing the series — the two-axis edit problem",
+  "detail": "RFC 5545 solves this with RECURRENCE-ID plus THISANDFUTURE/THISANDPRIOR range semantics, and RDATE/EXDATE for one-off additions and removals. Grocy takes the pragmatic route with a \"Reschedule next execution\" action in the chore's context menu that moves only the next occurrence, leaving the pattern untouched.",
+  "why_it_matters": "Users need four distinct edits — this one, this and future, the whole series, and just skip this one — and every product that ships only 'edit' regrets it. If instances are materialised, a per-instance override is a column; if computed, it's an exception row keyed by occurrence date. Either way it has to be designed in, because retrofitting exceptions to a pure-pattern model is a rewrite.",
+  "decision_needed": "Do we support 'this instance only' overrides in v1, or accept that any change hits the whole series?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Timezone and DST: store the rule in local time, never in UTC",
+  "detail": "RFC 5545 expands recurrence in the timezone of DTSTART. A task defined as 'every day at 11:00' must expand as 11:00 local on every date, which means the UTC instant moves by an hour twice a year. Storing the anchor in UTC and expanding produces a check that silently becomes 10:00 or 12:00 across the DST boundary. This project already has the related scar tissue: manager alerts printed raw UTC and the bug was invisible on a London laptop.",
+  "why_it_matters": "Europe/London is UTC+0 for part of the year, which makes every DST bug undetectable in local testing and guarantees it ships. Combined with the business-day boundary, the 01:00 BST→GMT transition also creates a genuinely ambiguous local hour — a nightly close-down task anchored at 01:30 happens twice or not at all.",
+  "decision_needed": "None — expand in Europe/London from a local-time anchor, store instances with both the local wall time and the resolved instant, and test with TZ=UTC.",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Rest days / minimum-gap constraints are a separate layer from the recurrence rule",
+  "detail": "Beyond the generator, tools need to suppress or shift occurrences that land badly — Grocy's daily/weekly types let you restrict to specific weekdays or days of month, but the general shape is a post-filter over generated occurrences rather than a property of the rule itself.",
+  "why_it_matters": "Layering (generate → filter by season/weekday → apply closed-day policy → apply minimum-gap) keeps each concern independently testable and lets the same filters apply to both anchor modes. Folding them into a single mega-rule column means every new constraint is a schema change.",
+  "decision_needed": "Do we model recurrence as a pipeline (generator + ordered filters) rather than a single rule expression?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "Notification timing must derive from the window, not from the due instant",
+  "detail": "Operational tools alert on overdue, out-of-range and incomplete tasks, and the common complaint pattern across these products is alert fatigue when every instance of a high-frequency task nags. A toilet check every 2 hours across a 14-hour trading day is 7 instances; at one reminder each plus one overdue each, that's 14 notifications per day for one task.",
+  "why_it_matters": "High-frequency intra-day tasks and low-frequency periodic tasks need opposite notification defaults, and the frequency itself is the signal. Sensible rule: notify per instance only for low-frequency tasks; for intra-day cadences, notify on the shift-level rollup ('3 of 7 toilet checks outstanding') and escalate only on a miss.",
+  "decision_needed": "Do notifications attach to instances (simple, noisy) or to a shift-level rollup for sub-daily tasks (quieter, more code)?",
+  "source": "scheduling-models"
+ },
+ {
+  "topic": "What Trail actually scores (the closest comparator)",
+  "detail": "Trail (UK hospitality checklist app) scores SITES, not individuals. Each task is scored on timeliness — completed on time / early / late / missed — and the results are averaged into a daily site score, then rolled up to Area and Company level and emailed round daily. Audits are scored separately, with per-option point values, and questions with a blank score are excluded from the total. Scores can be filtered by task, tag or site to find bad task schedules.",
+  "why_it_matters": "The market-leading UK hospitality tool deliberately measures punctuality of completion at site level. It is a schedule-quality diagnostic (\"this task is always missed at 4pm on Sundays — fix the schedule\") more than a people-judging tool. If we score individuals we are doing something Trail chose not to do.",
+  "decision_needed": "Do we score the site/shift (Trail's model) or the individual? Recommendation: score the shift/site first — it gives the same operational signal without the employment-law and gaming exposure.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Zenput/Crunchtime measures completion rate, not quality",
+  "detail": "Crunchtime Ops Execution (formerly Zenput) sells \"real-time visibility into task completion rates and cross-store performance\", with automated follow-up tasks and resolution monitoring when something fails. Claimed outcomes are ~20% improvement in audit scores and ~24% fewer compliance issues. Note the honesty of the framing: the metric is completion rate — a proxy — and the value comes from the follow-up loop, not the number.",
+  "why_it_matters": "The score is only the trigger. The thing that changes outcomes is the corrective-action workflow attached to a failed item. A score with no follow-up task is decoration.",
+  "decision_needed": "Does every failed/missed item generate a follow-up action with an owner, or does it just dent a number?",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Jolt's anti-pencil-whipping model is proof-per-item, not proof-per-checklist",
+  "detail": "Jolt lets each individual list item demand its own verification: a photo of the finished job, a QR scan at the location, a typed value, or a training video watched. Over 18 item types. Tasks are stamped with time and name automatically. The design principle: \"employees cannot check a task off as complete unless the QR code is scanned.\"",
+  "why_it_matters": "Proof is applied selectively to the items that matter, not to everything. Requiring a photo on all 30 items makes the list unusable; requiring it on the 3 that get faked makes it honest.",
+  "decision_needed": "Which specific tasks warrant hard proof (photo/scan/value) versus a plain tick? Recommendation: only the killer items — see below.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Yoobic-style gamification rewards learning, not compliance — and that distinction is deliberate",
+  "detail": "Yoobic applies points, badges, real-time leaderboards, head-to-head \"battles\" and store-vs-store competition to TRAINING and microlearning modules — courses and quizzes completed. Reported results include Michaels lifting store engagement from 30% to 80-90% and cutting voluntary turnover 24%. The gamification sits on the learning layer, not the safety-checklist layer.",
+  "why_it_matters": "Gamifying voluntary skill-building is low-risk: faking it gains you nothing real. Gamifying a food-safety checklist creates a direct incentive to tick without doing. Copying the leaderboard onto the wrong layer inverts its effect.",
+  "decision_needed": "If we gamify, do we gamify training/optional work (safe) or mandatory compliance tasks (dangerous)? Recommendation: the former only.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Pencil-whipping is the industry's named, chronic failure mode",
+  "detail": "\"Pencil-whipping\" — hurriedly checking off items without doing or verifying them — is described across the sector (Crunchtime, ComplianceMate, PathSpot, Jolt) as a chronic problem in restaurant food safety, specifically the falsification of temperature and inspection logs. Digitising alone does not fix it: a digital solution only protects against falsified entries \"if it's designed to do so.\"",
+  "why_it_matters": "Introducing a score without proof mechanics does not reduce pencil-whipping — it increases the payoff for it. You have created a reason to fake the data where previously there was only apathy.",
+  "decision_needed": "Are we prepared to accept that a scored checklist with no proof requirements will produce prettier data and identical reality?",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Goodhart's Law with hard evidence: the proxy improves while reality doesn't",
+  "detail": "NHS England's four-hour A&E target (budget penalties for missing it) produced documented systematic gaming — patients held in ambulances outside the door so the four-hour clock never started, and patients reclassified out of the target category; a 2009 Public Accounts Committee inquiry documented widespread manipulation. Wells Fargo's cross-sell targets drove forged signatures and millions of unauthorised accounts (SEC 2020 order, \"gaming practices\" 2002-2016). Same structure every time: proxy + consequences → agents optimise the proxy → link to the real goal breaks.",
+  "why_it_matters": "The distortion is proportional to the consequence attached. A task score used for information behaves differently from the identical score used for rotas, pay or discipline. The moment it carries a consequence, staff will optimise the score, not the pub.",
+  "decision_needed": "Will the score ever be attached to a consequence (rota hours, bonus, disciplinary)? Recommendation: keep it consequence-free and diagnostic. If it must carry weight, it needs every anti-gaming control below plus human review.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Checklists can be fully adopted and still change nothing — the Ontario study",
+  "detail": "Ontario mandated the WHO Surgical Safety Checklist across the province. The NEJM study (Urbach et al., 2014) found no significant improvement in patient outcomes at population level, in contrast to the earlier trials. A key explanation: hospitals over-reported compliance, and teams \"embraced checklists and safety culture grudgingly rather than enthusiastically.\" Reported use and actual use diverged.",
+  "why_it_matters": "This is the single most important evidence point. Near-100% reported completion is exactly what a compliance-theatre system produces. High scores are as consistent with grudging fakery as with excellence, and the score itself cannot tell you which you have.",
+  "decision_needed": "How will we distinguish a genuine 100% from a faked 100%? Recommendation: randomised physical spot-audits, and treat divergence between audit and self-report as the real metric.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Gawande's design rules: 5-9 items, 60-90 seconds, killer items only",
+  "detail": "The Checklist Manifesto's operating constraints: keep the list to five to nine items; focus on the \"killer items\" — those most dangerous to skip and most often overlooked; after about sixty to ninety seconds at a pause point the checklist becomes a distraction from the actual work.",
+  "why_it_matters": "Most hospitality task lists are 25-40 items, which is a guaranteed pencil-whip by construction. If it can't be done in 90 seconds it will be batch-ticked. Cutting the list is itself an anti-gaming control, and probably the highest-leverage one.",
+  "decision_needed": "Are we willing to delete most of the existing checklist items to get to 5-9 killer items per pause point? Recommendation: yes — a short honest list beats a long fictional one.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Pause points, and read-do vs do-confirm",
+  "detail": "Gawande: a checklist needs a defined pause point at which it is used (unless the trigger is self-evident, like a warning light). READ-DO = read the item, then do it, recipe-style. DO-CONFIRM = do the work from memory/flow, then pause and confirm each item was done.",
+  "why_it_matters": "This maps directly onto the batch-completion problem. Opening prep is READ-DO and must be ticked live, item by item. A close-down verification is legitimately DO-CONFIRM and is genuinely completed in one burst at the end — so a system that flags \"all ticked within 60 seconds\" as fraud will produce false accusations against people doing it correctly.",
+  "decision_needed": "Which of our lists are read-do (live ticking expected) and which are do-confirm (burst completion is correct)? The anti-gaming rules must differ per list type.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Time-stamping is the baseline control, and it is cheap",
+  "detail": "Standard practice across Jolt, ComplianceMate and Trail: automatic time-and-date stamps plus name stamps on every entry, retained for audit and trend analysis. Trail's whole score is built on stamp-versus-schedule comparison (early/on time/late/missed).",
+  "why_it_matters": "Timestamps cost nothing to add and are the raw material for every other control — batch detection, backdating blocks, schedule diagnosis. Without them, no score is defensible.",
+  "decision_needed": "",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Detecting batch-completion at end of shift",
+  "detail": "The signature of end-of-shift batch-ticking: 20 items stamped within a two-minute window, hours after their scheduled pause point. The controls used in practice are (a) blocking completion of a task before its window opens (no future/pre-completion) and before its dependencies, (b) blocking or flagging retrospective completion after the window closes, and (c) requiring a captured VALUE (a temperature, a reading, a count) rather than a tick — a value cannot be plausibly invented for 20 items in 90 seconds, and touchless temperature capture exists specifically to remove the human from that loop.",
+  "why_it_matters": "\"Require a value not a tick\" is the highest-value control per unit of friction. It converts a binary tick into evidence with internal consistency you can check (fridge temps that never vary at all are as suspicious as ones that are wildly out).",
+  "decision_needed": "Do we block late completion outright, or allow it with a mandatory reason? Recommendation: allow with a reason and flag it — hard blocks push staff into logging on someone else's account, which destroys the data entirely.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Location proof (QR/NFC/geofence) works but is legally the heaviest control",
+  "detail": "QR codes fixed at the task location, or NFC tags, force physical presence: the item cannot be ticked without a scan at the point of work. Jolt and Miratag both build on this. Geofencing/GPS does the same but continuously. Under UK GDPR, ICO expects documented evidence that less intrusive alternatives were considered and rejected for specific, articulable reasons; a DPIA is typically required for systematic location collection; continuous background tracking should be avoided in favour of event-based collection (e.g. only at clock-in/out).",
+  "why_it_matters": "A QR/NFC scan is a discrete, task-scoped presence proof and is far easier to justify than a geofence, which collects location continuously and captures far more than the task. The QR gets you ~all the anti-gaming benefit at ~none of the legal risk.",
+  "decision_needed": "QR/NFC scan-at-location, or geofence? Recommendation: QR/NFC only. Geofencing a single-site pub is disproportionate — the staff are demonstrably on site or they wouldn't be working.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Photo evidence: deterrent effect is mostly psychological",
+  "detail": "The stated mechanic across vendors: requiring a mobile photo upload means employees know they are creating digital evidence, which makes them less likely to falsify. Jolt frames photo-proof and QR-scan proof as the specific controls that \"eliminate pencil-whipping\" on critical tasks.",
+  "why_it_matters": "Note what this is and isn't. Nobody claims managers review every photo — the deterrent is the possibility of review, not review itself. That means a photo requirement only works if spot-checks are actually done sometimes and staff know it. An unreviewed photo archive is a slow way to store nothing. Also: photos of a pub interior will capture staff and customers — that's personal data with its own retention obligation.",
+  "decision_needed": "Who reviews photos, how often, and how long are they retained? Recommendation: random sampling, short retention (e.g. 30 days), and say so openly.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Randomised spot audits are the only external check on score validity",
+  "detail": "The Ontario finding — hospitals over-reported compliance — was only detectable because someone measured actual use independently of self-report. Trail's own audit module is scored separately from task completion, which preserves exactly this independence.",
+  "why_it_matters": "Self-reported completion validates nothing about itself. The genuinely informative number is the gap between what the checklist says and what an unannounced physical check finds. That gap is the honest measure of the system, and it should be tracked at site level — never as a gotcha against the individual who happened to be on shift when the auditor walked in.",
+  "decision_needed": "Will someone actually walk the floor unannounced? If not, the whole scoring apparatus is unverifiable.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "UK law changed in February 2026 — Article 22 is now 22A-22D",
+  "detail": "Article 22 of the UK GDPR was replaced by new Articles 22A-22D on 5 February 2026 under section 80 of the Data (Use and Access) Act 2025. Since then, controllers making solely or predominantly automated decisions with legal or similarly significant effects must: provide specified information, offer human review on request, accept representations from the individual, and allow the decision to be contested. Employment decisions — performance assessment, promotion, disciplinary action, termination — are the canonical examples that trigger this.",
+  "why_it_matters": "This is current, not prospective, and most guidance written before Feb 2026 is now out of date. If a task score ever drives a disciplinary step, a rota reduction or a dismissal without a human genuinely in the loop, we are squarely inside 22A-22D. Note the widened wording: \"predominantly\" automated, not just \"solely\" — a manager who rubber-stamps the dashboard is still caught.",
+  "decision_needed": "Will the score ever feed a decision with significant effect on someone's job? Recommendation: write into the policy that it cannot, and that it is an input to a conversation only.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "\"Meaningful human involvement\" is a real bar, not a signature box",
+  "detail": "The reviewer must have the authority and capability to change the decision, and must consider all relevant data including context the individual has supplied. \"A superficial or rubber-stamp review does not count as human involvement.\" Enforcement is live: Italy's Garante fined Foodinho €5m for algorithmically managing shifts, assigning orders and deactivating 35,000+ riders' accounts with no human intervention mechanism and no way to contest.",
+  "why_it_matters": "The Foodinho case is the exact shape of what a task-completion score could become: an algorithm that quietly influences who gets shifts. The safeguard isn't a human in the org chart — it's a human who could and sometimes does overturn the number.",
+  "decision_needed": "Can a manager overturn a score, and is the override logged with a reason? Recommendation: yes to both — the override log is also your best evidence that the score is broken where it's overridden a lot.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "ICO's 2023 monitoring guidance: the incomplete-picture trap",
+  "detail": "ICO published final guidance on monitoring workers on 3 October 2023. Employers must identify one of the six lawful bases up front; monitoring must take account of workers' expectations, must not be excessive, and must be transparent wherever possible; a DPIA is needed where monitoring is likely to be high risk. The ICO's own worked example: monitoring how long workers spend in a case management system to assess performance is \"unfair and inadequate\" UNLESS the employer takes into account the work done outside the system.",
+  "why_it_matters": "That example is our exact scenario. A member of staff who spends the shift calming an angry table, fixing a cellar problem and covering a no-show may score badly on ticks while being the best person on the floor. Scoring only what the app can see, and calling it performance, is the specific thing the ICO names as unfair.",
+  "decision_needed": "Does the score get presented as \"performance\", or as \"checklist completion\" — a narrow, named, partial measure? Recommendation: the latter, and never label a column \"performance\".",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Part-timers vs full-timers: pro rata or don't compare at all",
+  "detail": "The Part-time Workers (Prevention of Less Favourable Treatment) Regulations 2000 require that part-timers not be treated less favourably than comparable full-timers, with the pro rata principle applied unless inappropriate, and cover performance-related pay and bonuses explicitly. Different treatment needs objective justification — a legitimate aim pursued by proportionate means.",
+  "why_it_matters": "Any raw count of tasks completed automatically ranks full-timers above part-timers, and any league table built on it is structurally unfair. Rate-based scoring (completed ÷ assigned-while-rostered) is the minimum fix. But rates are noisy on small denominators: someone doing six shifts a month who misses two tasks looks catastrophic next to a full-timer who missed six out of 300.",
+  "decision_needed": "Do we suppress individual scores below a minimum task volume? Recommendation: yes — set a floor (e.g. no individual figure below ~30 assigned tasks in the period) and show the count alongside the rate always.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Whoever's on shift ≠ whoever's responsible",
+  "detail": "The controllability principle in performance measurement: accountability and authority must be aligned, and measures must be set on factors within the individual's control, or motivation and effectiveness both degrade. Fairness is the mediating mechanism between controllability and performance.",
+  "why_it_matters": "In a pub, tasks land on whoever is physically there. If the delivery is late, the cellar check can't be done — and the person on shift eats the miss. If a task was never assigned to a named person, nobody can be scored on it without violating controllability. This is the most likely way a scoring system quietly becomes hated: people are penalised for things they could not have done.",
+  "decision_needed": "Is every scored task explicitly assigned to a named person at the time it falls due? If not, it must be scored to the shift, not to a person.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Scoring team-owned tasks: score the shift, and use a blocked/N-A state",
+  "detail": "Team rewards promote collaboration but risk free-riding; individual incentives raise accountability but discourage teamwork. Team-based rewards work best in groups of ten or fewer, where mutual visibility makes free-riding hard to hide. Peer-evaluation is the standard academic fix for apportioning credit within a team.",
+  "why_it_matters": "A pub shift is a small team with high mutual visibility — the exact condition where shift-level scoring is defensible and free-riding is self-policing. Practical model: (1) default unit of scoring is the SHIFT, not the person; (2) a task becomes person-scored only if explicitly claimed/assigned to a named individual before it falls due; (3) every task needs a third state beyond done/missed — \"blocked\" or \"not applicable\", with a reason — so a genuinely impossible task doesn't score as a miss; (4) a shift's score is visible to that shift, not published in a cross-site league table of individuals.",
+  "decision_needed": "Shift-level scoring with opt-in individual attribution — agreed? Recommendation: yes. It matches the operational reality, sidesteps the part-time fairness problem, keeps us out of Art. 22A territory, and mirrors what Trail actually does.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "The reason-code is worth more than the score",
+  "detail": "Trail's design intent is telling: low scores highlighted by site or day let you \"drill down to fix task schedules or work on staff training.\" The score's stated purpose is finding broken schedules first, and training needs second — not ranking people.",
+  "why_it_matters": "A missed task has causes: bad schedule, understaffed shift, task genuinely impossible, or someone didn't do it. Only the last is a people problem, and it's usually the rarest. If the system captures a reason on every miss, the score becomes a diagnostic instrument. If it doesn't, every miss defaults to blaming a person — and staff will learn to tick rather than explain, which is exactly the behaviour we were trying to prevent.",
+  "decision_needed": "Do we require a reason code on every missed/blocked task? Recommendation: yes, from a short fixed list plus free text. This single feature does more for data quality than the score does.",
+  "source": "scoring-and-behaviour"
+ },
+ {
+  "topic": "Shared login attribution (manager@ device)",
+  "detail": "If the whole team works from one shared tablet signed in as a generic account, every completion writes the same user_id and the scoring system measures the device, not a person. Realistic options: (a) require a per-person PIN/4-digit code on the shared device at the moment of completion (an 'acting_as' identity separate from the auth session), reusing the existing timeclock kiosk pattern which already identifies individuals without a Supabase session; (b) auto-attribute to whoever is currently clocked in — works only when exactly one person is on; (c) if multiple are clocked in, present a 'who are you?' picker of currently-clocked-in staff, default to last used, timeout back to unattributed; (d) accept an 'unattributed' bucket and exclude those from personal scores but still count them for venue completion. Recommendation: PIN/picker gated on clocked-in staff, with an explicit 'unattributed' fallback rather than silently crediting the shared account.",
+  "why_it_matters": "Attribution is the foundation of the whole scoring feature. If it's wrong, every score, escalation email and spot-check is aimed at the wrong person, and staff will lose trust in the system permanently after the first bad accusation.",
+  "decision_needed": "Do you want a per-person PIN on the shared device, or is 'whoever is clocked in' good enough — and what happens when three people are clocked in at once?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Completion by someone not clocked in",
+  "detail": "A staff member does the beer line clean before clocking in, or the manager ticks things off from home. Options: (a) block completion unless clocked in — clean data, but staff will simply clock in to tick a box, corrupting time/pay data, which is far worse; (b) allow it, record it, and flag it as 'completed off-shift' for the manager to review; (c) allow it but exclude from personal score; (d) allow it and let it silently count. Recommendation: (b) — allow and flag, never block. The checklist must never become a reason to falsify clock records.",
+  "why_it_matters": "Blocking on clock state creates a perverse incentive to fake timesheets, which touches pay and HMRC records. It converts a low-stakes admin problem into a payroll integrity problem.",
+  "decision_needed": "Should off-shift completions count towards a personal score, or only towards venue completion?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Clock out then return",
+  "detail": "Someone clocks out at 22:45, then comes back at 23:10 to help with close-down and ticks two tasks. Their session is closed, so 'tasks done during my shift' misses them, and the clock-out warning already fired. Options: (a) attribute by wall-clock time to the nearest/most recent shift for that person that day; (b) attribute to the person regardless of shift, and only use shift data for the warning trigger; (c) re-open the shift. Recommendation: (b) — decouple attribution (person + business day) from shift boundaries entirely; use shifts only to decide when to show the clock-out warning.",
+  "why_it_matters": "Coupling task records to open shift rows means real work vanishes from the record whenever the timing is untidy, which is most nights.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Two people complete the same task",
+  "detail": "Race: two devices submit the same instance within seconds, or one person ticks it not seeing the other already did. Options: (a) unique constraint on (instance_id) so first write wins and the second gets a friendly 'already done by Sam at 21:14' rather than an error; (b) allow multiple completion rows and take the first for scoring, showing the rest as corroborating; (c) last write wins — bad, it silently rewrites who did it. Recommendation: (a), with a DB-level unique constraint (not just an app check) and an explicit 'already completed' UI state that refreshes rather than throws.",
+  "why_it_matters": "Without a DB constraint this is a real race on a busy close-down with three phones open on the same list, and 'last write wins' means credit goes to whoever tapped slowest.",
+  "decision_needed": "If two people genuinely both did it, do you want to record both or just the first?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "One person completes another person's assigned task",
+  "detail": "The task is assigned to the cellar person but the duty manager does it. Options: (a) record completed_by separately from assigned_to and score the doer, not the assignee; (b) score the assignee (they're accountable) and note who actually did it; (c) require a 'covering for X' reason. Recommendation: (a) plus display both — score credit follows the doer, but the assignee's list shows it cleared. Never mark the assignee as 'missed' for something that was completed by someone else.",
+  "why_it_matters": "Pubs run on covering for each other. A system that penalises the person whose name was on the list when the job actually got done will be resented and gamed within a week.",
+  "decision_needed": "When someone else does your task, do you get credit, no credit, or a neutral 'covered' outcome?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Late completion — done or missed?",
+  "detail": "A task due by 18:00 is ticked at 19:40. Options: (a) binary — anything after the deadline is missed, even if completed (harsh, and kills the incentive to do it late); (b) three states: on_time / late / missed, where late still counts for venue completion but scores lower; (c) grace window (e.g. 30 min) then late; (d) manager decides case by case. Recommendation: (b) with a grace window — 'late' must always beat 'missed', or you teach staff not to bother once the clock passes.",
+  "why_it_matters": "If late = missed, the rational move for a staff member at 19:40 is to skip the task entirely. The scoring model directly shapes behaviour on the floor.",
+  "decision_needed": "Confirm the three-state model and the grace window length (recommend 30 minutes).",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Who adjudicates a disputed miss",
+  "detail": "A staff member says they did it but the phone died / they forgot to tick. Options: (a) manager can retro-complete an instance with a reason and an audit record, marking it 'completed retrospectively — recorded by manager'; (b) no retro-edits at all (pure integrity, guaranteed staff resentment); (c) self-serve retro-tick within N hours. Recommendation: (a) — manager-only override, always audit-logged with the original state preserved, never a silent rewrite.",
+  "why_it_matters": "Every checklist system in the real world needs an override. Building one without it means the data becomes known-wrong and everyone ignores it; building it without an audit trail means the score is meaningless.",
+  "decision_needed": "Should staff be able to retro-tick their own missed items within a short window, or is that manager-only?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Pub closed — instances shouldn't count as missed",
+  "detail": "Christmas Day, a private hire, a burst pipe, or a snow day. If the generator blindly creates instances, everyone gets a wall of red and a scoring hit. Options: (a) a venue closure calendar that suppresses instance generation for closed days; (b) generate but auto-void with reason='closed'; (c) manager bulk 'mark day as closed — void outstanding'. Recommendation: (a) as the primary, plus (c) as the escape hatch for unplanned closures declared after the fact (backdated voiding of that day's open instances). Voided instances must be excluded from both venue and personal scores, not counted as zero.",
+  "why_it_matters": "One unhandled closed day poisons the score for every person and destroys the credibility of the whole report, and it will happen within the first month.",
+  "decision_needed": "Is there an existing venue-closure/opening-hours source of truth to key off, or does this need a new closure calendar?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Partial closure / private hire",
+  "detail": "The pub is open for a private function but the kitchen is shut, so kitchen tasks don't apply while bar tasks do. Blanket day-level closure is too coarse. Options: (a) closure scoped to an area/category (kitchen closed, bar open); (b) all-or-nothing day closure; (c) manual per-instance voiding. Recommendation: (a) — closure applies at the checklist/area level, because the realistic case is 'kitchen shut Mondays', not 'pub shut'.",
+  "why_it_matters": "A day-level-only closure model forces staff to either void 20 items by hand or accept a false miss, and they will choose to accept the false miss and stop believing the score.",
+  "decision_needed": "Do closures need to be per-area (kitchen/bar/cellar) from day one, or is whole-venue enough for v1?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Staff illness / nobody on to do it",
+  "detail": "The person who normally does the cellar check is off sick and nobody covers. Options: (a) it's a genuine miss and should show as one — the venue score is the honest picture; (b) auto-void if nobody with that role was clocked in; (c) miss for the venue, but no personal score hit for anyone. Recommendation: (c) — the venue metric must stay honest (the job didn't happen), but nobody who wasn't there should be penalised personally. This means venue completion and personal scores need different denominators.",
+  "why_it_matters": "Conflating 'the pub missed it' with 'a person missed it' is the single biggest way this system will produce unfair scores.",
+  "decision_needed": "Confirm venue score and personal score are computed from different denominators.",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Shift crossing midnight — which business day owns a 00:30 task?",
+  "detail": "Close-down runs to 01:00. A calendar-date model puts those tasks on the next day, splitting one shift's work across two reports and making Tuesday look bad for Monday night's close. Options: (a) a business-day boundary (e.g. 05:00 London) so anything before 05:00 belongs to the previous business day; (b) attribute to the business day of the shift the person was on; (c) leave it calendar-based (wrong, but simple). Recommendation: (a) — a single configurable business-day cutoff constant used by instance generation, scoring and reporting alike. Must use the existing London-timezone dateUtils, never raw new Date().",
+  "why_it_matters": "Get this wrong and every close-down task lands on the wrong day forever, and no amount of UI polish will make the report believable.",
+  "decision_needed": "Confirm the business-day cutoff time (recommend 05:00 Europe/London).",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "BST/GMT transitions",
+  "detail": "The clocks go back and 01:30 happens twice; they go forward and 01:30 doesn't exist. A checklist due at 01:30 on the transition night either generates twice or not at all, and a 'day' is 23 or 25 hours long. Options: (a) store instance due times as UTC timestamps computed once from London local time at generation, and make generation idempotent on (checklist_id, business_date); (b) ignore it and accept two nights a year of odd data. Recommendation: (a) — the idempotency key on business_date is what actually saves you here, regardless of the clock.",
+  "why_it_matters": "This project already has a documented history of London-timezone defects; a scheduler that generates duplicates on 26 October is a predictable repeat.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Out-of-range temperature reading",
+  "detail": "A fridge reads 9°C when the range is 1–5°C. Options: (a) accept the reading silently and mark the task complete — worst case, it's a food-safety record showing a known breach with no action; (b) accept but force a mandatory corrective-action note before the task can be marked complete; (c) accept, force a note, AND raise an immediate alert to the duty manager, and keep the instance in an 'open — action required' state until signed off; (d) reject the reading (terrible — teaches staff to type 4°C). Recommendation: (c). Critically, never validate the value in a way that blocks saving it, or staff will simply enter an in-range number.",
+  "why_it_matters": "This is the one part of the system with legal and food-safety weight (EHO inspection evidence). A design that nudges staff towards falsifying a reading is worse than having no system at all.",
+  "decision_needed": "Should an out-of-range temp block the checklist from being marked complete until a corrective action is recorded, and who gets alerted immediately?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Temperature reading data quality",
+  "detail": "Fat-finger entries (45 instead of 4.5), unit confusion, blank readings, and impossible values (-40, 300). Options: (a) hard bounds rejecting physically impossible values with a clear message; (b) a soft 'are you sure?' confirmation for improbable-but-possible values; (c) require the reading as a number, never free text. Recommendation: hard reject impossible, soft confirm improbable, and store the raw entered value alongside the parsed one.",
+  "why_it_matters": "A single 45°C typo will trigger an alert, an escalation email and a manager's evening. Two of those and the alerts get muted.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Spot-check when the manager isn't in",
+  "detail": "A spot check is generated for a day nobody senior is working. Options: (a) only generate spot checks for days where a manager is rostered (join to the rota); (b) generate anyway and let it roll over/expire unactioned — which then reads as a failure by the manager; (c) generate and allow any staff member above a threshold to complete it. Recommendation: (a) — key generation off the rota. If it must generate blind, an unactioned spot check should expire as 'not attempted', never as 'failed'.",
+  "why_it_matters": "Spot checks that expire as failures because nobody was rostered turn the manager's own score into noise and they'll stop looking at it.",
+  "decision_needed": "Should spot-check generation read the rota to pick a day/person, or generate blind?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Spot-check randomisation — repeats and clustering",
+  "detail": "True random picks the same fridge three days running and never picks the cellar. Options: (a) pure random (simple, feels broken); (b) weighted random excluding anything checked in the last N days; (c) shuffled bag/round-robin — every item gets checked once before any repeats, with the order shuffled; (d) risk-weighted — high-risk items (temps, allergens) picked more often. Recommendation: (c) plus a risk weighting on top, with a hard 'not checked in the last 7 days' exclusion.",
+  "why_it_matters": "Coverage is the actual goal, not randomness. Pure random gives worse coverage and looks arbitrary to staff, which undermines the perceived fairness of the whole thing.",
+  "decision_needed": "Do you want even coverage (round-robin) or genuine unpredictability (pure random)? They trade off.",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Staff learn the spot-check pattern",
+  "detail": "If the check always lands at 15:00, or always the day after the previous one, staff prepare for it and the check measures preparation, not standards. Options: (a) randomise the time-of-day within the shift, not just the item; (b) don't reveal which item is being checked until the manager opens it; (c) vary frequency (some days none, some days two); (d) don't tell staff spot checks exist at all (bad — trust cost outweighs the benefit). Recommendation: (a)+(b)+(c), and be open with staff that spot checks happen; hide only the what and when.",
+  "why_it_matters": "A predictable audit is theatre. But secrecy about the existence of monitoring is a trust and, arguably, a transparency problem with staff.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Spot check fails — then what?",
+  "detail": "The manager checks the cellar and it's not done properly, despite it being ticked. Options: (a) record the fail and do nothing else — pointless; (b) record the fail, require a note/photo evidence, and reverse the original completion to 'disputed'; (c) as (b) plus notify the person who ticked it, so they learn; (d) as (c) plus a repeat-fail escalation path into a real HR conversation. Recommendation: (b)+(c) for v1, with the failed spot check carrying a required corrective action. The key design question is whether a fail retroactively changes the original completion record — recommend it does NOT overwrite it, but attaches a linked 'spot check failed' record, preserving both.",
+  "why_it_matters": "A spot check that ticks a box and then leads nowhere is a waste of the manager's time; a spot check that silently rewrites history destroys the audit trail.",
+  "decision_needed": "Does a failed spot check cancel the original completion (and the person's score credit for it), or sit alongside it as a separate record?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Spot check disputed — the check itself is wrong",
+  "detail": "The manager checks at 23:00 and the area is untidy, but it was done properly at 21:00 and used since. The 'fail' is unfair. Options: (a) let the staff member add a response to a failed spot check; (b) require the manager to record evidence (photo/note) at fail time; (c) no dispute mechanism. Recommendation: (a)+(b) — a fail without evidence and without a right of reply is exactly the sort of record that becomes a problem in a grievance.",
+  "why_it_matters": "These records could be cited in a performance or disciplinary process. Unevidenced, undisputable fails are a genuine employment-relations risk.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Clock-out warning shown to the wrong person",
+  "detail": "The KP clocks out at 21:00 and gets a wall of outstanding close-down tasks that belong to the bar team and aren't due until 23:30. Options: (a) filter the warning to items assigned to that person or their role/area; (b) filter to items actually due before now; (c) show everything (noise, ignored within days); (d) only warn the designated duty manager / last person out. Recommendation: (a)+(b) combined — warn about my items that are already overdue. Show 'other outstanding items' as read-only context at most, and never block clock-out.",
+  "why_it_matters": "A warning that is usually irrelevant gets dismissed reflexively within a week, and then it never works even when it matters. And blocking clock-out interferes with pay records.",
+  "decision_needed": "Should the clock-out warning ever be blocking, or always dismissible? (Recommend always dismissible.)",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Clock-out warning for items not yet due",
+  "detail": "At 20:00 the close-down list is untouched because close-down hasn't happened yet. Warning about it is noise. Options: (a) only warn on items whose due time has passed; (b) warn on items due before the venue closes, since this person won't be back; (c) warn on nothing due later than the person's shift end. Recommendation: (a) as the rule, with (c) as a possible softer 'heads up, these are due after you leave — is someone covering?' prompt only for the duty manager.",
+  "why_it_matters": "'Not yet due' is the single biggest source of false warnings, and false warnings are what kill this feature.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Last person out carries everyone's misses",
+  "detail": "Whoever clocks out last sees every outstanding item and, if the report says 'outstanding at clock-out: Jane', Jane looks responsible for the whole team's misses. Options: (a) never attribute an outstanding item to the person clocking out — attribute the miss to the assignee or to 'venue'; (b) record 'acknowledged outstanding at clock-out' as a distinct, non-punitive event; (c) attribute to the duty manager as accountable (defensible, but they'll fight it). Recommendation: (a)+(b). The warning is an informational prompt, not an assignment of blame — the data model must keep 'saw the warning' and 'was responsible' strictly separate.",
+  "why_it_matters": "This is the fastest route to the system being seen as unfair, and the last person out is usually the most senior and conscientious person there.",
+  "decision_needed": "Is the duty manager accountable for the venue's outstanding items at close, or is nobody?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Escalation email about someone else's task",
+  "detail": "An automated email says 'you missed 4 tasks' but two of them were never that person's, or were covered by someone else. Options: (a) only include items where the person is the assignee AND was clocked in that day; (b) send the manager a venue-level digest instead of emailing individuals at all; (c) send individual emails but require a manager to review/release the batch. Recommendation: (b) for v1 — start with a manager digest and no automated staff emails. Automated accusations aimed at individuals are high-risk and low-value compared with the manager having a one-minute conversation.",
+  "why_it_matters": "A wrong automated accusation costs far more in trust than the entire feature gains, and it lands in writing, in the employee's inbox, where it stays.",
+  "decision_needed": "Do you want automated emails to individual staff at all in v1, or only a manager digest? (Recommend manager digest only.)",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Escalation email fatigue",
+  "detail": "A nightly 'you missed things' email becomes wallpaper within two weeks. Options: (a) send only when a threshold is crossed (e.g. 3+ misses, or any food-safety item); (b) weekly digest instead of nightly; (c) suppress if the count is trending down; (d) only escalate on repeat misses of the same item. Recommendation: (a)+(d) — escalate on pattern and severity, not volume. Also: never send a 'well done, 100%' email nightly either; that trains people to ignore the sender.",
+  "why_it_matters": "The value of an alert is inversely proportional to its frequency. A nightly email guarantees the important one gets ignored.",
+  "decision_needed": "What threshold justifies an email — recommend any missed food-safety/temperature item, or the same item missed 3 times in 7 days.",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Staff member has no email address on file",
+  "detail": "Many pub staff, especially casual workers, have no email in the record, or a stale one. Options: (a) fall back to SMS (this app already has Twilio) — but an SMS accusation is even more intrusive; (b) silently skip — the escalation just doesn't happen and nobody knows it didn't; (c) fall back to notifying the manager instead, and flag 'could not contact X'; (d) show it in-app on their next login/clock-in. Recommendation: (c)+(d). Never silently skip — a delivery failure must surface somewhere, or you'll believe escalation is working when it isn't.",
+  "why_it_matters": "Silent non-delivery is the classic failure of notification systems: the report says 'sent', the person never heard, and the manager assumes it was handled.",
+  "decision_needed": "If a staff member has no email, do you want an SMS, or does it route to the manager?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "GDPR and tone of automated performance emails",
+  "detail": "An automated 'you missed these tasks' email is performance-related personal data processing. Considerations: staff should know the monitoring exists (transparency/Art. 13 — this belongs in a policy or the staff handbook, not buried); the data must be accurate (Art. 5(1)(d)) and correctable, which means a dispute route; it shouldn't be a solely-automated decision with legal/significant effects (Art. 22) — so it must be framed as information for a human manager, not an automatic sanction; retention must be bounded. Tone: 'Here's your checklist summary for Tuesday — 2 items outstanding' reads very differently from 'You failed to complete...'. Options: (a) neutral factual digest to the individual; (b) manager-only, human-relayed; (c) no individual emails. Recommendation: (b), with the monitoring disclosed in writing to staff before go-live.",
+  "why_it_matters": "This is monitoring of workers. Doing it without telling them, without a correction route, and with an accusatory automated tone is both a legal exposure and a morale problem.",
+  "decision_needed": "Will you disclose the checklist scoring/monitoring to staff in writing before it goes live? (Strongly recommend yes — it's also the thing that makes it work.)",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Checklist item edited after instances exist",
+  "detail": "Someone changes 'Check fridge temp (1–5°C)' to '(1–8°C)' or rewords a task. If instances point at the live item by FK, yesterday's completed record now displays wording that was never shown to the person who signed it. Options: (a) version the checklist template — instances snapshot the item text, target range and due time at generation, and reference a template_version_id; (b) copy-on-write: editing an item creates a new item and retires the old; (c) live FK with no snapshot (fails audit). Recommendation: (a) — snapshot onto the instance. For a food-safety record, what the person actually attested to must be immutable.",
+  "why_it_matters": "Without snapshotting, your EHO evidence is retroactively rewritable by anyone with edit rights — which means it isn't evidence.",
+  "decision_needed": "Confirm instances snapshot item text and thresholds at generation time rather than joining live.",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Checklist item deleted mid-period",
+  "detail": "An item is removed at the end of the week. Do the previous 6 days' completions disappear? Does the score denominator change retroactively so last week's 92% is now 95%? Options: (a) soft-delete/archive only — never hard delete an item that has instances; (b) hard delete and cascade (destroys history); (c) hard delete but orphan-preserve instances via the snapshot. Recommendation: (a) plus (c)'s snapshot — archive the item, keep every instance, and freeze historical scores so a past period's score never changes after the fact.",
+  "why_it_matters": "Scores that change retroactively when someone edits a template are indefensible, and a manager will notice within a month that last month's number moved.",
+  "decision_needed": "Should a period's score be frozen/snapshotted once the period closes, or always recomputed live?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Checklist added mid-period",
+  "detail": "A new item is added on Wednesday. Does it retroactively generate instances for Mon/Tue and instantly show as 2 misses? Options: (a) instances only generate from the item's effective_from date forward — never backfilled; (b) backfill (creates instant phantom misses); (c) ask. Recommendation: (a) — items carry effective_from/effective_to dates and generation is strictly forward-looking.",
+  "why_it_matters": "Backfilled misses for a task that didn't exist yet is the sort of obviously-wrong data that makes staff dismiss the entire score.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "No wifi in the cellar",
+  "detail": "The cellar is the one place with no signal and it's where the temperature checks are. If the app requires a live request, staff will do the check, walk upstairs, and tick from memory — or not at all. Options: (a) offline-capable PWA with a local queue that syncs on reconnect (this app already registers a service worker); (b) accept it and let staff tick upstairs, with the recorded time being the tick time, not the check time; (c) capture the reading on paper and key it in later (defeats the point); (d) let the person record the check time manually, separate from the submission time. Recommendation: (a) if the budget allows, otherwise (d) — separate 'time of check' from 'time recorded' so the record is honest about the gap.",
+  "why_it_matters": "If the tool doesn't work where the job is, the record becomes a record of remembering, not of checking — and the timestamps in your food-safety log become fiction.",
+  "decision_needed": "Is offline support in scope for v1, or do we accept a 'recorded at' vs 'checked at' split?",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Offline sync conflicts and duplicates",
+  "detail": "A queued offline completion syncs 40 minutes later, by which time someone else has completed the same instance, or the item has been voided as 'closed'. Options: (a) server-side reconciliation — first completion by check-time wins, later ones become corroborating records; (b) reject the late sync and tell the user (they've gone home; nobody sees it); (c) accept blindly and duplicate. Recommendation: (a), with an idempotency key generated client-side at tick time so a retried sync can never double-write.",
+  "why_it_matters": "Offline queues without idempotency keys reliably produce duplicates on flaky connections, and duplicates directly inflate or corrupt the scores.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Phone battery dead / device unavailable",
+  "detail": "The only tablet dies at 22:00 and the close-down list can't be ticked. Everything shows as missed. Options: (a) manager retro-completion the next morning with a reason (needs the override from the disputed-miss case); (b) a paper fallback that gets keyed in; (c) accept the misses. Recommendation: (a) — the retro-complete-with-reason path covers dead battery, dead wifi, broken tablet and forgotten ticks all at once. It's the single most important escape hatch in the system.",
+  "why_it_matters": "Hardware fails weekly in a pub. Without a sanctioned recovery path, staff invent their own (ticking everything the next day from memory), which is worse and invisible.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Data retention for checklist and score records",
+  "detail": "Food-safety records (temperatures) have a genuine business/regulatory reason to be kept for a period, but personal performance scores don't need the same lifespan. Options: (a) one retention rule for everything (simple, over-retains personal data); (b) split — keep the food-safety reading and the fact the check happened for the food-safety retention period, but strip or anonymise the personal attribution and the derived score after a shorter window (e.g. 12–24 months); (c) keep everything forever. Recommendation: (b) — the fridge temperature is a business record; 'Jane scored 78% in March 2025' is personal data with no reason to outlive the employment relationship by much.",
+  "why_it_matters": "Indefinitely retained per-person performance scores are exactly the sort of thing that turns into a subject-access-request or grievance problem, and there's no operational upside to keeping them.",
+  "decision_needed": "How long do you want to keep (a) temperature/food-safety records and (b) per-person scores? Recommend keeping food-safety records per your EHO/HACCP practice and anonymising personal scores after 12 months.",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Leavers' scores and completion history",
+  "detail": "A staff member leaves. Their name is on 400 completion records and last quarter's scores. Options: (a) hard-delete the person and orphan/anonymise every record — destroys the food-safety audit trail; (b) keep the records with the name (needed for the audit trail — 'who signed this fridge check' is the point of the record); (c) keep the food-safety attribution but remove them from live scoreboards/leaderboards and exclude from current-period reporting; (d) anonymise to 'former employee #12' after the retention window. Recommendation: (c) now, (d) later. Importantly, a leaver must drop out of the score denominator immediately so their absence doesn't drag the venue average.",
+  "why_it_matters": "This project already has a documented erasure gap in recruitment (ai_runs PII not scrubbed). Building a second store of per-person data with no leaver story repeats the same Art. 17 problem.",
+  "decision_needed": "On erasure request, do you anonymise the attribution on food-safety records or keep the name as a business/legal-obligation record? (Recommend: keep the name for the food-safety retention period under legal obligation, anonymise everything else.)",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Scoring denominator gaming",
+  "detail": "If the score is 'completed / assigned', the way to a high score is to be assigned fewer tasks, or to remove tasks from the template, or to only work quiet shifts. Conversely a keen person who covers everyone's tasks may score worse if credit follows the assignee. Options: (a) score on rate but publish the denominator alongside it; (b) don't rank people against each other at all — show trend against their own history; (c) restrict template editing to super_admin so the denominator can't be quietly shrunk. Recommendation: (b)+(c) — trends beat leaderboards for this. Leaderboards in a small team of people who all know each other create friction out of proportion to the benefit.",
+  "why_it_matters": "Any metric attached to a person will be optimised. Designing the metric so the easiest way to improve it is to do the job is the whole game.",
+  "decision_needed": "Do you want a per-person leaderboard, or per-person trend-only with a venue-level leaderboard? (Recommend the latter.)",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Cron/instance-generation failure",
+  "detail": "The nightly job that creates the day's instances fails silently (this codebase has form — the events Google Calendar reconciliation cron was never scheduled and its failures were swallowed). Result: no instances, so nothing shows as missed, so the report reads 100%. A perfect score is indistinguishable from a total outage. Options: (a) generation is idempotent on (checklist_id, business_date) and re-runnable, with a heartbeat/alert if a day has zero instances; (b) generate lazily on first view (no failure mode, but the 'missed' state needs a different anchor); (c) fire-and-forget. Recommendation: (a) — idempotent generation plus an explicit 'no instances generated for today' alarm.",
+  "why_it_matters": "A silent generation failure makes the system report perfection while doing nothing, which is the most dangerous possible failure for a food-safety tool.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Timing of the 'missed' transition",
+  "detail": "Nothing marks an instance as missed unless something runs. If 'missed' is computed on read (due_at < now AND not completed), it's always correct and needs no cron; if it's a stored state set by a job, it can be stale or never set. Options: (a) derive missed at read time from due_at and completion; (b) a sweeper job that writes the missed state; (c) both, with the job only for triggering notifications. Recommendation: (a) for display and scoring, (b) only where you need an event to hang a notification off. Derived state can't rot.",
+  "why_it_matters": "Stored status fields that depend on a cron are how you get a dashboard showing 'pending' at 3pm the next day, and they undermine confidence in every other number on the page.",
+  "decision_needed": "",
+  "source": "edge-cases"
+ },
+ {
+  "topic": "Route and page shell",
+  "detail": "The FOH page lives at /table-bookings/foh, served by src/app/(authenticated)/table-bookings/foh/page.tsx:16 (server component). It renders a `<PageLayout>` (src/ds/composites/PageLayout.tsx:122) with title \"Front of House Schedule\", optional navItems (Back of House / Front of House / Reports), a backButton, and `headerActions`. Its only child is `<FohScheduleClient>` (page.tsx:125), a client component at foh/FohScheduleClient.tsx:38.",
+  "why_it_matters": "Any new surface must decide whether it belongs in the server page (data pre-fetched, permission-gated) or inside the client component (interactive, realtime-aware).",
+  "decision_needed": "",
+  "source": "foh-page"
+ },
+ {
+  "topic": "Where a new button would live",
+  "detail": "Three realistic slots. (1) PageLayout `headerActions` — set in page.tsx:88-108; today that slot holds `<FohClockWidget>` + logo for the manager iPad, or a \"Table Setup\" LinkButton for settings-managers. (2) The in-page action row in FohHeader.tsx:225-297 — this is where \"Food Order\" (FohHeader.tsx:227-247), the Inside/Outside view toggle (250-267), \"Walk-in\" (271-282) and \"Add booking\" (283-294) already sit, all gated on `canEdit`. (3) Per-booking actions in components/FohBookingDetailModal.tsx:246-333 (a 2-col grid of action buttons wired through `onRunAction`).",
+  "why_it_matters": "FohHeader's action row is the natural home for a page-level FOH action — it already has the canEdit gate, the kiosk-compact style variants, and the `lastInteractionAtMsRef` idle-tracking pattern a new button must respect.",
+  "decision_needed": "Should a new button be a page-level action (FohHeader row) or a per-booking action (FohBookingDetailModal grid)?",
+  "source": "foh-page"
+ },
+ {
+  "topic": "Chromeless / kiosk behaviour",
+  "detail": "Two distinct mechanisms, often conflated. (a) FOH-only chromeless mode: `isFohOnlyUser(permissions)` (src/lib/foh/user-mode.ts:7) returns true when a user's permissions are non-empty and contain table_bookings:view AND nothing outside table_bookings. AuthenticatedLayout.tsx:31-34 uses it to pass `showSidebar={!fohOnlyMode}` and `fohMode` to AppShell (AuthenticatedLayout.tsx:171-172); AppShell.tsx:60-61,101 then drops the sidebar, mobile drawer and bottom nav. AuthenticatedLayout.tsx:92-100 also hard-redirects such users to /table-bookings/foh from any other path. (b) Manager iPad kiosk styling: page.tsx:65 `useManagerKioskStyle = user.email === 'manager@the-anchor.pub'` (constant at page.tsx:14), which only changes styling/density (`styleVariant: 'manager_kiosk'`, foh/types.ts:202) and swaps in the clock widget.",
+  "why_it_matters": "The two modes are independent — the shared manager account is NOT foh-only (it has broad permissions), so it keeps the sidebar but gets kiosk styling. A new feature gated on the wrong one will appear/disappear unexpectedly.",
+  "decision_needed": "Should a new button appear in both the default and manager_kiosk style variants, and for foh-only users as well as full-permission staff?",
+  "source": "foh-page"
+ },
+ {
+  "topic": "Authentication — fully auth'd, not public",
+  "detail": "The route sits inside the `(authenticated)` route group. src/middleware.ts:10-33 lists PUBLIC_PATH_PREFIXES — `/timeclock`, `/table-booking` (singular, the public site) and `/recruitment/book` are public, but `/table-bookings/foh` is NOT. src/app/(authenticated)/layout.tsx redirects to /auth/login when `supabase.auth.getUser()` returns no user, and foh/page.tsx:44-46 redirects to /unauthorized without `table_bookings:view`. The FOH API routes are guarded by `requireFohPermission` (src/lib/foh/api-auth.ts:9).",
+  "why_it_matters": "There is no anonymous/kiosk-token path into FOH. Anything new on this page inherits a real Supabase session and a real user id — so audit logging and RBAC are available, unlike the genuinely-public /timeclock kiosk.",
+  "decision_needed": "",
+  "source": "foh-page"
+ },
+ {
+  "topic": "Which login staff realistically use",
+  "detail": "The shared `manager@the-anchor.pub` account, on the bar iPad. Evidence: page.tsx:14,65 special-cases exactly that email for kiosk styling; src/app/actions/timeclock.ts:21,55-66 has `canUseManagerFohKioskTimeclock()` which authorises timeclock actions purely because the caller is that email plus has table_bookings:view; and src/lib/events/refund-permissions.ts:6-13 explicitly blocks `manager@the-anchor.pub` from issuing refunds because it is \"a communal account\". A per-person foh-only login path also exists (isFohOnlyUser), and AuthenticatedLayout.tsx:103-120 resolves that user's `employee_id` by matching `employees.email_address` to the session email.",
+  "why_it_matters": "In practice the session identity on the FOH iPad is a shared account, not a person. Any new action that needs to record WHO did it cannot rely on the session user — the audit trail would just say \"manager\".",
+  "decision_needed": "If a new button needs personal attribution, do we accept 'manager' as the actor, or require an explicit person-picker/PIN like the timeclock flow?",
+  "source": "foh-page"
+ },
+ {
+  "topic": "Existing \"who is this\" signals",
+  "detail": "Three exist, none of them a device id. (1) Employee picker: FohClockWidget.tsx:129-140 renders a `<select>` of active employees (\"Who's clocking in?\") — a per-action choice, NOT persisted selected-user state; sessions are re-read from `getOpenSessions()` each load (page.tsx:80-85). (2) Timeclock PIN: `verifyClockIdentity()` (timeclock.ts:68-95) checks `timeclock_pin_hash`, falling back to the last four digits of the mobile number (`phoneLastFourMatchesPin`) — but timeclock.ts:90 lets an authenticated caller through with NO PIN, which is exactly how the FOH kiosk widget works. (3) Personal FOH band: AppShell.tsx:86-87 renders `<FohClockBand employeeId={fohEmployeeId}>` (src/ds/shell/FohClockBand.tsx:14) only for foh-only users whose email maps to an employee row. No device id, no localStorage identity, no cookie-scoped terminal in src/lib/foh/ or src/components/foh/.",
+  "why_it_matters": "The clock widget is the closest thing to a 'who is this' signal, but it is transient and PIN-less on the kiosk. Currently anyone at the iPad can clock any employee in or out with no verification. A new feature needing an actor must either add its own picker or reuse the open-sessions list as an implicit 'who is on shift' hint.",
+  "decision_needed": "Should a new who-is-this signal reuse the open timeclock sessions (who's clocked in right now) as the candidate list, rather than introducing a separate identity mechanism?",
+  "source": "foh-page"
+ },
+ {
+  "topic": "Constraints a new button must respect",
+  "detail": "The page auto-returns to today after 5 minutes of inactivity (FohScheduleClient.tsx:179-192), suppressed while `hasActiveFohWork` is true (FohScheduleClient.tsx:173-177) — any new modal/in-flight state must be added to that boolean or it will be interrupted mid-use. Interaction handlers must bump `lastInteractionAtMsRef` (pattern at FohHeader.tsx:182). Realtime reloads are paused during drags (FohScheduleClient.tsx:109). Style must branch on `isManagerKioskStyle` for the compact iPad density (FohHeader.tsx:56, and e.g. 232-235).",
+  "why_it_matters": "Skipping the `hasActiveFohWork` registration is a silent bug — the screen will jump back to today while a member of staff is halfway through the new flow.",
+  "decision_needed": "",
+  "source": "foh-page"
+ },
+ {
+  "topic": "End-to-end clock-in/clock-out flow",
+  "detail": "Three UI surfaces all funnel into two server actions in `/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/app/actions/timeclock.ts`: `clockIn(employeeId, pin?)` at line 175 and `clockOut(employeeId, pin?)` at line 250. Both use the service-role admin client (line 18: `const createClient = () => createAdminClient()`) precisely because the kiosk has no Supabase auth session. Sequence for clock-in: load employee (182), gate on status in ['Active','Started Separation'] (186), verify identity (188), reject if an open session exists (196-206), insert `timeclock_sessions` row with `clock_in_at` + London `work_date` (211-219), then `linkSessionToShift()` (229, defined 346) matches a `rota_shifts` row on same date within ±2h of shift start, else flags `is_unscheduled`. Clock-out: same employee load + identity check (255-268), find the open session (270-276), UPDATE `clock_out_at` (284-290). Both invalidate payroll approvals for that date and revalidate `/timeclock` + `/rota/timeclock`.",
+  "why_it_matters": "Any checklist warning has exactly one server-side chokepoint (`clockOut`) but three separate client surfaces — you must decide whether the warning is enforced server-side, rendered client-side, or both.",
+  "decision_needed": "Should the checklist warning be a server-side gate inside `clockOut()` (covers all surfaces, including future ones) or a client-side pre-flight check per UI (better UX, but three implementations)?",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Yes — it is a public kiosk with a PIN",
+  "detail": "`/timeclock` is publicly routable: `src/middleware.ts:29` lists `'/timeclock'` in `PUBLIC_PATH_PREFIXES`, and `src/app/(timeclock)/layout.tsx` is a full-screen kiosk shell whose own comment says \"No authentication required — accessible on the till iPad.\" The page (`src/app/(timeclock)/timeclock/page.tsx:9-20`) uses `createAdminClient()` directly to list every Active / Started Separation employee with no auth session at all.",
+  "why_it_matters": "Anything you surface at clock-out on the kiosk is visible to anyone standing at the till, and any data you fetch for it is fetched with the service-role key on an unauthenticated page. Checklist contents must be safe to render publicly.",
+  "decision_needed": "Is it acceptable for outstanding-checklist text to be visible on an unauthenticated public kiosk screen, or should the kiosk show only a generic count and the detail live behind auth?",
+  "source": "timeclock"
+ },
+ {
+  "topic": "What identifies the employee — employee_id UUID + 4-digit PIN, NOT auth",
+  "detail": "The kiosk renders one button per employee carrying the raw `employee_id` UUID (`TimeclockClient.tsx:139-153`); tapping opens the PIN modal (`handleClock`, line 56-64, with a UUID format guard at 57). Identity is proven by `verifyClockIdentity()` in `src/app/actions/timeclock.ts:68-95`: if a PIN is supplied it checks `employees.timeclock_pin_hash` via scrypt (`src/lib/timeclock/pin.ts:24-38`); **if no hash is stored it falls back to `phoneLastFourMatchesPin()` — the last 4 digits of `mobile_number` or `phone_number`** (`timeclock.ts:81`, `pin.ts:40-50`). If NO pin is supplied it falls through to `canUseAuthenticatedTimeclock()` (line 90) requiring `timeclock:clock` / `timeclock:edit`, or a hardcoded manager-iPad fallback: `MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'` (line 21, checked 55-66). PINs are set by a manager on the employee form (`EmployeeForm.tsx:119`, hashed at `employeeActions.ts:404`).",
+  "why_it_matters": "I checked live prod: of 11 active employees, **0 have a `timeclock_pin_hash` set** — all 11 have a mobile number. So in practice every kiosk clock-in/out today authenticates on the last 4 digits of the employee's phone number, which colleagues plausibly know. The kiosk also lists every employee's name publicly, so the only secret is 4 digits of a semi-known phone number.",
+  "decision_needed": "Do you want real PINs issued to the 11 active employees (killing the phone-last-4 fallback), given a checklist warning at clock-out makes the identity check more consequential?",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Exact clock-OUT injection points (file:line)",
+  "detail": "Server-side (single chokepoint, all surfaces): `src/app/actions/timeclock.ts:250` `clockOut()` — the DB write itself is at lines 284-290. Client surfaces calling it: (1) **Public kiosk** — `src/app/(timeclock)/timeclock/_components/TimeclockClient.tsx:80`, inside `submitPin()`; (2) **FOH table-bookings widget** — `src/app/(authenticated)/table-bookings/foh/FohClockWidget.tsx:62`, inside `handleClockOut()`; (3) **FOH chromeless shell band** — `src/ds/shell/FohClockBand.tsx:56`, inside `handleClockOut()`. Two non-interactive paths also write `clock_out_at` and bypass every UI: the auto-close cron at `src/app/api/cron/rota-auto-close/route.ts:88-99`, and manager corrections via `updateTimeclockSession()` at `src/app/actions/timeclock.ts:646` (write at 704-716).",
+  "why_it_matters": "A warning injected only in `TimeclockClient.tsx` leaves three other ways to clock out un-warned. The cron auto-closes any session still open at ~05:00 — those employees will never see a warning at all.",
+  "decision_needed": "Should the auto-close cron (route.ts:88) also flag/record outstanding checklist items, since those staff never pass through a clock-out UI?",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Modal flow vs single button — it varies by surface",
+  "detail": "**Kiosk**: two-step and already modal. Tap employee card → PIN modal (`TimeclockClient.tsx:162-209`) with a `Cancel` (194) and `Confirm` (199-205) button; the modal header already says \"Clock out\" vs \"Clock in\" (line 173). **FOH widget**: has a genuine, purpose-built confirmation — `ConfirmDialog` at `FohClockWidget.tsx:147-160`, message \"Ready to clock out, {name}? You clocked in at {time}.\", confirm label \"Yes, clock out\", cancel \"Not yet\". **FohClockBand** (`src/ds/shell/FohClockBand.tsx:78-87`): a single `Clock Out` button, **no confirmation, no PIN** — one click writes the clock-out. It's live, rendered from `AppShell.tsx:87` when `fohMode && fohEmployeeId` (fed from `AuthenticatedLayout.tsx:30`).",
+  "why_it_matters": "Two of the three surfaces already have a modal you can extend cheaply. `FohClockBand` has no dialog at all, so a warning there needs a new modal built from scratch — or it silently stays un-warned.",
+  "decision_needed": "For the kiosk, do you want the warning inside the existing PIN modal (fewer taps) or as a second modal after PIN success (harder to ignore)? I'd recommend a second step after PIN success — the PIN modal is muscle-memory and a warning there will be tapped straight through.",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Existing confirmation step",
+  "detail": "Only `FohClockWidget.tsx:147` is a true confirmation (`ConfirmDialog` from `@/ds`, variant=\"primary\"). The kiosk's PIN modal is a de facto confirm (Cancel/Confirm at `TimeclockClient.tsx:191-205`) but its purpose is identity, not intent. `FohClockBand` has none. There is no existing 'are you sure / outstanding items' pattern anywhere in the clock-out path.",
+  "why_it_matters": "There's a reusable `ConfirmDialog` in the design system already proven on this exact flow — the warning can reuse it on the FOH widget and FohClockBand rather than inventing a new component.",
+  "decision_needed": "",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Employee ↔ auth user link",
+  "detail": "`employees.auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL`, added in `supabase/migrations/20260227000001_employee_invite_onboarding.sql:39`, with a unique partial index (lines 43-44, re-asserted in `20260308120000_employees_constraints_and_indexes.sql:39-41`). It's populated by the invite flow's `link_employee_invite_account(p_token, p_auth_user_id)` RPC (`supabase/migrations/20260628000000_employee_invite_flow_hardening.sql:74`, sets the column at 127/137), called from `src/app/actions/employeeInvite.ts:548`. Reverse lookups are `.eq('auth_user_id', user.id)` — e.g. `src/app/(staff-portal)/portal/shifts/page.tsx:476`, `src/app/actions/rota.ts:442` and `:1909`, `src/app/actions/leave.ts:92`. Live prod: all 11 active employees have `auth_user_id` populated. Crucially, **the timeclock path never touches `auth_user_id`** — it keys purely on `employee_id` + PIN.",
+  "why_it_matters": "If checklist items are owned by an auth user (e.g. assigned via the portal), you need the `employees.auth_user_id` hop to join them to the kiosk's `employee_id`. Conveniently, every active employee already has both, so the join is total today — but the column is nullable and new starters won't have it until they accept an invite.",
+  "decision_needed": "Should checklist items key off `employee_id` (works on the kiosk with zero joins, and for staff who never accept an invite) rather than `auth_user_id`? I'd recommend `employee_id`.",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Employee email addresses",
+  "detail": "`employees.email_address` is `text NOT NULL` — confirmed against live prod schema, and in the table definition at `supabase/migrations/20251123120000_squashed.sql:2277`, with a format CHECK (`chk_employee_email_format`) and a 255-char length cap. TypeScript type at `src/types/database.ts:540`. Live prod: all 11 active/separating employees have an email address on file. There is no separate work/personal email column — one column only. (Note `src/types/database.generated.ts` is stale per prior findings; trust the live schema.)",
+  "why_it_matters": "If the warning needs an email escalation (e.g. 'you clocked out with 3 items outstanding'), the address is guaranteed present and non-null for every employee — no fallback path needed. The app already has `sendEmail()` in `src/lib/email/emailService.ts` (Graph/Resend dual transport).",
+  "decision_needed": "Do you want an email follow-up when someone clocks out with outstanding items, or is the on-screen warning enough? I'd recommend on-screen only for now — email adds a whole notification/audit surface for what may be a soft nudge.",
+  "source": "timeclock"
+ },
+ {
+  "topic": "Event checklist: task model is a hardcoded TS constant, not data",
+  "detail": "Tasks are defined in a static array `EVENT_CHECKLIST_DEFINITIONS` at src/lib/event-checklist.ts:30-39 — 8 items, each `{ key, label, offsetDays, channel, required, order }` (e.g. `write_event_brief` at offsetDays -28, `send_whatsapp_reminder` at 0). There is no task-definition table. Due dates are computed, never stored: `addDays(event.date, offsetDays)` at src/lib/event-checklist.ts:44-48, and status is derived by comparing the computed due date to today (src/lib/event-checklist.ts:68-77 → 'completed' | 'overdue' | 'due_today' | 'upcoming'). Adding, renaming or reordering a task is a code deploy, not a config change.",
+  "why_it_matters": "If the new checklists feature needs user-editable tasks, recurring schedules, or per-instance due dates, this model gives you nothing to reuse — the concept of a task doesn't exist in the database at all. If you only need a fixed, developer-owned list bolted to a parent record, the pattern is small and works.",
+  "decision_needed": "Should checklist task definitions be database rows (user-editable) or hardcoded constants like the event checklist?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Event checklist: the only DB table is a thin completion ledger with no attribution",
+  "detail": "Single table `event_checklist_statuses`, DDL at supabase/migrations/20251123120000_squashed.sql:8242-8249: `id, event_id (FK→events, ON DELETE CASCADE), task_key TEXT, completed_at TIMESTAMPTZ, created_at, updated_at`, `UNIQUE (event_id, task_key)`. I confirmed the live prod schema matches — there is NO `completed_by` column. Attribution exists only as an audit_logs side-effect written by the server action (src/app/actions/event-checklist.ts:53-66, resource_id `${eventId}:${taskKey}`), so the UI can never show who ticked a box — EventChecklistCard.tsx:247 only prints 'Completed <date>'. Rows marked incomplete are hard-deleted (src/services/event-checklist.ts:80-91), so un-ticking destroys the history too.",
+  "why_it_matters": "'Who did this and when' is usually the whole point of a shared checklist. The existing table cannot answer it, and the delete-on-untick behaviour means you can't reconstruct it either. Any new checklists feature needs `completed_by` from day one — retrofitting it onto the event table later means backfilling from audit_logs.",
+  "decision_needed": "Does the new checklists feature need per-task attribution (completed_by) and assignment (assigned_to) in the table itself?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Event checklist has serious, live code↔DB drift — treat as a warning, not a template",
+  "detail": "Three sources disagree about what the tasks are. Code defines 8 keys (src/lib/event-checklist.ts:30-39). The nightly pg_cron auto-close function hardcodes a DIFFERENT list of 12 keys (supabase/migrations/20260228000004_auto_close_past_event_tasks.sql:15-28) — it includes `update_event_details`, `publish_event_page`, `create_short_link`, `design_bar_strut_cards`, `design_poster` which no longer exist in code, and OMITS `setup_paid_advertising` which does. Prod data has 23 distinct task_keys ever written (incl. `create_nextdoor_event`, `list_on_skiddle`, `setup_opentable_experience`, `generate_qr_code`). Net effect: `setup_paid_advertising` is never auto-closed on past events, and the code silently ignores 15 orphaned keys because `EVENT_CHECKLIST_TASK_KEYS.has(...)` filters them out (src/app/actions/event-checklist.ts:109).",
+  "why_it_matters": "This is exactly the failure mode a hardcoded-list design invites: the task list has churned repeatedly and each churn left the SQL, the code and the data further apart, with no error raised. It is direct evidence for putting task definitions in the database for the new feature.",
+  "decision_needed": "Should the drift between the auto-close pg_cron function and EVENT_CHECKLIST_DEFINITIONS be fixed as part of this work, or parked as separate tech debt?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Event checklist bypasses RLS entirely — its RLS policies are decorative",
+  "detail": "Every read and write uses `createAdminClient()` (service role, bypasses RLS): src/services/event-checklist.ts:18, 60, 97 and src/app/actions/event-checklist.ts:91. Meanwhile the migration defines four careful RLS policies gated on `user_has_permission(auth.uid(), 'events', 'view'|'manage')` (squashed.sql:8270-8299) that are never exercised. Real enforcement is the TS permission check in the server action only: `checkUserPermission('events','view')` for reads (event-checklist.ts:23, 82, 128) and `checkUserPermission('events','manage')` for the toggle (event-checklist.ts:42). Note also that the SQL `user_has_permission` function (squashed.sql:1629-1643) has NO super_admin short-circuit, whereas the TS PermissionService DOES (src/services/permission.ts:185-189) — so the two paths would disagree if RLS were ever relied on.",
+  "why_it_matters": "Defence-in-depth is absent: a bug that skips the action-layer check has nothing behind it. If you copy this pattern for checklists you inherit the same single point of failure. Use the cookie-based client for reads so RLS is a real second gate.",
+  "decision_needed": "Should the new checklists feature enforce via RLS + the anon/cookie client (defence in depth), or copy the existing admin-client + action-check-only pattern?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Event checklist: layering is sound and worth copying even if the model isn't",
+  "detail": "Clean three-layer split you should mirror: pure functions in src/lib/event-checklist.ts (no DB, testable — `buildEventChecklist`, `getOutstandingTodos`), DB access in src/services/event-checklist.ts (EventChecklistService), and permission + audit + revalidate in src/app/actions/event-checklist.ts. The action returns the standard `{ success, error }` envelope and calls revalidatePath('/events') and `/events/${eventId}` (event-checklist.ts:68-69). Toggle is a single upsert on the `event_id,task_key` conflict target (src/services/event-checklist.ts:63-72) — idempotent, no read-modify-write race. Dead code to not copy: `calculateChecklistProgress` (src/lib/event-checklist.ts:110-120) is defined and never used, and `getEventChecklistProgress` (src/app/actions/event-checklist.ts:81) is unexported and uncalled — both invisible because `@typescript-eslint/no-unused-vars` is off.",
+  "why_it_matters": "The structure is reusable even though the schema isn't. Lifting the lib/service/action split and the upsert-on-conflict toggle saves design time and matches what a reviewer expects in this codebase.",
+  "decision_needed": "",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Event checklist surfaces: card, cross-event todo page, and a daily email cron",
+  "detail": "Three consumers. (1) EventChecklistCard (src/components/features/events/EventChecklistCard.tsx) — rendered twice from src/app/(authenticated)/events/[id]/EventDetailClient.tsx:639 and :648; client component, fetches via server action on mount, optimistic tick with rollback (lines 53-85), splits Outstanding/Completed, Reopen button. (2) Cross-event page /events/todo (src/app/(authenticated)/events/todo/page.tsx) — gated on `checkUserPermission('events','view')` → redirect('/unauthorized'), renders TodoClient with only overdue + due-today items (src/services/event-checklist.ts:139). (3) Daily 08:00 UTC cron `/api/cron/event-checklist-reminders` (vercel.json:165, schedule '0 8 * * *') — emails a single hardcoded recipient (`EVENT_CHECKLIST_EMAIL_RECIPIENT` defaulting to peter@orangejelly.co.uk, route.ts:14), with proper idempotency claim/release around the send.",
+  "why_it_matters": "There is a working reference for all three shapes you'll likely need: per-record card, cross-record roll-up, and a nag email. The email idempotency pattern in particular (claimIdempotencyKey → send → persistIdempotencyResponse, with release on failure) is the house standard and should be copied verbatim.",
+  "decision_needed": "",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "/events/todo is orphaned from navigation — reachable only via the cron email",
+  "detail": "Grep across src/ finds exactly zero links to `/events/todo` outside the cron email body (src/app/api/cron/event-checklist-reminders/route.ts:149 and :185). It is not in NAV_GROUPS (src/ds/shell/SidebarNav.tsx:28-79) and nothing on the Events pages links to it. Staff can only reach the cross-event checklist roll-up by clicking the daily email — which goes to one person.",
+  "why_it_matters": "The roll-up view already exists and is effectively invisible. If the new checklists feature wants a cross-record view, either surface this one properly or expect the new one to be similarly stranded unless a nav entry is planned in.",
+  "decision_needed": "Should the existing /events/todo page get a nav entry (or an Events-page link) as part of this work, or be folded into the new checklists section?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Employee onboarding checklist: columns-as-tasks — a genuine dead end",
+  "detail": "Tasks are boolean COLUMNS on `employee_onboarding_checklist`, one row per employee (upsert on `employee_id`, src/services/employees.ts:933-935). Each task is a `<field>` boolean + a paired `<field>_date`, mapped in ONBOARDING_FIELD_CONFIG (src/services/employees.ts:284-290): private_whatsapp_added, team_whatsapp_added, till_system_setup, training_flow_setup, employee_agreement_accepted. UI: src/components/features/employees/OnboardingChecklistTab.tsx (live — imported by src/app/(authenticated)/employees/[employee_id]/page.tsx:21,244). No due dates at all — no offsets, no overdue/due-today concept, no reminders. Attribution: none (no completed_by column in prod). Adding a task = a migration adding two columns + a code change.",
+  "why_it_matters": "This is strictly weaker than the event checklist and must not be the template: adding a task requires a schema migration, so a user-editable checklist is impossible by construction. It also can't express due dates, which is likely a core requirement.",
+  "decision_needed": "",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Employee onboarding: undocumented DDL and two tasks hidden from the UI",
+  "detail": "The `employee_onboarding_checklist` table has NO CREATE TABLE anywhere in supabase/migrations/ or supabase/migrations-archive/ — it exists in prod only (migrations merely INSERT into it, e.g. 20260227000001_employee_invite_onboarding.sql:110). Live prod has 7 boolean task columns but the TS config exposes only 5: `wheniwork_invite_sent` (+ wheniwork_invite_date) and `employment_agreement_drafted` (+ employment_agreement_date) exist in the DB and are completely absent from ONBOARDING_CHECKLIST_FIELDS (src/services/employees.ts:277-282), so they are unreachable and uncounted in the progress percentage. Also note the hardcoded 'Important Notes' block (OnboardingChecklistTab.tsx:176-184) hardcodes policy copy in the component.",
+  "why_it_matters": "Same drift disease as the event checklist, plus the schema isn't reproducible from the repo — a fresh environment cannot be built from migrations. If this feature migrates onto a new checklists model, those two orphan columns need a decision (backfill or drop), and dropping requires the mandatory function audit per the Supabase rules.",
+  "decision_needed": "Are `wheniwork_invite_sent` and `employment_agreement_drafted` dead (drop) or genuinely wanted (expose in the UI)?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "RBAC: 'checklists' is free — no module or action collision",
+  "detail": "ModuleName union at src/types/rbac.ts:31-63 has 32 entries (dashboard, events, performers, customers, employees, messages, sms_health, settings, reports, users, roles, private_bookings, table_bookings, invoices, oj_projects, receipts, loyalty, quotes, parking, short_links, feedback, menu_management, cashing_up, rota, leave, timeclock, payroll, recruitment, mileage, expenses, mgd). ActionType union at src/types/rbac.ts:65-108 has 44 entries; view/create/edit/delete/manage/export/publish/request/assign-style actions all present ('assign' is NOT — you'd add it). Live prod `permissions` has 35 module_names; 'checklists' is not among them. Note the union and the DB have drifted: prod has audit_logs, bookings, employee_history, invoicing (a duplicate of invoices) that the TS union lacks. The `permissions` table (squashed.sql:2804-2809) is plain text columns with NO check constraint, so a new module is pure INSERT — no enum migration needed.",
+  "why_it_matters": "Adding a 'checklists' module is unblocked and cheap: one union edit plus one seeding migration. The absence of a DB constraint means a typo in module_name fails silently as a permanent permission-denied, so the TS union is the only guard — keep them in sync.",
+  "decision_needed": "New top-level 'checklists' module, or reuse existing per-domain modules (events:manage, employees:edit) to gate checklists within each section?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "RBAC: how checkUserPermission actually resolves, and the super_admin short-circuit",
+  "detail": "`checkUserPermission(module, action, userId?)` (src/app/actions/rbac.ts:63-79) resolves the user via `supabase.auth.getUser()` when userId is omitted, then delegates to `PermissionService.checkUserPermission` (src/services/permission.ts:180-193). That function first checks a 60s-cached super_admin role lookup (`get_user_roles` RPC, permission.ts:162-175, cache tag `permissions-${userId}`) and returns true unconditionally for super_admin — even with zero permission rows. Otherwise it matches against `get_user_permissions` RPC results, also cached 60s (permission.ts:145-158). Both use the admin client. Critically, the SQL-side `user_has_permission` (squashed.sql:1629-1643) has NO super_admin short-circuit — it is a plain join through user_roles→role_permissions→permissions.",
+  "why_it_matters": "Two consequences for planning. First, the 60s cache means a newly seeded permission won't take effect instantly after a role change unless the tag is busted. Second, super_admin passing in TS but failing in SQL means any RLS policy you write for checklists MUST have explicit super_admin permission rows seeded — you cannot rely on the short-circuit at the DB layer.",
+  "decision_needed": "",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "RBAC: permission seeding follows a copy-paste migration template",
+  "detail": "Permissions are seeded as DATA by per-feature migrations, not in the squash. Best template is supabase/migrations/20260302000001_short_links_rbac_permissions.sql: an idempotent DO block that (a) `IF NOT EXISTS (SELECT 1 FROM permissions WHERE module_name=... AND action=...)` then INSERTs each permission, (b) `SELECT id INTO super_admin_role_id FROM roles WHERE name='super_admin'`, same for manager, (c) INSERT INTO role_permissions SELECT role_id, p.id FROM permissions p WHERE p.module_name=... AND NOT EXISTS (...). Other examples: 20260405130000_mileage_expenses_mgd.sql (added three new modules at once — closest analogue to adding 'checklists'), 20260703090000_feedback_rbac_permissions.sql, 20260120132000_add_oj_projects_permissions.sql. Roles are super_admin, manager, staff. I confirmed events:manage exists in prod, so the current checklist toggle gate is real.",
+  "why_it_matters": "Adding a 'checklists' module is a well-trodden path — copy the short_links migration, swap the module name. The idempotent NOT EXISTS guards matter because these migrations get re-run against environments in unknown states.",
+  "decision_needed": "Which roles get checklists:manage — super_admin + manager only (matching short_links), or should staff get view/complete?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Navigation: adding a permission-gated nav item is a one-line change",
+  "detail": "NAV_GROUPS is a flat exported array of 5 unlabelled groups at src/ds/shell/SidebarNav.tsx:28-79. Each NavItem is `{ id, label, icon (IconName from @/ds/icons), href, badge?, permission?: { module: ModuleName, action: ActionType } }` (interface at SidebarNav.tsx:11-21). Gating is automatic: `filterNavGroupsForPermissions` (SidebarNav.tsx:81-94) drops any item whose permission fails and drops groups left empty; items with no `permission` key (e.g. 'profile', line 76) are always shown. Active state is prefix-based — `pathname === href || pathname.startsWith(href + '/')` (SidebarNav.tsx:131-134). Consumed by both desktop Sidebar and MobileChrome, so one edit covers both. Optional badge: add the id to the `countById` map in `navCount` (SidebarNav.tsx:109-118) and wire an OutstandingCounts field — a live count of 0 correctly wins over a static badge (comment at :120-122).",
+  "why_it_matters": "Zero friction — a checklists entry is one object in the array plus optionally one line in countById. The Events group (SidebarNav.tsx:32-37) is the natural home if checklists are event-scoped; a new item in the Employees group (:51-54) if people-scoped.",
+  "decision_needed": "Where should a checklists nav item live — its own entry in the first group, or nested under Events/Employees? And does it want an outstanding-count badge?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Verdict: reuse the layering, not the schema",
+  "detail": "The event checklist is a working, deployed, actively-used system (112 events with completion rows in prod) — not a dead end, but its schema is a local optimum for exactly one use case: a fixed developer-owned list hung off a parent record, with no attribution and no assignment. The onboarding checklist IS effectively a dead end (columns-as-tasks, no due dates, undocumented DDL, hidden orphan columns). Recommendation: build a proper `checklist_templates` / `checklist_template_tasks` / `checklist_instances` / `checklist_task_statuses` model with `completed_by`, `assigned_to` and stored due dates; copy the lib/service/action layering from src/lib|services|app/actions/event-checklist.ts, the upsert-on-conflict toggle, and the cron idempotency pattern; enforce via RLS with the cookie client rather than the admin client; and seed a 'checklists' module using the short_links migration template.",
+  "why_it_matters": "The two existing systems together demonstrate the exact cost of hardcoded task lists — 23 orphaned task keys in prod data and a pg_cron function that has silently disagreed with the code since February. Building on either would repeat that.",
+  "decision_needed": "Do we migrate the two existing checklists onto the new model (one-off data migration), or leave them alone and let the new feature stand beside them?",
+  "source": "existing-checklists-and-rbac"
+ },
+ {
+  "topic": "Email — sendEmail signature",
+  "detail": "`sendEmail(options: EmailOptions): Promise<{ success: boolean; error?: string; messageId?: string }>` at src/lib/email/emailService.ts:111. It takes a single options object, NOT positional args (CLAUDE.md's `sendEmail(to, subject, html, cc?, attachments?)` is stale). EmailOptions (src/lib/email/emailService.ts:8-30): to, subject, html?, text?, cc?, bcc?, attachments?, provider?, from?, graphSender?, replyTo?, commType?, customerId?, requireLog?, metadata?, plus entity FK fields (tableBookingId, eventBookingId, privateBookingId, parkingBookingId, invoiceId, quoteId). Dual transport picked by EMAIL_PROVIDER, falling back to Resend when RESEND_API_KEY + EMAIL_FROM_ADDRESS are set (src/lib/email/emailService.ts:42-49). Suppression list is checked first and returns `{success:false, error:'Recipient email address is suppressed'}` (emailService.ts:112-126).",
+  "why_it_matters": "Any new automated email must call the object-form API and can only rely on the documented return shape; a positional call will not compile.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Email — how templates are done",
+  "detail": "No templating engine. Templates are plain exported functions returning HTML strings, grouped per domain: src/lib/rota/email-templates.ts (buildStaffRotaEmailHtml:77, buildRotaChangeEmailHtml:140, buildManagerAlertEmailHtml:266, buildHolidaySubmittedEmailHtml:294, buildHolidayDecisionEmailHtml:319, buildShiftRejectedManagerEmailHtml:349, buildOpenShiftRequestManagerEmailHtml:376, buildShiftAutoAcceptWarningEmailHtml:443, buildEarningsAlertEmailHtml:486, buildPayrollEmailHtml:533). Each wraps content in `<div style=\"font-family:sans-serif;max-width:600px;margin:0 auto\">` with inline styles. Other template modules: src/lib/email/employee-invite-emails.ts, private-booking-emails.ts, event-ticket-emails.ts, calendar-invite.ts.",
+  "why_it_matters": "A new employee email should add a `build...EmailHtml()` function to src/lib/rota/email-templates.ts and follow the same inline-style, 600px-max-width pattern — no new dependency needed.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Email — cited example of an automated email TO AN EMPLOYEE",
+  "detail": "BEST EXAMPLE: src/lib/rota/send-rota-emails.ts:36 `sendRotaWeekEmails(weekId, weekStart)` — sends each employee their published shifts. It (a) loads employees via admin client filtering `.in('status', ['Active','Started Separation'])` and reads `email_address` (send-rota-emails.ts:44-47), (b) filters to those with an email address (line 76-78), (c) calls sendEmail at line 105-109 with `{to, subject, html: buildStaffRotaEmailHtml(...)}`, (d) inserts a row into `rota_email_log` recording sent/failed (line 111-119), (e) uses Promise.allSettled and returns `{sent, errors}`. It is invoked by the cron at src/app/api/cron/rota-staff-email/route.ts:49. Second example (email to a MANAGER, not staff): src/app/api/cron/rota-manager-alert/route.ts:50-76 — resolves the recipient from `system_settings` key `rota_manager_email` falling back to env ROTA_MANAGER_EMAIL, then sendEmail + rota_email_log insert.",
+  "why_it_matters": "This is the exact template to copy for any new automated employee email: admin client, employee status filter, email_address field, sendEmail, rota_email_log audit row.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Email — audit log table for rota emails",
+  "detail": "`public.rota_email_log` defined at supabase/migrations/20260228100000_rota_system.sql:272. Columns: email_type (CHECK-constrained), entity_type, entity_id, to_addresses TEXT[], cc_addresses, subject, status ('sent'|'failed'), error_message, message_id, sent_by (NULL = automated), sent_at. The email_type CHECK was replaced at supabase/migrations/20260704000000_portal_shift_acceptance.sql:268-281 and now allows exactly: staff_rota, staff_rota_change, manager_alert, holiday_submitted, holiday_decision, holiday_manager_notify, payroll_export, shift_rejected, shift_auto_accept_warning, open_shift_requested.",
+  "why_it_matters": "A new email type CANNOT be logged to rota_email_log without a migration extending the CHECK constraint — inserts will fail at runtime otherwise. This is a required migration if the new email is rota-related.",
+  "decision_needed": "Should a new automated email log to rota_email_log (needs a CHECK-extending migration) or rely only on emailService's own recordEmailMessage logging?",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Cron — auth pattern",
+  "detail": "Every route under src/app/api/cron/* uses `authorizeCronRequest(request)` from src/lib/cron-auth.ts:22 and returns 401 on failure. Canonical usage: src/app/api/cron/rota-staff-email/route.ts:19-22. The helper compares the `authorization` header against `Bearer ${CRON_SECRET}` (or bare CRON_SECRET) using a sha256 + timingSafeEqual constant-time compare (cron-auth.ts:9-20, 41-44). The `x-vercel-cron: 1` header is explicitly NOT trusted for auth — it is diagnostics only (cron-auth.ts:46-51). If CRON_SECRET is unset: authorized in non-production, refused in production (cron-auth.ts:27-37).",
+  "why_it_matters": "Any new cron route must call authorizeCronRequest first; skipping it or trusting x-vercel-cron would leave the endpoint publicly callable.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Cron — schedule patterns in use and frequent crons",
+  "detail": "vercel.json defines 40 crons. Frequent crons ALREADY EXIST: `* * * * *` (every minute — /api/jobs/process?process=true&batch=30); `*/5 * * * *` (event-booking-holds, event-waitlist-offers); `*/15 * * * *` (9 routes: event-paypal-reconciliation, event-payment-reminders, event-guest-engagement, pub-ops-event-calendar-sync, pub-ops-calendar-note-sync, parking-notifications, reconcile-sms, paypal-deposit-reconciliation); `*/30 * * * *` (recruitment-calendar-retry, recruitment-ai-sweep); hourly `0 * * * *` (private-bookings-weekly-summary, table-booking-deposit-timeout, recruitment-reminders). Daily patterns: `0 9 * * *`, `30 8 * * *`, `0 8 * * *`, `0 7 * * *`, `0 6 * * *`, `15 6 * * *`, `0 5 * * *`, `30 7 * * *`, `0 2 * * *`, `0 3 * * *`, `0 1 * * *`, `5 1 * * *`. Weekly: `0 18 * * 0`, `0 21 * * 0`, `30 3 * * 0`, `0 0 * * 1`. Monthly: `0 0 1 * *`.",
+  "why_it_matters": "There is precedent and headroom for a 15-minute or hourly cron; adding one is a vercel.json entry plus a route, no plan/limit concern raised by existing usage.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Cron — crons run in UTC, London handled in code",
+  "detail": "Vercel cron schedules are UTC. Routes that must fire at a London wall-clock time re-check the local time and bail out if wrong: src/app/api/cron/rota-staff-email/route.ts:24-29 (`if (nowLocal.getDay() !== 0) return skipped`), and src/app/api/cron/rota-auto-close/route.ts:22-33 which accepts a 04:00–06:00 local window explicitly to absorb DST drift. TIMEZONE = 'Europe/London' constant + date-fns-tz toZonedTime/formatInTimeZone throughout.",
+  "why_it_matters": "Any new time-of-day-sensitive cron must apply the same guard, or it will fire an hour early/late for half the year (BST).",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Rota — which table tells us who is on shift",
+  "detail": "TWO tables, and the distinction matters. `public.rota_shifts` (supabase/migrations/20260228100000_rota_system.sql:50) is the LIVE MANAGER DRAFT. `public.rota_published_shifts` (supabase/migrations/20260503000002_published_shifts_snapshot.sql:5) is a SNAPSHOT of the last-published version, keyed by the same UUID as rota_shifts.id; its header comment states 'Staff portal reads from here; managers edit rota_shifts (live draft)'. Both carry: week_id, employee_id, shift_date DATE, start_time TIME, end_time TIME, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name. Publish state lives on `rota_weeks` (rota_system.sql:11, status CHECK IN ('draft','published'), plus has_unpublished_changes).",
+  "why_it_matters": "For anything staff-facing or reflecting what people were actually told to work, read rota_published_shifts, not rota_shifts — otherwise unpublished draft edits leak.",
+  "decision_needed": "Should a 'who was on the closing shift' feature read the published snapshot (what staff were told) or the live draft (what managers last edited)? Recommendation: rota_published_shifts, matching sendRotaWeekEmails.",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Rota — statuses that exist",
+  "detail": "rota_shifts.status: `TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','sick','cancelled'))` — supabase/migrations/20260228100000_rota_system.sql:60. No later migration alters this CHECK. 'sick' is surfaced in the UI as \"Couldn't Work\" (src/app/(authenticated)/rota/ShiftDetailModal.tsx:80, and sick_reason → \"Couldn't Work reason\" at :99, `isCouldntWork = shift.status === 'sick'` at :204) — so absences are rota_shifts rows with status='sick', NOT leave_requests. rota_published_shifts.status is a plain TEXT DEFAULT 'scheduled' with NO check constraint (published_shifts_snapshot.sql:14). Related: rota_weeks.status ('draft','published'), leave_requests.status ('pending','approved','declined') at rota_system.sql:93.",
+  "why_it_matters": "Any 'who worked' query must filter `.eq('status','scheduled')` or it will count sick and cancelled shifts as worked — every existing query does this (e.g. send-rota-emails.ts:53, dashboard-data.ts:1560).",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Rota — open shifts and the employee_id nullability trap",
+  "detail": "supabase/migrations/20260228100002_open_shifts.sql:4-16 made employee_id NULLABLE and added `is_open_shift BOOLEAN NOT NULL DEFAULT FALSE`, with CHECK `rota_shifts_open_shift_check`: (is_open_shift=TRUE AND employee_id IS NULL) OR (is_open_shift=FALSE AND employee_id IS NOT NULL). The canonical filter for 'a real person is on this shift' is therefore three predicates: `.eq('status','scheduled').eq('is_open_shift', false).not('employee_id','is',null)` — see src/app/(authenticated)/dashboard/dashboard-data.ts:1557-1563 and src/lib/rota/send-rota-emails.ts:51-56.",
+  "why_it_matters": "Omitting the is_open_shift filter yields unassigned shifts with a null employee_id, which will crash or silently drop rows in any 'who was working' lookup.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Rota — CAN we determine 'who was working the closing shift on date X'? YES",
+  "detail": "Yes, two independent ways, and the naming convention makes it reliable. (1) BY NAME: live prod `rota_shift_templates` (verified by read-only query against project tfcasgxopxegwrabvwat) are named exactly '<Day> Open' / '<Day> Close' — active bar closers are 'Monday'(16:00-22:00), 'Wednesday'(16:00-22:00), 'Sunday Close'(17:00-22:00), 'Tuesday Close'(18:00-22:00), 'Thursday Close'(18:00-22:00), 'Saturday Close'(18:00-22:00), 'Friday Close'(19:00-22:00). rota_shifts.name is denormalised from the template (supabase/migrations/20260503000001_backfill_shift_names.sql backfills `s.name = t.name`) and rota_published_shifts.name carries it too, so name survives template edits/deletes. CAVEAT: two active bar templates named just 'Monday' and 'Wednesday' cover open-to-close and do NOT contain the word 'Close' — a name ILIKE '%close%' filter would miss those two days entirely. (2) BY TIME: pick max(end_time) per shift_date (accounting for is_overnight), or match end_time against business_hours.closes for that day_of_week — prod business_hours closes at 22:00:00 every day, which matches every active bar closing template's end_time.",
+  "why_it_matters": "There is NO existing 'closing shift' concept in code — a grep for closing shift / is_closing / closer across src returns nothing relevant. This logic must be written from scratch, and a naive name-match on '%Close%' silently misses Mondays and Wednesdays.",
+  "decision_needed": "How should 'the closing shift' be defined — by template name, by latest end_time on the date, or by end_time matching business_hours.closes? Recommendation: latest end_time among status='scheduled', is_open_shift=false, department='bar' shifts on that date, because it survives template renames and correctly catches the 'Monday'/'Wednesday' open-to-close templates that name-matching misses.",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Rota — departments are no longer constrained to bar/kitchen",
+  "detail": "The original CHECK `department IN ('bar','kitchen')` was DROPPED by supabase/migrations/20260301120000_rota_shifts_drop_department_check.sql (the `departments` table is now the source of truth). Live prod rota_shift_templates use five departments: bar, kitchen, cleaning, host, runner. rota_shift_templates has its own check dropped by supabase/migrations/20260315000001_rota_shift_templates_drop_department_check.sql.",
+  "why_it_matters": "Filtering a 'who closed up' query by department must target 'bar' explicitly — assuming only bar/kitchen exist will pull in cleaning/host/runner shifts (e.g. the 'Host' 19:00-22:00 template also ends at 22:00, tying with the bar closer on max(end_time)).",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Opening hours — table exists, per day of week",
+  "detail": "`public.business_hours` — DDL at supabase/migrations/20251123120000_squashed.sql:1889. Columns: id, day_of_week INTEGER (CHECK 0-6, 0=Sunday per src/types/business-hours.ts:11 and DAY_NAMES at :60), opens TIME, closes TIME, kitchen_opens TIME, kitchen_closes TIME, is_closed BOOLEAN. Later additions: is_kitchen_closed BOOLEAN (squashed.sql:10684) and schedule_config JSONB DEFAULT '[]' (squashed.sql:15789). Columns opens/closes/created_at/updated_at were once dropped by a bad cleanup and restored by supabase/migrations/20260104100000_restore_business_hours_columns.sql. Live prod values (verified read-only): open 12:00-22:00 Sat/Sun, 16:00-22:00 Mon-Fri; no day is_closed; Monday has is_kitchen_closed=true. Types: src/types/business-hours.ts:9-21.",
+  "why_it_matters": "Pub closing time is a single row lookup by day_of_week and is currently 22:00 every day — usable as the reference point for identifying a closing shift.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Opening hours — special/closed days",
+  "detail": "`public.special_hours` — DDL at supabase/migrations/20251123120000_squashed.sql:3338. Columns: id, date DATE, opens, closes, kitchen_opens, kitchen_closes, is_closed BOOLEAN, note TEXT; is_kitchen_closed added at squashed.sql:8186/10627 and schedule_config JSONB at squashed.sql:15793. Type at src/types/business-hours.ts:23-36. Precedence rule is field-by-field COALESCE(special, business) — documented and implemented in `getKitchenWindowForDate` at src/services/business-hours.ts:186-234 (comment at :180-185 notes this mirrors the create_table_booking_v05 RPC). Simpler whole-day override helper: `BusinessHoursService.isSiteOpen(siteId, date)` at src/services/business-hours.ts:758 — checks special_hours first, then business_hours, defaults CLOSED when neither exists. Batched N-date version (3 queries instead of one per date): src/app/actions/missing-cashups.ts:35-73. CRUD: BusinessHoursService.getSpecialHours:575, createSpecialHours:588, updateSpecialHours:667, deleteSpecialHours:729. Also separate from hours: `service_statuses` / service status overrides (business-hours.ts:315-475) for enabling/disabling individual services over a date range.",
+  "why_it_matters": "Any date-driven feature must honour special_hours (bank holidays, one-off closures) or it will fire on days the pub was shut; reuse getKitchenWindowForDate/isSiteOpen rather than re-deriving precedence.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "Opening hours — a DST/UTC trap in the day-of-week derivation",
+  "detail": "Two different day-of-week derivations coexist. src/services/business-hours.ts:191 uses `new Date(`${date}T00:00:00Z`).getUTCDay()` (timezone-safe). But src/services/business-hours.ts:760 (`isSiteOpen`) uses `new Date(date).getDay()` — server-local — and src/app/actions/missing-cashups.ts:69 uses `date.getDay()` on a date-fns local Date. On a UTC server these agree with London for most of the year but the raw `new Date(date)` parse is exactly the pattern CLAUDE.md forbids.",
+  "why_it_matters": "New code should copy the getUTCDay() form at business-hours.ts:191, not isSiteOpen's local getDay(), to avoid an off-by-one-day bug that is invisible on a London laptop.",
+  "decision_needed": "",
+  "source": "email-cron-rota"
+ },
+ {
+  "topic": "The word \"todos\" in the requirement has been completely ignored",
+  "detail": "The owner asked for \"checklists AND todos\". Every one of the ~70 findings is about recurring, scheduled, compliance-shaped checklist items. Nobody has asked a single question about the todos half: one-off ad-hoc jobs (\"chase the Coke delivery\", \"fix the gents' hand dryer\") created by Billy, assigned to a person or left open, with a due date and no recurrence. These have different mechanics — no schedule, no score weight, no window, but they DO need an owner, a due date and a done/dropped state. Trail models this as a separate schedule type (One-Off / Ad Hoc) precisely because it doesn't fit the recurrence engine.",
+  "why_it_matters": "Half the stated requirement is unspecced. If todos get bolted onto the checklist instance model late, they will either pollute the completion score (a one-off job counted as a missed daily check) or be dropped from v1 and the owner will notice on day one.",
+  "decision_needed": "Are one-off todos in v1 scope, and do they count towards anyone's completion score or sit outside it entirely?",
+  "source": "critique"
+ },
+ {
+  "topic": "Nobody asked whether this is a compliance system or an ops tool — and the research has silently assumed compliance",
+  "detail": "The owner's verbatim requirements mention food safety, EHO, HACCP or SFBB exactly zero times. They asked for checklists, scoring, spot checks and a clock-out email. Yet roughly a third of the research is EHO-defensibility, FHRS ratings, Article 22A-22D, immutable audit trails and 24-month retention. Those requirements are real but they are the researchers' import, not the owner's ask. Compliance-grade (immutable append-only records, inspector view, PDF export of any date range, per-record-type retention, defence capture on a failed temperature) is plausibly 3x the build of an internal ops tool.",
+  "why_it_matters": "This is the largest uncosted scope decision in the whole exercise, and it is being smuggled in as an assumption rather than surfaced as a choice. If the answer is \"internal ops tool\", most of the uk-compliance findings become out of scope and the build halves. If the answer is \"this replaces our paper SFBB diary\", then retention, immutability and export are non-negotiable and the temperature items need typed thresholds and a legal basis per checkpoint.",
+  "decision_needed": "Is this replacing the pub's paper food-safety records (EHO-facing), or is it an internal ops tool that makes no compliance claim?",
+  "source": "critique"
+ },
+ {
+  "topic": "The clock-out warning as specified will email the wrong people the wrong list",
+  "detail": "\"On clock-out, warn of incomplete checklist items\" is unscoped. A kitchen porter clocking out at 17:00 will, as literally specified, be warned about — and then emailed — the 23:30 close-down checks, the Friday 22:00 check and the toilet check due at 21:00. None of those are theirs and none are late yet. The requirement needs three separate scoping rules that nobody has asked about: (a) which items — only those already past their due time, or everything outstanding today; (b) whose items — assigned to them, done by their shift, or the whole venue; (c) which shift — the pub has day and night shifts and the last person out is the only one who can meaningfully be warned about close-down.",
+  "why_it_matters": "Get this wrong and every staff member gets a nightly \"you missed 9 things\" email for jobs that weren't theirs and weren't due. The feature dies of noise in a fortnight and manager@ gets a nightly pile of false accusations. This is the most user-visible part of the requirement and it is the least specified.",
+  "decision_needed": "At clock-out, do we warn only about items (a) already past due, AND (b) attributable to that person or their shift — with a separate end-of-day sweep for whole-venue misses?",
+  "source": "critique"
+ },
+ {
+  "topic": "The existing FOH page cannot take a new nav item without breaking FOH-only mode",
+  "detail": "src/lib/foh/user-mode.ts: isFohOnlyUser() returns true only if EVERY permission the user holds is on module_name === 'table_bookings'. Granting an FOH user a new 'checklists' permission makes that function return false, which turns FOH-only chromeless mode off and drops the full nav and back button onto the bar iPad. Also, \"the /FOH page\" is itself ambiguous — src/app/(authenticated)/table-bookings/foh/page.tsx is a table-bookings schedule screen gated on table_bookings.view; there is no general FOH home page.",
+  "why_it_matters": "A concrete, already-present code trap that will be discovered mid-build. It also forces an early decision: either checklists live under the table_bookings permission (wrong, unmaintainable) or isFohOnlyUser() gets rewritten to an allowlist of modules (correct, but touches live chromeless behaviour that FOH staff depend on).",
+  "decision_needed": "Do we widen isFohOnlyUser() to an allowlist of FOH-permitted modules (table_bookings + checklists + timeclock), accepting a change to live chromeless mode?",
+  "source": "critique"
+ },
+ {
+  "topic": "manager@the-anchor.pub is hard-coded across the app as an identity, and the requirement asks it to be two contradictory things",
+  "detail": "manager@the-anchor.pub is hard-coded in at least six places (timeclock.ts MANAGER_IPAD_EMAIL, table-bookings/foh/page.tsx, rota.ts MANAGER_SHIFT_EMAIL, employee-birthdays, feedback route) as both the shared kiosk login AND the manager notification mailbox. The requirement wants the shared login to be the thing all staff use, and simultaneously wants it to receive the cc of everyone's missed-items email. Nobody has asked what ROLE manager@ actually holds. If it holds manager or super_admin, then every staff member standing at the iPad can open the superadmin insights nav item and read everyone's scores — which directly contradicts \"keep the record for superadmins\".",
+  "why_it_matters": "The scoring record's confidentiality rests entirely on this. It is also a live security question independent of this project: whatever manager@ can do today, every bar staff member can already do.",
+  "decision_needed": "What role does manager@the-anchor.pub hold today, and do we need a separate low-privilege shared FOH account so the shared login cannot open the insights/reporting screens?",
+  "source": "critique"
+ },
+ {
+  "topic": "The PIN we'd attribute scores with can legally be your phone number's last four digits",
+  "detail": "src/lib/timeclock/pin.ts exports phoneLastFourMatchesPin(pin, ...phones) — the timeclock accepts the last four digits of an employee's stored phone number as their PIN. Colleagues know each other's phone numbers. Every attribution finding in this research assumes a PIN is a person-proof; here it demonstrably is not, and any staff member accused of missed checks can say \"someone used my PIN\" and be right.",
+  "why_it_matters": "Attribution is the foundation the entire scoring, spot-check and clock-out-email feature sits on. A shared-secret PIN is fine for clocking in (nobody clocks in for a colleague — it costs them money) but is not fine for a record that leads to a performance conversation. Nobody has surfaced that the existing mechanism is knowingly weak.",
+  "decision_needed": "For checklist attribution, do we require a properly hashed, self-chosen PIN and drop the phone-last-four fallback — and force a PIN reset for all staff at launch?",
+  "source": "critique"
+ },
+ {
+  "topic": "employee_id vs user_id — nobody has decided what a completion record points at",
+  "detail": "AMS has two identity systems: RBAC/auth is keyed on Supabase user_id (users, user_roles, checkUserPermission), while rota, timeclock and payroll are keyed on employee_id. Staff who work behind the bar have employee records but mostly do not have their own Supabase user accounts — they use the shared login. Scores are about employees. Permissions and nav are about users. Not one finding names which key completed_by hangs off, yet every scoring, insight and spot-check query depends on it.",
+  "why_it_matters": "This is a day-one schema decision that is expensive to reverse and blocks everything downstream. It also determines whether \"who's doing them\" reporting can join to the rota at all.",
+  "decision_needed": "Does a checklist completion record store employee_id (joins to rota/timeclock, works with PIN attribution, no Supabase account needed) with user_id only as an optional audit field?",
+  "source": "critique"
+ },
+ {
+  "topic": "Spot checks: the owner's one novel requirement is the least specified thing in the document",
+  "detail": "\"Items marked spot check applicable; randomise which get spot-checked each day by Billy\" has generated one finding (model it as a separate audit entity). Unasked: how many items per day; when is the selection generated and by what seed; does Billy see the selection in advance (if yes, it's not blind; if no, it must appear on his phone); can staff see which items are selected (they must not, or they'll do those three properly); what does a spot check RECORD — pass/fail, a note, a photo; and critically, what happens when a spot check FAILS an item the staff already ticked. Does it retroactively void their completion? Does it hit their score? Does it open a corrective action? Who does it when Billy is on holiday?",
+  "why_it_matters": "The spot check is the only thing in the whole design that can tell a genuine 100% from a faked 100% — the research's own Ontario finding says self-reported completion validates nothing. It is the single highest-value feature and it currently has no mechanics at all.",
+  "decision_needed": "For each spot check, define: N items per day, selection visible only to Billy, recorded as pass/fail + note, and — the real question — does a failed spot check void the original tick and dent the completer's score, or only open a corrective action against the venue?",
+  "source": "critique"
+ },
+ {
+  "topic": "Template versioning and score comparability — absent entirely",
+  "detail": "Billy will edit checklists constantly: add an item, delete an item, retitle one, change a fridge's acceptable range. No finding addresses what happens to history. If a template is edited in place, last month's completion records point at an item that no longer exists or now means something different, and the 30-day score comparison silently compares different denominators. If items are soft-deleted, an item deleted mid-period must be excluded from the denominator for the days after it went — which is a different rule from Xenia's N/A nullify.",
+  "why_it_matters": "Trail's whole score is a 30-day rolling average vs the previous 30. That comparison is meaningless the first time Billy adds four items, and nobody will be able to explain why the score dropped. Retrofitting versioning after a year of records is a data migration nobody wants.",
+  "decision_needed": "Do templates get immutable versions, with each completion record pinned to the template version in force at the time?",
+  "source": "critique"
+ },
+ {
+  "topic": "There is no inventory of the pub's actual checklists — the discovery has zero real content",
+  "detail": "Seventy findings on scheduling models, scoring philosophy and EHO law, and not one line about what The Anchor actually checks today. We know four items by accident from the owner's examples (cellar cooler temp, two bottle fridge temps, candles in autumn/winter, toilet checks every 2h, watering plants, 22:00 Fri-Sat check). Nobody has asked Billy for the current paper lists, or how many items there are in total, or how many staff, or how many shifts a day.",
+  "why_it_matters": "The real project risk is content authoring, not code. Gawande's 5-9 items per pause point is a design constraint you cannot test against without knowing whether Billy's opening list has 6 items or 40. The volume also determines whether the notification/score noise problem is theoretical or fatal. Every scheduling decision above (tolerance fields, meter triggers, closed-day policies) is currently being made against imagined tasks.",
+  "decision_needed": "Before any schema is designed, will you get Billy to send the actual current checklists — every list, every item, its cadence and who does it?",
+  "source": "critique"
+ },
+ {
+  "topic": "Trading hours are a hard prerequisite and may not exist as data",
+  "detail": "\"Toilet checks every 2h between open and close\" and \"22:00 check Fri-Sat only\" both require the venue's opening hours as structured, per-weekday, seasonally-variable data. The scheduling research correctly concludes intra-day cadence must be bounded by the day's actual open/close from a trading-hours table — but nobody checked whether AMS has one. If it doesn't, building and maintaining it (including bank holidays, Christmas, early closes, late licences) is a prerequisite project, not a detail.",
+  "why_it_matters": "It's the load-bearing dependency under two of the eight stated cadences, and it's the kind of thing that gets discovered in week three.",
+  "decision_needed": "Does AMS hold structured trading hours today — and if not, do we build a trading-hours table first or hard-code the current pattern and accept manual edits?",
+  "source": "critique"
+ },
+ {
+  "topic": "Day-conditional tasks will be wrong, because the pub's real condition isn't the day of the week",
+  "detail": "\"22:00 check Fri-Sat only\" is a proxy for \"the nights we're busy and open late\". A Thursday private hire, a Christmas party week, a bank holiday Sunday and a quiet washed-out Saturday all break it. AMS already knows about events and private bookings — nobody asked whether a task condition can reference that existing data (e.g. \"any night with a private booking or an event\") rather than a static BYDAY.",
+  "why_it_matters": "This is the difference between a rule that stays true and one Billy has to remember to override — and the research is clear that overrides get forgotten and phantom overdues train staff to ignore the list. It's also cheap: we own the events data.",
+  "decision_needed": "Can task conditions read existing AMS state (event scheduled / private booking / late licence), or are conditions limited to day-of-week and season in v1?",
+  "source": "critique"
+ },
+ {
+  "topic": "Who defines \"AUTUMN/WINTER\", and the seasonal toggle nobody will remember to flip",
+  "detail": "Candles in autumn/winter. Fixed dates (1 Oct–31 Mar) are wrong in a warm October and a dark September. A manager toggle is itself a task that will be forgotten — and a forgotten seasonal toggle means either a phantom daily miss all summer or no candles until someone notices in November. No finding addresses this trade-off, which applies equally to garden-only tasks, fire-lighting checks and heater checks.",
+  "why_it_matters": "It's the one cadence in the owner's list that has no good automatic answer, and the failure mode (silent no-op or daily false miss) is exactly what kills trust in the list.",
+  "decision_needed": "Are seasons fixed date ranges with a manual override, and does the system prompt Billy at the boundary to confirm the season has changed?",
+  "source": "critique"
+ },
+ {
+  "topic": "Staff have one email address on record and it is almost certainly personal",
+  "detail": "src/types/database.ts has a single email_address on the employee record. The requirement is to email THEM their missed items and cc manager@. That means sending a record of alleged underperformance to a person's personal Gmail, copied to a mailbox the whole team can open (manager@ is the shared login). Unasked: what if the employee has no email; what happens on bounce; is manager@ actually a private mailbox or does everyone have the password; and does an email that says \"you missed these\" become an employment record the person can subject-access and dispute.",
+  "why_it_matters": "Emailing performance criticism to a personal address, cc'd to a shared mailbox that colleagues can read, is a real dignity-at-work and data-protection problem — and it's in the requirement verbatim, so it will get built unless it's challenged now.",
+  "decision_needed": "Is manager@the-anchor.pub a private mailbox or one the team can open — and if the latter, should the cc go to Billy's individual address instead?",
+  "source": "critique"
+ },
+ {
+  "topic": "Nightly emails to the manager will not be read",
+  "detail": "cc manager@ on every clock-out means, on a normal night with five staff clocking out, five emails — most listing items that weren't due or weren't theirs (see the clock-out scoping finding). Nobody has proposed the obvious alternative: a single end-of-day digest to Billy at business-day close, listing the venue's genuine misses with reason codes, and individual emails only to the person who actually missed something.",
+  "why_it_matters": "The manager copy exists so problems get seen. Five emails a night guarantees they don't. This is the cheapest fix in the whole design and it hasn't been raised.",
+  "decision_needed": "Do we replace the per-clock-out cc with one end-of-day digest to Billy, keeping the individual email to the staff member?",
+  "source": "critique"
+ },
+ {
+  "topic": "The value-input items name physical assets, implying an equipment register nobody has scoped",
+  "detail": "\"Cellar cooler temp, two bottle fridge temps\" are three named pieces of equipment, each with its own acceptable range, its own failure meaning, and its own lifecycle. The compliance research is emphatic that the cellar cooler is a QUALITY checkpoint at 11–13°C, not the 8°C food-safety limit — apply the wrong band and it fails every single day and staff learn to ignore red. Unasked: what happens when a fridge is broken, emptied, switched off overnight, or replaced; is there a \"not in use\" state that suppresses the check without scoring a miss; who sets the ranges; and does \"bottle fridge 1 / bottle fridge 2\" survive someone swapping them round.",
+  "why_it_matters": "Three assets today is fine hard-coded; the moment there's a fourth fridge or a broken one, a hard-coded list produces daily false failures — the exact alert fatigue the research warns kills these systems.",
+  "decision_needed": "Do we build a small equipment register (name, type, acceptable range, in-service flag) with checks pointing at it, rather than putting ranges on the task template?",
+  "source": "critique"
+ },
+ {
+  "topic": "\"Surface problems... and with whom\" means naming staff on a screen the whole team uses",
+  "detail": "The requirement says the checklists UI should show what needs addressing and with whom. The FOH device is the shared iPad on the bar. Rendering \"Outstanding: toilet check 21:00 — Sam\" on that screen publishes one person's failings to every colleague and any customer who can see the bar. The research flagged that Trail deliberately hides scores from staff and that a leaderboard reads as public shaming, but nobody connected that to this specific requirement or to the fact that the surface in question is a shared screen.",
+  "why_it_matters": "This is the requirement most likely to make staff hate the system on day one, and it's a one-line design decision to avoid.",
+  "decision_needed": "Does the shared FOH screen show only what's outstanding (no names), with the \"with whom\" visible only in the superadmin insights view?",
+  "source": "critique"
+ },
+ {
+  "topic": "Nobody has asked whether the staff will be told they're being scored",
+  "detail": "The owner wants to score people on completion and keep the record for superadmins. That is worker monitoring: a named, retained, per-person performance record generated by software. UK GDPR requires a lawful basis identified up front, transparency, and — per the ICO's own worked example — that you do not judge performance solely on what the system can see while ignoring the work done outside it. None of the process questions have been asked: is there a privacy notice; will staff be told at launch or will they find out from an email; can a staff member see their own record; how long is it kept; what happens to it when they leave.",
+  "why_it_matters": "Discovering the score's existence via an automated \"you missed these\" email to your personal address is the worst possible launch. The legal exposure is modest for a single pub, but the trust damage is not, and the fix (tell people, one page, before launch) is free.",
+  "decision_needed": "Will staff be told in writing before launch that checklist completion is recorded and scored per person, and can they see their own record?",
+  "source": "critique"
+ },
+ {
+  "topic": "Retention of the personal record is undefined — \"keep the record for superadmins\" has no end date",
+  "detail": "The compliance research settled on 24 months for food-safety records, but that's the CHECK record, not the PERSON score. Nobody has asked how long a named individual's completion history is retained, whether it survives their leaving, or whether photos (which will capture staff and customers) have a shorter clock. These are three different retention periods on the same table.",
+  "why_it_matters": "\"Forever\" is the default if nobody decides, and a leaver's performance record sitting in Supabase indefinitely is both a subject-access liability and pointless.",
+  "decision_needed": "Set retention separately for: the check record (24 months), the personal score attribution (12 months / deleted on leaving + 6 months), and photo evidence (30-90 days) — agreed?",
+  "source": "critique"
+ },
+ {
+  "topic": "No success criteria, no adoption plan, no rollback",
+  "detail": "Nothing in the discovery says how we'd know in three months whether this worked, or what happens if staff don't use it. The Ontario finding says a fully-adopted checklist can change nothing while reporting near-100% compliance — so \"completion rate is high\" is explicitly not evidence of success. There's no proposal to run paper in parallel during bedding-in, no pilot scope (one list first vs all of them), and no answer to \"what do we turn off if it's ignored\".",
+  "why_it_matters": "This determines the shape of v1 more than any scheduling model does. A pilot of one list (opening checks) for two weeks tests attribution, the clock-out email, the score and the spot check end-to-end for a fraction of the build — and the content authoring can then follow the evidence.",
+  "decision_needed": "Do we pilot with a single list (opening checks) for two weeks before building the insights and scoring layer, and what number tells us it worked?",
+  "source": "critique"
+ }
+]
