@@ -60,6 +60,7 @@ export type ModuleName =
   | 'mileage'
   | 'expenses'
   | 'mgd'
+  | 'checklists'
 ;
 
 export type ActionType = 
