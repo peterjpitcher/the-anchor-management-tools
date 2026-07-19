@@ -433,7 +433,8 @@ export async function getChecklistProblems(
         .select('business_date, kind, mismatch_minutes')
         .gte('business_date', window.from)
         .lte('business_date', window.to)
-        .order('business_date', { ascending: true }),
+        .order('business_date', { ascending: true })
+        .order('kind', { ascending: true }),
     )
 
     // 4. Failed spot checks.
@@ -444,7 +445,8 @@ export async function getChecklistProblems(
         .eq('result', 'fail')
         .gte('business_date', window.from)
         .lte('business_date', window.to)
-        .order('business_date', { ascending: true }),
+        .order('business_date', { ascending: true })
+        .order('draw_number', { ascending: true }),
     )
 
     // 5. Drawn-but-unrecorded spot checks (the signal Billy isn't walking the floor).
@@ -455,7 +457,8 @@ export async function getChecklistProblems(
         .eq('state', 'drawn')
         .gte('business_date', window.from)
         .lte('business_date', window.to)
-        .order('business_date', { ascending: true }),
+        .order('business_date', { ascending: true })
+        .order('draw_number', { ascending: true }),
     )
 
     // Resolve every name/title needed in one round per table.

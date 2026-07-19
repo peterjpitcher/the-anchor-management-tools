@@ -29,9 +29,12 @@ BEGIN
            now(),
            'drawn'
     FROM (
+      -- Efraimidis-Spirakis weighted sampling: key = random()^(1/weight), take the largest
+      -- keys. weight = 1/(1+recent checks), so 1/weight = (1 + recent checks). A rarely-checked
+      -- template (low cnt) gets a key nearer 1 and is more likely drawn (spec F-21).
       SELECT i.id,
              i.completed_by_employee_id,
-             power(random(), 1.0 / (1.0 + coalesce(rc.cnt, 0))) AS k
+             power(random(), 1.0 + coalesce(rc.cnt, 0)) AS k
       FROM public.checklist_task_instances i
       LEFT JOIN (
         SELECT ti.template_id, count(*) AS cnt

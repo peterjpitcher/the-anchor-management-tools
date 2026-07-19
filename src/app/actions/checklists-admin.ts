@@ -274,6 +274,8 @@ function buildResolvedTemplate(
   if (t.scheduleKind === 'floating') {
     t.anchor = 'anytime'
     t.freq = null
+    t.freqInterval = 1 // floating has no freq, so a stray interval > 1 must not trip the anchor_date CHECK
+    t.anchorDate = null // meaningless for floating; keep it null so the anchor_date CHECK is never engaged
     t.atTimes = null
     t.everyHours = null
     t.firstOffsetMinutes = null

@@ -200,7 +200,7 @@ export async function completeChecklistInstance(input: {
   if (breach) {
     const settings = await getChecklistSettings()
     const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
-    await db
+    const { error: outboxErr } = await db
       .from('checklist_email_outbox')
       .insert({
         email_type: 'value_breach',
@@ -212,7 +212,11 @@ export async function completeChecklistInstance(input: {
         status: settings.emailsEnabled ? 'pending' : 'held',
         next_attempt_at: now.toISOString(),
       })
-      .then(() => undefined, () => undefined) // idempotency_key unique: ignore duplicate
+    // Ignore only a duplicate (23505: the breach alert is already queued for this instance);
+    // surface any other failure so a lost alert is not swallowed silently.
+    if (outboxErr && (outboxErr as { code?: string }).code !== '23505') {
+      return { success: true, breach: true, error: `Saved, but the alert could not be queued: ${outboxErr.message}` }
+    }
     if (settings.emailsEnabled) {
       await jobQueue.enqueue('checklist_email_outbox_process', {}, { unique: `checklist_outbox:breach:${input.instanceId}` })
     }
