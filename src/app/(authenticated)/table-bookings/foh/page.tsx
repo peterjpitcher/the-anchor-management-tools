@@ -10,6 +10,7 @@ import { getOpenSessions } from '@/app/actions/timeclock'
 import Image from 'next/image'
 import FohClockWidget from './FohClockWidget'
 import { LinkButton } from '@/ds'
+import { ChecklistMidShiftPrompt } from '@/app/(authenticated)/checklists/_components/ChecklistMidShiftPrompt'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 
@@ -129,6 +130,9 @@ export default async function TableBookingsFohPage() {
         canWaiveDeposit={canWaiveDeposit}
         styleVariant={useManagerKioskStyle ? 'manager_kiosk' : 'default'}
       />
+      {/* Renders nothing unless the module + prompts flags are on and a during-service
+          check is due (spec 9.2). Dark by default. */}
+      <ChecklistMidShiftPrompt />
     </PageLayout>
   )
 }
