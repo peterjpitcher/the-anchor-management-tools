@@ -252,6 +252,10 @@
     {
       "path": "/api/cron/private-bookings-expire-holds",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/checklists-generate",
+      "schedule": "0 4 * * *"
     }
   ]
 }

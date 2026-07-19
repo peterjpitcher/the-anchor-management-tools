@@ -39,6 +39,9 @@ export type JobType =
   | 'suggest_receipt_rules'
   | 'refresh_receipt_duplicate_candidates'
   | 'reconcile_receipt_invoice_payments'
+  | 'checklist_generate_day'
+  | 'checklist_sweep'
+  | 'checklist_email_outbox_process'
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
@@ -57,6 +60,9 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'suggest_receipt_rules',
   'refresh_receipt_duplicate_candidates',
   'reconcile_receipt_invoice_payments',
+  'checklist_generate_day',
+  'checklist_sweep',
+  'checklist_email_outbox_process',
 ]
 
 const STALE_JOB_MINUTES = Number.isFinite(Number(process.env.JOB_QUEUE_STALE_MINUTES))
@@ -1221,6 +1227,25 @@ export class UnifiedJobQueue {
       case 'export_employees':
         const { exportEmployees } = await import('@/app/actions/employeeExport')
         return await exportEmployees(payload.filters || {})
+
+      case 'checklist_generate_day': {
+        const businessDate = typeof payload.businessDate === 'string' ? payload.businessDate : ''
+        if (!businessDate) {
+          throw new Error('checklist_generate_day job blocked: missing businessDate')
+        }
+        const { runGenerateDay } = await import('@/lib/checklists/jobs/generate')
+        return runGenerateDay({ businessDate })
+      }
+
+      case 'checklist_sweep': {
+        const { runSweep } = await import('@/lib/checklists/jobs/sweep')
+        return runSweep()
+      }
+
+      case 'checklist_email_outbox_process': {
+        const { runOutboxProcess } = await import('@/lib/checklists/jobs/outbox')
+        return runOutboxProcess()
+      }
 
       default:
         throw new Error(`Unknown job type: ${type}`)
