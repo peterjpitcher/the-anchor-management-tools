@@ -187,7 +187,24 @@ export async function getChecklistInsights(
         .order('id', { ascending: true }),
     )
 
-    const lockedDates = new Set(instances.map((i) => i.business_date))
+    // A day is only "settled" when EVERY instance for it is locked. The sweep locks a day's
+    // misses ~24h before its dones, so a day with only its misses locked would read near-0%
+    // completion until the next morning. Exclude any date that still has an unlocked instance
+    // so metrics never change after they first appear (spec 7 "locked days only").
+    const unsettled = await fetchAllRows<{ business_date: string }>(() =>
+      db
+        .from('checklist_task_instances')
+        .select('business_date')
+        .gte('business_date', window.from)
+        .lte('business_date', window.to)
+        .is('locked_at', null)
+        .order('business_date', { ascending: true })
+        .order('id', { ascending: true }),
+    )
+    const unsettledDates = new Set(unsettled.map((r) => r.business_date))
+    const settledDates = new Set(
+      instances.map((i) => i.business_date).filter((d) => !unsettledDates.has(d)),
+    )
 
     // Venue completion + late rate.
     let doneCount = 0
@@ -203,6 +220,7 @@ export async function getChecklistInsights(
     const byPerson = new Map<string, ScoredInstance[]>()
 
     for (const inst of instances) {
+      if (unsettledDates.has(inst.business_date)) continue // skip partially-settled days
       const bucket = bucketOf(inst.slot)
       if (inst.state === 'done') {
         doneCount += 1
@@ -260,13 +278,13 @@ export async function getChecklistInsights(
     )
 
     const spotCheckExpected = expectations
-      .filter((e) => lockedDates.has(e.business_date))
+      .filter((e) => settledDates.has(e.business_date))
       .reduce((sum, e) => sum + (e.expected ?? 0), 0)
 
     let spotCheckRecorded = 0
     let spotCheckPass = 0
     for (const sc of spotChecks) {
-      if (!lockedDates.has(sc.business_date)) continue
+      if (!settledDates.has(sc.business_date)) continue
       if (sc.state === 'recorded') {
         spotCheckRecorded += 1
         if (sc.result === 'pass') spotCheckPass += 1

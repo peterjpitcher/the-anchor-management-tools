@@ -348,6 +348,11 @@ export async function runGenerateDay(
   // Retract pending rows whose slot is no longer desired.
   for (const e of existing ?? []) {
     if (e.state !== 'pending') continue
+    // A floating template with an open pending instance is deliberately excluded from the
+    // desired set (it must not be regenerated), so it is legitimately absent from
+    // desiredByKey. Preserve it, otherwise a same-day re-run (manual "Regenerate today" or
+    // a queue retry) would delete the live floating task and corrupt its recurrence.
+    if (excludedFloatingIds.has(e.template_id as string)) continue
     if (desiredByKey.has(keyOf(e.template_id as string, e.slot as string))) continue
     const { error } = await db
       .from('checklist_task_instances')
