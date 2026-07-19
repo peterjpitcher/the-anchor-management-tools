@@ -36,10 +36,13 @@ export async function runOutboxProcess(): Promise<Record<string, unknown>> {
     const toAddresses = (row.to_addresses as string[] | null) ?? []
     let result: { success: boolean; error?: string; messageId?: string }
     try {
+      const bodyHtml =
+        (row.body_html as string | null) ??
+        `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">${row.subject}</div>`
       result = await sendEmail({
         to: toAddresses.join(', '),
         subject: row.subject as string,
-        html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">${row.subject}</div>`,
+        html: bodyHtml,
       })
     } catch (e) {
       // sendEmail is expected to return a result rather than throw, but guard defensively so a
