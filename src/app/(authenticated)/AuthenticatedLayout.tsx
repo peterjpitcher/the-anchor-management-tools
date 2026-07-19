@@ -32,7 +32,11 @@ function AuthenticatedLayoutContent({
     if (permissionsLoading) return false
     return isFohOnlyUser(permissions)
   }, [permissions, permissionsLoading])
-  const isFohPath = pathname.startsWith('/table-bookings/foh')
+  // FOH-only (chromeless kiosk) users may reach the FOH page and the checklists section.
+  // Both the redirect effect and the render gate below key off this, so changing only one
+  // would strand them on a permanent "Redirecting" screen. Keep in step with FOH_MODULES.
+  const isFohPath =
+    pathname.startsWith('/table-bookings/foh') || pathname.startsWith('/checklists')
 
   useEffect(() => {
     let mounted = true

@@ -2,6 +2,7 @@
 
 import React from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohViewMode } from '../types'
 import { formatNextEventUrgency, getLondonDateIso, shiftIsoDate } from '../utils'
@@ -265,6 +266,19 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
               Outside ({outsideCount})
             </button>
           </div>
+
+          {/* Checklists: navigation, visible to all FOH users (not gated by canEdit). */}
+          <Link
+            href="/checklists"
+            className={cn(
+              'rounded-md px-4 py-2 text-sm font-medium text-white',
+              isManagerKioskStyle
+                ? 'bg-sidebar px-2.5 py-1 text-[11px] font-semibold hover:bg-green-700'
+                : 'bg-sidebar hover:bg-sidebar/90'
+            )}
+          >
+            Checklists
+          </Link>
 
           {canEdit && (
             <>
