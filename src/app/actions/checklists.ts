@@ -57,6 +57,7 @@ export interface TodayChecklistResult {
 
 export async function getTodayChecklist(
   date?: string,
+  opts?: { dueOnly?: boolean },
 ): Promise<{ data?: TodayChecklistResult; error?: string }> {
   const canView = await checkUserPermission('checklists', 'view')
   if (!canView) return { error: 'Insufficient permissions' }
@@ -77,7 +78,7 @@ export async function getTodayChecklist(
     .limit(1)
   const generationStatus = (runs?.[0]?.status as TodayChecklistResult['generationStatus']) ?? 'none'
 
-  const { data: rows, error } = await db
+  let query = db
     .from('checklist_task_instances')
     .select(
       `id, checklist_id, title_snapshot, instruction_snapshot, slot, department,
@@ -88,7 +89,11 @@ export async function getTodayChecklist(
        employees:completed_by_employee_id(first_name, last_name)`,
     )
     .eq('business_date', businessDate)
-    .order('due_at', { ascending: true })
+  // Staff screen only shows tasks whose window has started (open tasks at open,
+  // close tasks close_lead_minutes before close). The manage view passes no
+  // filter and sees the whole day.
+  if (opts?.dueOnly) query = query.lte('window_start', new Date().toISOString())
+  const { data: rows, error } = await query.order('due_at', { ascending: true })
   if (error) return { error: error.message }
 
   const groupMap = new Map<string, ChecklistGroupView>()
