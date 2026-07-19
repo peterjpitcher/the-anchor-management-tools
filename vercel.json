@@ -256,6 +256,14 @@
     {
       "path": "/api/cron/checklists-generate",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/checklists-weekly-summary",
+      "schedule": "0 * * * 1"
+    },
+    {
+      "path": "/api/cron/checklists-retention",
+      "schedule": "0 3 1 * *"
     }
   ]
 }
