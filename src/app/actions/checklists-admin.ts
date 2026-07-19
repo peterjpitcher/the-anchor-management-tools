@@ -14,7 +14,7 @@ import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
 import { getTodayIsoDate } from '@/lib/dateUtils'
-import { jobQueue } from '@/lib/unified-job-queue'
+import { runGenerateDay } from '@/lib/checklists/jobs/generate'
 import type { Anchor, Freq, ScheduleKind } from '@/lib/checklists/types'
 
 // ---------------------------------------------------------------------------
@@ -815,12 +815,16 @@ export async function regenerateToday(): Promise<{ success?: boolean; error?: st
     if ('error' in gate) return { error: gate.error }
 
     const businessDate = getTodayIsoDate()
-    const result = await jobQueue.enqueue(
-      'checklist_generate_day',
-      { businessDate },
-      { unique: `checklist_generate:${businessDate}` },
-    )
-    if (!result.success) return { error: result.error ?? 'Failed to queue regeneration' }
+    // Run generation inline (not via the queue) so the manual button gets a real, synchronous
+    // result instead of a fire-and-forget job the screen cannot see finish. The reconcile is
+    // idempotent, so running it on demand alongside the scheduled cron is safe.
+    const result = (await runGenerateDay({ businessDate })) as Record<string, unknown>
+    if (result.skipped === 'generation_disabled') {
+      return { error: 'Generation is switched off. Turn on "Generation enabled" first.' }
+    }
+    if (result.status === 'failed') {
+      return { error: `Generation failed: ${String(result.reason ?? 'unknown error')}` }
+    }
 
     await logAuditEvent({
       user_id: gate.userId,
