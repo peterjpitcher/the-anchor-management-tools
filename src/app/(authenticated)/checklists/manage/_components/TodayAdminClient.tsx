@@ -107,7 +107,7 @@ export function TodayAdminClient({
       toast.error(res.error)
       return
     }
-    toast.success('Regeneration queued for today')
+    toast.success("Today's checklist regenerated")
     router.refresh()
   }
 
