@@ -256,6 +256,48 @@ export async function undoChecklistInstance(input: {
   return { success: true }
 }
 
+export interface DuePrompt {
+  id: string
+  title: string
+  slot: string
+  dueAt: string
+}
+
+// Mid-shift prompts (spec 9.2): pending tasks whose window has opened, for today, but only
+// when prompts_enabled. Returns [] when the flag is off so the FOH prompt component stays
+// silent. Excludes open/close/anytime slots (those live on the dedicated screen); only the
+// during-service every-N and at_times slots prompt.
+export async function getDueChecklistPrompts(): Promise<{ data?: DuePrompt[]; error?: string }> {
+  const canView = await checkUserPermission('checklists', 'view')
+  if (!canView) return { error: 'Insufficient permissions' }
+
+  const settings = await getChecklistSettings()
+  if (!settings.moduleEnabled || !settings.promptsEnabled) return { data: [] }
+
+  const db = createAdminClient()
+  const nowIso = new Date().toISOString()
+  const businessDate = todayBusinessDate()
+  const { data, error } = await db
+    .from('checklist_task_instances')
+    .select('id, title_snapshot, slot, due_at')
+    .eq('business_date', businessDate)
+    .eq('state', 'pending')
+    .is('locked_at', null)
+    .not('slot', 'in', '(open,close,anytime)')
+    .lte('window_start', nowIso)
+    .order('due_at', { ascending: true })
+  if (error) return { error: error.message }
+
+  return {
+    data: (data ?? []).map((r) => ({
+      id: r.id as string,
+      title: r.title_snapshot as string,
+      slot: r.slot as string,
+      dueAt: r.due_at as string,
+    })),
+  }
+}
+
 export interface AttributionCandidate {
   employeeId: string
   name: string

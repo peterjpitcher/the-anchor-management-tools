@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { toZonedTime, format, formatInTimeZone } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { jobQueue } from '@/lib/unified-job-queue'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getChecklistSettings } from '@/lib/checklists/settings'
 
 // Vercel Cron: 0 4 * * * (UTC). Re-gates on a 04:00-06:00 Europe/London window to absorb
 // DST, then enqueues the day's checklist jobs into the existing every-minute job queue.
@@ -45,10 +47,38 @@ export async function GET(request: Request) {
     { unique: `checklist_outbox:${businessDate}` },
   )
 
+  // Seasonal boundary reminder (spec 4 / decision 27): on the first day of the Autumn/Winter
+  // window and the first day out of it, nudge the manager to check the seasonal tasks are in
+  // the right active state. One outbox row per boundary date (idempotency key), module-gated.
+  let seasonReminder: string | null = null
+  const settings = await getChecklistSettings()
+  if (settings.moduleEnabled) {
+    const mmdd = businessDate.slice(5)
+    if (mmdd === settings.autumnWinterStart || mmdd === settings.autumnWinterEnd) {
+      const db = createAdminClient()
+      const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
+      await db.from('checklist_email_outbox').upsert(
+        {
+          email_type: 'system_alert',
+          source_type: 'season',
+          source_id: businessDate,
+          idempotency_key: `season_boundary:${businessDate}`,
+          to_addresses: [to],
+          subject: 'The Anchor checklists: season has changed, review seasonal tasks',
+          status: settings.emailsEnabled ? 'pending' : 'held',
+          next_attempt_at: nowUtc.toISOString(),
+        },
+        { onConflict: 'idempotency_key', ignoreDuplicates: true },
+      )
+      seasonReminder = businessDate
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     businessDate,
     enqueued: { generate: generate.jobId ?? null, sweep: sweep.jobId ?? null, outbox: outbox.jobId ?? null },
+    seasonReminder,
     localTime: format(nowLocal, 'HH:mm zzz', { timeZone: TIMEZONE }),
   })
 }
