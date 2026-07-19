@@ -42,6 +42,7 @@ export type JobType =
   | 'checklist_generate_day'
   | 'checklist_sweep'
   | 'checklist_email_outbox_process'
+  | 'checklist_retention_purge'
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
@@ -63,6 +64,7 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'checklist_generate_day',
   'checklist_sweep',
   'checklist_email_outbox_process',
+  'checklist_retention_purge',
 ]
 
 const STALE_JOB_MINUTES = Number.isFinite(Number(process.env.JOB_QUEUE_STALE_MINUTES))
@@ -1245,6 +1247,11 @@ export class UnifiedJobQueue {
       case 'checklist_email_outbox_process': {
         const { runOutboxProcess } = await import('@/lib/checklists/jobs/outbox')
         return runOutboxProcess()
+      }
+
+      case 'checklist_retention_purge': {
+        const { runRetentionPurge } = await import('@/lib/checklists/jobs/retention')
+        return runRetentionPurge()
       }
 
       default:
