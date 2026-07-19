@@ -16,7 +16,8 @@ Branch: feat/checklists. Working tree has unrelated parallel-session changes
 - src/app/(authenticated)/checklists/page.tsx: dueOnly + back button
 - src/app/(authenticated)/checklists/[date]/page.tsx: dueOnly
 - src/app/(authenticated)/checklists/_components/ChecklistScreen.tsx: show-done toggle, empty states
-- supabase/migrations/20260731000500_checklist_grace_60.sql: NEW (draft only, apply needs approval)
+- supabase/migrations/20260731000500_checklist_grace_and_open_lead.sql: NEW
+  (grace 30 to 60 plus open_lead_minutes 0 to 30, per owner confirmation 2026-07-19)
 
 ## Verify
 - [x] lint (changed files, --max-warnings=0): clean
@@ -31,8 +32,7 @@ Branch: feat/checklists. Working tree has unrelated parallel-session changes
   identity row in the sticky bar. All-done state shows a success alert.
 - `getTodayChecklist` gained `opts.dueOnly` (filters `window_start <= now`). Staff pages pass it;
   /checklists/manage/today does not, so managers still see the whole day.
-- Migration 20260731000500 DRAFTED, NOT applied to prod (needs explicit approval).
-  sha256 c13fb55bb04f3af759d5266596e3b266116db315c62df3ebdc992abd440cff2d.
-  Rollback: SET DEFAULT 30 + UPDATE row back to 30. After apply, pending instances pick up the new
-  grace at the next reconcile run or via 'Regenerate today'.
+- Migration 20260731000500 (grace 60 + open lead 30): owner approved 2026-07-19; applied via
+  Supabase MCP apply_migration. Rollback: SET DEFAULTs back (30 / 0) + UPDATE row back.
+  Pending instances pick the new instants up at the next reconcile run or via 'Regenerate today'.
 - Back button links to /table-bookings/foh (works in FOH chromeless mode, no sidebar needed).
