@@ -26,6 +26,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
   const [candidates, setCandidates] = useState<AttributionCandidate[]>([])
   const [candidatesLoading, setCandidatesLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [showDone, setShowDone] = useState(false)
 
   const businessDate = initial?.businessDate
   // Department can vary per group. We seed the picker with the first group's
@@ -108,6 +109,18 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
   const { generationStatus, groups } = initial
   const unavailable = generationStatus === 'none' || generationStatus === 'failed'
 
+  // Done tasks are hidden by default; the toggle in the sticky bar reveals them
+  // (that is also where a just-ticked task goes if you need to undo it).
+  const allTasks = groups.flatMap((g) => g.tasks)
+  const doneCount = allTasks.filter((t) => t.state === 'done').length
+  const visibleGroups = groups
+    .map((g) => ({
+      ...g,
+      tasks: showDone ? g.tasks : g.tasks.filter((t) => t.state !== 'done'),
+    }))
+    .filter((g) => g.tasks.length > 0)
+  const allDone = groups.length > 0 && visibleGroups.length === 0 && !showDone
+
   return (
     <div className="space-y-4">
       {unavailable && (
@@ -136,10 +149,31 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
             onOpenChange={setPickerOpen}
             onSelect={chooseIdentity}
           />
+          {doneCount > 0 && (
+            <div className="mt-2 flex items-center justify-between gap-3 border-t border-border pt-2">
+              <span className="text-xs text-muted">
+                {doneCount} of {allTasks.length} done
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDone((v) => !v)}
+                aria-pressed={showDone}
+                className="min-h-[44px] rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-surface-2"
+              >
+                {showDone ? 'Hide done' : `Show done (${doneCount})`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {groups.map((group) => (
+      {allDone && (
+        <Alert variant="success" title="All done for now.">
+          Every task that is due has been completed. New tasks appear when they are due.
+        </Alert>
+      )}
+
+      {visibleGroups.map((group) => (
         <Card key={group.checklistId}>
           <CardHeader title={group.checklistName} subtitle={departmentLabel(group.department)} />
           <CardBody className="space-y-2">
@@ -157,8 +191,8 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       ))}
 
       {groups.length === 0 && !unavailable && generationStatus !== 'skipped_closed' && (
-        <Alert variant="info" title="No tasks for today.">
-          There is nothing to complete right now.
+        <Alert variant="info" title="Nothing needs doing right now.">
+          Tasks appear here when they are due.
         </Alert>
       )}
     </div>
