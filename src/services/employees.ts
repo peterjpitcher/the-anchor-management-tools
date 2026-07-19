@@ -1016,7 +1016,11 @@ export class EmployeeService {
       supabase.from('attachment_categories').select('*').order('category_name', { ascending: true }),
       supabase.from('employee_emergency_contacts').select('*').eq('employee_id', employeeId).order('created_at', { ascending: false }),
       supabase.from('employee_right_to_work').select('*').eq('employee_id', employeeId).maybeSingle(),
-      supabase.from('audit_logs').select('*').eq('resource_type', 'employee').eq('resource_id', employeeId).order('created_at', { ascending: false }).limit(50),
+      // Limit raised from 50: checklist spot-check results also land on the employee audit
+      // trail (decision 7), so a 50-row cap would bury real HR history within weeks once the
+      // module is live. TODO(checklists Phase 3+): filter spot-check entries into their own
+      // view / paginate so HR history and spot checks each stay legible.
+      supabase.from('audit_logs').select('*').eq('resource_type', 'employee').eq('resource_id', employeeId).order('created_at', { ascending: false }).limit(200),
     ]);
 
     if (financialResult.error) console.error('[EmployeeService] financial fetch failed', financialResult.error);

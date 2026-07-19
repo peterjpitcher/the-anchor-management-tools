@@ -51,6 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'employees', label: 'Employees', icon: 'user', href: '/employees', permission: { module: 'employees', action: 'view' } },
       { id: 'recruitment', label: 'Recruitment', icon: 'briefcase', href: '/recruitment', permission: { module: 'recruitment', action: 'view' } },
       { id: 'rota', label: 'Rota', icon: 'clock', href: '/rota', permission: { module: 'rota', action: 'view' } },
+      { id: 'checklists', label: 'Checklists', icon: 'check', href: '/checklists/manage', permission: { module: 'checklists', action: 'manage' } },
     ],
   },
   {
