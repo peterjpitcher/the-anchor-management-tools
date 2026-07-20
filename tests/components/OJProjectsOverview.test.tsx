@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { ProjectsOverview } from '@/app/(authenticated)/oj-projects/_components/ProjectsOverview'
 import { PermissionProvider } from '@/contexts/PermissionContext'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 const routerRefresh = vi.fn()
 
@@ -25,6 +26,9 @@ vi.mock('@/ds', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/ds')>()
   return {
     ...actual,
+    RevenueChart: ({ data }: { data: Array<{ day: string; amount: number }> }) => (
+      <div data-testid="work-history-chart" data-chart={JSON.stringify(data)} />
+    ),
     toast,
   }
 })
@@ -130,5 +134,43 @@ describe('ProjectsOverview', () => {
     const stat = screen.getByText('Billable Unbilled').closest('div')
     expect(stat).not.toBeNull()
     expect(within(stat as HTMLElement).getByText('1')).toBeInTheDocument()
+  })
+
+  it('expands work history and totals time entries by day', () => {
+    const month = getTodayIsoDate().slice(0, 7)
+    renderOverview([
+      {
+        id: 'entry-one',
+        entry_type: 'time',
+        entry_date: `${month}-01`,
+        duration_minutes_rounded: 60,
+        status: 'unbilled',
+      },
+      {
+        id: 'entry-two',
+        entry_type: 'time',
+        entry_date: `${month}-01`,
+        duration_minutes_rounded: 30,
+        status: 'unbilled',
+      },
+      {
+        id: 'entry-mileage',
+        entry_type: 'mileage',
+        entry_date: `${month}-01`,
+        miles: 10,
+        status: 'unbilled',
+      },
+    ])
+
+    expect(screen.queryByTestId('work-history-chart')).not.toBeInTheDocument()
+
+    const showButton = screen.getByRole('button', { name: 'Show work history chart' })
+    expect(showButton).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(showButton)
+
+    expect(screen.getByRole('button', { name: 'Hide work history chart' })).toHaveAttribute('aria-expanded', 'true')
+    const chart = screen.getByTestId('work-history-chart')
+    const data = JSON.parse(chart.getAttribute('data-chart') || '[]') as Array<{ day: string; amount: number }>
+    expect(data.find((day) => day.day.startsWith('1 '))?.amount).toBe(1.5)
   })
 })
