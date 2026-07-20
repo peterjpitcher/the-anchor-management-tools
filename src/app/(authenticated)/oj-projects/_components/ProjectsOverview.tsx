@@ -26,6 +26,7 @@ import {
   Segmented,
   RowActions,
   ConfirmDialog,
+  RevenueChart,
   toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
@@ -88,6 +89,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
 
   const [entries, setEntries] = useState(initialEntries)
   const [entriesLoading, setEntriesLoading] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [selectedVendorId, setSelectedVendorId] = useState('')
   const [lastCreateVendorId, setLastCreateVendorId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -344,6 +346,53 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     return Math.round(hours * 100) / 100
   }, [entries])
 
+  const dailyHoursData = useMemo(() => {
+    const { startDate, endDate } = getCurrentMonthEntryDateRange()
+    const today = getTodayIsoDate()
+    const chartEndDate = today < endDate ? today : endDate
+    const hoursByDate = new Map<string, number>()
+
+    for (const entry of entries) {
+      if (entry.entry_type !== 'time') continue
+      const entryDate = String(entry.entry_date || '')
+      if (entryDate < startDate || entryDate > chartEndDate) continue
+      const hours = Number(entry.duration_minutes_rounded || 0) / 60
+      if (!Number.isFinite(hours) || hours <= 0) continue
+      hoursByDate.set(entryDate, (hoursByDate.get(entryDate) || 0) + hours)
+    }
+
+    const data: { day: string; amount: number }[] = []
+    const cursor = new Date(`${startDate}T12:00:00Z`)
+    const end = new Date(`${chartEndDate}T12:00:00Z`)
+
+    while (cursor <= end) {
+      const date = cursor.toISOString().slice(0, 10)
+      data.push({
+        day: cursor.toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'UTC',
+        }),
+        amount: Math.round((hoursByDate.get(date) || 0) * 100) / 100,
+      })
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    }
+
+    return data
+  }, [entries])
+
+  const currentMonthLabel = useMemo(() => {
+    const { startDate } = getCurrentMonthEntryDateRange()
+    return new Date(`${startDate}T12:00:00Z`).toLocaleDateString('en-GB', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+  }, [])
+
+  const hasLoggedHours = dailyHoursData.some((day) => day.amount > 0)
+  const selectedVendorName = vendors.find((vendor) => vendor.id === selectedVendorId)?.name
+
   const revenueThisMonth = useMemo(() => {
     let total = 0
     for (const project of visibleProjects) {
@@ -422,6 +471,59 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           )}
         </div>
       </div>
+
+      <Card>
+        <CardHeader
+          title="Work History"
+          subtitle={`Hours per day · ${currentMonthLabel} · ${selectedVendorName || 'All clients'}`}
+          action={(
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={historyOpen}
+              aria-controls="oj-projects-work-history"
+              aria-label={historyOpen ? 'Hide work history chart' : 'Show work history chart'}
+              iconRight={<Icon name={historyOpen ? 'chevronUp' : 'chevronDown'} size={14} />}
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              {historyOpen ? 'Hide chart' : 'Show chart'}
+            </Button>
+          )}
+        />
+        {historyOpen && (
+          <div id="oj-projects-work-history" className="p-[var(--spacing-pad-card)]">
+            {entriesLoading ? (
+              <Empty title="Loading work history" size="sm" variant="minimal" />
+            ) : hasLoggedHours ? (
+              <figure
+                aria-label={`Daily hours logged in ${currentMonthLabel} for ${selectedVendorName || 'all clients'}`}
+              >
+                <RevenueChart
+                  data={dailyHoursData}
+                  height={240}
+                  barSize={18}
+                  valueFormatter={(value) => `${value.toLocaleString('en-GB', { maximumFractionDigits: 2 })}h`}
+                />
+                <figcaption className="sr-only">
+                  {dailyHoursData
+                    .filter((day) => day.amount > 0)
+                    .map((day) => `${day.day}: ${day.amount} hours`)
+                    .join(', ')}
+                </figcaption>
+              </figure>
+            ) : (
+              <Empty
+                icon="chart"
+                title="No hours logged"
+                description="There are no time entries for this view in the current month."
+                size="sm"
+                variant="minimal"
+              />
+            )}
+          </div>
+        )}
+      </Card>
 
       {/* Recent Projects */}
       <Card>
@@ -612,7 +714,19 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 )
               })}
             </div>
-            <Table className="hidden md:block">
+            <Table className="hidden md:block [&>table]:min-w-[1100px] [&>table]:table-fixed [&_td]:px-2 [&_th]:px-2">
+            <colgroup>
+              <col className="w-[9%]" />
+              <col className="w-[16%]" />
+              <col className="w-[11%]" />
+              <col className="w-[6%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[21%]" />
+              <col className="w-[7%]" />
+              <col className="w-[5%]" />
+            </colgroup>
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
@@ -644,8 +758,12 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                 return (
                   <TableRow key={entry.id}>
                     <TableCell>{formatDateDdMmmmYyyy(entry.entry_date)}</TableCell>
-                    <TableCell>{entry.project?.project_name || 'Unknown'}</TableCell>
-                    <TableCell>{entry.vendor?.name || 'Unknown'}</TableCell>
+                    <TableCell className="whitespace-normal [overflow-wrap:anywhere]">
+                      {entry.project?.project_name || 'Unknown'}
+                    </TableCell>
+                    <TableCell className="whitespace-normal [overflow-wrap:anywhere]">
+                      {entry.vendor?.name || 'Unknown'}
+                    </TableCell>
                     <TableCell>
                       <Badge tone={typeTone}>{entry.entry_type}</Badge>
                     </TableCell>
@@ -656,7 +774,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
                         {billable ? 'Billable' : 'Non-billable'}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-text-muted">
+                    <TableCell className="whitespace-normal [overflow-wrap:anywhere] text-text-muted">
                       {entry.description || '-'}
                     </TableCell>
                     <TableCell>
