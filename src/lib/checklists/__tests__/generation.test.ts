@@ -99,6 +99,8 @@ describe('computeDesiredInstances', () => {
     )
     expect(out).toHaveLength(1)
     expect(out[0].slot).toBe('anytime')
+    // window_start now surfaces at open (open lead 0 here, so exactly at open), not the 06:00 business-day start.
+    expect(out[0].windowStart.toISOString()).toBe(opensAt.toISOString())
     // due_at = end of the due business day = 06:00 BST on the 19th = 05:00Z.
     expect(out[0].dueAt.toISOString()).toBe('2026-07-19T05:00:00.000Z')
     // grace_until = due_at + tolerance_days * 24h = + 48h.
@@ -120,5 +122,36 @@ describe('computeDesiredInstances', () => {
       { t1: null },
     )
     expect(out).toHaveLength(0)
+  })
+
+  it('anytime + floating tasks surface at open (open lead before open), not the business-day start', () => {
+    const settings = { ...baseSettings, openLeadMinutes: 30 }
+    const out = computeDesiredInstances(
+      [
+        tpl({ id: 'cal', anchor: 'anytime', freq: 'daily' }),
+        tpl({
+          id: 'flo',
+          scheduleKind: 'floating',
+          anchor: 'anytime',
+          freq: null,
+          intervalDays: 4,
+          toleranceDays: 2,
+          firstDueOn: '2026-07-18',
+        }),
+      ],
+      businessDate,
+      { opensAt, closesAt },
+      settings,
+      { flo: null },
+    )
+    // open 12:00 BST (11:00Z) minus 30m open lead = 11:30 BST = 10:30Z.
+    const expectedStart = '2026-07-18T10:30:00.000Z'
+    const cal = out.find((o) => o.templateId === 'cal')!
+    const flo = out.find((o) => o.templateId === 'flo')!
+    expect(cal.windowStart.toISOString()).toBe(expectedStart)
+    expect(flo.windowStart.toISOString()).toBe(expectedStart)
+    // due_at unchanged: end of business day = 06:00 BST on the 19th = 05:00Z.
+    expect(cal.dueAt.toISOString()).toBe('2026-07-19T05:00:00.000Z')
+    expect(flo.dueAt.toISOString()).toBe('2026-07-19T05:00:00.000Z')
   })
 })

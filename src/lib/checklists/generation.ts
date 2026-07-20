@@ -134,11 +134,13 @@ export function computeDesiredInstances(
       const prior = floatingPriors[t.id] ?? null
       const nextDue = nextFloatingDue(prior, t.intervalDays ?? 0, t.firstDueOn ?? businessDate)
       if (nextDue <= businessDate) {
-        const { start, end } = businessDayBounds(businessDate, settings.businessDayStartHour)
+        const { end } = businessDayBounds(businessDate, settings.businessDayStartHour)
         out.push({
           ...snapshot,
           slot: 'anytime',
-          windowStart: start,
+          // Surface at open (open_lead before open), same as the 'open' anchor,
+          // rather than at the business-day start.
+          windowStart: subMinutes(opensAt, settings.openLeadMinutes),
           dueAt: end,
           graceUntil: addMinutes(end, (t.toleranceDays ?? 0) * 24 * 60),
         })
@@ -213,11 +215,13 @@ export function computeDesiredInstances(
       }
 
       case 'anytime': {
-        const { start, end } = businessDayBounds(businessDate, settings.businessDayStartHour)
+        const { end } = businessDayBounds(businessDate, settings.businessDayStartHour)
         out.push({
           ...snapshot,
           slot: 'anytime',
-          windowStart: start,
+          // Surface at open (open_lead before open), same as the 'open' anchor,
+          // rather than at the business-day start.
+          windowStart: subMinutes(opensAt, settings.openLeadMinutes),
           dueAt: end,
           graceUntil: end,
         })
