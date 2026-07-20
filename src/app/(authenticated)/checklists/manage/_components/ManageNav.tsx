@@ -7,6 +7,7 @@ const ITEMS = [
   { id: 'setup', label: 'Setup', href: '/checklists/manage' },
   { id: 'today', label: 'Today', href: '/checklists/manage/today' },
   { id: 'insights', label: 'Insights', href: '/checklists/manage/insights' },
+  { id: 'review', label: 'Weekly review', href: '/checklists/manage/review' },
   { id: 'spot-checks', label: 'Spot checks', href: '/checklists/manage/spot-checks' },
   { id: 'problems', label: 'Problems', href: '/checklists/manage/problems' },
   { id: 'todos', label: 'Todos', href: '/checklists/manage/todos' },
@@ -21,7 +22,9 @@ export function ManageNav() {
         ? 'today'
         : pathname.startsWith('/checklists/manage/insights')
           ? 'insights'
-          : pathname.startsWith('/checklists/manage/spot-checks')
+          : pathname.startsWith('/checklists/manage/review')
+            ? 'review'
+            : pathname.startsWith('/checklists/manage/spot-checks')
             ? 'spot-checks'
             : pathname.startsWith('/checklists/manage/problems')
               ? 'problems'
