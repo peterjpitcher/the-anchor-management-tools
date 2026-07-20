@@ -25,8 +25,24 @@ const DAY_PART_LABEL: Record<DayPart, string> = {
   anytime: 'Anytime',
 }
 
+// A render-time presentation state. 'future' is derived from the date, never stored on the
+// payload (the shared CellState type is not widened): a day later than today has not happened
+// yet, so an absent cell is upcoming, not a data gap.
+type DisplayState = CellState | 'future'
+
+// The seven real states, in legend order. 'future' is deliberately excluded from the legend.
+const LEGEND_STATES: CellState[] = [
+  'done',
+  'missed',
+  'skipped',
+  'not_applicable',
+  'pending',
+  'not_due',
+  'no_data',
+]
+
 // Static, complete Tailwind class names per state (no dynamic construction, design tokens only).
-const STATE_STYLE: Record<CellState, string> = {
+const STATE_STYLE: Record<DisplayState, string> = {
   done: 'bg-success-soft text-success-fg',
   missed: 'bg-danger-soft text-danger-fg',
   skipped: 'bg-warning-soft text-warning-fg',
@@ -34,11 +50,12 @@ const STATE_STYLE: Record<CellState, string> = {
   pending: 'bg-info-soft text-info-fg',
   not_due: 'bg-surface text-text-subtle',
   no_data: 'bg-warning-soft text-warning-fg',
+  future: 'bg-surface text-text-subtle',
 }
 
 // Short visible glyph for each state. Never the only signal: paired with an aria-label
 // and, for done cells, the completer initials.
-const STATE_GLYPH: Record<CellState, string> = {
+const STATE_GLYPH: Record<DisplayState, string> = {
   done: '✓', // check
   missed: '×', // cross
   skipped: 'S',
@@ -46,9 +63,10 @@ const STATE_GLYPH: Record<CellState, string> = {
   pending: '•', // bullet
   not_due: '-',
   no_data: '?',
+  future: '·', // middle dot: upcoming, no outcome yet
 }
 
-const STATE_LABEL: Record<CellState, string> = {
+const STATE_LABEL: Record<DisplayState, string> = {
   done: 'Done',
   missed: 'Missed',
   skipped: 'Skipped',
@@ -56,6 +74,16 @@ const STATE_LABEL: Record<CellState, string> = {
   pending: 'Pending',
   not_due: 'Not scheduled',
   no_data: 'No data recorded',
+  future: 'Upcoming',
+}
+
+// A day strictly after today's business date has not happened yet: show an absent cell as
+// upcoming rather than as a data gap.
+function displayStateFor(cell: ReviewCell, todayBusiness: string): DisplayState {
+  if (cell.date > todayBusiness && (cell.state === 'no_data' || cell.state === 'not_due')) {
+    return 'future'
+  }
+  return cell.state
 }
 
 function initials(name: string | undefined): string {
@@ -150,17 +178,19 @@ function cellFlags(cell: ReviewCell): string[] {
   return flags
 }
 
-function cellAccessibleName(row: ReviewRow, cell: ReviewCell): string {
+function cellAccessibleName(row: ReviewRow, cell: ReviewCell, display: DisplayState): string {
   let core: string
-  if (cell.state === 'done') {
+  if (display === 'future') {
+    core = STATE_LABEL.future
+  } else if (display === 'done') {
     core = cell.completedByName ? `Done by ${cell.completedByName}` : 'Done'
     if (cell.completedAt) core += `, ${formatLondonTime(cell.completedAt)}`
-  } else if (cell.state === 'skipped' && cell.skipReason) {
+  } else if (display === 'skipped' && cell.skipReason) {
     core = `Skipped: ${cell.skipReason}`
   } else {
-    core = STATE_LABEL[cell.state]
+    core = STATE_LABEL[display]
   }
-  const flags = cellFlags(cell)
+  const flags = display === 'future' ? [] : cellFlags(cell)
   const suffix = flags.length ? `, ${flags.join(', ')}` : ''
   return `${row.title}, ${dayLabelShort(cell.date)}: ${core}${suffix}`
 }
@@ -168,6 +198,7 @@ function cellAccessibleName(row: ReviewRow, cell: ReviewCell): string {
 interface SelectedCell {
   row: ReviewRow
   cell: ReviewCell
+  display: DisplayState
 }
 
 export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
@@ -219,10 +250,14 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
   const weekStart = data.weekStart
   const weekEnd = data.weekDates[data.weekDates.length - 1]
-  const thisWeekStart = mondayOf(londonBusinessDateNow())
+  const todayBusiness = londonBusinessDateNow()
+  const thisWeekStart = mondayOf(todayBusiness)
   const nextDisabled = weekStart >= thisWeekStart
 
+  // Days later than today have not happened yet: exclude them so they never appear as a
+  // "did not finish generating" gap or carry the '!' column overlay.
   const incompleteDates = data.weekDates.filter((date) => {
+    if (date > todayBusiness) return false
     const health = data.dateHealth[date]
     return health !== 'complete' && health !== 'skipped_closed'
   })
@@ -308,7 +343,7 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
 
       {/* Legend */}
       <div className="flex flex-wrap gap-2" aria-label="Legend">
-        {(Object.keys(STATE_LABEL) as CellState[]).map((state) => (
+        {LEGEND_STATES.map((state) => (
           <span
             key={state}
             className={`inline-flex items-center gap-1.5 rounded-pill border border-border px-2 py-0.5 text-xs ${STATE_STYLE[state]}`}
@@ -380,8 +415,9 @@ export function WeeklyReviewClient({ data, error }: WeeklyReviewClientProps) {
                     part={group.part}
                     rows={group.rows}
                     weekDates={data.weekDates}
+                    todayBusiness={todayBusiness}
                     showDept={showDept}
-                    onSelect={(row, cell) => setSelected({ row, cell })}
+                    onSelect={(row, cell, display) => setSelected({ row, cell, display })}
                   />
                 )
               })}
@@ -399,21 +435,29 @@ interface FragmentGroupProps {
   part: DayPart
   rows: ReviewRow[]
   weekDates: string[]
+  todayBusiness: string
   showDept: boolean
-  onSelect: (row: ReviewRow, cell: ReviewCell) => void
+  onSelect: (row: ReviewRow, cell: ReviewCell, display: DisplayState) => void
 }
 
-function FragmentGroup({ part, rows, weekDates, showDept, onSelect }: FragmentGroupProps) {
+function FragmentGroup({
+  part,
+  rows,
+  weekDates,
+  todayBusiness,
+  showDept,
+  onSelect,
+}: FragmentGroupProps) {
   return (
     <>
       <tr>
-        <th
-          scope="colgroup"
+        {/* Row-group label, not a column header, so it carries no scope. */}
+        <td
           colSpan={weekDates.length + 1}
           className="sticky left-0 z-10 border-b border-t border-border bg-surface-2 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider text-text-muted"
         >
           {DAY_PART_LABEL[part]}
-        </th>
+        </td>
       </tr>
       {rows.map((row) => (
         <tr key={`${row.templateId}-${row.slot}`}>
@@ -433,7 +477,12 @@ function FragmentGroup({ part, rows, weekDates, showDept, onSelect }: FragmentGr
               key={cell.date}
               className="border-b border-l border-border p-0 text-center align-middle"
             >
-              <CellButton row={row} cell={cell} onSelect={onSelect} />
+              <CellButton
+                row={row}
+                cell={cell}
+                todayBusiness={todayBusiness}
+                onSelect={onSelect}
+              />
             </td>
           ))}
         </tr>
@@ -445,22 +494,24 @@ function FragmentGroup({ part, rows, weekDates, showDept, onSelect }: FragmentGr
 interface CellButtonProps {
   row: ReviewRow
   cell: ReviewCell
-  onSelect: (row: ReviewRow, cell: ReviewCell) => void
+  todayBusiness: string
+  onSelect: (row: ReviewRow, cell: ReviewCell, display: DisplayState) => void
 }
 
-function CellButton({ row, cell, onSelect }: CellButtonProps) {
-  const flags = cellFlags(cell)
+function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
+  const display = displayStateFor(cell, todayBusiness)
+  const flags = display === 'future' ? [] : cellFlags(cell)
   const glyph =
-    cell.state === 'done' && cell.completedByName
+    display === 'done' && cell.completedByName
       ? initials(cell.completedByName)
-      : STATE_GLYPH[cell.state]
+      : STATE_GLYPH[display]
 
   return (
     <button
       type="button"
-      onClick={() => onSelect(row, cell)}
-      aria-label={cellAccessibleName(row, cell)}
-      className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-none focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[cell.state]}`}
+      onClick={() => onSelect(row, cell, display)}
+      aria-label={cellAccessibleName(row, cell, display)}
+      className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-none focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[display]}`}
     >
       <span aria-hidden="true">{glyph}</span>
       {flags.length > 0 && (
@@ -483,6 +534,7 @@ interface CellDetailModalProps {
 function CellDetailModal({ selected, onClose }: CellDetailModalProps) {
   const row = selected?.row
   const cell = selected?.cell
+  const display = selected?.display
 
   return (
     <Modal
@@ -495,12 +547,12 @@ function CellDetailModal({ selected, onClose }: CellDetailModalProps) {
         </Button>
       }
     >
-      {row && cell && (
+      {row && cell && display && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <DetailRow label="Date" value={dayLabelShort(cell.date)} />
           <DetailRow label="Day-part" value={DAY_PART_LABEL[row.dayPart]} />
           <DetailRow label="Department" value={departmentLabel(row.department)} />
-          <DetailRow label="Outcome" value={STATE_LABEL[cell.state]} />
+          <DetailRow label="Outcome" value={STATE_LABEL[display]} />
           <DetailRow
             label="Completed by"
             value={cell.state === 'done' ? cell.completedByName ?? 'Unknown' : '-'}
@@ -532,7 +584,7 @@ function CellDetailModal({ selected, onClose }: CellDetailModalProps) {
           />
           <DetailRow
             label="Spot check"
-            value={cell.spotCheckFailed ? 'Failed' : 'Not recorded'}
+            value={cell.spotCheckFailed ? 'Failed' : 'No failure recorded'}
           />
         </dl>
       )}

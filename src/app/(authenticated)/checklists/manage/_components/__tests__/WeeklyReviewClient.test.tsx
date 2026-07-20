@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReviewCell, WeeklyReview } from '@/types/checklists-review'
@@ -17,13 +17,13 @@ vi.mock('next/navigation', () => ({
 }))
 
 const weekDates = [
-  '2026-07-20',
-  '2026-07-21',
-  '2026-07-22',
-  '2026-07-23',
-  '2026-07-24',
-  '2026-07-25',
-  '2026-07-26',
+  '2026-07-20', // Mon
+  '2026-07-21', // Tue
+  '2026-07-22', // Wed
+  '2026-07-23', // Thu
+  '2026-07-24', // Fri
+  '2026-07-25', // Sat
+  '2026-07-26', // Sun
 ]
 
 function buildData(): WeeklyReview {
@@ -40,9 +40,10 @@ function buildData(): WeeklyReview {
         valueBreach: false,
       }
     }
-    if (i === 1) return { date, state: 'missed', instanceId: 'i2' }
-    if (i === 2) return { date, state: 'no_data' }
-    return { date, state: 'not_due' }
+    if (i === 1) return { date, state: 'missed', instanceId: 'i2' } // past miss
+    if (i === 2) return { date, state: 'no_data' } // past day whose generation failed
+    if (i === 3) return { date, state: 'not_due' } // today, complete, unscheduled
+    return { date, state: 'no_data' } // future days: not generated yet
   })
 
   const closingCells: ReviewCell[] = weekDates.map((date, i) => {
@@ -68,11 +69,11 @@ function buildData(): WeeklyReview {
     dateHealth: {
       '2026-07-20': 'complete',
       '2026-07-21': 'complete',
-      '2026-07-22': 'failed',
-      '2026-07-23': 'complete',
-      '2026-07-24': 'complete',
-      '2026-07-25': 'complete',
-      '2026-07-26': 'complete',
+      '2026-07-22': 'failed', // past gap
+      '2026-07-23': 'complete', // today
+      '2026-07-24': 'none', // future, not generated
+      '2026-07-25': 'none',
+      '2026-07-26': 'none',
     },
     departments: ['bar'],
     rows: [
@@ -132,13 +133,10 @@ describe('WeeklyReviewClient', () => {
     expect(missedCell).toHaveTextContent('×')
   })
 
-  it('shows a banner for a day whose data did not finish generating', () => {
-    render(<WeeklyReviewClient data={buildData()} />)
-
-    expect(screen.getByText(/did not finish generating/i)).toBeInTheDocument()
-  })
-
   it('opens a detail dialog on click (not hover) with the full name and reading', async () => {
+    // Real timers so the dialog transition and async query behave normally. The clicked
+    // cell is a stored "done" instance, so it is date-independent.
+    vi.useRealTimers()
     const user = userEvent.setup()
     render(<WeeklyReviewClient data={buildData()} />)
 
@@ -173,5 +171,43 @@ describe('WeeklyReviewClient', () => {
     expect(
       screen.getByText(/No checklist data was generated for this week/i),
     ).toBeInTheDocument()
+  })
+
+  describe('with a fixed mid-week today (Thu 23 Jul 2026)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.setSystemTime(new Date('2026-07-23T12:00:00.000Z'))
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('flags only past days that did not finish generating, in the banner', () => {
+      render(<WeeklyReviewClient data={buildData()} />)
+
+      const banner = screen.getByRole('alert')
+      expect(banner).toHaveTextContent(/did not finish generating/i)
+      // The past failed day is named; future days are not (they simply have not happened).
+      expect(banner).toHaveTextContent('22 Jul')
+      expect(banner).not.toHaveTextContent('24 Jul')
+    })
+
+    it('shows a day later than today as Upcoming, while a past gap stays no_data', () => {
+      render(<WeeklyReviewClient data={buildData()} />)
+
+      // Future day: neutral "Upcoming", never the no_data glyph or warning overlay.
+      expect(
+        screen.getByRole('button', { name: /Open the till, Fri 24 Jul: Upcoming/i }),
+      ).toBeInTheDocument()
+
+      // Genuinely-absent past day: still a data gap.
+      expect(
+        screen.getByRole('button', { name: /Open the till, Wed 22 Jul: No data recorded/i }),
+      ).toBeInTheDocument()
+
+      const banner = screen.getByRole('alert')
+      expect(banner).toHaveTextContent('22 Jul')
+      expect(banner).not.toHaveTextContent('24 Jul')
+    })
   })
 })
