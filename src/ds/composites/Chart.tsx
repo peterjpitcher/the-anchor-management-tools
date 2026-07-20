@@ -18,6 +18,8 @@ interface RevenueChartProps {
   data: { day: string; amount: number; target?: number }[]
   /** Formats tooltip values. Defaults to pounds, e.g. £1,234. */
   valueFormatter?: (value: number) => string
+  height?: number
+  barSize?: number
 }
 
 const defaultValueFormatter = (value: number): string => `£${value.toLocaleString()}`
@@ -127,14 +129,19 @@ function ChartTooltipContent({ active, payload, label, valueFormatter = defaultV
   )
 }
 
-export function RevenueChart({ data, valueFormatter = defaultValueFormatter }: RevenueChartProps) {
+export function RevenueChart({
+  data,
+  valueFormatter = defaultValueFormatter,
+  height = 160,
+  barSize = 28,
+}: RevenueChartProps) {
   const hasTargets = data.some(d => (d.target ?? 0) > 0)
   // Domain must include target values so bars that missed target still have room above
   const maxValue = Math.max(...data.map(d => Math.max(d.amount, d.target ?? 0)))
 
   return (
-    <ResponsiveContainer width="100%" height={160}>
-      <BarChart data={data} barSize={28}>
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} barSize={barSize}>
         <XAxis
           dataKey="day"
           tick={{ fontSize: 10, fill: 'var(--color-text-subtle)' }}
