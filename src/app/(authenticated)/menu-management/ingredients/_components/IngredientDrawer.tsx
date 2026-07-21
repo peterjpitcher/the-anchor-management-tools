@@ -889,11 +889,10 @@ export function IngredientDrawer({
               discontinued.
             </p>
             <Checkbox
+              label="Ingredient is active"
               checked={formState.is_active}
               onChange={(checked) => update({ is_active: checked })}
-            >
-              Ingredient is active
-            </Checkbox>
+            />
           </div>
         </FormSection>
       </Drawer>

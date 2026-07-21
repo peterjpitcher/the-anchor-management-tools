@@ -462,7 +462,8 @@ export function MenuDishesTable({
                   <SortHeader label="Portion Cost" sortKey="portionCost" className="px-4 py-2 text-left" />
                   <SortHeader label="GP%" sortKey="gpPct" className="px-4 py-2 text-left" />
                   <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Target</th>
-                  <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Status</th>
+                  <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Active status</th>
+                  <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Costing status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -534,6 +535,11 @@ export function MenuDishesTable({
                         </div>
                       </td>
                       <td className="px-4 py-2 text-gray-700">{formatGp(row.targetGpPct)}</td>
+                      <td className="px-4 py-2">
+                        <Badge tone={row.originalDish.is_active ? 'success' : 'neutral'}>
+                          {row.originalDish.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </td>
                       <td className="px-4 py-2">
                         {belowTarget ? (
                           <Badge tone="danger">Alert</Badge>

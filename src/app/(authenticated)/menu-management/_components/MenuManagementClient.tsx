@@ -606,6 +606,7 @@ export default function MenuManagementClient(): React.ReactElement {
                       <div className="flex items-start justify-between">
                         <h4 className="text-sm font-semibold text-text-strong">{dish.name}</h4>
                         <Switch
+                          label={dish.is_active ? 'Active' : 'Inactive'}
                           checked={dish.is_active}
                           onChange={() => void handleToggleDishActive(dish)}
                           size="sm"

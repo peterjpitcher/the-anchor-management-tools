@@ -595,17 +595,15 @@ export function DishDrawer({
           {/* Active / Sunday lunch toggles + allergen verification */}
           <div className="ml-auto flex items-center gap-3">
             <Checkbox
+              label="Dish is active"
               checked={formState.is_active}
               onChange={(checked) => update({ is_active: checked })}
-            >
-              <span className="text-sm">Active</span>
-            </Checkbox>
+            />
             <Checkbox
+              label="Sunday lunch"
               checked={formState.is_sunday_lunch}
               onChange={(checked) => update({ is_sunday_lunch: checked })}
-            >
-              <span className="text-sm">Sunday lunch</span>
-            </Checkbox>
+            />
 
             {isEditing && (
               allergenVerified ? (
