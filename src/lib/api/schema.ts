@@ -91,7 +91,8 @@ interface SchemaMenuItem {
   '@type': 'MenuItem';
   name: string;
   description?: string;
-  offers: SchemaOffer;
+  // Optional: an item with no known price must not publish a priced Offer.
+  offers?: SchemaOffer;
   nutrition?: SchemaNutritionInfo;
   suitableForDiet?: string[];
 }
@@ -307,34 +308,53 @@ function getEventStatus(status: string): string {
   }
 }
 
-// Convert menu data to Schema.org format
-export function menuToSchema(sections: any[]): SchemaMenu {
+// Convert menu data to Schema.org format.
+// menuName is supplied by the caller so a non-food menu (Christmas, drinks) is
+// not mislabelled as the food menu in JSON-LD.
+export function menuToSchema(sections: any[], menuName?: string | null): SchemaMenu {
+  const name = menuName && menuName.trim() !== '' ? menuName.trim() : 'The Anchor Menu';
+
   return {
     '@type': 'Menu',
-    name: 'The Anchor Menu',
+    name,
     hasMenuSection: sections.map(section => ({
       '@type': 'MenuSection',
       name: section.name,
       description: section.description,
-      hasMenuItem: section.items?.map((item: any) => ({
-        '@type': 'MenuItem',
-        name: item.name,
-        description: item.description,
-        offers: {
-          '@type': 'Offer',
-          price: item.price.toString(),
-          priceCurrency: 'GBP',
-          availability: SCHEMA_AVAILABILITY.IN_STOCK,
-        },
-        nutrition: item.calories ? {
-          '@type': 'NutritionInformation',
-          calories: `${item.calories} calories`,
-        } : undefined,
-        suitableForDiet: mapDietaryInfo(item.dietary_info || []),
-      })) || [],
+      hasMenuItem: section.items?.map((item: any) => {
+        // Never emit a priced Offer when the price is unknown: a missing price
+        // must not be published as 0 or as an empty string.
+        const price = toSchemaPrice(item?.price);
+
+        return {
+          '@type': 'MenuItem',
+          name: item.name,
+          description: item.description,
+          offers: price === null ? undefined : {
+            '@type': 'Offer',
+            price,
+            priceCurrency: 'GBP',
+            availability: SCHEMA_AVAILABILITY.IN_STOCK,
+          },
+          nutrition: item.calories ? {
+            '@type': 'NutritionInformation',
+            calories: `${item.calories} calories`,
+          } : undefined,
+          suitableForDiet: mapDietaryInfo(item.dietary_info || []),
+        };
+      }) || [],
     })),
     lastUpdated: new Date().toISOString(),
   };
+}
+
+// Returns a bare numeric string suitable for Offer.price, or null when the
+// price is absent or not a finite number.
+function toSchemaPrice(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric.toString();
 }
 
 function mapDietaryInfo(dietaryInfo: string[]): string[] {
