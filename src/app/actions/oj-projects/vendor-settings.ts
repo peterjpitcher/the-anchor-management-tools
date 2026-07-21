@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -115,6 +116,22 @@ export async function upsertVendorBillingSettings(formData: FormData) {
     old_values: before ?? undefined,
     new_values: data,
   })
+
+  const currentRetainerPeriod = getTodayIsoDate().slice(0, 7)
+  const { error: retainerProjectError } = await supabase
+    .from('oj_projects')
+    .update({
+      budget_hours: data.retainer_included_hours_per_month,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('vendor_id', parsed.data.vendor_id)
+    .eq('is_retainer', true)
+    .eq('retainer_period_yyyymm', currentRetainerPeriod)
+    .in('status', ['active', 'paused'])
+
+  if (retainerProjectError) {
+    return { error: 'Billing settings were saved, but the current retainer project could not be updated' }
+  }
 
   revalidatePath('/oj-projects')
   revalidatePath('/oj-projects/clients')

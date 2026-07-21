@@ -187,12 +187,18 @@ describe('OJ vendor billing settings action', () => {
         maybeSingle: vi.fn().mockResolvedValue({ data: before, error: null }),
       })),
     }))
+    const statusIn = vi.fn().mockResolvedValue({ data: null, error: null })
+    const periodEq = vi.fn(() => ({ in: statusIn }))
+    const retainerEq = vi.fn(() => ({ eq: periodEq }))
+    const vendorEq = vi.fn(() => ({ eq: retainerEq }))
+    const updateProject = vi.fn(() => ({ eq: vendorEq }))
 
     mockedCreateClient.mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
       from: vi.fn((table: string) => {
-        expect(table).toBe('oj_vendor_billing_settings')
-        return { select, upsert }
+        if (table === 'oj_vendor_billing_settings') return { select, upsert }
+        if (table === 'oj_projects') return { update: updateProject }
+        throw new Error(`Unexpected table: ${table}`)
       }),
     } as any)
 
@@ -215,6 +221,14 @@ describe('OJ vendor billing settings action', () => {
       old_values: before,
       new_values: saved,
     }))
+    expect(updateProject).toHaveBeenCalledWith(expect.objectContaining({
+      budget_hours: 8,
+      updated_at: expect.any(String),
+    }))
+    expect(vendorEq).toHaveBeenCalledWith('vendor_id', saved.vendor_id)
+    expect(retainerEq).toHaveBeenCalledWith('is_retainer', true)
+    expect(periodEq).toHaveBeenCalledWith('retainer_period_yyyymm', expect.stringMatching(/^\d{4}-\d{2}$/))
+    expect(statusIn).toHaveBeenCalledWith('status', ['active', 'paused'])
     expect(mockedRevalidatePath).toHaveBeenCalledWith('/oj-projects/entries')
   })
 })
