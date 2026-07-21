@@ -428,11 +428,10 @@ export function RecipeDrawer({
 
           <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
             <Checkbox
+              label="Recipe is active"
               checked={formState.is_active}
               onChange={(checked) => update({ is_active: checked })}
-            >
-              Recipe is active
-            </Checkbox>
+            />
             <p className="text-xs text-gray-500">
               Inactive recipes stay in the library but cannot be added to dishes.
             </p>
