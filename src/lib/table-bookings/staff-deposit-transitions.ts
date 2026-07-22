@@ -9,6 +9,7 @@ import {
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
   requiresDeposit,
 } from '@/lib/table-bookings/deposit'
+import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
 import { logger } from '@/lib/logger'
 
 export type PartySizeDepositTransitionBooking = {
@@ -71,8 +72,12 @@ export async function applyPartySizeDepositTransition(
   },
 ): Promise<PartySizeDepositTransitionResult> {
   const depositWaived = input.booking.deposit_waived === true
-  const wasDepositRequired = requiresDeposit(input.previousPartySize, { depositWaived })
-  const isNowDepositRequired = requiresDeposit(input.newPartySize, { depositWaived })
+  // A Christmas booking already owes a deposit at any party size, so resizing it
+  // never crosses the 10+ threshold: both sides evaluate to true and the
+  // transition is correctly a no-op here (the amount is re-locked elsewhere).
+  const isChristmas = isChristmasBookingType(input.booking.booking_type)
+  const wasDepositRequired = requiresDeposit(input.previousPartySize, { depositWaived, isChristmas })
+  const isNowDepositRequired = requiresDeposit(input.newPartySize, { depositWaived, isChristmas })
   const depositAlreadyHandled = ['completed', 'refunded'].includes(input.booking.payment_status || '')
 
   if (!wasDepositRequired && isNowDepositRequired && !depositAlreadyHandled) {
@@ -94,6 +99,7 @@ export async function applyPartySizeDepositTransition(
           status: 'pending_payment',
           payment_status: 'pending',
           deposit_waived: input.booking.deposit_waived ?? null,
+          booking_type: input.booking.booking_type ?? null,
         },
         input.newPartySize,
       ).toFixed(2),
@@ -138,7 +144,11 @@ export async function applyPartySizeDepositTransition(
         if (customer && customer.sms_status === 'active' && phone) {
           const firstName = getSmartFirstName(customer.first_name)
           const seatWord = input.newPartySize === 1 ? 'person' : 'people'
-          const depositKindLabel = input.booking.booking_type === 'sunday_lunch' ? 'Sunday lunch deposit' : 'table deposit'
+          const depositKindLabel = isChristmas
+            ? 'Christmas deposit'
+            : input.booking.booking_type === 'sunday_lunch'
+              ? 'Sunday lunch deposit'
+              : 'table deposit'
           const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
           const depositLabel = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(depositAmount)
           const expectedSimpleTotal = input.newPartySize * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP

@@ -3,6 +3,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { sendManagerChargeApprovalEmail } from '@/lib/table-bookings/charge-approvals'
 import { requiresDeposit } from '@/lib/table-bookings/deposit'
+import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
 
 const DEFAULT_FEE_PER_HEAD = 15
 
@@ -85,7 +86,7 @@ export async function getTableBookingForFoh(
 
 export function hasUnpaidRequiredDeposit(
   booking: Pick<TableBookingForFoh, 'status' | 'payment_status' | 'deposit_waived' | 'party_size' | 'committed_party_size'>
-    & Partial<Pick<TableBookingForFoh, 'paypal_deposit_capture_id'>>
+    & Partial<Pick<TableBookingForFoh, 'paypal_deposit_capture_id' | 'booking_type'>>
 ): boolean {
   if (booking.deposit_waived === true) return false
   if (booking.payment_status === 'completed' || booking.paypal_deposit_capture_id) return false
@@ -95,7 +96,9 @@ export function hasUnpaidRequiredDeposit(
     Number(booking.committed_party_size ?? booking.party_size ?? 0)
   )
 
-  if (!requiresDeposit(partySize)) return false
+  // Christmas bookings owe a deposit at any party size, so callers must pass
+  // booking_type through or a Christmas party of 6 would read as fully paid.
+  if (!requiresDeposit(partySize, { isChristmas: isChristmasBookingType(booking.booking_type) })) return false
 
   return booking.status === 'pending_payment' || booking.payment_status === 'pending'
 }

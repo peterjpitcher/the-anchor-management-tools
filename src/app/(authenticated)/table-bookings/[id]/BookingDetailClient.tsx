@@ -438,6 +438,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       status: booking.status,
       payment_status: booking.payment_status,
       deposit_waived: booking.deposit_waived,
+      // Christmas bookings owe a deposit at any party size.
+      booking_type: booking.booking_type,
     },
     booking.party_size ?? 0,
   )

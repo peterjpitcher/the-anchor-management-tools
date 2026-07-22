@@ -3,6 +3,7 @@ import {
   LARGE_GROUP_DEPOSIT_THRESHOLD,
   requiresDeposit,
 } from './deposit';
+import { isChristmasBookingType } from './christmas';
 
 export type TableBookingVisualState =
   | 'private_block'
@@ -20,6 +21,8 @@ export type TableBookingVisualState =
 export type TableBookingVisualInput = {
   is_private_block?: boolean | null;
   status?: string | null;
+  /** Include this in the select: `'christmas'` bookings always owe a deposit. */
+  booking_type?: string | null;
   seated_at?: string | null;
   left_at?: string | null;
   no_show_at?: string | null;
@@ -68,7 +71,9 @@ function hasPendingRequiredDepositSignal(booking: TableBookingVisualInput): bool
 
   if (booking.party_size !== null && booking.party_size !== undefined) {
     const partySize = Math.max(0, Number(booking.party_size || 0));
-    return requiresDeposit(partySize);
+    return requiresDeposit(partySize, {
+      isChristmas: isChristmasBookingType(booking.booking_type),
+    });
   }
 
   const storedAmount = toNumberOrNull(booking.deposit_amount);
@@ -199,7 +204,11 @@ export function getTableBookingDepositState(
   const lockedAmount = toNumberOrNull(booking.deposit_amount_locked);
   const storedAmount = toNumberOrNull(booking.deposit_amount);
   const paid = paymentStatus === 'completed' || Boolean(booking.paypal_deposit_capture_id);
-  const requiredByPartySize = requiresDeposit(partySize, { depositWaived: false });
+  const isChristmas = isChristmasBookingType(booking.booking_type);
+  const requiredByPartySize = requiresDeposit(partySize, {
+    depositWaived: false,
+    isChristmas,
+  });
   const pending = status === 'pending_payment' || (
     paymentStatus === 'pending' &&
     booking.deposit_waived !== true &&
@@ -213,6 +222,7 @@ export function getTableBookingDepositState(
       status: booking.status ?? null,
       payment_status: booking.payment_status ?? null,
       deposit_waived: booking.deposit_waived ?? null,
+      booking_type: booking.booking_type ?? null,
     },
     partySize,
   );
@@ -246,7 +256,9 @@ export function getTableBookingDepositState(
 
   return {
     kind: 'required',
-    label: `Deposit required (${LARGE_GROUP_DEPOSIT_THRESHOLD}+ covers)`,
+    label: isChristmas
+      ? 'Deposit required (Christmas booking)'
+      : `Deposit required (${LARGE_GROUP_DEPOSIT_THRESHOLD}+ covers)`,
     amount: displayAmount,
     methodLabel: null,
   };

@@ -93,6 +93,9 @@ export async function POST(
           status: booking.status ?? null,
           payment_status: booking.payment_status ?? null,
           deposit_waived: booking.deposit_waived ?? null,
+          // Christmas bookings owe a deposit at any party size. The expected
+          // amount must match what create-order charged.
+          booking_type: booking.booking_type ?? null,
         }).toFixed(2),
       );
 

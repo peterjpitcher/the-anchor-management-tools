@@ -158,6 +158,7 @@ export async function GET(request: NextRequest) {
         id, booking_reference, booking_date, booking_time, party_size,
         status, payment_status, no_show_at, left_at, seated_at,
         deposit_waived, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked,
+        booking_type,
         is_outside_seating,
         customer:customers!table_bookings_customer_id_fkey(first_name, last_name),
         table_booking_tables:booking_table_assignments!booking_table_assignments_table_booking_id_fkey(
