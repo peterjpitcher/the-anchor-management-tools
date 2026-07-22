@@ -23,6 +23,7 @@ import {
 } from '../utils'
 import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '../types'
 import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
+import { isChristmasPurpose } from '@/lib/table-bookings/christmas'
 
 export type UseFohCreateBookingReturn = {
   isCreateModalOpen: boolean
@@ -96,7 +97,9 @@ export function useFohCreateBooking(input: {
     last_name: '',
     time: '19:00',
     party_size: '2',
-    purpose: 'food' as 'food' | 'drinks' | 'event',
+    // `christmas` posts a Christmas table booking: 6 guests or more, 24 hours
+    // notice, and a deposit every time. The rules are enforced in the database.
+    purpose: 'food' as 'food' | 'drinks' | 'event' | 'christmas',
     seating_preference: 'seated',
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
     notes: '',
@@ -178,10 +181,12 @@ export function useFohCreateBooking(input: {
   }, [date, isCreateModalOpen])
 
   // --- Overlapping event prompt acknowledgement guard ---
+  const isChristmasBooking = isChristmasPurpose(createForm.purpose)
   const formRequiresDeposit =
     createMode !== 'management' && !createForm.is_venue_event && createMode !== 'walk_in' &&
     requiresDepositForParty(Number(createForm.party_size) || 0, {
       depositWaived: createForm.waive_deposit === true,
+      isChristmas: isChristmasBooking,
     })
 
   const selectedEventOption = useMemo(
@@ -416,6 +421,7 @@ export function useFohCreateBooking(input: {
       (!isWalkIn && !isManagement && !createForm.is_venue_event) &&
       requiresDepositForParty(partySize, {
         depositWaived: createForm.waive_deposit === true,
+        isChristmas: isChristmasBooking,
       })
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.'); return
@@ -432,8 +438,9 @@ export function useFohCreateBooking(input: {
           walk_in: isWalkIn || undefined, walk_in_guest_name: isWalkIn ? createForm.customer_name.trim() || undefined : undefined,
           management_override: isManagement || undefined, default_country_code: DEFAULT_COUNTRY_CODE,
           date: bookingDate, time: effectiveBookingTime, party_size: partySize,
-          purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food', notes: createForm.notes || undefined,
-          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true })) ? createForm.sunday_deposit_method : undefined,
+          purpose: isChristmasBooking ? 'christmas' : createForm.purpose === 'drinks' ? 'drinks' : 'food',
+          notes: createForm.notes || undefined,
+          sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined,
           bypass_pacing: createForm.bypass_pacing || undefined
         })

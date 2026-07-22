@@ -8,6 +8,11 @@ import {
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
   LARGE_GROUP_DEPOSIT_THRESHOLD,
 } from '@/lib/table-bookings/deposit'
+import {
+  CHRISTMAS_MAX_PARTY_SIZE,
+  CHRISTMAS_MIN_NOTICE_HOURS,
+  CHRISTMAS_MIN_PARTY_SIZE,
+} from '@/lib/table-bookings/christmas'
 import type {
   FohCreateMode,
   FohCustomerSearchResult,
@@ -31,7 +36,7 @@ export type CreateForm = {
   last_name: string
   time: string
   party_size: string
-  purpose: 'food' | 'drinks' | 'event'
+  purpose: 'food' | 'drinks' | 'event' | 'christmas'
   seating_preference: 'seated' | 'standing'
   sunday_deposit_method: 'payment_link' | 'cash'
   notes: string
@@ -123,6 +128,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
   const formDepositAmount = formRequiresDeposit
     ? computeDepositAmount(Number.isFinite(partySizeNumber) ? partySizeNumber : 0, {
         depositWaived: createForm.waive_deposit === true,
+        // Christmas takes a deposit at any party size, so a party of 6 shows £60.
+        isChristmas: createForm.purpose === 'christmas',
       })
     : 0
   const selectedCustomerNeedsPhone = Boolean(
@@ -316,7 +323,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             <select
               value={createForm.purpose}
               onChange={(event) => {
-                const nextPurpose = event.target.value as 'food' | 'drinks' | 'event'
+                const nextPurpose = event.target.value as 'food' | 'drinks' | 'event' | 'christmas'
                 onSetTableEventPromptAcknowledgedEventId(null)
                 if (createMode === 'walk_in') {
                   onSetWalkInPurposeAutoSelectionEnabled(false)
@@ -336,8 +343,17 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             >
               <option value="food">Food</option>
               <option value="drinks">Drinks</option>
+              <option value="christmas">Christmas</option>
               {eventOptions.length > 0 && <option value="event">Event</option>}
             </select>
+            {createForm.purpose === 'christmas' && (
+              <p className="mt-1 text-xs text-gray-600">
+                Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more,
+                at least {CHRISTMAS_MIN_NOTICE_HOURS} hours notice, and always take a
+                deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person.
+                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire.
+              </p>
+            )}
           </label>
 
           {createForm.purpose === 'event' && (
@@ -627,6 +643,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
           <p className="text-xs text-gray-500">
             {createMode === 'walk_in'
               ? 'Walk-ins require covers. Guest name and phone are optional.'
+              : createForm.purpose === 'christmas'
+              ? `Christmas bookings always require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit, whatever the party size.`
               : createForm.purpose !== 'event'
               ? `Bookings of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more people require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit.`
               : 'Event booking status depends on event payment mode and capacity.'}

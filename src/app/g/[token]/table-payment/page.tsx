@@ -259,7 +259,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     try {
       const { data: currentBooking, error: currentBookingError } = await db
         .from('table_bookings')
-        .select('id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived')
+        .select('id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
         .eq('id', bookingIdForCapture)
         .maybeSingle()
 
@@ -291,6 +291,8 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           status: currentBooking.status ?? null,
           payment_status: currentBooking.payment_status ?? null,
           deposit_waived: currentBooking.deposit_waived ?? null,
+          // Christmas bookings owe a deposit at any party size.
+          booking_type: currentBooking.booking_type ?? null,
         }).toFixed(2),
       )
 

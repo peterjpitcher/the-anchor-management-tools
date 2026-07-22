@@ -20,7 +20,16 @@ import {
   computeDepositAmount,
   requiresDeposit as requiresDepositForParty,
 } from '@/lib/table-bookings/deposit'
+import {
+  extractChristmasRuleErrorMessage,
+  isChristmasPurpose,
+  toBookingType,
+  toStoredBookingPurpose,
+} from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+
+/** Booking purposes the FOH create endpoint accepts. */
+type FohBookingPurpose = 'food' | 'drinks' | 'christmas'
 
 const CreateFohTableBookingSchema = z.object({
   customer_id: z.string().uuid().optional(),
@@ -36,7 +45,10 @@ const CreateFohTableBookingSchema = z.object({
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
   ),
-  purpose: z.enum(['food', 'drinks']),
+  // `christmas` creates a `booking_type = 'christmas'` booking. The RPC maps it
+  // to a food purpose internally, so kitchen hours, duration and pacing behave
+  // exactly as for `food`, but a deposit is always taken whatever the size.
+  purpose: z.enum(['food', 'drinks', 'christmas']),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older FOH clients may still post this while their bundle rolls
   // forward, but Sunday bookings no longer have a pre-order flow.
@@ -84,7 +96,11 @@ const CreateFohTableBookingSchema = z.object({
     value.waive_deposit !== true &&
     value.is_venue_event !== true &&
     value.party_size != null &&
-    requiresDepositForParty(value.party_size) &&
+    requiresDepositForParty(value.party_size, {
+      // Christmas bookings always take a deposit, so staff must always pick a
+      // deposit method for them, even for a party of 6.
+      isChristmas: isChristmasPurpose(value.purpose),
+    }) &&
     value.sunday_deposit_method == null
   ) {
     context.addIssue({
@@ -183,9 +199,10 @@ function buildWalkInBookingReference(): string {
 }
 
 function getWalkInDurationMinutes(input: {
-  purpose: 'food' | 'drinks'
+  purpose: FohBookingPurpose
 }): number {
-  return input.purpose === 'food' ? 120 : 90
+  // Christmas is a food purpose, so it takes the food duration.
+  return input.purpose === 'drinks' ? 90 : 120
 }
 
 // Raw-insert override path (management override + walk-in hours-bypass fallback).
@@ -200,7 +217,7 @@ async function createManualWalkInBookingOverride(params: {
     date: string
     time: string
     party_size: number
-    purpose: 'food' | 'drinks'
+    purpose: FohBookingPurpose
     notes?: string
     // High-chair request (0–2). Granted atomically via reserve_high_chairs
     // after the row is inserted — never counted-then-inserted in JS.
@@ -223,7 +240,10 @@ async function createManualWalkInBookingOverride(params: {
   const startIso = start.toISOString()
   const endIso = new Date(startMs + durationMinutes * 60 * 1000).toISOString()
   const nowIso = new Date().toISOString()
-  const bookingType = 'regular'
+  // Mirror what the RPC does: a Christmas request stamps booking_type
+  // 'christmas' and stores booking_purpose 'food'.
+  const bookingType = toBookingType(params.payload.purpose)
+  const storedBookingPurpose = toStoredBookingPurpose(params.payload.purpose)
   // Normalise the two new features once. `isOutsideSeating` skips indoor table
   // allocation; `requestedHighChairs` is granted atomically after insert.
   const isOutsideSeating = params.payload.outside_seating === true
@@ -527,7 +547,7 @@ async function createManualWalkInBookingOverride(params: {
         duration_minutes: durationMinutes,
         source: bookingSource,
         confirmed_at: nowIso,
-        booking_purpose: params.payload.purpose,
+        booking_purpose: storedBookingPurpose,
         committed_party_size: params.payload.party_size,
         seated_at: seatNow ? nowIso : null,
         start_datetime: startIso,
@@ -585,7 +605,7 @@ async function createManualWalkInBookingOverride(params: {
           booking_reference: (data.booking_reference as string) || bookingReference,
           status: 'confirmed',
           party_size: params.payload.party_size,
-          booking_purpose: params.payload.purpose,
+          booking_purpose: storedBookingPurpose,
           booking_type: bookingType,
           start_datetime: startIso,
           end_datetime: endIso,
@@ -622,7 +642,7 @@ async function createManualWalkInBookingOverride(params: {
             table_names: combo.tableNames,
             tables_joined: combo.tableIds.length > 1,
             party_size: params.payload.party_size,
-            booking_purpose: params.payload.purpose,
+            booking_purpose: storedBookingPurpose,
             booking_type: bookingType,
             start_datetime: startIso,
             end_datetime: endIso,
@@ -1066,17 +1086,23 @@ export async function POST(request: NextRequest) {
       // fail to dedupe an identical retry whose request was clamped — creating a
       // duplicate booking. A same customer/date/time/party/purpose/seating retry
       // within 60s is a double-submit regardless of the requested chair count.
-      const { data: recentDuplicate } = await (auth.supabase.from('table_bookings') as any)
+      // A Christmas request stores booking_purpose 'food', so compare against
+      // the stored value and narrow on booking_type instead. Without this a
+      // Christmas retry would never match and would create a duplicate.
+      let duplicateQuery = (auth.supabase.from('table_bookings') as any)
         .select('id, booking_reference, status')
         .eq('customer_id', customerId)
         .eq('booking_date', payload.date)
         .eq('booking_time', bookingTime)
         .eq('party_size', payload.party_size)
-        .eq('booking_purpose', payload.purpose)
+        .eq('booking_purpose', toStoredBookingPurpose(payload.purpose))
         .eq('is_outside_seating', payload.outside_seating ?? false)
         .not('status', 'in', '("cancelled","no_show")')
         .gte('created_at', sixtySecondsAgo)
-        .maybeSingle()
+      if (isChristmasPurpose(payload.purpose)) {
+        duplicateQuery = duplicateQuery.eq('booking_type', 'christmas')
+      }
+      const { data: recentDuplicate } = await duplicateQuery.maybeSingle()
 
       if (recentDuplicate) {
         const dupState: FohCreateBookingResponseData['state'] =
@@ -1135,8 +1161,12 @@ export async function POST(request: NextRequest) {
     payload.waive_deposit === true ||
     payload.is_venue_event === true ||
     Boolean(payload.management_override)
+  // Christmas bookings always take a deposit, at any party size. A manager
+  // waiver, venue event or management override still wins.
+  const isChristmasBooking = isChristmasPurpose(payload.purpose)
   const requiresDeposit = requiresDepositForParty(payload.party_size, {
     depositWaived: treatAsWaived,
+    isChristmas: isChristmasBooking,
   })
   const depositMethod = requiresDeposit
     ? payload.sunday_deposit_method || null
@@ -1206,6 +1236,13 @@ export async function POST(request: NextRequest) {
           : 'no_table'
       }
     } else {
+      // Christmas rule breaches (party size below 6, under 24 hours notice)
+      // come back with wording that is already safe to show, so pass it through
+      // unchanged instead of a generic failure.
+      const christmasRuleMessage = extractChristmasRuleErrorMessage(rpcError)
+      if (christmasRuleMessage) {
+        return NextResponse.json({ error: christmasRuleMessage }, { status: 400 })
+      }
       logger.error('create_table_booking_v05 RPC failed for FOH create', {
         error: new Error(rpcError.message),
         metadata: {
@@ -1308,7 +1345,9 @@ export async function POST(request: NextRequest) {
       // the booking row so any subsequent recompute (party-size change, blind
       // compute) honours what was actually taken. Spec §6, §7.4, §8.3.
       const cashDepositAmount = Number(
-        computeDepositAmount(Math.max(1, Number(payload.party_size || 1))).toFixed(2),
+        computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
+          isChristmas: isChristmasBooking,
+        }).toFixed(2),
       )
       const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
         p_table_booking_id: bookingResult.table_booking_id,
@@ -1526,6 +1565,7 @@ export async function POST(request: NextRequest) {
             next_step_url_provided: Boolean(nextStepUrl),
             deposit_amount: computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
               depositWaived: payload.waive_deposit === true,
+              isChristmas: isChristmasBooking,
             }),
             source: 'foh',
           },

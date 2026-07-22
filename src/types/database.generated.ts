@@ -12815,7 +12815,7 @@ export type Database = {
         | "pending_card_capture"
         | "visited_waiting_for_review"
         | "review_clicked"
-      table_booking_type: "regular" | "sunday_lunch"
+      table_booking_type: "regular" | "sunday_lunch" | "christmas"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -13023,7 +13023,7 @@ export const Constants = {
         "visited_waiting_for_review",
         "review_clicked",
       ],
-      table_booking_type: ["regular", "sunday_lunch"],
+      table_booking_type: ["regular", "sunday_lunch", "christmas"],
     },
   },
 } as const

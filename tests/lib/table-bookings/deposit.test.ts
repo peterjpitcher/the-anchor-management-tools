@@ -67,4 +67,74 @@ describe('getCanonicalDeposit', () => {
     const b = { ...baseBooking, deposit_amount_locked: null, deposit_amount: null, status: 'confirmed', payment_status: null, party_size: 50, deposit_waived: true };
     expect(getCanonicalDeposit(b)).toBe(0);
   });
+
+  it('charges a Christmas booking of 6 a fresh deposit of 60', () => {
+    const b = {
+      ...baseBooking,
+      deposit_amount_locked: null,
+      deposit_amount: null,
+      status: 'confirmed',
+      payment_status: null,
+      party_size: 6,
+      booking_type: 'christmas',
+    };
+    expect(getCanonicalDeposit(b)).toBe(60);
+  });
+
+  it('returns 0 for a waived Christmas booking of 6', () => {
+    const b = {
+      ...baseBooking,
+      deposit_amount_locked: null,
+      deposit_amount: null,
+      status: 'confirmed',
+      payment_status: null,
+      party_size: 6,
+      booking_type: 'christmas',
+      deposit_waived: true,
+    };
+    expect(getCanonicalDeposit(b)).toBe(0);
+  });
+
+  it('leaves a regular booking of 6 at 0 when booking_type is not christmas', () => {
+    const b = {
+      ...baseBooking,
+      deposit_amount_locked: null,
+      deposit_amount: null,
+      status: 'confirmed',
+      payment_status: null,
+      party_size: 6,
+      booking_type: 'regular',
+    };
+    expect(getCanonicalDeposit(b)).toBe(0);
+  });
+});
+
+// Christmas bookings always take a 10 pounds per person deposit, at any party
+// size. Regular bookings keep the 10+ threshold. A manager waiver still wins.
+describe('Christmas deposits', () => {
+  it('requires a deposit for a Christmas booking of 6', () => {
+    expect(requiresDeposit(6, { isChristmas: true })).toBe(true);
+    expect(computeDepositAmount(6, { isChristmas: true })).toBe(60);
+  });
+
+  it('requires no deposit for a Christmas booking of 6 when waived', () => {
+    expect(requiresDeposit(6, { isChristmas: true, depositWaived: true })).toBe(false);
+    expect(computeDepositAmount(6, { isChristmas: true, depositWaived: true })).toBe(0);
+  });
+
+  it('still requires no deposit for a normal booking of 9', () => {
+    expect(requiresDeposit(9)).toBe(false);
+    expect(computeDepositAmount(9)).toBe(0);
+    expect(requiresDeposit(9, { isChristmas: false })).toBe(false);
+    expect(computeDepositAmount(9, { isChristmas: false })).toBe(0);
+  });
+
+  it('still requires 100 pounds for a normal booking of 10', () => {
+    expect(requiresDeposit(10)).toBe(true);
+    expect(computeDepositAmount(10)).toBe(100);
+  });
+
+  it('charges 10 pounds per person for a larger Christmas booking', () => {
+    expect(computeDepositAmount(20, { isChristmas: true })).toBe(200);
+  });
 });

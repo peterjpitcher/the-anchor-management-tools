@@ -83,6 +83,10 @@ export async function POST(
           status: booking.status ?? null,
           payment_status: booking.payment_status ?? null,
           deposit_waived: booking.deposit_waived ?? null,
+          // Christmas bookings owe a deposit at any party size, so a party of 6
+          // must produce £60 here. Without this the order amount would be zero
+          // and PayPal would refuse it.
+          booking_type: booking.booking_type ?? null,
         },
         booking.party_size,
       );

@@ -22,6 +22,7 @@ import {
   getCanonicalDeposit,
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
 } from './deposit'
+import { isChristmasBookingType } from './christmas'
 
 // Re-exported for backwards-compat in this file. The single source of truth is
 // `LARGE_GROUP_DEPOSIT_PER_PERSON_GBP` in `./deposit.ts`. Spec §7.3, §8.3.
@@ -42,7 +43,11 @@ export type TableBookingRpcResult = {
   table_names?: string[]
   tables_joined?: boolean
   party_size?: number
-  booking_purpose?: 'food' | 'drinks'
+  // Christmas requests are stored as a `food` purpose with booking_type
+  // 'christmas'. Neither the RPC nor the walk-in override path ever returns
+  // 'christmas' here, so read `booking_type` to detect a Christmas booking.
+  // The value is kept in the union only so a future caller cannot be surprised.
+  booking_purpose?: 'food' | 'drinks' | 'christmas'
   booking_type?: string
   start_datetime?: string
   end_datetime?: string
@@ -697,6 +702,8 @@ export async function getTablePaymentPreviewByRawToken(
       status: booking.status ?? null,
       payment_status: booking.payment_status ?? null,
       deposit_waived: booking.deposit_waived ?? null,
+      // Christmas bookings owe a deposit at any party size.
+      booking_type: booking.booking_type ?? null,
     },
     partySize,
   )
@@ -924,7 +931,11 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   const seatWord = partySize === 1 ? 'person' : 'people'
   // Centralised compute. Booking is fresh from the RPC so no prior locked
   // amount can exist here. Spec §3 step 9, §8.3.
-  const depositAmount = Number(computeDepositAmount(partySize).toFixed(2))
+  const depositAmount = Number(
+    computeDepositAmount(partySize, {
+      isChristmas: isChristmasBookingType(input.bookingResult.booking_type),
+    }).toFixed(2),
+  )
   const depositLabel = new Intl.NumberFormat('en-GB', {
     style: 'currency',
     currency: 'GBP',

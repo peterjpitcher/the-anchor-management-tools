@@ -26,6 +26,7 @@ import {
   type TableBookingRpcResult
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
+import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
@@ -54,7 +55,13 @@ const CreateTableBookingSchema = z.object({
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
   ),
-  purpose: z.enum(['food', 'drinks']),
+  // `christmas` creates a `booking_type = 'christmas'` booking. The RPC maps it
+  // to a food purpose internally, so kitchen hours, duration and pacing behave
+  // exactly as for `food`, but a deposit is always taken and the 6-guest
+  // minimum and 24-hour notice are enforced in the database. Note the service
+  // window (10 Nov to 20 Dec 2026) is NOT enforced here or in the database, so
+  // the calling site must restrict the dates it offers.
+  purpose: z.enum(['food', 'drinks', 'christmas']),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.
@@ -270,6 +277,13 @@ export async function POST(request: NextRequest) {
               : 'no_table'
           }
         } else {
+          // Christmas rule breaches (party size below 6, under 24 hours notice)
+          // are raised by the RPC with customer-appropriate wording. Surface
+          // them verbatim as a 400 rather than a generic 500.
+          const christmasRuleMessage = extractChristmasRuleErrorMessage(rpcError)
+          if (christmasRuleMessage) {
+            return createErrorResponse(christmasRuleMessage, 'VALIDATION_ERROR', 400)
+          }
           logger.error('create_table_booking_v05 RPC failed', {
             error: new Error(rpcError.message),
             metadata: {
@@ -477,7 +491,9 @@ export async function POST(request: NextRequest) {
           // `party_size * 10` arithmetic — keeps the threshold and rate in one
           // place. The booking is fresh from the RPC so there is no prior
           // locked/stored amount to honour here. Spec §3 step 9, §8.3.
-          const analyticsDeposit = computeDepositAmount(payload.party_size)
+          const analyticsDeposit = computeDepositAmount(payload.party_size, {
+            isChristmas: isChristmasPurpose(payload.purpose),
+          })
           analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
             customerId: customerResolution.customerId,
             tableBookingId: bookingResult.table_booking_id,
@@ -535,7 +551,11 @@ export async function POST(request: NextRequest) {
       // we still route through the helper to keep the threshold + rate in one
       // place. Spec §3 step 9, §8.3.
       const canonicalDeposit =
-        responseState === 'pending_payment' ? computeDepositAmount(payload.party_size) : null
+        responseState === 'pending_payment'
+          ? computeDepositAmount(payload.party_size, {
+              isChristmas: isChristmasPurpose(payload.purpose),
+            })
+          : null
 
       // Failed-PayPal recovery surface (Spec §6): always expose the token-based
       // payment URL on `pending_payment` responses as `fallback_payment_url` so

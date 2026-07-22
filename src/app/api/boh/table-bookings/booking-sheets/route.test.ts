@@ -244,7 +244,9 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
 
     const select = selectSpy.mock.calls[0][0] as string
 
-    // All 10 columns read by getTableBookingVisualState / hasPendingRequiredDepositSignal.
+    // All 11 columns read by getTableBookingVisualState / hasPendingRequiredDepositSignal.
+    // booking_type matters because a Christmas booking owes a deposit at any
+    // party size, so dropping it would mislabel a Christmas party of 6.
     for (const column of [
       'status',
       'payment_status',
@@ -256,6 +258,7 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
       'paypal_deposit_capture_id',
       'deposit_amount',
       'deposit_amount_locked',
+      'booking_type',
     ]) {
       expect(select).toContain(column)
     }
