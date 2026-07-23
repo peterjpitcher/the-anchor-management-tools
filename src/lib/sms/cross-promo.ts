@@ -12,24 +12,53 @@ import { sendSMS } from '@/lib/twilio'
 import { EventMarketingService } from '@/services/event-marketing'
 import { logger } from '@/lib/logger'
 import { getSmartFirstName } from '@/lib/sms/bulk'
+import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
 
 // Reply-to-book windows stay open until the event starts (see computeReplyWindowExpiry),
 // bounded above by this safety cap for when the start time is unknown or far off.
 const EVENT_PROMO_REPLY_WINDOW_MAX_HOURS = parsePositiveIntEnv('EVENT_PROMO_REPLY_WINDOW_MAX_HOURS', 336)
 const EVENT_PROMO_REPLY_WINDOW_FLOOR_HOURS = 2
 const EVENT_PROMO_MIN_CAPACITY = parsePositiveIntEnv('EVENT_PROMO_MIN_CAPACITY', 10)
-const EVENT_PROMO_FREQUENCY_CAP_DAYS = parsePositiveIntEnv('EVENT_PROMO_FREQUENCY_CAP_DAYS', 7)
+
+/**
+ * Frequency policy.
+ *
+ * The old policy was a blunt blackout: one promo of any kind silenced a customer
+ * for 7 days. Because the venue runs events every few days, a text about one event
+ * routinely swallowed the invite for the next one (this is what cost Quiz Night on
+ * 22 Jul 2026 ten of its thirteen invites).
+ *
+ * The replacement counts DISTINCT EVENTS promoted in a rolling window rather than
+ * raw messages. Someone can hear about two different events a fortnight, and the
+ * day-before nudge about an event they were already told about does not count
+ * again. That reaches more people for each event without messaging anyone more
+ * often than roughly once a week.
+ */
+const EVENT_PROMO_FREQUENCY_WINDOW_DAYS = parsePositiveIntEnv('EVENT_PROMO_FREQUENCY_WINDOW_DAYS', 14)
+const EVENT_PROMO_MAX_EVENTS_PER_WINDOW = parsePositiveIntEnv('EVENT_PROMO_MAX_EVENTS_PER_WINDOW', 2)
+
+// Sized above the whole six month audience (about 35 people) so the cap acts as a
+// runaway guard rather than a silent truncation. At 30 it was clipping the pool.
+// This does not change how often any individual is messaged: that is governed by
+// EVENT_PROMO_MAX_EVENTS_PER_WINDOW above.
 const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv(
   'EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT',
-  30
+  60
 )
+
+/**
+ * Recency windows. Both sit at six months so that anyone who has been to any event
+ * in the last half year is invited to the others, which is the cross-pollination
+ * the venue wants. The whole six-month pool is about 35 people, so these windows
+ * are the binding constraint, not the recipient caps below.
+ */
 const EVENT_PROMO_CATEGORY_RECENCY_DAYS = parsePositiveIntEnv(
   'EVENT_PROMO_CATEGORY_RECENCY_DAYS',
-  90
+  180
 )
 const EVENT_PROMO_GENERAL_RECENCY_DAYS = parsePositiveIntEnv(
   'EVENT_PROMO_GENERAL_RECENCY_DAYS',
-  42
+  180
 )
 
 const TEMPLATE_CROSS_PROMO_FREE = 'event_cross_promo_7d'
@@ -147,57 +176,159 @@ function isPaidEvent(paymentMode: string): boolean {
   return paymentMode === 'prepaid'
 }
 
+/**
+ * Pick the first variant that still fits a single SMS segment, longest first.
+ * Long event names ("Only Fools and Horses Quiz Night") would otherwise push the
+ * message to two segments, doubling the cost for no extra meaning.
+ *
+ * Measures the FINAL body, including the opt-out footer the caller appends and
+ * after GSM-7 normalisation, because that is what Twilio actually bills. Measuring
+ * the bare variant understated every promo by the 23 characters of the footer, and
+ * counting septets alone would have missed that one non-GSM character in an event
+ * name (prod has held "Curacao vs Ivory Coast" with a cedilla) drops the real
+ * single-segment limit from 160 to 70.
+ */
+function fitToOneSegment(variants: string[], suffix = ''): string {
+  const fits = (variant: string) => countSmsSegments(normaliseToGsm7(variant + suffix)) === 1
+  return variants.find(fits) ?? variants[variants.length - 1]
+}
+
+/**
+ * How the entry price reads in a message. Most events are cash on the door, and
+ * the price lives on events.price (events.price_per_seat is for prepaid ticketing
+ * and is 0 for these). Saying nothing about a 10 pound event while inviting someone
+ * to bring friends is how you get an argument at the door, so this is not optional.
+ */
+function formatEventPriceForSms(price: number | string | null | undefined): string {
+  const value = typeof price === 'string' ? Number(price) : price
+  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return ''
+  const rendered = Number.isInteger(value) ? `${value}` : value.toFixed(2)
+  return `£${rendered} on the door.`
+}
+
+/** The single ask, worded so the customer knows exactly what to send back. */
+const SEAT_ASK = 'How many seats? Text a number back, like 4.'
+
+/**
+ * Render an event start time for SMS: "7pm" rather than "19:00", and "7.30pm"
+ * rather than "19:30". Returns null when the stored time is missing or unparseable,
+ * in which case the copy simply omits it.
+ */
+export function formatEventTimeForSms(time: string | null | undefined): string | null {
+  if (!time) return null
+  const match = /^(\d{1,2}):(\d{2})/.exec(time.trim())
+  if (!match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (!Number.isFinite(hours) || hours > 23 || !Number.isFinite(minutes) || minutes > 59) return null
+
+  const suffix = hours < 12 ? 'am' : 'pm'
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12
+  return minutes === 0 ? `${hour12}${suffix}` : `${hour12}.${String(minutes).padStart(2, '0')}${suffix}`
+}
+
 function buildFreeMessage(
   firstName: string,
-  lastEventCategory: string,
+  _lastEventCategory: string,
   eventName: string,
-  eventDate: string
+  eventDate: string,
+  eventTime: string | null,
+  priceText: string
 ): string {
-  return withPromoOptOut(`The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Reply with seats.`)
+  return buildGeneralFreeMessage(firstName, eventName, eventDate, eventTime, priceText)
 }
 
 function buildPaidMessage(
   firstName: string,
-  lastEventCategory: string,
+  _lastEventCategory: string,
   eventName: string,
   eventDate: string,
-  eventLink: string
+  eventLink: string,
+  eventTime: string | null
 ): string {
-  return withPromoOptOut(`The Anchor: ${firstName}! Loved having you at ${lastEventCategory} — ${eventName} is coming up on ${eventDate}. Fancy it? Grab your seats here: ${eventLink}`)
+  return buildGeneralPaidMessage(firstName, eventName, eventDate, eventLink, eventTime)
 }
 
 function buildGeneralFreeMessage(
   firstName: string,
   eventName: string,
-  eventDate: string
+  eventDate: string,
+  eventTime: string | null,
+  priceText: string
 ): string {
-  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is coming up on ${eventDate}. Reply with seats.`)
+  const when = eventTime ? `${eventDate}, ${eventTime}` : eventDate
+  const price = priceText ? ` ${priceText}` : ''
+  return withPromoOptOut(
+    fitToOneSegment(
+      [
+        `The Anchor: ${firstName}, ${eventName} is on ${when}.${price} Bring who you like. ${SEAT_ASK}`,
+        `The Anchor: ${firstName}, ${eventName} is on ${when}.${price} ${SEAT_ASK}`,
+        `The Anchor: ${eventName} is on ${when}.${price} ${SEAT_ASK}`,
+        `The Anchor: ${eventName}, ${when}.${price} ${SEAT_ASK}`,
+      ],
+      PROMO_OPT_OUT_TEXT
+    )
+  )
 }
 
 function buildGeneralPaidMessage(
   firstName: string,
   eventName: string,
   eventDate: string,
-  eventLink: string
+  eventLink: string,
+  eventTime: string | null
 ): string {
-  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is coming up on ${eventDate} — could be your kind of thing! Grab your seats here: ${eventLink}`)
+  const when = eventTime ? `${eventDate}, ${eventTime}` : eventDate
+  return withPromoOptOut(
+    fitToOneSegment(
+      [
+        `The Anchor: ${firstName}, ${eventName} is on ${when}. Grab your seats here: ${eventLink}`,
+        `The Anchor: ${eventName} is on ${when}. Seats here: ${eventLink}`,
+      ],
+      PROMO_OPT_OUT_TEXT
+    )
+  )
 }
 
 function buildReminder24hFreeMessage(
   firstName: string,
   eventName: string,
-  eventDate: string
+  _eventDate: string,
+  eventTime: string | null,
+  priceText: string
 ): string {
-  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is tomorrow — ${eventDate}. Reply with seats.`)
+  const when = eventTime ? `tomorrow, ${eventTime}` : 'tomorrow'
+  const price = priceText ? ` ${priceText}` : ''
+  return withPromoOptOut(
+    fitToOneSegment(
+      [
+        `The Anchor: ${firstName}, ${eventName} is ${when} and there is still room.${price} ${SEAT_ASK}`,
+        `The Anchor: ${firstName}, ${eventName} is ${when}.${price} ${SEAT_ASK}`,
+        `The Anchor: ${eventName} is ${when}.${price} ${SEAT_ASK}`,
+      ],
+      PROMO_OPT_OUT_TEXT
+    )
+  )
 }
 
 function buildReminder24hPaidMessage(
   firstName: string,
   eventName: string,
-  eventDate: string,
-  eventLink: string
+  _eventDate: string,
+  eventLink: string,
+  eventTime: string | null
 ): string {
-  return withPromoOptOut(`The Anchor: ${firstName}! ${eventName} is tomorrow — ${eventDate}. Last chance to grab seats: ${eventLink}`)
+  const when = eventTime ? `tomorrow, ${eventTime}` : 'tomorrow'
+  return withPromoOptOut(
+    fitToOneSegment(
+      [
+        `The Anchor: ${firstName}, ${eventName} is ${when}. Last chance for seats: ${eventLink}`,
+        `The Anchor: ${eventName} is ${when}. Seats: ${eventLink}`,
+      ],
+      PROMO_OPT_OUT_TEXT
+    )
+  )
 }
 
 async function sendSmsSafe(
@@ -253,6 +384,8 @@ export async function sendCrossPromoForEvent(
     id: string
     name: string
     date: string
+    time?: string | null
+    price?: number | string | null
     payment_mode: string
     category_id: string | null
   },
@@ -312,7 +445,8 @@ export async function sendCrossPromoForEvent(
     p_category_id: event.category_id,
     p_recency_days: EVENT_PROMO_CATEGORY_RECENCY_DAYS,
     p_general_recency_days: EVENT_PROMO_GENERAL_RECENCY_DAYS,
-    p_frequency_cap_days: EVENT_PROMO_FREQUENCY_CAP_DAYS,
+    p_frequency_window_days: EVENT_PROMO_FREQUENCY_WINDOW_DAYS,
+    p_max_events_per_window: EVENT_PROMO_MAX_EVENTS_PER_WINDOW,
     p_max_recipients: Math.max(
       1,
       Math.min(options?.maxRecipients ?? EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT)
@@ -353,12 +487,16 @@ export async function sendCrossPromoForEvent(
     }
   }
 
+  // Short form ("Fri 14 Aug") rather than "Friday, 14 August 2026". The year is
+  // noise for an event at most a week away, and the characters it costs push
+  // longer event names into a second, billable segment.
   const eventDate = formatDateInLondon(event.date, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
+    weekday: 'short',
+    month: 'short',
     day: 'numeric',
   })
+  const eventTime = formatEventTimeForSms(event.time)
+  const priceText = formatEventPriceForSms(event.price)
 
   const isPaid = isPaidEvent(event.payment_mode)
   const eventStart = await loadEventStart(db, event.id)
@@ -396,14 +534,14 @@ export async function sendCrossPromoForEvent(
     if (isGeneral) {
       templateKey = isPaid ? TEMPLATE_GENERAL_PROMO_PAID : TEMPLATE_GENERAL_PROMO_FREE
       messageBody = isPaid
-        ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!)
-        : buildGeneralFreeMessage(firstName, event.name, eventDate)
+        ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
+        : buildGeneralFreeMessage(firstName, event.name, eventDate, eventTime, priceText)
     } else {
       const lastEventCategory = recipient.last_event_category || 'our events'
       templateKey = isPaid ? TEMPLATE_CROSS_PROMO_PAID : TEMPLATE_CROSS_PROMO_FREE
       messageBody = isPaid
-        ? buildPaidMessage(firstName, lastEventCategory, event.name, eventDate, eventLink!)
-        : buildFreeMessage(firstName, lastEventCategory, event.name, eventDate)
+        ? buildPaidMessage(firstName, lastEventCategory, event.name, eventDate, eventLink!, eventTime)
+        : buildFreeMessage(firstName, lastEventCategory, event.name, eventDate, eventTime, priceText)
     }
 
     const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
@@ -471,7 +609,7 @@ export async function sendCrossPromoForEvent(
 }
 
 export async function sendFollowUpForEvent(
-  event: { id: string; name: string; date: string; payment_mode: string },
+  event: { id: string; name: string; date: string; time?: string | null; price?: number | string | null; payment_mode: string },
   touchType: '24h',
   recipients: FollowUpRecipient[],
   options?: { startTime?: number }
@@ -499,8 +637,10 @@ export async function sendFollowUpForEvent(
   }
 
   const eventDate = formatDateInLondon(event.date, {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    weekday: 'short', month: 'short', day: 'numeric',
   })
+  const eventTime = formatEventTimeForSms(event.time)
+  const priceText = formatEventPriceForSms(event.price)
 
   const eventStart = await loadEventStart(db, event.id)
   const replyWindowExpiresAt = computeReplyWindowExpiry(eventStart)
@@ -536,8 +676,8 @@ export async function sendFollowUpForEvent(
       .gt('reply_window_expires_at', new Date().toISOString())
 
     const messageBody = isPaid
-      ? buildReminder24hPaidMessage(firstName, event.name, eventDate, eventLink!)
-      : buildReminder24hFreeMessage(firstName, event.name, eventDate)
+      ? buildReminder24hPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
+      : buildReminder24hFreeMessage(firstName, event.name, eventDate, eventTime, priceText)
 
     const idempotencyKey = `${templateKey}_${recipient.customer_id}_${event.id}`
     const smsResult = await sendSmsSafe(recipient.phone_number, messageBody, {

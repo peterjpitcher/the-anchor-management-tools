@@ -55,9 +55,18 @@ const EVENT_ENGAGEMENT_TEMPLATE_KEYS = [
   TEMPLATE_TABLE_REVIEW_FOLLOWUP
 ]
 const EVENT_PROMO_INTRO_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_DAYS_AHEAD', 7)
-const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 30)
-const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 30)
-const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 30)
+// Lower bound of the intro window. Anything from this many days out up to
+// EVENT_PROMO_INTRO_DAYS_AHEAD is eligible for its first invite, so an event
+// published a day or two late still gets promoted rather than being skipped
+// silently for ever.
+const EVENT_PROMO_INTRO_MIN_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_MIN_DAYS_AHEAD', 1)
+// These three are runaway guards, not policy. The whole six month audience is about
+// 35 people, so at 30 they were silently clipping a normal send. How often any one
+// customer hears from us is controlled by EVENT_PROMO_MAX_EVENTS_PER_WINDOW in
+// src/lib/sms/cross-promo.ts, not here.
+const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 80)
+const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 60)
+const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 80)
 const EVENT_PROMO_TEMPLATE_KEYS = [
   'event_cross_promo_7d',
   'event_cross_promo_7d_paid',
@@ -926,9 +935,13 @@ async function processReminders(
 
     const firstName = getSmartFirstName(customer.first_name)
     const eventDateText = formatEventDateTime(eventStartIso)
-    const baseBody = `The Anchor: ${firstName}! ${event.name} is tomorrow at ${eventDateText} — don't be late!`
+    // This goes to people who have already booked, so it confirms and welcomes
+    // rather than selling. No seat ask: they have their seats.
+    const seatCount = Math.max(0, Number(booking.seats || 0))
+    const seatPhrase = seatCount === 1 ? 'Your seat is' : `Your ${seatCount} seats are`
+    const baseBody = `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come early for a drink if you fancy.`
     const messageBody = ensureReplyInstruction(
-      manageLink ? `${baseBody} ${manageLink}` : baseBody,
+      manageLink ? `${baseBody} Change: ${manageLink}` : baseBody,
       supportPhone
     )
 
@@ -1830,6 +1843,8 @@ type UpcomingPromoEvent = {
   id: string
   name: string
   date: string
+  time: string | null
+  price: number | string | null
   payment_mode: string | null
   category_id: string | null
 }
@@ -1837,15 +1852,22 @@ type UpcomingPromoEvent = {
 async function loadUpcomingEventsForPromo(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<UpcomingPromoEvent[]> {
-  const introDate = getLondonDateString(EVENT_PROMO_INTRO_DAYS_AHEAD)
+  // A window, not a single date. This used to match one exact calendar day, so an
+  // event that was still a draft, had no category, or was published late on its
+  // D-7 morning never got an intro at all: there was no second chance. The RPC
+  // already refuses to promote the same event to the same customer twice, so
+  // widening the window cannot produce duplicate sends.
+  const introWindowStart = getLondonDateString(EVENT_PROMO_INTRO_MIN_DAYS_AHEAD)
+  const introWindowEnd = getLondonDateString(EVENT_PROMO_INTRO_DAYS_AHEAD)
 
   const { data, error } = await supabase
     .from('events')
-    .select('id, name, date, payment_mode, category_id')
+    .select('id, name, date, time, price, payment_mode, category_id')
     .eq('booking_open', true)
     .eq('promo_sms_enabled', true)
     .eq('event_status', 'scheduled')
-    .eq('date', introDate)
+    .gte('date', introWindowStart)
+    .lte('date', introWindowEnd)
     .not('category_id', 'is', null)
     .order('date', { ascending: true })
     .limit(50)
@@ -1867,7 +1889,7 @@ async function loadFollowUpEvents(
 
   const { data, error } = await supabase
     .from('events')
-    .select('id, name, date, payment_mode, category_id')
+    .select('id, name, date, time, price, payment_mode, category_id')
     .eq('booking_open', true)
     .eq('promo_sms_enabled', true)
     .eq('event_status', 'scheduled')
@@ -1961,6 +1983,8 @@ async function processFollowUps(
         id: event.id,
         name: event.name,
         date: event.date,
+        time: event.time,
+        price: event.price,
         payment_mode: event.payment_mode ?? 'free',
       },
       touchType,
@@ -2041,6 +2065,8 @@ async function processCrossPromo(
       id: event.id,
       name: event.name,
       date: event.date,
+      time: event.time,
+      price: event.price,
       payment_mode: event.payment_mode ?? 'free',
       category_id: event.category_id,
     }, {

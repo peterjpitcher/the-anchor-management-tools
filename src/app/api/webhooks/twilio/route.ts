@@ -806,7 +806,10 @@ async function handleInboundSMS(
       throw new Error(`Failed to save message: ${messageError.message}`);
     }
 
-    if (!isWhatsApp) {
+    // Never treat an opt-out as a seat reply. "STOP 2" or "CANCEL my 4" would otherwise
+    // opt the customer out above and then book them seats here, because the seat parser
+    // only looks for a digit anywhere in the body.
+    if (!isWhatsApp && !isOptOut) {
       try {
         const replyResult = await handleReplyToBook(normalizedFromNumber, messageBody, {
           inboundMessageId: savedMessage.id,
