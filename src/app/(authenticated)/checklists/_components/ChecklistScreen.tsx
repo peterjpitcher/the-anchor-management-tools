@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alert, Card, CardHeader, CardBody } from '@/ds'
 import { getAttributionCandidates } from '@/app/actions/checklists'
@@ -23,6 +23,7 @@ interface ChecklistScreenProps {
 export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
   const router = useRouter()
   const [identity, setIdentity] = useState<Identity | null>(null)
+  const identityChangedByUser = useRef(false)
   const [candidates, setCandidates] = useState<AttributionCandidate[]>([])
   const [candidatesLoading, setCandidatesLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -55,7 +56,25 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
     getAttributionCandidates({ date: businessDate, department: firstDept })
       .then((res) => {
         if (!active) return
-        if (res.data) setCandidates(res.data)
+        if (res.data) {
+          setCandidates(res.data)
+
+          const latestClockIn = res.data.reduce<AttributionCandidate | null>((latest, candidate) => {
+            if (!candidate.clockedInAt) return latest
+            if (!latest?.clockedInAt || candidate.clockedInAt > latest.clockedInAt) return candidate
+            return latest
+          }, null)
+
+          if (latestClockIn && !identityChangedByUser.current) {
+            const next = { employeeId: latestClockIn.employeeId, name: latestClockIn.name }
+            setIdentity(next)
+            try {
+              sessionStorage.setItem(IDENTITY_KEY, JSON.stringify(next))
+            } catch {
+              /* sessionStorage unavailable, ignore */
+            }
+          }
+        }
         setCandidatesLoading(false)
       })
       .catch(() => {
@@ -67,6 +86,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
   }, [businessDate, firstDept])
 
   const chooseIdentity = useCallback((next: Identity) => {
+    identityChangedByUser.current = true
     setIdentity(next)
     try {
       sessionStorage.setItem(IDENTITY_KEY, JSON.stringify(next))
