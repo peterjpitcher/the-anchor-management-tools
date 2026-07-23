@@ -9,6 +9,7 @@ import { resolveSmsSuspensionReason } from '@/lib/sms/suspension';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
+import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7';
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils';
 import { getErrorMessage, getErrorCode } from '@/lib/errors';
 import {
@@ -428,9 +429,12 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
       claimedDedupContext = claimResult === 'claimed';
     }
 
-    let smsBody = body;
+    // Normalise smart punctuation before anything measures or sends the body.
+    // One curly apostrophe or long dash forces UCS-2, which halves the segment
+    // limit from 160 to 70 characters and roughly doubles the cost of the send.
+    let smsBody = normaliseToGsm7(body);
     try {
-      smsBody = await shortenUrlsInSmsBody(body);
+      smsBody = normaliseToGsm7(await shortenUrlsInSmsBody(smsBody));
     } catch (shortenError: unknown) {
       logger.warn('Failed to shorten URLs in SMS body; sending original content', {
         error: shortenError instanceof Error ? shortenError : new Error(String(shortenError)),
@@ -577,7 +581,10 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         }
       );
       
-      const segments = Math.ceil(smsBody.length / 160);
+      // Uses the real encoding rules rather than length/160. A single non-GSM
+      // character (a curly apostrophe pasted from a template) drops the limit to
+      // 70, so the old formula under-reported segments and therefore cost.
+      const segments = countSmsSegments(smsBody);
 
       logger.info('SMS sent successfully', {
         metadata: { 

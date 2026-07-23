@@ -13,7 +13,7 @@ export function buildEventRescheduledSms(payload: {
   const name = getSmartFirstName(payload.firstName)
   const seatWord = payload.seats === 1 ? 'seat' : 'seats'
   const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
-  return `The Anchor: Hi ${name}, heads up — ${payload.eventName} has moved to ${payload.newDate}. Your booking for ${payload.seats} ${seatWord} is still confirmed.${managePart}`
+  return `The Anchor: Hi ${name}, heads up, ${payload.eventName} has moved to ${payload.newDate}. Your booking for ${payload.seats} ${seatWord} is still confirmed.${managePart}`
 }
 
 /**

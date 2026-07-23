@@ -165,6 +165,51 @@ describe('parseSeatCount', () => {
   it('returns null for empty', () => expect(parseSeatCount('')).toBeNull())
   it('returns null for negative', () => expect(parseSeatCount('-3')).toBeNull())
   it('passes through >10 for caller handling', () => expect(parseSeatCount('15')).toBe(15))
+
+  // Spelled-out counts. Both of these are real replies from production that the
+  // old digits-only parser dropped on the floor.
+  it.each([
+    ['Two seats please if available', 2],
+    ['Four', 4],
+    ['two please', 2],
+    ['just me', 1],
+    ['Just me please', 1],
+  ])('understands %j as %i', (body, expected) => {
+    expect(parseSeatCount(body as string)).toBe(expected)
+  })
+
+  // Refusals. Booking the wrong number is worse than not understanding, because
+  // the customer gets a confirmation they never asked for.
+  it.each([
+    ['no thanks'],
+    ['No'],
+    ["can't make it"],
+    ['Cancel my booking'],
+    ['sorry not this time'],
+    ['maybe next time'],
+    ['no, 2 of us are away'],
+    ['a couple'],
+    ['a few of us'],
+  ])('treats %j as a refusal, not a booking', (body) => {
+    expect(parseSeatCount(body as string)).toBeNull()
+  })
+
+  // Numbers that are not seat counts.
+  it.each([
+    ['9pm'],
+    ['7.30pm'],
+    ['see you at 7pm'],
+    ['07123456789'],
+    ['+447123456789'],
+    ['22nd'],
+    ['14/08'],
+  ])('does not read %j as a seat count', (body) => {
+    expect(parseSeatCount(body as string)).toBeNull()
+  })
+
+  it('refuses ambiguous multi-number replies rather than guessing', () => {
+    expect(parseSeatCount('3 adults 2 kids')).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -215,11 +260,27 @@ describe('handleReplyToBook', () => {
     process.env.NEXT_PUBLIC_APP_URL = 'https://example.com'
   })
 
-  it('returns handled=false when message has no number', async () => {
+  it('returns handled=false for an unparseable message from someone with no live promo', async () => {
+    const db = buildDbMock({ promoContextData: null })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
     const result = await handleReplyToBook(PHONE, 'hello there')
 
+    // No open reply window, so this is ordinary conversation: leave it alone.
     expect(result).toEqual({ handled: false })
-    expect(mockCreateAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('flags an unparseable reply for staff when the sender has a live promo window', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    // Ambiguous on purpose: the parser refuses rather than booking half the party.
+    const result = await handleReplyToBook(PHONE, '2 adults 2 kids', {
+      inboundMessageId: 'inbound-1',
+    })
+
+    expect(result.handled).toBe(true)
+    expect(result.response).toContain('could not read that as a number of seats')
   })
 
   it('returns handled=false when no active promo context exists and sender was never promoted', async () => {

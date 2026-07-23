@@ -197,7 +197,7 @@ describe('sendCrossPromoForEvent', () => {
       expect(body).toContain('Alice')
       expect(body).toContain('Quiz Night')
       expect(body).toContain('Saturday, 18 April 2026')
-      expect(body).toContain('Reply with seats')
+      expect(body).toContain('How many seats? Text a number back, like 4.')
       expect(body).toContain('Reply STOP to opt out')
       expect(body).not.toContain('http') // free template has no link
       expect(options.metadata?.template_key).toBe('event_cross_promo_7d')
@@ -376,7 +376,7 @@ describe('sendCrossPromoForEvent', () => {
       expect(body).not.toContain('Had a great time at')
       expect(body).toContain('Quiz Night')
       expect(body).toContain('Saturday, 18 April 2026')
-      expect(body).toContain('Reply with seats')
+      expect(body).toContain('How many seats? Text a number back, like 4.')
       expect(body).toContain('Reply STOP to opt out')
       expect(body).not.toContain('http')
       expect(options.metadata?.template_key).toBe('event_general_promo_7d')
@@ -577,7 +577,7 @@ describe('sendFollowUpForEvent', () => {
       expect(body).toContain('Dave')
       expect(body).toContain('Quiz Night')
       expect(body).toContain('is tomorrow')
-      expect(body).toContain('Reply with seats')
+      expect(body).toContain('How many seats? Text a number back, like 4.')
       expect(body).toContain('Reply STOP to opt out')
       expect(options.metadata?.template_key).toBe('event_reminder_promo_24h')
     })
@@ -602,7 +602,7 @@ describe('sendFollowUpForEvent', () => {
 
       expect(result.sent).toBe(1)
       const [, body, options] = mockSendSMS.mock.calls[0]
-      expect(body).toContain('Last chance to grab seats')
+      expect(body).toContain('Last chance for seats')
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
       expect(body).toContain('Reply STOP to opt out')
       expect(options.metadata?.template_key).toBe('event_reminder_promo_24h_paid')
