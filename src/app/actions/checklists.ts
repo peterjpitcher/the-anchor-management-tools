@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
 import { jobQueue } from '@/lib/unified-job-queue'
+import { buildValueBreachEmail } from '@/lib/checklists/value-breach-email'
 
 const TZ = 'Europe/London'
 
@@ -150,7 +151,9 @@ export async function completeChecklistInstance(input: {
   const db = createAdminClient()
   const { data: inst, error: fetchErr } = await db
     .from('checklist_task_instances')
-    .select('id, state, locked_at, grace_until, requires_value, value_min, value_max')
+    .select(
+      'id, state, locked_at, grace_until, requires_value, value_min, value_max, value_unit, title_snapshot, instruction_snapshot, department',
+    )
     .eq('id', input.instanceId)
     .maybeSingle()
   if (fetchErr) return { error: fetchErr.message }
@@ -203,7 +206,29 @@ export async function completeChecklistInstance(input: {
   })
 
   if (breach) {
-    const settings = await getChecklistSettings()
+    const [{ data: employee }, settings] = await Promise.all([
+      db
+        .from('employees')
+        .select('first_name, last_name')
+        .eq('employee_id', input.employeeId)
+        .maybeSingle(),
+      getChecklistSettings(),
+    ])
+    const completedByName = employee
+      ? [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Team member'
+      : 'Team member'
+    const email = buildValueBreachEmail({
+      title: inst.title_snapshot as string,
+      instruction: (inst.instruction_snapshot as string | null) ?? null,
+      department: inst.department as string,
+      recordedValue: input.value ?? null,
+      valueUnit: (inst.value_unit as string | null) ?? null,
+      valueMin: (inst.value_min as number | string | null) ?? null,
+      valueMax: (inst.value_max as number | string | null) ?? null,
+      completedByName,
+      completedAt: now.toISOString(),
+      notes: input.notes ?? null,
+    })
     const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
     const { error: outboxErr } = await db
       .from('checklist_email_outbox')
@@ -213,7 +238,8 @@ export async function completeChecklistInstance(input: {
         source_id: input.instanceId,
         idempotency_key: `value_breach:${input.instanceId}`,
         to_addresses: [to],
-        subject: 'The Anchor: a checklist reading is out of range',
+        subject: email.subject,
+        body_html: email.bodyHtml,
         status: settings.emailsEnabled ? 'pending' : 'held',
         next_attempt_at: now.toISOString(),
       })
@@ -311,6 +337,7 @@ export interface AttributionCandidate {
   employeeId: string
   name: string
   clockedIn: boolean
+  clockedInAt: string | null
   rostered: boolean
 }
 
@@ -329,7 +356,11 @@ export async function getAttributionCandidates(input: {
   if (error) return { error: error.message }
 
   const open = await getOpenSessions()
-  const clockedInIds = new Set(open.success ? open.data.map((s) => s.employee_id as string) : [])
+  const clockedInAtByEmployeeId = new Map(
+    open.success
+      ? open.data.map((session) => [session.employee_id as string, session.clock_in_at as string])
+      : [],
+  )
 
   const shifts = await getPublishedShiftsForDate(input.date)
   const rosteredIds = new Set(
@@ -339,7 +370,8 @@ export async function getAttributionCandidates(input: {
   const candidates: AttributionCandidate[] = (employees ?? []).map((e) => ({
     employeeId: e.employee_id as string,
     name: [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown',
-    clockedIn: clockedInIds.has(e.employee_id as string),
+    clockedIn: clockedInAtByEmployeeId.has(e.employee_id as string),
+    clockedInAt: clockedInAtByEmployeeId.get(e.employee_id as string) ?? null,
     rostered: rosteredIds.has(e.employee_id as string),
   }))
 
