@@ -1,0 +1,21 @@
+-- Christmas 2026: add the 'christmas' value to the table_booking_type enum.
+--
+-- RECONCILIATION RECORD. This change was APPLIED to production
+-- (tfcasgxopxegwrabvwat) on 2026-07-22 as version 20260722121116 via Supabase
+-- apply_migration, but no matching file was committed at the time. Production
+-- recorded the version, the repo did not have it, and that mismatch blocked
+-- `supabase db push` for every later migration.
+--
+-- This file records what production already has, so the two histories agree. It
+-- is idempotent and safe to run against a database that already has the value,
+-- and it is what a fresh environment needs in order to match production.
+--
+-- Verified against production 2026-07-23: table_booking_type has exactly
+-- regular, sunday_lunch, christmas, in that sort order.
+--
+-- The enum value must be added in its own migration, separately from anything
+-- that USES it: PostgreSQL cannot use a new enum value in the same transaction
+-- that adds it. The companion migration 20260722121141 holds the function that
+-- consumes it.
+
+ALTER TYPE table_booking_type ADD VALUE IF NOT EXISTS 'christmas';
