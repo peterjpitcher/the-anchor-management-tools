@@ -24,7 +24,7 @@ import { GET } from '@/app/api/menu/route'
 
 // The allowlist is module-private in the route (Next.js forbids extra exports
 // from route files), so it is asserted through behaviour rather than imported.
-const EXPECTED_ALLOWLIST = ['website_food', 'sunday_lunch', 'christmas', 'drinks']
+const EXPECTED_ALLOWLIST = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks']
 
 const TODAY = getTodayIsoDate()
 
@@ -38,6 +38,7 @@ type MenuRow = { id: string; name: string }
 
 const menusByCode: Record<string, MenuRow> = {
   website_food: { id: 'menu-website-food', name: 'Website Food Menu' },
+  kids: { id: 'menu-kids', name: 'Kids Menu' },
   christmas: { id: 'menu-christmas', name: 'Christmas Menu' },
 }
 
@@ -228,6 +229,18 @@ describe('GET /api/menu menu code allowlist', () => {
     // JSON-LD must be labelled with the Christmas menu, not the food menu.
     expect(body.data.menu.name).toBe('Christmas Menu')
     expect(body.data.sections).toHaveLength(1)
+  })
+
+  it('accepts menu=kids and resolves the kids menu', async () => {
+    const response = await GET(new Request('http://localhost/api/menu?menu=kids') as any)
+
+    expect(response.status).toBe(200)
+    expect(requestedMenuCodes[0]).toBe('kids')
+    expect(requestedMenuIds[0]).toBe('menu-kids')
+
+    const body = await readJson(response)
+    expect(body.data.menu_code).toBe('kids')
+    expect(body.data.menu_name).toBe('Kids Menu')
   })
 
   it('rejects an unknown menu code with a 400 and never queries the database', async () => {

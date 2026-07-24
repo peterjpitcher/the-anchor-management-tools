@@ -9,7 +9,7 @@ import { getTodayIsoDate } from '@/lib/dateUtils';
 // arbitrary menu code can never be probed through the public API.
 // Kept module-private because Next.js route files may only export route handlers
 // and a fixed set of route config values.
-const PUBLIC_MENU_CODES = ['website_food', 'sunday_lunch', 'christmas', 'drinks'] as const;
+const PUBLIC_MENU_CODES = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks'] as const;
 type PublicMenuCode = (typeof PUBLIC_MENU_CODES)[number];
 
 const DEFAULT_PUBLIC_MENU_CODE: PublicMenuCode = 'website_food';
