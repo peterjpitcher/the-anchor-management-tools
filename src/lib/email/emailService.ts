@@ -27,6 +27,7 @@ export interface EmailOptions {
   parkingBookingId?: string | null;
   invoiceId?: string | null;
   quoteId?: string | null;
+  idempotencyKey?: string;
 }
 
 export interface EmailAttachment {
@@ -182,7 +183,9 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       resendPayload.text = '';
     }
 
-    const { data, error } = await client.emails.send(resendPayload as any);
+    const { data, error } = options.idempotencyKey
+      ? await client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
+      : await client.emails.send(resendPayload as any);
 
     if (error) {
       try {
