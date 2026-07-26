@@ -20,7 +20,7 @@ describe('event stats', () => {
       totalSeats: 6,
       capacity: 20,
       capacityPct: 30,
-      estimatedRevenue: 18,
+      estimatedRevenue: 150,
       totalLinkClicks: 5,
     })
   })
@@ -44,27 +44,25 @@ describe('event stats', () => {
     expect(stats.capacityPct).toBe(50)
   })
 
-  it('estimates revenue from booking charge totals when supplied, with event-price fallback', () => {
+  it('estimates venue revenue at £25 per booked seat', () => {
     const stats = buildEventBookingStats(
       { capacity: 20, price: 15, payment_mode: 'prepaid' },
       [
-        // Multi-type booking: charge comes from its booking_items sum
         { seats: 2, status: 'confirmed', is_reminder_only: false, charge_total: 23 },
-        // Legacy booking without items: event price × seats
         { seats: 2, status: 'confirmed', is_reminder_only: false },
       ]
     )
 
-    expect(stats.estimatedRevenue).toBe(53)
+    expect(stats.estimatedRevenue).toBe(100)
   })
 
-  it('estimates £0 revenue for free events', () => {
+  it('still estimates venue revenue for free events', () => {
     const stats = buildEventBookingStats(
       { capacity: 20, price: 0, is_free: true, payment_mode: 'free' },
       [{ seats: 4, status: 'confirmed', is_reminder_only: false }]
     )
 
-    expect(stats.estimatedRevenue).toBe(0)
+    expect(stats.estimatedRevenue).toBe(100)
   })
 
   it('uses split communal capacity before static capacity', () => {

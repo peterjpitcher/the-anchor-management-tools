@@ -1,4 +1,4 @@
-import { resolveEventPriceAmount } from './pricing'
+const ESTIMATED_REVENUE_PER_BOOKED_SEAT = 25
 
 type EventLike = {
   capacity?: number | null
@@ -83,24 +83,13 @@ export function buildEventBookingStats(
   const capacity = resolveEventCapacity(event)
   const totalLinkClicks = links.reduce((sum, link) => sum + Math.max(0, Number(link.clickCount ?? 0)), 0)
 
-  // Estimated revenue: per-booking charge (sum of its booking_items) when the
-  // caller supplies it, otherwise the event's online price × seats. Free events
-  // are always £0 — no more hardcoded per-seat fiction.
-  const unitPrice = resolveEventPriceAmount(event)
-  const estimatedRevenue = activeBookings.reduce((sum, booking) => {
-    const chargeTotal = Number(booking.charge_total)
-    if (Number.isFinite(chargeTotal) && chargeTotal >= 0 && booking.charge_total !== null && booking.charge_total !== undefined) {
-      return sum + chargeTotal
-    }
-    return sum + unitPrice * Math.max(0, Number(booking.seats ?? 0))
-  }, 0)
-
   return {
     activeBookings: activeBookings.length,
     totalSeats,
     capacity,
     capacityPct: capacity && capacity > 0 ? Math.round((totalSeats / capacity) * 100) : null,
-    estimatedRevenue: Number(estimatedRevenue.toFixed(2)),
+    // Estimated total venue revenue per booked cover, not event ticket income.
+    estimatedRevenue: ESTIMATED_REVENUE_PER_BOOKED_SEAT * totalSeats,
     totalLinkClicks,
   }
 }
