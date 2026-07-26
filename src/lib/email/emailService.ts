@@ -183,10 +183,9 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       resendPayload.text = '';
     }
 
-    const { data, error } = await client.emails.send(
-      resendPayload as any,
-      options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined,
-    );
+    const { data, error } = options.idempotencyKey
+      ? await client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
+      : await client.emails.send(resendPayload as any);
 
     if (error) {
       try {

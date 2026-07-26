@@ -167,6 +167,31 @@ describe('sendEmail Resend provider', () => {
     expect(result).toEqual({ success: false, error: 'invalid from address' })
   })
 
+  it('passes an idempotency key to Resend when supplied', async () => {
+    mockAdminClient()
+    resendSend.mockResolvedValue({
+      data: { id: 'resend-email-idempotent' },
+      error: null,
+    })
+
+    const { sendEmail } = await import('@/lib/email/emailService')
+    const result = await sendEmail({
+      to: 'manager@example.com',
+      subject: 'Checklist alert',
+      text: 'Alert',
+      idempotencyKey: 'checklist:outbox-1',
+    })
+
+    expect(result).toEqual({ success: true, messageId: 'resend-email-idempotent' })
+    expect(resendSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'manager@example.com',
+        subject: 'Checklist alert',
+      }),
+      { idempotencyKey: 'checklist:outbox-1' },
+    )
+  })
+
   it('short-circuits suppressed recipients before calling Resend', async () => {
     mockAdminClient({ suppressed: true })
 
