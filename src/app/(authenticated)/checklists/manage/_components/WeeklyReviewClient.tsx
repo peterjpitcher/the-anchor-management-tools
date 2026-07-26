@@ -96,6 +96,15 @@ function initials(name: string | undefined): string {
     .join('')
 }
 
+function readingLabel(cell: ReviewCell): string | null {
+  if (cell.valueRecorded == null) return null
+  const unit = cell.valueUnit?.trim()
+  if (!unit) return String(cell.valueRecorded)
+  if (unit === 'degC') return `${cell.valueRecorded}°C`
+  const separator = /^[%°]/.test(unit) ? '' : ' '
+  return `${cell.valueRecorded}${separator}${unit}`
+}
+
 // Deterministic date maths on plain calendar days (business_date has no wall clock),
 // so a UTC anchor is timezone-safe and reproducible under TZ=UTC.
 function addDaysIso(iso: string, days: number): string {
@@ -190,6 +199,8 @@ function cellAccessibleName(row: ReviewRow, cell: ReviewCell, display: DisplaySt
   } else {
     core = STATE_LABEL[display]
   }
+  const reading = readingLabel(cell)
+  if (reading) core += `, reading ${reading}`
   const flags = display === 'future' ? [] : cellFlags(cell)
   const suffix = flags.length ? `, ${flags.join(', ')}` : ''
   return `${row.title}, ${dayLabelShort(cell.date)}: ${core}${suffix}`
@@ -501,6 +512,7 @@ interface CellButtonProps {
 function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
   const display = displayStateFor(cell, todayBusiness)
   const flags = display === 'future' ? [] : cellFlags(cell)
+  const reading = readingLabel(cell)
   const glyph =
     display === 'done' && cell.completedByName
       ? initials(cell.completedByName)
@@ -513,7 +525,15 @@ function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
       aria-label={cellAccessibleName(row, cell, display)}
       className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-none focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[display]}`}
     >
-      <span aria-hidden="true">{glyph}</span>
+      <span aria-hidden="true" className="flex items-center justify-center gap-1">
+        <span>{glyph}</span>
+        {reading && (
+          <>
+            <span className="text-text-subtle">·</span>
+            <span>{reading}</span>
+          </>
+        )}
+      </span>
       {flags.length > 0 && (
         <span
           aria-hidden="true"
@@ -564,10 +584,8 @@ function CellDetailModal({ selected, onClose }: CellDetailModalProps) {
           <DetailRow
             label="Reading"
             value={
-              cell.valueRecorded != null
-                ? `${cell.valueRecorded}${cell.valueUnit ? ` ${cell.valueUnit}` : ''}${
-                    cell.valueBreach ? ' (out of range)' : ''
-                  }`
+              readingLabel(cell)
+                ? `${readingLabel(cell)}${cell.valueBreach ? ' (out of range)' : ''}`
                 : '-'
             }
           />
