@@ -56,7 +56,7 @@ function buildData(): WeeklyReview {
         completedAt: '2026-07-20T23:10:00.000Z',
         wasLate: true,
         valueRecorded: 4.5,
-        valueUnit: 'C',
+        valueUnit: 'degC',
         valueBreach: true,
       }
     }
@@ -124,6 +124,15 @@ describe('WeeklyReviewClient', () => {
     expect(doneCell).toHaveTextContent('JH')
   })
 
+  it('shows a recorded number alongside the completer initials', () => {
+    render(<WeeklyReviewClient data={buildData()} />)
+
+    const doneCell = screen.getByRole('button', {
+      name: /Done by Billy Summers.*reading 4\.5°C/i,
+    })
+    expect(doneCell).toHaveTextContent('BS·4.5°C')
+  })
+
   it('renders a missed cell that is visible and labelled', () => {
     render(<WeeklyReviewClient data={buildData()} />)
 
@@ -145,7 +154,7 @@ describe('WeeklyReviewClient', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('Billy Summers')).toBeInTheDocument()
     // Reading with unit and out-of-range breach note.
-    expect(within(dialog).getByText(/4\.5 C \(out of range\)/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/4\.5°C \(out of range\)/)).toBeInTheDocument()
   })
 
   it('renders department and day-part filters defaulting to All', () => {
