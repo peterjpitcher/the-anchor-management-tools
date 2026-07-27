@@ -888,8 +888,8 @@ last year.
   about to walk through the door is worse than turning away a booking. The 60 minutes is a setting.
 - **Bumping is drinks-only and one level deep.** No food booking is ever moved to make room, and a bump
   never cascades. Cascading relocation is how a diary becomes unexplainable to the person holding it.
-- **Staff maximum party size defaults to 40.** You said you would never turn a large walk-in away, and 40
-  is a number that will not get in the way while still catching a typo. Editable.
+- ~~**Staff maximum party size defaults to 40.**~~ **Confirmed by the owner 2026-07-27: "Staff maximum
+  is 40."** No longer an assumption. Editable in settings.
 - **The private-booking route for 21 and over is the existing enquiry form**, not a new flow.
 
 None of these change the data model, so implementation can start. Flag any you disagree with and they are
