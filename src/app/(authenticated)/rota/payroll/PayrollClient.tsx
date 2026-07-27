@@ -115,6 +115,25 @@ function diffLabel(diff: number) {
   return `${diff > 0 ? '+' : ''}${diff.toFixed(1)}h`;
 }
 
+function PayRateDisplay({ row }: { row: PayrollRow }) {
+  if (row.hourlyRate == null) {
+    return <span className="font-medium text-amber-700">Not set</span>;
+  }
+
+  const premiumRate = (row.premiumHours ?? 0) > 0 ? row.effectiveRate : null;
+
+  return (
+    <div className="whitespace-nowrap">
+      <span className="font-semibold text-gray-900">£{row.hourlyRate.toFixed(2)}/hr</span>
+      {premiumRate != null && (
+        <span className="block text-[10px] font-medium text-purple-700">
+          Premium £{premiumRate.toFixed(2)}/hr
+        </span>
+      )}
+    </div>
+  );
+}
+
 function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkReason?: string | null }) {
   const parts = parsePayrollFlags(flags);
   if (!parts.length) return null;
@@ -437,6 +456,7 @@ export default function PayrollClient({
                   <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Planned</th>
                   <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Worked</th>
                   <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Diff</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Pay rate</th>
                   <th scope="col" className="px-3 py-2 text-xs font-medium text-gray-500">Flags</th>
                   <th scope="col" className="px-3 py-2 w-16" />
                 </tr>
@@ -470,6 +490,7 @@ export default function PayrollClient({
                       <td className="px-3 py-2 text-right text-gray-700 font-medium">{dayPlanned.toFixed(1)}h</td>
                       <td className="px-3 py-2 text-right text-gray-700 font-medium">{dayActual > 0 ? `${dayActual.toFixed(1)}h` : '—'}</td>
                       <td className={`px-3 py-2 text-right text-xs ${diffColour(dayDiff)}`}>{dayActual > 0 ? diffLabel(dayDiff) : '—'}</td>
+                      <td className="px-3 py-2 text-right text-xs text-gray-300">—</td>
                       <td className="px-3 py-2">
                         {dayHasFlags && <span className="text-[10px] text-amber-600 font-medium">⚑ flagged</span>}
                       </td>
@@ -507,6 +528,9 @@ export default function PayrollClient({
                           </td>
                           <td className={`px-3 py-2 text-right text-xs ${row.actualHours != null ? diffColour(empDiff) : 'text-gray-300'}`}>
                             {row.actualHours != null ? diffLabel(empDiff) : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            <PayRateDisplay row={row} />
                           </td>
                           <td className="px-3 py-2">
                             <FlagChips flags={row.flags} couldntWorkReason={row.sickReason} />
@@ -602,6 +626,9 @@ export default function PayrollClient({
                               />
                             </div>
                           </td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            <PayRateDisplay row={row} />
+                          </td>
                           <td className="px-3 py-2" />
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-1">
@@ -628,7 +655,7 @@ export default function PayrollClient({
                       const noteEditRow = editingNoteKey === rowKey && row.shiftId ? (
                         <tr key={`note-${rowKey}`} className="border-t border-amber-100 bg-amber-50">
                           <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-xs text-gray-500" colSpan={4}>
+                          <td className="px-3 py-2 pl-8 text-xs text-gray-500" colSpan={5}>
                             <div className="flex items-center gap-2">
                               <span className="text-gray-500 shrink-0">Payroll note for <span className="font-medium text-gray-700">{row.employeeName}</span>:</span>
                               <input
@@ -679,6 +706,7 @@ export default function PayrollClient({
                   <td className={`px-3 py-2 text-right font-semibold text-sm ${diffColour(totalActual - totalPlanned)}`}>
                     {diffLabel(totalActual - totalPlanned)}
                   </td>
+                  <td className="px-3 py-2 text-right text-xs font-medium text-gray-500">Varies</td>
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2" />
                 </tr>
@@ -699,9 +727,18 @@ export default function PayrollClient({
                 className="bg-white border border-gray-200 rounded-lg p-3 text-sm"
               >
                 <p className="font-semibold text-gray-900 truncate">{card.employeeName}</p>
-                {card.hourlyRate != null && (
-                  <p className="text-xs text-gray-400 mb-2">£{card.hourlyRate.toFixed(2)}/hr</p>
-                )}
+                <div className={`my-2 rounded-md border px-2.5 py-2 ${
+                  card.hourlyRate != null
+                    ? 'border-green-100 bg-green-50'
+                    : 'border-amber-100 bg-amber-50'
+                }`}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Pay rate</p>
+                  <p className={`text-base font-bold ${
+                    card.hourlyRate != null ? 'text-green-800' : 'text-amber-700'
+                  }`}>
+                    {card.hourlyRate != null ? `£${card.hourlyRate.toFixed(2)} per hour` : 'Not set'}
+                  </p>
+                </div>
                 <div className="space-y-1 text-xs text-gray-600">
                   <div className="flex justify-between">
                     <span>Planned</span>
