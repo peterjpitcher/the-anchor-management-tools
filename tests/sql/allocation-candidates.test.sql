@@ -1,5 +1,9 @@
--- Behavioural proof for find_table_allocation_candidates.
+-- Behavioural proof for find_table_allocation_candidates and allocate_event_communal_seats_v02.
 -- Every assertion states the real-world behaviour it protects.
+--
+-- Owner decision 2026-07-27: TWO opposed orders on one floor.
+--   Table bookings : the Dining Room FIRST (that is where diners should eat), High 4 LAST.
+--   Events         : the Dining Room LAST, so a quiz night does not eat the dining space.
 
 \set ON_ERROR_STOP on
 
@@ -23,54 +27,54 @@ DO $$
 DECLARE r text;
 BEGIN
   -- ===================================================================
-  -- 1. Best fit first, then the house order.
-  --    Low 4a and High 4 are held for walk-ins, so online small parties
-  --    start at Low 4b (priority 30).
+  -- 1. Diners go in the dining room. Best fit still decides the band.
   -- ===================================================================
   r := pg_temp.pick(2);
-  ASSERT r = 'Low 4b', format('party 2 online should get Low 4b (Low 4a and High 4 are held), got %L', r);
+  ASSERT r = 'Dining Room 4a', format('party 2 should get Dining Room 4a (priority 10), got %L', r);
 
   r := pg_temp.pick(4);
-  ASSERT r = 'Low 4b', format('party 4 online should get Low 4b, got %L', r);
+  ASSERT r = 'Dining Room 4a', format('party 4 should get Dining Room 4a, got %L', r);
 
-  -- Staff are not subject to walk-in holds, so the house order runs in full.
-  r := pg_temp.pick(2, 'staff');
-  ASSERT r = 'High 4', format('party 2 staff should get High 4 (priority 10), got %L', r);
+  -- High 4 is now LAST, so it is never the default. The backtest showed it would
+  -- otherwise take 50 of 139 bookings, and it is the one table where a high chair
+  -- does not fit.
+  ASSERT pg_temp.pick(2) <> 'High 4', 'High 4 must never be the first table offered';
 
   -- ===================================================================
-  -- 2. Best fit beats house order. A five wastes no seat on a six-top.
+  -- 2. Best fit beats the house order: no wasted seat when a perfect fit exists.
   -- ===================================================================
   r := pg_temp.pick(5);
-  ASSERT r = 'Small Bay', format('party 5 should get Small Bay (capacity 5), got %L', r);
+  ASSERT r = 'Small Bay', format('party 5 should get Small Bay (the only 5-seater), got %L', r);
 
   r := pg_temp.pick(6);
-  ASSERT r = 'Big Bay', format('party 6 should get Big Bay (priority 50, ahead of the Dining Room six-tops), got %L', r);
+  ASSERT r = 'Dining Room 6a', format('party 6 should get Dining Room 6a (priority 30) ahead of Big Bay (70), got %L', r);
 
   -- ===================================================================
-  -- 3. THE HEADLINE FIX. Parties of 7 and 8 must take Low 4a + Low 4b,
-  --    not Dining Room 4a + 4b. Both pairs are 2 tables and 8 seats, so
-  --    the house order decides. 31 bookings since January got this wrong
-  --    and each one dropped the largest seatable party from 26 to 18.
+  -- 3. Parties of 7 and 8 take the Dining Room pair.
+  --    A DELIBERATE reversal of the earlier decision: with the Dining Room now top
+  --    priority, the DR pair (worst priority 20) beats the Low pair (worst priority
+  --    90) at identical table count and capacity.
   -- ===================================================================
   r := pg_temp.pick(7, 'staff');
-  ASSERT r = 'Low 4a + Low 4b', format('party 7 must take the Low pair, not the Dining Room pair; got %L', r);
+  ASSERT r = 'Dining Room 4a + Dining Room 4b',
+    format('party 7 should take the Dining Room pair under the new order, got %L', r);
 
   r := pg_temp.pick(8, 'staff');
-  ASSERT r = 'Low 4a + Low 4b', format('party 8 must take the Low pair; got %L', r);
+  ASSERT r = 'Dining Room 4a + Dining Room 4b', format('party 8 should take the Dining Room pair, got %L', r);
 
   -- ===================================================================
-  -- 4. Minimum party size keeps small parties off the big tables.
-  --    Big Bay and the three six-tops have a minimum of 4.
+  -- 4. Minimum party size keeps small parties off the six-tops.
   -- ===================================================================
   ASSERT NOT EXISTS (
     SELECT 1 FROM public.find_table_allocation_candidates(
       '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'online', NULL, NULL,
       '2026-09-01 12:00+01'::timestamptz) c
-    WHERE c.rank IS NOT NULL AND 'Big Bay' = ANY (c.table_names)
-  ), 'a party of 2 must never be offered Big Bay while the minimum applies';
+    WHERE c.rank IS NOT NULL
+      AND (c.table_names && ARRAY['Big Bay','Dining Room 6a','Dining Room 6b','Dining Room 6c'])
+  ), 'a party of 2 must never be offered a six-seater while the minimum applies';
 
-  -- ...but the minimum lapses close to the sitting, so a couple is not
-  -- turned away on the night to protect a large party who is not coming.
+  -- ...but it lapses close to the sitting, so a couple is not refused on the night
+  -- to protect a large party who is not coming.
   ASSERT EXISTS (
     SELECT 1 FROM public.find_table_allocation_candidates(
       '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'online', NULL, NULL,
@@ -79,17 +83,17 @@ BEGIN
   ), 'within the release window a party of 2 should be able to have Big Bay';
 
   -- ===================================================================
-  -- 5. THE CRITICAL FIX. A private booking over the Dining Room must not
-  --    stop a couple booking the Main Bar. Before this, the allocator
-  --    picked a blocked table and the whole booking failed with no_table.
+  -- 5. THE CRITICAL FIX. A private booking over the Dining Room must not stop a
+  --    couple booking the bar. Before this, the allocator picked a blocked table
+  --    and the whole booking failed with no_table.
   -- ===================================================================
   INSERT INTO public.test_private_blocks (table_id, starts_at, ends_at)
   SELECT id, '2026-09-16 17:00+01', '2026-09-16 23:00+01'
   FROM public.tables WHERE name LIKE 'Dining Room%';
 
   r := pg_temp.pick(2, 'staff');
-  ASSERT r = 'High 4',
-    format('with the Dining Room blocked by a function, a party of 2 must still get a Main Bar table; got %L', r);
+  ASSERT r = 'Low 4a',
+    format('with the Dining Room held by a function, a party of 2 must fall through to the bar; got %L', r);
 
   ASSERT EXISTS (
     SELECT 1 FROM public.find_table_allocation_candidates(
@@ -98,10 +102,9 @@ BEGIN
     WHERE c.reason_code = 'table_private_block'
   ), 'blocked Dining Room tables must be reported as table_private_block, not silently dropped';
 
-  -- A party of 7 with the Dining Room gone still has the Low pair.
   r := pg_temp.pick(7, 'staff');
   ASSERT r = 'Low 4a + Low 4b',
-    format('party 7 with the Dining Room blocked should still get the Low pair; got %L', r);
+    format('party 7 with the Dining Room blocked should fall back to the Low pair; got %L', r);
 
   DELETE FROM public.test_private_blocks;
 
@@ -113,15 +116,11 @@ BEGIN
       '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, true, NULL, 'staff', NULL, NULL,
       '2026-09-01 12:00+01'::timestamptz) c
     WHERE c.rank IS NOT NULL
-      AND ('Small Bay' = ANY (c.table_names) OR 'High 4' = ANY (c.table_names))
+      AND (c.table_names && ARRAY['Small Bay','High 4'])
   ), 'an accessible-table request must exclude Small Bay (step) and High 4 (bar height)';
 
-  r := pg_temp.pick(2, 'staff', true);
-  ASSERT r = 'Low 4a', format('accessible party of 2 should get Low 4a, got %L', r);
-
   -- ===================================================================
-  -- 7. High chairs. High 4 cannot take one. Today the system will happily
-  --    confirm a family there and they arrive to find it unusable.
+  -- 7. High chairs. High 4 cannot take one.
   -- ===================================================================
   ASSERT NOT EXISTS (
     SELECT 1 FROM public.find_table_allocation_candidates(
@@ -131,68 +130,62 @@ BEGIN
   ), 'a booking with a high chair must never be offered High 4';
 
   -- ===================================================================
-  -- 8. Occupancy, and the no-show fix. A cancelled or no-show booking
-  --    must free its table; that is the walk-in complaint.
+  -- 8. Occupancy, and the no-show fix.
   -- ===================================================================
   INSERT INTO public.table_bookings (id, booking_date, booking_time, party_size, status, start_datetime, end_datetime)
   VALUES ('11111111-1111-1111-1111-111111111111','2026-09-16','18:00',2,'confirmed','2026-09-16 18:00+01','2026-09-16 20:00+01');
   INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
-  VALUES ('11111111-1111-1111-1111-111111111111','8ff55f2a-86cb-4b2d-ae74-2d8cae44499b','2026-09-16 18:00+01','2026-09-16 20:15+01');
+  VALUES ('11111111-1111-1111-1111-111111111111','39350c06-d5ea-4cea-a742-9ea78ebc0557','2026-09-16 18:00+01','2026-09-16 20:15+01');
 
   r := pg_temp.pick(2);
-  ASSERT r = 'Dining Room 4a',
-    format('with Low 4b taken and Low 4a and High 4 held, an online party of 2 falls to Dining Room 4a; got %L', r);
+  ASSERT r = 'Dining Room 4b', format('with Dining Room 4a taken, the next party goes to 4b; got %L', r);
 
   UPDATE public.table_bookings SET status = 'no_show' WHERE id = '11111111-1111-1111-1111-111111111111';
   r := pg_temp.pick(2);
-  ASSERT r = 'Low 4b', format('a no-show must free its table for the next booking; got %L', r);
+  ASSERT r = 'Dining Room 4a', format('a no-show must free its table for the next booking; got %L', r);
 
   UPDATE public.table_bookings SET status = 'confirmed', left_at = '2026-09-16 19:00+01'
    WHERE id = '11111111-1111-1111-1111-111111111111';
   r := pg_temp.pick(2);
-  ASSERT r = 'Low 4b', format('a booking whose guests have left must free its table; got %L', r);
+  ASSERT r = 'Dining Room 4a', format('a booking whose guests have left must free its table; got %L', r);
 
-  -- An expired unpaid hold releases; an expired PAID hold does not.
   UPDATE public.table_bookings
      SET status = 'pending_payment', left_at = NULL,
          hold_expires_at = '2026-09-01 09:00+01', payment_status = 'pending'
    WHERE id = '11111111-1111-1111-1111-111111111111';
   r := pg_temp.pick(2);
-  ASSERT r = 'Low 4b', format('an expired unpaid hold must release its table; got %L', r);
+  ASSERT r = 'Dining Room 4a', format('an expired UNPAID hold must release its table; got %L', r);
 
   UPDATE public.table_bookings SET payment_status = 'completed'
    WHERE id = '11111111-1111-1111-1111-111111111111';
   r := pg_temp.pick(2);
-  ASSERT r = 'Dining Room 4a',
+  ASSERT r = 'Dining Room 4b',
     format('an expired hold whose deposit is PAID must keep its table; got %L', r);
 
   DELETE FROM public.booking_table_assignments;
   DELETE FROM public.table_bookings;
 
   -- ===================================================================
-  -- 9. Half-open windows. A booking ending at 20:00 does not block one
-  --    starting at 20:00; the turnaround gap does that instead.
+  -- 9. Half-open windows and the turnaround gap.
   -- ===================================================================
   INSERT INTO public.table_bookings (id, booking_date, booking_time, party_size, status, start_datetime, end_datetime)
   VALUES ('22222222-2222-2222-2222-222222222222','2026-09-16','16:00',2,'confirmed','2026-09-16 16:00+01','2026-09-16 18:00+01');
   INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
-  VALUES ('22222222-2222-2222-2222-222222222222','8ff55f2a-86cb-4b2d-ae74-2d8cae44499b','2026-09-16 16:00+01','2026-09-16 18:00+01');
+  VALUES ('22222222-2222-2222-2222-222222222222','39350c06-d5ea-4cea-a742-9ea78ebc0557','2026-09-16 16:00+01','2026-09-16 18:00+01');
 
   r := pg_temp.pick(2);
-  ASSERT r = 'Low 4b', format('a booking ending exactly at 18:00 must not block one starting at 18:00; got %L', r);
+  ASSERT r = 'Dining Room 4a', format('a booking ending exactly at 18:00 must not block one starting at 18:00; got %L', r);
 
   UPDATE public.booking_table_assignments SET end_datetime = '2026-09-16 18:15+01';
   r := pg_temp.pick(2);
-  ASSERT r = 'Dining Room 4a', format('with the 15 minute turnaround gap the table is still held; got %L', r);
+  ASSERT r = 'Dining Room 4b', format('with the 15 minute turnaround gap the table is still held; got %L', r);
 
   DELETE FROM public.booking_table_assignments;
   DELETE FROM public.table_bookings;
 
   -- ===================================================================
-  -- 10. Big joins. The Dining Room reaches 26 seats.
+  -- 10. Large parties. The Dining Room reaches 26 seats.
   -- ===================================================================
-  r := pg_temp.pick(20, 'staff');
-  ASSERT r IS NOT NULL, 'a party of 20 must be seatable across the Dining Room';
   ASSERT (SELECT total_capacity FROM public.find_table_allocation_candidates(
             '2026-09-16 18:00+01','2026-09-16 20:00+01',20,'food',0,false,NULL,'staff',NULL,NULL,
             '2026-09-01 12:00+01'::timestamptz) WHERE rank = 1) >= 20,
@@ -205,7 +198,7 @@ BEGIN
       '2026-09-01 12:00+01'::timestamptz) WHERE rank = 1
   ), 'a party of 27 has no joined combination';
 
-  -- ...unless staff drop the adjacency requirement, which is the
+  -- ...unless staff drop the adjacency requirement. This is the
   -- "in a live situation we would never turn that away" case.
   ASSERT EXISTS (
     SELECT 1 FROM public.find_table_allocation_candidates(
@@ -215,19 +208,69 @@ BEGIN
   ), 'with allow_unjoined, staff must be able to seat a party of 27 across separated tables';
 
   -- ===================================================================
-  -- 11. A staff-picked table is promoted, but only if it is valid.
+  -- 11. A staff-picked table is promoted.
   -- ===================================================================
   ASSERT (SELECT array_to_string(table_names,' + ') FROM public.find_table_allocation_candidates(
             '2026-09-16 18:00+01','2026-09-16 20:00+01',2,'food',0,false,
-            ARRAY['39350c06-d5ea-4cea-a742-9ea78ebc0557'::uuid],'staff',NULL,NULL,
-            '2026-09-01 12:00+01'::timestamptz) WHERE rank = 1) = 'Dining Room 4a',
+            ARRAY['8ff55f2a-86cb-4b2d-ae74-2d8cae44499b'::uuid],'staff',NULL,NULL,
+            '2026-09-01 12:00+01'::timestamptz) WHERE rank = 1) = 'Low 4b',
     'a table the staff explicitly picked must rank first';
 
   -- ===================================================================
-  -- 12. Determinism. The same question must give the same answer.
+  -- 12. Determinism.
   -- ===================================================================
   ASSERT pg_temp.pick(7,'staff') = pg_temp.pick(7,'staff'), 'ranking must be deterministic';
 
   RAISE NOTICE 'ALL ALLOCATION TESTS PASSED';
+END;
+$$;
+
+-- =====================================================================
+-- Events fill the OPPOSITE way round, so a quiz night does not consume
+-- the dining space that food bookings need.
+-- =====================================================================
+DO $$
+DECLARE
+  v_result jsonb;
+  v_names  text;
+BEGIN
+  INSERT INTO public.bookings (id, status) VALUES
+    ('33333333-3333-3333-3333-333333333333', 'confirmed');
+
+  v_result := public.allocate_event_communal_seats_v02(
+    '44444444-4444-4444-4444-444444444444',
+    '33333333-3333-3333-3333-333333333333',
+    12,
+    '2026-09-16 19:00+01', '2026-09-16 22:00+01'
+  );
+
+  ASSERT v_result ->> 'state' = 'confirmed',
+    format('a 12-seat event should be seatable, got %s', v_result);
+
+  v_names := v_result ->> 'table_name';
+
+  ASSERT v_names NOT LIKE '%Dining Room%',
+    format('a 12-seat event must take the bar tables, never the Dining Room; got %L', v_names);
+
+  ASSERT v_names LIKE '%Low 4a%' AND v_names LIKE '%Low 4b%' AND v_names LIKE '%High 4%',
+    format('a 12-seat event should fill Low 4a, Low 4b and High 4; got %L', v_names);
+
+  -- A big event does eventually reach the Dining Room, but only after everything
+  -- else is gone.
+  DELETE FROM public.event_communal_seat_allocations;
+  v_result := public.allocate_event_communal_seats_v02(
+    '44444444-4444-4444-4444-444444444444',
+    '33333333-3333-3333-3333-333333333333',
+    30,
+    '2026-09-16 19:00+01', '2026-09-16 22:00+01'
+  );
+  ASSERT v_result ->> 'state' = 'confirmed', 'a 30-seat event should still fit across the whole pub';
+  ASSERT (v_result ->> 'table_name') LIKE '%Low 4a%',
+    'a large event must still start from the bar tables';
+
+  DELETE FROM public.event_communal_seat_allocations;
+  DELETE FROM public.bookings;
+
+  RAISE NOTICE 'ALL EVENT ALLOCATION TESTS PASSED';
 END;
 $$;

@@ -58,12 +58,21 @@ for f in "$ROOT"/supabase/migrations/202608010*.sql; do
 done
 
 echo "Running behaviour tests..."
-if run_sql < "$HERE/allocation-candidates.test.sql" 2>&1 | grep -q "ALL ALLOCATION TESTS PASSED"; then
+# Captured rather than piped: `grep -q` closes the pipe on first match, psql takes SIGPIPE, and
+# pipefail then reports a passing run as a failure.
+output="$(run_sql < "$HERE/allocation-candidates.test.sql" 2>&1 || true)"
+
+allocation_ok=0
+event_ok=0
+grep -q "ALL ALLOCATION TESTS PASSED" <<<"$output" && allocation_ok=1
+grep -q "ALL EVENT ALLOCATION TESTS PASSED" <<<"$output" && event_ok=1
+
+if [ "$allocation_ok" -eq 1 ] && [ "$event_ok" -eq 1 ]; then
   echo
-  echo "PASS: all allocation tests green"
+  echo "PASS: table allocation and event allocation tests green"
 else
   echo
-  echo "FAIL: see output above"
-  run_sql < "$HERE/allocation-candidates.test.sql"
+  echo "FAIL:"
+  echo "$output"
   exit 1
 fi

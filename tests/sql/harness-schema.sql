@@ -167,3 +167,17 @@ INSERT INTO public.system_settings (key, value) VALUES
   ('pacing_busy_threshold_covers','{"value": 30}'),
   ('pacing_filling_threshold_covers','{"value": 20}'),
   ('pacing_window_minutes','{"value": 60}');
+
+-- Event-side stand-ins, needed by allocate_event_communal_seats_v02.
+CREATE TABLE public.bookings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  status text,
+  hold_expires_at timestamptz
+);
+
+CREATE OR REPLACE FUNCTION public.is_active_event_booking_for_capacity_v01(
+  p_status text, p_hold_expires_at timestamptz
+) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+  SELECT p_status IS DISTINCT FROM 'cancelled'
+     AND (p_hold_expires_at IS NULL OR p_hold_expires_at > now());
+$$;
