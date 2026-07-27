@@ -14,8 +14,7 @@ import {
 import { createTimeclockSession, updateTimeclockSession, deleteTimeclockSession, approveTimeclockSession } from '@/app/actions/timeclock';
 import type { SessionPremiumInput, TimeclockSessionWithEmployee } from '@/app/actions/timeclock';
 import type { RotaEmployee } from '@/app/actions/rota';
-import { Badge } from '@/ds';
-import { Button } from '@/ds';
+import { Badge, Button, ConfirmDialog } from '@/ds';
 import { formatTime12Hour, parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
 
 // Premium rate presets offered in the review UI. 'custom' captures a bespoke
@@ -147,19 +146,16 @@ export default function TimeclockManager({
 
   // Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deletePending, startDeleteTransition] = useTransition();
+  const deletingSession = sessions.find(s => s.id === deletingId) ?? null;
 
-  const confirmDelete = (id: string) => setDeletingId(id);
-  const cancelDelete = () => setDeletingId(null);
+  const handleDelete = async () => {
+    if (!deletingId) return;
 
-  const handleDelete = (id: string) => {
-    startDeleteTransition(async () => {
-      const result = await deleteTimeclockSession(id, { allowPayrollApprove });
-      if (!result.success) { toast.error(result.error); return; }
-      toast.success('Session deleted');
-      setDeletingId(null);
-      setSessions(prev => prev.filter(s => s.id !== id));
-    });
+    const result = await deleteTimeclockSession(deletingId, { allowPayrollApprove });
+    if (!result.success) throw new Error(result.error);
+
+    toast.success('Session deleted');
+    setSessions(prev => prev.filter(s => s.id !== deletingId));
   };
 
   // Add entry state
@@ -648,28 +644,7 @@ export default function TimeclockManager({
 
                           {/* Actions */}
                           <td className="px-3 py-2">
-                            {deletingId === s.id ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs text-red-600 font-medium">Delete?</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(s.id)}
-                                  disabled={deletePending}
-                                  className="p-1 rounded text-red-600 hover:bg-red-50"
-                                  title="Confirm delete"
-                                >
-                                  <CheckIcon className="h-4 w-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={cancelDelete}
-                                  className="p-1 rounded text-gray-400 hover:bg-gray-100"
-                                  title="Cancel"
-                                >
-                                  <XMarkIcon className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ) : isEditing ? (
+                            {isEditing ? (
                               <div className="flex gap-1">
                                 <button
                                   type="button"
@@ -712,7 +687,7 @@ export default function TimeclockManager({
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => confirmDelete(s.id)}
+                                  onClick={() => setDeletingId(s.id)}
                                   className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
                                   title="Delete"
                                 >
@@ -731,6 +706,20 @@ export default function TimeclockManager({
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deletingSession !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleDelete}
+        title="Delete timeclock entry?"
+        message={
+          deletingSession
+            ? `Delete ${deletingSession.employee_name}'s timeclock entry for ${formatDayHeader(deletingSession.work_date)}? This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        tone="danger"
+      />
 
       <p className="text-xs text-gray-400">All times shown in Europe/London local time. Editing a session marks it as reviewed and clears the auto-close flag.</p>
     </div>
