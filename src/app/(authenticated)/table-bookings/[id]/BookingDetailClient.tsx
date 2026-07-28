@@ -311,6 +311,8 @@ export interface Booking {
   duration_minutes: number | null
   high_chair_count: number | null
   is_outside_seating: boolean | null
+  /** Staff have committed this booking to its tables; nothing automatic may move it. */
+  table_pinned?: boolean | null
   deposit_waived: boolean | null
   hold_expires_at: string | null
   reminder_sent: boolean | null
@@ -664,6 +666,25 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         })
       },
       'Table assignment updated'
+    )
+  }
+
+  /**
+   * Pin or unpin the tables.
+   *
+   * Pinning is how "I have told them they are on Big Bay" stops being a hope. Nothing
+   * automatic will move a pinned booking: not the drinks bump, not a retry. Staff can still
+   * move it by hand, and it stays pinned to wherever it lands.
+   */
+  async function handleTogglePin(nextPinned: boolean) {
+    await runAction(
+      'pin',
+      async () => {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/pin`, {
+          body: { pinned: nextPinned },
+        })
+      },
+      nextPinned ? 'Table pinned' : 'Pin removed'
     )
   }
 
@@ -1047,6 +1068,31 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                     </Button>
                   )}
                 </div>
+
+                {/* Pin. Shown next to Move table because the two are the same decision from
+                    opposite ends: move it deliberately, then stop anything else moving it. */}
+                {!booking.is_outside_seating && (
+                  <div className="space-y-2 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Pin to this table
+                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-gray-600">
+                        {booking.table_pinned
+                          ? 'Pinned. Nothing automatic will move this booking.'
+                          : 'Not pinned. This booking may be moved to make room for another.'}
+                      </p>
+                      <Button
+                        variant={booking.table_pinned ? 'secondary' : 'primary'}
+                        onClick={() => void handleTogglePin(!booking.table_pinned)}
+                        loading={actionLoadingKey === 'pin'}
+                        disabled={Boolean(actionLoadingKey)}
+                      >
+                        {booking.table_pinned ? 'Unpin' : 'Pin'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2 border-t border-gray-100 pt-4">
                   <label htmlFor="move-table-select" className="text-xs font-semibold uppercase tracking-wide text-gray-500">
