@@ -347,3 +347,88 @@ as a customer would, and walking the booking form on a real phone at 375px.
    AMS is serving `*`.
 4. **Should the party-size ceiling come from the API** rather than the hard-coded 20 in the form?
    **Recommend yes**, so changing it in settings does not need a website deploy.
+
+---
+
+## 8. Decisions, 2026-07-28
+
+### D-W1. Purpose stays, but it is never an upfront question
+
+The owner asked whether purpose could be dropped entirely, or derived from kitchen hours.
+
+**It cannot be derived.** Over the last 180 days:
+
+| | Count | Share |
+|---|------:|------:|
+| Drinks bookings made **during** kitchen hours | 76 of 101 | **75%** |
+| Food bookings made **outside** kitchen hours | 2 of 350 | 0.6% |
+
+Deriving purpose from the clock would label three quarters of drinks bookings as food. They would be sent
+to the Dining Room (the exact thing this change exists to stop), counted against the kitchen pacing cap
+they should not consume, and given a two-hour turn instead of ninety minutes. The current
+`deriveSubmitPurpose()` has been making that mistake all along; it was invisible because purpose did not
+change which table you got until now.
+
+Purpose also cannot be dropped: it drives the house order, the turn time, kitchen pacing, the
+kitchen-hours guard, and whether a drinks booking is yieldable. Five load-bearing uses.
+
+**The design, which is the owner's "filter on the timeslot" idea:**
+
+- The form does **not** ask "food or drinks" as a step. Food is the default and is right 99.4% of the
+  time.
+- The time-slot step carries one lightweight control: **"Just drinks?"**. Ticking it switches the house
+  order to the bar, shortens the turn, drops the booking out of kitchen pacing, and reveals slots outside
+  kitchen hours.
+- Slots outside kitchen hours are shown, not hidden, labelled **"kitchen closed, bar open"**. If the
+  customer has not ticked drinks, they are offered the nearest earlier slot where the kitchen is open.
+
+Nobody answers a question they do not need to. The 25% of drinks bookers who ignore the toggle get a
+dining-room table, which is exactly what happens today, so the failure mode is the status quo rather than
+a regression.
+
+### D-W2. High chairs are a preference with honest disclosure, not a hard filter
+
+Owner: *"We need to know if they want one, but they don't have to have it. We only have two, so it's
+important that they know if one isn't available before booking."*
+
+So, contradicting review finding CR-11's either/or framing:
+
+- High-chair count is **not** a hard availability filter. A booking is never refused for want of a chair.
+- Availability **must show remaining chairs per slot** before the customer picks a time. The AMS load
+  endpoint already returns `high_chairs_remaining`; the form must surface it rather than ignore it.
+- When none are left the slot stays bookable and says so plainly: "no high chairs available at this time".
+- High-chair capability becomes a **soft preference in ranking**, not a hard exclusion. A family that
+  wants a chair is steered away from High 4, but if High 4 is genuinely the last table they are seated
+  there and told a high chair will not fit, rather than being turned away.
+- The granted count is stated explicitly in the confirmation whenever it is lower than requested.
+
+### D-W3. Outside is a strict area, and nothing outside is heated
+
+Owner: *"We don't have heating outside right now."* So the unheated warning is unconditional, and the
+beer-garden marketing that mentions heated areas needs auditing separately. Outside is a strict choice,
+never silently switched.
+
+### D-W4. Self-service cancellation is in scope, and it asks why
+
+Owner: *"A customer can cancel the booking themselves, but we need to ask why so we understand. Give them
+radio buttons and an other/text option."*
+
+This reverses my recommendation to defer it, and it means the `501 NOT_SUPPORTED` on lookup and cancel
+must be implemented rather than parked. Proposed reason list, one choice plus free text:
+
+- Plans changed
+- Booked the wrong date or time
+- Party size changed
+- Someone is unwell
+- Going somewhere else
+- Something about the booking was not right (free text)
+- Other (free text)
+
+Stored on the booking, reported so the pattern is visible, and never shown to the guest as a
+justification challenge. The reason must be optional to submit: a cancellation is never blocked by
+refusing to answer.
+
+### D-W5. Turnstile and the agent endpoint
+
+The website verifies the Turnstile token, once, and it is tested end to end. The AI agent mutation
+channel is deferred unless a trusted caller is identified.
