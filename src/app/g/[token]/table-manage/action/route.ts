@@ -4,6 +4,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { logger } from '@/lib/logger'
 import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-booking'
+import {
+  CANCELLATION_DETAIL_MAX_LENGTH,
+  isCancellationReasonCode
+} from '@/lib/table-bookings/cancellation-reasons'
 
 const ActionSchema = z.object({
   action: z.enum(['update', 'cancel']),
@@ -19,6 +23,17 @@ const ActionSchema = z.object({
   notes: z.preprocess(
     (value) => (typeof value === 'string' ? value : undefined),
     z.string().max(500).optional()
+  ),
+  // Both optional, always. A guest who will not say why must still be able to cancel, so an
+  // unrecognised or absent reason is dropped silently rather than failing validation and
+  // blocking the cancellation.
+  cancellation_reason: z.preprocess(
+    (value) => (isCancellationReasonCode(value) ? value : undefined),
+    z.string().optional()
+  ),
+  cancellation_reason_detail: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim().length > 0 ? value : undefined),
+    z.string().max(CANCELLATION_DETAIL_MAX_LENGTH).optional()
   )
 })
 
@@ -37,6 +52,8 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
       action: payload.action,
       newPartySize: payload.party_size,
       notes: payload.notes,
+      cancellationReason: payload.cancellation_reason,
+      cancellationReasonDetail: payload.cancellation_reason_detail,
       appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
     })
 
@@ -103,10 +120,14 @@ export async function GET(
     return redirectWithStatus(request, token, 'error')
   }
 
+  // The "cancel without giving a reason" fallback, and the path sandboxed frames take when
+  // they cannot submit a form. No reason is recorded, by design.
   return runGuestTableManageAction(request, token, {
     action: 'cancel',
     party_size: undefined,
-    notes: undefined
+    notes: undefined,
+    cancellation_reason: undefined,
+    cancellation_reason_detail: undefined
   })
 }
 
@@ -131,7 +152,9 @@ export async function POST(
   const parsed = ActionSchema.safeParse({
     action: formData.get('action'),
     party_size: formData.get('party_size'),
-    notes: formData.get('notes')
+    notes: formData.get('notes'),
+    cancellation_reason: formData.get('cancellation_reason'),
+    cancellation_reason_detail: formData.get('cancellation_reason_detail')
   })
 
   if (!parsed.success) {
