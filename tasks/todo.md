@@ -1,38 +1,101 @@
-# Checklists: staff screen adjustments (2026-07-19)
+# Beer Battered Cod launch (2026-07-28)
 
-Branch: feat/checklists. Working tree has unrelated parallel-session changes
-(ProjectsOverview.tsx, tasks/lessons.md, recruitment specs): do not touch, stage explicit files only.
+Branch: feat/table-allocation-v06. Working tree has untracked recruitment scripts
+from a parallel session: do not touch, stage explicit files only.
 
-## Adjustments requested
-- [x] 1. Hide done tasks by default; toggle in the sticky "Completing as" bar to show them
-- [x] 2. Staff screen shows only tasks whose window has started (`window_start <= now`); manage view unchanged.
-      Temperature readings are already anchor=open in prod data, so they all appear at open.
-- [x] 3. Late thresholds: migration `default_grace_minutes` 30 to 60 (1h from open before late).
-      `close_lead_minutes` already 60, so closing checks appear 1h before close once the filter exists.
-- [x] 4. Back button on /checklists to /table-bookings/foh (the FOH screen that links here)
+## Context
+Booker product 260739 (Chef's Larder Premium 6 Jumbo Beer Battered Cod Fillets, £15.99)
+replaces 260744 (Chef's Larder 6 Jumbo Battered Cod Fillets, £12.79) across the fish dishes.
 
-## Files
-- src/app/actions/checklists.ts: `getTodayChecklist(date?, opts?: { dueOnly })`
-- src/app/(authenticated)/checklists/page.tsx: dueOnly + back button
-- src/app/(authenticated)/checklists/[date]/page.tsx: dueOnly
-- src/app/(authenticated)/checklists/_components/ChecklistScreen.tsx: show-done toggle, empty states
-- supabase/migrations/20260731000500_checklist_grace_and_open_lead.sql: NEW
-  (grace 30 to 60 plus open_lead_minutes 0 to 30, per owner confirmation 2026-07-19)
+Ingredient ids:
+- old: ab60e04e-3783-426c-8030-ce38d20b2cca
+- new: 087659ce-37e4-4561-ae67-93c54a893ca5
+
+Dishes affected:
+- Fish & Chips, e0148665-e9a2-4d10-8231-059c2ac6a5e4, qty 1 each
+- Half Fish & Chips, 79742d4f-5bbc-4fd7-8937-9453bb434e72, qty 0.5 each
+
+## Part A: production data (APPLIED TO PROD)
+- [x] A1 Swap old cod for new cod on both dishes
+- [x] A2 Deactivate the old cod ingredient
+- [x] A3 Rename the full dish to Beer Battered Cod & Chips.
+      Half Fish & Chips keeps its original name and description: owner confirmed
+      2026-07-28 it is a separate product, not a half of the renamed one. It still
+      takes the new cod, because the old ingredient is being discontinued.
+- [x] A4 Rewrite the full dish description so the garden peas / mushy peas choice
+      is explicit. Half portion description left as it was.
+- [x] A5 Verify recalculated portion cost and GP
+      Full: 2.6256 to 3.1590, GP 82.50% to 78.94%
+      Half: 1.5598 to 1.8265, GP 87.00% to 84.78%
+      Both still above the 70% target, no GP alert raised.
+
+## Part B: "new product" flag (AMS repo)
+- [x] B1 Migration: menu_dishes.new_from date, menu_dishes.new_until date
+- [x] B2 Recreate menu_dishes_with_costs view with the two new columns
+- [x] B3 Zod schema, MenuService, create/update RPCs
+- [x] B4 Dish drawer UI, tick box defaults to today + 8 weeks
+- [x] B5 Public /api/menu returns is_new and new_until
+- [x] B6 Flag Beer Battered Cod & Chips as new until 2026-09-22.
+      Half Fish & Chips is NOT flagged: unchanged product, so not a launch item.
+
+## Part C: website repo (OJ-The-Anchor.pub)
+- [x] C1 Menu parser picks up is_new
+- [x] C2 "New" badge rendered on menu rows
+- [x] C3 Check /fish-and-chips-heathrow copy still matches the renamed dish
+      FOUND A LIVE REGRESSION, see below.
+
+## Decisions taken
+- new_from / new_until stored as explicit dates rather than a hardcoded 8 week
+  constant, so the window is visible and overridable. Mirrors the existing
+  available_from / available_until pattern on menu assignments.
+- Flag lives on menu_dishes, not on the menu assignment. Newness is a property
+  of the product, not of its placement on one menu.
+- House style is "&" not "and" in dish names, matching every existing dish.
+
+## LIVE REGRESSION caused by the rename, fix written but NOT deployed
+
+The website matched fish dishes with /fish|scampi/i against the dish NAME only
+(lib/menu-page-data.ts, isFishAndChipsFamily). Renaming the dish to
+"Beer Battered Cod & Chips" removed the word "fish", so the dish silently
+dropped out of:
+  - the /fish-and-chips-heathrow landing page item list
+  - that page's Product and Menu structured data
+  - the gluten-free exclusion guards (isGlutenFree, hasGlutenFreeOption)
+
+The page uses ISR with revalidate = 3600, and it has already refreshed.
+Checked live 2026-07-28: the page lists Scampi & Chips, Fish Finger Wrap and
+Fish Fingers & Chips, and no cod at all.
+
+Fix: matcher broadened to /\b(?:fish|scampi|cod|haddock)/i, verified against
+all 51 live website_food dish names (catches exactly the 5 fish dishes).
+Locked down by tests/unit/fish-and-chips-family.test.ts.
+
+This needs a website deploy to clear. Sequencing lesson: the data rename went
+in before the dependent website code, so prod was briefly inconsistent.
+Rename dishes only after the consuming site is deployed.
 
 ## Verify
-- [x] lint (changed files, --max-warnings=0): clean
-- [x] typecheck (`tsc --noEmit`): exit 0
-- [x] tests: 3811 pass (551 files), no regressions
-- [x] build: exit 0 on Node 20 with NODE_OPTIONS=--max-old-space-size=8192
-      (default heap OOMs on this machine, pre-existing, not caused by this change)
-- [x] Commit (checklist files only)
+- [x] AMS typecheck: exit 0
+- [x] AMS lint (changed files, --max-warnings=0): clean
+- [x] AMS tests: 3970 pass (563 files), plus 11 new for the badge window
+- [x] AMS build: exit 0 on Node 20 with NODE_OPTIONS=--max-old-space-size=8192
+- [x] Website typecheck: exit 0
+- [x] Website tests: 503 pass (48 suites), including 2 new badge tests
+      and 15 new matcher tests
+- [x] Website build: exit 0
+- [ ] Commit (not done, awaiting go-ahead)
+- [ ] Deploy both repos
 
 ## Review
-- Done tasks now hidden by default; "Show done (N)" toggle + "N of M done" count sit under the
-  identity row in the sticky bar. All-done state shows a success alert.
-- `getTodayChecklist` gained `opts.dueOnly` (filters `window_start <= now`). Staff pages pass it;
-  /checklists/manage/today does not, so managers still see the whole day.
-- Migration 20260731000500 (grace 60 + open lead 30): owner approved 2026-07-19; applied via
-  Supabase MCP apply_migration. Rollback: SET DEFAULTs back (30 / 0) + UPDATE row back.
-  Pending instances pick the new instants up at the next reconcile run or via 'Regenerate today'.
-- Back button links to /table-bookings/foh (works in FOH chromeless mode, no sidebar needed).
+- Ingredient 260739 imported as 087659ce, unit cost £2.665 per fillet.
+- Old ingredient ab60e04e deactivated rather than deleted, so historic dish
+  costings and price history stay intact.
+- The garden peas / mushy peas choice was ALREADY modelled correctly on both
+  dishes (inclusion_type = choice, option_group = Peas). Only the guest-facing
+  description needed to say so; no composition change was required.
+- Migration applied to prod by statement, NOT via db push: the branch carries
+  9 unrelated table-allocation migrations that are not in prod and would have
+  been swept in. History row for 20260801000900 inserted manually to match.
+- new_from / new_until deliberately not wrapped in a superRefine on DishSchema:
+  the action layer calls DishSchema.partial(), which ZodEffects does not support.
+  Ordering is enforced by the DB CHECK constraint and by the drawer instead.

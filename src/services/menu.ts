@@ -112,6 +112,15 @@ export const RecipeSchema = z.object({
   ingredients: z.array(RecipeIngredientSchema).default([]),
 });
 
+// A nullable DATE column, kept as a plain YYYY-MM-DD string. Never routed
+// through `new Date()`, which would shift the day either side of BST midnight.
+const DateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+  .nullable()
+  .optional()
+  .transform((value) => value || null);
+
 const DishAssignmentSchema = z.object({
   menu_code: z.string().min(1),
   category_code: z.string().min(1),
@@ -131,6 +140,13 @@ export const DishSchema = z.object({
   is_sunday_lunch: z.boolean().default(false),
   image_url: z.string().optional(),
   notes: z.string().nullable().optional(),
+  // "New product" badge window. Both null means the dish is never badged.
+  // Ordering (new_until >= new_from) is enforced by the drawer for feedback and
+  // by the menu_dishes_new_window_ordered CHECK constraint as the hard guarantee.
+  // Deliberately not a superRefine: the action layer calls DishSchema.partial(),
+  // which ZodEffects does not support.
+  new_from: DateOnlySchema,
+  new_until: DateOnlySchema,
   ingredients: z.array(DishIngredientSchema).default([]),
   recipes: z.array(DishRecipeSchema).default([]),
   assignments: z.array(DishAssignmentSchema).min(1),
@@ -1113,6 +1129,10 @@ export class MenuService {
       is_sunday_lunch: input.is_sunday_lunch,
       image_url: input.image_url || null,
       notes: input.notes || null,
+      // update_dish_transaction overwrites every column it lists, so these must
+      // always be sent or an unrelated edit would silently clear the badge.
+      new_from: input.new_from ?? null,
+      new_until: input.new_until ?? null,
     };
 
     const ingredientsPayload = (input.ingredients || []).map(ing => ({
@@ -1352,7 +1372,11 @@ export class MenuService {
 
           image_url: input.image_url,
 
-          notes: input.notes
+          notes: input.notes,
+
+          new_from: input.new_from ?? null,
+
+          new_until: input.new_until ?? null
 
         };
 
