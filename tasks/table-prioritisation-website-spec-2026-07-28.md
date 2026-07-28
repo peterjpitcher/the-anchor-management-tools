@@ -432,3 +432,41 @@ refusing to answer.
 
 The website verifies the Turnstile token, once, and it is tested end to end. The AI agent mutation
 channel is deferred unless a trusted caller is identified.
+
+---
+
+## 9. Heated-areas audit, 2026-07-28
+
+The owner has confirmed there is no outdoor heating at present. The website claims otherwise in twelve
+places. Nothing has been changed; this is the list for a decision.
+
+| File | What it says |
+|------|--------------|
+| `app/beer-garden/page.tsx:265` | A feature card titled **"Heated Areas"**, described as "Heaters for cooler evenings" |
+| `app/beer-garden/page.tsx:184` | "The 64-seat garden features heated areas" |
+| `app/beer-garden/page.tsx:28` | **Page meta description**, so it reaches Google results |
+| `app/beer-garden/page.tsx:31` | **Open Graph description**, so it reaches social shares |
+| `app/plane-spotting-heathrow/page.tsx:302` | **FAQ answer**: "Yes. Our heated, covered areas and indoor seating mean you can keep spotting even in showers" |
+| `app/plane-spotting-heathrow/page.tsx:216` | "heaters keep winter sessions comfortable" |
+| `app/private-hire/near/[slug]/page.tsx:355` | **FAQ answer** on every location page: "with heated areas" |
+| `app/drinks/page.tsx:324` | "Heated areas and covered sections mean the garden's open year-round" |
+| `app/quiz-night/page.tsx:479` | "heated areas, step-free access and plenty of parking" |
+| `app/about/page.tsx:298` | "Heated areas, dog-friendly, full food" |
+| `app/near-heathrow/page.tsx:131` | A badge reading "Heated areas" |
+| `components/features/HotelProximityPage.tsx:248` | "Seating for plenty, with heated areas for cooler evenings" |
+
+Not in scope: the several "reheated" matches are about food, and the Christmas fair blog post refers to an
+**indoor** heated venue, which is true.
+
+Three of these are worse than ordinary body copy:
+
+- Two are **FAQ answers**, which Google can surface as rich results and which read as a direct promise.
+- Two are **metadata**, so the claim appears in search results and social previews rather than only on the
+  page.
+
+Separately, `app/quiz-night/page.tsx:479` claims **step-free access** alongside the heating claim. Small
+Bay is not step free. Whether the page means venue entry or seating needs checking before it is trusted.
+
+**Recommendation:** remove the heating claims rather than soften them. "Covered areas" is true and does
+most of the same work. This is a marketing copy change with no dependency on the booking work, so it can
+go now rather than waiting for the release.
