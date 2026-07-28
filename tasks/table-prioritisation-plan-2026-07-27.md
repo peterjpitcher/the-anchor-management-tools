@@ -367,7 +367,17 @@ A traceability matrix from every requirement to a test is part of the deliverabl
       `table_allocation_v06_enabled` and the four feature flags, in one transaction, with the old pacing
       values captured first. **Monday or Tuesday only**, never before a Sunday service or a Wednesday
       evening.
-- [ ] **I9.** Smoke test one real booking per channel, then cancel them.
+- [ ] **I9. Human-equivalent API journey test.** Run `scripts/api-journey-test.ts` against the preview
+      deployment, then again against production immediately after the flag goes on. 26 journeys covering
+      the real customer experience over the wire with nothing mocked: booking and cancelling, every way
+      it goes wrong for a real person, the private-booking fix, the food-versus-drinks split, drinks
+      overflow, accessibility and high chairs, deposits and paid-hold survival, the AI agent, both proxy
+      URLs, auth and CORS, degraded behaviour and malformed input. Dedicated test customer so no real
+      guest is contacted; every booking cancelled afterwards and the script fails loudly if cleanup does
+      not complete. Confirmation SMS and email checked against the API response, because an API that is
+      right while the text message is wrong is still a broken booking.
+      Specified in full at `tasks/table-prioritisation-website-spec-2026-07-28.md` section 6a.
+      Output kept with the release notes.
 - [ ] **I10.** Watch at end of day one, end of the first weekend, end of the first fortnight.
 - [ ] **I11.** After a clean fortnight: remove the route gates, delete the old caller paths, and retire
       `v05`.
