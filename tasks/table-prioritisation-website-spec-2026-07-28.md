@@ -32,8 +32,18 @@ This is the same dead-duplicate trap the AMS repo has with its `*Client.tsx` fil
 
 The date picking that is actually live is inside `ManagementTableBookingForm`.
 
-**Decision needed:** delete the dead family, or leave it. Recommend leaving it in this change and
-removing it separately, so a behaviour release does not carry a deletion.
+**RESOLVED 2026-07-28.** Deleted, in its own commit on its own branch so no behaviour release carries
+it: website `chore/remove-dead-table-booking-components`, commit `b9c52f82`, 1,408 lines removed.
+
+`BookingConfirmation` turned out to be dead too: `app/booking-confirmation/page.tsx` looks like it uses
+it but is a four-line redirect to `/book-table`. Six components and the barrel went.
+
+The README has been rewritten to describe what is actually there, since it previously documented the
+dead family as the main flow, which is how task G5 came to be aimed at a file that is never on screen.
+
+Verified after deletion: `tsc --noEmit` clean, `next lint` clean, 50 booking tests pass, cold production
+build succeeds. Task **G5 is therefore void** and the date-picking work belongs inside
+`ManagementTableBookingForm`.
 
 ## 2. What talks to what today
 

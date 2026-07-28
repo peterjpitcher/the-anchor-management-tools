@@ -306,7 +306,7 @@ Blocked on B4. Manual deploy. Uses the generated types from B4.
 - [ ] **G3.** Form re-requests availability on any change to party size, purpose, outside or
       accessibility. Unavailable slots greyed with the reason beneath.
 - [ ] **G4.** Accessibility checkbox. No free-text reason prompt.
-- [ ] **G5.** Date picker uses the B13 range summary, not one call per day.
+- [x] **G5. VOID.** The `BookingDatePicker` this task named was dead code, deleted 2026-07-28 (website `b9c52f82`). Date picking lives inside `ManagementTableBookingForm`; the range-summary work folds into G3.
 - [ ] **G6.** Unheated outside disclosure, stronger October to April. **Check what already exists.**
 - [ ] **G7.** Above the online maximum, route to the private-booking enquiry.
 - [ ] **G8.** Submit re-check; 409 offers the nearest three alternatives.
