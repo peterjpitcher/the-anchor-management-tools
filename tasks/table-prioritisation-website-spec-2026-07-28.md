@@ -532,3 +532,46 @@ Owner: *"Whenever you're finished and ready for all changes to be fully deployed
 
 No interim production migration. Everything lands together: migrations, both applications, the flags,
 and then the read-only checks and the single smoke booking.
+
+---
+
+## 11. Correction: I mapped the wrong cancellation path, 2026-07-28
+
+The owner cancelled a real booking and asked whether the reason capture was in scope. It is not:
+decision D-W4 is specified and nothing is built. But the question exposed a discovery error.
+
+**What I got wrong.** Section 2 and finding CR-19 both said self-service cancellation returns
+`501 NOT_SUPPORTED`. That is true of `lib/api/client.ts` on the **website**, and I concluded from it
+that customers could not cancel themselves. They can, and they do. The real journey is not on the
+website at all.
+
+**The actual path is in AMS**, reached from the tokened link in the confirmation SMS and email:
+
+```
+/g/{token}/table-manage                              guest manage page
+/g/{token}/table-manage/action  (action=cancel, confirm=1)   the cancel handler
+```
+
+`src/app/g/[token]/table-manage/action/route.ts` takes `action: 'cancel'` and a confirmation flag.
+There is **no reason field**, which is exactly what the owner experienced. It also already handles the
+late-cancellation charge path (`late_cancel_charge_requested`).
+
+**This makes D-W4 smaller than estimated, not bigger.** `table_bookings` already has the columns in
+production:
+
+```
+cancellation_reason, cancelled_at, cancelled_by
+```
+
+So capturing a reason is a form field, a validated write to a column that exists, and a report. No
+migration. The website's `501 NOT_SUPPORTED` is a red herring: that route is dead weight, and the work
+belongs in the AMS guest manage page.
+
+**Consequences for the plan.** CR-19's security concerns still stand but move to the AMS tokened link
+rather than the website's reference-plus-email lookup, which is a better starting point because a
+signed expiring token is already the credential. Stream G loses the cancellation work; it lands in the
+AMS guest-facing pages instead.
+
+**The lesson worth keeping.** I mapped one repository's route, found it disabled, and concluded the
+capability did not exist, without checking whether the journey lived elsewhere. The customer-facing
+path was in the other repo the whole time.
