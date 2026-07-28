@@ -4,6 +4,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { getFeePerHead } from '@/lib/foh/bookings'
 import { sendManagerChargeApprovalEmail } from '@/lib/table-bookings/charge-approvals'
 import { logger } from '@/lib/logger'
+import { formatCancellationReason } from './cancellation-reasons'
 
 type ChargeRequestType = 'late_cancel' | 'reduction_fee'
 
@@ -458,6 +459,8 @@ export async function updateTableBookingByRawToken(
     action: 'cancel' | 'update'
     newPartySize?: number | null
     notes?: string | null
+    cancellationReason?: string | null
+    cancellationReasonDetail?: string | null
     appBaseUrl?: string
   }
 ): Promise<TableManageUpdateResult> {
@@ -526,6 +529,12 @@ export async function updateTableBookingByRawToken(
         status: 'cancelled',
         cancelled_at: nowIso,
         cancelled_by: 'guest',
+        // Optional. Null when the guest did not say, which is a legitimate outcome rather
+        // than missing data: they are never made to answer in order to cancel.
+        cancellation_reason: formatCancellationReason(
+          input.cancellationReason,
+          input.cancellationReasonDetail
+        ),
         updated_at: nowIso,
         special_requirements: cleanNotes ?? preview.special_requirements ?? null
       })
