@@ -65,6 +65,7 @@ ALLOCATION_MIGRATIONS="
 20260801000800_event_communal_allocation_v02.sql
 20260801001000_trigger_liveness_parity.sql
 20260801001100_create_table_booking_v06.sql
+20260801001200_availability_v06.sql
 "
 
 echo "Applying allocation migrations..."
@@ -80,6 +81,7 @@ echo "Running behaviour tests..."
 output="$(run_sql < "$HERE/allocation-candidates.test.sql" 2>&1 || true)"
 settings_output="$(run_sql < "$HERE/settings-validation.test.sql" 2>&1 || true)"
 v06_output="$(run_sql < "$HERE/booking-v06.test.sql" 2>&1 || true)"
+avail_output="$(run_sql < "$HERE/availability-v06.test.sql" 2>&1 || true)"
 
 allocation_ok=0
 event_ok=0
@@ -90,14 +92,17 @@ grep -q "ALL SETTINGS TESTS PASSED" <<<"$settings_output" && settings_ok=1
 v06_ok=0
 grep -q "ALL V06 BOOKING TESTS PASSED" <<<"$v06_output" && v06_ok=1
 if [ "$v06_ok" -ne 1 ]; then echo "$v06_output" | tail -20; fi
+avail_ok=0
+grep -q "ALL AVAILABILITY TESTS PASSED" <<<"$avail_output" && avail_ok=1
+if [ "$avail_ok" -ne 1 ]; then echo "$avail_output" | tail -20; fi
 
 if [ "$settings_ok" -ne 1 ]; then
   echo "$settings_output" | tail -20
 fi
 
-if [ "$allocation_ok" -eq 1 ] && [ "$event_ok" -eq 1 ] && [ "$settings_ok" -eq 1 ] && [ "$v06_ok" -eq 1 ]; then
+if [ "$allocation_ok" -eq 1 ] && [ "$event_ok" -eq 1 ] && [ "$settings_ok" -eq 1 ] && [ "$v06_ok" -eq 1 ] && [ "$avail_ok" -eq 1 ]; then
   echo
-  echo "PASS: allocation, event, settings and v06 booking suites green"
+  echo "PASS: allocation, event, settings, booking and availability suites green"
 else
   echo
   echo "FAIL:"
