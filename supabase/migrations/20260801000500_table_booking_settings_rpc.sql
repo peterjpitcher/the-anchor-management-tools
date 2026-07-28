@@ -36,6 +36,78 @@ CREATE POLICY settings_revisions_service_role_all ON public.settings_revisions
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- ---------------------------------------------------------------------------
+-- Typed key registry.
+--
+-- Review finding F1 (P0): the first version validated numbers as `numeric` and
+-- then the allocator cast the stored text straight to `integer`. A manager saving
+-- `hold_release_lead_hours = 24.5` was accepted, and every subsequent call to
+-- find_table_allocation_candidates died on
+--   invalid input syntax for type integer: "24.5"
+-- One allowed action stopped every booking in the pub until someone repaired the
+-- row by hand. The database now owns the type of every key.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.table_booking_setting_type(p_key text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE
+    WHEN p_key LIKE 'booking_message_%' THEN 'text'
+    WHEN p_key LIKE '%_enabled'         THEN 'bool'
+    ELSE 'int'
+  END;
+$$;
+
+-- Guarded reads. A malformed stored value returns the coded default and warns,
+-- rather than taking the booking system down. Nothing reads system_settings for
+-- these keys directly any more.
+CREATE OR REPLACE FUNCTION public.get_setting_int(p_key text, p_default integer)
+RETURNS integer
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_raw text;
+  v_num numeric;
+BEGIN
+  SELECT value ->> 'value' INTO v_raw FROM public.system_settings WHERE key = p_key;
+  IF v_raw IS NULL THEN
+    RETURN p_default;
+  END IF;
+
+  BEGIN
+    v_num := v_raw::numeric;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Setting % is not a number (%); using default %', p_key, v_raw, p_default;
+    RETURN p_default;
+  END;
+
+  IF v_num <> trunc(v_num) THEN
+    RAISE WARNING 'Setting % is not a whole number (%); using default %', p_key, v_raw, p_default;
+    RETURN p_default;
+  END IF;
+
+  RETURN v_num::integer;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_setting_bool(p_key text, p_default boolean)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_val jsonb;
+BEGIN
+  SELECT value -> 'value' INTO v_val FROM public.system_settings WHERE key = p_key;
+  IF v_val IS NULL OR jsonb_typeof(v_val) <> 'boolean' THEN
+    RETURN p_default;
+  END IF;
+  RETURN v_val::text::boolean;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Which keys belong to which section. Kept in SQL so the database, not the UI,
 -- decides what a section is.
 -- ---------------------------------------------------------------------------
@@ -105,7 +177,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.validate_table_booking_settings(p_section text, p_payload jsonb)
 RETURNS text
 LANGUAGE plpgsql
-IMMUTABLE
+STABLE   -- reads system_settings to merge partial payloads; must not be IMMUTABLE
 AS $$
 DECLARE
   v_key      text;
@@ -121,6 +193,15 @@ BEGIN
   FOR v_key IN SELECT jsonb_object_keys(p_payload) LOOP
     IF NOT (v_key = ANY (v_allowed)) THEN
       RETURN format('Key "%s" does not belong to section "%s"', v_key, p_section);
+    END IF;
+  END LOOP;
+
+  -- Shape: every value must be an object carrying a non-null `value` property.
+  FOR v_key IN SELECT jsonb_object_keys(p_payload) LOOP
+    IF jsonb_typeof(p_payload -> v_key) <> 'object'
+       OR NOT (p_payload -> v_key ? 'value')
+       OR jsonb_typeof(p_payload -> v_key -> 'value') = 'null' THEN
+      RETURN format('"%s" must be an object of the form {"value": ...}', v_key);
     END IF;
   END LOOP;
 
@@ -155,6 +236,11 @@ BEGIN
 
     IF v_num IS NULL OR v_num < 0 THEN
       RETURN format('"%s" cannot be negative', v_key);
+    END IF;
+
+    -- F1: every numeric key here is read as an integer downstream.
+    IF public.table_booking_setting_type(v_key) = 'int' AND v_num <> trunc(v_num) THEN
+      RETURN format('"%s" must be a whole number, not %s', v_key, v_num);
     END IF;
 
     IF v_key LIKE 'turn_time_minutes_%' AND (v_num < 30 OR v_num > 480) THEN
@@ -193,11 +279,15 @@ BEGIN
       v_res_s     numeric := COALESCE((p_payload -> 'kitchen_walk_in_reserve_sunday' ->> 'value')::numeric,
                                       (SELECT (value ->> 'value')::numeric FROM public.system_settings WHERE key='kitchen_walk_in_reserve_sunday'), 6);
     BEGIN
-      IF v_res_r > v_pace_r THEN
-        RETURN 'The weekday walk-in reserve cannot be larger than the weekday pace, or nothing can be booked online';
-      END IF;
-      IF v_res_s > v_pace_s THEN
-        RETURN 'The Sunday walk-in reserve cannot be larger than the Sunday pace, or nothing can be booked online';
+      -- The live ceiling is GREATEST(0, pace - reserve), so equality closes online
+      -- booking completely. Only reject it while pacing is switched on.
+      IF public.get_setting_bool('kitchen_pacing_enabled', false) THEN
+        IF v_res_r >= v_pace_r THEN
+          RETURN 'The weekday walk-in reserve must be smaller than the weekday pace, or nothing can be booked online';
+        END IF;
+        IF v_res_s >= v_pace_s THEN
+          RETURN 'The Sunday walk-in reserve must be smaller than the Sunday pace, or nothing can be booked online';
+        END IF;
       END IF;
     END;
   END IF;
@@ -217,10 +307,16 @@ BEGIN
 
   IF p_section = 'turn_times' THEN
     DECLARE
-      v_a numeric := COALESCE((p_payload -> 'turn_time_minutes_1_2' ->> 'value')::numeric, 90);
-      v_b numeric := COALESCE((p_payload -> 'turn_time_minutes_3_4' ->> 'value')::numeric, 105);
-      v_c numeric := COALESCE((p_payload -> 'turn_time_minutes_5_6' ->> 'value')::numeric, 120);
-      v_d numeric := COALESCE((p_payload -> 'turn_time_minutes_7_plus' ->> 'value')::numeric, 150);
+      -- Merge against what is stored, so a partial update cannot slip past by
+      -- sending only one band and being compared with a coded default.
+      v_a numeric := COALESCE((p_payload -> 'turn_time_minutes_1_2' ->> 'value')::numeric,
+                              public.get_setting_int('turn_time_minutes_1_2', 90));
+      v_b numeric := COALESCE((p_payload -> 'turn_time_minutes_3_4' ->> 'value')::numeric,
+                              public.get_setting_int('turn_time_minutes_3_4', 105));
+      v_c numeric := COALESCE((p_payload -> 'turn_time_minutes_5_6' ->> 'value')::numeric,
+                              public.get_setting_int('turn_time_minutes_5_6', 120));
+      v_d numeric := COALESCE((p_payload -> 'turn_time_minutes_7_plus' ->> 'value')::numeric,
+                              public.get_setting_int('turn_time_minutes_7_plus', 150));
     BEGIN
       IF NOT (v_a <= v_b AND v_b <= v_c AND v_c <= v_d) THEN
         RETURN 'Turn times must not get shorter as the party gets bigger';
@@ -279,6 +375,18 @@ BEGIN
     );
   END IF;
 
+  -- Review finding F9: lowering outside_table_capacity silently re-costs every
+  -- existing future outside booking. Until the dedicated re-cost workflow exists,
+  -- refuse the decrease rather than oversubscribe the garden.
+  IF p_payload ? 'outside_table_capacity' THEN
+    IF (p_payload -> 'outside_table_capacity' ->> 'value')::numeric
+       < public.get_setting_int('outside_table_capacity', 8) THEN
+      RETURN jsonb_build_object(
+        'ok', false,
+        'error', 'Lowering the seats per outside table needs the re-costing workflow, because bookings already taken were costed at the old capacity. Increases are fine.');
+    END IF;
+  END IF;
+
   SELECT COALESCE(jsonb_object_agg(s.key, s.value), '{}'::jsonb)
     INTO v_old
     FROM public.system_settings s
@@ -320,5 +428,12 @@ GRANT EXECUTE ON FUNCTION public.get_table_booking_settings() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_table_booking_settings(text, jsonb, bigint, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.validate_table_booking_settings(text, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.table_booking_settings_keys(text) TO service_role;
+
+REVOKE ALL ON FUNCTION public.table_booking_setting_type(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_setting_int(text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_setting_bool(text, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.table_booking_setting_type(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_setting_int(text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_setting_bool(text, boolean) TO service_role;
 
 COMMIT;
