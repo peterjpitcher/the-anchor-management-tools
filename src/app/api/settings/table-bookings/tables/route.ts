@@ -8,7 +8,13 @@ const CreateTableSchema = z.object({
   capacity: z.number().int().min(1).max(100),
   area_id: z.string().uuid().optional().nullable(),
   area: z.string().trim().max(80).optional().nullable(),
-  is_bookable: z.boolean().optional()
+  is_bookable: z.boolean().optional(),
+  priority: z.number().int().min(0).max(9999).optional(),
+  bar_priority: z.number().int().min(0).max(9999).optional(),
+  min_party_size: z.number().int().min(1).max(100).optional(),
+  step_free: z.boolean().optional(),
+  standard_height: z.boolean().optional(),
+  high_chair_capable: z.boolean().optional()
 })
 
 const UpdateTableSchema = z
@@ -19,7 +25,16 @@ const UpdateTableSchema = z
     capacity: z.number().int().min(1).max(100).optional(),
     area_id: z.string().uuid().optional().nullable(),
     area: z.string().trim().max(80).optional().nullable(),
-    is_bookable: z.boolean().optional()
+    is_bookable: z.boolean().optional(),
+    // Allocation attributes. Priority is the fill order that replaced the alphabetical
+    // accident; bar_priority is its deliberate opposite for drinks and events, so the
+    // dining space stays free for diners. min_party_size stops a couple taking a six-top.
+    priority: z.number().int().min(0).max(9999).optional(),
+    bar_priority: z.number().int().min(0).max(9999).optional(),
+    min_party_size: z.number().int().min(1).max(100).optional(),
+    step_free: z.boolean().optional(),
+    standard_height: z.boolean().optional(),
+    high_chair_capable: z.boolean().optional()
   })
   .refine(
     (value) =>
@@ -28,7 +43,13 @@ const UpdateTableSchema = z
       value.capacity !== undefined ||
       value.area_id !== undefined ||
       value.area !== undefined ||
-      value.is_bookable !== undefined,
+      value.is_bookable !== undefined ||
+      value.priority !== undefined ||
+      value.bar_priority !== undefined ||
+      value.min_party_size !== undefined ||
+      value.step_free !== undefined ||
+      value.standard_height !== undefined ||
+      value.high_chair_capable !== undefined,
     {
       message: 'No table fields supplied for update'
     }
@@ -124,7 +145,7 @@ function canonicalizeJoinLink(input: CanonicalJoinLink): CanonicalJoinLink | nul
 async function loadTableSetupData(supabase: any) {
   const [tablesResult, linksResult, areasResult] = await Promise.all([
     supabase.from('tables')
-      .select('id, name, table_number, capacity, area, area_id, is_bookable')
+      .select('id, name, table_number, capacity, area, area_id, is_bookable, priority, bar_priority, min_party_size, step_free, standard_height, high_chair_capable')
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
     supabase.from('table_join_links')
