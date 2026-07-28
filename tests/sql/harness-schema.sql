@@ -192,3 +192,64 @@ RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;
 CREATE TRIGGER trg_enforce_booking_table_assignment_integrity_v05
   BEFORE INSERT OR UPDATE ON public.booking_table_assignments
   FOR EACH ROW EXECUTE FUNCTION public.enforce_booking_table_assignment_integrity_v05();
+
+-- Tables v06 writes to. Shapes mirror production.
+CREATE TABLE public.business_hours (
+  day_of_week integer PRIMARY KEY, is_closed boolean DEFAULT false, is_kitchen_closed boolean DEFAULT false,
+  opens time, closes time, kitchen_opens time, kitchen_closes time
+);
+CREATE TABLE public.special_hours (
+  date date PRIMARY KEY, is_closed boolean, is_kitchen_closed boolean,
+  opens time, closes time, kitchen_opens time, kitchen_closes time,
+  kitchen_pace_covers integer, kitchen_walk_in_reserve integer
+);
+CREATE TABLE public.booking_holds (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), hold_type text, table_booking_id uuid,
+  seats_or_covers_held integer, status text, scheduled_sms_send_time timestamptz,
+  expires_at timestamptz, created_at timestamptz, updated_at timestamptz
+);
+CREATE TABLE public.payments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), table_booking_id uuid, charge_type text,
+  amount numeric(10,2), currency text, status text, metadata jsonb, created_at timestamptz
+);
+CREATE TYPE public.table_booking_type AS ENUM ('regular','sunday_lunch','christmas');
+CREATE TYPE public.table_booking_payment_method AS ENUM ('payment_link','cash','paypal');
+
+ALTER TABLE public.table_bookings
+  ADD COLUMN booking_type_enum public.table_booking_type,
+  ADD COLUMN duration_minutes integer,
+  ADD COLUMN confirmed_at timestamptz,
+  ADD COLUMN sunday_preorder_cutoff_at timestamptz,
+  ADD COLUMN deposit_waived boolean DEFAULT false,
+  ADD COLUMN payment_method public.table_booking_payment_method,
+  ADD COLUMN special_requirements text,
+  ADD COLUMN updated_at timestamptz;
+
+-- plpgsql, not sql: a LANGUAGE sql body is validated at creation time, and this references
+-- is_booking_live, which a later migration creates.
+CREATE OR REPLACE FUNCTION public.count_high_chairs_in_window(
+  p_start timestamptz, p_end timestamptz, p_exclude uuid
+) RETURNS integer LANGUAGE plpgsql STABLE AS $$
+DECLARE v_total integer;
+BEGIN
+  SELECT COALESCE(SUM(tb.high_chair_count), 0)::integer INTO v_total
+  FROM public.table_bookings tb
+  WHERE tb.high_chair_count > 0
+    AND (p_exclude IS NULL OR tb.id <> p_exclude)
+    AND public.is_booking_live(tb.status, tb.left_at, tb.hold_expires_at, tb.payment_status)
+    AND tb.start_datetime < p_end AND tb.end_datetime > p_start;
+  RETURN v_total;
+END;
+$$;
+
+-- v05 stub for the gate-off path. Real v05 lives in production; here we only need to prove
+-- that the gate routes to it and that v06 does not run when the flag is off.
+CREATE OR REPLACE FUNCTION public.create_table_booking_v05(
+  uuid, date, time without time zone, integer, text, text, boolean, text, boolean, boolean,
+  boolean, integer, boolean
+) RETURNS jsonb LANGUAGE sql AS $$
+  SELECT jsonb_build_object('state','blocked','reason','v05_stub_called');
+$$;
+
+INSERT INTO public.business_hours (day_of_week, opens, closes, kitchen_opens, kitchen_closes)
+SELECT d, '12:00', '23:00', '12:00', '21:00' FROM generate_series(0,6) d;
