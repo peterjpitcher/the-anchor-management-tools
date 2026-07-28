@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { menuToSchema } from '@/lib/api/schema';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { isNewToday, toIsoDate } from '@/lib/menu/new-product-window';
 
 // Public menu codes this endpoint is allowed to serve.
 // Strict allowlist: anything not listed here is rejected with a 400 so that an
@@ -34,23 +35,6 @@ function resolveMenuCode(request: Request): { code: PublicMenuCode } | { error: 
   }
 
   return { error: `Unknown menu code. Allowed values: ${PUBLIC_MENU_CODES.join(', ')}` };
-}
-
-// Normalises a DATE column value (or a timestamp string) to YYYY-MM-DD.
-// Returns null when the value is absent or unparseable, which means "no bound".
-function toIsoDate(value: unknown): string | null {
-  if (value === null || value === undefined || value === '') return null;
-
-  if (typeof value === 'string') {
-    const match = value.match(/^\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : null;
-  }
-
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-
-  return null;
 }
 
 export async function GET(_request: NextRequest) {
@@ -167,6 +151,10 @@ export async function GET(_request: NextRequest) {
         allergens: dish.allergen_flags || [],
         is_available: dish.is_active,
         is_special: dish.is_special,
+        // Whole-day inclusive, same comparison as the availability window above,
+        // so the badge appears and expires on its own dates with no manual step.
+        is_new: isNewToday(dish.new_from, dish.new_until, today),
+        new_until: toIsoDate(dish.new_until),
         available_from: dish.available_from,
         available_until: dish.available_until,
         image_url: dish.image_url,
