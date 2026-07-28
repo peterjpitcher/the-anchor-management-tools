@@ -255,6 +255,157 @@ BEGIN
   DELETE FROM public.booking_table_assignments;
   DELETE FROM public.table_bookings;
 
+  -- ===================================================================
+  -- F2. A maintenance block must bite across the WHOLE booking window,
+  --     not just at its start time.
+  -- ===================================================================
+  INSERT INTO public.table_holds (scope, table_id, hold_type, status, starts_on, ends_on, starts_at, ends_at, note)
+  VALUES ('table','8ff55f2a-86cb-4b2d-ae74-2d8cae44499b','maintenance','active',
+          '2026-09-16','2026-09-16','19:00','21:00','broken chair');
+
+  ASSERT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'staff', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.reason_code = 'table_blocked' AND 'Low 4b' = ANY (c.table_names)
+  ), 'a maintenance block starting mid-booking must still block the table';
+
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'staff', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.rank IS NOT NULL AND 'Low 4b' = ANY (c.table_names)
+  ), 'a table under maintenance must never be offered';
+
+  DELETE FROM public.table_holds WHERE hold_type = 'maintenance';
+
+  -- ===================================================================
+  -- F4. A walk-in hold withholds a table from ONLINE SINGLE sale, but must
+  --     NOT remove it from joined combinations. Low 4a is held.
+  -- ===================================================================
+  INSERT INTO public.test_private_blocks (table_id, starts_at, ends_at)
+  SELECT id, '2026-09-16 17:00+01', '2026-09-16 23:00+01'
+  FROM public.tables WHERE name LIKE 'Dining Room%';
+
+  r := pg_temp.pick(7);
+  ASSERT r = 'Low 4a + Low 4b',
+    format('an online party of 7 must still be offered the held Low pair as a JOIN; got %L', r);
+
+  -- ...while a lone couple still cannot take the held table online.
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'online', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.rank IS NOT NULL AND c.table_count = 1 AND 'Low 4a' = ANY (c.table_names)
+  ), 'a walk-in-held table must not be sold online as a single';
+
+  DELETE FROM public.test_private_blocks;
+
+  -- ===================================================================
+  -- F6. Connectivity is tested on the finished set, not enforced during
+  --     growth. Big Bay and Small Bay join nothing, so they are not a run.
+  -- ===================================================================
+  ASSERT public.tables_are_connected(ARRAY[
+    'ea61faf9-ebfc-4964-bd60-ef907af36848'::uuid,'8ff55f2a-86cb-4b2d-ae74-2d8cae44499b'::uuid]),
+    'the Low pair is joined and must read as connected';
+
+  ASSERT NOT public.tables_are_connected(ARRAY[
+    'd0b22c8d-ac37-41b3-9c8b-45eb174f29c6'::uuid,'37d61f34-0eed-4a97-9e8c-aa868fdfe779'::uuid]),
+    'Big Bay and Small Bay join nothing and must not read as connected';
+
+  -- A bridge topology: 4a joins 6c, 4b joins 6c, but 4a does not join 4b directly...
+  ASSERT public.tables_are_connected(ARRAY[
+    '39350c06-d5ea-4cea-a742-9ea78ebc0557'::uuid,   -- DR 4a
+    'f16044f7-8dcf-4403-8e89-02992fdc9532'::uuid,   -- DR 4b
+    'fc306a12-0cb2-4692-bf3f-cfb89466abb6'::uuid]), -- DR 6c bridges them
+    'a set connected only through a third table must read as connected';
+
+  -- A disconnected pair must never be offered as a join.
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 11, 'food', 0, false, NULL, 'staff', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.rank IS NOT NULL
+      AND 'Big Bay' = ANY (c.table_names) AND 'Small Bay' = ANY (c.table_names)
+  ), 'Big Bay plus Small Bay is not a physical run and must not be offered';
+
+  -- ===================================================================
+  -- F5. No eight-table cap.
+  --
+  -- The floor is 49 seats across 10 tables, so eight tables can reach 40 on an
+  -- empty room. Occupy one six-top and the remaining nine hold 43, of which any
+  -- eight hold at most 39. A staff party of 40 then REQUIRES all nine, which the
+  -- old hard cap of eight made impossible.
+  -- ===================================================================
+  INSERT INTO public.table_bookings (id, booking_date, booking_time, party_size, status, start_datetime, end_datetime)
+  VALUES ('33333333-3333-3333-3333-333333333333','2026-09-16','18:00',6,'confirmed','2026-09-16 18:00+01','2026-09-16 20:00+01');
+  INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
+  VALUES ('33333333-3333-3333-3333-333333333333','5deb3b97-1f18-4ee7-97c9-887b47ff504e','2026-09-16 18:00+01','2026-09-16 20:15+01');
+
+  ASSERT (SELECT table_count FROM public.find_table_allocation_candidates(
+            '2026-09-16 18:00+01','2026-09-16 20:00+01', 40, 'food', 0, false, NULL, 'staff', NULL,
+            ROW(false,false,true,false)::public.table_allocation_overrides,
+            '2026-09-01 12:00+01'::timestamptz) WHERE rank = 1) = 9,
+    'with one six-top occupied, a staff party of 40 needs all nine remaining tables';
+
+  DELETE FROM public.booking_table_assignments;
+  DELETE FROM public.table_bookings;
+
+  -- ===================================================================
+  -- F7. A cancelled event booking must not hold a table hostage.
+  -- ===================================================================
+  INSERT INTO public.bookings (id, status) VALUES
+    ('66666666-6666-6666-6666-666666666666','cancelled'),
+    ('77777777-7777-7777-7777-777777777777','confirmed');
+
+  INSERT INTO public.event_communal_seat_allocations (event_booking_id, table_id, seats, start_datetime, end_datetime)
+  VALUES ('66666666-6666-6666-6666-666666666666','39350c06-d5ea-4cea-a742-9ea78ebc0557',4,
+          '2026-09-16 17:00+01','2026-09-16 23:00+01');
+
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'staff', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.reason_code = 'table_communal' AND 'Dining Room 4a' = ANY (c.table_names)
+  ), 'a CANCELLED event booking must not block a table';
+
+  -- ...but a confirmed one still does.
+  INSERT INTO public.event_communal_seat_allocations (event_booking_id, table_id, seats, start_datetime, end_datetime)
+  VALUES ('77777777-7777-7777-7777-777777777777','f16044f7-8dcf-4403-8e89-02992fdc9532',4,
+          '2026-09-16 17:00+01','2026-09-16 23:00+01');
+
+  ASSERT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 2, 'food', 0, false, NULL, 'staff', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.reason_code = 'table_communal' AND 'Dining Room 4b' = ANY (c.table_names)
+  ), 'a CONFIRMED event booking must still block its table';
+
+  DELETE FROM public.event_communal_seat_allocations;
+  DELETE FROM public.bookings;
+
+  -- ===================================================================
+  -- F10. An exact staff-selected COMBINATION must win, not just a single.
+  -- ===================================================================
+  ASSERT (SELECT array_to_string(table_names,' + ')
+          FROM public.find_table_allocation_candidates(
+            '2026-09-16 18:00+01','2026-09-16 20:00+01', 7, 'food', 0, false,
+            ARRAY['ea61faf9-ebfc-4964-bd60-ef907af36848'::uuid,
+                  '8ff55f2a-86cb-4b2d-ae74-2d8cae44499b'::uuid],
+            'staff', NULL, NULL, '2026-09-01 12:00+01'::timestamptz)
+          WHERE rank = 1) = 'Low 4a + Low 4b',
+    'a staff-selected pair must rank first, not be silently replaced';
+
+  -- ===================================================================
+  -- F14. A table too small for the party is REPORTED, not silently dropped.
+  -- ===================================================================
+  ASSERT EXISTS (
+    SELECT 1 FROM public.find_table_allocation_candidates(
+      '2026-09-16 18:00+01','2026-09-16 20:00+01', 6, 'food', 0, false, NULL, 'staff', NULL, NULL,
+      '2026-09-01 12:00+01'::timestamptz) c
+    WHERE c.reason_code = 'too_large_for_table' AND 'High 4' = ANY (c.table_names)
+  ), 'a table too small for the party must return a reason row, not vanish';
+
   RAISE NOTICE 'ALL ALLOCATION TESTS PASSED';
 END;
 $$;
@@ -304,6 +455,30 @@ BEGIN
 
   DELETE FROM public.event_communal_seat_allocations;
   DELETE FROM public.bookings;
+
+  -- ===================================================================
+  -- F3. The event allocator must respect maintenance blocks. v01 never looked
+  --     at table_holds at all, so a quiz night could be seated on a table that
+  --     was out of service.
+  -- ===================================================================
+  INSERT INTO public.table_holds (scope, table_id, hold_type, status, starts_on, ends_on, starts_at, ends_at, note)
+  VALUES ('table','ea61faf9-ebfc-4964-bd60-ef907af36848','maintenance','active',
+          '2026-09-16','2026-09-16','17:00','23:00','out of service');
+
+  INSERT INTO public.bookings (id, status) VALUES
+    ('88888888-8888-8888-8888-888888888888', 'confirmed');
+
+  v_result := public.allocate_event_communal_seats_v02(
+                gen_random_uuid(), '88888888-8888-8888-8888-888888888888', 4,
+                '2026-09-16 19:00+01', '2026-09-16 21:00+01');
+
+  ASSERT v_result ->> 'state' = 'confirmed',
+    format('the event should still seat somewhere, got %s', v_result);
+  ASSERT (v_result ->> 'table_name') NOT LIKE '%Low 4a%',
+    format('an event must not be seated on a table under maintenance; got %s', v_result ->> 'table_name');
+
+  DELETE FROM public.table_holds WHERE hold_type = 'maintenance';
+  DELETE FROM public.event_communal_seat_allocations;
 
   RAISE NOTICE 'ALL EVENT ALLOCATION TESTS PASSED';
 END;
