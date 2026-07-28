@@ -18,6 +18,8 @@
 --   * Small parties stop eating the Dining Room, via priority and minimum party size.
 --   * Accessibility and high-chair suitability become data rather than something a member of staff has
 --     to remember.
+--   * Drinks bookings fill the bar first and only overflow into the Dining Room when the bar is full,
+--     so a round of drinks no longer takes a table someone wants to eat at.
 --
 -- Additive only. Nothing calls this until v06.
 
@@ -188,7 +190,12 @@ BEGIN
       t.id,
       COALESCE(t.name, t.table_number) AS name,
       t.capacity,
-      t.priority,
+      -- Which house order applies depends on what the guest is here for.
+      --   food   -> tables.priority     : the Dining Room first, because diners should eat there.
+      --   drinks -> tables.bar_priority : the bar first, overflowing into the Dining Room only
+      --                                   once the bar is full.
+      -- Events use bar_priority too, applied in allocate_event_communal_seats_v02.
+      CASE WHEN p_purpose = 'drinks' THEN t.bar_priority ELSE t.priority END AS priority,
       t.min_party_size,
       -- table_number is text in this schema, so '10' sorts before '2' unless it is cast.
       COALESCE(NULLIF(regexp_replace(t.table_number, '\D', '', 'g'), '')::integer, 9999) AS number_sort,
