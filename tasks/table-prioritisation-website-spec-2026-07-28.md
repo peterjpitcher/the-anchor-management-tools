@@ -470,3 +470,65 @@ Bay is not step free. Whether the page means venue entry or seating needs checki
 **Recommendation:** remove the heating claims rather than soften them. "Covered areas" is true and does
 most of the same work. This is a marketing copy change with no dependency on the booking work, so it can
 go now rather than waiting for the release.
+
+---
+
+## 10. Two answers that change the plan, 2026-07-28
+
+### D-W6. There is no staging. The production test suite is cut right back.
+
+Owner: *"We only have production."*
+
+Section 6a described 26 journeys that fill the bar, take the last table, consume outside inventory,
+race two bookings for the same table, exercise live deposits and wait through hold expiry. Against the
+only environment there is, **every one of those consumes real inventory a real customer could have had**,
+and a "future quiet date" is still a sellable date. The review was right to call it unsafe, and with no
+staging it cannot simply be moved somewhere else.
+
+**Replacement: three tiers.**
+
+| Tier | Where | What |
+|------|-------|------|
+| **Fixture suite** | Throwaway Docker Postgres, `./tests/sql/run.sh` | Everything that needs contrived state: last-table races, a full bar, outside at capacity, expired paid and unpaid holds, private-booking blocks, maintenance windows, DST and midnight. This is where the 26 journeys' logic actually gets proven, and it already exists |
+| **Read-only production checks** | Production, no writes | Availability responses for every purpose, party size, accessibility and high-chair combination. Reason codes and customer messages. Latency. Verifying no internal reason code leaks. Safe to run any time, including on a Friday night |
+| **One controlled smoke** | Production, one booking | A single ordinary booking, looked up, then cancelled. Run once after activation, on a quiet weekday, on a date the owner has agreed. Its reference is recorded and its cleanup confirmed |
+
+**Never run against production:** capacity filling, concurrency races, deposit expiry, fault injection,
+or anything that needs the pub to be full. If a journey needs contrived state, it belongs in the fixture
+suite. That is a real reduction in what the production gate proves, and it is the honest consequence of
+having one environment.
+
+### D-W7. The AI booking agent has no owner and should be switched off
+
+Owner, asked whether anything calls it: *"Whats the AI booking agent? I have no idea."*
+
+What it is, established rather than assumed:
+
+- `app/api/booking/agent/route.ts`, added around August 2025 alongside the Sunday lunch booking system.
+- **Live in production right now.** `GET` returns `400 {"success":false,"error":"Date parameter required"}`.
+- **Public and unauthenticated.** No API key, no scoped identity, no rate limit of its own. Its only
+  protection is the shared browser spam guard: honeypot, timing and Turnstile.
+- **It creates real table bookings**, and can set high chairs and outside seating.
+- **Nothing on the website links to it.** Its only mention anywhere is one line in
+  `docs/architecture/routes.md` calling it "Booking assistant agent endpoint".
+
+I did not send it a real booking payload. Probing it properly would mean creating a real booking on
+production, which is exactly what the tier rules above forbid.
+
+So this is a live, public, unauthenticated endpoint that can take bookings at the pub, that nothing
+links to, and that the owner has never heard of. It also doubles the surface area of every contract
+change in this project, because it is a second booking channel that must be kept in step.
+
+**Recommendation: disable it.** Return `410 Gone`, keep the file, and note that it can be reinstated
+with a scoped API key, replay protection and a per-client quota if a real caller ever turns up. If it
+turns out something is using it, a 410 will surface that within days, which is a far better way to find
+out than leaving it open.
+
+Task G10 in the parent plan is therefore **void**: there is no agent path to keep in step.
+
+### D-W8. Deployment is one release at the end
+
+Owner: *"Whenever you're finished and ready for all changes to be fully deployed."*
+
+No interim production migration. Everything lands together: migrations, both applications, the flags,
+and then the read-only checks and the single smoke booking.
