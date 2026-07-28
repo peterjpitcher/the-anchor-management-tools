@@ -21,17 +21,45 @@
 
 BEGIN;
 
--- Refuse to run if the live function is not the one this was written against.
+-- Refuse to run if the live v01 is not the one this was rewritten from.
+--
+-- Review finding F12: the first version computed the md5 and then compared it with
+-- nothing, and only raised a NOTICE when v01 was missing. A production change to v01
+-- would have been silently dropped from the new path. It now aborts, and it finds the
+-- function by exact signature rather than by name.
 DO $$
 DECLARE
-  v_md5 text;
+  v_md5      text;
+  v_expected text := 'd0f9c25e4b6ba1e2b0f4c2f9c2e2c9a1';  -- placeholder, see below
 BEGIN
   SELECT md5(pg_get_functiondef(p.oid)) INTO v_md5
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'public' AND p.proname = 'allocate_event_communal_seats_v01';
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.oid::regprocedure::text =
+        'allocate_event_communal_seats_v01(uuid,uuid,integer,timestamp with time zone,timestamp with time zone)';
 
   IF v_md5 IS NULL THEN
-    RAISE NOTICE 'allocate_event_communal_seats_v01 not present; creating v02 alongside nothing.';
+    -- No v01 at all. That is the test harness, where there is nothing to drift from.
+    RAISE NOTICE 'allocate_event_communal_seats_v01 is absent; skipping the drift guard.';
+    RETURN;
+  END IF;
+
+  -- The expected fingerprint is supplied by the deploy step, which reads it from
+  -- tasks/artefacts/. Until it is pinned there, refuse to guess: an unpinned guard is
+  -- worse than an honest failure, because it looks like protection and is not.
+  IF current_setting('anchor.expected_v01_md5', true) IS NULL THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'Event allocator drift guard is not armed.',
+      DETAIL  = format('Live allocate_event_communal_seats_v01 md5 is %s.', v_md5),
+      HINT    = 'Record it in tasks/artefacts/ and re-run with: SET anchor.expected_v01_md5 = ''<md5>'';';
+  END IF;
+
+  IF current_setting('anchor.expected_v01_md5', true) <> v_md5 THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'allocate_event_communal_seats_v01 has changed since v02 was written.',
+      DETAIL  = format('Expected %s, found %s.', current_setting('anchor.expected_v01_md5', true), v_md5),
+      HINT    = 'Re-derive v02 from the current v01 before applying this migration.';
   END IF;
 END;
 $$;
@@ -92,6 +120,10 @@ BEGIN
     WHERE COALESCE(t.is_bookable, true) = true
       AND COALESCE(t.capacity, 0) > 0
       AND NOT public.is_table_blocked_by_private_booking_v05(t.id, p_start_datetime, p_end_datetime, NULL)
+      -- Review finding F3: v01 never looked at table_holds, so a communal event could be
+      -- seated on a table that was out of service. Channel 'event' is not 'online', so
+      -- walk-in holds do not apply; maintenance blocks apply to every channel.
+      AND NOT public.table_is_held(t.id, p_start_datetime, p_end_datetime, 'event', 0, true)
     -- THE CHANGE. Events fill the bar tables first and the Dining Room last.
     ORDER BY
       t.bar_priority ASC,

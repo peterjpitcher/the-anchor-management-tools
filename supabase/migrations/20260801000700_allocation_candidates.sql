@@ -55,45 +55,54 @@ COMMENT ON TYPE public.table_allocation_overrides IS
 -- Hold windows are Europe/London wall clock. ends_at <= starts_at means the window crosses midnight.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.table_is_held(
-  p_table_id        uuid,
-  p_start_at        timestamptz,
-  p_channel         text,
+  p_table_id           uuid,
+  p_start_at           timestamptz,
+  p_end_at             timestamptz,
+  p_channel            text,
   p_release_lead_hours integer,
-  p_ignore_hold     boolean DEFAULT false,
-  p_now             timestamptz DEFAULT now()
+  p_ignore_hold        boolean DEFAULT false,
+  p_now                timestamptz DEFAULT now()
 )
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE
 AS $$
 DECLARE
-  v_local_date date;
-  v_local_time time;
-  v_dow        smallint;
-  v_released   boolean;
+  v_released boolean;
 BEGIN
-  v_local_date := (p_start_at AT TIME ZONE 'Europe/London')::date;
-  v_local_time := (p_start_at AT TIME ZONE 'Europe/London')::time;
-  v_dow        := EXTRACT(DOW FROM v_local_date)::smallint;
-
-  -- Inside the release window the walk-in holds no longer apply.
+  -- Review finding F2: this used to take only the start time, so a maintenance block
+  -- running 19:00 to 21:00 did not stop an 18:00 to 20:00 booking. Each hold occurrence
+  -- is now turned into a real Europe/London range and compared with the whole window.
   v_released := p_now >= (p_start_at - make_interval(hours => GREATEST(0, p_release_lead_hours)));
 
   RETURN EXISTS (
     SELECT 1
     FROM public.table_holds h
+    -- Every service date the booking window can touch, plus the day before, so an
+    -- overnight hold (22:00 to 02:00) that began yesterday still blocks an 01:00 booking.
+    CROSS JOIN LATERAL (
+      SELECT generate_series(
+        ((p_start_at AT TIME ZONE 'Europe/London')::date - 1),
+        ((p_end_at   AT TIME ZONE 'Europe/London')::date),
+        interval '1 day'
+      )::date AS occurrence_date
+    ) occ
+    CROSS JOIN LATERAL (
+      SELECT
+        (occ.occurrence_date + h.starts_at) AT TIME ZONE 'Europe/London' AS hold_start,
+        (CASE
+           WHEN h.ends_at > h.starts_at THEN occ.occurrence_date + h.ends_at
+           ELSE (occ.occurrence_date + 1) + h.ends_at   -- crosses midnight
+         END) AT TIME ZONE 'Europe/London' AS hold_end
+    ) win
     WHERE h.status = 'active'
       AND h.scope = 'table'
       AND h.table_id = p_table_id
-      AND h.starts_on <= v_local_date
-      AND (h.ends_on IS NULL OR h.ends_on >= v_local_date)
-      AND (h.day_of_week IS NULL OR h.day_of_week = v_dow)
-      AND (
-            -- normal window
-            (h.ends_at > h.starts_at AND v_local_time >= h.starts_at AND v_local_time < h.ends_at)
-            -- window crossing midnight
-         OR (h.ends_at <= h.starts_at AND (v_local_time >= h.starts_at OR v_local_time < h.ends_at))
-      )
+      AND h.starts_on <= occ.occurrence_date
+      AND (h.ends_on IS NULL OR h.ends_on >= occ.occurrence_date)
+      -- day_of_week applies to the date the occurrence STARTS on.
+      AND (h.day_of_week IS NULL OR h.day_of_week = EXTRACT(DOW FROM occ.occurrence_date)::smallint)
+      AND public.windows_overlap(win.hold_start, win.hold_end, p_start_at, p_end_at)
       AND (
             h.hold_type = 'maintenance'
          OR (h.hold_type = 'walk_in_hold'
@@ -107,6 +116,53 @@ $$;
 
 COMMENT ON FUNCTION public.table_is_held IS
   'Walk-in holds bite on the online channel only and lapse close to the sitting. Maintenance blocks bite on every channel and never lapse.';
+
+-- ---------------------------------------------------------------------------
+-- Are these tables physically joinable into one run?
+--
+-- Review finding F6: the old search grew combinations only through tables that were
+-- already adjacent to a chosen member, pruned by ascending uuid. On a topology where
+-- A joins C and B joins C but A does not join B, the valid set {A,B,C} could never be
+-- built: A could not add B, and B could not add the lower-uuid A. The Dining Room is a
+-- clique so it never bit, but it would on any future floor.
+--
+-- With ten tables there are at most 1,023 subsets, so the honest algorithm is to
+-- enumerate subsets and test connectivity afterwards.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.tables_are_connected(p_ids uuid[])
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_seen   uuid[];
+  v_before integer;
+BEGIN
+  IF p_ids IS NULL OR cardinality(p_ids) = 0 THEN RETURN false; END IF;
+  IF cardinality(p_ids) = 1 THEN RETURN true; END IF;
+
+  v_seen := ARRAY[p_ids[1]];
+  LOOP
+    v_before := cardinality(v_seen);
+
+    SELECT array_agg(DISTINCT x) INTO v_seen
+    FROM (
+      SELECT unnest(v_seen) AS x
+      UNION
+      SELECT l.join_table_id FROM public.table_join_links l
+       WHERE l.table_id = ANY (v_seen) AND l.join_table_id = ANY (p_ids)
+      UNION
+      SELECT l.table_id FROM public.table_join_links l
+       WHERE l.join_table_id = ANY (v_seen) AND l.table_id = ANY (p_ids)
+    ) reachable;
+
+    EXIT WHEN cardinality(v_seen) = cardinality(p_ids);  -- everything reached
+    EXIT WHEN cardinality(v_seen) = v_before;            -- nothing new, so disconnected
+  END LOOP;
+
+  RETURN cardinality(v_seen) = cardinality(p_ids);
+END;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Table names in the order a human reads a floor plan: by table number.
@@ -192,15 +248,10 @@ BEGIN
       t.id,
       COALESCE(t.name, t.table_number) AS name,
       t.capacity,
-      -- Which house order applies depends on what the guest is here for.
-      --   food   -> tables.priority     : the Dining Room first, because diners should eat there.
-      --   drinks -> tables.bar_priority : the bar first, overflowing into the Dining Room only
-      --                                   once the bar is full.
-      -- Events use bar_priority too, applied in allocate_event_communal_seats_v02.
       CASE WHEN p_purpose = 'drinks' THEN t.bar_priority ELSE t.priority END AS priority,
       t.min_party_size,
-      -- table_number is text in this schema, so '10' sorts before '2' unless it is cast.
       COALESCE(NULLIF(regexp_replace(t.table_number, '\D', '', 'g'), '')::integer, 9999) AS number_sort,
+      -- HARD failures. A table failing any of these is unusable, alone or in a join.
       CASE
         WHEN COALESCE(t.is_bookable, true) = false
           THEN 'table_not_bookable'
@@ -209,11 +260,6 @@ BEGIN
           THEN 'not_accessible'
         WHEN COALESCE(p_high_chair_count, 0) > 0 AND t.high_chair_capable = false
           THEN 'no_high_chair_here'
-        -- NOTE: capacity and minimum party size are deliberately NOT judged here.
-        -- They decide whether a table can hold the party ON ITS OWN, which is a
-        -- question only the single-table branch asks. A member of a join does not
-        -- need to fit the whole party, and applying a per-table minimum to members
-        -- would block every large join. Both are applied in `singles` below.
         WHEN EXISTS (
               SELECT 1
               FROM public.booking_table_assignments bta
@@ -224,112 +270,119 @@ BEGIN
                 AND public.windows_overlap(bta.start_datetime, bta.end_datetime, p_start_at, p_end_at)
              )
           THEN 'table_occupied'
+        -- Review finding F7: a communal row whose parent event booking is cancelled, or whose
+        -- payment hold has expired, is not live. Joining to `bookings` stops a dead event
+        -- holding a table hostage.
         WHEN EXISTS (
               SELECT 1
               FROM public.event_communal_seat_allocations eca
+              JOIN public.bookings b ON b.id = eca.event_booking_id
               WHERE eca.table_id = t.id
+                AND public.is_active_event_booking_for_capacity_v01(b.status, b.hold_expires_at)
                 AND public.windows_overlap(eca.start_datetime, eca.end_datetime, p_start_at, p_end_at)
              )
           THEN 'table_communal'
         -- The check that went missing on 9 May 2026.
         WHEN public.is_table_blocked_by_private_booking_v05(t.id, p_start_at, p_end_at, NULL)
           THEN 'table_private_block'
-        WHEN public.table_is_held(t.id, p_start_at, p_channel, v_release_lead, v_ignore_hold, p_now)
-          THEN 'table_held'
+        -- Maintenance bites on every channel. Checked with the full window (F2).
+        WHEN public.table_is_held(t.id, p_start_at, p_end_at, 'staff', v_release_lead, true, p_now)
+          THEN 'table_blocked'
         ELSE NULL
-      END AS reason
+      END AS hard_reason
     FROM public.tables t
   ),
-  valid AS (
-    SELECT * FROM scored WHERE reason IS NULL
+  -- Review finding F4: a walk-in hold withholds a table from ONLINE SINGLE-TABLE sale.
+  -- It must NOT remove the table from joined combinations, or holding Low 4a pushes every
+  -- online party of seven into the Dining Room, undoing the fix this release exists for.
+  -- So eligibility splits in two. Maintenance stays in `hard_reason` and is excluded from both.
+  usable AS (
+    SELECT sc.*,
+           public.table_is_held(sc.id, p_start_at, p_end_at, p_channel, v_release_lead, v_ignore_hold, p_now)
+             AS walk_in_held
+    FROM scored sc
+    WHERE sc.hard_reason IS NULL
   ),
-  -- Single tables. Best fit first ("maximise covers wherever possible"), then the house order, then a
-  -- deterministic tie-break. A table the staff explicitly picked is promoted ahead of everything.
+  valid_for_single AS (
+    SELECT * FROM usable u
+    WHERE NOT u.walk_in_held
+      AND u.capacity >= p_party_size
+      AND NOT (v_minimums_live AND p_party_size < u.min_party_size)
+  ),
+  valid_for_combination AS (
+    SELECT * FROM usable    -- held tables ARE allowed here
+  ),
   singles AS (
     SELECT
-      ARRAY[v.id]   AS ids,
-      ARRAY[v.name] AS names,
-      v.capacity    AS cap,
-      1             AS cnt,
-      v.priority    AS worst_prio,
+      ARRAY[v.id] AS ids, v.capacity AS cap, 1 AS cnt, v.priority AS worst_prio,
       ROW_NUMBER() OVER (
         ORDER BY
-          CASE WHEN p_preferred_table_ids IS NOT NULL AND v.id = ANY (p_preferred_table_ids)
-               THEN 0 ELSE 1 END,
-          v.capacity ASC,
-          v.priority ASC,
-          v.number_sort ASC
+          CASE WHEN p_preferred_table_ids IS NOT NULL
+                AND cardinality(p_preferred_table_ids) = 1
+                AND v.id = ANY (p_preferred_table_ids) THEN 0 ELSE 1 END,
+          v.capacity ASC, v.priority ASC, v.number_sort ASC
       )::integer AS rnk
-    FROM valid v
-    WHERE v.capacity >= p_party_size
-      AND NOT (v_minimums_live AND p_party_size < v.min_party_size)
+    FROM valid_for_single v
   ),
-  -- Combinations, searched only when no single table fits.
+  -- Review finding F6: enumerate subsets completely, then test connectivity, rather than
+  -- pruning growth by adjacency (which could never build a valid A-C-B run).
+  -- Review finding F5: no hard eight-table cap. The bound is the number of usable tables,
+  -- so a staff party of 40 across nine free tables is reachable.
   combos AS (
     WITH RECURSIVE walk AS (
-      SELECT
-        ARRAY[v.id]   AS ids,
-        ARRAY[v.name] AS names,
-        v.capacity    AS cap,
-        1             AS cnt,
-        v.priority    AS worst_prio,
-        v.id          AS last_id
-      FROM valid v
-
+      SELECT ARRAY[v.id] AS ids, v.capacity AS cap, 1 AS cnt, v.priority AS worst_prio, v.id AS last_id
+      FROM valid_for_combination v
       UNION ALL
-
-      SELECT
-        w.ids || v.id,
-        w.names || v.name,
-        w.cap + v.capacity,
-        w.cnt + 1,
-        GREATEST(w.worst_prio, v.priority),
-        v.id
+      SELECT w.ids || v.id, w.cap + v.capacity, w.cnt + 1,
+             GREATEST(w.worst_prio, v.priority), v.id
       FROM walk w
-      JOIN valid v
-        ON v.id > w.last_id          -- ascending uuid keeps each set enumerated once
-       AND NOT (v.id = ANY (w.ids))
-      WHERE w.cnt < 8
-        AND w.cap < p_party_size     -- stop growing once the party already fits
-        AND (
-          v_allow_unjoined
-          OR EXISTS (                -- must physically join an existing member, links are undirected
-                SELECT 1 FROM public.table_join_links l
-                WHERE (l.table_id = v.id AND l.join_table_id = ANY (w.ids))
-                   OR (l.join_table_id = v.id AND l.table_id = ANY (w.ids))
-             )
-        )
+      JOIN valid_for_combination v ON v.id > w.last_id   -- ascending uuid: each subset once
+      WHERE w.cnt < (SELECT count(*) FROM valid_for_combination)
     )
     SELECT
-      w.ids, w.names, w.cap, w.cnt, w.worst_prio,
+      w.ids, w.cap, w.cnt, w.worst_prio,
       ROW_NUMBER() OVER (
         ORDER BY
-          w.cnt ASC,           -- a single table always beats a join; fewer tables always better
-          w.cap ASC,           -- then waste the fewest seats
-          w.worst_prio ASC,    -- then the house order: Low 4a+4b beats Dining Room 4a+4b at 7 and 8
-          w.ids ASC            -- deterministic, so tests are reproducible
+          -- An exactly-matching staff selection wins outright (F10).
+          CASE WHEN p_preferred_table_ids IS NOT NULL
+                AND w.ids @> p_preferred_table_ids
+                AND w.ids <@ p_preferred_table_ids THEN 0 ELSE 1 END,
+          w.cnt ASC,          -- fewest tables
+          w.cap ASC,          -- then waste the fewest seats
+          w.worst_prio ASC,   -- then the house order: Low 4a+4b beats Dining Room 4a+4b at 7 and 8
+          w.ids ASC           -- deterministic
       )::integer AS rnk
     FROM walk w
     WHERE w.cnt >= 2
       AND w.cap >= p_party_size
+      AND (v_allow_unjoined OR public.tables_are_connected(w.ids))
   )
-  -- Names are re-derived in table-number order for display. The id array stays in
-  -- ascending uuid order because that is what makes the tie-break deterministic,
-  -- but "Low 4a + Low 4b" is what a member of staff should read, not "Low 4b + Low 4a".
   SELECT s.ids, public.table_names_in_order(s.ids), s.cap, s.cnt, s.worst_prio, s.rnk, NULL::text
     FROM singles s
   UNION ALL
   SELECT c.ids, public.table_names_in_order(c.ids), c.cap, c.cnt, c.worst_prio,
-         -- Combinations rank strictly below every single table.
-         c.rnk + (SELECT COUNT(*) FROM singles)::integer,
-         NULL::text
+         c.rnk + (SELECT COUNT(*) FROM singles)::integer, NULL::text
     FROM combos c
    WHERE NOT EXISTS (SELECT 1 FROM singles)
   UNION ALL
-  -- Rejected tables, so availability and the staff screens can say why.
-  SELECT ARRAY[sc.id], ARRAY[sc.name], sc.capacity, 1, sc.priority, NULL::integer, sc.reason
+  -- Rejected tables, with the reason, so availability and the staff screens can explain
+  -- themselves. Review finding F14: capacity and minimum-party rejections are reported for
+  -- SINGLE-table suitability, having been excluded from the hard filters so that a small
+  -- table is still usable inside a join.
+  SELECT ARRAY[sc.id], ARRAY[sc.name], sc.capacity, 1, sc.priority, NULL::integer,
+         COALESCE(
+           sc.hard_reason,
+           CASE
+             WHEN sc.capacity < p_party_size THEN 'too_large_for_table'
+             WHEN v_minimums_live AND p_party_size < sc.min_party_size THEN 'below_table_minimum'
+             WHEN public.table_is_held(sc.id, p_start_at, p_end_at, p_channel, v_release_lead, v_ignore_hold, p_now)
+               THEN 'table_held'
+           END)
     FROM scored sc
-   WHERE sc.reason IS NOT NULL;
+   WHERE sc.hard_reason IS NOT NULL
+      OR sc.capacity < p_party_size
+      OR (v_minimums_live AND p_party_size < sc.min_party_size)
+      OR public.table_is_held(sc.id, p_start_at, p_end_at, p_channel, v_release_lead, v_ignore_hold, p_now);
 END;
 $$;
 
@@ -339,13 +392,15 @@ COMMENT ON FUNCTION public.find_table_allocation_candidates IS
 REVOKE ALL ON FUNCTION public.find_table_allocation_candidates(
   timestamptz, timestamptz, integer, text, integer, boolean, uuid[], text, uuid,
   public.table_allocation_overrides, timestamptz) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.table_is_held(uuid, timestamptz, text, integer, boolean, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.table_is_held(uuid, timestamptz, timestamptz, text, integer, boolean, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.tables_are_connected(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.tables_are_connected(uuid[]) TO service_role;
 REVOKE ALL ON FUNCTION public.table_names_in_order(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.table_names_in_order(uuid[]) TO service_role;
 
 GRANT EXECUTE ON FUNCTION public.find_table_allocation_candidates(
   timestamptz, timestamptz, integer, text, integer, boolean, uuid[], text, uuid,
   public.table_allocation_overrides, timestamptz) TO service_role;
-GRANT EXECUTE ON FUNCTION public.table_is_held(uuid, timestamptz, text, integer, boolean, timestamptz) TO service_role;
+GRANT EXECUTE ON FUNCTION public.table_is_held(uuid, timestamptz, timestamptz, text, integer, boolean, timestamptz) TO service_role;
 
 COMMIT;

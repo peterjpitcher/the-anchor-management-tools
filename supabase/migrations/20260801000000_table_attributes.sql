@@ -13,30 +13,51 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
-  v_missing text;
+  v_problem text;
 BEGIN
-  SELECT string_agg(expected.id::text, ', ')
-    INTO v_missing
-  FROM (VALUES
-    ('23d64766-a079-4700-9a07-708e3de2c8f6'::uuid),
-    ('d0b22c8d-ac37-41b3-9c8b-45eb174f29c6'::uuid),
-    ('37d61f34-0eed-4a97-9e8c-aa868fdfe779'::uuid),
-    ('ea61faf9-ebfc-4964-bd60-ef907af36848'::uuid),
-    ('8ff55f2a-86cb-4b2d-ae74-2d8cae44499b'::uuid),
-    ('8f573b96-a337-4d6f-b21c-a7577471cec2'::uuid),
-    ('ce917bec-36e8-472c-acfd-87f0d58f7d32'::uuid),
-    ('39350c06-d5ea-4cea-a742-9ea78ebc0557'::uuid),
-    ('f16044f7-8dcf-4403-8e89-02992fdc9532'::uuid),
-    ('5deb3b97-1f18-4ee7-97c9-887b47ff504e'::uuid),
-    ('eca30e1a-9000-410a-97f3-c7bda2ed538b'::uuid),
-    ('fc306a12-0cb2-4692-bf3f-cfb89466abb6'::uuid)
-  ) AS expected(id)
-  WHERE NOT EXISTS (SELECT 1 FROM public.tables t WHERE t.id = expected.id);
+  -- Compared in BOTH directions, and on the values that matter, not just the ids.
+  -- Review finding F13: checking only that the expected ids exist let a newly added
+  -- bookable table through with generic defaults (priority 100, accessible, high-chair
+  -- capable), and the post-check then accepted priority 100 as real. A changed capacity
+  -- or bookable flag would also have passed unnoticed.
+  WITH expected(id, table_number, name, capacity, is_bookable) AS (VALUES
+    ('23d64766-a079-4700-9a07-708e3de2c8f6'::uuid,  '1', 'Electric Cupbard', 4, false),
+    ('d0b22c8d-ac37-41b3-9c8b-45eb174f29c6'::uuid,  '2', 'Big Bay',          6, true),
+    ('37d61f34-0eed-4a97-9e8c-aa868fdfe779'::uuid,  '3', 'Small Bay',        5, true),
+    ('ea61faf9-ebfc-4964-bd60-ef907af36848'::uuid,  '4', 'Low 4a',           4, true),
+    ('8ff55f2a-86cb-4b2d-ae74-2d8cae44499b'::uuid,  '5', 'Low 4b',           4, true),
+    ('8f573b96-a337-4d6f-b21c-a7577471cec2'::uuid,  '6', 'High 4',           4, true),
+    ('ce917bec-36e8-472c-acfd-87f0d58f7d32'::uuid,  '7', 'High 2',           4, false),
+    ('39350c06-d5ea-4cea-a742-9ea78ebc0557'::uuid,  '8', 'Dining Room 4a',   4, true),
+    ('f16044f7-8dcf-4403-8e89-02992fdc9532'::uuid,  '9', 'Dining Room 4b',   4, true),
+    ('5deb3b97-1f18-4ee7-97c9-887b47ff504e'::uuid, '10', 'Dining Room 6a',   6, true),
+    ('eca30e1a-9000-410a-97f3-c7bda2ed538b'::uuid, '11', 'Dining Room 6b',   6, true),
+    ('fc306a12-0cb2-4692-bf3f-cfb89466abb6'::uuid, '12', 'Dining Room 6c',   6, true)
+  )
+  SELECT string_agg(msg, '; ') INTO v_problem FROM (
+    SELECT format('missing table %s (%s)', e.name, e.id) AS msg
+      FROM expected e
+     WHERE NOT EXISTS (SELECT 1 FROM public.tables t WHERE t.id = e.id)
+    UNION ALL
+    SELECT format('unexpected table %s (%s) is present', COALESCE(t.name, t.table_number), t.id)
+      FROM public.tables t
+     WHERE NOT EXISTS (SELECT 1 FROM expected e WHERE e.id = t.id)
+    UNION ALL
+    SELECT format('%s has changed: expected number %s / capacity %s / bookable %s, found %s / %s / %s',
+                  e.name, e.table_number, e.capacity, e.is_bookable,
+                  t.table_number, t.capacity, t.is_bookable)
+      FROM expected e
+      JOIN public.tables t ON t.id = e.id
+     WHERE t.table_number IS DISTINCT FROM e.table_number
+        OR t.capacity     IS DISTINCT FROM e.capacity
+        OR COALESCE(t.is_bookable, true) IS DISTINCT FROM e.is_bookable
+  ) problems;
 
-  IF v_missing IS NOT NULL THEN
-    RAISE EXCEPTION
-      'Table set has drifted since the 2026-07-27 baseline; missing ids: %. Re-capture the baseline before applying.',
-      v_missing;
+  IF v_problem IS NOT NULL THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'The floor has changed since the 2026-07-27 baseline.',
+      DETAIL  = v_problem,
+      HINT    = 'Re-capture tasks/artefacts/ and write a new backfill. Do not let a new table inherit generic defaults.';
   END IF;
 END;
 $$;
