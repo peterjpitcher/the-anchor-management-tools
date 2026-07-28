@@ -4,6 +4,7 @@ import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { TableSetupManager } from './TableSetupManager'
+import { AllocationSettings } from './AllocationSettings'
 
 export default async function TableSetupSettingsPage() {
   const canManage = await checkUserPermission('settings', 'manage')
@@ -21,6 +22,7 @@ export default async function TableSetupSettingsPage() {
       <Section title="Table booking setup">
         <Card>
           <TableSetupManager />
+          <AllocationSettings />
         </Card>
       </Section>
     </PageLayout>
