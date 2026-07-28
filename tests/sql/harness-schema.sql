@@ -181,3 +181,14 @@ CREATE OR REPLACE FUNCTION public.is_active_event_booking_for_capacity_v01(
   SELECT p_status IS DISTINCT FROM 'cancelled'
      AND (p_hold_expires_at IS NULL OR p_hold_expires_at > now());
 $$;
+
+-- The production assignment trigger is attached here on purpose. Without it the harness
+-- could not see a selection-versus-enforcement disagreement (review finding F8), which is
+-- exactly the class of bug that let the private-booking regression survive.
+-- The function body itself is installed by migration 20260801001000.
+CREATE OR REPLACE FUNCTION public.enforce_booking_table_assignment_integrity_v05()
+RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;
+
+CREATE TRIGGER trg_enforce_booking_table_assignment_integrity_v05
+  BEFORE INSERT OR UPDATE ON public.booking_table_assignments
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_booking_table_assignment_integrity_v05();

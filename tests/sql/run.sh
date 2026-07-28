@@ -63,6 +63,7 @@ ALLOCATION_MIGRATIONS="
 20260801000600_booking_liveness_helpers.sql
 20260801000700_allocation_candidates.sql
 20260801000800_event_communal_allocation_v02.sql
+20260801001000_trigger_liveness_parity.sql
 "
 
 echo "Applying allocation migrations..."
