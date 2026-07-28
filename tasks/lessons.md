@@ -144,3 +144,17 @@ Also from the same review: Efraimidis-Spirakis weighted sampling key is random()
 so with weight = 1/(1+n) the exponent is (1+n), NOT 1/(1+n). The reciprocal silently
 inverts the whole distribution (favouring exactly what you meant to de-prioritise) with no
 error. Weighted-random direction bugs are invisible without a distribution check.
+
+## 2026-07-28 — Ask questions as a numbered list, always
+
+Corrected by the owner: I ended a reply with five open questions as bullet points.
+The global CLAUDE.md already specifies numbered questions (1, 2, 3) with a
+recommendation on the same line, precisely so the reply can be "1 yes, 2 no,
+3 the second one". Bullets force the owner to quote or re-describe each question
+to answer it, which is exactly the friction the rule exists to remove.
+
+Rule: any time a reply ends by asking the owner something, the questions are a
+numbered list. One sentence each, plain English, recommendation inline. This
+applies to the "You need to:" block as much as to a mid-reply question, and it
+applies even when there is only one question, because the numbering signals that
+an answer is wanted rather than that a point is being made.
