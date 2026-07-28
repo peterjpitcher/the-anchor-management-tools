@@ -72,6 +72,10 @@ const CreateTableBookingSchema = z.object({
   // below the request). `outside_seating` holds no indoor table but still paces.
   high_chair_count: z.coerce.number().int().min(0).max(2).optional(),
   outside_seating: z.boolean().optional(),
+  // "I need an accessible table (step-free, with standard-height seating)". A booking-level
+  // seating requirement, never a reason or a diagnosis: under UK GDPR a health reason would be
+  // special-category data and a seating requirement is not, provided we never record why.
+  requires_accessible_table: z.boolean().optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   skip_customer_sms: z.boolean().optional(),
   communication_consent: OptionalCommunicationConsentSchema
@@ -248,7 +252,14 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
 
-      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_table_booking_v05', {
+      // Public path, so the PUBLIC entry point. It cannot be told who is calling: no
+      // channel, no overrides, no pin, and it cannot bypass the cut-off or pacing whatever
+      // is passed. Privileged behaviour lives in create_table_booking_staff_v06, which is
+      // service-role only.
+      //
+      // v06 falls back to v05 internally while table_allocation_v06_enabled is false, so
+      // this switch is inert until the flag is turned on.
+      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_table_booking_public_v06', {
         p_customer_id: customerResolution.customerId,
         p_booking_date: payload.date,
         p_booking_time: bookingTime,
@@ -259,12 +270,12 @@ export async function POST(request: NextRequest) {
         // regular table-booking path.
         p_sunday_lunch: false,
         p_source: 'brand_site',
-        // Drinks do not use kitchen capacity.
-        p_bypass_pacing: payload.purpose === 'drinks',
-        // High chairs are granted atomically inside the RPC (never via the
-        // post-insert UPDATE below); outside bookings hold no indoor table.
+        // Drinks pacing is handled by the drinks arrivals ceiling inside v06, so the
+        // caller no longer asks to bypass anything. A public caller could not bypass
+        // pacing even if it did.
         p_high_chair_count: payload.high_chair_count ?? 0,
-        p_outside_seating: payload.outside_seating ?? false
+        p_outside_seating: payload.outside_seating ?? false,
+        p_requires_accessible_table: payload.requires_accessible_table ?? false
       })
 
       let bookingResult: TableBookingRpcResult
@@ -284,7 +295,7 @@ export async function POST(request: NextRequest) {
           if (christmasRuleMessage) {
             return createErrorResponse(christmasRuleMessage, 'VALIDATION_ERROR', 400)
           }
-          logger.error('create_table_booking_v05 RPC failed', {
+          logger.error('create_table_booking_public_v06 RPC failed', {
             error: new Error(rpcError.message),
             metadata: {
               customerId: customerResolution.customerId,
