@@ -406,6 +406,58 @@ BEGIN
     WHERE c.reason_code = 'too_large_for_table' AND 'High 4' = ANY (c.table_names)
   ), 'a table too small for the party must return a reason row, not vanish';
 
+  -- ===================================================================
+  -- F8. Selection and enforcement must agree. The real production trigger is
+  --     attached in this harness, so a disagreement shows up as a raised
+  --     exception rather than passing silently.
+  --
+  --     An expired UNPAID deposit hold is released by the picker. Before this
+  --     fix the trigger still counted it as live, so the picker offered a table
+  --     the insert then refused with 23P01, and the booking failed outright.
+  -- ===================================================================
+  INSERT INTO public.table_bookings
+    (id, booking_date, booking_time, party_size, status, payment_status, hold_expires_at, start_datetime, end_datetime)
+  VALUES ('44444444-4444-4444-4444-444444444444','2026-09-16','18:00',2,
+          'pending_payment','pending','2026-01-01 09:00+00',
+          '2026-09-16 18:00+01','2026-09-16 20:00+01');
+  INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
+  VALUES ('44444444-4444-4444-4444-444444444444','39350c06-d5ea-4cea-a742-9ea78ebc0557',
+          '2026-09-16 18:00+01','2026-09-16 20:15+01');
+
+  -- The picker says Dining Room 4a is free, because the hold expired unpaid.
+  r := pg_temp.pick(2, 'staff');
+  ASSERT r = 'Dining Room 4a',
+    format('the picker should release a table held by an expired unpaid hold; got %L', r);
+
+  -- ...and the trigger must agree, so the insert actually succeeds.
+  INSERT INTO public.table_bookings (id, booking_date, booking_time, party_size, status, start_datetime, end_datetime)
+  VALUES ('55555555-4444-4444-4444-444444444444','2026-09-16','18:00',2,'confirmed',
+          '2026-09-16 18:00+01','2026-09-16 20:00+01');
+  INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
+  VALUES ('55555555-4444-4444-4444-444444444444','39350c06-d5ea-4cea-a742-9ea78ebc0557',
+          '2026-09-16 18:00+01','2026-09-16 20:15+01');
+
+  -- And the converse: once that deposit is PAID, both must hold the table.
+  UPDATE public.table_bookings SET payment_status = 'completed'
+   WHERE id = '44444444-4444-4444-4444-444444444444';
+  DELETE FROM public.booking_table_assignments
+   WHERE table_booking_id = '55555555-4444-4444-4444-444444444444';
+
+  ASSERT pg_temp.pick(2, 'staff') <> 'Dining Room 4a',
+    'an expired but PAID hold must keep its table in the picker';
+
+  BEGIN
+    INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
+    VALUES ('55555555-4444-4444-4444-444444444444','39350c06-d5ea-4cea-a742-9ea78ebc0557',
+            '2026-09-16 18:00+01','2026-09-16 20:15+01');
+    ASSERT false, 'the trigger must refuse a table held by an expired but PAID hold';
+  EXCEPTION WHEN exclusion_violation THEN
+    NULL;  -- expected
+  END;
+
+  DELETE FROM public.booking_table_assignments;
+  DELETE FROM public.table_bookings;
+
   RAISE NOTICE 'ALL ALLOCATION TESTS PASSED';
 END;
 $$;
