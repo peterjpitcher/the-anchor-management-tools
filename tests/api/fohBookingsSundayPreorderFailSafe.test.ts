@@ -57,7 +57,7 @@ describe('FOH bookings retired Sunday preorder guards', () => {
   it('ignores stale FOH pre-order payload fields and creates a regular booking', async () => {
     const supabase = {
       rpc: vi.fn((fn: string, args: Record<string, unknown>) => {
-        if (fn === 'create_table_booking_v05') {
+        if (fn === 'create_table_booking_staff_v06') {
           expect(args).toEqual(
             expect.objectContaining({
               p_sunday_lunch: false,
@@ -131,7 +131,7 @@ describe('FOH bookings retired Sunday preorder guards', () => {
   it('does not auto-promote Sunday food bookings into the legacy sunday_lunch type', async () => {
     const supabase = {
       rpc: vi.fn((fn: string, args: Record<string, unknown>) => {
-        if (fn === 'create_table_booking_v05') {
+        if (fn === 'create_table_booking_staff_v06') {
           expect(args.p_sunday_lunch).toBe(false)
 
           return Promise.resolve({

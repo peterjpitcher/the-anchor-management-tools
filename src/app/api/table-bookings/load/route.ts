@@ -22,6 +22,7 @@ import {
   type KitchenBookingRow,
 } from '@/lib/table-bookings/kitchen-pacing'
 import { getKitchenWindowForDate } from '@/services/business-hours'
+import { logger } from '@/lib/logger'
 
 // Grid resolution for the per-slot availability read-out (minutes between offered times).
 const SLOT_STEP_MINUTES = 15
@@ -88,7 +89,19 @@ export async function OPTIONS() {
 
 export async function GET(request: NextRequest) {
   return withApiAuth(async (req) => {
-    const date = new URL(req.url).searchParams.get('date')
+    const url = new URL(req.url)
+    const date = url.searchParams.get('date')
+
+    // The inputs that decide which TABLES qualify, not just how many covers fit. The old
+    // endpoint accepted none of these, which is why its answer was the same whether one
+    // person or six were booking.
+    const partySizeRaw = url.searchParams.get('party_size')
+    const partySize = partySizeRaw ? Number.parseInt(partySizeRaw, 10) : null
+    const purpose = url.searchParams.get('purpose') === 'drinks' ? 'drinks' : 'food'
+    const outside = url.searchParams.get('outside') === 'true'
+    const requiresAccessibleTable = url.searchParams.get('requires_accessible_table') === 'true'
+    const highChairCountRaw = url.searchParams.get('high_chair_count')
+    const highChairCount = highChairCountRaw ? Number.parseInt(highChairCountRaw, 10) || 0 : 0
 
     if (!isValidCalendarDate(date)) {
       return createErrorResponse('Date must use YYYY-MM-DD format', 'VALIDATION_ERROR', 400)
@@ -143,9 +156,55 @@ export async function GET(request: NextRequest) {
       SLOT_STEP_MINUTES
     )
 
+    // ---------------------------------------------------------------------
+    // Real table availability, additive alongside the existing covers fields.
+    //
+    // The covers-only `slots` above is what made the website advertise 7pm when
+    // every table was taken: it never looks at tables, joins, private bookings or
+    // communal events, and it is not party-size aware. `table_availability` asks
+    // the same picker the booking function asks, so if it says yes, create agrees.
+    //
+    // Additive on purpose. An un-deployed website keeps reading `slots` and works
+    // exactly as before; a deployed one reads `table_availability` and stops lying.
+    // The old shape goes only once no client is reading it.
+    // ---------------------------------------------------------------------
+    let tableAvailability: unknown = null
+    if (partySize && partySize > 0) {
+      const { data, error } = await supabase.rpc('check_table_availability_v06', {
+        p_booking_date: date,
+        p_party_size: partySize,
+        p_purpose: purpose,
+        p_outside: outside,
+        p_requires_accessible_table: requiresAccessibleTable,
+        p_high_chair_count: highChairCount,
+        p_channel: 'online',
+      })
+
+      if (error) {
+        // Never fail open. A failed calculation is "unknown", so the website says
+        // "we cannot check right now, please ring" rather than offering a slot it
+        // cannot stand behind.
+        logger.error('check_table_availability_v06 failed', {
+          error: new Error(error.message),
+          metadata: { date, partySize, purpose },
+        })
+        tableAvailability = {
+          contract_version: 1,
+          calculation_state: 'unknown',
+          date,
+          party_size: partySize,
+          slots: [],
+          public_reason: 'unknown',
+        }
+      } else {
+        tableAvailability = data
+      }
+    }
+
     return createApiResponse(
       {
         date,
+        table_availability: tableAvailability,
         window_minutes: publicSettings.window_minutes,
         busy_threshold_covers: publicSettings.busy_threshold_covers,
         filling_threshold_covers: publicSettings.filling_threshold_covers,

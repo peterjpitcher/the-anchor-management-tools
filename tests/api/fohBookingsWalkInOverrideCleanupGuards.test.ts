@@ -141,7 +141,7 @@ describe('FOH bookings walk-in override cleanup guards', () => {
         throw new Error(`Unexpected table: ${table}`)
       }),
       rpc: vi.fn((fn: string) => {
-        if (fn === 'create_table_booking_v05') {
+        if (fn === 'create_table_booking_staff_v06') {
           return Promise.resolve({
             data: {
               state: 'blocked',

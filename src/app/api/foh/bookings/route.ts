@@ -59,6 +59,7 @@ const CreateFohTableBookingSchema = z.object({
   // no indoor table but still paces.
   high_chair_count: z.coerce.number().int().min(0).max(2).optional(),
   outside_seating: z.boolean().optional(),
+  requires_accessible_table: z.boolean().optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
@@ -1206,7 +1207,14 @@ export async function POST(request: NextRequest) {
     bypassPacing = true
   }
 
-  const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_table_booking_v05', {
+  // Staff path, so the STAFF entry point. It is service-role only, and this route has
+  // already run requireFohTableBookingPermission above, which is what proves authority.
+  // The channel is never taken from the request body: it is derived here from whether the
+  // booking is a walk-in, so a caller cannot claim a channel it has not earned.
+  //
+  // v06 falls back to v05 internally while table_allocation_v06_enabled is false, so this
+  // switch is inert until the flag is turned on.
+  const { data: rpcResultRaw, error: rpcError } = await auth.supabase.rpc('create_table_booking_staff_v06', {
     p_customer_id: customerId,
     p_booking_date: payload.date,
     p_booking_time: bookingTime,
@@ -1220,10 +1228,15 @@ export async function POST(request: NextRequest) {
     // matching the explicit waive_deposit path.
     p_deposit_waived: treatAsWaived,
     p_bypass_pacing: bypassPacing,
-    // Chairs are a hard ceiling for everyone — no override flag. Granted
+    // Chairs are a hard ceiling for everyone, with no override flag. Granted
     // atomically inside the RPC; outside bookings hold no indoor table.
     p_high_chair_count: payload.high_chair_count ?? 0,
-    p_outside_seating: payload.outside_seating ?? false
+    p_outside_seating: payload.outside_seating ?? false,
+    p_requires_accessible_table: payload.requires_accessible_table ?? false,
+    // A walk-in is not subject to the online holds or minimum party sizes: the guest is
+    // standing at the bar.
+    p_channel: payload.walk_in === true ? 'walkin' : 'staff',
+    p_actor_id: auth.userId ?? null
   })
 
   let bookingResult: TableBookingRpcResult
@@ -1243,7 +1256,7 @@ export async function POST(request: NextRequest) {
       if (christmasRuleMessage) {
         return NextResponse.json({ error: christmasRuleMessage }, { status: 400 })
       }
-      logger.error('create_table_booking_v05 RPC failed for FOH create', {
+      logger.error('create_table_booking_staff_v06 RPC failed for FOH create', {
         error: new Error(rpcError.message),
         metadata: {
           userId: auth.userId,

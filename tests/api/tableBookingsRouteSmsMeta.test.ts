@@ -96,7 +96,7 @@ describe('table bookings route SMS safety meta', () => {
 
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_table_booking_v05') {
+        if (name === 'create_table_booking_public_v06') {
           return {
             data: {
               state: 'confirmed',
@@ -159,7 +159,7 @@ describe('table bookings route SMS safety meta', () => {
 
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_table_booking_v05') {
+        if (name === 'create_table_booking_public_v06') {
           return {
             data: {
               state: 'confirmed',
@@ -237,7 +237,7 @@ describe('table bookings route SMS safety meta', () => {
 
     ;(createAdminClient as unknown as vi.Mock).mockReturnValue({
       rpc: vi.fn(async (name: string) => {
-        if (name === 'create_table_booking_v05') {
+        if (name === 'create_table_booking_public_v06') {
           return {
             data: {
               state: 'confirmed',

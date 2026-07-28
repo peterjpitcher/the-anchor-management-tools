@@ -127,7 +127,7 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
 
     expect(res.status).toBe(201)
     expect(db.rpc).toHaveBeenCalledWith(
-      'create_table_booking_v05',
+      'create_table_booking_staff_v06',
       expect.objectContaining({ p_bypass_pacing: true }),
     )
   })
@@ -148,7 +148,7 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
 
     expect(res.status).toBe(201)
     expect(db.rpc).toHaveBeenCalledWith(
-      'create_table_booking_v05',
+      'create_table_booking_staff_v06',
       expect.objectContaining({ p_bypass_pacing: false }),
     )
   })
@@ -169,7 +169,7 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
 
     expect(res.status).toBe(201)
     expect(db.rpc).toHaveBeenCalledWith(
-      'create_table_booking_v05',
+      'create_table_booking_staff_v06',
       expect.objectContaining({ p_bypass_pacing: true }),
     )
   })
@@ -231,7 +231,7 @@ describe('POST /api/foh/bookings — kitchen pacing', () => {
 
     expect(res.status).toBe(201)
     expect(db.rpc).toHaveBeenCalledWith(
-      'create_table_booking_v05',
+      'create_table_booking_staff_v06',
       expect.objectContaining({ p_bypass_pacing: true }),
     )
   })

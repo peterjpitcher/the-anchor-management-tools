@@ -202,10 +202,17 @@ describe('POST /api/table-bookings — structured persistence', () => {
     }) as any)
 
     expect(response.status).toBeLessThan(500)
-    expect(supabase.rpc).toHaveBeenCalledWith(
-      'create_table_booking_v05',
-      expect.objectContaining({ p_bypass_pacing: true }),
-    )
+
+    // The public path can no longer ask to bypass anything. It used to send
+    // p_bypass_pacing: true for drinks; a public entry point that accepts a bypass
+    // flag is a bypass anyone can use, which is the security hole the public/staff
+    // split closed. Drinks are limited by their own arrivals ceiling inside the
+    // function instead, so the outcome is the same and the lever is gone.
+    const [rpcName, rpcArgs] = (supabase.rpc as any).mock.calls.at(-1)
+    expect(rpcName).toBe('create_table_booking_public_v06')
+    expect(rpcArgs).not.toHaveProperty('p_bypass_pacing')
+    expect(rpcArgs).not.toHaveProperty('p_bypass_cutoff')
+    expect(rpcArgs).toMatchObject({ p_booking_purpose: 'drinks' })
   })
 
   // Sunday pre-order fields are now legacy input. The public POST path no
