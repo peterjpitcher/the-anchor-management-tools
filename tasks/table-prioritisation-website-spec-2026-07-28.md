@@ -188,7 +188,7 @@ changed without a deploy.
 |------|-------|
 | `ANCHOR_API_KEY` | Set. Server-side only. Must never reach the browser |
 | `ANCHOR_API_BASE_URL` | Optional, defaults to `https://management.orangejelly.co.uk/api` |
-| `CORS_ALLOWED_ORIGIN` on the AMS Vercel project | **Believed still unset**, so AMS defaults to `*`. Flagged in March 2026 and not actioned. Verify and set to `https://www.the-anchor.pub` |
+| `CORS_ALLOWED_ORIGIN` on the AMS Vercel project | **Correction 2026-07-28:** an earlier note here claimed an unset value defaults to `*`. It does not. `src/lib/api/auth.ts:136` sets `DEFAULT_CORS_ALLOWED_ORIGIN = 'https://www.the-anchor.pub'`, so the default is already safe. Worth verifying the deployed headers, but CORS is browser enforcement and is not the boundary: the website calls AMS server to server with an API key |
 | Rate limiting on the availability endpoint | None today. Availability will be called far more often once it re-requests on every party-size change. Needed before launch |
 
 Availability must stay `no-store`. Caching a scarce resource is how you sell the same table twice.

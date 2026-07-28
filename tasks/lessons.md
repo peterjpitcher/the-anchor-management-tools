@@ -64,3 +64,83 @@ UNCACHED build: `rm -rf .next && npm run build` (and delete `*.tsbuildinfo` befo
 definitive `tsc --noEmit`). Incremental caches make "works locally" unreliable; the
 authoritative gate is what Vercel runs — a cold build. This is doubly true in a fresh
 git worktree, where a stale cache can carry a pre-edit clean result forward.
+
+## 2026-07-17 — Never put a subagent's aggregate to the user without running the query
+
+During checklists discovery I told the owner "73% of scheduled shifts have no clock-in,
+Billy has never clocked in" and framed it as a KILLER FINDING that broke his design. He
+pushed back — "someone's always clocked in when working" — and he was right. The subagent
+had counted `status='sick'`, `status='cancelled'` and open (unassigned) shifts as
+"didn't turn up". Re-run with `status='scheduled' AND is_open_shift=false AND employee_id
+IS NOT NULL`, the real figure is 82–100% per person. Only Billy (Cook, 0/40) and Peter
+(Host, 0/8) genuinely never clock in — which is a small, specific, kitchen-shaped problem,
+not a design-breaking one.
+
+**Rule:** a headline number that contradicts the owner's direct knowledge of his own
+business is a signal the QUERY is wrong, not the business. Before presenting any aggregate
+from a subagent as fact — especially one that overturns a user decision — run the query
+yourself and check its filters. `rota_shifts` in particular has three traps that inflate a
+naive no-show count: `status='sick'` ("Couldn't Work"), `status='cancelled'`, and
+`is_open_shift=true` rows with a NULL `employee_id`.
+
+The cost of getting this wrong isn't just the wrong answer — it's asking the owner to
+re-decide something on false evidence.
+
+## 2026-07-17 — Finding-level adversarial review misses cross-section contradictions
+
+My five-lens multi-agent review of the checklists spec verified 20 findings against the
+code and I applied them all, then an external developer review still found four genuine
+contradictions I had written: the floating-task lifecycle conflicted with the sweep and
+locking rules two sections later, two accountability rules disagreed about who owns a
+miss, a job type had registration instructions but no behaviour, and the rollback section
+described only one of Phase 2's five live changes.
+
+Pattern: verify-the-claim review checks each statement in isolation, so it catches wrong
+line numbers and false claims about code, but it does not catch section A contradicting
+section B, or a lifecycle that dies when two rules interact. Those need a different lens:
+walk one object (a floating instance, a missed task, a rollback) through the WHOLE
+document end to end and see if every section agrees about it.
+
+Rule: after fixing finding-level review output on any spec, run at least one
+walk-an-object-through-the-document pass (or commission one) before calling it buildable.
+
+## 2026-07-18 — `supabase db push --dry-run` does NOT execute DDL; validate in a rolled-back txn
+
+The checklists foundation migration passed `db push --dry-run` but would have FAILED on a
+real `db push`: it had a column named `window`, a reserved SQL keyword, which errors on
+parse and rolls back the whole migration. The dry-run only checks the file is recognised and
+sorts correctly; it never runs the SQL against Postgres, so it cannot catch reserved-word
+columns, bad CHECK expressions, or any runtime DDL error. An adversarial reviewer caught it.
+
+**Rule:** before trusting a non-trivial migration, validate that it actually EXECUTES.
+Safe technique via the Supabase MCP: first probe that the tool honours transactions
+(`BEGIN; CREATE TABLE public._probe(x int); ROLLBACK;` then check the probe did not persist),
+then run the ENTIRE migration wrapped in `BEGIN; <migration>; <validation SELECTs>; ROLLBACK;`.
+It executes every statement (catching real errors) and persists nothing. All the checklists
+DDL is transaction-safe (no CREATE INDEX CONCURRENTLY / ALTER TYPE ADD VALUE), so this works.
+Confirm zero leaked objects afterwards.
+
+Also: a Postgres CHECK constraint is satisfied when it evaluates to NULL (unknown), so
+`anchor <> 'every' OR every_hours > 0` does NOT reject `anchor='every' AND every_hours IS
+NULL` (the `> 0` is NULL). Add explicit `... IS NOT NULL AND ...` guards or the constraint
+has a NULL-hole.
+
+## 2026-07-18 — Idempotent "reconcile" generators must preserve deliberately-excluded rows
+
+Building the checklists generation job, the reconcile step retracted (deleted) any pending
+instance whose (template, slot) was not in the freshly-computed desired set. But floating
+tasks with an already-open pending instance are deliberately EXCLUDED from the desired set
+(they must not be regenerated), so on any same-day re-run (a manual "regenerate", or a job-
+queue retry of the same payload) the retract deleted the live floating instance and
+corrupted its completion-anchored recurrence. The job's own header claimed "safe to retry."
+
+Rule: when a generator both (a) excludes some items from its desired set on purpose and
+(b) retracts anything not in the desired set, the retract MUST also skip the excluded set,
+or a re-run destroys live data. "Absent from desired" is ambiguous: it can mean "no longer
+wanted" OR "deliberately left alone". Distinguish them. Also: never call a reconcile
+"idempotent/safe to retry" until you have traced a literal second run, not just the first.
+
+Also from the same review: Efraimidis-Spirakis weighted sampling key is random()^(1/weight),
+so with weight = 1/(1+n) the exponent is (1+n), NOT 1/(1+n). The reciprocal silently
+inverts the whole distribution (favouring exactly what you meant to de-prioritise) with no
+error. Weighted-random direction bugs are invisible without a distribution check.
