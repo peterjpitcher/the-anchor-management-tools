@@ -4,6 +4,10 @@ import { FormSection } from '@/ds';
 import { FormGroup } from '@/ds';
 import { Input } from '@/ds';
 import { Textarea } from '@/ds';
+import { Checkbox } from '@/ds';
+import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils';
+// Staff can shorten or extend the window afterwards; this is only the default.
+import { DEFAULT_NEW_WINDOW_DAYS } from '@/lib/menu/new-product-window';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,6 +21,8 @@ export type DishFormState = {
   notes: string;
   is_active: boolean;
   is_sunday_lunch: boolean;
+  new_from: string;
+  new_until: string;
 };
 
 export const defaultDishForm: DishFormState = {
@@ -27,6 +33,8 @@ export const defaultDishForm: DishFormState = {
   notes: '',
   is_active: true,
   is_sunday_lunch: false,
+  new_from: '',
+  new_until: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -59,6 +67,14 @@ export function DishOverviewTab({
     targetPrice !== null && Number.isFinite(targetPrice)
       ? `£${targetPrice.toFixed(2)}`
       : null;
+
+  // new_from is what actually drives the badge, so it alone decides whether the
+  // dish counts as flagged.
+  const isMarkedNew = Boolean(formState.new_from);
+  const newWindowError =
+    formState.new_from && formState.new_until && formState.new_until < formState.new_from
+      ? 'The end date cannot be before the start date.'
+      : undefined;
 
   return (
     <div className="space-y-6">
@@ -115,6 +131,52 @@ export function DishOverviewTab({
             onChange={(e) => onChange({ notes: e.target.value })}
           />
         </FormGroup>
+      </FormSection>
+
+      <FormSection
+        title="New Product"
+        description="Shows a New badge on the website while the dish is still a launch item."
+      >
+        <Checkbox
+          label="Mark this dish as a new product"
+          checked={isMarkedNew}
+          onChange={(checked) => {
+            if (checked) {
+              const today = getTodayIsoDate();
+              onChange({
+                new_from: today,
+                new_until: getLocalIsoDateDaysAhead(DEFAULT_NEW_WINDOW_DAYS),
+              });
+            } else {
+              onChange({ new_from: '', new_until: '' });
+            }
+          }}
+        />
+
+        {isMarkedNew && (
+          <>
+            <FormGroup label="New from" help="First day the badge appears. Defaults to today.">
+              <Input
+                type="date"
+                value={formState.new_from}
+                onChange={(e) => onChange({ new_from: e.target.value })}
+              />
+            </FormGroup>
+
+            <FormGroup
+              label="New until"
+              help="Last day the badge appears. Defaults to 8 weeks after launch, then it clears itself."
+              error={newWindowError}
+            >
+              <Input
+                type="date"
+                value={formState.new_until}
+                min={formState.new_from || undefined}
+                onChange={(e) => onChange({ new_until: e.target.value })}
+              />
+            </FormGroup>
+          </>
+        )}
       </FormSection>
     </div>
   );

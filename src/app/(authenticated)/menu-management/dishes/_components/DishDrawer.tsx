@@ -194,6 +194,9 @@ export function DishDrawer({
         notes: (dishData.notes as string) || '',
         is_active: (dishData.is_active as boolean) ?? true,
         is_sunday_lunch: (dishData.is_sunday_lunch as boolean) ?? false,
+        // DATE columns arrive as YYYY-MM-DD and feed <input type="date"> as-is.
+        new_from: (dishData.new_from as string) || '',
+        new_until: (dishData.new_until as string) || '',
       };
 
       const newIngredients: DishIngredientFormRow[] = detailIngredients.length > 0
@@ -347,6 +350,17 @@ export function DishDrawer({
         return;
       }
 
+      if (
+        formState.new_from &&
+        formState.new_until &&
+        formState.new_until < formState.new_from
+      ) {
+        const message = 'The "new until" date cannot be before the "new from" date';
+        setServerError(message);
+        toast.error(message);
+        return;
+      }
+
       const payload = {
         name,
         description: formState.description || null,
@@ -355,6 +369,10 @@ export function DishDrawer({
         notes: formState.notes || null,
         is_active: formState.is_active,
         is_sunday_lunch: formState.is_sunday_lunch,
+        // Always sent, including as null: update_dish_transaction overwrites
+        // these columns, so omitting them would clear an existing badge.
+        new_from: formState.new_from || null,
+        new_until: formState.new_until || null,
         ingredients: formIngredients
           .filter((row) => row.ingredient_id && parseFloat(row.quantity || '0') > 0)
           .map((row) => ({
