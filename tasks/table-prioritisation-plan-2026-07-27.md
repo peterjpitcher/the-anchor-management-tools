@@ -294,6 +294,14 @@ Blocked on B4. Manual deploy. Uses the generated types from B4.
 
 - [ ] **G1.** Availability route passes party size, purpose, outside and accessibility; returns the new
       state, public reason and resolved text.
+      **Verified 2026-07-28**, `app/api/table-bookings/availability/route.ts`: the route already accepts
+      `party_size`, but line 120 is `void searchParams.get('purpose')`, with a comment saying purpose is
+      accepted "for backwards compatibility" and then discarded. Harmless today, wrong the moment food
+      and drinks use different house orders, because the same slot can then be available for one and not
+      the other. The route also builds its slot list **locally** from service windows plus a busyness
+      figure (`buildSlotsWithKitchenState`), and line 89 tests `available_capacity >= partySize`, which
+      is a covers number and not a table. The website never asks whether a table exists. This is the
+      false-availability problem seen from the website side.
 - [ ] **G2.** Remove the fail-open helper; render `calculation_state=unknown` as the call-us path.
 - [ ] **G3.** Form re-requests availability on any change to party size, purpose, outside or
       accessibility. Unavailable slots greyed with the reason beneath.
