@@ -47,6 +47,10 @@ interface MenuItem {
   allergens: string[];
   is_available: boolean;
   is_special: boolean;
+  /** True while today falls inside the dish's new-product badge window. */
+  is_new: boolean;
+  /** Last day the New badge shows, inclusive. Null when the dish is not flagged. */
+  new_until?: string | null;
   available_from?: string | null;
   available_until?: string | null;
   image_url?: string | null;
