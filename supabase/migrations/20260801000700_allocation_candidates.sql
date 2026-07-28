@@ -172,9 +172,11 @@ DECLARE
   v_ignore_access  boolean := COALESCE((p_overrides).ignore_accessibility, false);
   v_minimums_live  boolean;
 BEGIN
-  SELECT COALESCE((value ->> 'value')::integer, 24) INTO v_release_lead
-    FROM public.system_settings WHERE key = 'hold_release_lead_hours';
-  v_release_lead := COALESCE(v_release_lead, 24);
+  -- Guarded read (review finding F1). This used to be an unguarded
+  -- (value ->> 'value')::integer, so a manager saving 24.5 took every booking in
+  -- the pub down until the row was repaired by hand. A malformed value now falls
+  -- back to the coded default and warns.
+  v_release_lead := public.get_setting_int('hold_release_lead_hours', 24);
 
   -- Minimum party sizes are an online-only lever, and they lapse close to the sitting for exactly the
   -- reason a hard minimum is dangerous: it is Wednesday evening, every four-top has gone, three
