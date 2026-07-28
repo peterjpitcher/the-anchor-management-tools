@@ -10,7 +10,7 @@
 -- booking allocator had: nobody chose it, it just fell out of the column type.
 --
 -- v02 changes exactly two things:
---   1. ORDER BY t.event_priority ASC, then capacity, then table number cast to an integer.
+--   1. ORDER BY t.bar_priority ASC, then capacity, then table number cast to an integer.
 --   2. Liveness now uses the shared is_booking_live predicate, so an expired UNPAID deposit hold
 --      releases its seats to the event, and an expired PAID one does not. Every other path already
 --      behaves this way; this one was the odd one out.
@@ -94,7 +94,7 @@ BEGIN
       AND NOT public.is_table_blocked_by_private_booking_v05(t.id, p_start_datetime, p_end_datetime, NULL)
     -- THE CHANGE. Events fill the bar tables first and the Dining Room last.
     ORDER BY
-      t.event_priority ASC,
+      t.bar_priority ASC,
       t.capacity ASC,
       COALESCE(NULLIF(regexp_replace(t.table_number, '\D', '', 'g'), '')::integer, 9999) ASC
     FOR UPDATE OF t
@@ -141,7 +141,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.allocate_event_communal_seats_v02 IS
-  'Event communal seating. Fills by tables.event_priority, which is deliberately the reverse of tables.priority: events take the bar tables first so the Dining Room stays free for diners.';
+  'Event communal seating. Fills by tables.bar_priority, which is deliberately the reverse of tables.priority: events take the bar tables first so the Dining Room stays free for diners.';
 
 -- Reproduce the v01 ACL exactly.
 REVOKE ALL ON FUNCTION public.allocate_event_communal_seats_v02(uuid, uuid, integer, timestamptz, timestamptz) FROM PUBLIC;

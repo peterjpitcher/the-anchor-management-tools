@@ -1,9 +1,9 @@
 -- Behavioural proof for find_table_allocation_candidates and allocate_event_communal_seats_v02.
 -- Every assertion states the real-world behaviour it protects.
 --
--- Owner decision 2026-07-27: TWO opposed orders on one floor.
---   Table bookings : the Dining Room FIRST (that is where diners should eat), High 4 LAST.
---   Events         : the Dining Room LAST, so a quiz night does not eat the dining space.
+-- Owner decisions: TWO opposed orders on one floor.
+--   Food bookings     : the Dining Room FIRST (that is where diners should eat), High 4 LAST.
+--   Drinks and events : the Dining Room LAST, overflowing into it only once the bar is full.
 
 \set ON_ERROR_STOP on
 
@@ -12,11 +12,12 @@ CREATE OR REPLACE FUNCTION pg_temp.pick(
   p_channel text DEFAULT 'online',
   p_accessible boolean DEFAULT false,
   p_high_chairs int DEFAULT 0,
-  p_start timestamptz DEFAULT '2026-09-16 18:00+01'
+  p_start timestamptz DEFAULT '2026-09-16 18:00+01',
+  p_purpose text DEFAULT 'food'
 ) RETURNS text LANGUAGE sql STABLE AS $$
   SELECT array_to_string(c.table_names, ' + ')
   FROM public.find_table_allocation_candidates(
-    p_start, p_start + interval '2 hours', p_party, 'food',
+    p_start, p_start + interval '2 hours', p_party, p_purpose,
     p_high_chairs, p_accessible, NULL, p_channel, NULL, NULL,
     '2026-09-01 12:00+01'::timestamptz
   ) c
@@ -220,6 +221,39 @@ BEGIN
   -- 12. Determinism.
   -- ===================================================================
   ASSERT pg_temp.pick(7,'staff') = pg_temp.pick(7,'staff'), 'ranking must be deterministic';
+
+  -- ===================================================================
+  -- 13. DRINKS fill the bar first and overflow into the Dining Room only
+  --     once the bar is full. Same party, same time, different purpose,
+  --     opposite end of the pub.
+  -- ===================================================================
+  r := pg_temp.pick(2, 'staff', false, 0, '2026-09-16 18:00+01', 'drinks');
+  ASSERT r = 'Low 4a', format('a drinks pair should get Low 4a (bar_priority 10), got %L', r);
+
+  ASSERT pg_temp.pick(2, 'staff', false, 0, '2026-09-16 18:00+01', 'food') = 'Dining Room 4a'
+     AND pg_temp.pick(2, 'staff', false, 0, '2026-09-16 18:00+01', 'drinks') = 'Low 4a',
+    'the same party at the same time must go to opposite ends of the pub depending on purpose';
+
+  -- Fill every bar table, then a drinks booking must overflow into the Dining Room
+  -- rather than be refused.
+  INSERT INTO public.table_bookings (id, booking_date, booking_time, party_size, status, booking_purpose, start_datetime, end_datetime)
+  SELECT gen_random_uuid(), '2026-09-16', '18:00', 2, 'confirmed', 'drinks',
+         '2026-09-16 18:00+01', '2026-09-16 20:00+01'
+  FROM generate_series(1, 5);
+
+  INSERT INTO public.booking_table_assignments (table_booking_id, table_id, start_datetime, end_datetime)
+  SELECT tb.id, t.id, '2026-09-16 18:00+01', '2026-09-16 20:15+01'
+  FROM (SELECT id, row_number() OVER (ORDER BY id) rn FROM public.table_bookings) tb
+  JOIN (SELECT id, row_number() OVER (ORDER BY bar_priority) rn
+        FROM public.tables
+        WHERE name IN ('Low 4a','Low 4b','High 4','Small Bay','Big Bay')) t ON t.rn = tb.rn;
+
+  r := pg_temp.pick(2, 'staff', false, 0, '2026-09-16 18:00+01', 'drinks');
+  ASSERT r LIKE 'Dining Room%',
+    format('with the whole bar taken, a drinks booking must overflow into the Dining Room, not be refused; got %L', r);
+
+  DELETE FROM public.booking_table_assignments;
+  DELETE FROM public.table_bookings;
 
   RAISE NOTICE 'ALL ALLOCATION TESTS PASSED';
 END;
