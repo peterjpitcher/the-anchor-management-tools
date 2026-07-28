@@ -70,7 +70,14 @@ Fix: matcher broadened to /\b(?:fish|scampi|cod|haddock)/i, verified against
 all 51 live website_food dish names (catches exactly the 5 fish dishes).
 Locked down by tests/unit/fish-and-chips-family.test.ts.
 
-This needs a website deploy to clear. Sequencing lesson: the data rename went
+CLEARED: deployed and verified live 2026-07-28. The page now lists all 5 fish
+dishes with the cod first.
+
+A SECOND matcher broke the same way: fishPagePriority pinned the flagship slot to
+the exact string "^fish & chips$", so with nothing matching, Half Fish & Chips was
+promoted and the page's Product rich result advertised the GBP 12 half portion
+instead of the GBP 15 headline dish. Also fixed, also verified live: Product schema
+is now Beer Battered Cod & Chips at GBP 15. Sequencing lesson: the data rename went
 in before the dependent website code, so prod was briefly inconsistent.
 Rename dishes only after the consuming site is deployed.
 
@@ -83,8 +90,9 @@ Rename dishes only after the consuming site is deployed.
 - [x] Website tests: 503 pass (48 suites), including 2 new badge tests
       and 15 new matcher tests
 - [x] Website build: exit 0
-- [ ] Commit (not done, awaiting go-ahead)
-- [ ] Deploy both repos
+- [x] Commit: AMS f6dd3b03, website aa25f98c and 989b9c1a (cherry-picked to main,
+      so neither repo's in-progress feature branch was dragged along)
+- [x] Deploy: both Vercel production builds Ready, prod aliases verified live
 
 ## Review
 - Ingredient 260739 imported as 087659ce, unit cost £2.665 per fillet.
@@ -99,3 +107,10 @@ Rename dishes only after the consuming site is deployed.
 - new_from / new_until deliberately not wrapped in a superRefine on DishSchema:
   the action layer calls DishSchema.partial(), which ZodEffects does not support.
   Ordering is enforced by the DB CHECK constraint and by the drawer instead.
+
+## Verified live after deploy (2026-07-28)
+- /fish-and-chips-heathrow item order: Beer Battered Cod & Chips, Half Fish & Chips,
+  Scampi & Chips, Fish Finger Wrap, Fish Fingers & Chips
+- /fish-and-chips-heathrow Product JSON-LD: Beer Battered Cod & Chips at GBP 15
+- /food-menu: exactly 1 New badge, on Beer Battered Cod & Chips, and the explicit
+  garden peas / mushy peas wording is present
