@@ -158,3 +158,30 @@ numbered list. One sentence each, plain English, recommendation inline. This
 applies to the "You need to:" block as much as to a mid-reply question, and it
 applies even when there is only one question, because the numbering signals that
 an answer is wanted rather than that a point is being made.
+## 2026-07-28 — Renaming a dish silently broke two website code paths
+
+**Mistake:** Renamed "Fish & Chips" to "Beer Battered Cod & Chips" in the production
+database before checking what consumed the name, and before the dependent website code
+was deployed. The website matches dishes with regexes against the dish NAME:
+
+- `isFishAndChipsFamily` tested `/fish|scampi/`, so the renamed dish dropped out of the
+  `/fish-and-chips-heathrow` item list, that page's Product and Menu structured data,
+  and the gluten-free exclusion guards.
+- `fishPagePriority` pinned the flagship slot to the exact string `^fish & chips$`, so
+  with nothing matching, "Half Fish & Chips" was promoted and the page's Product rich
+  result advertised the £12 half portion instead of the £15 headline dish.
+
+Both went live before I noticed: the page is ISR with `revalidate = 3600` and had
+already refreshed. Neither was caught by types, lint, tests, or the build.
+
+**Rule:** Menu/dish/event names are a load-bearing interface, not just display text.
+Before renaming anything customer-facing in the database:
+1. `grep` BOTH repos for the old name and for regex matchers over `item.name`
+   (`/name/i` near `test(`, `match(`, `includes(`, `startsWith(`).
+2. Deploy the consuming code FIRST, then change the data. Data changes take effect
+   immediately; code changes need a deploy, so data-first guarantees a broken window.
+3. After any rename, re-fetch the live pages that feature that item and diff what
+   actually rendered, including the JSON-LD. A green build proves nothing here.
+
+Prefer matching on shape or on a stable id over exact display strings, so the next
+rename cannot break it.
