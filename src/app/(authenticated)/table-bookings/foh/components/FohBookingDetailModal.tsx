@@ -176,6 +176,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             selectedMoveTarget={selectedMoveTarget}
             selectedMoveOptions={selectedMoveOptions}
             loadingSelectedMoveOptions={loadingSelectedMoveOptions}
+            currentTableName={selectedBookingContext?.laneTableName ?? null}
             onClose={onClose}
             onRunAction={onRunAction}
             onMoveTargetChange={onMoveTargetChange}
@@ -211,6 +212,7 @@ function BookingActions(props: {
   selectedMoveTarget: string
   selectedMoveOptions: FohMoveTableOption[]
   loadingSelectedMoveOptions: boolean
+  currentTableName: string | null
   onClose: () => void
   onRunAction: (
     action: () => Promise<unknown>,
@@ -233,6 +235,7 @@ function BookingActions(props: {
     selectedMoveTarget,
     selectedMoveOptions,
     loadingSelectedMoveOptions,
+    currentTableName,
     onClose,
     onRunAction,
     onMoveTargetChange,
@@ -244,6 +247,75 @@ function BookingActions(props: {
 
   return (
     <div className="space-y-3">
+      {/* Move table.
+          This screen runs on an iPad on the floor. The previous control was a 12px dropdown next to
+          a 28px button, both well under the 44px minimum touch target, sitting below every other
+          action in the modal. Guests sitting themselves on the wrong table is routine, so this is
+          now the first thing in the modal and each table is a single large tap target.
+          One tap moves. There is no confirm step because a move is not destructive, is visible on
+          the timeline immediately, notifies nobody, and is undone by tapping the original table. */}
+      {selectedBookingIsOutside ? (
+        <p className="text-xs text-gray-500">Outside booking, so there is no table to move.</p>
+      ) : (
+        <div className="rounded-md border border-gray-200 p-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+            <p className="text-sm font-semibold text-gray-900">Move to another table</p>
+            {currentTableName ? (
+              <p className="text-xs text-gray-500">Currently on {currentTableName}</p>
+            ) : null}
+          </div>
+
+          {loadingSelectedMoveOptions ? (
+            <p className="mt-2 text-xs text-gray-500">Loading available tables...</p>
+          ) : selectedMoveOptions.length === 0 ? (
+            <p className="mt-2 text-xs text-gray-500">No other table is free for this time.</p>
+          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {selectedMoveOptions.map((table) => {
+                const moving = bookingActionInFlight === 'move' && selectedMoveTarget === table.id
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    disabled={Boolean(bookingActionInFlight)}
+                    onClick={() => {
+                      // Recorded so the tapped tile, and only that tile, shows the in-flight state.
+                      onMoveTargetChange(selectedBooking.id, table.id)
+                      void (async () => {
+                        const ok = await onRunAction(
+                          () =>
+                            postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
+                              table_ids: table.table_ids?.length ? table.table_ids : [table.id]
+                            }),
+                          `Moved to ${table.name}`,
+                          'move'
+                        )
+                        if (ok) onClose()
+                      })()
+                    }}
+                    className={cn(
+                      'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-2 py-2 text-center',
+                      'focus:outline-none focus:ring-2 focus:ring-green-500',
+                      'disabled:cursor-not-allowed disabled:opacity-50',
+                      moving
+                        ? 'border-green-600 bg-green-50 text-green-800'
+                        : 'border-gray-300 text-gray-800 hover:bg-gray-50'
+                    )}
+                  >
+                    <span className="text-sm font-semibold leading-tight">
+                      {moving ? 'Moving...' : table.name}
+                    </span>
+                    {!moving && table.capacity ? (
+                      <span className="mt-0.5 text-xs text-gray-500">Seats {table.capacity}</span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -405,58 +477,6 @@ function BookingActions(props: {
         </div>
       )}
 
-      {/* Outside bookings have no table, and the move endpoints 409 for them, so the
-          move action is hidden entirely (converting an outside booking to a table is v2). */}
-      {selectedBookingIsOutside ? (
-        <p className="text-xs text-gray-500">Outside booking — no table to move.</p>
-      ) : (
-        <div className="flex gap-2">
-          <select
-            value={selectedMoveTarget}
-            disabled={Boolean(bookingActionInFlight) || loadingSelectedMoveOptions || selectedMoveOptions.length === 0}
-            onChange={(event) => onMoveTargetChange(selectedBooking.id, event.target.value)}
-            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
-          >
-            <option value="">
-              {loadingSelectedMoveOptions
-                ? 'Loading available tables...'
-                : selectedMoveOptions.length === 0
-                  ? 'No available tables'
-                  : 'Move to table...'}
-            </option>
-            {selectedMoveOptions.map((table) => (
-              <option key={table.id} value={table.id}>
-                {table.name}
-                {table.table_number ? ` (${table.table_number})` : ''}
-                {table.capacity ? ` · cap ${table.capacity}` : ''}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            disabled={!selectedMoveTarget || Boolean(bookingActionInFlight) || loadingSelectedMoveOptions}
-            onClick={() => {
-              if (!selectedMoveTarget) return
-              const target = selectedMoveOptions.find((table) => table.id === selectedMoveTarget)
-              if (!target) return
-              void (async () => {
-                const ok = await onRunAction(
-                  () =>
-                    postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
-                      table_ids: target.table_ids?.length ? target.table_ids : [target.id]
-                    }),
-                  'Table assignment moved',
-                  'move'
-                )
-                if (ok) onClose()
-              })()
-            }}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {bookingActionInFlight === 'move' ? 'Moving...' : 'Move'}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
