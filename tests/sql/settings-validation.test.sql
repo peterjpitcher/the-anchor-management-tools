@@ -114,3 +114,28 @@ BEGIN
   RAISE NOTICE 'ALL SETTINGS TESTS PASSED';
 END;
 $$;
+
+-- =====================================================================
+-- Grants. Added after every one of the twenty new functions reached
+-- production executable by anon, because REVOKE ... FROM PUBLIC does not
+-- remove a grant Supabase makes to a named role. This asserts the door is
+-- shut, so a rebuild cannot quietly reopen it.
+-- =====================================================================
+DO $$
+DECLARE v_leaky text;
+BEGIN
+  SELECT string_agg(p.proname, ', ') INTO v_leaky
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname IN (
+      'find_table_allocation_candidates','check_table_availability_v06','create_table_booking_core_v06',
+      'create_table_booking_staff_v06','set_table_booking_settings','get_table_booking_settings',
+      'allocate_event_communal_seats_v02','is_booking_live')
+    AND array_to_string(p.proacl::text[], ' ') ~ '(anon|authenticated)=X';
+
+  ASSERT v_leaky IS NULL,
+    format('these must never be callable by anon or authenticated: %s', v_leaky);
+
+  RAISE NOTICE 'ALL GRANT TESTS PASSED';
+END;
+$$;

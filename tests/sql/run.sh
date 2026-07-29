@@ -66,6 +66,7 @@ ALLOCATION_MIGRATIONS="
 20260801001000_trigger_liveness_parity.sql
 20260801001100_create_table_booking_v06.sql
 20260801001200_availability_v06.sql
+20260801001300_lock_down_new_function_grants.sql
 "
 
 echo "Applying allocation migrations..."
