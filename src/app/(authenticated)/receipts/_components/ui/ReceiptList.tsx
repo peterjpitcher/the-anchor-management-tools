@@ -7,60 +7,17 @@ import type { ReceiptTransaction } from '@/types/database'
 import { ReceiptTableRow } from './ReceiptTableRow'
 import { ReceiptMobileCard } from './ReceiptMobileCard'
 import { formatCurrency } from '../../utils'
+import {
+  buildVendorGroups,
+  getTransactionValue,
+  getValueHeatColour,
+} from './receipt-list-groups'
 
 type WorkspaceTransaction = ReceiptWorkspaceData['transactions'][number]
 type SortColumn = NonNullable<ReceiptWorkspaceFilters['sortBy']>
 
 // Helper types matching action exports
 type ReceiptSortColumn = 'transaction_date' | 'details' | 'amount_in' | 'amount_out' | 'amount_total'
-
-type VendorGroup = {
-  key: string
-  vendorName: string
-  transactions: WorkspaceTransaction[]
-  totalIn: number
-  totalOut: number
-  totalAmount: number
-}
-
-const MISSING_VENDOR_LABEL = 'Missing vendor'
-
-function getVendorGroupLabel(transaction: WorkspaceTransaction) {
-  const vendorName = transaction.vendor_name?.trim()
-  return vendorName || MISSING_VENDOR_LABEL
-}
-
-function buildVendorGroups(transactions: WorkspaceTransaction[]): VendorGroup[] {
-  const groups = new Map<string, VendorGroup>()
-
-  transactions.forEach((transaction) => {
-    const vendorName = getVendorGroupLabel(transaction)
-    const key = vendorName.toLocaleLowerCase('en-GB')
-    const group = groups.get(key) ?? {
-      key,
-      vendorName,
-      transactions: [],
-      totalIn: 0,
-      totalOut: 0,
-      totalAmount: 0,
-    }
-
-    group.transactions.push(transaction)
-    const amountIn = Number(transaction.amount_in ?? 0)
-    const amountOut = Number(transaction.amount_out ?? 0)
-    group.totalIn += amountIn
-    group.totalOut += amountOut
-    group.totalAmount += Number(transaction.amount_total ?? amountIn + amountOut)
-    groups.set(key, group)
-  })
-
-  return Array.from(groups.values()).sort((a, b) => {
-    if (a.vendorName === MISSING_VENDOR_LABEL) return -1
-    if (b.vendorName === MISSING_VENDOR_LABEL) return 1
-    if (b.totalOut !== a.totalOut) return b.totalOut - a.totalOut
-    return a.vendorName.localeCompare(b.vendorName)
-  })
-}
 
 interface ReceiptListProps {
   transactions: WorkspaceTransaction[]
@@ -96,6 +53,28 @@ export function ReceiptList({
   const mobileSortValue = `${currentSortBy}:${currentSortDirection}`
   const shouldGroupByVendor = filters.groupByVendor ?? false
   const vendorGroups = useMemo(() => buildVendorGroups(transactions), [transactions])
+  const valueRanges = useMemo(() => {
+    const transactionValues = transactions.map(getTransactionValue)
+    const groupValues = vendorGroups.map((group) => group.totalAmount)
+
+    return {
+      transactionMin: Math.min(...transactionValues),
+      transactionMax: Math.max(...transactionValues),
+      groupMin: Math.min(...groupValues),
+      groupMax: Math.max(...groupValues),
+    }
+  }, [transactions, vendorGroups])
+
+  const transactionHeatColour = (transaction: WorkspaceTransaction) =>
+    getValueHeatColour(
+      getTransactionValue(transaction),
+      valueRanges.transactionMin,
+      valueRanges.transactionMax,
+      0.55,
+    )
+
+  const groupHeatColour = (totalAmount: number) =>
+    getValueHeatColour(totalAmount, valueRanges.groupMin, valueRanges.groupMax, 0.92)
   
   const mobileSortOptions = [
     { value: 'transaction_date:desc', label: 'Date · newest first' },
@@ -157,6 +136,7 @@ export function ReceiptList({
 
         {/* Mobile View */}
         <div className="flex flex-col gap-2 px-[var(--spacing-pad-card)] pb-[var(--spacing-pad-card)] lg:hidden">
+          {transactions.length > 0 && shouldGroupByVendor && <ValueHeatLegend />}
           {transactions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-surface-2 p-6 text-center text-sm text-text-muted">
               No transactions match your filters.
@@ -164,12 +144,15 @@ export function ReceiptList({
           ) : shouldGroupByVendor ? (
             vendorGroups.map((group) => (
               <section key={group.key} className="space-y-2">
-                <div className="rounded-md bg-surface-2 px-3 py-2 text-sm">
+                <div
+                  className="rounded-md px-3 py-2 text-sm text-white shadow-sm"
+                  style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-text-strong">{group.vendorName}</h3>
-                    <span className="text-xs font-semibold text-text-strong">Total {formatCurrency(group.totalAmount)}</span>
+                    <h3 className="font-bold text-white">{group.vendorName}</h3>
+                    <span className="text-xs font-bold text-white">Total {formatCurrency(group.totalAmount)}</span>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-white/90">
                     <span>{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
                     {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
                     {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
@@ -180,6 +163,7 @@ export function ReceiptList({
                     key={transaction.id}
                     transaction={transaction}
                     vendorOptions={knownVendors}
+                    heatColour={transactionHeatColour(transaction)}
                     onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
                     onRuleSuggestion={onRuleSuggestion}
                   />
@@ -201,6 +185,11 @@ export function ReceiptList({
 
         {/* Desktop Table */}
         <div className="hidden lg:block">
+          {transactions.length > 0 && shouldGroupByVendor && (
+            <div className="flex justify-end border-t border-border px-4 py-2">
+              <ValueHeatLegend />
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border">
               <thead className="bg-surface-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
@@ -232,15 +221,18 @@ export function ReceiptList({
                 {transactions.length > 0 && shouldGroupByVendor ? (
                   vendorGroups.map((group) => (
                     <Fragment key={group.key}>
-                      <tr className="bg-surface-2">
+                      <tr
+                        className="text-white shadow-sm"
+                        style={{ backgroundColor: groupHeatColour(group.totalAmount) }}
+                      >
                         <td colSpan={10} className="px-4 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
-                              <span className="font-semibold text-text-strong">{group.vendorName}</span>
-                              <span className="text-xs text-text-muted">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
+                              <span className="font-bold text-white">{group.vendorName}</span>
+                              <span className="text-xs font-semibold text-white/90">{group.transactions.length} receipt{group.transactions.length === 1 ? '' : 's'}</span>
                             </div>
-                            <div className="flex flex-wrap gap-3 text-xs font-medium text-text-muted">
-                              <span className="text-text-strong">Total {formatCurrency(group.totalAmount)}</span>
+                            <div className="flex flex-wrap gap-3 text-xs font-bold text-white">
+                              <span>Total {formatCurrency(group.totalAmount)}</span>
                               {group.totalOut > 0 && <span>Out {formatCurrency(group.totalOut)}</span>}
                               {group.totalIn > 0 && <span>In {formatCurrency(group.totalIn)}</span>}
                             </div>
@@ -252,6 +244,7 @@ export function ReceiptList({
                           key={transaction.id}
                           transaction={transaction}
                           vendorOptions={knownVendors}
+                          heatColour={transactionHeatColour(transaction)}
                           onUpdate={(tx, prev) => handleUpdate(tx, prev ?? 'pending')}
                           onRemove={onTransactionRemove}
                           onRuleSuggestion={onRuleSuggestion}
@@ -277,5 +270,19 @@ export function ReceiptList({
         </div>
       </CardBody>
     </Card>
+  )
+}
+
+function ValueHeatLegend() {
+  return (
+    <div className="flex items-center gap-2 text-[11px] font-bold text-text-muted">
+      <span>Lower value</span>
+      <span
+        aria-hidden="true"
+        className="h-3 w-28 rounded-full border border-black/10 shadow-inner"
+        style={{ background: 'linear-gradient(90deg, rgb(25 95 235), rgb(220 38 38))' }}
+      />
+      <span>Higher value</span>
+    </div>
   )
 }
