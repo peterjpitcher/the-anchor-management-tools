@@ -15,6 +15,7 @@ import {
   appendExpenseImages,
   appendClaimSummaryPdf,
 } from '@/lib/receipts/export'
+import { buildReceiptFileName } from '@/lib/receipts/export/receipt-file-name'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -357,25 +358,6 @@ function totalAmount(transactions: ReceiptTransactionRow[], key: 'amount_in' | '
   return transactions.reduce((sum, tx) => sum + (tx[key] ?? 0), 0)
 }
 
-function buildReceiptFileName(transaction: ReceiptTransaction, file: ReceiptFile, index: number) {
-  const uniqueSegment = sanitizePathSegment(file.id ?? `${transaction.id ?? 'transaction'}-${index + 1}`, `file-${index + 1}`)
-
-  const baseName = file.file_name?.trim()
-  if (baseName) {
-    const safeBase = sanitizeZipFilename(baseName, `${uniqueSegment}.pdf`)
-    return `receipts/${uniqueSegment}_${safeBase}`
-  }
-
-  const amount = transaction.amount_out ?? transaction.amount_in ?? 0
-  const amountLabel = amount ? amount.toFixed(2) : '0.00'
-  const description = sanitizeDescriptionForFilename(transaction.details ?? '').slice(0, 80) || 'Receipt'
-  const extension = file.file_name?.split('.').pop()?.toLowerCase() || 'pdf'
-  const fallback = `${description}-${amountLabel}.${extension}`
-  const safeFallback = sanitizeZipFilename(fallback, `${uniqueSegment}.pdf`)
-
-  return `receipts/${uniqueSegment}_${safeFallback}`
-}
-
 async function normaliseToBuffer(data: unknown): Promise<Buffer> {
   if (!data) {
     return Buffer.from('')
@@ -412,34 +394,6 @@ async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: numb
   })
 
   await Promise.all(workers)
-}
-
-function sanitizeDescriptionForFilename(value: string): string {
-  return value
-    .replace(/[^A-Za-z0-9\s&\-]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function sanitizeZipFilename(value: string, fallback = 'receipt.pdf'): string {
-  const cleaned = value
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  return cleaned || fallback
-}
-
-function sanitizePathSegment(value: string, fallback: string): string {
-  let cleaned = value
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/\.+/g, '.')
-    .trim()
-
-  cleaned = cleaned.replace(/^\.+/, '').replace(/\.+$/, '')
-
-  return cleaned || fallback
 }
 
 /**
