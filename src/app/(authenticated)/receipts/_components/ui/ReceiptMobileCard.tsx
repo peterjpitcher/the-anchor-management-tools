@@ -33,6 +33,7 @@ const expenseCategoryOptions = receiptExpenseCategorySchema.options
 interface ReceiptMobileCardProps {
   transaction: WorkspaceTransaction
   vendorOptions: string[]
+  heatColour?: string
   onUpdate: (transaction: WorkspaceTransaction, previousStatus: ReceiptTransaction['status']) => void
   onRuleSuggestion: (suggestion: ClassificationRuleSuggestion) => void
 }
@@ -40,6 +41,7 @@ interface ReceiptMobileCardProps {
 export function ReceiptMobileCard({
   transaction,
   vendorOptions,
+  heatColour,
   onUpdate,
   onRuleSuggestion,
 }: ReceiptMobileCardProps) {
@@ -222,7 +224,14 @@ export function ReceiptMobileCard({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
+    <div
+      className={`rounded-xl border border-gray-300 p-2 shadow-sm ${
+        heatColour
+          ? '[&_.text-gray-400]:!text-slate-800 [&_.text-gray-500]:!text-slate-900 [&_.text-gray-600]:!text-slate-900'
+          : ''
+      }`}
+      style={{ backgroundColor: heatColour ?? 'white' }}
+    >
         <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
             <div className="min-w-0 space-y-0.5">
                 <p className="text-[11px] text-gray-500">

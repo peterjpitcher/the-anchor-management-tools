@@ -70,6 +70,7 @@ function ClassificationBadge({ source }: { source?: ReceiptClassificationSource 
 interface ReceiptTableRowProps {
   transaction: WorkspaceTransaction
   vendorOptions: string[]
+  heatColour?: string
   onUpdate: (transaction: WorkspaceTransaction, previousStatus: ReceiptTransaction['status']) => void
   onRemove: (id: string, previousStatus: ReceiptTransaction['status'], nextStatus?: ReceiptTransaction['status']) => void
   onRuleSuggestion: (suggestion: ClassificationRuleSuggestion) => void
@@ -78,6 +79,7 @@ interface ReceiptTableRowProps {
 export function ReceiptTableRow({
   transaction,
   vendorOptions,
+  heatColour,
   onUpdate,
   onRemove,
   onRuleSuggestion,
@@ -284,7 +286,14 @@ export function ReceiptTableRow({
   }
 
   return (
-    <tr className="align-top hover:bg-surface-hover/50">
+    <tr
+      className={`align-top transition-[filter] hover:brightness-95 ${
+        heatColour
+          ? '[&_.text-text-muted]:!text-slate-900 [&_.text-text-subtle]:!text-slate-800'
+          : ''
+      }`}
+      style={heatColour ? { backgroundColor: heatColour } : undefined}
+    >
       <td className="px-4 py-2 text-text-muted">{formatDate(transaction.transaction_date)}</td>
       <td className="px-4 py-2">
         <div className="flex items-center gap-2">
