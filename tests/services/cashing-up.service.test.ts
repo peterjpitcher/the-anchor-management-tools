@@ -532,6 +532,58 @@ describe('CashingUpService.getInsightsData', () => {
     expect(data.salesMixMonthly[0].drinksPercentage).toBeCloseTo(72.727);
     expect(data.salesMix[0].percentage).toBeCloseTo(72.727);
   });
+
+  it('falls back to cash-up sales splits on dates missing from the till import', async () => {
+    const queries = {
+      cashup_sessions: createInsightsQuery({
+        data: [
+          { session_date: '2026-05-25', total_counted_amount: 110, total_variance_amount: 0 },
+          { session_date: '2026-06-01', total_counted_amount: 240, total_variance_amount: 0 },
+        ],
+        error: null,
+      }, 'lte'),
+      cashup_targets: createInsightsQuery({ data: [], error: null }, 'order'),
+      cashup_payment_breakdowns: createInsightsQuery({ data: [], error: null }, 'lte'),
+      cashup_sales_breakdowns: createInsightsQuery({
+        data: [
+          { sales_category: 'drinks_sales', amount: 999, cashup_sessions: { session_date: '2026-05-25' } },
+          { sales_category: 'food_sales', amount: 999, cashup_sessions: { session_date: '2026-05-25' } },
+          { sales_category: 'drinks_sales', amount: 200, cashup_sessions: { session_date: '2026-06-01' } },
+          { sales_category: 'food_sales', amount: 40, cashup_sessions: { session_date: '2026-06-01' } },
+        ],
+        error: null,
+      }, 'lte'),
+      pnl_sales_imports: createInsightsQuery({
+        data: [
+          { sale_date: '2026-05-25', drinks_sales: 80, food_sales: 20, other_sales: 10 },
+        ],
+        error: null,
+      }, 'lte'),
+    };
+    const supabase = {
+      from: vi.fn((table: keyof typeof queries) => queries[table]),
+    } as unknown as SupabaseClient;
+
+    const data = await CashingUpService.getInsightsData(supabase, 'site-1', 2026);
+
+    expect(data.salesMix.map(({ label, value }) => ({ label, value }))).toEqual([
+      { label: 'Drinks', value: 280 },
+      { label: 'Food', value: 60 },
+      { label: 'Other', value: 10 },
+    ]);
+    expect(data.salesMixMonthly[4]).toEqual(expect.objectContaining({
+      monthLabel: 'May',
+      drinksSales: 80,
+      foodSales: 20,
+      otherSales: 10,
+    }));
+    expect(data.salesMixMonthly[5]).toEqual(expect.objectContaining({
+      monthLabel: 'Jun',
+      drinksSales: 200,
+      foodSales: 40,
+      otherSales: 0,
+    }));
+  });
 });
 
 describe('cash count normalization', () => {

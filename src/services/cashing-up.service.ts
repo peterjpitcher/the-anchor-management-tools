@@ -272,24 +272,27 @@ export class CashingUpService {
       monthTotals[category] = roundCurrency(monthTotals[category] + value);
     };
 
-    if (importedSalesRows.length > 0) {
-      importedSalesRows.forEach((row) => {
-        const drinksSales = Number(row.drinks_sales || 0);
-        const foodSales = Number(row.food_sales || 0);
-        const otherSales = Number(row.other_sales || 0);
+    const importedSalesDates = new Set<string>();
+    importedSalesRows.forEach((row) => {
+      importedSalesDates.add(row.sale_date);
+      const drinksSales = Number(row.drinks_sales || 0);
+      const foodSales = Number(row.food_sales || 0);
+      const otherSales = Number(row.other_sales || 0);
 
-        addSalesMixAmount('drinks_sales', drinksSales, row.sale_date);
-        addSalesMixAmount('food_sales', foodSales, row.sale_date);
-        addSalesMixAmount('other_sales', otherSales, row.sale_date);
-      });
-    } else {
-      salesBreakdowns.forEach((breakdown) => {
-        const category = breakdown.sales_category as CashupSalesCategory;
-        if (!SALES_CATEGORIES.includes(category)) return;
+      addSalesMixAmount('drinks_sales', drinksSales, row.sale_date);
+      addSalesMixAmount('food_sales', foodSales, row.sale_date);
+      addSalesMixAmount('other_sales', otherSales, row.sale_date);
+    });
 
-        addSalesMixAmount(category, Number(breakdown.amount || 0), getJoinedSessionDate(breakdown));
-      });
-    }
+    salesBreakdowns.forEach((breakdown) => {
+      const category = breakdown.sales_category as CashupSalesCategory;
+      if (!SALES_CATEGORIES.includes(category)) return;
+
+      const sessionDate = getJoinedSessionDate(breakdown);
+      if (!sessionDate || importedSalesDates.has(sessionDate)) return;
+
+      addSalesMixAmount(category, Number(breakdown.amount || 0), sessionDate);
+    });
 
     const salesMixData = SALES_CATEGORIES.map((category) => {
       const value = roundCurrency(salesMixMap.get(category) ?? 0);
