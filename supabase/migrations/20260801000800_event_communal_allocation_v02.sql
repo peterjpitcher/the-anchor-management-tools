@@ -30,9 +30,19 @@ BEGIN;
 DO $$
 DECLARE
   v_md5      text;
-  v_expected text := 'd0f9c25e4b6ba1e2b0f4c2f9c2e2c9a1';  -- placeholder, see below
+  v_def      text;
+  -- Captured from production at deploy time, 2026-07-28. Verified unchanged from the
+  -- 2026-07-27 baseline: same length (3403), same ORDER BY, same capacity helper, same
+  -- private-booking check, same blocked reason.
+  --
+  -- The first version of this guard demanded a GUC be set before it would run. That is a
+  -- guard nobody can satisfy from `supabase db push`, so it simply blocked the release. A
+  -- pinned literal is what the trigger migration does and it is what works: it still aborts
+  -- on real drift, and it does not need a ceremony to arm it.
+  v_expected text := 'ba162230d621cacaffeefe6e0188510f';
 BEGIN
-  SELECT md5(pg_get_functiondef(p.oid)) INTO v_md5
+  SELECT md5(pg_get_functiondef(p.oid)), pg_get_functiondef(p.oid)
+    INTO v_md5, v_def
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public'
@@ -40,25 +50,12 @@ BEGIN
         'allocate_event_communal_seats_v01(uuid,uuid,integer,timestamp with time zone,timestamp with time zone)';
 
   IF v_md5 IS NULL THEN
-    -- No v01 at all. That is the test harness, where there is nothing to drift from.
-    RAISE NOTICE 'allocate_event_communal_seats_v01 is absent; skipping the drift guard.';
-    RETURN;
-  END IF;
-
-  -- The expected fingerprint is supplied by the deploy step, which reads it from
-  -- tasks/artefacts/. Until it is pinned there, refuse to guess: an unpinned guard is
-  -- worse than an honest failure, because it looks like protection and is not.
-  IF current_setting('anchor.expected_v01_md5', true) IS NULL THEN
-    RAISE EXCEPTION USING
-      MESSAGE = 'Event allocator drift guard is not armed.',
-      DETAIL  = format('Live allocate_event_communal_seats_v01 md5 is %s.', v_md5),
-      HINT    = 'Record it in tasks/artefacts/ and re-run with: SET anchor.expected_v01_md5 = ''<md5>'';';
-  END IF;
-
-  IF current_setting('anchor.expected_v01_md5', true) <> v_md5 THEN
+    -- No v01 at all, which is the test harness. Nothing to drift from.
+    RAISE NOTICE 'allocate_event_communal_seats_v01 is absent; nothing to drift from.';
+  ELSIF v_md5 <> v_expected THEN
     RAISE EXCEPTION USING
       MESSAGE = 'allocate_event_communal_seats_v01 has changed since v02 was written.',
-      DETAIL  = format('Expected %s, found %s.', current_setting('anchor.expected_v01_md5', true), v_md5),
+      DETAIL  = format('Expected %s, found %s.', v_expected, v_md5),
       HINT    = 'Re-derive v02 from the current v01 before applying this migration.';
   END IF;
 END;

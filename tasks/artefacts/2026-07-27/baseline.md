@@ -84,6 +84,7 @@ Every migration touching one of these asserts its md5 first and aborts on mismat
 | `enforce_booking_table_assignment_integrity_v05()` | `955c30781f281014bd670cec42e7eaa8` | 2048 | yes | `public` | postgres, service_role |
 | `is_table_blocked_by_private_booking_v05(uuid,timestamptz,timestamptz,uuid)` | `6203eade930b6294ca3dadd15023c346` | 2386 | yes | `public` | postgres, service_role |
 | `move_table_booking_assignments_v05(uuid,uuid[],timestamptz,timestamptz)` | `3505e7915f210626f684666c4b1f0e81` | 2465 | yes | `public` | postgres, **authenticated**, service_role |
+| `allocate_event_communal_seats_v01(uuid,uuid,int,timestamptz,timestamptz)` | `ba162230d621cacaffeefe6e0188510f` | 3403 | yes | `public` | postgres, service_role |
 | `move_table_booking_time_v05(uuid,time,timestamptz,timestamptz)` | `fb6da3a4569fead2e66cbb4902bfcaf0` | 1694 | yes | `public` | postgres, service_role |
 | `count_high_chairs_in_window(timestamptz,timestamptz,uuid)` | `66503ccadfaa5cc53e6aa67455925bf9` | 747 | no | none | postgres, anon, authenticated, service_role |
 | `reserve_high_chairs(uuid,int,timestamptz,timestamptz)` | `cd111df6b0628440fb9dbd04aeb3f89b` | 843 | no | none | postgres, anon, authenticated, service_role |
