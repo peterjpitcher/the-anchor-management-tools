@@ -17,6 +17,7 @@ import {
   LOOKUP_MAX_RESULTS,
 } from '@/lib/vouchers/constants'
 import { normaliseVoucherNumberInput, isFullVoucherNumber } from '@/lib/vouchers/numbering'
+import { quickAddVoucherCustomer, QuickAddCustomerError } from '@/lib/vouchers/customer-quick-add'
 import { completedLondonDaysSince, ageBucket, humaniseAge } from '@/lib/vouchers/age'
 import {
   mapVoucherRow,
@@ -1403,6 +1404,39 @@ export async function getEventBookers(
   return {
     success: true,
     data: Array.from(byCustomer.values()).sort((a, b) => a.name.localeCompare(b.name)),
+  }
+}
+
+// Quick-add for a winner who is not on file yet (spec 5.1). Shares its
+// behaviour and consent rules with the FOH endpoint via the common module, so a
+// customer added at the bar and one added in Hand-out mode are treated the same.
+const QuickAddCustomerSchema = z.object({
+  name: z.string().trim().min(1, 'Enter the customer name').max(120),
+  mobile: z.string().trim().min(7, 'Enter a valid mobile number').max(32),
+  email: z.string().trim().toLowerCase().email('Enter a valid email address').max(255).optional().or(z.literal('')),
+})
+
+export async function quickAddCustomerForVoucher(input: {
+  name: string
+  mobile: string
+  email?: string
+}): Promise<{ success?: boolean; error?: string; data?: { id: string; name: string; existing: boolean } }> {
+  const ctx = await requireVouchersManage()
+  if (!ctx) return { error: 'You do not have permission to add a customer.' }
+
+  const parsed = QuickAddCustomerSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message || 'Invalid customer details' }
+
+  try {
+    const result = await quickAddVoucherCustomer(createAdminClient(), {
+      name: parsed.data.name,
+      mobile: parsed.data.mobile,
+      email: parsed.data.email || null,
+    })
+    return { success: true, data: result }
+  } catch (error) {
+    if (error instanceof QuickAddCustomerError) return { error: error.message }
+    return { error: 'Failed to add the customer' }
   }
 }
 

@@ -52,7 +52,8 @@ export function HandOutPanel({ canEdit, staffId, staffName, todayIso, onMutated 
   const [eventsLoaded, setEventsLoaded] = useState(false)
   const [eventId, setEventId] = useState<string | null>(null)
   const [freeLabel, setFreeLabel] = useState('')
-  const [expiryMode, setExpiryMode] = useState<ExpiryMode>(null)
+  // Vouchers are normally valid one month from issue, so +30 days is preselected.
+  const [expiryMode, setExpiryMode] = useState<ExpiryMode>('30')
   const [customExpiry, setCustomExpiry] = useState('')
   const [selected, setSelected] = useState<FohVoucherLookupItem | null>(null)
   const [customer, setCustomer] = useState<FohCustomerRef | null>(null)

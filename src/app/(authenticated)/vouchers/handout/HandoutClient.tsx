@@ -11,6 +11,7 @@ import {
   getEventBookers,
   issueVoucher,
   searchCustomersForVoucher,
+  quickAddCustomerForVoucher,
 } from '@/app/actions/vouchers'
 import type {
   HandoutContextData,
@@ -26,6 +27,7 @@ import {
 import { newIdempotencyKey } from '../_shared/voucher-ui'
 
 const STORAGE_KEY = 'ams-voucher-handout-v1'
+const DEFAULT_EXPIRY_DAYS = EXPIRY_PRESET_DAYS[0]
 
 interface StoredHandoutState {
   eventId: string | null
@@ -50,7 +52,9 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
   const [eventId, setEventId] = useState<string | null>(null)
   const [freeTextLabel, setFreeTextLabel] = useState('')
   const [staffId, setStaffId] = useState('')
-  const [expiryDate, setExpiryDate] = useState('')
+  // Vouchers are normally valid one month from issue, so the +30 day preset is
+  // preselected. A stored context only overrides it when it holds a real date.
+  const [expiryDate, setExpiryDate] = useState(() => getLocalIsoDateDaysAhead(DEFAULT_EXPIRY_DAYS))
   const [counter, setCounter] = useState(0)
   const [hydrated, setHydrated] = useState(false)
 
@@ -64,6 +68,13 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
   const [customerQuery, setCustomerQuery] = useState('')
   const [customerHits, setCustomerHits] = useState<VoucherCustomerHit[]>([])
   const [customer, setCustomer] = useState<{ id: string; name: string } | null>(null)
+  // Quick-add for a winner who is not on file yet (spec 5.1).
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [quickAddName, setQuickAddName] = useState('')
+  const [quickAddMobile, setQuickAddMobile] = useState('')
+  const [quickAddEmail, setQuickAddEmail] = useState('')
+  const [quickAddBusy, setQuickAddBusy] = useState(false)
+  const [quickAddError, setQuickAddError] = useState<string | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [lastIssued, setLastIssued] = useState<{ number: string; expiry: string } | null>(null)
@@ -81,7 +92,9 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
         setEventId(stored.eventId)
         setFreeTextLabel(stored.freeTextLabel ?? '')
         setStaffId(stored.staffId ?? '')
-        setExpiryDate(stored.expiryDate ?? '')
+        if (stored.expiryDate) {
+          setExpiryDate(stored.expiryDate)
+        }
         setCounter(stored.counterDate === getTodayIsoDate() ? stored.counter ?? 0 : 0)
       }
     } catch {
@@ -212,6 +225,30 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
       })),
     []
   )
+
+  // -------------------------------------------------------------- quick add
+  const handleQuickAdd = async () => {
+    if (quickAddBusy) return
+    setQuickAddBusy(true)
+    setQuickAddError(null)
+    const result = await quickAddCustomerForVoucher({
+      name: quickAddName,
+      mobile: quickAddMobile,
+      email: quickAddEmail.trim() || undefined,
+    })
+    setQuickAddBusy(false)
+    if (result.error || !result.data) {
+      setQuickAddError(result.error || 'Could not add the customer')
+      return
+    }
+    setCustomer({ id: result.data.id, name: result.data.name })
+    setQuickAddOpen(false)
+    setQuickAddName('')
+    setQuickAddMobile('')
+    setQuickAddEmail('')
+    setCustomerQuery('')
+    setCustomerHits([])
+  }
 
   // ---------------------------------------------------------------- confirm
   const handleConfirm = async () => {
@@ -471,6 +508,58 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
                           </li>
                         ))}
                       </ul>
+                    )}
+                    {!quickAddOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setQuickAddOpen(true)}
+                        className="text-sm font-medium text-sidebar underline underline-offset-2"
+                      >
+                        Not on file? Add them
+                      </button>
+                    )}
+                    {quickAddOpen && (
+                      <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <p className="text-sm text-gray-600">
+                          Adding someone here signs them up for updates from The Anchor, so please say so.
+                        </p>
+                        <Input
+                          aria-label="New customer name"
+                          placeholder="Name"
+                          value={quickAddName}
+                          onChange={(event) => setQuickAddName(event.target.value)}
+                          autoComplete="off"
+                        />
+                        <Input
+                          aria-label="New customer mobile"
+                          placeholder="Mobile number"
+                          value={quickAddMobile}
+                          onChange={(event) => setQuickAddMobile(event.target.value)}
+                          autoComplete="off"
+                        />
+                        <Input
+                          aria-label="New customer email (optional)"
+                          placeholder="Email (optional, used for reminders)"
+                          value={quickAddEmail}
+                          onChange={(event) => setQuickAddEmail(event.target.value)}
+                          autoComplete="off"
+                        />
+                        {quickAddError && <p className="text-sm text-red-700">{quickAddError}</p>}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            loading={quickAddBusy}
+                            disabled={quickAddBusy || !quickAddName.trim() || !quickAddMobile.trim()}
+                            onClick={() => void handleQuickAdd()}
+                          >
+                            Add and attach
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setQuickAddOpen(false)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}

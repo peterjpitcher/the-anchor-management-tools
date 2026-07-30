@@ -32,7 +32,7 @@ export function CustomerAttach({
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [quickName, setQuickName] = useState('')
   const [quickMobile, setQuickMobile] = useState('')
-  const [quickSmsOk, setQuickSmsOk] = useState(true)
+  const [quickEmail, setQuickEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -86,7 +86,7 @@ export function CustomerAttach({
     const outcome = await quickAddCustomer({
       name: quickName.trim(),
       mobile: quickMobile.trim(),
-      smsOk: quickSmsOk
+      email: quickEmail.trim() || undefined
     })
     setBusy(false)
     if (!outcome.customer) {
@@ -97,7 +97,7 @@ export function CustomerAttach({
     setShowQuickAdd(false)
     setQuickName('')
     setQuickMobile('')
-    setQuickSmsOk(true)
+    setQuickEmail('')
     setStatusMessage(
       outcome.existing ? `Matched existing customer ${outcome.customer.name}` : `Added ${outcome.customer.name}`
     )
@@ -234,16 +234,25 @@ export function CustomerAttach({
                 className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
               />
             </div>
+            <div className="min-w-0 sm:col-span-2">
+              <label htmlFor={`${idPrefix}-quick-email`} className="block text-sm font-medium text-gray-900">
+                Email (optional, best for reminders)
+              </label>
+              <input
+                id={`${idPrefix}-quick-email`}
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                value={quickEmail}
+                onChange={(event) => setQuickEmail(event.target.value)}
+                className="mt-1 block h-12 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus:border-sidebar focus:outline-none focus:ring-2 focus:ring-sidebar/40"
+              />
+            </div>
           </div>
-          <label className="mt-2 flex min-h-[44px] items-center gap-2 text-base text-gray-800">
-            <input
-              type="checkbox"
-              checked={quickSmsOk}
-              onChange={(event) => setQuickSmsOk(event.target.checked)}
-              className="h-5 w-5 rounded border-gray-300 text-sidebar focus:ring-sidebar/40"
-            />
-            Happy to get a reminder text about this voucher
-          </label>
+          <p className="mt-2 text-sm text-gray-700">
+            Adding someone here signs them up for updates from The Anchor, so please say so out loud.
+            We will remind them about the voucher by email, or by text if they have no email address.
+          </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"

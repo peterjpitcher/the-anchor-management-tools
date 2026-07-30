@@ -17,10 +17,12 @@ export const EXPIRY_PRESET_DAYS = [30, 60, 90] as const
 export const LOOKUP_MIN_CHARS = 4
 export const LOOKUP_MAX_RESULTS = 10
 
-// Reminder rules (spec 5.2, F17/F18)
+// Reminder rules (spec 5.2, F17/F18). Two reminders per voucher, both counted
+// back from the expiry date: 7 days before, then 3 days before. Order matters:
+// the schedule derivation and the kind names (pre_expiry_7, pre_expiry_3) are
+// both built from this list.
 export const REMINDER_MAX_SENDS = 2
-export const PRE_EXPIRY_LEAD_DAYS = 14
-export const REMINDER_DAY_MILESTONES = [30, 90] as const
+export const REMINDER_LEAD_DAYS = [7, 3] as const
 
 // Print layout: front + inside per card (spec section 6)
 export const PDF_PAGES_PER_CARD = 2
