@@ -7,12 +7,12 @@ import {
 } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  computeIdempotencyRequestHash,
   getIdempotencyKey,
   claimIdempotencyKey,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
+import { computeTableBookingRequestHash } from '@/lib/table-bookings/booking-idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -32,7 +32,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
 import { createRateLimiter } from '@/lib/rate-limit'
-import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
+import { OptionalCommunicationConsentSchema } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 
 const tableBookingIpLimiter = createRateLimiter({
@@ -192,24 +192,22 @@ export async function POST(request: NextRequest) {
 
     const bookingTime = payload.time.length === 5 ? `${payload.time}:00` : payload.time
 
-    const requestHash = computeIdempotencyRequestHash({
+    const requestHash = computeTableBookingRequestHash({
       phone: normalizedPhone,
-      first_name: payload.first_name || null,
-      last_name: payload.last_name || null,
-      email: payload.email || null,
+      first_name: payload.first_name,
+      last_name: payload.last_name,
+      email: payload.email,
       date: payload.date,
       time: bookingTime,
       party_size: payload.party_size,
       purpose: payload.purpose,
-      notes: payload.notes || null,
-      dietary_requirements: payload.dietary_requirements ?? null,
-      allergies: payload.allergies ?? null,
-      // Vary the idempotency key when the chair/outside request changes so a
-      // repeat with different chairs/outside mints a fresh key rather than
-      // replaying the earlier booking.
-      high_chair_count: payload.high_chair_count ?? null,
-      outside_seating: payload.outside_seating ?? null,
-      communication_consent: consentHashPayload(payload.communication_consent)
+      notes: payload.notes,
+      dietary_requirements: payload.dietary_requirements,
+      allergies: payload.allergies,
+      high_chair_count: payload.high_chair_count,
+      outside_seating: payload.outside_seating,
+      requires_accessible_table: payload.requires_accessible_table,
+      communication_consent: payload.communication_consent
     })
 
     const supabase = createAdminClient()
