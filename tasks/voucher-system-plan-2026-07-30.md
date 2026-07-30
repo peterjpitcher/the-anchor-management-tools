@@ -80,6 +80,16 @@ All management pages gate `vouchers.manage`.
 
 Do not push to origin. Do not run `vercel`. Do not modify migrations other than the two new files. Do not edit unrelated sections. Do not apply Supabase changes except in Phase 7 (orchestrator-controlled).
 
+## Review section (2026-07-30, build complete)
+
+- All phases delivered on branch `feat/voucher-system`, 7 commits (147d5e8c..68af913f). NOT pushed to origin; no deploy.
+- Verification: eslint zero warnings; tsc clean; 4080 tests pass (572 files, incl. 80 voucher tests); cold `npm run build` passes on Node 20 (needs `NODE_OPTIONS=--max-old-space-size=8192`, the repo's cold build exhausts the default heap; unrelated to vouchers).
+- Migrations 20260802000001/2 APPLIED to prod Supabase 2026-07-30 and verified in-database: 8 types, 21 clauses v2.0, 12 role grants exactly as designed, RLS enabled, private bucket, 13 RPCs with zero anon/authenticated execute.
+- Benchmark (F22): 100 cards = 200 pages rendered in 3.6s locally (3.3 MB); 100-card cap retained with large headroom (`tasks/voucher-system-benchmark.md`).
+- Smoke: dev server boots; /vouchers and /vouchers/foh 307 to login; FOH + terms-sheet APIs 401 unauthenticated.
+- Deviations from plan: none of substance. Integration tidies by orchestrator: user-mode Set type narrowed; FOH event-booker status filter aligned with management (confirmed/pending_payment/null). Reminder 'skipped' marking is a guarded direct update, not the RPC (accepted). GDPR export post-processes GdprService output rather than editing the service.
+- Outstanding for owner: local testing; real duplex print sign-off before release; decision log (spec section 12) review; push/deploy decision.
+
 ## Parallelisation map for orchestration
 
 - Sequential spine: Phase 0 → T1.1 → T1.2 → T1.3.
