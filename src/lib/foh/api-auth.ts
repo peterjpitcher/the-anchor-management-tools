@@ -10,6 +10,12 @@ export async function requireFohPermission(action: FohPermissionAction): Promise
   return requireModulePermission('table_bookings', action)
 }
 
+// Voucher FOH surface (spec section 4, F06): same shape as requireFohPermission
+// but gated on the vouchers module so kiosk grants stay independent.
+export async function requireFohVoucherPermission(action: FohPermissionAction): Promise<PermissionCheckResult> {
+  return requireModulePermission('vouchers', action)
+}
+
 export async function requireBohTableBookingPermission(action: FohPermissionAction): Promise<PermissionCheckResult> {
   const auth = await requireModulePermission('table_bookings', action)
   if (!auth.ok) {
