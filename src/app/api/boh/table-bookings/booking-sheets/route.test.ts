@@ -70,6 +70,7 @@ type Sheet = {
   partySize: string
   tableLabel: string
   status: string
+  requirements: string[]
   generatedAt: string
 }
 
@@ -97,6 +98,8 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     deposit_amount: null,
     deposit_amount_locked: null,
     is_outside_seating: false,
+    high_chair_count: 0,
+    requires_accessible_table: false,
     customer: { first_name: 'Jo', last_name: 'Bloggs' },
     table_booking_tables: [
       { table: { id: 't1', name: 'Window', table_number: '1', is_bookable: true } },
@@ -263,7 +266,15 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
       expect(select).toContain(column)
     }
     // Plus the sheet's own fields.
-    for (const column of ['id', 'booking_reference', 'booking_date', 'booking_time', 'is_outside_seating']) {
+    for (const column of [
+      'id',
+      'booking_reference',
+      'booking_date',
+      'booking_time',
+      'is_outside_seating',
+      'high_chair_count',
+      'requires_accessible_table',
+    ]) {
       expect(select).toContain(column)
     }
     // Pinned FK constraints — verified to exist in the live database.
@@ -274,6 +285,26 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     // Never selected.
     expect(select).not.toContain('special_requirements')
     expect(select).not.toContain('is_private_block')
+  })
+
+  it('maps step-free and high-chair needs onto the sheet, step-free first', async () => {
+    queryResult.data = [
+      makeRow({ id: 'b1', booking_reference: 'ANC-001' }),
+      makeRow({
+        id: 'b2',
+        booking_reference: 'ANC-002',
+        requires_accessible_table: true,
+        high_chair_count: 2,
+      }),
+      makeRow({ id: 'b3', booking_reference: 'ANC-003', high_chair_count: 1 }),
+    ]
+
+    await GET(makeRequest('2026-07-16'))
+
+    const sheets = lastSheets()
+    expect(sheets[0].requirements).toEqual([])
+    expect(sheets[1].requirements).toEqual(['Step-free table', 'High chair ×2'])
+    expect(sheets[2].requirements).toEqual(['High chair ×1'])
   })
 
   it('reports Unassigned when the only assignment is a non-bookable table', async () => {

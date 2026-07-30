@@ -55,6 +55,8 @@ type BookingRow = {
   deposit_amount: number | string | null
   deposit_amount_locked: number | string | null
   is_outside_seating: boolean | null
+  high_chair_count: number | null
+  requires_accessible_table: boolean | null
   customer: CustomerRow | CustomerRow[] | null
   table_booking_tables: AssignmentRow[] | null
 }
@@ -124,6 +126,19 @@ function tableField(row: BookingRow): string {
   return labels.length ? labels.join(', ') : 'Unassigned'
 }
 
+/** Seating needs staff must prepare for. Step-free first: it decides which table works at all. */
+function requirementsField(row: BookingRow): string[] {
+  const requirements: string[] = []
+  if (row.requires_accessible_table) {
+    requirements.push('Step-free table')
+  }
+  const highChairs = row.high_chair_count ?? 0
+  if (highChairs > 0) {
+    requirements.push(`High chair ×${highChairs}`)
+  }
+  return requirements
+}
+
 function toSheetData(row: BookingRow, bookingDate: string, generatedAt: string): TableBookingSheetData {
   return {
     bookingRef: row.booking_reference || '',
@@ -133,6 +148,7 @@ function toSheetData(row: BookingRow, bookingDate: string, generatedAt: string):
     partySize: String(row.party_size),
     tableLabel: tableField(row),
     status: getTableBookingStatusLabel(getTableBookingVisualState(row)),
+    requirements: requirementsField(row),
     generatedAt,
   }
 }
@@ -160,6 +176,8 @@ export async function GET(request: NextRequest) {
         deposit_waived, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked,
         booking_type,
         is_outside_seating,
+        high_chair_count,
+        requires_accessible_table,
         customer:customers!table_bookings_customer_id_fkey(first_name, last_name),
         table_booking_tables:booking_table_assignments!booking_table_assignments_table_booking_id_fkey(
           table:tables!booking_table_assignments_table_id_fkey(id, name, table_number, is_bookable)

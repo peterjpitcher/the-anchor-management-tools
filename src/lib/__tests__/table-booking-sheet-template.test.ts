@@ -15,6 +15,7 @@ function makeSheet(overrides: Partial<TableBookingSheetData> = {}): TableBooking
     partySize: '6',
     tableLabel: 'Window, 6',
     status: 'Booked',
+    requirements: [],
     generatedAt: '16 July 2026 at 7:32pm',
     ...overrides,
   }
@@ -136,6 +137,7 @@ describe('generateTableBookingSheetsHTML', () => {
             partySize: SCRIPT,
             tableLabel: SCRIPT,
             status: SCRIPT,
+            requirements: [SCRIPT],
             generatedAt: SCRIPT,
           },
         ],
@@ -143,7 +145,48 @@ describe('generateTableBookingSheetsHTML', () => {
       )
 
       expect(html).not.toContain('<script>')
-      expect(countOccurrences(html, '&lt;script&gt;alert(1)&lt;/script&gt;')).toBe(8)
+      expect(countOccurrences(html, '&lt;script&gt;alert(1)&lt;/script&gt;')).toBe(9)
+    })
+  })
+
+  describe('seating needs', () => {
+    it('should omit the seating-needs block when there are no requirements', () => {
+      const html = generateTableBookingSheetsHTML([makeSheet()], { logoDataUrl: LOGO })
+
+      expect(html).not.toContain('Seating needs')
+      expect(html).not.toContain('class="needs"')
+    })
+
+    it('should render step-free and high-chair needs joined on one line', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ requirements: ['Step-free table', 'High chair ×2'] })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Seating needs')
+      expect(html).toContain('Step-free table · High chair ×2')
+    })
+
+    it('should render the block only on pages whose booking has requirements', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({ bookingRef: 'TB-0001' }),
+          makeSheet({ bookingRef: 'TB-0002', requirements: ['Step-free table'] }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(countOccurrences(html, 'Seating needs')).toBe(1)
+    })
+
+    it('should escape hostile characters supplied in a requirement item', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ requirements: ['<script>alert(1)</script>'] })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).not.toContain('<script>')
+      expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
     })
   })
 

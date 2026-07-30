@@ -311,6 +311,8 @@ export interface Booking {
   duration_minutes: number | null
   high_chair_count: number | null
   is_outside_seating: boolean | null
+  /** Guest asked for a step-free (accessible) table; display only, allocation enforces it. */
+  requires_accessible_table?: boolean | null
   /** Staff have committed this booking to its tables; nothing automatic may move it. */
   table_pinned?: boolean | null
   deposit_waived: boolean | null
@@ -852,6 +854,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               {booking.booking_type && (
                 <Badge tone="neutral">{formatLabel(booking.booking_type)}</Badge>
               )}
+              {booking.requires_accessible_table && (
+                <Badge tone="warning">Step-free table</Badge>
+              )}
+              {(booking.high_chair_count ?? 0) > 0 && (
+                <Badge tone="neutral">High chair ×{booking.high_chair_count}</Badge>
+              )}
             </div>
             <div>
               <p className="text-xl font-semibold text-gray-900">{guestName}</p>
@@ -907,6 +915,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               <DetailItem label="Committed size" value={booking.committed_party_size ?? '-'} />
               <DetailItem label="Assigned tables" value={booking.is_outside_seating ? 'Outside' : assignedTableLabel ?? '-'} />
               <DetailItem label="Seating" value={booking.is_outside_seating ? 'Outside' : 'Indoor'} />
+              <DetailItem label="Step-free table" value={booking.requires_accessible_table ? 'Requested' : 'Not requested'} />
               <DetailItem label="High chairs" value={String(booking.high_chair_count ?? 0)} />
               <DetailItem label="Booking type" value={formatLabel(booking.booking_type)} />
               <DetailItem label="Purpose" value={formatLabel(booking.booking_purpose)} />
