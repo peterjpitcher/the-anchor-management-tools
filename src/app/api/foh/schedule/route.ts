@@ -176,6 +176,7 @@ type PrivateBlockForTable = {
     private_booking_id: string
     high_chair_count: number
     is_outside_seating: boolean
+    requires_accessible_table: boolean
   }
 }
 
@@ -194,7 +195,7 @@ async function loadScheduleBookingRows(
   date: string,
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, requires_accessible_table, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
   ]
@@ -551,7 +552,8 @@ export async function GET(request: NextRequest) {
               is_private_block: true as const,
               private_booking_id: privateBooking.id,
               high_chair_count: 0,
-              is_outside_seating: false
+              is_outside_seating: false,
+              requires_accessible_table: false
             }
 
             const current = privateBlocksByTableId.get(tableId) || []
@@ -663,7 +665,8 @@ export async function GET(request: NextRequest) {
       capacity_label: capacityLabel,
       is_communal_event_block: true,
       high_chair_count: 0,
-      is_outside_seating: false
+      is_outside_seating: false,
+      requires_accessible_table: false
     }
 
     const current = communalBookingsByTableId.get(group.tableId) || []
@@ -718,7 +721,8 @@ export async function GET(request: NextRequest) {
           end_datetime: assignment?.end_datetime || booking.end_datetime || null,
           is_private_block: false,
           high_chair_count: booking.high_chair_count ?? 0,
-          is_outside_seating: booking.is_outside_seating ?? false
+          is_outside_seating: booking.is_outside_seating ?? false,
+          requires_accessible_table: booking.requires_accessible_table ?? false
         }
       })
 
@@ -782,7 +786,8 @@ export async function GET(request: NextRequest) {
       end_datetime: booking.end_datetime || null,
       is_private_block: false,
       high_chair_count: booking.high_chair_count ?? 0,
-      is_outside_seating: booking.is_outside_seating ?? false
+      is_outside_seating: booking.is_outside_seating ?? false,
+      requires_accessible_table: booking.requires_accessible_table ?? false
     }))
 
   // Outside bookings hold no table assignment, so they land in the untabled bucket.
@@ -864,7 +869,8 @@ export async function GET(request: NextRequest) {
         is_private_block: false,
         event_seating_type: 'standing',
         high_chair_count: 0,
-        is_outside_seating: false
+        is_outside_seating: false,
+        requires_accessible_table: false
       }
     })
 

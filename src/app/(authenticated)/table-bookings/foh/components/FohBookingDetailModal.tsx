@@ -86,6 +86,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     selectedBooking.id.startsWith('standing-')
   const selectedBookingIsOutside = selectedBooking.is_outside_seating === true
   const selectedBookingHighChairs = selectedBooking.high_chair_count ?? 0
+  const selectedBookingNeedsStepFree = selectedBooking.requires_accessible_table === true
   const selectedBookingSeatedTime = formatLifecycleTime(selectedBooking.seated_at)
   const selectedBookingLeftTime = formatLifecycleTime(selectedBooking.left_at)
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking.no_show_at)
@@ -126,9 +127,10 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             {selectedBooking.assignment_count && selectedBooking.assignment_count > 1 ? ` · joined ${selectedBooking.assignment_count} tables` : ''}
             {selectedBookingContext?.laneTableName ? ` · table ${selectedBookingContext.laneTableName}` : ''}
           </p>
-          {(selectedBookingIsOutside || selectedBookingHighChairs > 0) && (
+          {(selectedBookingIsOutside || selectedBookingHighChairs > 0 || selectedBookingNeedsStepFree) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {selectedBookingIsOutside ? <Badge tone="info">Outside</Badge> : null}
+              {selectedBookingNeedsStepFree ? <Badge tone="warning">Step-free table</Badge> : null}
               {selectedBookingHighChairs > 0 ? <Badge tone="neutral">High chair ×{selectedBookingHighChairs}</Badge> : null}
             </div>
           )}

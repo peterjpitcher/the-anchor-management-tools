@@ -29,6 +29,7 @@ export type FohBooking = {
   is_communal_event_block?: boolean
   high_chair_count?: number
   is_outside_seating?: boolean
+  requires_accessible_table?: boolean
 }
 
 export type FohLane = {

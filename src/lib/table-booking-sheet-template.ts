@@ -11,6 +11,11 @@ export interface TableBookingSheetData {
   tableLabel: string
   /** "Booked" | "Seated" | "Pending payment" | … — never the raw DB status. */
   status: string
+  /**
+   * Seating needs the guest asked for, e.g. ["Step-free table", "High chair x2"].
+   * Rendered as its own block only when non-empty.
+   */
+  requirements: string[]
   /** Pre-formatted London timestamp, e.g. "16 July 2026 at 7:32pm". */
   generatedAt: string
 }
@@ -89,6 +94,9 @@ function tableBookingSheetStyles(): string {
   .fact-value .unit{ font-family:var(--font-body); font-weight:500; font-size:12px; color:var(--ink-mute); margin-left:1.5mm; }
   .table-value{ font-size:22px; overflow-wrap:anywhere; word-break:break-word; }
   .state{ display:flex; align-items:baseline; gap:5mm; border:1px solid var(--ink); padding:4.8mm 5mm; margin-bottom:6mm; }
+  .needs{ display:flex; align-items:baseline; gap:5mm; border:1px solid var(--ink); padding:4.8mm 5mm; margin-bottom:6mm; }
+  .needs-label{ font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0; flex-shrink:0; }
+  .needs-value{ font-family:var(--font-body); font-weight:600; font-size:16px; letter-spacing:.02em; color:var(--ink); margin:0; overflow-wrap:anywhere; word-break:break-word; }
   .state-label{ font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0; flex-shrink:0; }
   .status{ font-family:var(--font-body); font-weight:600; font-size:16px; letter-spacing:.02em; color:var(--ink); margin:0; overflow-wrap:anywhere; word-break:break-word; }
   .foot{ margin-top:auto; padding-top:4mm; border-top:1.4px solid var(--ink); }
@@ -135,6 +143,11 @@ function renderTableBookingSheetPage(
         <p class="state-label">Status</p>
         <p class="status">${escapeHtml(data.status)}</p>
       </div>
+${data.requirements.length ? `
+      <div class="needs">
+        <p class="needs-label">Seating needs</p>
+        <p class="needs-value">${data.requirements.map((item) => escapeHtml(item)).join(' · ')}</p>
+      </div>` : ''}
 
       <div class="foot">
         <p class="foot-line">Generated at ${escapeHtml(data.generatedAt)}</p>
