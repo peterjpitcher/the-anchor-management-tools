@@ -7,6 +7,12 @@ DO $$ BEGIN CREATE ROLE service_role; EXCEPTION WHEN duplicate_object THEN NULL;
 DO $$ BEGIN CREATE ROLE anon;         EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE ROLE authenticated;EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Reproduce the Supabase default that put twenty functions into production wide open: a new
+-- function in `public` is granted EXECUTE to anon and authenticated BY NAME, so REVOKE ... FROM
+-- PUBLIC does not close it. Without this line the grant assertions pass on a database where
+-- nothing was ever exposed, which proves nothing at all.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
+
 CREATE TYPE public.table_booking_status AS ENUM
   ('pending_payment','confirmed','cancelled','no_show','completed',
    'pending_card_capture','visited_waiting_for_review','review_clicked');
@@ -239,6 +245,31 @@ BEGIN
     AND public.is_booking_live(tb.status, tb.left_at, tb.hold_expires_at, tb.payment_status)
     AND tb.start_datetime < p_end AND tb.end_datetime > p_start;
   RETURN v_total;
+END;
+$$;
+
+-- The real definition from 20260728000000_highchair_outside.sql, not a stub. The JS override
+-- paths (FOH walk-in, BOH edit) grant chairs through this rather than through the booking RPC,
+-- so the contention tests have to exercise the same code production runs.
+CREATE OR REPLACE FUNCTION public.reserve_high_chairs(
+  p_booking_id uuid, p_requested integer, p_start timestamptz, p_end timestamptz)
+RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE
+  v_inv integer;
+  v_used integer;
+  v_granted integer;
+BEGIN
+  IF COALESCE(p_requested, 0) <= 0 THEN
+    RETURN 0;
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtext('high_chair_reservation'));
+  SELECT COALESCE((value->>'value')::int, 2) INTO v_inv
+    FROM public.system_settings WHERE key = 'high_chair_inventory';
+  v_inv := COALESCE(v_inv, 2);
+  v_used := public.count_high_chairs_in_window(p_start, p_end, p_booking_id);
+  v_granted := GREATEST(0, LEAST(p_requested, v_inv - v_used))::integer;
+  UPDATE public.table_bookings SET high_chair_count = v_granted WHERE id = p_booking_id;
+  RETURN v_granted;
 END;
 $$;
 
