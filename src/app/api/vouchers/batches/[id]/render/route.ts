@@ -5,15 +5,35 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+import { logAuditEvent } from '@/app/actions/audit'
 import { requireModulePermission, type PermissionCheckResult } from '@/lib/api/permissions'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { buildVoucherBatchHtml } from '@/lib/voucher-card-template'
 import { PDF_PAGES_PER_CARD } from '@/lib/vouchers/constants'
-import type { TermsClause, VoucherBatchRow } from '@/types/vouchers'
+import type {
+  TermsClause,
+  VoucherBatchRow,
+  VoucherEventAction,
+  VoucherEventSource,
+  VoucherStatus,
+} from '@/types/vouchers'
 
 const VOUCHER_BUCKET = 'vouchers'
 const SIGNED_URL_TTL_SECONDS = 600
 const RENDER_ERROR_MAX_LENGTH = 500
+
+// A serverless invocation that dies mid-render (timeout, out of memory, a deploy
+// landing while it runs) leaves pdf_status pinned at 'rendering' with nothing to
+// clear it, which would make the batch permanently unrenderable and its numbers
+// permanently unissuable. maxDuration is 300s, so a claim older than this is
+// certainly dead and can be taken over (spec F51).
+const STALE_RENDER_TIMEOUT_MS = 10 * 60 * 1000
+
+// Bounded attempts with a visible error rather than an endless retry loop (F51).
+const MAX_RENDER_ATTEMPTS = 5
+
+// Absolutely terminal per the transition matrix (spec 2.5): never reprintable.
+const NON_REPRINTABLE_STATUSES: VoucherStatus[] = ['cancelled', 'replaced']
 
 // Overrides the generator's default portrait margins: the card template owns
 // the page box (A4 landscape, margin 0, preferCSSPageSize).
@@ -26,9 +46,10 @@ const CARD_PDF_OPTIONS = {
 }
 
 interface BatchVoucherRecord {
+  id: string
   voucher_number: string
   type_id: string
-  status: string
+  status: VoucherStatus
 }
 
 // POST /api/vouchers/batches/[id]/render
@@ -87,7 +108,7 @@ export async function POST(
 
   const { data: voucherRows, error: vouchersError } = await supabase
     .from('vouchers')
-    .select('voucher_number, type_id, status')
+    .select('id, voucher_number, type_id, status')
     .eq('batch_id', batchId)
     .order('voucher_number', { ascending: true })
 
@@ -116,7 +137,14 @@ export async function POST(
   }
 
   if (voucherNumbers) {
-    return renderReprint({ supabase, batch, vouchers, termsClauses: termsRow.clauses, voucherNumbers })
+    return renderReprint({
+      supabase,
+      batch,
+      vouchers,
+      termsClauses: termsRow.clauses,
+      voucherNumbers,
+      userId: auth.userId,
+    })
   }
 
   return renderFullBatch({ supabase, batch, vouchers, termsClauses: termsRow.clauses })
@@ -131,36 +159,98 @@ interface RenderContext {
   termsClauses: TermsClause[]
 }
 
-async function renderFullBatch(context: RenderContext) {
-  const { supabase, batch, vouchers, termsClauses } = context
+// Claims the batch for this invocation. Each branch is a single conditional
+// UPDATE, so Postgres re-evaluates the predicate against the committed row and
+// only one caller can ever win: any successful claim both bumps render_attempts
+// and refreshes updated_at (voucher_batches has an updated_at trigger), which
+// invalidates the predicate for everyone else.
+async function claimBatchForRender(
+  supabase: AdminClient,
+  batch: VoucherBatchRow,
+  attempt: number
+): Promise<{ claimed: boolean; error?: string }> {
+  const claim = { pdf_status: 'rendering' as const, render_attempts: attempt }
 
-  if (batch.pdf_status !== 'pending' && batch.pdf_status !== 'failed') {
-    const message = batch.pdf_status === 'rendering'
-      ? 'A render is already in progress for this batch'
-      : 'This batch has already been rendered'
-    return NextResponse.json({ error: message, status: batch.pdf_status }, { status: 409 })
-  }
-
-  // Conditional claim so two concurrent calls cannot both render (F33/F51)
-  const { data: claimed, error: claimError } = await supabase
+  const fresh = await supabase
     .from('voucher_batches')
-    .update({ pdf_status: 'rendering' })
+    .update(claim)
     .eq('id', batch.id)
+    .eq('render_attempts', batch.render_attempts)
     .in('pdf_status', ['pending', 'failed'])
     .select('id')
 
-  if (claimError) {
-    console.error('Failed to claim voucher batch render:', claimError)
-    return NextResponse.json({ error: 'Failed to start render', code: 'RENDER_FAILED' }, { status: 500 })
-  }
-  if (!claimed || claimed.length === 0) {
+  if (fresh.error) return { claimed: false, error: fresh.error.message }
+  if ((fresh.data?.length ?? 0) > 0) return { claimed: true }
+
+  // Nobody released the batch, so take over only a demonstrably dead claim.
+  const staleBefore = new Date(Date.now() - STALE_RENDER_TIMEOUT_MS).toISOString()
+  const stale = await supabase
+    .from('voucher_batches')
+    .update(claim)
+    .eq('id', batch.id)
+    .eq('render_attempts', batch.render_attempts)
+    .eq('pdf_status', 'rendering')
+    .lt('updated_at', staleBefore)
+    .select('id')
+
+  if (stale.error) return { claimed: false, error: stale.error.message }
+  return { claimed: (stale.data?.length ?? 0) > 0 }
+}
+
+async function renderFullBatch(context: RenderContext) {
+  const { supabase, batch, vouchers, termsClauses } = context
+
+  const claimIsStale =
+    batch.pdf_status === 'rendering' &&
+    Date.parse(batch.updated_at) < Date.now() - STALE_RENDER_TIMEOUT_MS
+
+  if (batch.pdf_status !== 'pending' && batch.pdf_status !== 'failed' && !claimIsStale) {
+    const inProgress = batch.pdf_status === 'rendering'
     return NextResponse.json(
-      { error: 'A render is already in progress for this batch', status: 'rendering' },
+      {
+        error: inProgress
+          ? 'A render is already in progress for this batch. Give it a minute and check the batch again.'
+          : 'This batch has already been rendered',
+        code: inProgress ? 'RENDER_IN_PROGRESS' : 'RENDER_ALREADY_COMPLETE',
+        status: batch.pdf_status,
+      },
       { status: 409 }
     )
   }
 
+  // Bounded attempts with a visible error, never an endless retry loop (F51).
+  if (batch.render_attempts >= MAX_RENDER_ATTEMPTS) {
+    return NextResponse.json(
+      {
+        error: `This batch has failed to render ${MAX_RENDER_ATTEMPTS} times, so it will not be retried again. Generate a new batch, and cancel the cards in this one so the numbers are not left in limbo.`,
+        code: 'RENDER_ATTEMPTS_EXHAUSTED',
+        status: batch.pdf_status,
+        renderAttempts: batch.render_attempts,
+      },
+      { status: 409 }
+    )
+  }
+
+  // The attempt number is claimed atomically, so it also keeps the immutable
+  // object path unique across a takeover of a dead render (F42).
   const attempt = batch.render_attempts + 1
+  const claim = await claimBatchForRender(supabase, batch, attempt)
+
+  if (claim.error) {
+    console.error('Failed to claim voucher batch render:', claim.error)
+    return NextResponse.json({ error: 'Failed to start render', code: 'RENDER_FAILED' }, { status: 500 })
+  }
+  if (!claim.claimed) {
+    return NextResponse.json(
+      {
+        error: 'A render is already in progress for this batch. Give it a minute and check the batch again.',
+        code: 'RENDER_IN_PROGRESS',
+        status: 'rendering',
+      },
+      { status: 409 }
+    )
+  }
+
   const objectPath = `batches/${batch.id}/render-${attempt}.pdf`
 
   try {
@@ -231,10 +321,11 @@ async function renderFullBatch(context: RenderContext) {
 
 interface ReprintContext extends RenderContext {
   voucherNumbers: string[]
+  userId: string
 }
 
 async function renderReprint(context: ReprintContext) {
-  const { supabase, batch, vouchers, termsClauses, voucherNumbers } = context
+  const { supabase, batch, vouchers, termsClauses, voucherNumbers, userId } = context
 
   const byNumber = new Map(vouchers.map(voucher => [voucher.voucher_number, voucher]))
   const missing = voucherNumbers.filter(voucherNumber => !byNumber.has(voucherNumber))
@@ -245,7 +336,27 @@ async function renderReprint(context: ReprintContext) {
     )
   }
 
-  const subset = voucherNumbers.map(voucherNumber => byNumber.get(voucherNumber) as BatchVoucherRecord)
+  // Deduplicated so a repeated number cannot double-print a card or write two
+  // reprint events for one physical reprint.
+  const subset = Array.from(new Set(voucherNumbers)).map(
+    voucherNumber => byNumber.get(voucherNumber) as BatchVoucherRecord
+  )
+
+  // Enforced here, not only in the ledger UI: a direct POST must never be able
+  // to reproduce a pixel-identical card for a terminal voucher (spec 2.5).
+  const terminal = subset.filter(voucher => NON_REPRINTABLE_STATUSES.includes(voucher.status))
+  if (terminal.length > 0) {
+    const numbers = terminal.map(voucher => voucher.voucher_number)
+    return NextResponse.json(
+      {
+        error: `Cancelled and replaced vouchers can never be reprinted: ${numbers.join(', ')}`,
+        code: 'VOUCHER_NOT_REPRINTABLE',
+        voucherNumbers: numbers,
+      },
+      { status: 409 }
+    )
+  }
+
   const objectPath = `batches/${batch.id}/reprint-${Date.now()}.pdf`
 
   try {
@@ -276,6 +387,10 @@ async function renderReprint(context: ReprintContext) {
       throw new Error(`Failed to sign reprint URL: ${signError?.message ?? 'no URL returned'}`)
     }
 
+    // The PDF exists at this point, so a failure to write the trail must never
+    // fail the reprint: recordReprintTrail logs and swallows its own errors.
+    await recordReprintTrail({ supabase, batch, subset, userId })
+
     return NextResponse.json({
       status: 'ready',
       url: signed.signedUrl,
@@ -289,5 +404,72 @@ async function renderReprint(context: ReprintContext) {
       { status: 'failed', error: message.slice(0, RENDER_ERROR_MAX_LENGTH), code: 'RENDER_FAILED' },
       { status: 500 }
     )
+  }
+}
+
+// Mirrors requireVouchersManage in src/app/actions/vouchers.ts: the display name
+// off the account, falling back to the email, then to a generic label.
+async function resolveActorName(supabase: AdminClient, userId: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.auth.admin.getUserById(userId)
+    if (error || !data?.user) return 'Manager'
+    const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>
+    const fullName =
+      typeof meta.full_name === 'string' && meta.full_name.trim().length > 0
+        ? meta.full_name.trim()
+        : null
+    return fullName ?? data.user.email ?? 'Manager'
+  } catch {
+    return 'Manager'
+  }
+}
+
+// voucher_events is the authoritative trail (spec 7.1), so duplicating a
+// physical card has to leave a trace. detail carries the batch and the size of
+// the reprint only, never customer names or phone numbers (F37).
+async function recordReprintTrail(context: {
+  supabase: AdminClient
+  batch: VoucherBatchRow
+  subset: BatchVoucherRecord[]
+  userId: string
+}): Promise<void> {
+  const { supabase, batch, subset, userId } = context
+  const action: VoucherEventAction = 'reprinted'
+  const source: VoucherEventSource = 'management'
+
+  try {
+    const actorName = await resolveActorName(supabase, userId)
+    const { error } = await supabase.from('voucher_events').insert(
+      subset.map(voucher => ({
+        voucher_id: voucher.id,
+        action,
+        actor_user_id: userId,
+        actor_employee_id: null,
+        actor_name: actorName,
+        source,
+        detail: { batch_id: batch.id, count: subset.length },
+      }))
+    )
+    if (error) {
+      console.warn('Failed to record voucher reprint events:', error.message)
+    }
+  } catch (error) {
+    console.warn('Failed to record voucher reprint events:', error)
+  }
+
+  try {
+    await logAuditEvent({
+      user_id: userId,
+      operation_type: 'reprint',
+      resource_type: 'voucher_batch',
+      resource_id: batch.id,
+      operation_status: 'success',
+      additional_info: {
+        count: subset.length,
+        voucher_numbers: subset.map(voucher => voucher.voucher_number),
+      },
+    })
+  } catch (error) {
+    console.warn('Failed to audit voucher reprint:', error)
   }
 }

@@ -267,7 +267,7 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
       list.push(row)
       byBatch.set(row.voucher.batchId, list)
     }
-    let failures = 0
+    const failures: string[] = []
     for (const [batchId, rows] of byBatch.entries()) {
       try {
         const response = await fetch(`/api/vouchers/batches/${batchId}/render`, {
@@ -277,24 +277,26 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
             voucherNumbers: rows.map((row) => row.voucher.voucherNumber),
           }),
         })
+        const payload = (await response.json().catch(() => null)) as
+          | { url?: string; error?: string }
+          | null
         if (!response.ok) {
-          failures += 1
+          failures.push(payload?.error ?? 'The reprint could not be rendered.')
           continue
         }
-        const payload = (await response.json()) as { url?: string }
-        if (payload.url) {
+        if (payload?.url) {
           window.open(payload.url, '_blank', 'noopener')
         } else {
-          failures += 1
+          failures.push('The reprint did not return a download link.')
         }
       } catch {
-        failures += 1
+        failures.push('The reprint could not be rendered.')
       }
     }
     setReprintBusy(false)
     setReprintConfirmOpen(false)
-    if (failures > 0) {
-      toast.error('Some reprints failed. Try again from the voucher detail page.')
+    if (failures.length > 0) {
+      toast.error(failures[0])
     } else {
       toast.success('Reprint PDF opened in a new tab.')
     }

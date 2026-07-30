@@ -53,7 +53,8 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
   const [freeTextLabel, setFreeTextLabel] = useState('')
   const [staffId, setStaffId] = useState('')
   // Vouchers are normally valid one month from issue, so the +30 day preset is
-  // preselected. A stored context only overrides it when it holds a real date.
+  // preselected. A stored context only overrides it when it holds a date that is
+  // still in the future.
   const [expiryDate, setExpiryDate] = useState(() => getLocalIsoDateDaysAhead(DEFAULT_EXPIRY_DAYS))
   const [counter, setCounter] = useState(0)
   const [hydrated, setHydrated] = useState(false)
@@ -92,7 +93,10 @@ export function HandoutClient({ context, prefillNumber }: HandoutClientProps) {
         setEventId(stored.eventId)
         setFreeTextLabel(stored.freeTextLabel ?? '')
         setStaffId(stored.staffId ?? '')
-        if (stored.expiryDate) {
+        // A date from an old session would be written on today's cards without
+        // anyone noticing, so anything not still in the future is dropped and
+        // the +30 day default stands.
+        if (stored.expiryDate && stored.expiryDate > getTodayIsoDate()) {
           setExpiryDate(stored.expiryDate)
         }
         setCounter(stored.counterDate === getTodayIsoDate() ? stored.counter ?? 0 : 0)

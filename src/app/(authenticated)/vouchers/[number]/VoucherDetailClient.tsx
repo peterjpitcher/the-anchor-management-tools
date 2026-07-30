@@ -130,12 +130,14 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voucherNumbers: [voucher.voucherNumber] }),
       })
+      const payload = (await response.json().catch(() => null)) as
+        | { url?: string; error?: string }
+        | null
       if (!response.ok) {
-        fail('The reprint could not be rendered.')
+        fail(payload?.error ?? 'The reprint could not be rendered.')
         return
       }
-      const payload = (await response.json()) as { url?: string }
-      if (payload.url) {
+      if (payload?.url) {
         window.open(payload.url, '_blank', 'noopener')
         router.refresh()
       } else {
@@ -157,7 +159,11 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
     })
   }
 
-  const status = voucher.status
+  // Everything on this page keys off the effective status, so a voucher that is
+  // past its expiry but not yet swept still offers the manager override instead
+  // of a Redeem the RPC will refuse.
+  const status = detail.effectiveStatus
+  const sweepPending = status === 'expired' && voucher.status !== 'expired'
   const canAttachCustomer = ['issued', 'redeemed', 'expired'].includes(status)
 
   return (
@@ -304,6 +310,9 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
           </div>
           {status === 'expired' && (
             <p className="mt-2 text-sm text-gray-500">
+              {sweepPending
+                ? 'This card is past its expiry date. The nightly tidy-up has not caught up yet, so lists may still show it as active. '
+                : ''}
               Editing the expiry to a future date puts the voucher back to issued and rebuilds its
               reminders.
             </p>
