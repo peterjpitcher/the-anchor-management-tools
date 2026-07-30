@@ -280,6 +280,19 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             Checklists
           </Link>
 
+          {/* Vouchers: navigation, visible to all FOH users (not gated by canEdit). */}
+          <Link
+            href="/vouchers/foh"
+            className={cn(
+              'rounded-md px-4 py-2 text-sm font-medium text-white',
+              isManagerKioskStyle
+                ? 'bg-sidebar px-2.5 py-1 text-[11px] font-semibold hover:bg-green-700'
+                : 'bg-sidebar hover:bg-sidebar/90'
+            )}
+          >
+            Vouchers
+          </Link>
+
           {canEdit && (
             <>
               <button

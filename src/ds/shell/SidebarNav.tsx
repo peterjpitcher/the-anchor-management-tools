@@ -41,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'menu', label: 'Menu Management', icon: 'grid', href: '/menu-management', permission: { module: 'menu_management', action: 'view' } },
       { id: 'tables', label: 'Table Bookings', icon: 'table', href: '/table-bookings', permission: { module: 'table_bookings', action: 'view' } },
+      { id: 'vouchers', label: 'Vouchers', icon: 'ticket', href: '/vouchers', permission: { module: 'vouchers', action: 'manage' } },
       { id: 'private-bookings', label: 'Private Bookings', icon: 'building', href: '/private-bookings', permission: { module: 'private_bookings', action: 'view' } },
       { id: 'parking', label: 'Parking', icon: 'truck', href: '/parking', permission: { module: 'parking', action: 'view' } },
     ],
