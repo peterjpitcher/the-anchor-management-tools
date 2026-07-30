@@ -135,6 +135,10 @@ export interface VoucherLedgerResult {
 
 export interface VoucherDetail {
   voucher: Voucher
+  // The stored status with the expiry applied, exactly as the FOH lookup derives
+  // it: the nightly sweep can be up to a day behind, and a voucher that is still
+  // stored as 'issued' past its expiry must be treated as expired everywhere.
+  effectiveStatus: VoucherStatus
   type: VoucherType | null
   entitlementHtml: string | null
   batchPdfStatus: BatchPdfStatus | null
@@ -1210,10 +1214,18 @@ export async function getVoucherDetail(
     : null
   const { ageDays, ageLabel } = voucherAge(voucher)
 
+  // Same rule as the FOH lookup and voucher_override_redeem: past the London
+  // expiry date an issued voucher is expired, sweep or no sweep.
+  const effectiveStatus: VoucherStatus =
+    voucher.status === 'issued' && voucher.expiryDate && voucher.expiryDate < getTodayIsoDate()
+      ? 'expired'
+      : voucher.status
+
   return {
     success: true,
     data: {
       voucher,
+      effectiveStatus,
       type: row.type ? mapVoucherTypeRow(row.type) : null,
       entitlementHtml,
       batchPdfStatus: row.batch?.pdf_status ?? null,

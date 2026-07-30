@@ -32,7 +32,12 @@ interface GenerateClientProps {
   initialBatchId: string | null
 }
 
-type Phase = 'form' | 'creating' | 'rendering' | 'ready' | 'failed'
+type Phase = 'form' | 'creating' | 'rendering' | 'ready' | 'failed' | 'blocked'
+
+interface RenderRefusal {
+  message: string
+  retryable: boolean
+}
 
 const POLL_INTERVAL_MS = 2000
 const POLL_LIMIT = 240
@@ -44,6 +49,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
   const [batchId, setBatchId] = useState<string | null>(initialBatchId)
   const [progress, setProgress] = useState<VoucherBatchProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refusal, setRefusal] = useState<RenderRefusal | null>(null)
   const [downloadWarning, setDownloadWarning] = useState<{ deadCount: number } | null>(null)
   const pollCount = useRef(0)
   const stopped = useRef(false)
@@ -98,13 +104,31 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
     async (id: string) => {
       setPhase('rendering')
       setError(null)
+      setRefusal(null)
       pollCount.current = 0
+      // Cleared before the request, never after it: if the page unmounts while
+      // the request is in flight, the cleanup must still win and stop polling.
+      stopped.current = false
       try {
-        await fetch(`/api/vouchers/batches/${id}/render`, {
+        const response = await fetch(`/api/vouchers/batches/${id}/render`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         })
+        // The server refuses rather than starting a render: say why and stop,
+        // instead of spinning on a poll that will never turn green.
+        if (response.status === 409) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string; code?: string }
+            | null
+          stopped.current = true
+          setRefusal({
+            message: payload?.error ?? 'This batch cannot be rendered at the moment.',
+            retryable: payload?.code !== 'RENDER_ATTEMPTS_EXHAUSTED',
+          })
+          setPhase('blocked')
+          return
+        }
       } catch {
         // The batch exists and the render can be retried; polling reports the truth.
       }
@@ -158,6 +182,7 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
     setBatchId(null)
     setProgress(null)
     setError(null)
+    setRefusal(null)
     setPhase('form')
   }
 
@@ -268,6 +293,32 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
             </div>
           </div>
         </Card>
+      </div>
+    )
+  }
+
+  if (phase === 'blocked') {
+    return (
+      <div className="max-w-3xl space-y-4">
+        <Alert tone="warning" title="This batch cannot be rendered right now">
+          {refusal?.message ?? 'This batch cannot be rendered at the moment.'}
+        </Alert>
+        {batchId && (
+          <p className="text-sm text-gray-600">
+            Nothing has been lost: the vouchers still exist. Quote batch reference{' '}
+            <span className="font-mono text-gray-900">{batchId}</span> if you need help.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {batchId && refusal?.retryable !== false && (
+            <Button variant="primary" onClick={() => void triggerRender(batchId)}>
+              Try the render again
+            </Button>
+          )}
+          <Button variant="secondary" onClick={resetForm}>
+            Start a new batch
+          </Button>
+        </div>
       </div>
     )
   }

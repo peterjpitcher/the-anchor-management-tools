@@ -5,7 +5,12 @@
 // normally valid one month from issue, so both land inside that window.
 //
 // Channel: email is preferred, SMS is the fallback for customers with no usable
-// email address. A row with neither channel is marked 'skipped' with a reason.
+// email address. 'Usable' means well-shaped, not hard-failed on the customer
+// record, and not in email_suppressions (sendEmail refuses suppressed addresses
+// outright, so committing to email there would burn the attempt and strand the
+// customer). If an address is suppressed between the batch lookup and the send,
+// the same attempt falls back to SMS rather than failing. A row with neither
+// channel is marked 'skipped' with a reason.
 //
 // The DB owns the outbox: voucher_reminders_claim_due atomically claims due
 // pending rows (one per customer per London day, attempts bumped, others
@@ -36,6 +41,12 @@ const SMS_MAX_FIRST_NAME_CHARS = 20
 // email_deactivated_at) means the address must not be used.
 const BLOCKED_EMAIL_STATUSES = ['invalid', 'bounced', 'complained']
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// sendEmail refuses a suppressed address with 'Recipient email address is
+// suppressed'; providers word the same hard failure their own way. Any of these
+// means the address is dead, not that the send should be retried, so the SMS
+// fallback takes over inside the same attempt.
+const SUPPRESSION_ERROR_SHAPE = /suppress|bounce|complain|unsubscrib/i
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -320,22 +331,76 @@ async function loadEmailBlocks(
   return blocked
 }
 
+// Suppressed addresses are hard-failed at the door by sendEmail, so they must
+// not win channel resolution. One query for the whole claimed batch, keyed on
+// the lower-cased address exactly as the suppression table stores it.
+async function loadSuppressedEmails(
+  supabase: AdminClient,
+  emails: string[]
+): Promise<Set<string>> {
+  const suppressed = new Set<string>()
+  if (emails.length === 0) {
+    return suppressed
+  }
+
+  const { data, error } = await supabase
+    .from('email_suppressions')
+    .select('email')
+    .in('email', emails)
+
+  if (error) {
+    // Mirrors isEmailSuppressed: a lookup failure does not block the send. If an
+    // address really is suppressed, sendEmail says so and the per-send fallback
+    // still gets the customer their text.
+    logger.warn('Voucher reminder suppression lookup failed; treating addresses as usable', {
+      metadata: { emailCount: emails.length, error: error.message }
+    })
+    return suppressed
+  }
+
+  for (const row of (data ?? []) as Array<{ email: string | null }>) {
+    const value = row.email?.trim().toLowerCase()
+    if (value) suppressed.add(value)
+  }
+
+  return suppressed
+}
+
+function isSuppressionLikeError(errorText: string | null | undefined): boolean {
+  return Boolean(errorText && SUPPRESSION_ERROR_SHAPE.test(errorText))
+}
+
+// Email when the address is genuinely usable, otherwise SMS. An email target
+// also carries the SMS number (when there is one) so a suppression discovered
+// at send time does not cost the customer their reminder.
+type ReminderTarget =
+  | { channel: VoucherReminderChannel; to: string; smsFallbackTo: string | null }
+  | { channel: null; reason: string }
+
 function resolveChannel(
   row: ClaimedVoucherReminder,
-  emailBlocked: Set<string>
-): { channel: VoucherReminderChannel; to: string } | { channel: null; reason: string } {
+  emailBlocked: Set<string>,
+  suppressedEmails: Set<string>
+): ReminderTarget {
   if (!row.customer_id) {
     return { channel: null, reason: 'no customer attached to the voucher' }
   }
 
+  const mobile = row.mobile_e164?.trim() || null
+  const smsTo = mobile && row.sms_opt_in === true ? mobile : null
+
   const email = row.email?.trim().toLowerCase() || null
-  if (email && EMAIL_SHAPE.test(email) && !emailBlocked.has(row.customer_id)) {
-    return { channel: 'email', to: email }
+  if (
+    email &&
+    EMAIL_SHAPE.test(email) &&
+    !emailBlocked.has(row.customer_id) &&
+    !suppressedEmails.has(email)
+  ) {
+    return { channel: 'email', to: email, smsFallbackTo: smsTo }
   }
 
-  const mobile = row.mobile_e164?.trim() || null
-  if (mobile && row.sms_opt_in === true) {
-    return { channel: 'sms', to: mobile }
+  if (smsTo) {
+    return { channel: 'sms', to: smsTo, smsFallbackTo: null }
   }
 
   if (mobile) {
@@ -344,10 +409,39 @@ function resolveChannel(
   return { channel: null, reason: 'no usable email address or mobile number on the customer record' }
 }
 
+async function sendReminderSms(
+  supabase: AdminClient,
+  row: ClaimedVoucherReminder,
+  to: string,
+  copyInput: ReminderCopyInput,
+  metadata: Record<string, unknown>
+): Promise<VoucherReminderChannel | null> {
+  const result = await sendSMS(to, buildVoucherReminderSms(copyInput), {
+    customerId: row.customer_id ?? undefined,
+    metadata
+  })
+
+  if (result.success) {
+    const sid = 'sid' in result && typeof result.sid === 'string' ? result.sid : null
+    await markReminderOutcome(supabase, row.reminder_id, 'sent', {
+      messageSid: sid,
+      channel: 'sms'
+    })
+    return 'sms'
+  }
+
+  const sendError = 'error' in result && typeof result.error === 'string' ? result.error : null
+  await markReminderOutcome(supabase, row.reminder_id, 'failed', {
+    errorText: trimStoredError(sendError, 'SMS send failed'),
+    channel: 'sms'
+  })
+  return null
+}
+
 async function sendOneReminder(
   supabase: AdminClient,
   row: ClaimedVoucherReminder,
-  target: { channel: VoucherReminderChannel; to: string },
+  target: { channel: VoucherReminderChannel; to: string; smsFallbackTo: string | null },
   londonToday: string,
   expiryDate: string
 ): Promise<VoucherReminderChannel | null> {
@@ -386,6 +480,20 @@ async function sendOneReminder(
       return 'email'
     }
 
+    // The address was suppressed after (or during) the batch lookup. Marking
+    // this failed would spend one of the three attempts on an address that can
+    // never accept mail, so text them instead and record the channel used.
+    if (target.smsFallbackTo && isSuppressionLikeError(result.error)) {
+      logger.warn('Voucher reminder email refused as suppressed; sending SMS instead', {
+        metadata: {
+          reminderId: row.reminder_id,
+          voucherNumber: row.voucher_number,
+          error: result.error ?? null
+        }
+      })
+      return sendReminderSms(supabase, row, target.smsFallbackTo, copyInput, metadata)
+    }
+
     await markReminderOutcome(supabase, row.reminder_id, 'failed', {
       errorText: trimStoredError(result.error, 'Email send failed'),
       channel: 'email'
@@ -393,26 +501,7 @@ async function sendOneReminder(
     return null
   }
 
-  const result = await sendSMS(target.to, buildVoucherReminderSms(copyInput), {
-    customerId: row.customer_id ?? undefined,
-    metadata
-  })
-
-  if (result.success) {
-    const sid = 'sid' in result && typeof result.sid === 'string' ? result.sid : null
-    await markReminderOutcome(supabase, row.reminder_id, 'sent', {
-      messageSid: sid,
-      channel: 'sms'
-    })
-    return 'sms'
-  }
-
-  const sendError = 'error' in result && typeof result.error === 'string' ? result.error : null
-  await markReminderOutcome(supabase, row.reminder_id, 'failed', {
-    errorText: trimStoredError(sendError, 'SMS send failed'),
-    channel: 'sms'
-  })
-  return null
+  return sendReminderSms(supabase, row, target.to, copyInput, metadata)
 }
 
 export async function sendDueVoucherReminders(params: {
@@ -439,7 +528,18 @@ export async function sendDueVoucherReminders(params: {
           .map((row) => row.customer_id as string)
       )
     )
-    const emailBlocked = await loadEmailBlocks(supabase, emailCandidateIds)
+    const emailCandidates = new Set<string>()
+    for (const row of rows) {
+      const email = row.email?.trim().toLowerCase()
+      if (email && EMAIL_SHAPE.test(email)) {
+        emailCandidates.add(email)
+      }
+    }
+
+    const [emailBlocked, suppressedEmails] = await Promise.all([
+      loadEmailBlocks(supabase, emailCandidateIds),
+      loadSuppressedEmails(supabase, Array.from(emailCandidates))
+    ])
 
     for (const row of rows) {
       try {
@@ -451,7 +551,7 @@ export async function sendDueVoucherReminders(params: {
           continue
         }
 
-        const target = resolveChannel(row, emailBlocked)
+        const target = resolveChannel(row, emailBlocked, suppressedEmails)
         if (target.channel === null) {
           await markReminderOutcome(supabase, row.reminder_id, 'skipped', {
             errorText: target.reason
