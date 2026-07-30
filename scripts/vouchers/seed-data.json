@@ -1,0 +1,276 @@
+{
+  "source": "docs/design/voucher-system/Voucher Set (Folded Card, B&W Print).html",
+  "terms_version": "v2.0",
+  "clauses": [
+    {
+      "heading": "Voucher entitlement",
+      "body": "This voucher may only be used for the entitlement printed on it. It does not provide any entitlement beyond the food, drink, monetary value or event entry specifically stated."
+    },
+    {
+      "heading": "Validity",
+      "body": "This voucher is valid at The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ, until close of business on the expiry date shown."
+    },
+    {
+      "heading": "Expiry",
+      "body": "The voucher cannot normally be redeemed or extended after its expiry date. Where The Anchor cancels the qualifying event or is unable to provide the stated entitlement before the expiry date, a reasonable alternative or extension will be offered."
+    },
+    {
+      "heading": "Unique voucher number",
+      "body": "Each voucher has a unique voucher number and may only be redeemed once. Its validity and redemption status will be checked against The Anchor’s voucher system."
+    },
+    {
+      "heading": "Presenting the voucher",
+      "body": "A valid printed or authorised digital voucher must be presented to a member of the team before ordering, paying or making the relevant booking."
+    },
+    {
+      "heading": "Single redemption",
+      "body": "The voucher must be redeemed in full in one transaction or booking. It cannot be split across multiple transactions, visits or bookings."
+    },
+    {
+      "heading": "Additional payment",
+      "body": "Where the total purchase exceeds the voucher’s stated value or entitlement, the remaining amount must be paid using an accepted payment method."
+    },
+    {
+      "heading": "Unused value",
+      "body": "No change, refund, credit or replacement voucher will be provided where the full monetary value or entitlement is not used."
+    },
+    {
+      "heading": "No cash alternative",
+      "body": "The voucher cannot be exchanged for cash, refunded or used to obtain cashback."
+    },
+    {
+      "heading": "Other vouchers and promotions",
+      "body": "Only one voucher may be used per transaction or booking. It cannot be combined with another voucher, discount, promotional offer or loyalty reward unless expressly stated."
+    },
+    {
+      "heading": "Excluded purchases",
+      "body": "Unless the voucher specifically provides otherwise, it cannot be used towards event tickets, private-hire charges, deposits, gift vouchers, merchandise or any other non-food or non-drink purchase."
+    },
+    {
+      "heading": "Availability and alternatives",
+      "body": "All food, drinks and events remain subject to availability. Where the exact item stated is unavailable, The Anchor may offer a reasonable alternative of an equal or greater value. No cash alternative will be provided."
+    },
+    {
+      "heading": "Alcohol and age restrictions",
+      "body": "Alcohol may only be supplied to customers aged 18 or over. Valid photographic identification may be required. Customers under 18 may only use an eligible voucher towards non-alcoholic drinks or food."
+    },
+    {
+      "heading": "Responsible service",
+      "body": "The supply of alcohol remains subject to licensing law and The Anchor’s responsible service policies. The Anchor may refuse to supply alcohol where it would be unlawful or inappropriate to do so."
+    },
+    {
+      "heading": "Event and booking vouchers",
+      "body": "Where advance booking is required, the voucher is not considered redeemed until the booking has been confirmed. Once applied to a confirmed booking, changes and cancellations are subject to the normal terms applying to that event."
+    },
+    {
+      "heading": "Invalid vouchers",
+      "body": "A voucher will not be accepted where it is expired, altered, illegible, duplicated, already redeemed, replaced, cancelled in the voucher system or otherwise cannot be verified."
+    },
+    {
+      "heading": "Lost or stolen vouchers",
+      "body": "Lost or stolen vouchers may only be replaced where the original voucher can be identified, has not been redeemed and can be cancelled in the voucher system. Replacement remains subject to verification."
+    },
+    {
+      "heading": "Resale",
+      "body": "Promotional and prize vouchers must not be resold or offered for resale."
+    },
+    {
+      "heading": "Queries and disputes",
+      "body": "Any query concerning the validity or redemption of a voucher will be reviewed by a manager against the voucher record, the stated entitlement and these terms."
+    },
+    {
+      "heading": "Terms applying to the voucher",
+      "body": "The terms in force when the voucher is issued will apply to that voucher. They will not be changed retrospectively, except where required by law, and no change will reduce the stated entitlement of an already-issued voucher."
+    },
+    {
+      "heading": "Statutory rights",
+      "body": "Nothing in these terms affects any statutory rights that cannot legally be excluded."
+    }
+  ],
+  "types": [
+    {
+      "id": "free-drink",
+      "display_title": "FREE DRINK VOUCHER",
+      "cover_title": "Free drink voucher",
+      "value_pence": 600,
+      "requires_booking": false,
+      "alcohol": true,
+      "entitlement_html": "<p>This voucher may be exchanged for one of the following:</p><ul><li>One pint of any available draught product</li><li>One standard glass of house wine</li><li>One single standard spirit with a standard mixer</li><li>One regular soft drink</li></ul><p>Doubles, cocktails, premium spirits, bottles of wine, pitchers, sharers and packaged drinks are excluded unless expressly approved by a manager.</p>",
+      "hero": {
+        "kind": "word",
+        "big": "One free",
+        "sub": "drink"
+      },
+      "copy": {
+        "headline": "Well, look at you",
+        "script": "Winning drinks and everything",
+        "prize": "A drink on us",
+        "open": "Your prize is inside",
+        "aside": "Pull up a chair. The first one’s covered.",
+        "community": "There’s always room for one more."
+      },
+      "sort_order": 1
+    },
+    {
+      "id": "house-wine",
+      "display_title": "BOTTLE OF HOUSE WINE",
+      "cover_title": "A bottle of house wine",
+      "value_pence": 2000,
+      "requires_booking": false,
+      "alcohol": true,
+      "entitlement_html": "<p>This voucher may be exchanged for one 750ml bottle of available house red, white or rosé still wine. It does not include sparkling wine, Champagne or premium bottled wine.</p><p>Alcohol may only be supplied to someone aged 18 or over, and valid photographic identification may be required.</p>",
+      "hero": {
+        "kind": "word",
+        "big": "A bottle",
+        "sub": "of house wine"
+      },
+      "copy": {
+        "headline": "Wine not?",
+        "script": "You’ve clearly earned it",
+        "prize": "A bottle of house wine",
+        "open": "Uncork this",
+        "aside": "Best enjoyed with good people and absolutely no rushing.",
+        "community": "Good bottles are better shared."
+      },
+      "sort_order": 2
+    },
+    {
+      "id": "food-10",
+      "display_title": "£10 FOOD VOUCHER",
+      "cover_title": "£10 food voucher",
+      "value_pence": 1000,
+      "requires_booking": false,
+      "alcohol": false,
+      "entitlement_html": "<p>This voucher provides £10 towards food purchased from The Anchor’s available food menu in one transaction. It cannot be used towards drinks.</p>",
+      "hero": {
+        "kind": "money",
+        "big": "10",
+        "sub": "Food voucher"
+      },
+      "copy": {
+        "headline": "Something tasty has your name on it",
+        "script": "Go on, make a meal of it",
+        "prize": "£10 towards food",
+        "open": "Tuck in",
+        "aside": "Good food, good people and no special occasion required.",
+        "community": "Good food brings people together."
+      },
+      "sort_order": 3
+    },
+    {
+      "id": "drinks-10",
+      "display_title": "£10 DRINKS VOUCHER",
+      "cover_title": "£10 drinks voucher",
+      "value_pence": 1000,
+      "requires_booking": false,
+      "alcohol": true,
+      "entitlement_html": "<p>This voucher provides £10 towards drinks purchased from The Anchor’s available drinks selection in one transaction. It cannot be used towards food.</p>",
+      "hero": {
+        "kind": "money",
+        "big": "10",
+        "sub": "Drinks voucher"
+      },
+      "copy": {
+        "headline": "Your round just got better",
+        "script": "Cheers to that",
+        "prize": "£10 towards drinks",
+        "open": "Drinks this way",
+        "aside": "Good drinks, better company and everyone welcome.",
+        "community": "Raise a glass to your local."
+      },
+      "sort_order": 4
+    },
+    {
+      "id": "food-drink-25",
+      "display_title": "£25 FOOD & DRINK VOUCHER",
+      "cover_title": "£25 food & drink voucher",
+      "value_pence": 2500,
+      "requires_booking": false,
+      "alcohol": true,
+      "entitlement_html": "<p>This voucher provides £25 towards qualifying food and drinks purchased at The Anchor in one transaction.</p>",
+      "hero": {
+        "kind": "money",
+        "big": "25",
+        "sub": "Food & drink voucher"
+      },
+      "copy": {
+        "headline": "Now we’re talking",
+        "script": "Dinner, drinks or a bit of both",
+        "prize": "£25 to spend with us",
+        "open": "Decisions, decisions",
+        "aside": "Bring your appetite. Bringing your favourite people is strongly encouraged.",
+        "community": "Spend it on good times together."
+      },
+      "sort_order": 5
+    },
+    {
+      "id": "roast-two",
+      "display_title": "SUNDAY ROAST FOR TWO",
+      "cover_title": "Sunday roast for two",
+      "value_pence": 4000,
+      "requires_booking": true,
+      "alcohol": false,
+      "entitlement_html": "<p>This voucher may be exchanged for two standard Sunday roasts from the available Sunday menu.</p><p>It excludes starters, desserts, drinks, additional sides, upgrades and supplements. It is valid during advertised Sunday roast service and is not valid against special menus, private events or separately ticketed occasions unless expressly stated.</p><p>Availability is not guaranteed without an advance booking.</p>",
+      "hero": {
+        "kind": "word",
+        "big": "Sunday roast",
+        "sub": "for two"
+      },
+      "copy": {
+        "headline": "Sunday plans: sorted",
+        "script": "You bring the company, we’ll bring the gravy",
+        "prize": "Sunday roast for two",
+        "open": "Your Sunday starts here",
+        "aside": "Two plates. One table. Absolutely no washing up.",
+        "community": "Sundays are made for sharing."
+      },
+      "sort_order": 6
+    },
+    {
+      "id": "quiz-four",
+      "display_title": "FOUR QUIZ NIGHT TICKETS",
+      "cover_title": "Four quiz night tickets",
+      "value_pence": 1200,
+      "requires_booking": true,
+      "alcohol": false,
+      "entitlement_html": "<p>This voucher provides admission for up to four people to one standard public Quiz Night at The Anchor.</p><p>Advance booking is required and remains subject to event capacity. The voucher covers admission only and does not include food or drinks. The qualifying event must take place on or before the voucher’s expiry date.</p>",
+      "hero": {
+        "kind": "word",
+        "big": "Four tickets",
+        "sub": "Quiz night"
+      },
+      "copy": {
+        "headline": "Gather your smartest mates",
+        "script": "Or at least the loudest ones",
+        "prize": "Four quiz night tickets",
+        "open": "No Googling",
+        "aside": "Brains, banter and completely unjustified confidence.",
+        "community": "Every team needs a wildcard."
+      },
+      "sort_order": 7
+    },
+    {
+      "id": "bingo-four",
+      "display_title": "FOUR MUSIC BINGO TICKETS",
+      "cover_title": "Four music bingo tickets",
+      "value_pence": 2000,
+      "requires_booking": true,
+      "alcohol": false,
+      "entitlement_html": "<p>This voucher provides admission for up to four people to one standard public Music Bingo event at The Anchor.</p><p>Advance booking is required and remains subject to event capacity. The voucher covers admission only and does not include food or drinks. The qualifying event must take place on or before the voucher’s expiry date.</p>",
+      "hero": {
+        "kind": "word",
+        "big": "Four tickets",
+        "sub": "Music bingo"
+      },
+      "copy": {
+        "headline": "Your night just found a soundtrack",
+        "script": "Singing badly is strongly encouraged",
+        "prize": "Four music bingo tickets",
+        "open": "Turn it up",
+        "aside": "Four seats. Big tunes. Absolutely no dignity required.",
+        "community": "Every voice belongs in the chorus."
+      },
+      "sort_order": 8
+    }
+  ]
+}
