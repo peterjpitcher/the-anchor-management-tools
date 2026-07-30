@@ -688,9 +688,11 @@ export async function updateTableBookingByRawToken(
     nextCommittedSize = newPartySize
   }
 
-  // Outside bookings hold no table, so a party-size increase must never trigger
-  // table allocation — we only update the party size. Skip the capacity/move check
-  // entirely for them (they have no assignment rows and can't be given one here).
+  // Outside bookings hold no INDOOR table, so a party-size increase must never trigger table
+  // allocation: we only update the party size. Skip the capacity/move check entirely for them
+  // (they have no assignment rows and cannot be given one here). The outside table they DO hold
+  // is re-costed for us, because the `party_size` UPDATE below trips the reconciling trigger
+  // from 20260802000008_outside_reservation_sync.sql. Do not add a bespoke copy of that here.
   if (newPartySize > oldPartySize && preview.is_outside_seating !== true) {
     const tableCapacity = Math.max(0, Number(preview.table_capacity || 0))
 

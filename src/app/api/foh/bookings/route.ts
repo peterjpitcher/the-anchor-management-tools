@@ -596,10 +596,32 @@ async function createManualWalkInBookingOverride(params: {
         return typeof grantedRaw === 'number' ? grantedRaw : Number(grantedRaw ?? 0) || 0
       }
 
-      // Outside bookings hold no indoor table — skip the assignment insert and
-      // return confirmed directly (with chairs granted). Not a `no_table` case.
+      // Record the outside table this booking occupies. It holds no INDOOR table, which is
+      // why the assignment insert is skipped below, but it does take space in the garden and
+      // that has to be visible to the outside cap and to availability. This path inserts the
+      // booking directly rather than through the RPC, so it has to say so explicitly: the
+      // reconciling trigger fires on UPDATE only, deliberately (see
+      // 20260802000008_outside_reservation_sync.sql). Never fails the booking, because a
+      // walk-in already standing in the garden is not turned away over a bookkeeping row.
+      async function holdOutsideTable(): Promise<void> {
+        const { error: syncError } = await params.supabase.rpc('sync_outside_reservation', {
+          p_table_booking_id: tableBookingId
+        })
+        if (syncError) {
+          logger.warn('sync_outside_reservation failed for outside walk-in override', {
+            metadata: {
+              tableBookingId,
+              error: syncError.message || String(syncError)
+            }
+          })
+        }
+      }
+
+      // Outside bookings hold no indoor table, so skip the assignment insert and return
+      // confirmed directly (with chairs granted). Not a `no_table` case.
       if (isOutsideSeating) {
         const highChairsGranted = await grantHighChairs()
+        await holdOutsideTable()
         return {
           state: 'confirmed',
           table_booking_id: tableBookingId,
