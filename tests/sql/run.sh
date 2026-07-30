@@ -67,6 +67,7 @@ ALLOCATION_MIGRATIONS="
 20260801001100_create_table_booking_v06.sql
 20260801001200_availability_v06.sql
 20260801001300_lock_down_new_function_grants.sql
+20260802000008_outside_reservation_sync.sql
 "
 
 echo "Applying allocation migrations..."
@@ -83,6 +84,7 @@ output="$(run_sql < "$HERE/allocation-candidates.test.sql" 2>&1 || true)"
 settings_output="$(run_sql < "$HERE/settings-validation.test.sql" 2>&1 || true)"
 v06_output="$(run_sql < "$HERE/booking-v06.test.sql" 2>&1 || true)"
 avail_output="$(run_sql < "$HERE/availability-v06.test.sql" 2>&1 || true)"
+outside_output="$(run_sql < "$HERE/outside-highchairs.test.sql" 2>&1 || true)"
 
 allocation_ok=0
 event_ok=0
@@ -96,14 +98,23 @@ if [ "$v06_ok" -ne 1 ]; then echo "$v06_output" | tail -20; fi
 avail_ok=0
 grep -q "ALL AVAILABILITY TESTS PASSED" <<<"$avail_output" && avail_ok=1
 if [ "$avail_ok" -ne 1 ]; then echo "$avail_output" | tail -20; fi
+grant_ok=0
+grep -q "ALL GRANT TESTS PASSED" <<<"$settings_output" && grant_ok=1
+chairs_ok=0
+grep -q "ALL OUTSIDE HIGH CHAIR TESTS PASSED" <<<"$outside_output" && chairs_ok=1
+seats_ok=0
+grep -q "ALL OUTSIDE RESERVATION TESTS PASSED" <<<"$outside_output" && seats_ok=1
+if [ "$chairs_ok" -ne 1 ] || [ "$seats_ok" -ne 1 ]; then echo "$outside_output" | tail -25; fi
 
 if [ "$settings_ok" -ne 1 ]; then
   echo "$settings_output" | tail -20
 fi
 
-if [ "$allocation_ok" -eq 1 ] && [ "$event_ok" -eq 1 ] && [ "$settings_ok" -eq 1 ] && [ "$v06_ok" -eq 1 ] && [ "$avail_ok" -eq 1 ]; then
+if [ "$allocation_ok" -eq 1 ] && [ "$event_ok" -eq 1 ] && [ "$settings_ok" -eq 1 ] \
+   && [ "$grant_ok" -eq 1 ] && [ "$v06_ok" -eq 1 ] && [ "$avail_ok" -eq 1 ] \
+   && [ "$chairs_ok" -eq 1 ] && [ "$seats_ok" -eq 1 ]; then
   echo
-  echo "PASS: allocation, event, settings, booking and availability suites green"
+  echo "PASS: allocation, event, settings, grants, booking, availability and outside suites green"
 else
   echo
   echo "FAIL:"

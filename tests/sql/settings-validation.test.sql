@@ -130,7 +130,11 @@ BEGIN
     AND p.proname IN (
       'find_table_allocation_candidates','check_table_availability_v06','create_table_booking_core_v06',
       'create_table_booking_staff_v06','set_table_booking_settings','get_table_booking_settings',
-      'allocate_event_communal_seats_v02','is_booking_live')
+      'allocate_event_communal_seats_v02','is_booking_live',
+      -- The high-chair and outside-seating primitives. The first two predate the lock-down
+      -- migration and were still open in production when 20260801001400 was written.
+      'reserve_high_chairs','count_high_chairs_in_window',
+      'sync_outside_reservation','trg_sync_outside_reservation')
     AND array_to_string(p.proacl::text[], ' ') ~ '(anon|authenticated)=X';
 
   ASSERT v_leaky IS NULL,
