@@ -264,6 +264,10 @@
     {
       "path": "/api/cron/checklists-retention",
       "schedule": "0 3 1 * *"
+    },
+    {
+      "path": "/api/cron/vouchers-lifecycle",
+      "schedule": "0 1,2,10,11 * * *"
     }
   ]
 }
