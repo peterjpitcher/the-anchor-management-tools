@@ -1,0 +1,98 @@
+{
+  "contract_version": 1,
+  "source": "AMS GET /api/table-bookings/load response, captured 2026-07-30. Field semantics are documented in table-availability-contract.test.ts (AMS) and the matching website contract test. Keep the two copies of this file byte-identical.",
+  "scenario": {
+    "date": "2026-08-07",
+    "now": "2026-08-07T10:00:00Z",
+    "step_minutes": 15,
+    "grid_start_minutes": 1080,
+    "grid_end_minutes": 1140,
+    "high_chair_inventory": 2,
+    "kitchen_settings": {
+      "enabled": true,
+      "windowMinutes": 30,
+      "paceCoversRegular": 25,
+      "paceCoversSunday": 20,
+      "walkInReserveRegular": 6,
+      "walkInReserveSunday": 6
+    },
+    "kitchen_rows": [
+      {
+        "booking_time": "18:15",
+        "booking_purpose": "food",
+        "party_size": 8,
+        "committed_party_size": null,
+        "status": "confirmed",
+        "left_at": null,
+        "hold_expires_at": null,
+        "payment_status": null
+      }
+    ],
+    "high_chair_holds": [
+      {
+        "start_datetime": "2026-08-07T17:00:00Z",
+        "end_datetime": "2026-08-07T19:00:00Z",
+        "high_chair_count": 1,
+        "status": "confirmed",
+        "left_at": null,
+        "hold_expires_at": null,
+        "payment_status": null
+      }
+    ]
+  },
+  "slots": [
+    { "time": "18:00", "covers": 0, "remaining": 19, "high_chairs_remaining": 1 },
+    { "time": "18:15", "covers": 8, "remaining": 11, "high_chairs_remaining": 1 },
+    { "time": "18:30", "covers": 8, "remaining": 11, "high_chairs_remaining": 1 },
+    { "time": "18:45", "covers": 0, "remaining": 19, "high_chairs_remaining": 1 }
+  ],
+  "table_availability": {
+    "contract_version": 1,
+    "calculation_state": "complete",
+    "date": "2026-08-07",
+    "party_size": 4,
+    "purpose": "food",
+    "outside": false,
+    "requires_accessible_table": false,
+    "max_party_size_online": 20,
+    "duration_minutes": 90,
+    "slots": [
+      {
+        "time": "18:00",
+        "state": "available",
+        "public_reason": null,
+        "message": null,
+        "high_chairs_remaining": 1
+      },
+      {
+        "time": "18:15",
+        "state": "unavailable",
+        "public_reason": "kitchen_full",
+        "message": "Our kitchen is at capacity for that time. There is usually room a little earlier or later.",
+        "high_chairs_remaining": 1
+      },
+      {
+        "time": "18:30",
+        "state": "unavailable",
+        "public_reason": "tables_full",
+        "message": "We are fully booked at that time. Please try another time or give us a ring.",
+        "high_chairs_remaining": 1
+      },
+      {
+        "time": "18:45",
+        "state": "available",
+        "public_reason": null,
+        "message": null,
+        "high_chairs_remaining": 1
+      }
+    ]
+  },
+  "table_availability_unknown": {
+    "contract_version": 1,
+    "calculation_state": "unknown",
+    "date": "2026-08-07",
+    "party_size": 4,
+    "slots": [],
+    "public_reason": "unknown"
+  }
+}
