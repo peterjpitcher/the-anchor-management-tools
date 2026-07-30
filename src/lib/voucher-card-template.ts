@@ -218,18 +218,21 @@ body{font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:ex
 .terms-foot .ver{text-align:right;white-space:nowrap;font-size:10px}`
 }
 
-// Clause bodies and headings come from the terms register and carry the
-// handoff's HTML entities, so they are inserted verbatim (matching the
-// handoff's termsHTML builder).
+// Stored copy is plain text (the seed extractor decodes the handoff's entities so
+// the app can render the same values as React text), so everything except
+// entitlement_html is escaped on its way back into the printed HTML.
 function termsListHtml(clauses: TermsClause[]): string {
-  return clauses.map(clause => `<li><b>${clause.heading}.</b> ${clause.body}</li>`).join('')
+  return clauses
+    .map(clause => `<li><b>${escapeHtml(clause.heading)}.</b> ${escapeHtml(clause.body)}</li>`)
+    .join('')
 }
 
 function heroHtml(hero: CardHero): string {
+  const sub = escapeHtml(hero.sub)
   if (hero.kind === 'money') {
-    return `<p class="pz-fig"><sup>&pound;</sup>${hero.big}</p><p class="pz-sub">${hero.sub}</p>`
+    return `<p class="pz-fig"><sup>&pound;</sup>${escapeHtml(hero.big)}</p><p class="pz-sub">${sub}</p>`
   }
-  return `<p class="pz-word">${hero.big}</p><p class="pz-sub">${hero.sub}</p>`
+  return `<p class="pz-word">${escapeHtml(hero.big)}</p><p class="pz-sub">${sub}</p>`
 }
 
 interface CardPagesParams {
@@ -248,7 +251,7 @@ function outsidePageHtml(params: CardPagesParams): string {
   return `<div class="page" data-voucher="${escapeHtml(definition.id)}" data-card="${cardIndex}" data-side="outside">
 <div class="panel">
 <div class="panel-inner">
-<div class="terms-head"><p class="kick" data-field="displayTitle">${definition.displayTitle}</p><h2 class="terms-title">Terms and conditions</h2></div>
+<div class="terms-head"><p class="kick" data-field="displayTitle">${escapeHtml(definition.displayTitle)}</p><h2 class="terms-title">Terms and conditions</h2></div>
 <ol class="terms">${termsHtml}</ol>
 <div class="terms-foot"><p><b>The Anchor</b>, Horton Road<br>Stanwell Moor Village, Surrey, TW19 6AQ</p>
 <p class="ver"><b>Voucher no.</b> <span data-field="voucherNumber">${safeNumber}</span><br>Terms <span data-field="termsVersion">${safeVersion}</span></p></div>
@@ -256,9 +259,9 @@ function outsidePageHtml(params: CardPagesParams): string {
 <div class="panel cover">
 <div class="panel-inner">
 <div><img class="cv-logo" src="${ANCHOR_LOGO_BLACK_DATA_URI}" alt="The Anchor"><p class="kick">Prize voucher &middot; Stanwell Moor Village</p></div>
-<div class="cv-mid"><h1 class="cv-title" data-field="coverHeadline">${definition.copy.headline}</h1><p class="cv-script" data-field="coverScript">${definition.copy.script}</p><div class="cv-rule"></div>
-<p class="cv-prize" data-field="coverPrize">${definition.copy.prize}</p></div>
-<p class="cv-open" data-field="openLine">${definition.copy.open}</p>
+<div class="cv-mid"><h1 class="cv-title" data-field="coverHeadline">${escapeHtml(definition.copy.headline)}</h1><p class="cv-script" data-field="coverScript">${escapeHtml(definition.copy.script)}</p><div class="cv-rule"></div>
+<p class="cv-prize" data-field="coverPrize">${escapeHtml(definition.copy.prize)}</p></div>
+<p class="cv-open" data-field="openLine">${escapeHtml(definition.copy.open)}</p>
 </div></div>
 </div>`
 }
@@ -276,9 +279,9 @@ function insidePageHtml(params: CardPagesParams): string {
 <div class="panel prize">
 <div class="panel-inner">
 <p class="kick">Your prize</p>
-<div class="pz-body">${heroHtml(definition.hero)}<p class="pz-aside" data-field="insideAside">${definition.copy.aside}</p><div class="pz-rule"></div>
+<div class="pz-body">${heroHtml(definition.hero)}<p class="pz-aside" data-field="insideAside">${escapeHtml(definition.copy.aside)}</p><div class="pz-rule"></div>
 <div class="pz-ent" data-field="entitlement">${definition.entitlementHtml}</div></div>
-<div class="pz-foot"><p class="pz-comm" data-field="communityLine">${definition.copy.community}</p>
+<div class="pz-foot"><p class="pz-comm" data-field="communityLine">${escapeHtml(definition.copy.community)}</p>
 <p class="pz-sign">${SIGN_OFF_HTML}</p></div>
 </div></div>
 <div class="panel">
@@ -385,7 +388,7 @@ export function buildTermsSheetHtml(params: TermsSheetHtmlParams): string {
 
   const safeVersion = escapeHtml(version)
   const clausesHtml = clauses
-    .map(clause => `<li><h2>${clause.heading}</h2><p>${clause.body}</p></li>`)
+    .map(clause => `<li><h2>${escapeHtml(clause.heading)}</h2><p>${escapeHtml(clause.body)}</p></li>`)
     .join('\n')
 
   return `<!DOCTYPE html>
