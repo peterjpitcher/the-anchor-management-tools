@@ -1,7 +1,7 @@
 # Voucher Generation and Redemption System - Full Specification
 
-Date: 2026-07-30 (rev 3: developer review `tasks/voucher-system-spec-review-2026-07-30.md` resolved, all 54 findings addressed)
-Status: Implementation-ready. Decisions taken in the owner's absence are logged in section 12 for override.
+Date: 2026-07-30 (rev 4: all ten section 12 decisions confirmed by the owner; D6 reminder cadence and D7 quick-add consent changed on their instruction. Rev 3 resolved all 54 findings of `tasks/voucher-system-spec-review-2026-07-30.md`.)
+Status: Built and delivered on branch `feat/voucher-system`. Every decision in section 12 is owner-approved.
 Source: Design handoff vendored at `docs/design/voucher-system/` (README, print HTML with `TYPES`/`TERMS` seed arrays, logo + QR assets). F08 resolved: the repo is now the build input.
 Complexity: L. Built in phases (section 10), delivered on branch `feat/voucher-system`, tested locally before any deploy.
 
@@ -40,16 +40,20 @@ Eight types of prize voucher, printed as folded A5 cards, handed to winners at e
 
 Columns: `id text pk`, `display_title text`, `cover_title text`, `value_pence int null`, `requires_booking bool`, `alcohol bool`, `entitlement_html text`, `hero jsonb`, `copy jsonb`, `sort_order int`, `active bool default true`, timestamps. The eight rows and all copy fields are extracted **programmatically** from `docs/design/voucher-system/Voucher Set (Folded Card, B&W Print).html` (`TYPES` array), never retyped. Types are migration-only.
 
+Every type carries a cash value (owner, 2026-07-30). The handoff left the five entitlement types valueless; the owner set values so outstanding liability covers the whole stock. Values are not printed on the cards, so no artwork changes.
+
 | id | display_title | value_pence | requires_booking | alcohol |
 |---|---|---|---|---|
-| `free-drink` | FREE DRINK VOUCHER | null | false | true |
-| `house-wine` | BOTTLE OF HOUSE WINE | null | false | true |
+| `free-drink` | FREE DRINK VOUCHER | 600 | false | true |
+| `house-wine` | BOTTLE OF HOUSE WINE | 2000 | false | true |
 | `food-10` | £10 FOOD VOUCHER | 1000 | false | false |
 | `drinks-10` | £10 DRINKS VOUCHER | 1000 | false | true |
 | `food-drink-25` | £25 FOOD & DRINK VOUCHER | 2500 | false | true |
-| `roast-two` | SUNDAY ROAST FOR TWO | null | true | false |
-| `quiz-four` | FOUR QUIZ NIGHT TICKETS | null | true | false |
-| `bingo-four` | FOUR MUSIC BINGO TICKETS | null | true | false |
+| `roast-two` | SUNDAY ROAST FOR TWO | 4000 | true | false |
+| `quiz-four` | FOUR QUIZ NIGHT TICKETS | 1200 | true | false |
+| `bingo-four` | FOUR MUSIC BINGO TICKETS | 2000 | true | false |
+
+Stored copy is **plain text, not HTML entities** (migration `20260802000004`): the handoff authors every string for direct HTML injection, so `&pound;`/`&amp;` were leaking into the app UI. The print template escapes text fields on the way back into HTML; `entitlement_html` remains genuine markup.
 
 ### 2.2 terms_versions
 
@@ -200,7 +204,7 @@ issued ──replace (stock card takes over)──▶ replaced   [terminal]
 | generated | issue | issued | vouchers.edit | employee id, won_at_label (or event_id), expiry_date | Batch must be pdf_status ready (F10) |
 | generated | cancel | cancelled | vouchers.manage | reason | Misprints, damaged stock |
 | generated | reprint | generated | vouchers.create | - | Event `reprinted` |
-| issued | redeem | redeemed | vouchers.edit | employee id; booking_ref when type requires booking | Blocked when London today > expiry_date |
+| issued | redeem | redeemed | vouchers.edit | employee id (booking_ref optional, never blocking) | Blocked when London today > expiry_date |
 | issued | undo of a redeem | - | - | - | Not applicable (see redeemed) |
 | issued | cancel | cancelled | vouchers.manage | reason | |
 | issued | replace | replaced | vouchers.manage | reason + selected generated stock card of same type | Replacement copies customer, event, expiry; both rows locked; links written both ways (F09, F14) |
@@ -236,7 +240,7 @@ Nav: **Vouchers**, operations group next to Table Bookings, new `ticket` icon ad
 ### 3.1 Overview
 
 **A. Stock by type**: | Voucher type | In stock | Out (issued) | Redeemed | Expired | Cancelled | with totals row; "in stock" is the headline; low-stock flag at ≤ 5. **In stock counts only `generated` vouchers whose batch is `pdf_status = 'ready'`** (F10); pending/failed batches are listed separately as "not yet printable".
-**B. Summary tiles**: total in stock · total outstanding · redeemed this month · outstanding monetary value (issued £-types only, labelled as such).
+**B. Summary tiles**: total in stock · total outstanding · redeemed this month · outstanding value (every type now has a value, so this is the whole live liability).
 **C. Outstanding by age** buckets + count expiring within 14 days.
 
 Metric dictionary (F40): every number on this page has one definition, and clicking it opens the ledger with exactly the filters that reproduce it.
@@ -246,7 +250,7 @@ Metric dictionary (F40): every number on this page has one definition, and click
 | In stock | status=generated AND batch.pdf_status=ready |
 | Outstanding | status=issued (lookup-expired ones excluded by the nightly job within 24h; the tile notes "as of last expiry run") |
 | Redeemed this month | status=redeemed AND redeemed_at within current London month (includes override redemptions) |
-| Outstanding value | sum(value_pence) over Outstanding |
+| Outstanding value | sum(value_pence) over Outstanding (all eight types contribute) |
 | Redemption rate (per type/batch) | redeemed ÷ issued (cohort = ever-issued vouchers of that type/batch) |
 | Expiring soon | Outstanding AND expiry_date within next 14 London days |
 
@@ -286,7 +290,7 @@ Route `(authenticated)/vouchers/foh`. Wiring (F06/F07, one coupled change): new 
 
 Counts strip: in stock · out · redeemed today (London).
 
-**Redeem:** number entry → result card (type title, entitlement wording **from the batch snapshot**, status, age + customer, expiry, value) → warnings (18+ for alcohol types; booking-ref required for booking types; expiring within 7 days) → optional transaction ref, optional customer attach → Mark as used (≥56px) with one confirm → 60s Undo. Blocked states show reason + who/when, no button: redeemed, expired (hard block; manager override is management-side only), cancelled, replaced (shows replacement number), generated (prompts hand-out). Lookup treats past expiry as expired regardless of cron (2.5).
+**Redeem:** number entry → result card (type title, entitlement wording **from the batch snapshot**, status, age + customer, expiry, value) → warnings (18+ for alcohol types; booking-required note for booking types, with an **optional** reference field that never blocks the redemption per the owner's decision of 2026-07-30, migration `20260802000005`; expiring within 7 days) → optional transaction ref, optional customer attach → Mark as used (≥56px) with one confirm → 60s Undo. Blocked states show reason + who/when, no button: redeemed, expired (hard block; manager override is management-side only), cancelled, replaced (shows replacement number), generated (prompts hand-out). Lookup treats past expiry as expired regardless of cron (2.5).
 
 **Hand out:** as 3.3 but single-card, expiry presets required, staff picker, optional customer attach.
 
@@ -302,21 +306,22 @@ Accessibility (F46): every input labelled, lookup/mutation results announced via
 
 1. **One-tap chips**: customers with confirmed, positive-seat bookings on the in-context event (source table/statuses verified against the live bookings schema during build; deduped by customer; labelled "booked, N seats", F34). The tap selects; the person is confirmed as part of the hand-out confirm.
 2. **Search-as-you-type**: existing FOH customer search.
-3. **Quick-add (F16)**: dedicated voucher endpoint (not the `customers.manage` path): after a `vouchers.edit` check it atomically finds-or-creates by canonical E.164 (race-safe: on conflict returns the existing customer). Fields: name, mobile, and a **"Happy to get a reminder text about this voucher" tick** (default ticked, staff ask verbally). The tick sets `sms_opt_in` on newly created customers only; existing customers keep their current flag. Reminders always respect `sms_opt_in` at send time.
+3. **Quick-add (F16)**: dedicated voucher endpoint (not the `customers.manage` path): after a `vouchers.edit` check it atomically finds-or-creates by canonical E.164 (race-safe: on conflict returns the existing customer). Fields: name, mobile, **optional email** (needed for the email-first reminder channel). **Owner decision 2026-07-30: adding someone this way signs them up for all communications** - newly created customers get `sms_opt_in`, `marketing_sms_opt_in` and `marketing_email_opt_in` set true with timestamps and `sms_opt_in_source = 'voucher_handout'`; the form carries a line of copy so staff can say so out loud. WhatsApp opt-in is untouched (that channel has its own controlled opt-in). Customers who already exist never have their consent changed; a missing email is filled in if one is supplied. Reminders still respect consent and contactability at send time.
 
 Optional at every step; assignable later from detail. Reassignment retargets pending reminders to the new customer; sent milestones are never repeated for the voucher (F36).
 
-### 5.2 Reminder schedule (deterministic, F17/F18)
+### 5.2 Reminder schedule (deterministic, F17/F18; expiry-led per owner decision 2026-07-30)
 
-Outbox rows are (re)computed on issue, on expiry edit, and on customer assign/remove:
+Vouchers are normally valid one month from hand-out, so reminders are counted back from the **expiry date**, not from issue. Outbox rows are (re)computed on issue, on expiry edit, and on customer assign/remove:
 
-| Kind | Scheduled for | Created when |
-|---|---|---|
-| day30 | issued + 30 London days | expiry is after that date |
-| day90 | issued + 90 London days | expiry is after that date |
-| pre_expiry | expiry - 14 London days | that date is after issue AND (day30/day90 don't already cover within 7 days of it) |
+| Kind | Scheduled for |
+|---|---|
+| `pre_expiry_7` | expiry date - 7 London days |
+| `pre_expiry_3` | expiry date - 3 London days |
 
-Rules: max 2 reminders ever sent per voucher; a milestone already in the past when a customer is assigned is `skipped`, never sent late; one voucher reminder per customer per London day (extra due reminders defer to the next day); redeem/expire/cancel/replace cancels pending rows; unassigning cancels pending rows. Sends go through canonical `sendSMS` with `voucher_id` + `reminder_kind` in the metadata (F19); the outbox unique key is the idempotency guard; max 3 attempts then `failed` with the error stored (F51). Copy (GSM-7 safe, straight apostrophes): `Hi {first_name}, your {prize} voucher from {event} is waiting for you at The Anchor. Just show the card before {expiry_date}. See you soon!` Logged to the customer's messages timeline.
+Rules: two reminders maximum per voucher; a date already in the past when the row is computed is recorded `skipped` and never sent late (so a short-dated or late-assigned voucher simply gets fewer reminders); one voucher reminder per customer per London day (extras defer to the next day); redeem/expire/cancel/replace/unassign cancels pending rows; the outbox unique key `(voucher_id, reminder_kind)` is the idempotency guard; max 3 attempts then `failed` with the error stored (F51).
+
+**Channel: email first, SMS only as fallback.** A customer with a usable email address is emailed (canonical `sendEmail`, options object); a customer with no email falls back to SMS (canonical `sendSMS`, metadata `voucher_id` + `reminder_kind`, GSM-7 safe, one segment). Neither contactable means the row is `skipped` with a reason. The channel used is stored on the reminder row. Both channels name the prize, where it was won and the expiry date; the 3-day message is more urgent than the 7-day one. All sends are logged to the customer's communications timeline by the canonical senders.
 
 ---
 
@@ -384,7 +389,7 @@ Render failures are visible on the batch (status, error, retry). Cron passes wri
 
 Digital vouchers; per-voucher QR / public routes; EPOS integration (one-voucher-per-transaction remains an operational control, F41); UI editing of types/terms; hard booking-table links (booking_ref is free text; booking-required types redeem at booking confirmation, later cancellations handled by manager undo, F25); email reminders; staff PIN verification of attribution (F29 accepted risk: kiosk user + selected employee are both recorded).
 
-## 12. Decision log for owner review (taken in your absence; say the word to change any)
+## 12. Decision log (ALL OWNER-CONFIRMED 2026-07-30)
 
 | # | Decision | Why |
 |---|---|---|
@@ -393,8 +398,11 @@ Digital vouchers; per-voucher QR / public routes; EPOS integration (one-voucher-
 | D3 | Replacement = issue an existing stock card of the same type, copying customer/event/expiry | Matches the physical world (F09) |
 | D4 | Management section is manager-only (`vouchers.manage`); staff + foh_staff get the FOH page only | Least privilege (F30) |
 | D5 | Reprint of an issued card needs manager + "original destroyed" confirmation | Fraud control (F28) |
-| D6 | Reminders: max 2 per voucher; skipped milestones never sent late; one per customer per day | Anti-nag (F18) |
-| D7 | Quick-add consent tick default ON, applies to new customers only | Practical consent capture (F16) |
+| D6 | Reminders: 7 days then 3 days before expiry, email first and SMS only without an email; max 2 per voucher; past dates skipped not sent late; one per customer per day | OWNER CONFIRMED 2026-07-30 (replaced the original day30/day90 cadence because vouchers are normally valid one month) |
+| D7 | Quick-add takes an optional email and signs new customers up for all communications (no tick box); existing customers unchanged | OWNER CONFIRMED 2026-07-30 |
 | D8 | Fonts self-hosted (OFL) with CDN fallback recorded if unobtainable | Print fidelity (F24) |
 | D9 | Staff attribution unverified (no PIN) but kiosk account + selected employee both recorded | v1 pragmatism (F29) |
 | D10 | One combined lifecycle cron with London run keys | Cron capacity + DST correctness (F20/F21) |
+| D11 | Booking reference is optional and never blocks a redemption | OWNER 2026-07-30 (migration `20260802000005`) |
+| D12 | Every type has a cash value (£6 to £40); outstanding value covers all stock | OWNER 2026-07-30 (migration `20260802000006`) |
+| D13 | Seed values stored as plain text, escaped by the print template | Fixes entities leaking into the UI (migration `20260802000004`) |
