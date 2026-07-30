@@ -60,14 +60,6 @@ export async function POST(request: NextRequest) {
     return serverError('Failed to check the voucher. Please try again.')
   }
 
-  const requiresBooking = Boolean(
-    (voucherRow as { voucher_type: { requires_booking: boolean } | null } | null)?.voucher_type
-      ?.requires_booking
-  )
-  if (requiresBooking && !payload.bookingRef?.trim()) {
-    return validationError('This voucher needs a booking reference before it can be marked as used')
-  }
-
   const { data, error } = await auth.supabase.rpc('voucher_redeem', {
     p_voucher_number: voucherNumber,
     p_employee_id: employee.id,

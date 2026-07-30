@@ -145,14 +145,10 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
     setOutcome(result.message ?? 'Undo failed.')
   }
 
-  const requiresBookingRef = Boolean(selected && isActionable(selected, 'redeem') && selected.requiresBooking)
-  const canMarkUsed = Boolean(
-    canEdit &&
-      staffId &&
-      selected &&
-      isActionable(selected, 'redeem') &&
-      (!requiresBookingRef || bookingRef.trim().length > 0)
-  )
+  // Booking-type vouchers still show the reference field so it can be recorded,
+  // but a missing reference never blocks a redemption (owner decision 2026-07-30).
+  const showBookingRef = Boolean(selected && isActionable(selected, 'redeem') && selected.requiresBooking)
+  const canMarkUsed = Boolean(canEdit && staffId && selected && isActionable(selected, 'redeem'))
 
   return (
     <div className="space-y-4">
@@ -224,10 +220,10 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
         >
           {isActionable(selected, 'redeem') && (
             <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-              {requiresBookingRef && (
+              {showBookingRef && (
                 <div>
                   <label htmlFor="foh-redeem-booking-ref" className="block text-sm font-medium text-gray-900">
-                    Booking reference (required for this voucher)
+                    Booking reference (optional)
                   </label>
                   <input
                     id="foh-redeem-booking-ref"
