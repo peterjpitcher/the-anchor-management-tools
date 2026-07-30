@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Anchor &mdash; Prize voucher set</title>
+<link rel="stylesheet" href="_ds/the-anchor-design-system-21f9c862-9196-4c70-9813-803f9139339d/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/the-anchor-design-system-21f9c862-9196-4c70-9813-803f9139339d/tokens/colors.css">
+<link rel="stylesheet" href="_ds/the-anchor-design-system-21f9c862-9196-4c70-9813-803f9139339d/tokens/typography.css">
+<style>
+:root{--paper:#fff;--ink:#161616;--ink-soft:#363636;--ink-mute:#6b6b6b;--rule:#cfcfcf;--pad:12mm}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#3a3a3a;font-family:var(--font-body);color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+a{color:var(--ink);text-decoration:none}a:hover{color:var(--ink-soft)}
+
+/* ================= screen-only handover spec ================= */
+.spec{max-width:1000px;margin:0 auto;padding:40px 28px 8px;color:#e9e4d8}
+.spec a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+.spec a:hover{color:#cfc9bb}
+.spec h1{font-family:var(--font-display);font-weight:400;font-size:40px;line-height:1.05;letter-spacing:-.02em;color:#fff;margin:0 0 8px}
+.spec .lede{font-size:15px;line-height:1.65;color:#cfc9bb;margin:0 0 30px;max-width:74ch}
+.spec h2{font-family:var(--font-body);font-weight:600;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#b3ada1;margin:32px 0 12px;padding-top:16px;border-top:1px solid #565452}
+.spec h3{font-family:var(--font-body);font-weight:600;font-size:14px;color:#fff;margin:20px 0 6px}
+.spec p{font-size:14px;line-height:1.65;color:#d8d3c8;margin:0 0 12px;max-width:78ch}
+.spec ul{margin:0 0 14px;padding-left:18px;max-width:78ch}
+.spec li{font-size:14px;line-height:1.6;color:#d8d3c8;margin-bottom:5px}
+.spec code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:#2b2b2b;border:1px solid #565452;border-radius:3px;padding:1px 5px;color:#f0e6c6}
+.spec table{border-collapse:collapse;width:100%;margin:0 0 16px;font-size:13px}
+.spec th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#b3ada1;border-bottom:1px solid #565452;padding:0 12px 7px 0;vertical-align:bottom}
+.spec td{border-bottom:1px solid #4a4846;padding:9px 12px 9px 0;color:#d8d3c8;line-height:1.5;vertical-align:top}
+.spec td code{font-size:12px}
+.spec .idx{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 16px;margin:0 0 14px;padding:0;list-style:none}
+.spec .idx li{margin:0}
+.spec .callout{border:1px solid #565452;border-left:3px solid #c9a020;padding:14px 18px;margin:0 0 16px;max-width:78ch}
+.spec .callout p{margin:0}
+
+.screen-note{color:#e9e4d8;font-size:13.5px;text-align:center;padding:26px 16px 4px;line-height:1.6;max-width:900px;margin:0 auto}
+.screen-note strong{color:#fff;font-weight:600}
+.screen-note .sub{display:block;color:#b3ada1;font-size:12px;margin-top:5px}
+.set-head{max-width:1000px;margin:44px auto 0;padding:22px 28px 0;border-top:1px solid #565452;color:#fff;font-family:var(--font-display);font-weight:400;font-size:26px;letter-spacing:-.02em}
+.set-head span{display:block;font-family:var(--font-body);font-size:12px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#b3ada1;margin-bottom:6px}
+.stage{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:44px;padding:26px 0 40px}
+.sheet-wrap{position:relative}
+.sheet-label{position:absolute;top:-23px;left:2px;color:#cfc9bb;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+.sheet-label b{color:#fff}
+
+/* ================= A4 landscape sheet, folds to A5 portrait card ================= */
+.page{width:297mm;height:210mm;background:var(--paper);position:relative;display:flex;overflow:hidden;transform-origin:top center}
+.panel{width:148.5mm;height:210mm;padding:var(--pad);position:relative;display:flex;flex-direction:column;overflow:hidden}
+.panel-inner{display:flex;flex-direction:column;height:100%;position:relative;z-index:2}
+.panel-tag{position:absolute;bottom:-21px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:#cfc9bb}
+.panel-tag.l{left:2px}.panel-tag.r{left:50%;margin-left:12px}
+.kick{font-weight:600;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-mute);margin:0}
+
+/* ---------- front cover ---------- */
+.cover::after{content:"";position:absolute;inset:7mm;border:1px solid var(--ink);pointer-events:none;z-index:1}
+.cover .panel-inner{align-items:center;justify-content:space-between;text-align:center}
+.cv-logo{width:48mm;height:auto;display:block;margin:4mm auto 4.5mm}
+.cv-mid{display:flex;flex-direction:column;justify-content:center;flex:1;padding:2mm 0}
+.cv-title{font-family:var(--font-display);font-weight:400;font-size:52px;line-height:.94;letter-spacing:-.03em;color:var(--ink);margin:0 auto;max-width:112mm;text-wrap:balance}
+.cv-script{font-family:var(--font-script);font-size:34px;color:var(--ink-soft);line-height:1;margin:5mm 0 0}
+.cv-rule{width:26mm;height:1px;background:var(--ink);margin:8mm auto}
+.cv-prize{font-family:var(--font-display);font-weight:400;font-size:27px;line-height:1.08;letter-spacing:-.01em;color:var(--ink);margin:0 auto;max-width:104mm;text-wrap:balance}
+.cv-open{font-weight:600;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-mute);margin:0 0 3mm}
+
+/* ---------- inside left: the prize ---------- */
+.prize{text-align:center}
+.pz-body{flex:1;display:flex;flex-direction:column;justify-content:center}
+.pz-fig{font-family:var(--font-display);font-weight:400;font-size:128px;line-height:.8;letter-spacing:-.04em;color:var(--ink);margin:0}
+.pz-fig sup{font-size:54px;vertical-align:top;position:relative;top:14px;letter-spacing:0}
+.pz-word{font-family:var(--font-display);font-weight:400;font-size:52px;line-height:.98;letter-spacing:-.025em;color:var(--ink);margin:0}
+.pz-sub{font-family:var(--font-display);font-weight:400;font-size:32px;line-height:1.05;letter-spacing:-.01em;color:var(--ink);margin:5mm 0 0}
+.pz-rule{width:100%;height:1px;background:var(--ink);margin:7mm 0}
+.pz-aside{font-family:var(--font-script);font-size:27px;line-height:1.2;color:var(--ink-soft);margin:6mm auto 0;max-width:98mm;text-wrap:balance}
+.pz-ent{font-size:12.5px;line-height:1.55;color:var(--ink-soft);margin:0 auto;max-width:104mm;text-align:left}
+.pz-ent p{margin:0 0 2.6mm}
+.pz-ent p:last-child{margin-bottom:0}
+.pz-ent ul{margin:0 0 2.6mm;padding:0;list-style:none;display:flex;flex-direction:column;gap:1.4mm}
+.pz-ent li{padding-left:4.4mm;position:relative}
+.pz-ent li::before{content:"";position:absolute;left:0;top:2.2mm;width:2.4mm;height:1px;background:var(--ink)}
+.pz-foot{margin-top:auto;padding-top:4mm;border-top:1px solid var(--rule);font-size:11.5px;line-height:1.5;color:var(--ink-mute)}
+.pz-foot b{color:var(--ink);font-weight:600}
+.pz-comm{font-weight:600;font-size:12.5px;line-height:1.4;color:var(--ink);margin:0 0 1.8mm}
+.pz-sign{margin:0}
+
+/* ---------- inside right: the details ---------- */
+.det-head{padding-bottom:3.4mm;margin-bottom:6mm;border-bottom:1.4px solid var(--ink);flex-shrink:0}
+.det-title{font-family:var(--font-display);font-weight:400;font-size:30px;line-height:1;letter-spacing:-.02em;color:var(--ink);margin:1.6mm 0 0}
+.det-body{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:7mm 8mm;flex-shrink:0}
+.field{min-width:0}
+.field--wide{grid-column:1/-1}
+.field-lab{font-weight:600;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-mute);margin:0 0 1.6mm}
+.field-val{font-weight:600;font-size:15px;line-height:1.2;color:var(--ink);margin:0 0 1.8mm;letter-spacing:.02em}
+.field-val.ref{font-size:19px;letter-spacing:.1em}
+.field-write{height:9mm}
+.field-line{height:1px;background:var(--ink);opacity:.55}
+.present{border:1px solid var(--ink);padding:5.4mm;margin-top:9mm}
+.present + .present{margin-top:4mm}
+.present-h{font-weight:600;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-mute);margin:0 0 2.4mm}
+.present-p{font-size:13.5px;line-height:1.5;color:var(--ink-soft);margin:0}
+.present-p b{color:var(--ink);font-weight:600}
+.det-foot{margin-top:auto;padding-top:3.6mm;border-top:1.4px solid var(--ink);display:flex;align-items:center;justify-content:space-between;gap:4.4mm}
+.det-qr{width:20mm;height:20mm;display:block;flex-shrink:0}
+.det-foot .qr-h{font-weight:600;font-size:11px;letter-spacing:.02em;color:var(--ink);margin:0 0 .8mm}
+.det-foot p{margin:0;font-size:11px;line-height:1.5;color:var(--ink-mute)}
+.det-foot b{color:var(--ink);font-weight:600}
+.det-foot .ver{text-align:right;white-space:nowrap;font-size:10px}
+
+/* ---------- back cover: full terms ---------- */
+.terms-head{padding-bottom:2.6mm;margin-bottom:3.6mm;border-bottom:1.4px solid var(--ink);flex-shrink:0}
+.terms-title{font-family:var(--font-display);font-weight:400;font-size:23px;line-height:1;letter-spacing:-.02em;color:var(--ink);margin:1.2mm 0 0}
+.terms{margin:0;padding:0;list-style:none;counter-reset:t;columns:2;column-gap:6mm;column-rule:1px solid var(--rule);flex:1}
+.terms li{counter-increment:t;position:relative;padding-left:4.6mm;margin-bottom:1.7mm;font-size:8.6px;line-height:1.38;color:var(--ink-soft);break-inside:avoid}
+.terms li::before{content:counter(t);position:absolute;left:0;top:0;font-weight:600;font-size:8.6px;color:var(--ink-mute)}
+.terms b{font-weight:600;color:var(--ink)}
+.terms-foot{margin-top:3.4mm;padding-top:3mm;border-top:1.4px solid var(--ink);display:flex;align-items:flex-end;justify-content:space-between;gap:5mm;flex-shrink:0}
+.terms-foot p{margin:0;font-size:10.5px;line-height:1.5;color:var(--ink-mute)}
+.terms-foot b{color:var(--ink);font-weight:600}
+.terms-foot .ver{text-align:right;white-space:nowrap;font-size:10px}
+
+@media print{
+  @page{size:A4 landscape;margin:0 !important}
+  html,body{background:#fff;margin:0;padding:0}
+  .spec,.screen-note,.set-head,.sheet-label,.panel-tag{display:none !important}
+  .stage{display:block;gap:0;padding:0;margin:0}
+  .sheet-wrap{display:block;margin:0;overflow:hidden;page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid}
+  .stage:last-of-type .sheet-wrap:last-child{page-break-after:auto;break-after:auto}
+  .page{box-shadow:none !important;filter:none !important;transform:none !important;width:296.6mm;height:209.6mm;overflow:hidden;page-break-inside:avoid;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="spec">
+<h1>The Anchor &mdash; prize voucher set</h1>
+<p class="lede">Eight voucher types on one folded card design, ready to be generated from the voucher system. Each type prints as two A4 landscape sheets (outside and inside) that fold down the middle into an A5 portrait card. This page is the design source and the developer handover; everything below the spec is the artwork.</p>
+
+<h2>The eight vouchers</h2>
+<ul class="idx" id="voucher-index"></ul>
+
+<h2>Print &amp; fold</h2>
+<ul>
+<li>Sheet size <b>A4 landscape</b>, printed <b>double sided, flip on short edge</b> so the reverse mirrors left to right, not top to bottom. If a test print comes out upside down on the reverse, the flip is wrong.</li>
+<li>Fold down the middle. Finished card is <b>A5 portrait</b>, crease on the left, opening like a book.</li>
+<li>Imposition per voucher: sheet 1 outside = <code>[back cover | front cover]</code>, sheet 2 inside = <code>[prize | details]</code>.</li>
+<li>Black ink only, no bleed required. Panel labels are screen-only and do not print. There is no printed fold line, fold to the centre of the sheet.</li>
+<li>Every voucher carries the same QR code on the inside right, linking to what&rsquo;s on and booking. It is fixed artwork (<code>assets/qr-events-booking.png</code>), not a merge field, so it does not change per voucher.</li>
+</ul>
+
+<h2>Merge fields</h2>
+<p>Every variable is marked in the markup with a <code>data-field</code> attribute, so the renderer can bind without touching the layout. Sample values are shown in the artwork below. Expiry date, the event it was won at, and issued by are hand-written on the card, so they print as ruled blanks; the same <code>data-field</code> hooks are on those blanks if they are ever pre-printed instead.</p>
+<table>
+<thead><tr><th>data-field</th><th>Source</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>voucherNumber</code></td><td>Voucher system</td><td>Unique, generated at issue, printed on the inside right and repeated on the back cover.</td></tr>
+<tr><td><code>expiryDate</code></td><td>Hand-written at issue</td><td>The card prints a ruled blank. Valid until close of business on the date written. The system still records it against the voucher.</td></tr>
+<tr><td><code>wonAt</code></td><td>Hand-written at issue</td><td>Event name and date the voucher was handed out, for example &ldquo;Quiz night, 24 July 2026&rdquo;. This replaces a printed issue date.</td></tr>
+<tr><td><code>issuedBy</code></td><td>Hand-written at issue</td><td>Name of the team member who handed it out. Ruled blank on the card.</td></tr>
+<tr><td><code>termsVersion</code></td><td>Terms register</td><td>The version in force at issue. Printed on the back cover only.</td></tr>
+<tr><td><code>displayTitle</code></td><td>Voucher type</td><td>Never free text. The ALL-CAPS type title, used as the kicker on the back cover.</td></tr>
+<tr><td><code>coverTitle</code></td><td>Voucher type</td><td>Never free text. The sentence-case version of the same title. Held for records and system display; the front cover prints <code>coverPrize</code> instead.</td></tr>
+<tr><td><code>coverHeadline</code>, <code>coverScript</code>, <code>coverPrize</code>, <code>openLine</code></td><td>Voucher type</td><td>Never free text. The front cover copy set: headline, script line, prize title and open-me prompt. One approved set per type.</td></tr>
+<tr><td><code>insideAside</code>, <code>communityLine</code></td><td>Voucher type</td><td>Never free text. The inside-left script aside and the community line above the fixed sign-off (&ldquo;Where everyone&rsquo;s welcome. A village pub since 1751.&rdquo; is the same on every voucher).</td></tr>
+<tr><td><code>entitlement</code></td><td>Voucher type</td><td>Never free text. Comes from the controlled type list.</td></tr>
+</tbody>
+</table>
+
+<h2>Controlled voucher-type list</h2>
+<p>Title, entitlement wording and system rules must all be driven from one record per type. Staff select a type, they never type the wording. <code>value</code> is the monetary face value in pence, or null for entitlement vouchers.</p>
+<table id="type-table">
+<thead><tr><th>id</th><th>Display title</th><th>Cover title</th><th>value</th><th>Booking</th><th>Alcohol</th></tr></thead>
+<tbody></tbody>
+</table>
+<div class="callout"><p>A <code>£10 Food &amp; Drink Voucher</code> type is also defined in the terms document but is not in this print set. If it is added later, use the same card design with <code>displayTitle</code> &ldquo;£10 FOOD &amp; DRINK VOUCHER&rdquo; and <code>coverTitle</code> &ldquo;£10 food &amp; drink voucher&rdquo;.</p></div>
+
+<h2>Known trade-off: terms are set at 6.5pt</h2>
+<div class="callout"><p>The full 21 clauses fill the A5 back cover at roughly 6.5pt. That is legal fine-print size and it cannot be enlarged in this format, so a decision is needed before this goes into production. The alternatives, both allowed by the terms document, are: (a) print the key restrictions on the back at a readable size with a QR code or short link to the full terms, or (b) keep the card as it is and issue a separate terms sheet alongside it.</p></div>
+
+<h2>Required on every generated voucher</h2>
+<ul>
+<li>Voucher title, and the voucher-specific entitlement wording</li>
+<li>Unique voucher number</li>
+<li>Expiry date, the event it was won at, and issued by (hand-written on the card)</li>
+<li>Promoter name and address</li>
+<li>Full terms (printed on the back cover of this design)</li>
+<li>A terms version number</li>
+</ul>
+
+<h2>Recommended system rules</h2>
+<h3>Record per voucher</h3>
+<ul>
+<li>Unique voucher number, voucher type, monetary value where applicable, entitlement description</li>
+<li>Issue date, expiry date, event it was won at, issued by, terms version</li>
+<li>Current status: <code>active</code>, <code>redeemed</code>, <code>expired</code>, <code>cancelled</code>, <code>replaced</code></li>
+<li>Redemption date and time, team member who processed it, transaction or booking reference</li>
+<li>Replacement voucher number, where applicable</li>
+</ul>
+<h3>Behaviour</h3>
+<ul>
+<li>Build entitlement wording from the controlled type list, never from free text, so the printed title, printed entitlement and system rules cannot contradict one another.</li>
+<li>Redemption is a single atomic step: verify the number, check status is <code>active</code> and the expiry date has not passed, then mark <code>redeemed</code> with the timestamp, team member and transaction reference. No partial redemption, no splitting across visits.</li>
+<li>Booking vouchers (<code>requiresBooking: true</code>) are only redeemed once the booking is confirmed. Hold them as <code>active</code> until then.</li>
+<li>Store the terms version with the voucher and render that version's text. Terms are not applied retrospectively, so an already-issued voucher keeps the wording it was printed with.</li>
+<li>Replacement: the original must be identifiable, unredeemed and cancellable. Set the original to <code>cancelled</code>, issue a new number, and record it as the replacement.</li>
+<li>Expire on a schedule rather than only on lookup, so reporting is accurate.</li>
+<li>Age-restricted types (<code>alcohol: true</code>) should surface an 18+ prompt to the team member at redemption.</li>
+</ul>
+</div>
+
+<p class="screen-note"><strong>Artwork</strong> &middot; 8 vouchers &times; 2 sheets &middot; A4 landscape, black &amp; white<span class="sub">Print double sided, flip on short edge, then fold down the middle.</span></p>
+
+<div id="vouchers"></div>
+
+<script>
+const PROMOTER = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ';
+const TERMS_VERSION = 'v2.0';
+const SAMPLE = { voucherNumber:'AN-2607-0148' };
+
+const TERMS = [
+['Voucher entitlement','This voucher may only be used for the entitlement printed on it. It does not provide any entitlement beyond the food, drink, monetary value or event entry specifically stated.'],
+['Validity','This voucher is valid at The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ, until close of business on the expiry date shown.'],
+['Expiry','The voucher cannot normally be redeemed or extended after its expiry date. Where The Anchor cancels the qualifying event or is unable to provide the stated entitlement before the expiry date, a reasonable alternative or extension will be offered.'],
+['Unique voucher number','Each voucher has a unique voucher number and may only be redeemed once. Its validity and redemption status will be checked against The Anchor&rsquo;s voucher system.'],
+['Presenting the voucher','A valid printed or authorised digital voucher must be presented to a member of the team before ordering, paying or making the relevant booking.'],
+['Single redemption','The voucher must be redeemed in full in one transaction or booking. It cannot be split across multiple transactions, visits or bookings.'],
+['Additional payment','Where the total purchase exceeds the voucher&rsquo;s stated value or entitlement, the remaining amount must be paid using an accepted payment method.'],
+['Unused value','No change, refund, credit or replacement voucher will be provided where the full monetary value or entitlement is not used.'],
+['No cash alternative','The voucher cannot be exchanged for cash, refunded or used to obtain cashback.'],
+['Other vouchers and promotions','Only one voucher may be used per transaction or booking. It cannot be combined with another voucher, discount, promotional offer or loyalty reward unless expressly stated.'],
+['Excluded purchases','Unless the voucher specifically provides otherwise, it cannot be used towards event tickets, private-hire charges, deposits, gift vouchers, merchandise or any other non-food or non-drink purchase.'],
+['Availability and alternatives','All food, drinks and events remain subject to availability. Where the exact item stated is unavailable, The Anchor may offer a reasonable alternative of an equal or greater value. No cash alternative will be provided.'],
+['Alcohol and age restrictions','Alcohol may only be supplied to customers aged 18 or over. Valid photographic identification may be required. Customers under 18 may only use an eligible voucher towards non-alcoholic drinks or food.'],
+['Responsible service','The supply of alcohol remains subject to licensing law and The Anchor&rsquo;s responsible service policies. The Anchor may refuse to supply alcohol where it would be unlawful or inappropriate to do so.'],
+['Event and booking vouchers','Where advance booking is required, the voucher is not considered redeemed until the booking has been confirmed. Once applied to a confirmed booking, changes and cancellations are subject to the normal terms applying to that event.'],
+['Invalid vouchers','A voucher will not be accepted where it is expired, altered, illegible, duplicated, already redeemed, replaced, cancelled in the voucher system or otherwise cannot be verified.'],
+['Lost or stolen vouchers','Lost or stolen vouchers may only be replaced where the original voucher can be identified, has not been redeemed and can be cancelled in the voucher system. Replacement remains subject to verification.'],
+['Resale','Promotional and prize vouchers must not be resold or offered for resale.'],
+['Queries and disputes','Any query concerning the validity or redemption of a voucher will be reviewed by a manager against the voucher record, the stated entitlement and these terms.'],
+['Terms applying to the voucher','The terms in force when the voucher is issued will apply to that voucher. They will not be changed retrospectively, except where required by law, and no change will reduce the stated entitlement of an already-issued voucher.'],
+['Statutory rights','Nothing in these terms affects any statutory rights that cannot legally be excluded.']
+];
+
+const TYPES = [
+{ id:'free-drink', displayTitle:'FREE DRINK VOUCHER', coverTitle:'Free drink voucher', value:null, requiresBooking:false, alcohol:true,
+  copy:{ headline:'Well, look at you', script:'Winning drinks and everything', prize:'A drink on us', open:'Your prize is inside', aside:'Pull up a chair. The first one&rsquo;s covered.', community:'There&rsquo;s always room for one more.' },
+  hero:{ kind:'word', big:'One free', sub:'drink' },
+  entitlement:'<p>This voucher may be exchanged for one of the following:</p><ul><li>One pint of any available draught product</li><li>One standard glass of house wine</li><li>One single standard spirit with a standard mixer</li><li>One regular soft drink</li></ul><p>Doubles, cocktails, premium spirits, bottles of wine, pitchers, sharers and packaged drinks are excluded unless expressly approved by a manager.</p>' },
+{ id:'house-wine', displayTitle:'BOTTLE OF HOUSE WINE', coverTitle:'A bottle of house wine', value:null, requiresBooking:false, alcohol:true,
+  copy:{ headline:'Wine not?', script:'You&rsquo;ve clearly earned it', prize:'A bottle of house wine', open:'Uncork this', aside:'Best enjoyed with good people and absolutely no rushing.', community:'Good bottles are better shared.' },
+  hero:{ kind:'word', big:'A bottle', sub:'of house wine' },
+  entitlement:'<p>This voucher may be exchanged for one 750ml bottle of available house red, white or ros&eacute; still wine. It does not include sparkling wine, Champagne or premium bottled wine.</p><p>Alcohol may only be supplied to someone aged 18 or over, and valid photographic identification may be required.</p>' },
+{ id:'food-10', displayTitle:'&pound;10 FOOD VOUCHER', coverTitle:'&pound;10 food voucher', value:1000, requiresBooking:false, alcohol:false,
+  copy:{ headline:'Something tasty has your name on it', script:'Go on, make a meal of it', prize:'&pound;10 towards food', open:'Tuck in', aside:'Good food, good people and no special occasion required.', community:'Good food brings people together.' },
+  hero:{ kind:'money', big:'10', sub:'Food voucher' },
+  entitlement:'<p>This voucher provides &pound;10 towards food purchased from The Anchor&rsquo;s available food menu in one transaction. It cannot be used towards drinks.</p>' },
+{ id:'drinks-10', displayTitle:'&pound;10 DRINKS VOUCHER', coverTitle:'&pound;10 drinks voucher', value:1000, requiresBooking:false, alcohol:true,
+  copy:{ headline:'Your round just got better', script:'Cheers to that', prize:'&pound;10 towards drinks', open:'Drinks this way', aside:'Good drinks, better company and everyone welcome.', community:'Raise a glass to your local.' },
+  hero:{ kind:'money', big:'10', sub:'Drinks voucher' },
+  entitlement:'<p>This voucher provides &pound;10 towards drinks purchased from The Anchor&rsquo;s available drinks selection in one transaction. It cannot be used towards food.</p>' },
+{ id:'food-drink-25', displayTitle:'&pound;25 FOOD &amp; DRINK VOUCHER', coverTitle:'&pound;25 food &amp; drink voucher', value:2500, requiresBooking:false, alcohol:true,
+  copy:{ headline:'Now we&rsquo;re talking', script:'Dinner, drinks or a bit of both', prize:'&pound;25 to spend with us', open:'Decisions, decisions', aside:'Bring your appetite. Bringing your favourite people is strongly encouraged.', community:'Spend it on good times together.' },
+  hero:{ kind:'money', big:'25', sub:'Food &amp; drink voucher' },
+  entitlement:'<p>This voucher provides &pound;25 towards qualifying food and drinks purchased at The Anchor in one transaction.</p>' },
+{ id:'roast-two', displayTitle:'SUNDAY ROAST FOR TWO', coverTitle:'Sunday roast for two', value:null, requiresBooking:true, alcohol:false,
+  copy:{ headline:'Sunday plans: sorted', script:'You bring the company, we&rsquo;ll bring the gravy', prize:'Sunday roast for two', open:'Your Sunday starts here', aside:'Two plates. One table. Absolutely no washing up.', community:'Sundays are made for sharing.' },
+  hero:{ kind:'word', big:'Sunday roast', sub:'for two' },
+  entitlement:'<p>This voucher may be exchanged for two standard Sunday roasts from the available Sunday menu.</p><p>It excludes starters, desserts, drinks, additional sides, upgrades and supplements. It is valid during advertised Sunday roast service and is not valid against special menus, private events or separately ticketed occasions unless expressly stated.</p><p>Availability is not guaranteed without an advance booking.</p>' },
+{ id:'quiz-four', displayTitle:'FOUR QUIZ NIGHT TICKETS', coverTitle:'Four quiz night tickets', value:null, requiresBooking:true, alcohol:false,
+  copy:{ headline:'Gather your smartest mates', script:'Or at least the loudest ones', prize:'Four quiz night tickets', open:'No Googling', aside:'Brains, banter and completely unjustified confidence.', community:'Every team needs a wildcard.' },
+  hero:{ kind:'word', big:'Four tickets', sub:'Quiz night' },
+  entitlement:'<p>This voucher provides admission for up to four people to one standard public Quiz Night at The Anchor.</p><p>Advance booking is required and remains subject to event capacity. The voucher covers admission only and does not include food or drinks. The qualifying event must take place on or before the voucher&rsquo;s expiry date.</p>' },
+{ id:'bingo-four', displayTitle:'FOUR MUSIC BINGO TICKETS', coverTitle:'Four music bingo tickets', value:null, requiresBooking:true, alcohol:false,
+  copy:{ headline:'Your night just found a soundtrack', script:'Singing badly is strongly encouraged', prize:'Four music bingo tickets', open:'Turn it up', aside:'Four seats. Big tunes. Absolutely no dignity required.', community:'Every voice belongs in the chorus.' },
+  hero:{ kind:'word', big:'Four tickets', sub:'Music bingo' },
+  entitlement:'<p>This voucher provides admission for up to four people to one standard public Music Bingo event at The Anchor.</p><p>Advance booking is required and remains subject to event capacity. The voucher covers admission only and does not include food or drinks. The qualifying event must take place on or before the voucher&rsquo;s expiry date.</p>' }
+];
+
+const termsHTML = TERMS.map(t => '<li><b>' + t[0] + '.</b> ' + t[1] + '</li>').join('');
+
+function heroHTML(h){
+  if (h.kind === 'money') return '<p class="pz-fig"><sup>&pound;</sup>' + h.big + '</p><p class="pz-sub">' + h.sub + '</p>';
+  return '<p class="pz-word">' + h.big + '</p><p class="pz-sub">' + h.sub + '</p>';
+}
+
+function cardHTML(v, n){
+  return '' +
+'<div class="set-head"><span>Voucher ' + n + ' of ' + TYPES.length + '</span>' + v.coverTitle + '</div>' +
+'<div class="stage" id="' + v.id + '">' +
+
+'<div class="sheet-wrap">' +
+'<div class="sheet-label"><b>Sheet 1</b> &middot; Outside</div>' +
+'<div class="page" data-screen-label="' + v.id + '-outside" data-voucher="' + v.id + '">' +
+
+'<div class="panel">' +
+'<div class="panel-inner">' +
+'<div class="terms-head"><p class="kick" data-field="displayTitle">' + v.displayTitle + '</p><h2 class="terms-title">Terms and conditions</h2></div>' +
+'<ol class="terms">' + termsHTML + '</ol>' +
+'<div class="terms-foot"><p><b>The Anchor</b>, Horton Road<br>Stanwell Moor Village, Surrey, TW19 6AQ</p>' +
+'<p class="ver"><b>Voucher no.</b> <span data-field="voucherNumber">' + SAMPLE.voucherNumber + '</span><br>Terms <span data-field="termsVersion">' + TERMS_VERSION + '</span></p></div>' +
+'</div></div>' +
+
+'<div class="panel cover">' +
+'<div class="panel-inner">' +
+'<div><img class="cv-logo" src="assets/anchor-logo-black.png" alt="The Anchor"><p class="kick">Prize voucher &middot; Stanwell Moor Village</p></div>' +
+'<div class="cv-mid"><h1 class="cv-title" data-field="coverHeadline">' + v.copy.headline + '</h1><p class="cv-script" data-field="coverScript">' + v.copy.script + '</p><div class="cv-rule"></div>' +
+'<p class="cv-prize" data-field="coverPrize">' + v.copy.prize + '</p></div>' +
+'<p class="cv-open" data-field="openLine">' + v.copy.open + '</p>' +
+'</div></div>' +
+
+'</div>' +
+'<span class="panel-tag l">Back cover &middot; terms</span><span class="panel-tag r">Front cover</span>' +
+'</div>' +
+
+'<div class="sheet-wrap">' +
+'<div class="sheet-label"><b>Sheet 2</b> &middot; Inside spread</div>' +
+'<div class="page" data-screen-label="' + v.id + '-inside" data-voucher="' + v.id + '">' +
+
+'<div class="panel prize">' +
+'<div class="panel-inner">' +
+'<p class="kick">Your prize</p>' +
+'<div class="pz-body">' + heroHTML(v.hero) + '<p class="pz-aside" data-field="insideAside">' + v.copy.aside + '</p><div class="pz-rule"></div>' +
+'<div class="pz-ent" data-field="entitlement">' + v.entitlement + '</div></div>' +
+'<div class="pz-foot"><p class="pz-comm" data-field="communityLine">' + v.copy.community + '</p>' +
+'<p class="pz-sign"><b>Where everyone&rsquo;s welcome.</b><br>A village pub since 1751.</p></div>' +
+'</div></div>' +
+
+'<div class="panel">' +
+'<div class="panel-inner">' +
+'<div class="det-head"><p class="kick">Your voucher</p><h2 class="det-title">The details</h2></div>' +
+'<div class="det-body">' +
+'<div class="fields">' +
+'<div class="field field--wide"><p class="field-lab">Voucher number</p><p class="field-val ref" data-field="voucherNumber">' + SAMPLE.voucherNumber + '</p><div class="field-line"></div></div>' +
+'<div class="field"><p class="field-lab">Expiry date</p><div class="field-write" data-field="expiryDate"></div><div class="field-line"></div></div>' +
+'<div class="field"><p class="field-lab">Issued by</p><div class="field-write" data-field="issuedBy"></div><div class="field-line"></div></div>' +
+'<div class="field field--wide"><p class="field-lab">Won at (event and date)</p><div class="field-write" data-field="wonAt"></div><div class="field-line"></div></div>' +
+'</div>' +
+'<div class="present"><p class="present-h">Before you order</p><p class="present-p">Please present this voucher to a member of our team <b>before ordering, paying or booking.</b></p></div>' +
+(v.requiresBooking ? '<div class="present"><p class="present-h">Booking required</p><p class="present-p">This voucher needs an advance booking and is subject to availability. <b>Please book with us before your visit.</b></p></div>' : '') +
+'</div>' +
+'<div class="det-foot">' +
+'<img class="det-qr" src="assets/qr-events-booking.png" alt="Scan to see what is on and to book">' +
+'<div><p class="qr-h">Scan for what&rsquo;s on, and to book</p>' +
+'<p><b>Full terms on the back.</b> ' + PROMOTER + '</p></div>' +
+'</div>' +
+'</div></div>' +
+
+'</div>' +
+'<span class="panel-tag l">Inside left &middot; the prize</span><span class="panel-tag r">Inside right &middot; details</span>' +
+'</div>' +
+
+'</div>';
+}
+
+document.getElementById('vouchers').innerHTML = TYPES.map((v,i) => cardHTML(v, i+1)).join('');
+document.getElementById('voucher-index').innerHTML = TYPES.map(v => '<li><a href="#' + v.id + '">' + v.coverTitle + '</a></li>').join('');
+document.querySelector('#type-table tbody').innerHTML = TYPES.map(v =>
+  '<tr><td><code>' + v.id + '</code></td><td>' + v.displayTitle + '</td><td>' + v.coverTitle + '</td><td>' + (v.value === null ? '&mdash;' : v.value) + '</td><td>' + (v.requiresBooking ? 'Required' : '&mdash;') + '</td><td>' + (v.alcohol ? '18+' : '&mdash;') + '</td></tr>').join('');
+</script>
+</body>
+</html>

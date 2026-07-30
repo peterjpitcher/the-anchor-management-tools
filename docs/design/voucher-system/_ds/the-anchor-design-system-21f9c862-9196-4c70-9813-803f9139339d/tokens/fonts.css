@@ -1,0 +1,14 @@
+/* ============================================================
+   THE ANCHOR — WEBFONTS
+   - DM Serif Display → hero / display. Single weight (400 + italic);
+                        its high-contrast strokes carry the boldness,
+                        so NEVER set font-weight above 400 on it.
+   - Outfit           → body & UI workhorse (matches live site)
+   - Clicker Script    → script accent — the brand's supporting font
+                         (single weight 400, used sparingly for warm asides
+                          and the locality line)
+   Webfonts are pulled from Google Fonts; the @import below brings the
+   matching @font-face declarations into the token closure.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600;700;800&family=Clicker+Script&display=swap');

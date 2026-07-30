@@ -5,10 +5,11 @@ function isPortalOnlyUser(permissions: UserPermission[]): boolean {
 }
 
 // Modules an FOH-only (chromeless kiosk) user may hold and still count as FOH-only.
-// table_bookings is the anchor; checklists is added so the FOH iPad can reach /checklists
-// without losing kiosk mode. Keep this in lockstep with the checklists:view grant to the
-// foh_staff role (see the migration) and the /checklists allowlist in AuthenticatedLayout.
-const FOH_MODULES = new Set<ModuleName>(['table_bookings', 'checklists'])
+// table_bookings is the anchor; checklists and vouchers are added so the FOH iPad can
+// reach /checklists and /vouchers/foh without losing kiosk mode. Keep this in lockstep
+// with the checklists:view and vouchers:view/edit grants to the foh_staff role (see the
+// migrations) and the isFohPath allowlist in AuthenticatedLayout.
+const FOH_MODULES = new Set<ModuleName>(['table_bookings', 'checklists', 'vouchers'])
 
 export function isFohOnlyUser(permissions: UserPermission[]): boolean {
   if (!Array.isArray(permissions) || permissions.length === 0) {
