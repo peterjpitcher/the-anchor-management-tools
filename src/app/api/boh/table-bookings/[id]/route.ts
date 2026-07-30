@@ -131,9 +131,11 @@ export async function PATCH(
     updated_at: nowIso,
   }
 
-  // Outside bookings hold no table, so there are no assignment rows to re-window —
-  // the UPDATE is a safe no-op. Skip it explicitly so the misleading conflict path
-  // can never fire for an outside booking.
+  // Outside bookings hold no INDOOR table, so there are no assignment rows to re-window and
+  // the UPDATE is a safe no-op. Skip it explicitly so the misleading conflict path can never
+  // fire for an outside booking. The outside table they DO hold is re-windowed for us: the
+  // `table_bookings` UPDATE below trips the reconciling trigger from
+  // 20260802000008_outside_reservation_sync.sql. Do not add a bespoke copy of that here.
   if (!isOutsideSeating) {
     const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
       .update({
