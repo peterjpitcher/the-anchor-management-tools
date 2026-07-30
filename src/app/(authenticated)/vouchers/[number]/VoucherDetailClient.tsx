@@ -38,6 +38,7 @@ import {
   VoucherStatusBadge,
   VOUCHER_EVENT_ACTION_LABELS,
   REMINDER_KIND_LABELS,
+  REMINDER_CHANNEL_LABELS,
   REMINDER_STATUS_TONES,
   formatPence,
   newIdempotencyKey,
@@ -401,7 +402,13 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
                         month: 'short',
                         year: 'numeric',
                       })}
-                      {reminder.sentAt ? `, sent ${formatDateTime12Hour(reminder.sentAt)}` : ''}
+                      {reminder.sentAt
+                        ? `, sent${
+                            reminder.channel
+                              ? ` by ${REMINDER_CHANNEL_LABELS[reminder.channel]}`
+                              : ''
+                          } ${formatDateTime12Hour(reminder.sentAt)}`
+                        : ''}
                       {reminder.lastError ? `, error: ${reminder.lastError}` : ''}
                     </span>
                   </li>
@@ -485,7 +492,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             <Button
               variant="primary"
               loading={busy}
-              disabled={!staffId || (type?.requiresBooking ? bookingRef.trim().length === 0 : false)}
+              disabled={!staffId}
               onClick={() =>
                 void run(
                   () =>
@@ -523,7 +530,7 @@ export function VoucherDetailClient({ detail, staff }: VoucherDetailClientProps)
             maxLength={100}
           />
           <Input
-            label={type?.requiresBooking ? 'Booking ref (required for this type)' : 'Booking ref (optional)'}
+            label="Booking ref (optional)"
             value={bookingRef}
             onChange={(event) => setBookingRef(event.target.value)}
             maxLength={100}

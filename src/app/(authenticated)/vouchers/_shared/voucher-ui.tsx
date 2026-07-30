@@ -3,6 +3,7 @@ import type {
   VoucherStatus,
   VoucherEventAction,
   ReminderKind,
+  ReminderChannel,
   ReminderStatus,
 } from '@/types/vouchers'
 
@@ -51,9 +52,18 @@ export const VOUCHER_EVENT_ACTION_LABELS: Record<VoucherEventAction, string> = {
 }
 
 export const REMINDER_KIND_LABELS: Record<ReminderKind, string> = {
-  day30: '30-day reminder',
-  day90: '90-day reminder',
-  pre_expiry: 'Pre-expiry reminder',
+  pre_expiry_7: '7 days before expiry',
+  pre_expiry_3: '3 days before expiry',
+}
+
+// Email is preferred; SMS is the fallback for customers with no email address.
+// A reminder's channel is only written when a send is finalised, so it stays
+// null for every pending and cancelled row and usually for skipped ones too.
+// Callers must keep handling a null channel: that is a permanent live state,
+// not legacy data waiting to be backfilled.
+export const REMINDER_CHANNEL_LABELS: Record<ReminderChannel, string> = {
+  email: 'email',
+  sms: 'text message',
 }
 
 export const REMINDER_STATUS_TONES: Record<ReminderStatus, BadgeTone> = {

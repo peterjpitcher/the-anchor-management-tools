@@ -27,9 +27,14 @@ export type VoucherEventAction =
 
 export type VoucherEventSource = 'management' | 'foh' | 'cron' | 'system'
 
-export type ReminderKind = 'day30' | 'day90' | 'pre_expiry'
+// Two reminders per voucher, both counted back from the expiry date.
+export type ReminderKind = 'pre_expiry_7' | 'pre_expiry_3'
 
 export type ReminderStatus = 'pending' | 'sent' | 'skipped' | 'failed' | 'cancelled'
+
+// Email is preferred; SMS is the fallback for a customer with no email address.
+// Null until a send is finalised.
+export type ReminderChannel = 'email' | 'sms'
 
 export type BatchPdfStatus = 'pending' | 'rendering' | 'ready' | 'failed'
 
@@ -158,6 +163,7 @@ export interface VoucherReminderRow {
   status: ReminderStatus
   scheduled_for: string
   sent_at: string | null
+  channel: ReminderChannel | null
   message_sid: string | null
   attempts: number
   last_error: string | null
@@ -261,6 +267,7 @@ export interface VoucherReminder {
   status: ReminderStatus
   scheduledFor: string
   sentAt: string | null
+  channel: ReminderChannel | null
   messageSid: string | null
   attempts: number
   lastError: string | null
@@ -375,6 +382,7 @@ export function mapVoucherReminderRow(row: VoucherReminderRow): VoucherReminder 
     status: row.status,
     scheduledFor: row.scheduled_for,
     sentAt: row.sent_at,
+    channel: row.channel,
     messageSid: row.message_sid,
     attempts: row.attempts,
     lastError: row.last_error,

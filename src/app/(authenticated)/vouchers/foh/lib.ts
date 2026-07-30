@@ -263,10 +263,13 @@ export async function searchCustomers(query: string): Promise<FohCustomerRef[]> 
   }
 }
 
+// Quick-add takes an optional email so voucher reminders can go out by email
+// (preferred) rather than text. There is no consent tick: adding a customer this
+// way grants all-communications consent server-side (see the route comment).
 export async function quickAddCustomer(input: {
   name: string
   mobile: string
-  smsOk: boolean
+  email?: string
 }): Promise<{ customer: FohCustomerRef | null; existing: boolean; message: string | null }> {
   try {
     const response = await fetch('/api/foh/vouchers/customer', {
