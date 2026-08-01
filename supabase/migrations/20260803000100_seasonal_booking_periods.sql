@@ -385,7 +385,16 @@ DECLARE
   v_group_amount     numeric(10,2) := 0;
   v_period_amount    numeric(10,2) := 0;
   v_accepted         boolean := COALESCE(p_period_answer, false);
+  v_collect          boolean;
+  v_refund_policy    text;
 BEGIN
+  -- THE KILL SWITCH, read here rather than passed in. Read inside the one function that decides
+  -- money and no caller can forget it, which is exactly what happened to the first version of this
+  -- feature: the switch was consulted by a read endpoint and by nothing that charged anybody.
+  -- It suppresses the SEASONAL rule only. A party of twelve still pays the large-group deposit
+  -- they have always paid, so switching seasonal collection off at 7pm on a Friday cannot
+  -- accidentally make the pub stop taking deposits altogether.
+  v_collect := public.get_setting_bool('booking_period_deposits_enabled', true);
   IF p_party_size IS NULL OR p_party_size < 1 THEN
     RETURN jsonb_build_object('ok', false, 'error_code', 'invalid_party_size');
   END IF;
@@ -429,12 +438,27 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'error_code', 'period_menu_not_ready');
       END IF;
 
-      v_period_amount := ROUND(
-        CASE v_period.deposit_basis
-          WHEN 'per_head'    THEN p_party_size::numeric * v_period.deposit_amount
-          WHEN 'per_booking' THEN v_period.deposit_amount
-          ELSE 0
-        END, 2);
+      -- The guest's answer is still recorded when collection is off. Only the money stops.
+      IF v_collect THEN
+        v_period_amount := ROUND(
+          CASE v_period.deposit_basis
+            WHEN 'per_head'    THEN p_party_size::numeric * v_period.deposit_amount
+            WHEN 'per_booking' THEN v_period.deposit_amount
+            ELSE 0
+          END, 2);
+      END IF;
+    END IF;
+
+    -- Worked out once, because it belongs to whichever deposit ends up being charged on a booking
+    -- where the guest accepted this offer, not only to the seasonal branch below.
+    IF v_accepted THEN
+      v_refund_policy := CASE
+        WHEN v_period.refund_cutoff_days <= 0
+          THEN 'The deposit is not refundable once the booking is made, though a manager may waive that.'
+        ELSE format(
+          'Full refund up to %s days before the booking date. Inside %s days the deposit is not refunded, though a manager may waive that.',
+          v_period.refund_cutoff_days, v_period.refund_cutoff_days)
+      END;
     END IF;
   END IF;
 
@@ -456,9 +480,7 @@ BEGIN
         END),
       'period_id', v_period.id, 'period_code', v_period.code, 'period_name', v_period.name,
       'refund_cutoff_days', v_period.refund_cutoff_days,
-      'refund_policy', format(
-        'Full refund up to %s days before the booking date. Inside %s days the deposit is not refunded, though a manager may waive that.',
-        v_period.refund_cutoff_days, v_period.refund_cutoff_days)
+      'refund_policy', v_refund_policy
     );
   END IF;
 
@@ -471,16 +493,26 @@ BEGIN
       'period_id', CASE WHEN v_accepted THEN v_period.id ELSE NULL END,
       'period_code', CASE WHEN v_accepted THEN v_period.code ELSE NULL END,
       'period_name', CASE WHEN v_accepted THEN v_period.name ELSE NULL END,
-      'refund_cutoff_days', NULL, 'refund_policy', NULL
+      -- A deposit taken on a booking where the guest accepted the seasonal offer is governed by
+      -- that period's refund promise, even though the party-size rule produced the larger number.
+      -- Dropping the terms here left the guest holding a promise the booking row could not evidence.
+      'refund_cutoff_days', CASE WHEN v_accepted THEN v_period.refund_cutoff_days ELSE NULL END,
+      'refund_policy', v_refund_policy
     );
   END IF;
 
   RETURN jsonb_build_object(
     'ok', true, 'required', false, 'amount', 0, 'rule', 'none',
-    'basis', NULL, 'rate', NULL, 'reason', 'No deposit is due for this booking.',
+    'basis', NULL, 'rate', NULL,
+    'reason', CASE
+      WHEN v_accepted AND NOT v_collect
+        THEN 'No deposit is being taken: seasonal deposit collection is switched off in Settings.'
+      ELSE 'No deposit is due for this booking.'
+    END,
     'period_id', CASE WHEN v_accepted THEN v_period.id ELSE NULL END,
     'period_code', CASE WHEN v_accepted THEN v_period.code ELSE NULL END,
     'period_name', CASE WHEN v_accepted THEN v_period.name ELSE NULL END,
+    -- No deposit means no refund promise to carry.
     'refund_cutoff_days', NULL, 'refund_policy', NULL
   );
 END;
@@ -611,6 +643,7 @@ DECLARE
   v_amount      numeric;
   v_min_party   integer := NULLIF(p_payload ->> 'min_party_size', '')::integer;
   v_max_party   integer := NULLIF(p_payload ->> 'max_party_size', '')::integer;
+  v_preorder    boolean;
   v_clash       text;
   v_result      public.booking_periods;
 BEGIN
@@ -676,6 +709,24 @@ BEGIN
     v_code := v_existing.code;
     v_kind := v_existing.period_kind;
     v_old  := to_jsonb(v_existing);
+
+    -- THE BACK DOOR INTO A LIVE PERIOD WITH NOTHING TO EAT.
+    -- set_booking_period_active refuses to switch a pre-order period on until its menu exists, and
+    -- delete_booking_period_menu_item refuses to remove the last dish from a live one. Editing the
+    -- period walked straight past both: tick "needs a pre-order" on a period that is already live
+    -- with an empty menu and guests are immediately offered a set menu with no dishes on it.
+    v_preorder := COALESCE((p_payload ->> 'requires_preorder')::boolean, v_existing.requires_preorder);
+    IF v_preorder
+       AND NOT v_existing.requires_preorder
+       AND v_existing.is_active
+       AND v_existing.archived_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM public.booking_period_menu_items m
+          WHERE m.period_id = v_id AND m.is_active
+       ) THEN
+      RETURN jsonb_build_object('ok', false, 'error',
+        'This period is live, so it cannot start needing a pre-order until at least one menu item is added. Add the menu first, or switch the period off.');
+    END IF;
   END IF;
 
   BEGIN
@@ -831,6 +882,25 @@ BEGIN
       RETURN jsonb_build_object('ok', false, 'error', 'That menu item no longer exists.');
     END IF;
     v_period_id := v_existing.period_id;
+
+    -- THE OTHER BACK DOOR. delete_booking_period_menu_item refuses to remove the last dish from a
+    -- live pre-order period, but unticking "available" on that same dish emptied the menu just as
+    -- effectively and was waved through. `booking_period_menu_ready` counts ACTIVE items, so the
+    -- period stops being bookable and the guest is told the menu is not published, on a period the
+    -- manager believes is live and selling.
+    IF v_existing.is_active
+       AND COALESCE((p_payload ->> 'is_active')::boolean, true) = false
+       AND EXISTS (
+         SELECT 1 FROM public.booking_periods p
+          WHERE p.id = v_period_id AND p.is_active AND p.archived_at IS NULL AND p.requires_preorder
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM public.booking_period_menu_items m
+          WHERE m.period_id = v_period_id AND m.is_active AND m.id <> v_id
+       ) THEN
+      RETURN jsonb_build_object('ok', false, 'error',
+        'This is the last available dish on a live period that needs a pre-order. Add another dish first, or switch the period off.');
+    END IF;
   END IF;
 
   BEGIN

@@ -23,10 +23,32 @@ const MIGRATION = join(
   'supabase/migrations/20260803000100_seasonal_booking_periods.sql',
 )
 
-function guardMessageFromMigration(): string {
+/**
+ * Anchored on the guard function, not on the file.
+ *
+ * This used to match the FIRST multi-line RAISE EXCEPTION anywhere in the migration. Adding any
+ * other raised exception above `assert_seasonal_booking_type_in_period` therefore silently
+ * repointed the test at a different string, and it would have gone on passing while checking
+ * something entirely unrelated. It now isolates the function body first, and fails loudly if the
+ * shape it depends on has moved.
+ */
+function guardFunctionBody(): string {
   const sql = readFileSync(MIGRATION, 'utf8')
-  const match = sql.match(/RAISE EXCEPTION\s*\n\s*'([^']+)'/)
-  if (!match) throw new Error('Could not find the Christmas guard RAISE EXCEPTION in the migration')
+  const start = sql.indexOf('CREATE OR REPLACE FUNCTION public.assert_seasonal_booking_type_in_period()')
+  if (start === -1) {
+    throw new Error('assert_seasonal_booking_type_in_period is no longer in the migration')
+  }
+  const end = sql.indexOf('$$;', start)
+  if (end === -1) throw new Error('Could not find the end of the Christmas guard function body')
+  return sql.slice(start, end)
+}
+
+function guardMessageFromMigration(): string {
+  const body = guardFunctionBody()
+  const match = body.match(/RAISE EXCEPTION\s*\n\s*'([^']+)'/)
+  if (!match) {
+    throw new Error('Could not find the RAISE EXCEPTION inside assert_seasonal_booking_type_in_period')
+  }
   return match[1]
 }
 
@@ -50,5 +72,20 @@ describe('the Christmas guard message reaches staff intact', () => {
       .toBeNull()
     expect(extractChristmasRuleErrorMessage(null)).toBeNull()
     expect(extractChristmasRuleErrorMessage({ message: '' })).toBeNull()
+  })
+
+  it('reads the message out of the guard itself, not out of whatever is highest in the file', () => {
+    // Proves the anchoring, which is the whole point of the rewrite above. The extracted string
+    // must be the one inside the trigger function, and the function body it came from must be the
+    // guard rather than any other block that happens to raise.
+    const body = guardFunctionBody()
+    expect(body).toContain("period_kind = 'christmas'")
+    expect(body).toContain(guardMessageFromMigration())
+
+    // And there really is at least one other RAISE EXCEPTION in the file, so "first match in the
+    // file" and "match inside the guard" are genuinely different answers.
+    const wholeFile = readFileSync(MIGRATION, 'utf8')
+    const allRaises = wholeFile.match(/RAISE EXCEPTION/g) ?? []
+    expect(allRaises.length).toBeGreaterThan(1)
   })
 })
