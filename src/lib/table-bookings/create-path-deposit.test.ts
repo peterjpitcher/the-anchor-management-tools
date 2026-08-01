@@ -267,10 +267,31 @@ describe('the migration is deployable and honest about it', () => {
     expect(createPathSql).toMatch(
       /REVOKE ALL ON FUNCTION public\.create_table_booking_staff_v06\([\s\S]*?FROM PUBLIC, anon, authenticated;/,
     )
-    // The assertion must FAIL the migration, not report success on a half-closed door.
-    expect(createPathSql).toContain("p.proname IN ('create_table_booking_core_v06', 'create_table_booking_staff_v06')")
+    expect(createPathSql).toMatch(
+      /REVOKE ALL ON FUNCTION public\.freeze_table_booking_refund_terms\(\) FROM PUBLIC, anon, authenticated;/,
+    )
+    // The assertion must FAIL the migration, not report success on a half-closed door, and it must
+    // name every function this migration creates rather than a stale subset of them.
+    for (const fn of [
+      'create_table_booking_core_v06',
+      'create_table_booking_staff_v06',
+      'freeze_table_booking_refund_terms',
+    ]) {
+      expect(createPathSql).toContain(`'${fn}'`)
+    }
     expect(createPathSql).toContain("'(anon|authenticated)=X'")
     expect(createPathSql).toContain('RAISE EXCEPTION USING')
+  })
+
+  it('freezes the refund terms once the guest has been given them', () => {
+    // The snapshot is safe from period edits by construction. This closes the other way it could
+    // move: a support script or a bulk update writing to the booking directly.
+    expect(createPathSql).toContain('CREATE OR REPLACE FUNCTION public.freeze_table_booking_refund_terms()')
+    expect(createPathSql).toMatch(
+      /BEFORE UPDATE OF deposit_refund_cutoff_days, deposit_refund_policy ON public\.table_bookings/,
+    )
+    // Setting them for the first time must still work, so a backfill is possible.
+    expect(createPathSql).toContain('IF OLD.deposit_refund_cutoff_days IS NOT NULL')
   })
 
   it('keeps the website able to book, and asserts that too', () => {
@@ -286,7 +307,7 @@ describe('the migration is deployable and honest about it', () => {
   })
 
   it('has balanced dollar quoting', () => {
-    for (const tag of ['$function$', '$assert_grants$', '$assert_wiring$']) {
+    for (const tag of ['$function$', '$freeze$', '$assert_grants$', '$assert_wiring$']) {
       const count = createPathSql.split(tag).length - 1
       expect(count % 2, `${tag} appears ${count} times, which is not a matched pair`).toBe(0)
     }

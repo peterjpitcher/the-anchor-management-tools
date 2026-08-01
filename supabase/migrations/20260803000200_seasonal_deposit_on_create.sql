@@ -851,6 +851,56 @@ END;
 $function$;
 
 -- ---------------------------------------------------------------------------
+-- The refund promise, made immutable.
+--
+-- The snapshot is already safe from period edits by construction: the booking carries copies and
+-- nothing ever joins back to booking_periods or recomputes from it. This closes the remaining way
+-- it could move, which is somebody writing to the booking directly, whether by a support script, a
+-- future bulk update, or a well-meant "tidy up the old bookings" migration.
+--
+-- Only the refund TERMS are frozen, not the whole snapshot. The rest describes the charge and may
+-- legitimately be corrected: a manager waiving a deposit after the fact, or a party-size change
+-- repricing it. Even the guest's answer can legitimately change, because a guest may ring up and
+-- turn their booking into a Christmas dinner. What may never quietly change is the promise they
+-- were given about getting their money back. To refund outside that promise, use the manager
+-- override in refundActions, which records who decided and why.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.freeze_table_booking_refund_terms()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $freeze$
+BEGIN
+  -- Setting the terms for the first time is always allowed, so a backfill can fill in a booking
+  -- taken before this existed. Changing them once set is not.
+  IF OLD.deposit_refund_cutoff_days IS NOT NULL
+     AND NEW.deposit_refund_cutoff_days IS DISTINCT FROM OLD.deposit_refund_cutoff_days THEN
+    RAISE EXCEPTION
+      'The refund terms on a booking cannot be changed. The guest was promised % days, and that promise is what a dispute is settled against.',
+      OLD.deposit_refund_cutoff_days
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF OLD.deposit_refund_policy IS NOT NULL
+     AND NEW.deposit_refund_policy IS DISTINCT FROM OLD.deposit_refund_policy THEN
+    RAISE EXCEPTION
+      'The refund policy recorded on a booking cannot be reworded after the guest has been given it.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  RETURN NEW;
+END;
+$freeze$;
+
+DROP TRIGGER IF EXISTS table_bookings_freeze_refund_terms ON public.table_bookings;
+CREATE TRIGGER table_bookings_freeze_refund_terms
+  BEFORE UPDATE OF deposit_refund_cutoff_days, deposit_refund_policy ON public.table_bookings
+  FOR EACH ROW EXECUTE FUNCTION public.freeze_table_booking_refund_terms();
+
+REVOKE ALL ON FUNCTION public.freeze_table_booking_refund_terms() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.freeze_table_booking_refund_terms() TO service_role;
+
+-- ---------------------------------------------------------------------------
 -- Grants, restated for the new signatures and then PROVEN.
 --
 -- A new function in public on this project is granted EXECUTE to anon and authenticated BY NAME,
@@ -899,7 +949,10 @@ BEGIN
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public'
-    AND p.proname IN ('create_table_booking_core_v06', 'create_table_booking_staff_v06')
+    AND p.proname IN (
+      'create_table_booking_core_v06',
+      'create_table_booking_staff_v06',
+      'freeze_table_booking_refund_terms')
     AND array_to_string(p.proacl::text[], ' ') ~ '(anon|authenticated)=X';
 
   IF v_leaky IS NOT NULL THEN
