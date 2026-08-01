@@ -13,6 +13,11 @@
  *      Christmas period is allowed, and that guest gets the normal menu at normal terms.
  *   4. The LARGER of 2 and 3 wins. They NEVER stack. A tie resolves to the period, so the wording
  *      the guest sees names the season rather than "large group".
+ *   5. The kill switch, `booking_period_deposits_enabled`, suppresses rule 3 and rule 3 only. Switch
+ *      it off at 7pm on a Friday and no seasonal money is asked for anywhere, while a party of 12
+ *      still pays the long-standing large-group deposit. The guest's answer is still recorded,
+ *      because "they said yes to Christmas dinner and we chose not to take a deposit" is a fact the
+ *      kitchen needs and a later dispute turns on.
  *
  * WHY THE TIE MATTERS. Christmas is configured at GBP 10 per head, which is exactly the party-size
  * rate. A party of 12 inside Christmas therefore produces GBP 120 by both routes. A stacking bug
@@ -30,7 +35,13 @@
  */
 
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP, LARGE_GROUP_DEPOSIT_THRESHOLD } from './deposit'
-import { formatGbp, getPeriodOfferability, type BookingPeriod, type DepositBasis } from './periods'
+import {
+  formatGbp,
+  getPeriodOfferability,
+  type BookingPeriod,
+  type DepositBasis,
+  type PeriodUnavailableReason,
+} from './periods'
 
 export type DepositRule = 'waived' | 'none' | 'group' | 'period'
 
@@ -69,6 +80,13 @@ export type ResolveDepositInput = {
    */
   periodAccepted?: boolean
   depositWaived?: boolean
+  /**
+   * The `booking_period_deposits_enabled` kill switch, as read from the database by the caller.
+   * `false` means no SEASONAL deposit is asked for. The party-size rule is deliberately untouched
+   * by it: switching seasonal collection off must not stop a party of 12 paying the deposit they
+   * have always paid.
+   */
+  collectPeriodDeposits?: boolean
   /** Overridable only so tests can prove the comparison, not so it can drift in production. */
   groupRule?: GroupDepositRule
 }
@@ -107,6 +125,20 @@ function reject(code: DepositRejectionCode): DepositResolution {
   return { ok: false, code, message: REJECTION_MESSAGES[code] }
 }
 
+/**
+ * The three period faults that are refused whatever the guest answered, mapped from the shared
+ * offerability rule. `menu_not_ready` is deliberately absent: it belongs to the seasonal offer, so
+ * it is only a fault for a guest who accepted one.
+ */
+const UNCONDITIONAL_REJECTIONS: Record<
+  Exclude<PeriodUnavailableReason, 'menu_not_ready'>,
+  DepositRejectionCode
+> = {
+  archived: 'period_archived',
+  inactive: 'period_inactive',
+  out_of_range: 'period_date_mismatch',
+}
+
 /** Round to pence, avoiding the float drift that turns 60 into 59.999999999999993. */
 function toMoney(value: number): number {
   return Math.round(value * 100) / 100
@@ -137,7 +169,14 @@ function periodDepositAmount(period: BookingPeriod, partySize: number): number {
  * successful resolution with `required: false`.
  */
 export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositResolution {
-  const { partySize, bookingDate, period = null, periodAccepted = false, depositWaived = false } = input
+  const {
+    partySize,
+    bookingDate,
+    period = null,
+    periodAccepted = false,
+    depositWaived = false,
+    collectPeriodDeposits = true,
+  } = input
   const groupRule = input.groupRule ?? DEFAULT_GROUP_DEPOSIT_RULE
 
   if (!Number.isFinite(partySize) || partySize < 1) {
@@ -165,40 +204,55 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
   }
 
   // 2. Validate the period before any money is computed from it.
+  //
+  // The checks run in exactly the order `resolve_table_booking_deposit` runs them, and the split is
+  // the same: a period that was SUPPLIED at all is checked for archived, inactive and out-of-range
+  // whatever the guest answered, because a caller handing over a stale id has a bug that must
+  // surface rather than silently resolve to "no deposit". The party limits and the menu are checked
+  // only when the guest accepted, because they describe the seasonal offer and a guest who declined
+  // it is booking the normal menu at normal terms.
   let periodAmount = 0
-  if (period && periodAccepted) {
+  if (period) {
     const offerability = getPeriodOfferability(period, bookingDate)
-    if (!offerability.offerable) {
-      switch (offerability.reason) {
-        case 'archived':
-          return reject('period_archived')
-        case 'inactive':
-          return reject('period_inactive')
-        case 'out_of_range':
-          return reject('period_date_mismatch')
-        case 'menu_not_ready':
-          return reject('period_menu_not_ready')
+
+    // `getPeriodOfferability` checks the menu last, so anything other than `menu_not_ready` here
+    // means one of the three unconditional checks failed.
+    if (!offerability.offerable && offerability.reason !== 'menu_not_ready') {
+      return reject(UNCONDITIONAL_REJECTIONS[offerability.reason])
+    }
+
+    if (periodAccepted) {
+      if (period.minPartySize !== null && partySize < period.minPartySize) {
+        return reject('period_party_too_small')
+      }
+      if (period.maxPartySize !== null && partySize > period.maxPartySize) {
+        return reject('period_party_too_large')
+      }
+      if (!offerability.offerable) {
+        return reject('period_menu_not_ready')
+      }
+      if (collectPeriodDeposits) {
+        periodAmount = periodDepositAmount(period, partySize)
       }
     }
-    if (period.minPartySize !== null && partySize < period.minPartySize) {
-      return reject('period_party_too_small')
-    }
-    if (period.maxPartySize !== null && partySize > period.maxPartySize) {
-      return reject('period_party_too_large')
-    }
-    periodAmount = periodDepositAmount(period, partySize)
   }
+
+  // Carried onto whichever deposit wins below. A deposit taken on a booking where the guest
+  // accepted the seasonal offer is governed by that period's refund promise, even when the
+  // party-size rule produced the larger number. Dropping the terms there would leave the guest
+  // holding a promise the booking row cannot evidence.
+  const acceptedPeriod = period && periodAccepted ? period : null
 
   // 3. The party-size rule, always evaluated.
   const groupAmount =
     partySize >= groupRule.thresholdGuests ? toMoney(partySize * groupRule.perPersonGbp) : 0
 
   // 4. Larger wins, never stacks. A tie goes to the period.
-  if (period && periodAccepted && periodAmount > 0 && periodAmount >= groupAmount) {
+  if (acceptedPeriod && periodAmount > 0 && periodAmount >= groupAmount) {
     const rateWording =
-      period.depositBasis === 'per_head'
-        ? `${formatGbp(period.depositAmount)} per guest`
-        : `${formatGbp(period.depositAmount)} for the booking`
+      acceptedPeriod.depositBasis === 'per_head'
+        ? `${formatGbp(acceptedPeriod.depositAmount)} per guest`
+        : `${formatGbp(acceptedPeriod.depositAmount)} for the booking`
     const tieNote =
       periodAmount === groupAmount && groupAmount > 0
         ? ' It matches the large-group deposit rather than adding to it.'
@@ -210,14 +264,14 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
         required: true,
         amount: periodAmount,
         rule: 'period',
-        basis: period.depositBasis,
-        rate: period.depositAmount,
-        reason: `${period.name} deposit, ${rateWording}.${tieNote}`,
-        periodId: period.id,
-        periodCode: period.code,
-        periodName: period.name,
-        refundCutoffDays: period.refundCutoffDays,
-        refundPolicy: describeRefundPolicy(period.refundCutoffDays),
+        basis: acceptedPeriod.depositBasis,
+        rate: acceptedPeriod.depositAmount,
+        reason: `${acceptedPeriod.name} deposit, ${rateWording}.${tieNote}`,
+        periodId: acceptedPeriod.id,
+        periodCode: acceptedPeriod.code,
+        periodName: acceptedPeriod.name,
+        refundCutoffDays: acceptedPeriod.refundCutoffDays,
+        refundPolicy: describeRefundPolicy(acceptedPeriod.refundCutoffDays),
       },
     }
   }
@@ -235,15 +289,18 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
         reason:
           `Parties of ${groupRule.thresholdGuests} or more pay ` +
           `${formatGbp(groupRule.perPersonGbp)} per guest.${beatsPeriod}`,
-        periodId: period && periodAccepted ? period.id : null,
-        periodCode: period && periodAccepted ? period.code : null,
-        periodName: period && periodAccepted ? period.name : null,
-        refundCutoffDays: null,
-        refundPolicy: null,
+        periodId: acceptedPeriod ? acceptedPeriod.id : null,
+        periodCode: acceptedPeriod ? acceptedPeriod.code : null,
+        periodName: acceptedPeriod ? acceptedPeriod.name : null,
+        refundCutoffDays: acceptedPeriod ? acceptedPeriod.refundCutoffDays : null,
+        refundPolicy: acceptedPeriod ? describeRefundPolicy(acceptedPeriod.refundCutoffDays) : null,
       },
     }
   }
 
+  // No deposit at all, so there is no refund promise to carry. The period fields still record that
+  // a seasonal offer was accepted, which is what tells the kitchen to expect a festive pre-order.
+  const suppressed = Boolean(acceptedPeriod) && !collectPeriodDeposits
   return {
     ok: true,
     deposit: {
@@ -252,10 +309,12 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
       rule: 'none',
       basis: null,
       rate: null,
-      reason: 'No deposit is due for this booking.',
-      periodId: period && periodAccepted ? period.id : null,
-      periodCode: period && periodAccepted ? period.code : null,
-      periodName: period && periodAccepted ? period.name : null,
+      reason: suppressed
+        ? 'No deposit is being taken: seasonal deposit collection is switched off in Settings.'
+        : 'No deposit is due for this booking.',
+      periodId: acceptedPeriod ? acceptedPeriod.id : null,
+      periodCode: acceptedPeriod ? acceptedPeriod.code : null,
+      periodName: acceptedPeriod ? acceptedPeriod.name : null,
       refundCutoffDays: null,
       refundPolicy: null,
     },

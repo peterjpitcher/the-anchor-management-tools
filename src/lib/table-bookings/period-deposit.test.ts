@@ -160,6 +160,33 @@ describe('resolveTableBookingDeposit: largest wins, never stacks', () => {
     expect(deposit.periodCode).toBe('mothers-day-2027')
   })
 
+  it('carries the seasonal refund terms even when the party-size rule produced the amount', () => {
+    // The defect this replaces: 15 guests accepting a GBP 5 per head Christmas resolved to
+    // rule=group, GBP 150, refundPolicy null. The guest was shown a seven-day refund promise on the
+    // way in and the booking row carried no evidence of it, so a dispute could not be settled and
+    // the refund path had nothing to enforce. A deposit always travels with its refund terms.
+    const deposit = expectOk(
+      resolve({
+        partySize: 15,
+        period: christmasPeriod({ depositAmount: 5, maxPartySize: 30 }),
+        periodAccepted: true,
+      }),
+    )
+    expect(deposit.rule).toBe('group')
+    expect(deposit.amount).toBe(150)
+    expect(deposit.refundCutoffDays).toBe(7)
+    expect(deposit.refundPolicy).toContain('Full refund up to 7 days')
+  })
+
+  it('leaves an ordinary large-group deposit on the terms it has always had', () => {
+    // No period, so no seasonal promise was ever made. Inventing one here would change the refund
+    // rule for every ten-plus booking in the pub, which is not what this feature is for.
+    const deposit = expectOk(resolve({ partySize: 12, period: null }))
+    expect(deposit.rule).toBe('group')
+    expect(deposit.refundCutoffDays).toBeNull()
+    expect(deposit.refundPolicy).toBeNull()
+  })
+
   it('THE TIE: a party of 12 inside Christmas pays GBP 120 once, never GBP 240', () => {
     // Christmas is GBP 10 per head and the party-size rule is GBP 10 per head, so both routes
     // produce the identical number. That equality makes a double-charge bug invisible unless it is
@@ -196,6 +223,99 @@ describe('resolveTableBookingDeposit: largest wins, never stacks', () => {
     expect(deposit.amount).toBe(25)
     expect(deposit.basis).toBe('per_booking')
     expect(deposit.rate).toBe(25)
+  })
+
+  it('charges a per-head rate that is not GBP 10, which the old hardcoded rule could not', () => {
+    // The failure this guards: a manager creates Mother's Day 2027 at GBP 15 a head, the settings
+    // preview says "2 guests: GBP 30", and the booking path charges GBP 0 because it was still
+    // running "party_size >= 10 OR christmas" at GBP 10 a head.
+    const perHeadFifteen = mothersDayPeriod({ depositBasis: 'per_head', depositAmount: 15 })
+
+    const two = expectOk(
+      resolve({ partySize: 2, bookingDate: '2027-03-14', period: perHeadFifteen, periodAccepted: true }),
+    )
+    expect(two.amount).toBe(30)
+    expect(two.rule).toBe('period')
+    expect(two.rate).toBe(15)
+
+    // And at 10 guests the seasonal rate beats the group rule, GBP 150 against GBP 100.
+    const ten = expectOk(
+      resolve({ partySize: 10, bookingDate: '2027-03-14', period: perHeadFifteen, periodAccepted: true }),
+    )
+    expect(ten.amount).toBe(150)
+    expect(ten.rule).toBe('period')
+  })
+
+  it('rounds a per-head rate with pence to the penny, not to float noise', () => {
+    const period = mothersDayPeriod({ depositBasis: 'per_head', depositAmount: 12.5 })
+    const deposit = expectOk(
+      resolve({ partySize: 3, bookingDate: '2027-03-14', period, periodAccepted: true }),
+    )
+    expect(deposit.amount).toBe(37.5)
+  })
+})
+
+describe('resolveTableBookingDeposit: the kill switch', () => {
+  /**
+   * `booking_period_deposits_enabled` off means: stop taking seasonal money everywhere, right now,
+   * without a deploy. It must NOT stop the large-group deposit, which has been collected for years
+   * and has nothing to do with seasons.
+   */
+  it('takes no seasonal deposit when collection is switched off', () => {
+    const deposit = expectOk(
+      resolve({ partySize: 6, period: christmasPeriod(), periodAccepted: true, collectPeriodDeposits: false }),
+    )
+    expect(deposit.required).toBe(false)
+    expect(deposit.amount).toBe(0)
+    expect(deposit.rule).toBe('none')
+    expect(deposit.reason).toContain('switched off')
+  })
+
+  it('still records which period the guest accepted, so the kitchen knows to expect a pre-order', () => {
+    const deposit = expectOk(
+      resolve({ partySize: 6, period: christmasPeriod(), periodAccepted: true, collectPeriodDeposits: false }),
+    )
+    expect(deposit.periodCode).toBe('christmas-2026')
+    expect(deposit.periodName).toBe('Christmas dinner 2026')
+  })
+
+  it('leaves the large-group deposit completely alone', () => {
+    const deposit = expectOk(
+      resolve({ partySize: 12, period: christmasPeriod(), periodAccepted: true, collectPeriodDeposits: false }),
+    )
+    expect(deposit.required).toBe(true)
+    expect(deposit.amount).toBe(120)
+    expect(deposit.rule).toBe('group')
+  })
+
+  it('suppresses a per-booking deposit too, not only per-head', () => {
+    const deposit = expectOk(
+      resolve({
+        partySize: 2,
+        bookingDate: '2027-03-14',
+        period: mothersDayPeriod(),
+        periodAccepted: true,
+        collectPeriodDeposits: false,
+      }),
+    )
+    expect(deposit.amount).toBe(0)
+  })
+
+  it('still refuses a stale period id while collection is off', () => {
+    // Switching collection off is not an excuse to stop validating what the browser sent.
+    expect(
+      resolve({
+        partySize: 6,
+        period: christmasPeriod({ isActive: false }),
+        periodAccepted: true,
+        collectPeriodDeposits: false,
+      }),
+    ).toMatchObject({ ok: false, code: 'period_inactive' })
+  })
+
+  it('defaults to collecting, so forgetting to pass the switch never silently stops the money', () => {
+    const deposit = expectOk(resolve({ partySize: 6, period: christmasPeriod(), periodAccepted: true }))
+    expect(deposit.amount).toBe(60)
   })
 })
 
@@ -255,12 +375,66 @@ describe('resolveTableBookingDeposit: an inactive period is completely inert', (
     expect(result.ok).toBe(false)
   })
 
-  it('leaves a declined booking untouched by an inactive period', () => {
-    const deposit = expectOk(
-      resolve({ partySize: 12, period: christmasPeriod({ isActive: false }), periodAccepted: false }),
-    )
+  it('refuses a declined booking that was handed an inactive period, rather than quietly pricing it', () => {
+    // Changed 2026-08-02, closing a disagreement between this function and its SQL twin. The SQL
+    // validates a period id that was SUPPLIED whatever the guest answered; this used to check it
+    // only when they accepted, so the same inputs gave 'period_inactive' from the database and a
+    // cheerful "no deposit" here. Handing over a stale period id is a caller bug either way, and a
+    // caller bug near money must surface rather than resolve to a number.
+    const result = resolve({
+      partySize: 12,
+      period: christmasPeriod({ isActive: false }),
+      periodAccepted: false,
+    })
+    expect(result).toMatchObject({ ok: false, code: 'period_inactive' })
+  })
+
+  it('is genuinely inert when no period is passed at all, which is what an inactive period looks like', () => {
+    // The lookup only ever returns LIVE periods, so an inactive Christmas reaches the resolver as
+    // no period whatsoever. That is the path that proves the seeded, unpublished period is safe.
+    const deposit = expectOk(resolve({ partySize: 12, period: null, periodAccepted: false }))
     expect(deposit.amount).toBe(120)
     expect(deposit.rule).toBe('group')
+    expect(deposit.periodId).toBeNull()
+  })
+})
+
+describe('resolveTableBookingDeposit: the SQL twin and this function agree on a supplied period', () => {
+  /**
+   * These four cases are the ones that used to differ. `resolve_table_booking_deposit` returns an
+   * error code for each of them whatever `p_period_answer` is, so this does too.
+   */
+  const unconditional: Array<[string, Partial<BookingPeriod>, string, string]> = [
+    ['inactive', { isActive: false }, 'period_inactive', '2026-12-05'],
+    ['archived', { isActive: false, archivedAt: '2026-12-21T00:00:00Z' }, 'period_archived', '2026-12-05'],
+    ['out of range', {}, 'period_date_mismatch', '2026-06-15'],
+  ]
+
+  for (const [label, overrides, code, bookingDate] of unconditional) {
+    it(`rejects a ${label} period whether the guest accepted or declined`, () => {
+      for (const periodAccepted of [true, false]) {
+        expect(
+          resolve({ partySize: 12, bookingDate, period: christmasPeriod(overrides), periodAccepted }),
+        ).toMatchObject({ ok: false, code })
+      }
+    })
+  }
+
+  it('checks the menu and the party limits ONLY for a guest who accepted the offer', () => {
+    // A guest declining a Christmas offer is booking the normal menu, so an unpublished festive
+    // menu and the festive party limits are none of their business.
+    const declined = expectOk(
+      resolve({
+        partySize: 2,
+        period: christmasPeriod({ menuReady: false }),
+        periodAccepted: false,
+      }),
+    )
+    expect(declined.required).toBe(false)
+
+    expect(
+      resolve({ partySize: 2, period: christmasPeriod({ menuReady: false }), periodAccepted: true }),
+    ).toMatchObject({ ok: false, code: 'period_party_too_small' })
   })
 })
 
