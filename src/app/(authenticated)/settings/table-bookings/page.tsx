@@ -5,6 +5,7 @@ import { Card } from '@/ds'
 import { Section } from '@/ds'
 import { TableSetupManager } from './TableSetupManager'
 import { AllocationSettings } from './AllocationSettings'
+import { SeasonalPeriods } from './SeasonalPeriods'
 
 export default async function TableSetupSettingsPage() {
   const canManage = await checkUserPermission('settings', 'manage')
@@ -23,6 +24,7 @@ export default async function TableSetupSettingsPage() {
         <Card>
           <TableSetupManager />
           <AllocationSettings />
+          <SeasonalPeriods />
         </Card>
       </Section>
     </PageLayout>

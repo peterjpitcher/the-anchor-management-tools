@@ -20,7 +20,7 @@ import { logger } from '@/lib/logger'
 
 const SectionSchema = z.enum([
   'tables', 'turn_times', 'kitchen_pacing', 'outside',
-  'drinks', 'party_limits', 'holds', 'messages',
+  'drinks', 'party_limits', 'holds', 'deposits', 'messages',
 ])
 
 const SaveSchema = z.object({
