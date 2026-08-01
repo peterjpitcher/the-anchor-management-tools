@@ -29,6 +29,16 @@ vi.mock('@/lib/table-bookings/deposit', () => ({
   // party_size 2 never requires a deposit in these tests.
   requiresDeposit: vi.fn(() => false),
   computeDepositAmount: vi.fn(() => 0),
+  // The route now reaches the seasonal resolver, which reads the live party-size rule from this
+  // module. Leaving these out made the whole suite fail to import.
+  LARGE_GROUP_DEPOSIT_THRESHOLD: 10,
+  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP: 10,
+}))
+// No seasonal period covers the dates these tests use, so the route falls through to the
+// party-size rule exactly as it did before seasonal periods existed.
+vi.mock('@/lib/table-bookings/period-lookup', () => ({
+  loadBookingPeriodContext: vi.fn().mockResolvedValue({ period: null, collectPeriodDeposits: true }),
+  expectedDepositForCreate: vi.fn(() => null),
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),

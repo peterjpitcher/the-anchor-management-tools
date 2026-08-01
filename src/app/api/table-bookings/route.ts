@@ -62,6 +62,13 @@ const CreateTableBookingSchema = z.object({
   // window (10 Nov to 20 Dec 2026) is NOT enforced here or in the database, so
   // the calling site must restrict the dates it offers.
   purpose: z.enum(['food', 'drinks', 'christmas']),
+  // The seasonal period the guest was offered, and what they answered. Both are ADVISORY: the
+  // database re-reads whichever live period covers the booking date and refuses an id that names a
+  // different one, so nothing here can pick a cheaper season or conjure a deposit. Only the answer
+  // is taken on trust, and answering "no" is a supported answer that books the normal menu at
+  // normal terms. See GET /api/table-bookings/periods for what to show the guest.
+  booking_period_id: z.string().uuid().optional(),
+  booking_period_answer: z.boolean().optional(),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.
@@ -207,7 +214,13 @@ export async function POST(request: NextRequest) {
       high_chair_count: payload.high_chair_count,
       outside_seating: payload.outside_seating,
       requires_accessible_table: payload.requires_accessible_table,
-      communication_consent: payload.communication_consent
+      communication_consent: payload.communication_consent,
+      // Answering the seasonal question differently is a different booking: it changes the menu,
+      // the deposit and the refund terms. Following the accessibility precedent above, these vary
+      // the hash only when actually supplied, so a client that never sends them produces
+      // byte-for-byte the hash this route produced before the fields existed.
+      booking_period_id: payload.booking_period_id,
+      booking_period_answer: payload.booking_period_answer
     })
 
     const supabase = createAdminClient()
@@ -273,7 +286,13 @@ export async function POST(request: NextRequest) {
         // pacing even if it did.
         p_high_chair_count: payload.high_chair_count ?? 0,
         p_outside_seating: payload.outside_seating ?? false,
-        p_requires_accessible_table: payload.requires_accessible_table ?? false
+        p_requires_accessible_table: payload.requires_accessible_table ?? false,
+        // The seasonal answer. The deposit itself is resolved inside the RPC from the period it
+        // re-reads by booking date, so nothing about the amount, the basis or the refund terms is
+        // computed here or trusted from the browser. A period id that does not match the live
+        // period for the date is refused rather than priced.
+        p_booking_period_id: payload.booking_period_id ?? null,
+        p_booking_period_answer: payload.booking_period_answer ?? null
       })
 
       let bookingResult: TableBookingRpcResult

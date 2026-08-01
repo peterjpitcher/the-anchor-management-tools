@@ -508,7 +508,15 @@ export function SeasonalPeriods() {
         </Card>
       </Section>
 
-      {draft && <PeriodEditor draft={draft} setDraft={setDraft} onSave={savePeriod} busy={busy} />}
+      {draft && (
+        <PeriodEditor
+          draft={draft}
+          setDraft={setDraft}
+          onSave={savePeriod}
+          busy={busy}
+          collectPeriodDeposits={depositsEnabled}
+        />
+      )}
 
       <Section
         title="Deposit collection"
@@ -545,14 +553,24 @@ type PeriodEditorProps = {
   setDraft: (draft: PeriodDraft | null) => void
   onSave: () => void | Promise<void>
   busy: boolean
+  collectPeriodDeposits: boolean
 }
 
-function PeriodEditor({ draft, setDraft, onSave, busy }: PeriodEditorProps) {
+function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: PeriodEditorProps) {
   const set = <K extends keyof PeriodDraft>(key: K, value: PeriodDraft[K]) =>
     setDraft({ ...draft, [key]: value })
 
   // The live preview is the only place the larger-wins rule needs explaining, so it is worked out
-  // by the same function the booking path uses rather than being written out again in prose.
+  // by resolveTableBookingDeposit rather than written out again in prose.
+  //
+  // That function is the TypeScript mirror of resolve_table_booking_deposit, which
+  // create_table_booking_core_v06 now calls to price every booking. The two are kept in step by
+  // create-path-deposit.test.ts, which reads both migrations and fails if the create path stops
+  // delegating or if the group threshold and rate drift apart. This claim used to be made in a
+  // comment and was simply untrue: the booking path ran a hardcoded rule and this preview described
+  // a deposit nobody was ever charged.
+  //
+  // The kill switch is fed in, so the preview says "nothing will be charged" when nothing will be.
   const preview = useMemo(() => {
     const amount = Number(draft.deposit_amount) || 0
     if (draft.deposit_basis === 'none' || amount <= 0) return null
@@ -584,19 +602,27 @@ function PeriodEditor({ draft, setDraft, onSave, busy }: PeriodEditorProps) {
     const date = draft.starts_on || '2000-01-01'
 
     return [2, 6, 12].map((partySize) => {
-      const result = resolveTableBookingDeposit({ partySize, bookingDate: date, period, periodAccepted: true })
+      const result = resolveTableBookingDeposit({
+        partySize,
+        bookingDate: date,
+        period,
+        periodAccepted: true,
+        collectPeriodDeposits,
+      })
       if (!result.ok) return { partySize, text: result.message }
       return {
         partySize,
         text:
           result.deposit.amount === 0
-            ? 'no deposit'
+            ? collectPeriodDeposits
+              ? 'no deposit'
+              : 'no deposit, collection is switched off below'
             : `${formatGbp(result.deposit.amount)} (${
                 result.deposit.rule === 'group' ? 'the 10-plus group rule is larger' : 'this period'
               })`,
       }
     })
-  }, [draft])
+  }, [draft, collectPeriodDeposits])
 
   return (
     <Section title={draft.id ? `Edit ${draft.name || 'period'}` : 'New period'}>

@@ -57,6 +57,21 @@ export type TableBookingRpcResult = {
   high_chairs_granted?: number
   high_chair_count?: number
   is_outside_seating?: boolean
+  // The deposit the RPC actually resolved and charged, and the seasonal terms it snapshotted onto
+  // the booking. Read these rather than recomputing an amount: the create path is the only place
+  // that knows which of the two rules won, and a second copy of the sum is how the payments row and
+  // the booking row end up disagreeing about what the guest owes.
+  deposit_required?: boolean
+  deposit_amount?: number
+  deposit_rule?: 'none' | 'group' | 'period' | 'waived'
+  deposit_reason?: string | null
+  deposit_refund_cutoff_days?: number | null
+  deposit_refund_policy?: string | null
+  booking_period_id?: string | null
+  booking_period_code?: string | null
+  booking_period_name?: string | null
+  booking_period_answer?: boolean | null
+  booking_period_requires_preorder?: boolean | null
 }
 
 export type TablePaymentTokenResult = {

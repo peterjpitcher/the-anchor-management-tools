@@ -23,6 +23,9 @@ export type TableBookingIdempotencyFields = {
   high_chair_count?: number | null
   outside_seating?: boolean | null
   requires_accessible_table?: boolean | null
+  /** The seasonal period offered and what the guest answered. See the note in the hash below. */
+  booking_period_id?: string | null
+  booking_period_answer?: boolean | null
   communication_consent?: CommunicationConsentPayload
 }
 
@@ -55,6 +58,15 @@ export function computeTableBookingRequestHash(fields: TableBookingIdempotencyFi
     // an old website that omits the field (F37), and any claim persisted
     // before this deploy, still replay cleanly instead of 409ing.
     requires_accessible_table: fields.requires_accessible_table === true ? true : undefined,
+    // Answering the seasonal question differently is a DIFFERENT booking: it changes the menu, the
+    // deposit and the refund terms, so a retry that flips the answer must conflict rather than
+    // replay the earlier booking silently. Same undefined-when-absent trick as accessibility above:
+    // a client that never sends these produces byte-for-byte the hash it produced before the fields
+    // existed, so bookings already in flight at deploy time replay cleanly instead of 409ing.
+    booking_period_id: fields.booking_period_id || undefined,
+    booking_period_answer: typeof fields.booking_period_answer === 'boolean'
+      ? fields.booking_period_answer
+      : undefined,
     communication_consent: consentHashPayload(fields.communication_consent)
   })
 }
