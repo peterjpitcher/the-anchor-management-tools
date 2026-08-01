@@ -21,6 +21,11 @@ import {
   requiresDeposit as requiresDepositForParty,
 } from '@/lib/table-bookings/deposit'
 import {
+  expectedDepositForCreate,
+  loadBookingPeriodContext,
+  type BookingPeriodContext,
+} from '@/lib/table-bookings/period-lookup'
+import {
   extractChristmasRuleErrorMessage,
   isChristmasPurpose,
   toBookingType,
@@ -54,6 +59,12 @@ const CreateFohTableBookingSchema = z.object({
   // forward, but Sunday bookings no longer have a pre-order flow.
   sunday_lunch: z.boolean().optional(),
   sunday_deposit_method: z.enum(['cash', 'payment_link']).optional(),
+  // The seasonal period offered and what the guest said. Advisory only: the database re-reads the
+  // live period for the booking date and refuses an id naming a different one. A `christmas`
+  // purpose is treated as a yes to a Christmas-kind period, so the existing FOH flow needs no
+  // change to keep working.
+  booking_period_id: z.string().uuid().optional(),
+  booking_period_answer: z.boolean().optional(),
   // High-chair request (hard cap of 2 for everyone — no override flag). The DB
   // grants atomically and may clamp below the request. `outside_seating` holds
   // no indoor table but still paces.
@@ -1187,10 +1198,42 @@ export async function POST(request: NextRequest) {
   // Christmas bookings always take a deposit, at any party size. A manager
   // waiver, venue event or management override still wins.
   const isChristmasBooking = isChristmasPurpose(payload.purpose)
-  const requiresDeposit = requiresDepositForParty(payload.party_size, {
+
+  // Whether a deposit is due has to be known HERE, before the RPC runs, because it decides whether
+  // staff must pick cash or payment link. It used to be worked out by a local copy of the
+  // party-size rule that had never heard of seasonal periods, so a per-booking Mother's Day deposit
+  // would have been charged by the database while this screen believed nothing was due and never
+  // asked for a method, leaving a pending_payment booking with no way to pay. It now asks the same
+  // resolver the database will ask, from the same period row.
+  const periodAccepted = payload.booking_period_answer === true || isChristmasBooking
+  let periodContext: BookingPeriodContext = { period: null, collectPeriodDeposits: true }
+  try {
+    periodContext = await loadBookingPeriodContext(auth.supabase, payload.date)
+  } catch (periodError) {
+    // A period that cannot be read must not take the booking down. The database still resolves the
+    // deposit correctly inside the RPC; the only thing lost is this screen's advance warning.
+    logger.warn('Could not load the seasonal period for a FOH booking; falling back to the party-size rule', {
+      metadata: {
+        date: payload.date,
+        error: periodError instanceof Error ? periodError.message : String(periodError),
+      },
+    })
+  }
+
+  const expectedDeposit = expectedDepositForCreate({
+    context: periodContext,
+    partySize: payload.party_size,
+    bookingDate: payload.date,
+    periodAccepted,
     depositWaived: treatAsWaived,
-    isChristmas: isChristmasBooking,
   })
+
+  const requiresDeposit = expectedDeposit
+    ? expectedDeposit.required
+    : requiresDepositForParty(payload.party_size, {
+        depositWaived: treatAsWaived,
+        isChristmas: isChristmasBooking,
+      })
   const depositMethod = requiresDeposit
     ? payload.sunday_deposit_method || null
     : null
@@ -1258,7 +1301,11 @@ export async function POST(request: NextRequest) {
     // A walk-in is not subject to the online holds or minimum party sizes: the guest is
     // standing at the bar.
     p_channel: payload.walk_in === true ? 'walkin' : 'staff',
-    p_actor_id: auth.userId ?? null
+    p_actor_id: auth.userId ?? null,
+    // The seasonal answer only. The amount, the basis and the refund terms are resolved inside the
+    // RPC from the period it re-reads by booking date, so this route never sends a figure.
+    p_booking_period_id: payload.booking_period_id ?? null,
+    p_booking_period_answer: payload.booking_period_answer ?? null
   })
 
   let bookingResult: TableBookingRpcResult
@@ -1374,15 +1421,21 @@ export async function POST(request: NextRequest) {
       bookingResult.table_booking_id &&
       depositMethod === 'cash'
     ) {
-      // Staff-confirmed cash deposit. Amount derived from the centralised
-      // helper so the per-person rate + threshold stay in one place. The RPC
-      // records the cash payment; we then lock the staff-confirmed amount on
-      // the booking row so any subsequent recompute (party-size change, blind
-      // compute) honours what was actually taken. Spec §6, §7.4, §8.3.
+      // Staff-confirmed cash deposit. The amount is whatever the RPC actually resolved and wrote on
+      // the booking, because that is the figure the guest is being asked for at the bar. Recomputing
+      // it here from party size was correct only while every deposit was GBP 10 a head: a seasonal
+      // period at any other rate, or a per-booking one, made the cash taken disagree with the
+      // deposit charged. The party-size helper remains the fallback for the case where the RPC
+      // returned no figure at all. We then lock the confirmed amount on the booking row so any
+      // later recompute honours what was actually taken. Spec §6, §7.4, §8.3.
+      const resolvedDepositAmount = Number(bookingResult.deposit_amount)
       const cashDepositAmount = Number(
-        computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
-          isChristmas: isChristmasBooking,
-        }).toFixed(2),
+        (Number.isFinite(resolvedDepositAmount) && resolvedDepositAmount > 0
+          ? resolvedDepositAmount
+          : computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
+              isChristmas: isChristmasBooking,
+            })
+        ).toFixed(2),
       )
       const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
         p_table_booking_id: bookingResult.table_booking_id,
