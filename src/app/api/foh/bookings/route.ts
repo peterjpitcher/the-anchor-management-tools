@@ -10,6 +10,7 @@ import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
   alignTablePaymentHoldToScheduledSend,
+  chargedDepositAmount,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
@@ -1428,14 +1429,10 @@ export async function POST(request: NextRequest) {
       // deposit charged. The party-size helper remains the fallback for the case where the RPC
       // returned no figure at all. We then lock the confirmed amount on the booking row so any
       // later recompute honours what was actually taken. Spec §6, §7.4, §8.3.
-      const resolvedDepositAmount = Number(bookingResult.deposit_amount)
-      const cashDepositAmount = Number(
-        (Number.isFinite(resolvedDepositAmount) && resolvedDepositAmount > 0
-          ? resolvedDepositAmount
-          : computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
-              isChristmas: isChristmasBooking,
-            })
-        ).toFixed(2),
+      const cashDepositAmount = chargedDepositAmount(bookingResult, () =>
+        computeDepositAmount(Math.max(1, Number(payload.party_size || 1)), {
+          isChristmas: isChristmasBooking,
+        }),
       )
       const { data: cashConfirmRaw, error: cashConfirmError } = await auth.supabase.rpc('record_table_cash_deposit_v05', {
         p_table_booking_id: bookingResult.table_booking_id,

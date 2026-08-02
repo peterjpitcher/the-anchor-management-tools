@@ -53,7 +53,9 @@ export async function POST(
   }
 
   const { data: currentBooking, error: fetchError } = await auth.supabase.from('table_bookings')
-    .select('id, party_size, status, payment_status, customer_id, booking_reference, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived')
+    // booking_period_id and booking_period_name are load-bearing here: their presence is what stops
+    // the deposit transition re-pricing a seasonal booking with the ten-guest rule, which zeroed it.
+    .select('id, party_size, status, payment_status, customer_id, booking_reference, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name')
     .eq('id', id)
     .maybeSingle()
 
@@ -133,6 +135,12 @@ export async function POST(
         metadata: { tableBookingId: id, previousPartySize, newPartySize },
       })
       depositWarning = 'Party size saved, but the deposit link could not be updated. Please retry from the booking page.'
+    }
+
+    // A seasonal booking is never re-priced automatically, so say so plainly rather than letting
+    // staff assume the deposit followed the new party size.
+    if (depositTransition?.state === 'manual_review') {
+      depositWarning = depositTransition.message
     }
 
     return NextResponse.json({

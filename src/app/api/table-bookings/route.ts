@@ -18,6 +18,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
   alignTablePaymentHoldToScheduledSend,
+  chargedDepositAmount,
   createTablePaymentToken,
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
@@ -515,13 +516,14 @@ export async function POST(request: NextRequest) {
         ]
 
         if (bookingResult.state === 'pending_payment') {
-          // Compute deposit via the centralised helper instead of inline
-          // `party_size * 10` arithmetic — keeps the threshold and rate in one
-          // place. The booking is fresh from the RPC so there is no prior
-          // locked/stored amount to honour here. Spec §3 step 9, §8.3.
-          const analyticsDeposit = computeDepositAmount(payload.party_size, {
-            isChristmas: isChristmasPurpose(payload.purpose),
-          })
+          // Analytics records what was CHARGED, from the RPC, for the same reason the response
+          // does: a recomputed figure and a hardcoded "GBP 10 a head" made every seasonal deposit
+          // land in the numbers as the wrong amount at the wrong rate. Spec §3 step 9, §8.3.
+          const analyticsDeposit = chargedDepositAmount(bookingResult, () =>
+            computeDepositAmount(payload.party_size, {
+              isChristmas: isChristmasPurpose(payload.purpose),
+            }),
+          )
           analyticsPromises.push(recordTableBookingAnalyticsSafe(supabase, {
             customerId: customerResolution.customerId,
             tableBookingId: bookingResult.table_booking_id,
@@ -529,8 +531,18 @@ export async function POST(request: NextRequest) {
             metadata: {
               hold_expires_at: holdExpiresAt,
               next_step_url_provided: Boolean(nextStepUrl),
-              deposit_amount: Number(analyticsDeposit.toFixed(2)),
-              deposit_per_person: LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+              deposit_amount: analyticsDeposit,
+              // The rule that actually produced the charge and its real rate, rather than an
+              // assumption that every deposit is the large-group one at GBP 10 a head.
+              deposit_rule: bookingResult.deposit_rule ?? null,
+              deposit_basis: bookingResult.deposit_basis ?? null,
+              deposit_per_person:
+                bookingResult.deposit_basis === 'per_head' && typeof bookingResult.deposit_rate === 'number'
+                  ? bookingResult.deposit_rate
+                  : bookingResult.deposit_basis === 'per_booking'
+                    ? null
+                    : LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
+              booking_period_code: bookingResult.booking_period_code ?? null,
             },
           }, {
             tableBookingId: bookingResult.table_booking_id,
@@ -574,15 +586,20 @@ export async function POST(request: NextRequest) {
 
       const responseStatus = responseState === 'blocked' ? 200 : 201
 
-      // Canonical deposit amount for the response payload. Booking is fresh
-      // from the RPC so there is no prior locked/stored amount to honour, but
-      // we still route through the helper to keep the threshold + rate in one
-      // place. Spec §3 step 9, §8.3.
+      // The figure quoted to the guest must BE the figure charged, so it comes from the RPC, which
+      // resolved it inside the transaction that took the booking.
+      //
+      // Recomputing it here ran the old party-size rule and had never heard of seasonal periods: a
+      // per-head GBP 15 Mother's Day booking for two was charged GBP 30, put into pending_payment,
+      // and told the guest the deposit was GBP 0. The party-size helper survives only as a fallback
+      // for a result predating the field. Spec §3 step 9, §8.3.
       const canonicalDeposit =
         responseState === 'pending_payment'
-          ? computeDepositAmount(payload.party_size, {
-              isChristmas: isChristmasPurpose(payload.purpose),
-            })
+          ? chargedDepositAmount(bookingResult, () =>
+              computeDepositAmount(payload.party_size, {
+                isChristmas: isChristmasPurpose(payload.purpose),
+              }),
+            )
           : null
 
       // Failed-PayPal recovery surface (Spec §6): always expose the token-based
