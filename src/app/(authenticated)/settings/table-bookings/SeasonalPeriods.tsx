@@ -584,17 +584,24 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
       endsOn: draft.ends_on || '2999-12-31',
       guestQuestion: draft.guest_question,
       guestBlurb: draft.guest_blurb || null,
-      requiresPreorder: false,
+      // The draft's REAL values, not placeholders. Hardcoding no party limits here made the preview
+      // quote a price to parties the resolver refuses: Christmas at a minimum of 6 previewed
+      // "2 guests: GBP 20" while a booking for two came back period_party_too_small. A preview that
+      // is only right for the sizes it happens to be right for is worse than none.
+      requiresPreorder: draft.requires_preorder,
       preorderCutoffDays: Number(draft.preorder_cutoff_days) || 0,
       depositBasis: draft.deposit_basis,
       depositAmount: amount,
       refundCutoffDays: Number(draft.refund_cutoff_days) || 0,
-      minPartySize: null,
-      maxPartySize: null,
-      minNoticeHours: 0,
+      minPartySize: draft.min_party_size === '' ? null : Number(draft.min_party_size),
+      maxPartySize: draft.max_party_size === '' ? null : Number(draft.max_party_size),
+      minNoticeHours: Number(draft.min_notice_hours) || 0,
       legacyBookingType: null,
       isActive: true,
       archivedAt: null,
+      // The menu is edited on the saved period, not in this draft, so treat it as ready. Showing
+      // "the menu is not published" against every unsaved draft would be noise, and the real check
+      // runs in set_booking_period_active when the manager switches the period on.
       menuReady: true,
       bookingCount: 0,
       menuItems: [],

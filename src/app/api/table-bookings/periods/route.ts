@@ -72,10 +72,26 @@ function serialiseDeposit(
 ) {
   // Two answers, because the guest has not chosen yet. `if_accepted` is null when the period cannot
   // be accepted at all for this party or date, and the reason is carried alongside it.
+  //
+  // `collect` is fed INTO the pricing, not merely reported beside it. Without it this endpoint
+  // quoted the full seasonal deposit while the create path, which reads the same switch inside the
+  // resolver, charged nothing: switch off and the guest was shown GBP 30 and charged GBP 0.
   const accepted = bookable
-    ? resolveTableBookingDeposit({ partySize, bookingDate: date, period, periodAccepted: true })
+    ? resolveTableBookingDeposit({
+        partySize,
+        bookingDate: date,
+        period,
+        periodAccepted: true,
+        collectPeriodDeposits: collect,
+      })
     : null
-  const declined = resolveTableBookingDeposit({ partySize, bookingDate: date, period, periodAccepted: false })
+  const declined = resolveTableBookingDeposit({
+    partySize,
+    bookingDate: date,
+    period,
+    periodAccepted: false,
+    collectPeriodDeposits: collect,
+  })
 
   return {
     party_size: partySize,
@@ -112,8 +128,13 @@ function serialiseDeposit(
 
 /**
  * The deposit kill switch. Defaults to ON: the owner asked for collection to be live. It exists so
- * a manager can stop taking money from the settings screen without a deploy, and it fails SAFE by
- * reporting "not collecting" if the setting cannot be read at all.
+ * a manager can stop taking money from the settings screen without a deploy.
+ *
+ * An unreadable setting also reads as ON, matching `get_setting_bool(..., true)` in the SQL
+ * resolver that actually charges. Reporting "not collecting" here while the create path charges
+ * would have the website hide the payment step from a guest who is about to be put into
+ * pending_payment, so their hold expires and the table goes back with nobody having been asked for
+ * anything.
  */
 async function isDepositCollectionEnabled(
   supabase: ReturnType<typeof createAdminClient>
@@ -125,8 +146,10 @@ async function isDepositCollectionEnabled(
     .maybeSingle()
 
   if (error) {
-    console.warn('[periods] Could not read booking_period_deposits_enabled; reporting no collection')
-    return false
+    console.warn(
+      '[periods] Could not read booking_period_deposits_enabled; reporting collection ON, which is what the database assumes',
+    )
+    return true
   }
 
   // Settings are stored wrapped, as {"value": true}. A bare boolean is read too, because a
