@@ -8,7 +8,14 @@ import { resolveSeasonalDepositRefund } from './deposit-refund'
 type RefundTier = 'full' | 'half' | 'none'
 
 export type RefundResult =
-  | { refunded: false; reason: 'no_deposit' | 'zero_tier' | 'already_refunded' }
+  | {
+      refunded: false
+      /**
+       * `terms_unreadable` means the seasonal refund snapshot could not be read, so nothing was
+       * refunded on purpose. It is a refusal, not a "no deposit found": a person has to look.
+       */
+      reason: 'no_deposit' | 'zero_tier' | 'already_refunded' | 'terms_unreadable'
+    }
   | { refunded: true; amountPence: number; refundId: string; tier: RefundTier }
 
 /**
@@ -59,11 +66,23 @@ export async function refundTableBookingDeposit(
   // inside it. Not the sliding 100/50/0 tier, which is a different promise and was never made to
   // them. The cutoff is read from the BOOKING, never from booking_periods, so a manager editing or
   // archiving the period afterwards cannot rewrite terms someone has already paid against.
-  const { data: bookingTerms } = await supabase
+  const { data: bookingTerms, error: bookingTermsError } = await supabase
     .from('table_bookings')
     .select('booking_date, deposit_refund_cutoff_days, booking_period_code')
     .eq('id', tableBookingId)
     .maybeSingle()
+
+  // FAIL CLOSED. An unreadable snapshot is not evidence that there is no promise to keep. The
+  // obvious trigger is a stale PostgREST schema cache in the minutes after the migration adds these
+  // columns, and reading that as "no seasonal terms" would refund a cutoff-14 booking in full ten
+  // days out, with no override and no audit row. Refusing costs a manual refund; guessing costs
+  // money that should never have gone back.
+  if (bookingTermsError) {
+    logger.error('Could not read the seasonal refund terms, so no automatic refund was issued', {
+      metadata: { tableBookingId, error: bookingTermsError.message },
+    })
+    return { refunded: false, reason: 'terms_unreadable' }
+  }
 
   const seasonalCutoff = bookingTerms?.deposit_refund_cutoff_days
   if (seasonalCutoff !== null && seasonalCutoff !== undefined) {

@@ -54,6 +54,12 @@ export function RefundDialog({
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The seasonal refund cutoff. These three only ever appear AFTER the server has refused on policy
+  // grounds, so a manager is never offered an override to a rule they have not been shown, and the
+  // ordinary refund stays a two-field form.
+  const [policyRefusal, setPolicyRefusal] = useState<string | null>(null)
+  const [overridePolicy, setOverridePolicy] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -62,6 +68,9 @@ export function RefundDialog({
       setAmount(newRemaining.toFixed(2))
       setReason('')
       setError(null)
+      setPolicyRefusal(null)
+      setOverridePolicy(false)
+      setOverrideReason('')
       setMethod(hasPayPalCapture && !captureExpired ? 'paypal' : 'cash')
     }
   }, [open, originalAmount, totalRefunded, totalPending, hasPayPalCapture, captureExpired])
@@ -84,7 +93,10 @@ export function RefundDialog({
 
   const parsedAmount = parseFloat(amount)
   const isValidAmount = !isNaN(parsedAmount) && parsedAmount > 0 && parsedAmount <= remaining
-  const canSubmit = isValidAmount && reason.trim().length > 0 && !loading
+  // Overriding the refund promise the guest was given needs its own reason, which goes on the audit
+  // record. "The rule said no and a named manager overrode it, for this reason" is the whole point.
+  const overrideReady = !policyRefusal || (overridePolicy && overrideReason.trim().length > 0)
+  const canSubmit = isValidAmount && reason.trim().length > 0 && overrideReady && !loading
 
   const handleRefundInFull = () => {
     setAmount(remaining.toFixed(2))
@@ -99,19 +111,34 @@ export function RefundDialog({
     try {
       let result: { success?: boolean; pending?: boolean; message?: string; error?: string }
 
+      // Only sent once a manager has been shown the refusal and ticked the override.
+      const policyOptions =
+        policyRefusal && overridePolicy
+          ? { overrideRefundPolicy: true, overrideReason: overrideReason.trim() }
+          : undefined
+
       if (method === 'paypal') {
-        result = await processPayPalRefund(sourceType, sourceId, parsedAmount, reason.trim())
+        result = await processPayPalRefund(sourceType, sourceId, parsedAmount, reason.trim(), policyOptions)
       } else {
         result = await processManualRefund(
           sourceType,
           sourceId,
           parsedAmount,
           reason.trim(),
-          method as 'cash' | 'bank_transfer' | 'other'
+          method as 'cash' | 'bank_transfer' | 'other',
+          policyOptions
         )
       }
 
       if (result.error) {
+        // A refusal on the seasonal refund cutoff is not an ordinary failure: it is a decision the
+        // guest was told about, and a manager may take it anyway. Surface it as its own thing with
+        // the override attached, rather than as a dead-end error.
+        if (result.error.includes('manager override')) {
+          setPolicyRefusal(result.error)
+          setError(null)
+          return
+        }
         setError(result.error)
         return
       }
@@ -263,6 +290,49 @@ export function RefundDialog({
                 placeholder="Why is this refund being processed?"
               />
             </div>
+
+            {/* Seasonal refund cutoff: the promise the guest was given, and the way past it. */}
+            {policyRefusal && (
+              <Alert tone="warning">
+                <div className="space-y-3">
+                  <p>{policyRefusal}</p>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={overridePolicy}
+                      onChange={(e) => setOverridePolicy(e.target.checked)}
+                      disabled={loading}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span className="font-medium">
+                      Refund it anyway. This is recorded against your name.
+                    </span>
+                  </label>
+                  {overridePolicy && (
+                    <div>
+                      <label
+                        htmlFor="refund-override-reason"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Why are you overriding the refund terms?
+                      </label>
+                      <Textarea
+                        id="refund-override-reason"
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        rows={2}
+                        placeholder="For example: kitchen closed at short notice, so the deposit is being returned."
+                      />
+                      {overrideReason.trim().length === 0 && (
+                        <p className="mt-1 text-sm text-red-600">
+                          A reason is required before the override can be used.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Alert>
+            )}
 
             {/* Error banner */}
             {error && (
