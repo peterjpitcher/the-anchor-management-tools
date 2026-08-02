@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expectedDepositForCreate, loadBookingPeriodContext } from './period-lookup'
+import { chargedDepositAmount } from './bookings'
+import { computeDepositAmount } from './deposit'
 import type { BookingPeriod } from './periods'
 
 /**
@@ -151,12 +153,17 @@ describe('loadBookingPeriodContext reads the switch and the live period', () => 
     expect(context.period).toBeNull()
   })
 
-  it('fails safe to NOT collecting when the setting cannot be read at all', async () => {
+  it('assumes collection is ON when the setting cannot be read, matching what the database assumes', async () => {
+    // This used to return false, on the reasoning that not taking money is the safe side. It is
+    // not, because the layer that takes the money disagrees: resolve_table_booking_deposit calls
+    // get_setting_bool with a default of TRUE and charges. Front of house would then never be asked
+    // for cash or a payment link, neither payment branch would run, and the booking would sit in
+    // pending_payment until its 24-hour hold quietly expired and the table went back.
     const context = await loadBookingPeriodContext(
       fakeSupabase({ periodRow: null, settingError: true }),
       '2026-06-01',
     )
-    expect(context.collectPeriodDeposits).toBe(false)
+    expect(context.collectPeriodDeposits).toBe(true)
   })
 })
 
@@ -229,6 +236,39 @@ describe('what each create route will be told the deposit is', () => {
   })
 })
 
+describe('the figure quoted to the guest is the figure charged', () => {
+  /**
+   * The public route built its response and its analytics from computeDepositAmount(party_size),
+   * which is the old party-size rule. Mother's Day at GBP 15 a head, party of two, accepted: the
+   * database charged GBP 30 and put the booking into pending_payment, and the response told the
+   * guest the deposit was GBP 0. Both numbers came from the same request.
+   */
+  it('quotes what the RPC charged, where the old rule quoted zero', () => {
+    const rpcResult = { deposit_amount: 30 }
+    expect(computeDepositAmount(2, { isChristmas: false })).toBe(0)
+    expect(chargedDepositAmount(rpcResult, () => computeDepositAmount(2, { isChristmas: false }))).toBe(30)
+  })
+
+  it('quotes 90 for a Christmas period at GBP 15 a head, where the old rule quoted 60', () => {
+    expect(computeDepositAmount(6, { isChristmas: true })).toBe(60)
+    expect(chargedDepositAmount({ deposit_amount: 90 }, () => computeDepositAmount(6, { isChristmas: true }))).toBe(90)
+  })
+
+  it('agrees with the old rule when the old rule was right, so nothing else moves', () => {
+    // A party of 12 with no period: both routes give GBP 120 and always did.
+    expect(chargedDepositAmount({ deposit_amount: 120 }, () => computeDepositAmount(12, {}))).toBe(120)
+  })
+
+  it('falls back to the party-size rule only when the RPC sent no figure at all', () => {
+    expect(chargedDepositAmount({}, () => computeDepositAmount(12, {}))).toBe(120)
+    expect(chargedDepositAmount({ deposit_amount: 0 }, () => computeDepositAmount(12, {}))).toBe(120)
+  })
+
+  it('rounds to the penny', () => {
+    expect(chargedDepositAmount({ deposit_amount: 37.499 }, () => 0)).toBe(37.5)
+  })
+})
+
 describe('both create routes forward the seasonal answer to the database', () => {
   /**
    * The routes cannot be executed end to end here without a database, so this asserts the wiring
@@ -272,8 +312,28 @@ describe('both create routes forward the seasonal answer to the database', () =>
     expect(fohRoute).toContain('const requiresDeposit = expectedDeposit')
   })
 
-  it('the FOH cash amount is the figure the database charged, not a recomputation', () => {
-    expect(fohRoute).toContain('const resolvedDepositAmount = Number(bookingResult.deposit_amount)')
+  it('every create surface quotes the figure the database charged, not a recomputation', () => {
+    // The fault this pins: the public route built its response and its analytics from
+    // computeDepositAmount(party_size), the old party-size rule, so a per-head GBP 15 Mother's Day
+    // booking for two was charged GBP 30 and told the guest GBP 0. Both routes now go through the
+    // one helper that reads the RPC's own answer.
+    for (const route of [publicRoute, fohRoute]) {
+      expect(route).toContain('chargedDepositAmount(bookingResult,')
+    }
+    // And the response field itself is the charged figure.
+    expect(publicRoute).toContain('deposit_amount: canonicalDeposit')
+    expect(publicRoute).not.toMatch(/canonicalDeposit\s*=\s*\n?\s*responseState === 'pending_payment'\s*\n?\s*\?\s*computeDepositAmount/)
+  })
+
+  it('analytics no longer hardcodes GBP 10 a head', () => {
+    // "deposit_per_person: 10" became a lie the moment a period charged anything else, and every
+    // seasonal deposit landed in the numbers at the wrong rate.
+    const analytics = publicRoute.slice(
+      publicRoute.indexOf("eventType: 'table_deposit_started'"),
+      publicRoute.indexOf('await Promise.all(analyticsPromises)'),
+    )
+    expect(analytics).toContain('deposit_rule: bookingResult.deposit_rule')
+    expect(analytics).toContain('bookingResult.deposit_rate')
   })
 
   it('the answer varies the idempotency key, so a changed answer cannot replay the old booking', () => {

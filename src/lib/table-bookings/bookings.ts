@@ -64,6 +64,8 @@ export type TableBookingRpcResult = {
   deposit_required?: boolean
   deposit_amount?: number
   deposit_rule?: 'none' | 'group' | 'period' | 'waived'
+  deposit_basis?: 'per_head' | 'per_booking' | null
+  deposit_rate?: number | null
   deposit_reason?: string | null
   deposit_refund_cutoff_days?: number | null
   deposit_refund_policy?: string | null
@@ -72,6 +74,27 @@ export type TableBookingRpcResult = {
   booking_period_name?: string | null
   booking_period_answer?: boolean | null
   booking_period_requires_preorder?: boolean | null
+}
+
+/**
+ * The deposit the database ACTUALLY charged for a freshly created booking.
+ *
+ * There is exactly one right answer to "what does this guest owe", and the RPC computed it inside
+ * the transaction that took the booking. Every caller that recomputed it from party size was
+ * running the old party-size rule, and quoted a different number from the one written on the
+ * payment row the moment a seasonal period charged anything other than GBP 10 a head: a per-head
+ * GBP 15 Mother's Day booking for two was charged GBP 30 and told the guest GBP 0.
+ *
+ * `fallback` covers a caller holding a result from before this field existed. It is a function so
+ * the old computation is not run when it is not needed.
+ */
+export function chargedDepositAmount(
+  bookingResult: Pick<TableBookingRpcResult, 'deposit_amount'>,
+  fallback: () => number,
+): number {
+  const charged = Number(bookingResult.deposit_amount)
+  const amount = Number.isFinite(charged) && charged > 0 ? charged : fallback()
+  return Number(amount.toFixed(2))
 }
 
 export type TablePaymentTokenResult = {

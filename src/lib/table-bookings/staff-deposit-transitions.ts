@@ -23,6 +23,12 @@ export type PartySizeDepositTransitionBooking = {
   deposit_amount: number | string | null
   deposit_amount_locked: number | string | null
   deposit_waived: boolean | null
+  /**
+   * Set when the booking was taken inside a seasonal period. Its presence is what stops this
+   * function re-pricing a booking with a rule that never applied to it. See the guard below.
+   */
+  booking_period_id?: string | null
+  booking_period_name?: string | null
 }
 
 export type PartySizeDepositTransitionResult =
@@ -35,6 +41,15 @@ export type PartySizeDepositTransitionResult =
     }
   | {
       state: 'deposit_cleared'
+    }
+  | {
+      /**
+       * The party size changed on a seasonal booking, so the deposit was deliberately left exactly
+       * as it was and a person has to decide. Never a failure: the amendment itself succeeded.
+       */
+      state: 'manual_review'
+      message: string
+      depositAmount: number | null
     }
   | {
       state: 'unchanged'
@@ -76,6 +91,37 @@ export async function applyPartySizeDepositTransition(
   // never crosses the 10+ threshold: both sides evaluate to true and the
   // transition is correctly a no-op here (the amount is re-locked elsewhere).
   const isChristmas = isChristmasBookingType(input.booking.booking_type)
+
+  // SEASONAL BOOKINGS ARE NOT RE-PRICED HERE, AND THAT IS DELIBERATE.
+  //
+  // Everything below reasons with `requiresDeposit`, which knows one rule: ten guests or more. A
+  // seasonal booking obeys the terms snapshotted on it instead, and every season other than
+  // Christmas carries booking_type 'regular', so `isChristmas` is false and the ten-guest rule was
+  // silently applied to a deposit that never came from it. Twelve guests on a per-head GBP 25
+  // period pay GBP 300; amending to eight made the branch below write deposit_amount NULL and
+  // status 'confirmed', turning GBP 300 owed into GBP 0 with nothing logged. The reverse kept a
+  // stale figure that was far too small.
+  //
+  // Re-pricing correctly is not possible from the booking alone: when the large-group rule beat the
+  // seasonal one, the snapshot records the GROUP basis and rate, so the period's own rate is not
+  // there to re-apply, and reading it back off booking_periods would price the guest against terms
+  // a manager may have edited since. Whether an amendment should re-price a seasonal deposit at all
+  // is an owner decision, not one to infer here.
+  //
+  // So the deposit is left EXACTLY as it stands and a person is told. Over-collecting is visible
+  // and correctable; silently zeroing money owed is neither.
+  if (input.booking.booking_period_id) {
+    const currentAmount = Number(input.booking.deposit_amount)
+    const periodLabel = input.booking.booking_period_name || 'seasonal'
+    return {
+      state: 'manual_review',
+      depositAmount: Number.isFinite(currentAmount) ? currentAmount : null,
+      message:
+        `The party size changed on a ${periodLabel} booking, so the deposit has been left as it is. ` +
+        'Check whether it still needs adjusting and handle it manually.',
+    }
+  }
+
   const wasDepositRequired = requiresDeposit(input.previousPartySize, { depositWaived, isChristmas })
   const isNowDepositRequired = requiresDeposit(input.newPartySize, { depositWaived, isChristmas })
   const depositAlreadyHandled = ['completed', 'refunded'].includes(input.booking.payment_status || '')

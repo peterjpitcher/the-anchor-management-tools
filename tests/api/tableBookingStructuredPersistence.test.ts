@@ -94,6 +94,16 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason,
   sendManagerTableBookingCreatedEmailIfAllowed,
   sendTableBookingCreatedSmsIfAllowed,
+  // The route quotes the deposit the RPC actually charged rather than recomputing it from party
+  // size, so this mirrors the real helper: prefer the RPC's figure, fall back only when there is
+  // none. Omitting it made the whole file fail to import.
+  chargedDepositAmount: (
+    bookingResult: { deposit_amount?: number | null },
+    fallback: () => number,
+  ) => {
+    const charged = Number(bookingResult.deposit_amount)
+    return Number((Number.isFinite(charged) && charged > 0 ? charged : fallback()).toFixed(2))
+  },
 }))
 
 vi.mock('@/lib/table-bookings/sunday-preorder', () => ({

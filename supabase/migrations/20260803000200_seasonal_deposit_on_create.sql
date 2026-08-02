@@ -757,6 +757,10 @@ BEGIN
     'deposit_required', v_deposit_required,
     'deposit_amount', CASE WHEN v_deposit_required THEN v_deposit_amount ELSE 0 END,
     'deposit_rule', v_deposit_rule,
+    -- The basis and rate that produced the amount, so analytics and staff screens can report the
+    -- real rate instead of assuming every deposit is the large-group one at GBP 10 a head.
+    'deposit_basis', v_deposit_basis,
+    'deposit_rate', v_deposit_rate,
     'deposit_reason', v_deposit ->> 'reason',
     'deposit_refund_cutoff_days', v_deposit_refund_days,
     'deposit_refund_policy', v_deposit_refund_policy,
@@ -937,14 +941,18 @@ GRANT EXECUTE ON FUNCTION public.create_table_booking_public_v06(
   boolean, integer, boolean, boolean, uuid, boolean) TO anon, authenticated, service_role;
 
 -- The core and the staff entry point must not be reachable by anon or authenticated. This FAILS the
--- migration rather than reporting success on a half-closed door, and it is not vacuous: it names
--- the two functions that must be closed, and it fires if either revoke above is ever dropped.
+-- migration rather than reporting success on a half-closed door.
+--
+-- IT ASKS POSTGRES, NOT THE ACL TEXT. Matching a regex against proacl has a hole that points the
+-- wrong way: a function whose ACL has never been touched stores proacl NULL, meaning "the built-in
+-- default", and for a function that default is EXECUTE TO PUBLIC. The regex finds no
+-- "anon=X" in a NULL and reports all clear, while has_function_privilege('anon', ...) returns
+-- true and anon really can call it. has_function_privilege is the question we actually mean.
 DO $assert_grants$
 DECLARE
   v_leaky text;
-  v_public_open boolean;
 BEGIN
-  SELECT string_agg(DISTINCT p.proname, ', ')
+  SELECT string_agg(DISTINCT p.oid::regprocedure::text, ', ')
     INTO v_leaky
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -953,24 +961,26 @@ BEGIN
       'create_table_booking_core_v06',
       'create_table_booking_staff_v06',
       'freeze_table_booking_refund_terms')
-    AND array_to_string(p.proacl::text[], ' ') ~ '(anon|authenticated)=X';
+    AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+      OR has_function_privilege('authenticated', p.oid, 'EXECUTE'));
 
   IF v_leaky IS NOT NULL THEN
     RAISE EXCEPTION USING
       MESSAGE = 'The privileged booking-create functions are executable by anon or authenticated.',
       DETAIL  = v_leaky,
-      HINT    = 'REVOKE ALL FROM PUBLIC does not remove a grant made to a named role. Revoke from anon and authenticated by name.';
+      HINT    = 'REVOKE ALL FROM PUBLIC does not remove a grant made to a named role, and a NULL proacl still means EXECUTE TO PUBLIC. Revoke from anon and authenticated by name.';
   END IF;
 
   -- And the opposite mistake. Dropping the public entry point without restoring its grant would
   -- take every online booking down, silently, at the next deploy.
-  SELECT array_to_string(p.proacl::text[], ' ') ~ 'anon=X'
-    INTO v_public_open
-  FROM pg_proc p
-  JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'public' AND p.proname = 'create_table_booking_public_v06';
-
-  IF v_public_open IS NOT TRUE THEN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'create_table_booking_public_v06'
+      AND has_function_privilege('anon', p.oid, 'EXECUTE')
+  ) THEN
     RAISE EXCEPTION 'create_table_booking_public_v06 is no longer executable by anon, so the website cannot take a booking.';
   END IF;
 END;
