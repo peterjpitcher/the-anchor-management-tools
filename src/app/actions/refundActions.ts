@@ -159,11 +159,23 @@ async function enforceSeasonalRefundPolicy(
 ): Promise<{ error?: string }> {
   if (sourceType !== 'table_booking') return {}
 
-  const { data: bookingTerms } = await db
+  const { data: bookingTerms, error: bookingTermsError } = await db
     .from('table_bookings')
     .select('booking_date, deposit_refund_cutoff_days, deposit_refund_policy, booking_period_code, booking_period_name')
     .eq('id', sourceId)
     .maybeSingle()
+
+  // FAIL CLOSED. An unreadable snapshot is not evidence that there is no promise to keep, and the
+  // obvious trigger is a stale PostgREST schema cache in the minutes after this migration lands.
+  // Letting that read as "no seasonal terms" would wave through exactly the refunds this check
+  // exists to stop, with no override and no audit row.
+  if (bookingTermsError) {
+    return {
+      error:
+        'The refund terms on this booking could not be read, so nothing was refunded. Try again in ' +
+        'a moment, and if it keeps happening check the booking before refunding by hand.',
+    }
+  }
 
   const cutoff = bookingTerms?.deposit_refund_cutoff_days
   if (!bookingTerms || cutoff === null || cutoff === undefined) return {}
