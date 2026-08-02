@@ -267,14 +267,38 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.deposit.if_declined.amount).toBe(120)
   })
 
-  it('reports the deposit kill switch so the website can hide the payment step', async () => {
+  it('quotes nothing when the kill switch is off, because nothing will be charged', async () => {
+    // This used to assert the figure was "still worked out while collection is paused", priced for
+    // a party of 12, where the large-group rule gives GBP 120 whatever the switch does. So it
+    // passed while the endpoint quoted a seasonal deposit the create path would never take: switch
+    // off, a party of 6 was shown GBP 60 and charged GBP 0. Six isolates the seasonal rule.
+    state.settingsRow = { value: { value: false } }
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=6'))
+    const json = await res.json()
+
+    expect(json.data.deposit.collect).toBe(false)
+    expect(json.data.deposit.if_accepted.required).toBe(false)
+    expect(json.data.deposit.if_accepted.amount).toBe(0)
+  })
+
+  it('quotes the seasonal deposit when the switch is on', async () => {
+    state.settingsRow = { value: { value: true } }
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=6'))
+    const json = await res.json()
+
+    expect(json.data.deposit.collect).toBe(true)
+    expect(json.data.deposit.if_accepted.amount).toBe(60)
+  })
+
+  it('with the switch off, a large party still owes the large-group deposit', async () => {
+    // The kill switch stops seasonal collection only. The deposit big parties have always paid is
+    // a different rule and must be quoted exactly as before.
     state.settingsRow = { value: { value: false } }
     const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
     const json = await res.json()
 
-    expect(json.data.deposit.collect).toBe(false)
-    // The amount is still worked out; only the collection of it is paused.
     expect(json.data.deposit.if_accepted.amount).toBe(120)
+    expect(json.data.deposit.if_accepted.rule).toBe('group')
   })
 
   it('an OFF switch stays off even if the row was written unwrapped', async () => {
@@ -292,11 +316,16 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.deposit.collect).toBe(true)
   })
 
-  it('reports no collection rather than guessing when the switch cannot be read', async () => {
+  it('assumes collection is ON when the switch cannot be read, matching what the database assumes', async () => {
+    // This used to report "not collecting" on an unreadable switch, on the reasoning that not
+    // taking money is the safe side. It is not, because the layer that takes the money disagrees:
+    // resolve_table_booking_deposit reads the same setting with a default of TRUE and charges. The
+    // website would then hide the payment step from a guest the database had just put into
+    // pending_payment, and their hold would expire with nobody having been asked for anything.
     state.settingsError = new Error('permission denied')
     const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
     const json = await res.json()
-    expect(json.data.deposit.collect).toBe(false)
+    expect(json.data.deposit.collect).toBe(true)
   })
 
   it('fails cleanly when the period lookup errors', async () => {

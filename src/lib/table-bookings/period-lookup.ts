@@ -34,9 +34,14 @@ export type BookingPeriodContext = {
 }
 
 /**
- * Reads the kill switch. Defaults to ON, which is what the owner asked for, and treats an
- * unreadable setting as OFF: failing to collect is recoverable, charging a guest we were told not
- * to charge is not.
+ * Reads the kill switch. Defaults to ON, which is what the owner asked for.
+ *
+ * IT ALSO DEFAULTS TO ON WHEN THE READ FAILS, deliberately, because the database does. The SQL
+ * resolver calls `get_setting_bool('booking_period_deposits_enabled', true)` and will charge. If
+ * this returned false on a failed read, front of house would be told no deposit was due, would not
+ * ask for cash or a payment link, and neither payment branch would run: the booking would sit in
+ * pending_payment with no way to pay it until the 24-hour hold quietly expired and the table went
+ * back. Guessing "off" is not the safe side when the layer that takes the money guesses "on".
  */
 async function readDepositCollectionSwitch(supabase: SupabaseClient<any, any, any>): Promise<boolean> {
   const { data, error } = await supabase
@@ -46,8 +51,10 @@ async function readDepositCollectionSwitch(supabase: SupabaseClient<any, any, an
     .maybeSingle()
 
   if (error) {
-    console.warn('[periods] Could not read booking_period_deposits_enabled; assuming no collection')
-    return false
+    console.warn(
+      '[periods] Could not read booking_period_deposits_enabled; assuming collection is ON, which is what the database assumes',
+    )
+    return true
   }
 
   // Stored wrapped, as {"value": true}. A bare boolean is honoured too, because a switch someone

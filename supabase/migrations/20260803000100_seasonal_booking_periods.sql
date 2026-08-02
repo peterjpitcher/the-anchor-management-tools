@@ -451,12 +451,19 @@ BEGIN
 
     -- Worked out once, because it belongs to whichever deposit ends up being charged on a booking
     -- where the guest accepted this offer, not only to the seasonal branch below.
+    --
+    -- WORD FOR WORD what describeRefundPolicy() produces in
+    -- src/lib/table-bookings/period-deposit.ts, last sentence included. The website shows the guest
+    -- that version on the way in; this is the version STORED on the booking, which the freeze
+    -- trigger then makes permanent. A difference between the two means the sentence that settles a
+    -- dispute is not the sentence the guest was given, which is precisely the evidence gap the
+    -- snapshot exists to close. A test compares the two strings and fails if they drift.
     IF v_accepted THEN
       v_refund_policy := CASE
         WHEN v_period.refund_cutoff_days <= 0
           THEN 'The deposit is not refundable once the booking is made, though a manager may waive that.'
         ELSE format(
-          'Full refund up to %s days before the booking date. Inside %s days the deposit is not refunded, though a manager may waive that.',
+          'Full refund up to %s days before the booking date. Inside %s days the deposit is not refunded, though a manager may waive that. The deposit comes off the bill on the day.',
           v_period.refund_cutoff_days, v_period.refund_cutoff_days)
       END;
     END IF;

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DEFAULT_GROUP_DEPOSIT_RULE,
+  describeRefundPolicy,
   resolveTableBookingDeposit,
 } from './period-deposit'
 import type { BookingPeriod } from './periods'
@@ -211,6 +212,43 @@ describe('THE GBP 120 TIE, at the layer that charges', () => {
   })
 })
 
+describe('the promise shown to the guest is the promise stored on the booking', () => {
+  /**
+   * The website renders `describeRefundPolicy`. The create path stores whatever the SQL builds, and
+   * the freeze trigger then makes that permanent. They drifted by one sentence: the guest was shown
+   * three sentences and the booking recorded two, so the text that settles a dispute was not the
+   * text the guest was given. That is precisely the evidence gap the snapshot exists to close.
+   */
+  function storedPolicyFromSql(days: number): string {
+    const match = resolver.match(/ELSE format\(\s*\n\s*'([^']+)',/)
+    if (!match) throw new Error('Could not find the refund policy format string in the SQL resolver')
+    // Postgres substitutes each %s with the cutoff.
+    return match[1].split('%s').join(String(days))
+  }
+
+  it('the SQL builds the same sentence, word for word, for a seven-day cutoff', () => {
+    expect(storedPolicyFromSql(7)).toBe(describeRefundPolicy(7))
+  })
+
+  it('and for any other cutoff a manager might set', () => {
+    for (const days of [1, 3, 14, 30, 90]) {
+      expect(storedPolicyFromSql(days)).toBe(describeRefundPolicy(days))
+    }
+  })
+
+  it('including the sentence that tells the guest the deposit comes off the bill', () => {
+    // The one that went missing. Named explicitly so a future edit that drops it fails loudly here
+    // rather than quietly changing what a booking can evidence.
+    expect(storedPolicyFromSql(7)).toContain('The deposit comes off the bill on the day.')
+  })
+
+  it('and the never-refundable wording matches too', () => {
+    const zeroCase = resolver.match(/THEN '(The deposit is not refundable[^']+)'/)
+    expect(zeroCase, 'the zero-cutoff wording is no longer in the SQL').not.toBeNull()
+    expect(zeroCase![1]).toBe(describeRefundPolicy(0))
+  })
+})
+
 describe('the kill switch is read in exactly one place', () => {
   it('the resolver reads it itself', () => {
     expect(resolver).toContain("public.get_setting_bool('booking_period_deposits_enabled', true)")
@@ -279,8 +317,17 @@ describe('the migration is deployable and honest about it', () => {
     ]) {
       expect(createPathSql).toContain(`'${fn}'`)
     }
-    expect(createPathSql).toContain("'(anon|authenticated)=X'")
     expect(createPathSql).toContain('RAISE EXCEPTION USING')
+  })
+
+  it('asks Postgres whether anon can execute, rather than pattern-matching the ACL text', () => {
+    // A regex over proacl has a hole that points the wrong way: a function whose ACL has never been
+    // touched stores proacl NULL, meaning the built-in default, and for a function that default is
+    // EXECUTE TO PUBLIC. No "anon=X" appears in a NULL, so the assertion reported all clear while
+    // anon genuinely could call it.
+    expect(createPathSql).toContain("has_function_privilege('anon', p.oid, 'EXECUTE')")
+    expect(createPathSql).toContain("has_function_privilege('authenticated', p.oid, 'EXECUTE')")
+    expect(createPathSql).not.toContain('(anon|authenticated)=X')
   })
 
   it('freezes the refund terms once the guest has been given them', () => {
