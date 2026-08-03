@@ -435,6 +435,9 @@ export function FohScheduleClient({
         tableEventPromptAcknowledgedEventId={createBooking.tableEventPromptAcknowledgedEventId}
         walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
         formRequiresDeposit={createBooking.formRequiresDeposit}
+        seasonalPeriod={createBooking.seasonalPeriod}
+        seasonalAnswer={createBooking.seasonalAnswer}
+        onSetSeasonalAnswer={createBooking.setSeasonalAnswer}
         errorMessage={errorMessage}
         onClose={createBooking.closeCreateModal}
         onSubmit={createBooking.handleCreateBooking}

@@ -133,3 +133,114 @@ describe('useFohCreateBooking defaults', () => {
     })
   })
 })
+
+/**
+ * The seasonal question on the staff side.
+ *
+ * Staff could only ever create a seasonal booking through the `christmas`
+ * purpose, so Mother's Day, Easter and Father's Day were unusable by staff even
+ * once configured: the API accepted the period fields but no screen sent them.
+ */
+describe('useFohCreateBooking seasonal periods', () => {
+  function stubFetchWithPeriod(period: Record<string, unknown> | null) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.startsWith('/api/foh/periods')) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ success: true, data: { date: '2026-05-23', period } }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            })
+          )
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        )
+      })
+    )
+  }
+
+  const mothersDay = {
+    id: '11111111-2222-3333-4444-555555555555',
+    code: 'mothers_day',
+    period_kind: 'mothers_day',
+    name: "Mother's Day",
+    guest_question: "Is this a Mother's Day booking?",
+    guest_blurb: null,
+    requires_preorder: false,
+    min_party_size: null,
+    max_party_size: null,
+    bookable: true,
+    not_bookable_reason: null,
+    not_bookable_message: null,
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('surfaces a non-Christmas period and keeps the answer unset until staff choose', async () => {
+    stubFetchWithPeriod(mothersDay)
+    const { result } = renderCreateBookingHook(new Date('2026-05-23T10:00:00.000Z'))
+
+    await act(async () => {
+      result.current.openCreateModal({ mode: 'booking' })
+    })
+
+    await waitFor(() => expect(result.current.seasonalPeriod?.code).toBe('mothers_day'))
+    expect(result.current.seasonalAnswer).toBeNull()
+
+    await act(async () => {
+      result.current.setSeasonalAnswer(true)
+    })
+    expect(result.current.seasonalAnswer).toBe(true)
+  })
+
+  it('keeps a NO answer rather than treating it as unanswered', async () => {
+    stubFetchWithPeriod(mothersDay)
+    const { result } = renderCreateBookingHook(new Date('2026-05-23T10:00:00.000Z'))
+
+    await act(async () => {
+      result.current.openCreateModal({ mode: 'booking' })
+    })
+    await waitFor(() => expect(result.current.seasonalPeriod).not.toBeNull())
+
+    await act(async () => {
+      result.current.setSeasonalAnswer(false)
+    })
+    // `false` is a real answer: the normal menu at normal terms. Treating it as
+    // "not answered yet" would block the booking staff are trying to take.
+    expect(result.current.seasonalAnswer).toBe(false)
+  })
+
+  it('never asks about a Christmas period, which travels as a purpose', async () => {
+    stubFetchWithPeriod({ ...mothersDay, code: 'christmas', period_kind: 'christmas', name: 'Christmas' })
+    const { result } = renderCreateBookingHook(new Date('2026-05-23T10:00:00.000Z'))
+
+    await act(async () => {
+      result.current.openCreateModal({ mode: 'booking' })
+    })
+
+    // Two controls for one decision is two ways to disagree. The existing
+    // christmas purpose already posts a Christmas booking.
+    await waitFor(() => expect(result.current.isCreateModalOpen).toBe(true))
+    expect(result.current.seasonalPeriod).toBeNull()
+  })
+
+  it('treats a failed period lookup as no period rather than blocking the booking', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')))
+    const { result } = renderCreateBookingHook(new Date('2026-05-23T10:00:00.000Z'))
+
+    await act(async () => {
+      result.current.openCreateModal({ mode: 'booking' })
+    })
+
+    await waitFor(() => expect(result.current.isCreateModalOpen).toBe(true))
+    expect(result.current.seasonalPeriod).toBeNull()
+  })
+})

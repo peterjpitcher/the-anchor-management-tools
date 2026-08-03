@@ -19,6 +19,7 @@ import type {
   FohEventOption,
   WalkInTargetTable,
 } from '../types'
+import type { FohBookingPeriod } from '../hooks/useFohCreateBooking'
 import {
   formatEventBookingMode,
   formatEventOptionDateTime,
@@ -69,6 +70,10 @@ type FohCreateBookingModalProps = {
   walkInPurposeAutoSelectionEnabled: boolean
   // Deposit
   formRequiresDeposit: boolean
+  /** Non-Christmas seasonal period covering the chosen date, if any. */
+  seasonalPeriod: FohBookingPeriod | null
+  seasonalAnswer: boolean | null
+  onSetSeasonalAnswer: (accepted: boolean) => void
   // Messages
   errorMessage: string | null
   // Callbacks
@@ -112,6 +117,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     tableEventPromptAcknowledgedEventId,
     walkInPurposeAutoSelectionEnabled,
     formRequiresDeposit,
+    seasonalPeriod,
+    seasonalAnswer,
+    onSetSeasonalAnswer,
     errorMessage,
     onClose,
     onSubmit,
@@ -473,6 +481,56 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   Pub Event (remove deposit for 10+ group)
                 </label>
               </div>
+
+              {/* The seasonal question, for periods that are not Christmas.
+                  Christmas travels as a purpose and already works; asking twice
+                  would give staff two controls for one decision. */}
+              {seasonalPeriod && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold text-gray-900">{seasonalPeriod.name}</p>
+                  {seasonalPeriod.bookable ? (
+                    <>
+                      <p className="mt-1 text-xs text-gray-700">{seasonalPeriod.guest_question}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onSetSeasonalAnswer(true)}
+                          aria-pressed={seasonalAnswer === true}
+                          className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-semibold ${
+                            seasonalAnswer === true
+                              ? 'border-green-600 bg-green-600 text-white'
+                              : 'border-gray-300 bg-white text-gray-700'
+                          }`}
+                        >
+                          Yes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onSetSeasonalAnswer(false)}
+                          aria-pressed={seasonalAnswer === false}
+                          className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-xs font-semibold ${
+                            seasonalAnswer === false
+                              ? 'border-green-600 bg-green-600 text-white'
+                              : 'border-gray-300 bg-white text-gray-700'
+                          }`}
+                        >
+                          No
+                        </button>
+                      </div>
+                      {seasonalAnswer === null && (
+                        <p className="mt-2 text-xs text-gray-600">
+                          Please answer before creating the booking.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-gray-700">
+                      {seasonalPeriod.not_bookable_message ||
+                        'This period cannot be booked yet.'}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {formRequiresDeposit && canWaiveDeposit && (
                 <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
