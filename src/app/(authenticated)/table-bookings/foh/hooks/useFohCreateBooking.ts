@@ -25,6 +25,32 @@ import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '..
 import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 import { isChristmasPurpose } from '@/lib/table-bookings/christmas'
 
+/**
+ * The seasonal period covering the chosen booking date, as the staff route
+ * reports it. No deposit block: staff price the deposit through the existing
+ * FOH controls, and a second quote here would be a second opinion about money.
+ */
+export type FohBookingPeriod = {
+  id: string
+  code: string
+  period_kind: string
+  name: string
+  guest_question: string
+  guest_blurb: string | null
+  requires_preorder: boolean
+  min_party_size: number | null
+  max_party_size: number | null
+  bookable: boolean
+  not_bookable_reason: string | null
+  not_bookable_message: string | null
+}
+
+/**
+ * Keyed to the period AND the date it was given for, so changing either forgets
+ * it rather than carrying an answer staff gave about a different occasion.
+ */
+type FohPeriodAnswer = { periodId: string; date: string; accepted: boolean }
+
 export type UseFohCreateBookingReturn = {
   isCreateModalOpen: boolean
   createMode: FohCreateMode
@@ -45,6 +71,11 @@ export type UseFohCreateBookingReturn = {
   selectedEventOption: FohEventOption | null
   overlappingEventForTable: FohEventOption | null
   formRequiresDeposit: boolean
+  /** The non-Christmas seasonal period covering the chosen date, if any. */
+  seasonalPeriod: FohBookingPeriod | null
+  /** Null until staff answer, and again whenever the period or date changes. */
+  seasonalAnswer: boolean | null
+  setSeasonalAnswer: (accepted: boolean) => void
   // Actions
   setCreateForm: (updater: (current: CreateForm) => CreateForm) => void
   setCustomerQuery: (query: string) => void
@@ -86,6 +117,8 @@ export function useFohCreateBooking(input: {
   const [eventOptionsError, setEventOptionsError] = useState<string | null>(null)
   const [walkInPurposeAutoSelectionEnabled, setWalkInPurposeAutoSelectionEnabled] = useState(false)
   const [tableEventPromptAcknowledgedEventId, setTableEventPromptAcknowledgedEventId] = useState<string | null>(null)
+  const [bookingPeriod, setBookingPeriod] = useState<FohBookingPeriod | null>(null)
+  const [bookingPeriodAnswer, setBookingPeriodAnswer] = useState<FohPeriodAnswer | null>(null)
 
   const [createForm, setCreateForm] = useState<CreateForm>({
     booking_date: date,
@@ -174,6 +207,48 @@ export function useFohCreateBooking(input: {
     return () => { cancelled = true; controller.abort() }
   }, [createForm.booking_date, createForm.purpose, isCreateModalOpen])
 
+  // --- Seasonal period loader ---
+  //
+  // Staff could only ever create a seasonal booking through the `christmas`
+  // purpose, so Mother's Day, Easter and Father's Day were unusable by staff
+  // even once configured: the API accepted the period fields but no screen sent
+  // them. This asks which period covers the chosen date so the modal can put the
+  // same question to staff that the website puts to a guest.
+  useEffect(() => {
+    if (!isCreateModalOpen) {
+      setBookingPeriod(null)
+      return
+    }
+    const bookingDate = createForm.booking_date
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingDate)) {
+      setBookingPeriod(null)
+      return
+    }
+    let cancelled = false
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const params = new URLSearchParams({ date: bookingDate })
+        const response = await fetch(`/api/foh/periods?${params.toString()}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => null)
+        if (cancelled) return
+        // A lookup we could not make reads as "no period". A seasonal question
+        // is worth money, but never at the price of blocking a booking staff are
+        // taking with a guest stood in front of them.
+        setBookingPeriod(response.ok && payload?.success ? payload.data?.period ?? null : null)
+      } catch {
+        if (!cancelled) setBookingPeriod(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [createForm.booking_date, isCreateModalOpen])
+
   // --- Sync create form date with service date ---
   useEffect(() => {
     if (isCreateModalOpen) return
@@ -182,6 +257,41 @@ export function useFohCreateBooking(input: {
 
   // --- Overlapping event prompt acknowledgement guard ---
   const isChristmasBooking = isChristmasPurpose(createForm.purpose)
+
+  /*
+   * Which periods the modal asks about.
+   *
+   * Christmas already has a working path: the `christmas` purpose posts a
+   * Christmas booking and the API treats that purpose as a yes to a
+   * Christmas-kind period. Asking again would give staff two controls for one
+   * decision and two ways to disagree, so Christmas is deliberately excluded
+   * here and its existing path is left untouched.
+   */
+  const seasonalPeriod =
+    bookingPeriod && bookingPeriod.period_kind !== 'christmas' && createForm.purpose !== 'event'
+      ? bookingPeriod
+      : null
+
+  // Read back only while it still belongs to the period and date on screen.
+  const seasonalAnswer =
+    bookingPeriodAnswer &&
+    seasonalPeriod &&
+    bookingPeriodAnswer.periodId === seasonalPeriod.id &&
+    bookingPeriodAnswer.date === createForm.booking_date
+      ? bookingPeriodAnswer.accepted
+      : null
+
+  const setSeasonalAnswer = useCallback(
+    (accepted: boolean) => {
+      if (!seasonalPeriod) return
+      setBookingPeriodAnswer({
+        periodId: seasonalPeriod.id,
+        date: createForm.booking_date,
+        accepted,
+      })
+    },
+    [seasonalPeriod, createForm.booking_date]
+  )
   const formRequiresDeposit =
     createMode !== 'management' && !createForm.is_venue_event && createMode !== 'walk_in' &&
     requiresDepositForParty(Number(createForm.party_size) || 0, {
@@ -417,6 +527,14 @@ export function useFohCreateBooking(input: {
     if (!isWalkIn && overlappingEventForTable && tableEventPromptAcknowledgedEventId !== overlappingEventForTable.id) {
       setErrorMessage('Please confirm whether this booking is for the overlapping event.'); return
     }
+    // An unanswered live period must not be submitted, because saying nothing
+    // would reach the server as though staff had declined it on the guest's
+    // behalf, quietly booking the normal menu at normal terms.
+    if (seasonalPeriod?.bookable && seasonalAnswer === null) {
+      setErrorMessage(`Please answer: ${seasonalPeriod.guest_question}`)
+      return
+    }
+
     const requiresDepositValidation =
       (!isWalkIn && !isManagement && !createForm.is_venue_event) &&
       requiresDepositForParty(partySize, {
@@ -442,7 +560,14 @@ export function useFohCreateBooking(input: {
           notes: createForm.notes || undefined,
           sunday_deposit_method: (!isWalkIn && !isManagement && !createForm.is_venue_event && requiresDepositForParty(partySize, { depositWaived: createForm.waive_deposit === true, isChristmas: isChristmasBooking })) ? createForm.sunday_deposit_method : undefined,
           waive_deposit: createForm.waive_deposit || undefined, is_venue_event: createForm.is_venue_event || undefined,
-          bypass_pacing: createForm.bypass_pacing || undefined
+          bypass_pacing: createForm.bypass_pacing || undefined,
+          // The seasonal answer, as an inseparable pair. `false` is a real
+          // answer (the normal menu at normal terms), so this tests the type and
+          // never the truthiness. Absent for Christmas, which travels as a
+          // purpose, and absent when nobody was asked.
+          ...(seasonalPeriod && typeof seasonalAnswer === 'boolean'
+            ? { booking_period_id: seasonalPeriod.id, booking_period_answer: seasonalAnswer }
+            : {})
         })
       })
       const payload = (await response.json()) as FohCreateBookingResponse
@@ -478,6 +603,7 @@ export function useFohCreateBooking(input: {
     walkInPurposeAutoSelectionEnabled, tableEventPromptAcknowledgedEventId,
     selectedEventOption,
     overlappingEventForTable, formRequiresDeposit,
+    seasonalPeriod, seasonalAnswer, setSeasonalAnswer,
     setCreateForm, setCustomerQuery, setSelectedCustomer, setCustomerResults,
     setTableEventPromptAcknowledgedEventId,
     setWalkInPurposeAutoSelectionEnabled,
