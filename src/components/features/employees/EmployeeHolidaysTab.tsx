@@ -13,8 +13,10 @@ import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
 import {
   countLeaveAllowanceDays,
+  getHolidayYear,
   normalizeNonWorkingWeekdays,
 } from '@/lib/leave/working-days';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
@@ -22,12 +24,6 @@ interface EmployeeHolidaysTabProps {
   leaveRequests: LeaveRequest[];
   paySettings: EmployeePaySettings | null;
   rotaSettings: Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay' | 'defaultHolidayDays'>;
-}
-
-function getHolidayYear(date: Date, startMonth: number, startDay: number): number {
-  const year = date.getFullYear();
-  const yearStart = new Date(year, startMonth - 1, startDay);
-  return date >= yearStart ? year : year - 1;
 }
 
 function formatDate(iso: string) {
@@ -55,7 +51,7 @@ export default function EmployeeHolidaysTab({
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
   const nonWorkingWeekdays = normalizeNonWorkingWeekdays(paySettings?.non_working_weekdays);
 
-  const currentYear = getHolidayYear(new Date(), holidayYearStartMonth, holidayYearStartDay);
+  const currentYear = getHolidayYear(getTodayIsoDate(), holidayYearStartMonth, holidayYearStartDay);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [showBookForm, setShowBookForm] = useState(false);
   const [bookStart, setBookStart] = useState('');
