@@ -5,6 +5,8 @@ import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import type { LeaveRequest } from '@/app/actions/leave';
 import { CancelLeaveRequestButton } from './CancelLeaveRequestButton';
+import { getHolidayYear } from '@/lib/leave/working-days';
+import { getTodayIsoDate } from '@/lib/dateUtils';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,13 +26,6 @@ const STATUS_BADGE: Record<string, 'warning' | 'success' | 'error'> = {
   approved: 'success',
   declined: 'error',
 };
-
-function getHolidayYear(startMonth: number, startDay: number): number {
-  const today = new Date();
-  const year = today.getFullYear();
-  const yearStart = new Date(year, startMonth - 1, startDay);
-  return today >= yearStart ? year : year - 1;
-}
 
 export default async function MyLeavePage() {
   const supabase = await createClient();
@@ -57,7 +52,7 @@ export default async function MyLeavePage() {
   }
 
   const rotaSettings = await getRotaSettings();
-  const holidayYear = getHolidayYear(rotaSettings.holidayYearStartMonth, rotaSettings.holidayYearStartDay);
+  const holidayYear = getHolidayYear(getTodayIsoDate(), rotaSettings.holidayYearStartMonth, rotaSettings.holidayYearStartDay);
 
   const [requestsResult, usageResult] = await Promise.all([
     getLeaveRequests({ employeeId: employee.employee_id }),

@@ -89,6 +89,78 @@ export function toLocalIsoDate(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+/**
+ * Anchors a YYYY-MM-DD calendar date at midnight UTC, or null when it is not a real date.
+ * Calendar dates carry no time or zone, so anchoring them in UTC keeps every operation on
+ * them (comparison, iteration, weekday) identical on every machine. Building them with
+ * `new Date(y, m, d)` instead would anchor them in the host's timezone, which shifts the
+ * date by a day once it is read back in London.
+ */
+function isoDateToUtcMs(value: string): number | null {
+  if (!ISO_DATE_PATTERN.test(value)) return null
+
+  const [year, month, day] = value.split('-').map(Number)
+  const ms = Date.UTC(year, month - 1, day)
+  const date = new Date(ms)
+
+  // Date.UTC rolls impossible dates forward (31 February becomes 3 March), so round-trip to reject them
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  return ms
+}
+
+function utcMsToIsoDate(ms: number): string {
+  const date = new Date(ms)
+  const year = String(date.getUTCFullYear()).padStart(4, '0')
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * True when the value is a real YYYY-MM-DD calendar date. Rejects both bad formats and
+ * impossible dates such as 2026-02-30. Never depends on the host machine's timezone.
+ */
+export function isValidIsoDate(value: string): boolean {
+  return isoDateToUtcMs(value) !== null
+}
+
+/**
+ * ISO weekday for a YYYY-MM-DD calendar date: 1 = Monday through 7 = Sunday.
+ * Returns null for an invalid date.
+ */
+export function getIsoWeekday(isoDate: string): number | null {
+  const ms = isoDateToUtcMs(isoDate)
+  if (ms === null) return null
+  const day = new Date(ms).getUTCDay() // 0 = Sunday
+  return day === 0 ? 7 : day
+}
+
+/**
+ * Every calendar date from start to end inclusive, as YYYY-MM-DD strings.
+ * Returns [] when either date is invalid or the end falls before the start.
+ */
+export function eachIsoDateInRange(startIsoDate: string, endIsoDate: string): string[] {
+  const start = isoDateToUtcMs(startIsoDate)
+  const end = isoDateToUtcMs(endIsoDate)
+  if (start === null || end === null || end < start) return []
+
+  const dates: string[] = []
+  for (let ms = start; ms <= end; ms += MS_PER_DAY) {
+    dates.push(utcMsToIsoDate(ms))
+  }
+  return dates
+}
+
 export function getLocalIsoDateDaysAgo(days: number): string {
   const date = new Date()
   date.setDate(date.getDate() - days)

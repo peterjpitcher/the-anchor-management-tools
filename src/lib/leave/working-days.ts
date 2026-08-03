@@ -1,5 +1,4 @@
-import { eachDayOfInterval, getISODay, isValid, parseISO } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { eachIsoDateInRange, getIsoWeekday } from '@/lib/dateUtils';
 
 export const WEEKDAY_OPTIONS = [
   { value: 1, label: 'Monday' },
@@ -25,10 +24,9 @@ export function isCountedLeaveDate(
   isoDate: string,
   nonWorkingWeekdays: readonly number[] = [],
 ): boolean {
-  const date = parseISO(isoDate);
-  if (!isValid(date)) return false;
+  const isoDay = getIsoWeekday(isoDate);
+  if (isoDay === null) return false;
 
-  const isoDay = getISODay(date);
   if (isoDay > 5) return false;
   return !nonWorkingWeekdays.includes(isoDay);
 }
@@ -38,13 +36,25 @@ export function getCountedLeaveDates(
   endDate: string,
   nonWorkingWeekdays: readonly number[] = [],
 ): string[] {
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
-  if (!isValid(start) || !isValid(end) || end < start) return [];
-
-  return eachDayOfInterval({ start, end })
-    .map(date => formatInTimeZone(date, 'Europe/London', 'yyyy-MM-dd'))
+  return eachIsoDateInRange(startDate, endDate)
     .filter(date => isCountedLeaveDate(date, nonWorkingWeekdays));
+}
+
+/**
+ * The holiday year a YYYY-MM-DD date falls in, named by the calendar year it starts in.
+ * Compares ISO date strings, which sort in date order, so the answer never depends on the
+ * timezone of the machine asking. Building the boundary with `new Date(year, month, day)`
+ * instead would anchor it in the viewer's timezone and flip the holiday year early for
+ * anyone outside the UK.
+ */
+export function getHolidayYear(
+  isoDate: string,
+  startMonth: number,
+  startDay: number,
+): number {
+  const year = Number(isoDate.slice(0, 4));
+  const yearStart = `${year}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
+  return isoDate >= yearStart ? year : year - 1;
 }
 
 export function countLeaveAllowanceDays(

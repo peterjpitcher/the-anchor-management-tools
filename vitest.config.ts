@@ -10,6 +10,12 @@ export default defineConfig({
     globals: true,
     css: false,
     exclude: [...configDefaults.exclude, '**/.claude/worktrees/**'],
+    // The app hardcodes Europe/London, so the suite runs there too, whatever timezone the
+    // developer or CI machine is on. Without this, any assertion built from a host-local Date
+    // shifts by a day outside the UK, and the same suite passes in London but fails elsewhere.
+    env: {
+      TZ: 'Europe/London',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

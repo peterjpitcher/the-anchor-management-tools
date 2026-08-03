@@ -5,8 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { eachDayOfInterval, parseISO, getYear, isValid } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { eachIsoDateInRange, getTodayIsoDate, isValidIsoDate } from '@/lib/dateUtils';
 import { sendEmail } from '@/lib/email/emailService';
 import {
   buildHolidaySubmittedEmailHtml,
@@ -19,6 +18,7 @@ import {
   recordHolidayReliabilityEvents,
 } from '@/services/employee-reliability';
 import {
+  getHolidayYear,
   isCountedLeaveDate,
   normalizeNonWorkingWeekdays,
 } from '@/lib/leave/working-days';
@@ -38,19 +38,7 @@ export type LeaveRequest = {
   updated_at: string;
 };
 
-function getHolidayYear(date: Date, startMonth: number, startDay: number): number {
-  const year = getYear(date);
-  const yearStart = new Date(year, startMonth - 1, startDay);
-  return date >= yearStart ? year : year - 1;
-}
-
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function isValidIsoDate(value: string): boolean {
-  if (!ISO_DATE_PATTERN.test(value)) return false;
-  const date = parseISO(value);
-  return isValid(date) && formatInTimeZone(date, 'Europe/London', 'yyyy-MM-dd') === value;
-}
 
 // ---------------------------------------------------------------------------
 // Submit a leave request (employee)
@@ -112,7 +100,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     return { success: false, error: 'End date must be on or after start date' };
   }
 
-  const todayLocal = formatInTimeZone(new Date(), 'Europe/London', 'yyyy-MM-dd');
+  const todayLocal = getTodayIsoDate();
   if (startDate < todayLocal) {
     return { success: false, error: 'Leave requests cannot be submitted for past dates' };
   }
@@ -137,7 +125,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   }
 
   const { holidayYearStartMonth, holidayYearStartDay } = rotaSettings;
-  const holidayYear = getHolidayYear(parseISO(startDate), holidayYearStartMonth, holidayYearStartDay);
+  const holidayYear = getHolidayYear(startDate, holidayYearStartMonth, holidayYearStartDay);
   const { data: { user } } = await supabase.auth.getUser();
 
   // Insert request
@@ -157,11 +145,10 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   if (reqError) return { success: false, error: reqError.message };
 
   // Expand leave days immediately (used for rota overlay even while pending)
-  const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
-  const dayRows = days.map(d => ({
+  const dayRows = eachIsoDateInRange(startDate, endDate).map(leaveDate => ({
     request_id: request.id,
     employee_id: employeeId,
-    leave_date: formatInTimeZone(d, 'Europe/London', 'yyyy-MM-dd'),
+    leave_date: leaveDate,
   }));
 
   // Use ON CONFLICT DO NOTHING — employee may already have a day from another request
@@ -388,7 +375,7 @@ export async function bookApprovedHoliday(input: {
   }
 
   const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
-  const holidayYear = getHolidayYear(parseISO(startDate), holidayYearStartMonth, holidayYearStartDay);
+  const holidayYear = getHolidayYear(startDate, holidayYearStartMonth, holidayYearStartDay);
   const { data: { user } } = await supabase.auth.getUser();
 
   const { data: request, error: reqError } = await supabase
@@ -409,11 +396,10 @@ export async function bookApprovedHoliday(input: {
 
   if (reqError) return { success: false, error: reqError.message };
 
-  const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
-  const dayRows = days.map(d => ({
+  const dayRows = eachIsoDateInRange(startDate, endDate).map(leaveDate => ({
     request_id: request.id,
     employee_id: employeeId,
-    leave_date: formatInTimeZone(d, 'Europe/London', 'yyyy-MM-dd'),
+    leave_date: leaveDate,
   }));
 
   const { error: leaveDaysApprovedError } = await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
@@ -736,7 +722,7 @@ export async function updateLeaveRequestDates(
   }
 
   const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
-  const holidayYear = getHolidayYear(parseISO(parsedStartDate), holidayYearStartMonth, holidayYearStartDay);
+  const holidayYear = getHolidayYear(parsedStartDate, holidayYearStartMonth, holidayYearStartDay);
   const admin = createAdminClient();
 
   const { data: rpcData, error: rpcError } = await admin.rpc('update_leave_request_dates', {
