@@ -195,27 +195,40 @@ This version reduces the exposure rather than pretending to settle the law:
 - The form says plainly that anyone with a serious allergy should ring the pub, because a text box is not
   a safe channel for that.
 - It is shown only to staff and the kitchen, never in a manager digest, never in logs or telemetry.
-- It is deleted 90 days after the booking date.
 
-**This still needs a documented decision by someone qualified**, covering the Article 6 basis, the
-Article 9 condition, the privacy notice wording and whether a DPIA is required. It is one question about
-one optional field, not a blocker on the rest of the build.
+**Owner decision, 2026-08-04.** The concern in this section was raised and the owner has decided: the
+information is kept so that staff can see it and prepare the food safely, and it is retained for two
+years so a returning guest's requirements can be referenced. That is the controller's decision to make
+and it is a coherent purpose.
+
+What this means in practice, and what is built to it:
+
+- **Purpose:** preparing food safely for a specific guest, and recognising a returning guest's
+  requirements. Recorded here so the reason is on the record rather than assumed.
+- **Access:** staff and kitchen only, on a permission-gated screen. Never emailed, never in a manager
+  digest, never in logs, telemetry or analytics.
+- Still worth doing, though it blocks nothing: write the Article 6 basis and the Article 9 condition
+  down somewhere permanent, and add a line to the privacy notice saying the pub keeps dietary
+  requirements for two years. The build does not wait on it.
 
 ## 9. Retention
 
-Owner asked for two years, for future ordering and capacity planning.
-
-That purpose needs no personal data at all, so the retention splits:
+**Owner decision, 2026-08-04: two years, everything.** Dish choices for ordering and capacity planning,
+and names and dietary notes so a returning guest's requirements can be looked up.
 
 | Data | Kept | Why |
 |---|---|---|
-| Dish choices, course counts, covers per booking | 2 years | Exactly what ordering and capacity planning needs |
-| `guest_name` | 90 days after the booking | Serves the service, not the planning |
-| `dietary_note` | 90 days after the booking | Above, plus section 8 |
+| Dish choices, course counts, covers per booking | 2 years | Ordering and capacity planning |
+| `guest_name` | 2 years | Ties a requirement to a person on a return visit |
+| `dietary_note` | 2 years | Owner decision in section 8: staff must be able to reference it |
 | Reminder ledger | 2 years | Cheap, and answers "did we chase them?" |
 
-The nightly retention cron nulls the two personal columns at 90 days and leaves the rest. Planning keeps
-every number it needs and the pub stops holding names it has no use for.
+The nightly retention cron deletes cover and selection rows two years after the booking date. One rule,
+one period, nothing to get out of step.
+
+An earlier draft split this, keeping dish data for two years and deleting names and dietary notes at
+ninety days, on the grounds that planning needs no personal data. The owner's purpose is broader than
+planning, so the split does not serve it and has been dropped.
 
 ## 10. What is deliberately NOT in this version
 
@@ -257,9 +270,9 @@ Christmas would still work.
 
 ## 13. Open decisions
 
-Only two, and neither blocks starting.
+**None. All three were closed by the owner on 2026-08-04:**
 
-1. **Legal, section 8:** the Article 6 basis and Article 9 condition for `dietary_note`. If the answer is
-   slow, build the field and leave it hidden behind the same setting. No migration changes either way.
-2. **Owner:** confirm the Christmas page copy moves to per-person courses (section 3), since it changes
-   what is advertised on a page carrying ad spend.
+1. Dietary notes are kept and shown to staff so they can prepare the food, retained two years
+   (section 8). Writing the lawful basis down remains good practice but blocks nothing.
+2. The Christmas page copy changes to per-person courses (section 3).
+3. Build everything in section 11.
