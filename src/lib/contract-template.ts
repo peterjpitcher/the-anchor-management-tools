@@ -274,10 +274,15 @@ export function generateContractHTML(data: ContractData): string {
   const bookingDiscount = round2(printedSubtotal - money.discountedNet)
   const hasBookingDiscount = bookingDiscount > 0
 
-  // At most one sub-line per row, at most one line long, so the measured row
-  // ceiling of 12.40mm holds. Truncate the raw text BEFORE escaping: slicing
-  // escaped HTML would cut an entity in half (&amp; becoming &am).
-  const SUB_LINE_MAX = 88
+  // Item notes carry material contract terms, not internal shorthand: production
+  // notes include "there will be an additional charge of £200 ..." (150 chars)
+  // and a bar-tab restriction. An 88-character cap cut the first one off right
+  // before the amount, so the sub-line is allowed to wrap to two lines and the
+  // cap sits above the longest note in production. MAX_ROWS_PER_SHEET is set
+  // against the resulting taller row, so this cannot overflow the sheet.
+  // Truncate the raw text BEFORE escaping: slicing escaped HTML would cut an
+  // entity in half (&amp; becoming &am).
+  const SUB_LINE_MAX = 200
   const buildSubLine = (parts: (string | null)[]): string | null => {
     const joined = parts.filter((p): p is string => Boolean(p && p.trim())).join(' · ')
     if (!joined) return null
@@ -310,11 +315,12 @@ export function generateContractHTML(data: ContractData): string {
               <div class="sched-c num">${formatCurrency(lineTotal)}</div>`
   }
 
-  // 8 rows fill 99.22mm of the 124.15mm available once the worst-case furniture
-  // (group headings, header row, totals block and both footnotes) is subtracted,
-  // leaving 20% headroom. Production maxes out at 6 items, so this is dormant
-  // insurance rather than a routine path.
-  const MAX_ROWS_PER_SHEET = 8
+  // A row whose sub-line wraps to two lines measures 15.62mm, so 6 rows fill
+  // 93.72mm of the 124.15mm left once the worst-case furniture (group headings,
+  // header row, totals block and both footnotes) is subtracted. 8 rows at that
+  // height would be 124.96mm, marginally over. Production maxes out at 6 items,
+  // so this is dormant insurance rather than a routine path.
+  const MAX_ROWS_PER_SHEET = 6
 
   // Group in a fixed order, omitting empty groups, then flatten back to a linear
   // list of renderables so pagination can chunk them without splitting a row.
