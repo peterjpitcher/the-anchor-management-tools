@@ -19,8 +19,21 @@ import {
   getTableBookingStatusLabel,
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
+import { PREORDER_COURSES, PREORDER_COURSE_LABELS, type PreorderCourse } from '@/types/preorders'
 
 type BohViewMode = 'day' | 'week' | 'month'
+
+/** Dish counts for the focused day, as /api/boh/table-bookings/preorder-totals returns them. */
+type PreorderDishTotalsResponse = {
+  success?: boolean
+  error?: string
+  data?: {
+    date: string
+    bookingCount: number
+    coverCount: number
+    byCourse: Record<PreorderCourse, Array<{ menuItemId: string; itemName: string; count: number }>>
+  }
+}
 type StatusFilter =
   | 'all'
   | 'confirmed'
@@ -377,6 +390,7 @@ export function BohBookingsClient({
   const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null)
   const [createStatusMessage, setCreateStatusMessage] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<boolean>(false)
+  const [dishTotals, setDishTotals] = useState<PreorderDishTotalsResponse['data'] | null>(null)
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const clockNow = useMemo(() => new Date(), [])
@@ -469,6 +483,37 @@ export function BohBookingsClient({
     void loadBookings({ signal: controller.signal })
     return () => controller.abort()
   }, [loadBookings])
+
+  // Dish totals are a day-view thing: the kitchen preps a day, not a month. Loaded separately from
+  // the booking list so a failure here leaves the day's bookings on screen.
+  useEffect(() => {
+    if (view !== 'day') {
+      setDishTotals(null)
+      return
+    }
+
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/boh/table-bookings/preorder-totals?date=${focusDate}`,
+          { cache: 'no-store', signal: controller.signal }
+        )
+        const payload = (await response.json()) as PreorderDishTotalsResponse
+        if (!response.ok || !payload.success || !payload.data) {
+          setDishTotals(null)
+          return
+        }
+        setDishTotals(payload.data)
+      } catch {
+        // An aborted fetch is the normal case when the date changes. Either way the panel simply
+        // does not appear, which is honest: no totals shown beats stale totals shown.
+        setDishTotals(null)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [focusDate, view])
 
   useEffect(() => {
     const markInteraction = () => {
@@ -878,6 +923,46 @@ export function BohBookingsClient({
           )
         })}
       </div>
+
+      {isDayView && dishTotals && dishTotals.coverCount > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-200 px-4 py-3">
+            <h3 className="text-sm font-semibold text-gray-900">Kitchen pre-orders</h3>
+            <p className="text-xs text-gray-500">
+              {dishTotals.coverCount} cover{dishTotals.coverCount === 1 ? '' : 's'} across{' '}
+              {dishTotals.bookingCount} booking{dishTotals.bookingCount === 1 ? '' : 's'}. Dietary
+              notes and allergies are on the booking sheet.
+            </p>
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-3">
+            {PREORDER_COURSES.map((course) => {
+              const dishes = dishTotals.byCourse[course] ?? []
+              return (
+                <div key={course}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {PREORDER_COURSE_LABELS[course]}
+                  </p>
+                  {dishes.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-500">None chosen</p>
+                  ) : (
+                    <ul className="mt-2 space-y-1">
+                      {dishes.map((dish) => (
+                        <li
+                          key={dish.menuItemId}
+                          className="flex items-baseline justify-between gap-3 text-sm text-gray-900"
+                        >
+                          <span className="min-w-0 break-words">{dish.itemName}</span>
+                          <span className="shrink-0 font-semibold tabular-nums">{dish.count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-lg border border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-4 py-3">

@@ -6,6 +6,9 @@ import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-boo
 import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
+import { logger } from '@/lib/logger'
+import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
+import { PreorderSection } from './PreorderSection'
 
 function formatDateTime(value?: string | null): string {
   if (!value) return 'Unknown'
@@ -80,12 +83,33 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
   }
 }
 
+function preorderMessage(preorder?: string): { tone: 'green' | 'amber' | 'red'; text: string } | null {
+  switch (preorder) {
+    case 'saved':
+      return { tone: 'green', text: 'Food choices saved.' }
+    case 'seats_removed':
+      return {
+        tone: 'amber',
+        text: 'Party size updated. We have removed the food choices for the seats you dropped.'
+      }
+    case 'error':
+      return { tone: 'red', text: 'We could not save your food choices. Please check the seats marked below.' }
+    case 'rate_limited':
+      return {
+        tone: 'red',
+        text: 'Too many saves in a short time. Please wait a few minutes and try again.'
+      }
+    default:
+      return null
+  }
+}
+
 export default async function TableManageBookingPage({
   params,
   searchParams
 }: {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ confirmCancel?: string; status?: string }>
+  searchParams: Promise<{ confirmCancel?: string; status?: string; preorder?: string; seat?: string }>
 }) {
   const { token } = await params
   const query = await searchParams
@@ -135,6 +159,30 @@ export default async function TableManageBookingPage({
 
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
 
+  // Deliberately not gated on `can_edit`: that also refuses a booking still awaiting its deposit,
+  // which is exactly the Christmas case. A booking that is off the books shows nothing.
+  const bookingIsLive = preview.status !== 'cancelled' && preview.status !== 'no_show'
+
+  let preorderView: BookerPreorderView | null = null
+  if (bookingIsLive && preview.table_booking_id) {
+    try {
+      preorderView = await loadBookerPreorderView(supabase, preview.table_booking_id)
+    } catch (error) {
+      // A fault in the pre-order section must not take the whole page down with it. The booking
+      // details and the cancel button are what this link exists for, and a guest who cannot cancel
+      // because the Christmas menu failed to load is a worse outcome than a missing form.
+      logger.warn('Guest table-manage could not load the pre-order section', {
+        metadata: {
+          tableBookingId: preview.table_booking_id,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      })
+    }
+  }
+
+  const preorderBanner = preorderMessage(query.preorder)
+  const errorSeat = Number.parseInt(query.seat || '', 10)
+
   return (
     <GuestPageShell maxWidthClassName="max-w-2xl">
       <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -155,6 +203,21 @@ export default async function TableManageBookingPage({
             }`}
           >
             {banner.text}
+          </div>
+        )}
+
+        {preorderBanner && (
+          <div
+            role="alert"
+            className={`mt-4 rounded-md border px-4 py-3 text-sm ${
+              preorderBanner.tone === 'green'
+                ? 'border-green-200 bg-green-50 text-green-800'
+                : preorderBanner.tone === 'amber'
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-red-200 bg-red-50 text-red-800'
+            }`}
+          >
+            {preorderBanner.text}
           </div>
         )}
 
@@ -211,6 +274,14 @@ export default async function TableManageBookingPage({
               Save changes
             </GuestSubmitButton>
           </form>
+        )}
+
+        {preorderView && (
+          <PreorderSection
+            {...preorderView}
+            actionUrl={actionUrl}
+            errorSeat={Number.isFinite(errorSeat) && errorSeat > 0 ? errorSeat : null}
+          />
         )}
 
         {preview.can_cancel && (

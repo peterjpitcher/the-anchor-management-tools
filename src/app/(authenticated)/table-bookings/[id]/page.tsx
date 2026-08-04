@@ -1,8 +1,15 @@
 import { notFound, redirect } from 'next/navigation'
 import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { PageLayout } from '@/ds'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
+import { isPreorderEnabled, loadPreorderOrder } from '@/lib/table-bookings/preorder'
+import { getPreorderCutoff } from '@/components/features/table-bookings/preorder/cutoff'
+import SeasonalPreorderSection, {
+  type PreorderMenuOption,
+} from '@/components/features/table-bookings/preorder/SeasonalPreorderSection'
+import { PREORDER_COURSES, type PreorderCourse } from '@/types/preorders'
 import BookingDetailClient, { type Booking } from './BookingDetailClient'
 
 interface Props {
@@ -36,6 +43,7 @@ export default async function BookingDetailPage({ params }: Props) {
       seated_at, left_at, no_show_at, no_show_marked_at, confirmed_at, cancelled_at, completed_at,
       start_datetime, end_datetime, duration_minutes,
       high_chair_count, is_outside_seating, requires_accessible_table, table_pinned,
+      booking_period_id, booking_period_name, booking_period_answer, booking_period_requires_preorder,
       deposit_waived, hold_expires_at, reminder_sent, review_sms_sent_at, review_clicked_at,
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
@@ -115,6 +123,8 @@ export default async function BookingDetailPage({ params }: Props) {
     .join(' ')
   const title = guestName || booking.booking_reference || 'Booking'
 
+  const seasonalPreorder = await loadSeasonalPreorder(rawBooking, canEdit)
+
   return (
     <PageLayout
       title={title}
@@ -126,7 +136,84 @@ export default async function BookingDetailPage({ params }: Props) {
         canEdit={canEdit}
         canManage={canManage}
         canRefund={canRefund || canManage}
+        seasonalPreorder={seasonalPreorder}
       />
     </PageLayout>
   )
+}
+
+/**
+ * The seasonal pre-order block, or null when this booking has nothing to do with one.
+ *
+ * The pre-order tables are service-role only under RLS, so the read goes through the admin client.
+ * Permission was proven at the top of the page before we got here.
+ */
+async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean) {
+  // The booking's own snapshot answers this, not the live period row: a guest who said "no, this
+  // is not a Christmas dinner" gets the normal menu and owes nobody a choice.
+  if (rawBooking.booking_period_requires_preorder !== true || rawBooking.booking_period_answer !== true) {
+    return null
+  }
+
+  const admin = createAdminClient()
+  const [order, preorderEnabled] = await Promise.all([
+    loadPreorderOrder(admin, rawBooking.id),
+    isPreorderEnabled(admin),
+  ])
+  if (!order || !order.requiresPreorder) return null
+
+  // Switched off and never started means there is nothing to show. Switched off with orders
+  // already taken still shows them, because hiding what staff typed in would be worse.
+  if (!preorderEnabled && order.covers.length === 0) return null
+
+  const menu = order.periodId ? await loadPeriodMenu(admin, order.periodId) : []
+  const cutoff = getPreorderCutoff({
+    bookingDate: order.bookingDate,
+    preorderCutoffDays: order.preorderCutoffDays,
+  })
+
+  return (
+    <SeasonalPreorderSection
+      order={order}
+      menu={menu}
+      canEdit={canEdit}
+      preorderEnabled={preorderEnabled}
+      closed={cutoff.closed}
+      closesAtIso={cutoff.closesAt?.toISOString() ?? null}
+    />
+  )
+}
+
+async function loadPeriodMenu(
+  admin: ReturnType<typeof createAdminClient>,
+  periodId: string,
+): Promise<PreorderMenuOption[]> {
+  const { data, error } = await admin
+    .from('booking_period_menu_items')
+    .select('id, course, name, price_gbp, sort_order')
+    .eq('period_id', periodId)
+    .eq('is_active', true)
+    .in('course', PREORDER_COURSES as unknown as string[])
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error loading seasonal menu for pre-order:', error)
+    return []
+  }
+
+  return ((data ?? []) as Array<{
+    id: string
+    course: string
+    name: string
+    price_gbp: number | string | null
+  }>).map((row) => {
+    const price = row.price_gbp === null ? Number.NaN : Number(row.price_gbp)
+    return {
+      id: row.id,
+      course: row.course as PreorderCourse,
+      name: row.name,
+      priceGbp: Number.isFinite(price) ? price : null,
+    }
+  })
 }

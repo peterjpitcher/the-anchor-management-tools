@@ -3,11 +3,23 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { logger } from '@/lib/logger'
-import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-booking'
+import {
+  getTableManagePreviewByRawToken,
+  updateTableBookingByRawToken
+} from '@/lib/table-bookings/manage-booking'
 import {
   CANCELLATION_DETAIL_MAX_LENGTH,
   isCancellationReasonCode
 } from '@/lib/table-bookings/cancellation-reasons'
+import {
+  loadPreorderOrder,
+  savePreorderCover,
+  syncPreorderCovers,
+  type PreorderSelectionInput,
+  type SavePreorderCoverInput
+} from '@/lib/table-bookings/preorder'
+import { PREORDER_COURSES } from '@/types/preorders'
+import { resolvePreorderCutoff } from '../preorder-data'
 
 const ActionSchema = z.object({
   action: z.enum(['update', 'cancel']),
@@ -43,6 +55,47 @@ function redirectWithStatus(request: NextRequest, token: string, status: string)
   return NextResponse.redirect(new URL(`/g/${token}/table-manage?status=${encodeURIComponent(status)}`, request.url), 303)
 }
 
+function redirectWithPreorderStatus(
+  request: NextRequest,
+  token: string,
+  preorder: 'saved' | 'seats_removed' | 'error' | 'rate_limited',
+  seat?: number
+) {
+  const query = new URLSearchParams({ preorder })
+  if (seat) query.set('seat', String(seat))
+  return NextResponse.redirect(
+    new URL(`/g/${token}/table-manage?${query.toString()}`, request.url),
+    303
+  )
+}
+
+/**
+ * Bring the pre-order seats back in line after the booker has changed party size.
+ *
+ * The booking update has already committed by the time this runs, so a failure here is logged and
+ * swallowed: telling a guest their amendment failed when it did not would be the worse lie. The
+ * nightly drift check is the backstop. Harmless on ordinary bookings, which have no covers to sync.
+ */
+async function syncCoversAfterPartySizeChange(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string | null | undefined
+): Promise<{ removed: number }> {
+  if (!bookingId) return { removed: 0 }
+
+  try {
+    const result = await syncPreorderCovers(supabase, bookingId)
+    return { removed: result.removed.length }
+  } catch (error) {
+    logger.warn('Could not sync pre-order seats after a guest party-size change', {
+      metadata: {
+        tableBookingId: bookingId,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
+    return { removed: 0 }
+  }
+}
+
 async function runGuestTableManageAction(request: NextRequest, token: string, payload: ParsedAction) {
   const supabase = createAdminClient()
 
@@ -75,8 +128,14 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
       return redirectWithStatus(request, token, 'cancelled')
     }
 
+    const sync = await syncCoversAfterPartySizeChange(supabase, result.table_booking_id)
+
     if (result.charge_request_id) {
       return redirectWithStatus(request, token, 'charge_requested')
+    }
+
+    if (sync.removed > 0) {
+      return redirectWithPreorderStatus(request, token, 'seats_removed')
     }
 
     return redirectWithStatus(request, token, 'updated')
@@ -88,6 +147,138 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
       }
     })
     return redirectWithStatus(request, token, 'error')
+  }
+}
+
+/** A seat's course field carries a menu item id, or an empty string meaning "not having one". */
+const MenuItemIdSchema = z.union([z.literal(''), z.string().uuid()])
+
+const SEAT_NAME_MAX_LENGTH = 100
+const SEAT_NOTE_MAX_LENGTH = 200
+
+function normaliseSeatText(value: string, maxLength: number): string | null {
+  const trimmed = value.trim().slice(0, maxLength)
+  return trimmed === '' ? null : trimmed
+}
+
+/**
+ * Save the booker's food choices, one seat at a time through the shared write path.
+ *
+ * Seats the guest did not change are skipped rather than rewritten, which keeps a party of twenty
+ * to a handful of queries and stops `updated_at` churning on rows nobody touched.
+ *
+ * On a failure the earlier seats stay saved and the guest is sent back with that seat flagged. A
+ * half-filled pre-order is a valid state by design, so a partial save is not a broken one.
+ */
+async function runGuestPreorderSave(request: NextRequest, token: string, formData: FormData) {
+  const supabase = createAdminClient()
+
+  try {
+    const preview = await getTableManagePreviewByRawToken(supabase, token)
+    if (
+      preview.state !== 'ready' ||
+      !preview.table_booking_id ||
+      preview.status === 'cancelled' ||
+      preview.status === 'no_show'
+    ) {
+      return redirectWithPreorderStatus(request, token, 'error')
+    }
+
+    // Seats first. If the party size moved since the page was rendered, the save must land on the
+    // seats that now exist rather than on stale ids.
+    await syncPreorderCovers(supabase, preview.table_booking_id)
+
+    const order = await loadPreorderOrder(supabase, preview.table_booking_id)
+    if (!order || !order.requiresPreorder) {
+      return redirectWithPreorderStatus(request, token, 'error')
+    }
+
+    const cutoff = resolvePreorderCutoff(order.bookingDate, order.preorderCutoffDays)
+    if (!cutoff.editable) {
+      return redirectWithPreorderStatus(request, token, 'error')
+    }
+
+    const coversByOrdinal = new Map(order.covers.map((cover) => [cover.ordinal, cover]))
+    let sawAnySeatField = false
+
+    for (let ordinal = 1; ordinal <= order.partySize; ordinal += 1) {
+      const cover = coversByOrdinal.get(ordinal)
+      // A seat the sync could not create. The nightly drift check reports it; refusing the whole
+      // save because of it would lose the choices the guest did make.
+      if (!cover) continue
+
+      const input: SavePreorderCoverInput = { coverId: cover.id }
+      let changed = false
+
+      const nameField = formData.get(`seat_${ordinal}_name`)
+      if (typeof nameField === 'string') {
+        sawAnySeatField = true
+        const guestName = normaliseSeatText(nameField, SEAT_NAME_MAX_LENGTH)
+        if (guestName !== cover.guestName) {
+          input.guestName = guestName
+          changed = true
+        }
+      }
+
+      const noteField = formData.get(`seat_${ordinal}_note`)
+      if (typeof noteField === 'string') {
+        sawAnySeatField = true
+        const dietaryNote = normaliseSeatText(noteField, SEAT_NOTE_MAX_LENGTH)
+        if (dietaryNote !== cover.dietaryNote) {
+          input.dietaryNote = dietaryNote
+          changed = true
+        }
+      }
+
+      const selections: PreorderSelectionInput[] = []
+      for (const course of PREORDER_COURSES) {
+        const courseField = formData.get(`seat_${ordinal}_${course}`)
+        if (typeof courseField !== 'string') continue
+        sawAnySeatField = true
+
+        const parsed = MenuItemIdSchema.safeParse(courseField.trim())
+        if (!parsed.success) {
+          return redirectWithPreorderStatus(request, token, 'error', ordinal)
+        }
+
+        const menuItemId = parsed.data === '' ? null : parsed.data
+        const current = cover.selections.find((selection) => selection.course === course) ?? null
+        if (menuItemId !== (current?.menuItemId ?? null)) {
+          selections.push({ course, menuItemId })
+          changed = true
+        }
+      }
+
+      if (selections.length > 0) input.selections = selections
+      if (!changed) continue
+
+      try {
+        await savePreorderCover(supabase, input)
+      } catch (error) {
+        // Never log the seat's dietary note or name: this field is staff-and-kitchen only.
+        logger.warn('Guest pre-order seat could not be saved', {
+          metadata: {
+            tableBookingId: order.tableBookingId,
+            ordinal,
+            error: error instanceof Error ? error.message : String(error)
+          }
+        })
+        return redirectWithPreorderStatus(request, token, 'error', ordinal)
+      }
+    }
+
+    if (!sawAnySeatField) {
+      return redirectWithPreorderStatus(request, token, 'error')
+    }
+
+    return redirectWithPreorderStatus(request, token, 'saved')
+  } catch (error) {
+    logger.warn('Guest pre-order save failed unexpectedly', {
+      metadata: {
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
+    return redirectWithPreorderStatus(request, token, 'error')
   }
 }
 
@@ -136,18 +327,28 @@ export async function POST(
   context: { params: Promise<{ token: string }> }
 ) {
   const { token } = await context.params
+  const formData = await request.formData()
+
+  // Food choices get their own budget. Saving a form of six seats is a normal thing to do several
+  // times over, and it must not eat the allowance a guest needs to cancel.
+  const isPreorder = formData.get('action') === 'preorder'
+
   const throttle = await checkGuestTokenThrottle({
     request,
     rawToken: token,
-    scope: 'guest_table_manage_action',
-    maxAttempts: 12
+    scope: isPreorder ? 'guest_table_manage_preorder' : 'guest_table_manage_action',
+    maxAttempts: isPreorder ? 20 : 12
   })
 
   if (!throttle.allowed) {
-    return redirectWithStatus(request, token, 'rate_limited')
+    return isPreorder
+      ? redirectWithPreorderStatus(request, token, 'rate_limited')
+      : redirectWithStatus(request, token, 'rate_limited')
   }
 
-  const formData = await request.formData()
+  if (isPreorder) {
+    return runGuestPreorderSave(request, token, formData)
+  }
 
   const parsed = ActionSchema.safeParse({
     action: formData.get('action'),

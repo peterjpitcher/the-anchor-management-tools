@@ -268,6 +268,14 @@
     {
       "path": "/api/cron/vouchers-lifecycle",
       "schedule": "0 1,2,10,11 * * *"
+    },
+    {
+      "path": "/api/cron/preorder-reminders",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/preorder-reports",
+      "schedule": "30 6 * * *"
     }
   ]
 }

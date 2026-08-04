@@ -339,6 +339,8 @@ interface Props {
   canEdit: boolean
   canManage: boolean
   canRefund: boolean
+  /** The seasonal pre-order block, rendered on the server and slotted in. Null when the booking has none. */
+  seasonalPreorder?: ReactNode
 }
 
 type MoveTableOption = {
@@ -372,7 +374,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, seasonalPreorder }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
@@ -937,6 +939,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               <p className="text-sm text-gray-500">No notes, dietary requirements, allergies, or internal notes recorded.</p>
             )}
           </SectionCard>
+
+          {/* High up on purpose: staff take these orders on the telephone while the guest waits. */}
+          {seasonalPreorder}
 
           <SectionCard
             title="Sunday Pre-Order"
