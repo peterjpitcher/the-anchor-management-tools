@@ -196,20 +196,38 @@ This version reduces the exposure rather than pretending to settle the law:
   a safe channel for that.
 - It is shown only to staff and the kitchen, never in a manager digest, never in logs or telemetry.
 
-**Owner decision, 2026-08-04.** The concern in this section was raised and the owner has decided: the
-information is kept so that staff can see it and prepare the food safely, and it is retained for two
-years so a returning guest's requirements can be referenced. That is the controller's decision to make
-and it is a coherent purpose.
+**Owner decision, 2026-08-04.** The pub keeps this so it can meet the needs of the people who ask, and
+so it can watch what customers ask for and shape the menu over time. Both are good reasons. They are
+legally different, and separating them is what makes the position solid.
 
-What this means in practice, and what is built to it:
+**Purpose one, catering for the guest who asked.** This is the strong one. The condition relied on is
+**explicit consent under Article 9(2)(a)**: the guest volunteers the information, unprompted, precisely
+so the pub can cater for them. Article 6 is satisfied by the same act, either consent or performing the
+booking they made.
 
-- **Purpose:** preparing food safely for a specific guest, and recognising a returning guest's
-  requirements. Recorded here so the reason is on the record rather than assumed.
-- **Access:** staff and kitchen only, on a permission-gated screen. Never emailed, never in a manager
-  digest, never in logs, telemetry or analytics.
-- Still worth doing, though it blocks nothing: write the Article 6 basis and the Article 9 condition
-  down somewhere permanent, and add a line to the privacy notice saying the pub keeps dietary
-  requirements for two years. The build does not wait on it.
+Consent has to be informed to count, so the guest is told what it is for **at the box, before they
+type**, not in a privacy page they will never open. That line is implemented in
+`src/app/g/[token]/table-manage/page.tsx` and says who sees it, that it is kept for a future visit, and
+that a serious allergy warrants a phone call as well.
+
+- **Access:** kitchen and floor team only, on a permission-gated screen. Never emailed, never in a
+  manager digest, never in logs, telemetry or analytics.
+- **Retention:** two years, so a returning guest's requirements can be looked up.
+
+**Purpose two, spotting trends to shape the menu.** This one needs **no personal data at all**. How many
+guests asked for something gluten free in December shapes the menu; which guests they were does not.
+
+So trend data is derived as **counts, not people**. Once aggregated it stops being personal data, GDPR
+stops applying to it, and it can be kept indefinitely rather than for two years, which is better for
+spotting a trend anyway.
+
+This matters: consent given for "cook my dinner safely" does not automatically stretch to "analyse my
+health information for menu planning". Keeping the note tied to the guest for service, and counting
+anonymously for planning, gives the pub both things it wants with no weak link between them.
+
+**What remains, and it is small:** copy the two paragraphs above into the pub's own records, and add a
+line to the privacy notice saying dietary requirements are kept for two years so the kitchen can cater
+on a return visit. That is the documentation. It is not a project and it does not block the build.
 
 ## 9. Retention
 

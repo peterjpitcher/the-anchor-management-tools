@@ -257,10 +257,26 @@ export default async function TableManageBookingPage({
               <label htmlFor="notes" className="block text-sm font-medium text-gray-900">
                 Special requirements
               </label>
+              {/*
+                What this is for, said before the guest types rather than buried in a privacy page.
+                Dietary and allergy details are special-category data, and the condition we rely on is
+                the guest telling us themselves so we can cater for them. That only holds if they were
+                told what it is used for at the point of asking, so this line is the basis, not decoration.
+
+                It also names the phone as the route for a serious allergy. A text box read hours later
+                by whoever is on shift is not a safe channel for something that could put someone in
+                hospital, and saying so is more honest than implying the box is enough.
+              */}
+              <p id="notes-help" className="mt-1 text-xs text-gray-600">
+                Only our kitchen and floor team see this, and we keep it so we can cater for you on a
+                future visit. If you have a serious allergy, please ring us on 01753 682707 as well, so
+                we can talk it through properly.
+              </p>
               <textarea
                 id="notes"
                 name="notes"
                 rows={3}
+                aria-describedby="notes-help"
                 defaultValue={preview.special_requirements || ''}
                 placeholder="Allergies, dietary needs, accessibility requirements, etc."
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
