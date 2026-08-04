@@ -423,14 +423,25 @@ describe('schedule of booked items', () => {
     expect(html).toContain('&lt;b&gt;markup&lt;/b&gt;')
   })
 
-  it('truncates a long note to a single sub-line', () => {
-    const longNote = 'x'.repeat(150)
+  it('prints a material note in full rather than cutting it mid-term', () => {
+    // The real production note this guards: an 88-character cap severed it just
+    // before the £200 figure, which is a false statement on a legal document.
+    const realNote =
+      'If the weather is bad on the day and the party needs to move inside, there will be an additional charge of £200 for the dining room and main pub area.'
+    const item = priced({ item_type: 'space', description: 'Outdoor Terrace/Garden', quantity: 4, unit_price: 25, notes: realNote })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('additional charge of £200 for the dining room and main pub area.')
+    expect(html).not.toContain('…')
+  })
+
+  it('still truncates a note beyond the two-line cap', () => {
+    const longNote = 'x'.repeat(400)
     const item = priced({ item_type: 'other', description: 'Charge', quantity: 1, unit_price: 10, notes: longNote })
     const html = generateContractHTML(baseData(makeBooking([item])))
     expect(html).toContain('…')
     expect(html).not.toContain(longNote)
-    expect(html).toContain('x'.repeat(87))
-    expect(html).not.toContain('x'.repeat(88))
+    expect(html).toContain('x'.repeat(199))
+    expect(html).not.toContain('x'.repeat(200))
   })
 
   it('orders rows by display_order then created_at', () => {
@@ -555,8 +566,8 @@ describe('schedule of booked items', () => {
     expect(html).toContain('No booking and damage deposit is payable for this event.')
   })
 
-  it('splits into a second schedule sheet above eight items', () => {
-    const items = Array.from({ length: 9 }, (_, i) =>
+  it('splits into a second schedule sheet above six items', () => {
+    const items = Array.from({ length: 7 }, (_, i) =>
       priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
     )
     const html = generateContractHTML(baseData(makeBooking(items)))
@@ -564,7 +575,7 @@ describe('schedule of booked items', () => {
   })
 
   it('puts the tie-out on the last schedule sheet only', () => {
-    const items = Array.from({ length: 9 }, (_, i) =>
+    const items = Array.from({ length: 7 }, (_, i) =>
       priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
     )
     const html = generateContractHTML(baseData(makeBooking(items)))
