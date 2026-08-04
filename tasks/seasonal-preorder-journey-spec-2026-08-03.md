@@ -1,5 +1,13 @@
 # Seasonal pre-order journey: full specification
 
+> **SUPERSEDED 2026-08-04. Historical record only, do not build from this.**
+>
+> This design was rejected by an external developer with 44 findings. Its successor (v2) was then
+> rejected by adversarial review with 35 more. What was actually built is
+> `tasks/seasonal-preorder-spec-v3-small-2026-08-04.md`: three tables, booker-entered, no third-party
+> guest links. Read this only for the owner decisions and the review history.
+
+
 Date: 2026-08-03
 Status: **for third-party review. Nothing in Parts B to E has been built.**
 Repos: `OJ-AnchorManagementTools` (AMS) and `OJ-The-Anchor.pub` (website)

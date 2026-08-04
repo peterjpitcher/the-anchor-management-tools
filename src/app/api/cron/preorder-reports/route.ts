@@ -38,6 +38,16 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const REPORT_EMAIL = 'manager@the-anchor.pub'
+/**
+ * Deliberately WIDER than the reminder sweep, which chases confirmed bookings only.
+ *
+ * The difference is who receives the output. That one texts a guest, so an unpaid booking must be left
+ * alone until it is secured. This one tells a manager what is drifting, and a manager wants the unpaid
+ * ones in view too: a seat count that disagrees with its party size is worth knowing about whether or
+ * not the deposit has landed, and nothing here costs a message.
+ *
+ * So do not "tidy" these two lists into agreement. They answer different questions.
+ */
 const DEAD_BOOKING_STATUSES = ['cancelled', 'no_show']
 /** A season's worth of Christmas bookings is a few hundred; the cap is a runaway guard, not a page size. */
 const MAX_BOOKINGS_PER_RUN = 500

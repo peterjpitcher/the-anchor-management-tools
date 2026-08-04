@@ -2,7 +2,29 @@
 
 Date: 2026-08-04
 Supersedes: v1 (`...spec-2026-08-03.md`) and v2 (`...spec-v2-2026-08-04.md`), both rejected.
-Status: **for build.**
+Status: **BUILT, DEPLOYED AND LIVE as of 2026-08-04.**
+
+## What shipped, and what changed after this was written
+
+Everything in sections 1 to 12 was built and is in production. Migrations `20260804000100`
+(the three tables) and `20260804000300` (add-ons) are applied. `preorder_enabled` is ON.
+
+Three things happened after this document was first written, and they are the difference between it
+and the code:
+
+1. **Add-ons were added**, on the owner's request: the farmhouse cheeseboard was filed as a dessert,
+   so ticking it cost the guest their pudding and earned the pub nothing. A seat now picks one
+   starter, one main and one dessert, and may tick ANY number of add-ons on top. Add-ons are priced,
+   quoted at pre-order, and charged on the bill at the pub. They never affect completeness. Section
+   4 records the original three-table model; the add-on migration widened
+   `booking_preorder_selections.course` to include `addon` and replaced the blanket
+   `UNIQUE (cover_id, course)` with a partial index plus `UNIQUE (cover_id, menu_item_id)`.
+2. **The reminder sweep chases CONFIRMED bookings only.** As first written it excluded only cancelled
+   and no-show, which would have texted a guest with an unpaid deposit, whose hold can still expire,
+   asking them to choose three courses for a booking that may never exist.
+3. **Christmas was already live** when this was written, contrary to what v1 claimed. The period was
+   active with a published menu and £10 per head deposits switched on, so the pub was taking Christmas
+   money with no food order attached. That is what turning `preorder_enabled` on closed.
 
 ---
 

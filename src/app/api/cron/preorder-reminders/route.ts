@@ -56,7 +56,20 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const MANAGER_ESCALATION_EMAIL = 'manager@the-anchor.pub'
-const DEAD_BOOKING_STATUSES = ['cancelled', 'no_show']
+/**
+ * Only a CONFIRMED booking is chased for food choices.
+ *
+ * An allow-list, not a list of dead statuses, because the failure modes point opposite ways. Miss a
+ * status from a deny-list and the sweep messages a guest it should have left alone; miss one here and
+ * it stays quiet, which is recoverable.
+ *
+ * `pending_payment` is the case that matters today. That guest has not paid their deposit, their hold
+ * can still expire, and the booking may never exist. Texting them to choose three courses invites them
+ * to plan a Christmas dinner they have not secured, and it spends an SMS on a booking that may
+ * evaporate. Whatever is chasing them for the deposit is the right conversation, not this one. They
+ * join the sweep the moment payment lands and they become confirmed.
+ */
+const CHASEABLE_BOOKING_STATUSES = ['confirmed']
 /** A season's worth of Christmas bookings is a few hundred; the cap is a runaway guard, not a page size. */
 const MAX_BOOKINGS_PER_RUN = 500
 
@@ -158,7 +171,7 @@ export async function GET(request: NextRequest) {
       // not a Christmas dinner" owes nobody a choice and must never be chased.
       .eq('booking_period_requires_preorder', true)
       .eq('booking_period_answer', true)
-      .not('status', 'in', `(${DEAD_BOOKING_STATUSES.join(',')})`)
+      .in('status', CHASEABLE_BOOKING_STATUSES)
       .order('booking_date', { ascending: true })
       .limit(MAX_BOOKINGS_PER_RUN)
 
