@@ -12,6 +12,7 @@ import {
   isCancellationReasonCode
 } from '@/lib/table-bookings/cancellation-reasons'
 import {
+  getCoverAddons,
   loadPreorderOrder,
   savePreorderCover,
   syncPreorderCovers,
@@ -153,6 +154,9 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
 /** A seat's course field carries a menu item id, or an empty string meaning "not having one". */
 const MenuItemIdSchema = z.union([z.literal(''), z.string().uuid()])
 
+/** A ticked add-on box always carries an id. There is no "none" value: an unticked box sends nothing. */
+const AddonMenuItemIdSchema = z.string().uuid()
+
 const SEAT_NAME_MAX_LENGTH = 100
 const SEAT_NOTE_MAX_LENGTH = 200
 
@@ -165,7 +169,8 @@ function normaliseSeatText(value: string, maxLength: number): string | null {
  * Save the booker's food choices, one seat at a time through the shared write path.
  *
  * Seats the guest did not change are skipped rather than rewritten, which keeps a party of twenty
- * to a handful of queries and stops `updated_at` churning on rows nobody touched.
+ * to a handful of queries and stops `updated_at` churning on rows nobody touched. Add-ons are read
+ * as a whole set per seat rather than as a patch, for the reason spelled out where they are parsed.
  *
  * On a failure the earlier seats stay saved and the guest is sent back with that seat flagged. A
  * half-filled pre-order is a valid state by design, so a partial save is not a broken one.
@@ -250,6 +255,41 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
       }
 
       if (selections.length > 0) input.selections = selections
+
+      // Add-ons are tick-boxes, and an unticked box sends nothing at all, so "the guest has just
+      // cleared every add-on" and "this form had no add-on block on it" arrive looking identical.
+      // The hidden marker the form renders next to the boxes is what separates them. Without it the
+      // only safe reading is "leave add-ons alone", and a guest could add an extra but never remove
+      // one, which is how somebody ends up charged on the night for something they took off.
+      const addonMarker = formData.get(`seat_${ordinal}_addons_present`)
+      if (typeof addonMarker === 'string') {
+        sawAnySeatField = true
+
+        const ticked: string[] = []
+        for (const rawValue of formData.getAll(`seat_${ordinal}_addon`)) {
+          if (typeof rawValue !== 'string') continue
+          const parsed = AddonMenuItemIdSchema.safeParse(rawValue.trim())
+          if (!parsed.success) {
+            return redirectWithPreorderStatus(request, token, 'error', ordinal)
+          }
+          ticked.push(parsed.data)
+        }
+
+        // Whole-set, not a patch: this is exactly what the seat wants, and anything absent is
+        // unticked. Compared against the LIVE add-ons only, because a withdrawn one has no tick-box
+        // to come back in and would otherwise make every save look like a change.
+        const wanted = Array.from(new Set(ticked)).sort()
+        const current = getCoverAddons(cover)
+          .filter((addon) => !addon.itemWithdrawn)
+          .map((addon) => addon.menuItemId)
+          .sort()
+
+        if (wanted.length !== current.length || wanted.some((id, index) => id !== current[index])) {
+          input.addonMenuItemIds = wanted
+          changed = true
+        }
+      }
+
       if (!changed) continue
 
       try {

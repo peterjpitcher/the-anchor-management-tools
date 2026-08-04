@@ -6,6 +6,7 @@ import {
   type TableBookingSheetData,
   type TableBookingSheetPreorder,
 } from '@/lib/table-booking-sheet-template'
+import { PREORDER_ADDON_STAFF_NOTE } from '@/types/preorders'
 
 const LOGO = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -604,6 +605,263 @@ describe('generateTableBookingSheetsHTML', () => {
       expect(countPages(html)).toBe(3)
       expect(countFoodPages(html)).toBe(1)
       expect(countOccurrences(html, 'Kitchen pre-order')).toBe(1)
+    })
+  })
+
+  // Add-ons are extras the guest has ON TOP of their meal, charged on the night. The cheeseboard sat
+  // on the menu as a dessert, so ticking it cost the guest their pudding: these tests exist to prove
+  // the kitchen page can never present one as a course again.
+  describe('pre-order add-ons', () => {
+    const CHEESE_SEAT = {
+      seatLabel: 'Seat 1 · Jo Bloggs',
+      courses: [
+        { courseLabel: 'Main', itemName: 'Roast turkey' },
+        { courseLabel: 'Dessert', itemName: 'Christmas pudding' },
+      ],
+      addons: [
+        { itemName: 'Farmhouse cheeseboard', priceLabel: '£8.50' },
+        { itemName: 'Port pairing', priceLabel: '£4.20' },
+      ],
+      addonTotal: { count: 2, totalLabel: '£12.70', hasUnpriced: false },
+      dietaryNote: null,
+    }
+
+    it('should render add-ons in their own block, never as another course line', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ preorder: makePreorder({ covers: [CHEESE_SEAT] }) })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('class="seat-addons"')
+      expect(html).toContain('Add-ons, extra to the courses')
+      expect(html).toContain('Farmhouse cheeseboard')
+      // The dessert line is still the guest's pudding, and the cheeseboard is not one of them.
+      expect(html).toContain('<span class="seat-course-label">Dessert</span>Christmas pudding')
+      expect(html).not.toContain(
+        '<span class="seat-course-label">Dessert</span>Farmhouse cheeseboard'
+      )
+      expect(countOccurrences(html, 'class="seat-course"')).toBe(2)
+    })
+
+    it('should print the price beside each add-on and the seat total below them', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ preorder: makePreorder({ covers: [CHEESE_SEAT] }) })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('<span class="seat-addon-price">£8.50</span>')
+      expect(html).toContain('<span class="seat-addon-price">£4.20</span>')
+      expect(html).toContain('Seat add-on total £12.70')
+    })
+
+    it('should show the whole booking total with the staff wording verbatim', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [CHEESE_SEAT],
+              addonTotal: { count: 2, totalLabel: '£12.70', hasUnpriced: false },
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Add-ons, whole booking')
+      expect(html).toContain('2 add-ons · £12.70')
+      expect(html).toContain(PREORDER_ADDON_STAFF_NOTE)
+    })
+
+    it('should say "add-on" in the singular when only one is ticked', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [CHEESE_SEAT],
+              addonTotal: { count: 1, totalLabel: '£8.50', hasUnpriced: false },
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('1 add-on · £8.50')
+      expect(html).not.toContain('1 add-ons')
+    })
+
+    // Every Christmas price is null today, so this is the normal case rather than an edge one.
+    it('should flag an unpriced add-on rather than letting the total read as final', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  courses: [{ courseLabel: 'Main', itemName: 'Roast turkey' }],
+                  addons: [{ itemName: 'Farmhouse cheeseboard', priceLabel: 'Price on the day' }],
+                  addonTotal: { count: 1, totalLabel: '£0.00', hasUnpriced: true },
+                  dietaryNote: null,
+                },
+              ],
+              addonTotal: { count: 1, totalLabel: '£0.00', hasUnpriced: true },
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Price on the day')
+      expect(html).toContain('Some of these are not priced yet, so this is not the whole of it.')
+      expect(html).toContain(
+        `${PREORDER_ADDON_STAFF_NOTE} Some of them are not priced yet, so this figure is not the whole charge.`
+      )
+    })
+
+    it('should omit the caveat entirely when every add-on carries a price', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [CHEESE_SEAT],
+              addonTotal: { count: 2, totalLabel: '£12.70', hasUnpriced: false },
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).not.toContain('not priced yet')
+      expect(html).toContain(`<p class="addons-note">${PREORDER_ADDON_STAFF_NOTE}</p>`)
+    })
+
+    it('should emit no add-on markup at all on a pre-order where nobody ticked one', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ preorder: makePreorder() })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(countFoodPages(html)).toBe(1)
+      expect(html).not.toContain('class="seat-addons"')
+      expect(html).not.toContain('class="addons"')
+      expect(html).not.toContain('Add-on')
+    })
+
+    it('should give the add-on block only to the seats that ticked something', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                CHEESE_SEAT,
+                {
+                  seatLabel: 'Seat 2',
+                  courses: [{ courseLabel: 'Main', itemName: 'Nut roast' }],
+                  dietaryNote: null,
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(countOccurrences(html, 'class="seat"')).toBe(2)
+      expect(countOccurrences(html, 'class="seat-addons"')).toBe(1)
+    })
+
+    // The most dangerous regression this feature could cause: spec section 6 item 3.
+    it('should still show booking allergies and per-seat dietary notes alongside add-ons', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              allergies: ['Nuts', 'Shellfish'],
+              covers: [{ ...CHEESE_SEAT, dietaryNote: 'No dairy please' }],
+              addonTotal: { count: 2, totalLabel: '£12.70', hasUnpriced: false },
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Allergies, whole booking')
+      expect(html).toContain('Nuts · Shellfish')
+      expect(html).toContain('Dietary requirement, this guest')
+      expect(html).toContain('No dairy please')
+      expect(html).toContain('Farmhouse cheeseboard')
+    })
+
+    it('should escape hostile characters in add-on names, prices and totals', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  courses: [],
+                  addons: [
+                    {
+                      itemName: '<script>alert(1)</script>',
+                      priceLabel: '<script>alert(1)</script>',
+                    },
+                  ],
+                  addonTotal: {
+                    count: 1,
+                    totalLabel: '<script>alert(1)</script>',
+                    hasUnpriced: false,
+                  },
+                  dietaryNote: null,
+                },
+              ],
+              addonTotal: {
+                count: 1,
+                totalLabel: '<script>alert(1)</script>',
+                hasUnpriced: false,
+              },
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).not.toContain('<script>')
+      expect(html).not.toContain('</script>')
+      expect(countOccurrences(html, '&lt;script&gt;alert(1)&lt;/script&gt;')).toBe(4)
+    })
+
+    it('should let a long add-on list flow rather than clipping it', () => {
+      const addons = Array.from({ length: 12 }, (_unused, index) => ({
+        itemName: `Extra ${index + 1}`,
+        priceLabel: '£1.00',
+      }))
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  courses: [{ courseLabel: 'Main', itemName: 'Roast turkey' }],
+                  addons,
+                  addonTotal: { count: 12, totalLabel: '£12.00', hasUnpriced: false },
+                  dietaryNote: null,
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Extra 12')
+      const rule = html.slice(
+        html.indexOf('.seat-addon{'),
+        html.indexOf('}', html.indexOf('.seat-addon{'))
+      )
+      expect(rule).not.toContain('overflow:hidden')
+      expect(rule).toContain('overflow-wrap:anywhere')
     })
   })
 })

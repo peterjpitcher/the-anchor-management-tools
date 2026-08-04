@@ -4,12 +4,16 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PageLayout } from '@/ds'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
-import { isPreorderEnabled, loadPreorderOrder } from '@/lib/table-bookings/preorder'
+import {
+  isPreorderEnabled,
+  isPreorderSelectionCourse,
+  loadPreorderOrder,
+} from '@/lib/table-bookings/preorder'
 import { getPreorderCutoff } from '@/components/features/table-bookings/preorder/cutoff'
 import SeasonalPreorderSection, {
   type PreorderMenuOption,
 } from '@/components/features/table-bookings/preorder/SeasonalPreorderSection'
-import { PREORDER_COURSES, type PreorderCourse } from '@/types/preorders'
+import { PREORDER_SELECTION_COURSES } from '@/types/preorders'
 import BookingDetailClient, { type Booking } from './BookingDetailClient'
 
 interface Props {
@@ -184,6 +188,14 @@ async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean) {
   )
 }
 
+/**
+ * The dishes this booking may choose from: the three pre-order courses AND the add-ons.
+ *
+ * Filtered on `PREORDER_SELECTION_COURSES`, not `PREORDER_COURSES`. The narrower list left add-ons
+ * out of this query entirely, so the tick-boxes had nothing to render and a seat's existing add-on
+ * read as a dish that had been withdrawn. The table also carries sides, drinks and other, which are
+ * nothing to do with a pre-order and stay excluded.
+ */
 async function loadPeriodMenu(
   admin: ReturnType<typeof createAdminClient>,
   periodId: string,
@@ -193,7 +205,7 @@ async function loadPeriodMenu(
     .select('id, course, name, price_gbp, sort_order')
     .eq('period_id', periodId)
     .eq('is_active', true)
-    .in('course', PREORDER_COURSES as unknown as string[])
+    .in('course', PREORDER_SELECTION_COURSES as unknown as string[])
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
 
@@ -202,18 +214,25 @@ async function loadPeriodMenu(
     return []
   }
 
-  return ((data ?? []) as Array<{
+  const options: PreorderMenuOption[] = []
+  for (const row of (data ?? []) as Array<{
     id: string
     course: string
     name: string
     price_gbp: number | string | null
-  }>).map((row) => {
+  }>) {
+    // The query already restricts the course, so this only fires if a value the app does not know
+    // reaches the column. Dropping it beats casting: a dish nobody can classify must not end up
+    // offered as somebody's main.
+    if (!isPreorderSelectionCourse(row.course)) continue
+
     const price = row.price_gbp === null ? Number.NaN : Number(row.price_gbp)
-    return {
+    options.push({
       id: row.id,
-      course: row.course as PreorderCourse,
+      course: row.course,
       name: row.name,
       priceGbp: Number.isFinite(price) ? price : null,
-    }
-  })
+    })
+  }
+  return options
 }

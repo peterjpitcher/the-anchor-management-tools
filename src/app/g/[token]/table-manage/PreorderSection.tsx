@@ -1,19 +1,48 @@
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
-import { getCoverCourse, getPreorderCompleteness } from '@/lib/table-bookings/preorder'
-import { PREORDER_COURSES, PREORDER_COURSE_LABELS, type PreorderCourse, type PreorderCover } from '@/types/preorders'
+import {
+  formatPreorderAddonPrice,
+  formatPreorderMoney,
+  getCoverAddons,
+  getCoverCourse,
+  getPreorderCompleteness,
+  summariseCoverAddons,
+  summariseOrderAddons,
+} from '@/lib/table-bookings/preorder'
+import {
+  PREORDER_ADDON_GUEST_NOTE,
+  PREORDER_COURSES,
+  PREORDER_COURSE_LABELS,
+  PREORDER_SELECTION_COURSE_LABELS,
+  type PreorderAddonSummary,
+  type PreorderCourse,
+  type PreorderCover,
+} from '@/types/preorders'
 import type { BookerPreorderView } from './preorder-data'
 
 /**
  * The booker's food choices, on the manage-booking page they already have a link to.
  *
- * One block per seat: an optional name, a main, an optional starter, an optional dessert and an
- * optional dietary requirement. Only the main is required for the order to count as complete, so
- * nothing here is marked `required`: a booker who knows two of six choices must be able to save what
- * they have and come back. The page tells them what is still outstanding instead.
+ * One block per seat: an optional name, a main, an optional starter, an optional dessert, any
+ * add-ons, and an optional dietary requirement. Only the main is required for the order to count as
+ * complete, so nothing here is marked `required`: a booker who knows two of six choices must be able
+ * to save what they have and come back. The page tells them what is still outstanding instead.
+ *
+ * ADD-ONS ARE TICK-BOXES, not a fourth dropdown. A seat may have several, and the farmhouse
+ * cheeseboard exists to be had ALONGSIDE a pudding rather than instead of one, which is what a
+ * dropdown would force. They never count towards completeness, so nothing here chases a guest for
+ * declining an extra.
+ *
+ * THE MONEY IS NOT TAKEN NOW. An add-on price is a quote, charged on the bill at the pub on the day.
+ * `PREORDER_ADDON_GUEST_NOTE` says so verbatim, in the one place all four screens share, because
+ * four separate wordings eventually produce one that implies the guest has already paid and that
+ * argument then happens at the till.
  *
  * Plain server-rendered HTML posting to the route next door, matching the rest of this page. No
- * client JavaScript is needed to fill it in, which matters on a phone signal in a car park.
+ * client JavaScript is needed to fill it in, which matters on a phone signal in a car park. The
+ * add-on totals below are therefore what is SAVED rather than what is ticked this second, and the
+ * copy says so; they sit in a polite live region so an assistive technology reads the new figure
+ * after a save rather than letting the number change unremarked.
  */
 
 type PreorderSectionProps = BookerPreorderView & {
@@ -21,6 +50,9 @@ type PreorderSectionProps = BookerPreorderView & {
   /** Seat whose save failed, so its inputs can be marked invalid and pointed at the reason. */
   errorSeat: number | null
 }
+
+/** The id of the one verbatim add-on note, pointed at by every seat's add-on group. */
+const ADDON_NOTE_ID = 'preorder-addon-note'
 
 function seatLabel(cover: PreorderCover | undefined, ordinal: number): string {
   const name = cover?.guestName?.trim()
@@ -30,19 +62,62 @@ function seatLabel(cover: PreorderCover | undefined, ordinal: number): string {
 function withdrawnChoices(cover: PreorderCover | undefined): string[] {
   return (cover?.selections ?? [])
     .filter((selection) => selection.itemWithdrawn)
-    .map((selection) => `${PREORDER_COURSE_LABELS[selection.course]}: ${selection.itemName}`)
+    .map((selection) => `${PREORDER_SELECTION_COURSE_LABELS[selection.course]}: ${selection.itemName}`)
+}
+
+/**
+ * A seat, with anything withdrawn from the menu stripped out.
+ *
+ * Used for the add-on tick-boxes and their totals. A withdrawn add-on has no tick-box to appear in,
+ * so counting its price would show a guest money against a box they cannot see and will not be
+ * charged for. It is flagged separately by the "no longer on the menu" note above.
+ */
+function liveOnly(cover: PreorderCover): PreorderCover {
+  return { ...cover, selections: cover.selections.filter((selection) => !selection.itemWithdrawn) }
+}
+
+/**
+ * The money half of an add-on total, in words a guest can act on.
+ *
+ * Every dish on the Christmas menu is unpriced today, so "no price yet" is the ordinary case and not
+ * an edge one. A bare £0.00 would read as free, so an unpriced add-on is said out loud instead.
+ */
+function addonMoneyPhrase(summary: PreorderAddonSummary): string {
+  if (summary.hasUnpricedAddon) {
+    return summary.totalGbp > 0
+      ? `${formatPreorderMoney(summary.totalGbp)} so far, plus anything priced on the day`
+      : 'priced on the day'
+  }
+  return formatPreorderMoney(summary.totalGbp)
+}
+
+function addonCountPhrase(count: number): string {
+  return count === 1 ? '1 add-on' : `${count} add-ons`
 }
 
 const FIELD_CLASS =
   'mt-1 block w-full min-h-11 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 sm:text-sm'
 const LABEL_CLASS = 'block text-sm font-medium text-gray-900'
 
-export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorSeat }: PreorderSectionProps) {
+export function PreorderSection({
+  order,
+  menuByCourse,
+  addons,
+  cutoff,
+  actionUrl,
+  errorSeat,
+}: PreorderSectionProps) {
   const coversByOrdinal = new Map(order.covers.map((cover) => [cover.ordinal, cover]))
   const seats = Array.from({ length: Math.max(1, order.partySize) }, (_, index) => index + 1)
   const completeness = getPreorderCompleteness(order)
   const menuName = order.periodName || 'seasonal'
   const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
+  const hasAddons = addons.length > 0
+
+  // The whole booking's add-on bill. Withdrawn items are left out on the editable form for the same
+  // reason as above; the read-only view below totals what is on the record instead.
+  const orderAddons = summariseOrderAddons({ covers: order.covers.map(liveOnly) })
+  const savedOrderAddons = summariseOrderAddons(order)
 
   return (
     <section aria-labelledby="preorder-heading" className="mt-8 border-t border-gray-200 pt-6">
@@ -53,6 +128,15 @@ export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorS
         Everyone eating from the {menuName} menu chooses their main course in advance so the kitchen can
         prepare it. A starter and a pudding are optional.
       </p>
+
+      {hasAddons && (
+        <p
+          id={ADDON_NOTE_ID}
+          className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700"
+        >
+          {PREORDER_ADDON_GUEST_NOTE}
+        </p>
+      )}
 
       {cutoff.editable ? (
         <>
@@ -82,6 +166,13 @@ export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorS
                 hasError ? `seat-${ordinal}-error` : null,
               ].filter(Boolean) as string[]
               const describedBy = noteIds.length > 0 ? noteIds.join(' ') : undefined
+
+              const seatAddons = cover
+                ? summariseCoverAddons(liveOnly(cover))
+                : { count: 0, totalGbp: 0, hasUnpricedAddon: false }
+              const tickedAddonIds = new Set(
+                cover ? getCoverAddons(liveOnly(cover)).map((addon) => addon.menuItemId) : [],
+              )
 
               return (
                 <fieldset key={ordinal} className="rounded-md border border-gray-200 p-4">
@@ -158,6 +249,59 @@ export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorS
                       )
                     })}
 
+                    {hasAddons && (
+                      <fieldset
+                        className="rounded-md border border-gray-200 bg-gray-50 p-3"
+                        aria-describedby={ADDON_NOTE_ID}
+                      >
+                        <legend className="px-1 text-sm font-medium text-gray-900">
+                          Add-ons for seat {ordinal} (optional)
+                        </legend>
+
+                        {/*
+                          An unticked box sends nothing at all, so "everything unticked" and "this form
+                          had no add-on block" arrive identically. This marker is what tells them apart,
+                          and without it a guest could tick an add-on but never remove one.
+                        */}
+                        <input type="hidden" name={`seat_${ordinal}_addons_present`} value="1" />
+
+                        <ul className="mt-1 space-y-1">
+                          {addons.map((addon) => {
+                            const inputId = `seat-${ordinal}-addon-${addon.id}`
+                            return (
+                              <li key={addon.id}>
+                                <label
+                                  htmlFor={inputId}
+                                  className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-gray-900"
+                                >
+                                  <input
+                                    id={inputId}
+                                    name={`seat_${ordinal}_addon`}
+                                    type="checkbox"
+                                    value={addon.id}
+                                    defaultChecked={tickedAddonIds.has(addon.id)}
+                                    aria-invalid={hasError || undefined}
+                                    aria-describedby={describedBy}
+                                    className="h-5 w-5 shrink-0 rounded border-gray-300 text-green-600"
+                                  />
+                                  <span>
+                                    {addon.name}, {formatPreorderAddonPrice(addon.priceGbp)}
+                                  </span>
+                                </label>
+                              </li>
+                            )
+                          })}
+                        </ul>
+
+                        <p aria-live="polite" className="mt-2 text-sm text-gray-700">
+                          {seatAddons.count === 0
+                            ? 'No add-ons saved for this seat yet.'
+                            : `Saved for this seat: ${addonCountPhrase(seatAddons.count)}, ${addonMoneyPhrase(seatAddons)}.`}{' '}
+                          This updates when you save.
+                        </p>
+                      </fieldset>
+                    )}
+
                     <div>
                       <label htmlFor={`seat-${ordinal}-note`} className={LABEL_CLASS}>
                         Dietary requirement (optional)
@@ -177,6 +321,19 @@ export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorS
                 </fieldset>
               )
             })}
+
+            {hasAddons && (
+              <p
+                aria-live="polite"
+                className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800"
+              >
+                <span className="font-medium">Add-ons across this booking:</span>{' '}
+                {orderAddons.count === 0
+                  ? 'none saved yet.'
+                  : `${addonCountPhrase(orderAddons.count)}, ${addonMoneyPhrase(orderAddons)}.`}{' '}
+                This goes on your bill at the pub on the day, and updates when you save.
+              </p>
+            )}
 
             <p className="text-sm text-gray-600">
               If anyone has a serious allergy, please ring us on {contactPhone} so we can talk it through.
@@ -206,6 +363,12 @@ export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorS
                 return selection ? `${PREORDER_COURSE_LABELS[course]}: ${selection.itemName}` : null
               }).filter(Boolean) as string[]
 
+              // Read-only, so this is the record rather than a form: withdrawn items are left in,
+              // because what is on the booking is what staff will be looking at on the day.
+              const seatAddons = cover
+                ? summariseCoverAddons(cover)
+                : { count: 0, totalGbp: 0, hasUnpricedAddon: false, items: [] }
+
               return (
                 <li key={ordinal} className="rounded-md border border-gray-200 p-4 text-sm text-gray-700">
                   <p className="font-medium text-gray-900">{seatLabel(cover, ordinal)}</p>
@@ -218,11 +381,35 @@ export function PreorderSection({ order, menuByCourse, cutoff, actionUrl, errorS
                   ) : (
                     <p className="mt-1">Nothing chosen. Please ring us.</p>
                   )}
+                  {seatAddons.count > 0 && (
+                    <>
+                      <ul className="mt-1 space-y-0.5">
+                        {seatAddons.items.map((item) => (
+                          <li key={item.menuItemId}>
+                            {PREORDER_SELECTION_COURSE_LABELS.addon}: {item.itemName},{' '}
+                            {formatPreorderAddonPrice(item.priceGbp)}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-1">
+                        Add-ons for this seat: {addonCountPhrase(seatAddons.count)},{' '}
+                        {addonMoneyPhrase(seatAddons)}.
+                      </p>
+                    </>
+                  )}
                   {cover?.dietaryNote && <p className="mt-1">Dietary requirement: {cover.dietaryNote}</p>}
                 </li>
               )
             })}
           </ul>
+
+          {savedOrderAddons.count > 0 && (
+            <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
+              <span className="font-medium">Add-ons across this booking:</span>{' '}
+              {addonCountPhrase(savedOrderAddons.count)}, {addonMoneyPhrase(savedOrderAddons)}. This goes on
+              your bill at the pub on the day.
+            </p>
+          )}
         </>
       )}
     </section>

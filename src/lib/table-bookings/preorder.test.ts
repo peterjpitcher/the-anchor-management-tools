@@ -1,11 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import {
   describePreorderGaps,
+  emptyPreorderDishTotals,
+  formatPreorderAddonPrice,
+  formatPreorderMoney,
+  getCoverAddons,
+  getCoverCourse,
   getPreorderCompleteness,
   isCoverComplete,
+  isPreorderCourse,
+  isPreorderSelectionCourse,
+  summariseCoverAddons,
+  summariseOrderAddons,
   summarisePreorderDishTotals,
 } from './preorder'
-import type { PreorderCover, PreorderCourse, PreorderSelection } from '@/types/preorders'
+import type {
+  PreorderCover,
+  PreorderSelection,
+  PreorderSelectionCourse,
+} from '@/types/preorders'
 
 /**
  * THE COMPLETENESS RULE IS THE WHOLE FEATURE, and it is one sentence: every cover must have a main.
@@ -17,7 +30,11 @@ import type { PreorderCover, PreorderCourse, PreorderSelection } from '@/types/p
  * with a main and nothing else is FINISHED, not half done.
  */
 
-function selection(course: PreorderCourse, itemName: string, overrides: Partial<PreorderSelection> = {}): PreorderSelection {
+function selection(
+  course: PreorderSelectionCourse,
+  itemName: string,
+  overrides: Partial<PreorderSelection> = {},
+): PreorderSelection {
   return {
     id: `sel-${course}-${itemName}`,
     coverId: 'cover-1',
@@ -218,5 +235,277 @@ describe('summarisePreorderDishTotals', () => {
     expect(totals.byCourse.main).toEqual([
       { menuItemId: 'item-prawns', itemName: 'Prawn cocktail', count: 1 },
     ])
+  })
+
+  // The cheeseboard is an EXTRA, not a pudding. Folding it into the dessert list would have the
+  // kitchen make one pudding too few and would hide the money the pub is owed for it.
+  it('counts add-ons on their own list, never inside a course', () => {
+    const totals = summarisePreorderDishTotals({
+      date: '2026-12-12',
+      bookingCount: 1,
+      coverCount: 2,
+      selections: [
+        { course: 'main', menuItemId: 'item-turkey', itemName: 'Roast turkey', priceGbp: null },
+        { course: 'main', menuItemId: 'item-turkey', itemName: 'Roast turkey', priceGbp: null },
+        {
+          course: 'dessert',
+          menuItemId: 'item-pudding',
+          itemName: 'Christmas pudding',
+          priceGbp: null,
+        },
+        {
+          course: 'addon',
+          menuItemId: 'item-cheese',
+          itemName: 'Farmhouse cheeseboard',
+          priceGbp: 8.5,
+        },
+        {
+          course: 'addon',
+          menuItemId: 'item-cheese',
+          itemName: 'Farmhouse cheeseboard',
+          priceGbp: 8.5,
+        },
+        { course: 'addon', menuItemId: 'item-port', itemName: 'Glass of port', priceGbp: 4.2 },
+      ],
+    })
+
+    expect(totals.byCourse.dessert).toEqual([
+      { menuItemId: 'item-pudding', itemName: 'Christmas pudding', count: 1 },
+    ])
+    expect(totals.addons).toEqual([
+      {
+        menuItemId: 'item-cheese',
+        itemName: 'Farmhouse cheeseboard',
+        count: 2,
+        unitPriceGbp: 8.5,
+        totalGbp: 17,
+        hasUnpricedSelection: false,
+      },
+      {
+        menuItemId: 'item-port',
+        itemName: 'Glass of port',
+        count: 1,
+        unitPriceGbp: 4.2,
+        totalGbp: 4.2,
+        hasUnpricedSelection: false,
+      },
+    ])
+    expect(totals.addonTotalGbp).toBe(21.2)
+    expect(totals.addonHasUnpricedSelection).toBe(false)
+  })
+
+  // Every Christmas item is unpriced today, so this is the normal case rather than an edge one. The
+  // total must not read as though the extras are free.
+  it('flags an unpriced add-on rather than counting it as nothing', () => {
+    const totals = summarisePreorderDishTotals({
+      date: '2026-12-12',
+      bookingCount: 1,
+      coverCount: 1,
+      selections: [
+        {
+          course: 'addon',
+          menuItemId: 'item-cheese',
+          itemName: 'Farmhouse cheeseboard',
+          priceGbp: null,
+        },
+      ],
+    })
+
+    expect(totals.addons[0]).toEqual({
+      menuItemId: 'item-cheese',
+      itemName: 'Farmhouse cheeseboard',
+      count: 1,
+      unitPriceGbp: null,
+      totalGbp: 0,
+      hasUnpricedSelection: true,
+    })
+    expect(totals.addonHasUnpricedSelection).toBe(true)
+  })
+
+  // Prices are snapshots. If the owner puts the cheeseboard up mid-season, the two guests were owed
+  // two different amounts and the day's total is the sum of both, not two times either one.
+  it('totals a re-priced add-on from the individual snapshots', () => {
+    const totals = summarisePreorderDishTotals({
+      date: '2026-12-12',
+      bookingCount: 2,
+      coverCount: 3,
+      selections: [
+        {
+          course: 'addon',
+          menuItemId: 'item-cheese',
+          itemName: 'Farmhouse cheeseboard',
+          priceGbp: 8.5,
+        },
+        {
+          course: 'addon',
+          menuItemId: 'item-cheese',
+          itemName: 'Farmhouse cheeseboard',
+          priceGbp: 8.5,
+        },
+        {
+          course: 'addon',
+          menuItemId: 'item-cheese',
+          itemName: 'Farmhouse cheeseboard',
+          priceGbp: 9.5,
+        },
+      ],
+    })
+
+    expect(totals.addons[0].count).toBe(3)
+    expect(totals.addons[0].totalGbp).toBe(26.5)
+    // The label is what most guests were quoted, not an average nobody paid.
+    expect(totals.addons[0].unitPriceGbp).toBe(8.5)
+  })
+
+  it('returns empty add-on totals for a date with nothing on it', () => {
+    expect(emptyPreorderDishTotals('2026-12-12')).toEqual({
+      date: '2026-12-12',
+      bookingCount: 0,
+      coverCount: 0,
+      byCourse: { starter: [], main: [], dessert: [] },
+      addons: [],
+      addonTotalGbp: 0,
+      addonHasUnpricedSelection: false,
+    })
+  })
+})
+
+/**
+ * ADD-ONS ARE EXTRAS, AND THEY ARE NEVER REQUIRED.
+ *
+ * The farmhouse cheeseboard was listed as a dessert, so ticking it cost the guest their pudding. The
+ * fix is a fourth kind of selection that sits alongside the three courses rather than inside them,
+ * is multi-select, and is invisible to the completeness rule. These tests pin all three, because
+ * every one of them is a thing a future change could plausibly get wrong in a way nobody sees until
+ * a guest is short a pudding or the pub is short the money.
+ */
+describe('add-ons and completeness', () => {
+  it('counts a seat with a main and no add-ons as complete', () => {
+    expect(isCoverComplete(cover(1, [selection('main', 'Roast turkey')]))).toBe(true)
+  })
+
+  it('does not count a seat with an add-on and no main as complete', () => {
+    expect(isCoverComplete(cover(1, [selection('addon', 'Farmhouse cheeseboard')]))).toBe(false)
+  })
+
+  it('leaves a whole booking complete when nobody has ticked an add-on', () => {
+    const order = {
+      partySize: 2,
+      covers: [cover(1, [selection('main', 'Roast turkey')]), cover(2, [selection('main', 'Beef')])],
+    }
+
+    expect(getPreorderCompleteness(order).complete).toBe(true)
+    expect(describePreorderGaps(getPreorderCompleteness(order))).toBe('All courses chosen.')
+  })
+
+  it('still reports the missing main on a seat that has ticked add-ons', () => {
+    const order = {
+      partySize: 2,
+      covers: [
+        cover(1, [selection('main', 'Roast turkey')]),
+        cover(2, [selection('addon', 'Farmhouse cheeseboard'), selection('addon', 'Glass of port')]),
+      ],
+    }
+
+    const completeness = getPreorderCompleteness(order)
+
+    expect(completeness.complete).toBe(false)
+    expect(completeness.ordinalsMissingMain).toEqual([2])
+  })
+
+  // A seat holds one dessert. It may hold any number of add-ons. That asymmetry is the feature.
+  it('keeps several add-ons on one seat while the dessert stays a single answer', () => {
+    const seat = cover(1, [
+      selection('main', 'Roast turkey'),
+      selection('dessert', 'Christmas pudding'),
+      selection('addon', 'Farmhouse cheeseboard'),
+      selection('addon', 'Glass of port'),
+    ])
+
+    expect(getCoverAddons(seat).map((entry) => entry.itemName)).toEqual([
+      'Farmhouse cheeseboard',
+      'Glass of port',
+    ])
+    expect(getCoverCourse(seat, 'dessert')?.itemName).toBe('Christmas pudding')
+  })
+
+  it('separates the single-choice courses from everything a selection may be', () => {
+    expect(isPreorderCourse('dessert')).toBe(true)
+    // The guard that stops an add-on being offered as a course a guest picks instead of a pudding.
+    expect(isPreorderCourse('addon')).toBe(false)
+    expect(isPreorderSelectionCourse('addon')).toBe(true)
+    expect(isPreorderSelectionCourse('side')).toBe(false)
+  })
+})
+
+describe('add-on money', () => {
+  it('totals one seat from the snapshotted prices', () => {
+    const seat = cover(1, [
+      selection('main', 'Roast turkey', { priceGbp: 24.95 }),
+      selection('addon', 'Farmhouse cheeseboard', { priceGbp: 8.5 }),
+      selection('addon', 'Glass of port', { priceGbp: 4.2 }),
+    ])
+
+    const summary = summariseCoverAddons(seat)
+
+    expect(summary.count).toBe(2)
+    // The main is not an add-on and must never reach the extras bill.
+    expect(summary.totalGbp).toBe(12.7)
+    expect(summary.hasUnpricedAddon).toBe(false)
+    expect(summary.items.map((item) => item.itemName)).toEqual([
+      'Farmhouse cheeseboard',
+      'Glass of port',
+    ])
+  })
+
+  it('says so when a ticked add-on carries no price', () => {
+    const seat = cover(1, [
+      selection('addon', 'Farmhouse cheeseboard', { priceGbp: null }),
+      selection('addon', 'Glass of port', { priceGbp: 4.2 }),
+    ])
+
+    const summary = summariseCoverAddons(seat)
+
+    expect(summary.totalGbp).toBe(4.2)
+    expect(summary.hasUnpricedAddon).toBe(true)
+  })
+
+  it('gives a per-seat and a per-booking total, keeping seats that ticked nothing', () => {
+    const order = {
+      covers: [
+        cover(2, [selection('addon', 'Glass of port', { priceGbp: 4.2 })]),
+        cover(1, [
+          selection('main', 'Roast turkey'),
+          selection('addon', 'Farmhouse cheeseboard', { priceGbp: 8.5 }),
+        ]),
+        cover(3, [selection('main', 'Beef')]),
+      ],
+    }
+
+    const summary = summariseOrderAddons(order)
+
+    expect(summary.count).toBe(2)
+    expect(summary.totalGbp).toBe(12.7)
+    expect(summary.perCover.map((entry) => entry.ordinal)).toEqual([1, 2, 3])
+    expect(summary.perCover[0].totalGbp).toBe(8.5)
+    expect(summary.perCover[2]).toMatchObject({ ordinal: 3, count: 0, totalGbp: 0 })
+  })
+
+  // Adding pounds as floating point makes 8.10 + 4.20 come out at 12.299999999999999, and a bill a
+  // penny out is exactly what a guest notices at the till.
+  it('adds money in pence so the total does not drift', () => {
+    const seat = cover(1, [
+      selection('addon', 'Cheeseboard', { priceGbp: 8.1 }),
+      selection('addon', 'Port', { priceGbp: 4.2 }),
+      selection('addon', 'Mince pies', { priceGbp: 3.7 }),
+    ])
+
+    expect(summariseCoverAddons(seat).totalGbp).toBe(16)
+  })
+
+  it('renders an unpriced add-on as a promise to price it, never as free', () => {
+    expect(formatPreorderAddonPrice(8.5)).toBe('£8.50')
+    expect(formatPreorderAddonPrice(null)).toBe('Price on the day')
+    expect(formatPreorderMoney(12.7)).toBe('£12.70')
   })
 })

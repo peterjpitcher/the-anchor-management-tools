@@ -15,18 +15,38 @@
  * than a missing one. Covers in the same party may differ: one person has three courses, the next has
  * just a main. There is deliberately no "chosen / declined / not answered" state per course, because
  * with only the main required "not chosen" and "declined" mean the same thing.
+ *
+ * ADD-ONS, added 2026-08-04. An add-on is an optional extra a seat has ON TOP of its courses: the
+ * farmhouse cheeseboard, which was mistakenly listed as a dessert and so cost the guest their pudding.
+ * Three things follow, and all three are load bearing:
+ *
+ *   1. Add-ons are MULTI-SELECT. A seat holds one starter, one main and one dessert, but as many
+ *      add-ons as it likes. The database says the same thing: a partial unique index on
+ *      (cover_id, course) that excludes add-ons.
+ *   2. Add-ons NEVER affect completeness. A main is still the only requirement, and an add-on can
+ *      neither satisfy it nor break it.
+ *   3. Add-on money is charged on the guest's BILL AT THE PUB. Nothing is taken online, the deposit
+ *      is unrelated, and the totals below exist so the pub knows what to charge, not so anything can
+ *      be collected. Totals come from the SNAPSHOT on each selection row, never from the live menu,
+ *      so an owner editing a price later cannot restate what a guest was quoted.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isValidIsoDate, parseLondonDateTimeLocal } from '@/lib/dateUtils'
 import {
+  PREORDER_ADDON_COURSE,
   PREORDER_COURSES,
+  PREORDER_SELECTION_COURSES,
+  type PreorderAddonSummary,
   type PreorderCourse,
   type PreorderCover,
+  type PreorderCoverAddonSummary,
   type PreorderCoverRow,
   type PreorderOrder,
+  type PreorderOrderAddonSummary,
   type PreorderReminderKind,
   type PreorderSelection,
+  type PreorderSelectionCourse,
   type PreorderSelectionRow,
 } from '@/types/preorders'
 
@@ -45,8 +65,20 @@ function toNullableNumber(value: number | string | null | undefined): number | n
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function isPreorderCourse(value: string): value is PreorderCourse {
+/** True only for the three single-choice courses. An add-on is NOT one of these. */
+export function isPreorderCourse(value: string): value is PreorderCourse {
   return (PREORDER_COURSES as readonly string[]).includes(value)
+}
+
+/** True for anything that can legally sit on a selection row, add-ons included. */
+export function isPreorderSelectionCourse(value: string): value is PreorderSelectionCourse {
+  return (PREORDER_SELECTION_COURSES as readonly string[]).includes(value)
+}
+
+export function isPreorderAddon(
+  selection: Pick<PreorderSelection, 'course'>,
+): boolean {
+  return selection.course === PREORDER_ADDON_COURSE
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +89,7 @@ export function mapPreorderSelectionRow(
   row: PreorderSelectionRow,
   options: { itemWithdrawn?: boolean } = {},
 ): PreorderSelection {
-  if (!isPreorderCourse(row.course)) {
+  if (!isPreorderSelectionCourse(row.course)) {
     // The database CHECK constraint makes this unreachable. If it ever fires, something has written
     // round the constraint and the kitchen list would be wrong rather than merely missing a line.
     throw new Error(`A pre-order selection has an unknown course: ${row.course}`)
@@ -96,16 +128,33 @@ export function mapPreorderCoverRow(
 // The completeness predicate
 // ---------------------------------------------------------------------------
 
-/** A cover is complete when it has a main. Starter and dessert are optional by design. */
+/**
+ * A cover is complete when it has a main. Starter, dessert and add-ons are optional by design.
+ *
+ * Add-ons deliberately cannot reach this function's answer. A seat that has ticked the cheeseboard
+ * and chosen no main is NOT complete, and a seat with a main and no add-ons IS. Anything else would
+ * mean the chase cron nagged a guest for not buying an extra.
+ */
 export function isCoverComplete(cover: Pick<PreorderCover, 'selections'>): boolean {
   return cover.selections.some((selection) => selection.course === 'main')
 }
 
+/**
+ * The one item this seat holds for a single-choice course.
+ *
+ * Takes `PreorderCourse`, not `PreorderSelectionCourse`, so it cannot be called for add-ons: a seat
+ * may hold several of those and "the add-on" is not a question with one answer. Use `getCoverAddons`.
+ */
 export function getCoverCourse(
   cover: Pick<PreorderCover, 'selections'>,
   course: PreorderCourse,
 ): PreorderSelection | null {
   return cover.selections.find((selection) => selection.course === course) ?? null
+}
+
+/** Every add-on this seat has ticked, in the order the cover carries them. */
+export function getCoverAddons(cover: Pick<PreorderCover, 'selections'>): PreorderSelection[] {
+  return cover.selections.filter(isPreorderAddon)
 }
 
 export type PreorderCompleteness = {
@@ -160,6 +209,90 @@ export function describePreorderGaps(completeness: PreorderCompleteness): string
     parts.push(`no main chosen for seat ${completeness.ordinalsMissingMain.join(', ')}`)
   }
   return parts.length > 0 ? `${parts.join(', and ')}.` : 'Something is missing from this pre-order.'
+}
+
+// ---------------------------------------------------------------------------
+// Add-on money
+//
+// Add-ons are quoted at pre-order and charged on the guest's bill at the pub. These totals exist so
+// the pub knows what to charge. They are summed from the SNAPSHOT on each selection row, never from
+// the live menu, so an owner editing a price in December cannot restate what a guest was quoted in
+// November. Nothing here takes money and nothing here touches the deposit.
+// ---------------------------------------------------------------------------
+
+/**
+ * Money is summed in whole pence and converted back once at the end.
+ *
+ * Adding pounds as floating point makes 8.10 + 4.20 come out at 12.299999999999999, and a bill
+ * total that renders a penny out is the kind of thing a guest notices at the till.
+ */
+function toPence(value: number | null): number {
+  if (value === null || !Number.isFinite(value)) return 0
+  return Math.round(value * 100)
+}
+
+/** '£8.50'. Use for any add-on money so four screens cannot round four different ways. */
+export function formatPreorderMoney(valueGbp: number): string {
+  return `£${valueGbp.toFixed(2)}`
+}
+
+/**
+ * The price to show beside a tick-box.
+ *
+ * Every item on the Christmas menu is currently unpriced, so the null case is the common one and
+ * must not read as free. Saying so plainly is better than showing '£0.00' and arguing later.
+ */
+export function formatPreorderAddonPrice(priceGbp: number | null): string {
+  return priceGbp === null ? 'Price on the day' : formatPreorderMoney(priceGbp)
+}
+
+/** What one seat has ticked and what it adds to their bill. */
+export function summariseCoverAddons(
+  cover: Pick<PreorderCover, 'id' | 'ordinal' | 'guestName' | 'selections'>,
+): PreorderCoverAddonSummary {
+  const addons = getCoverAddons(cover)
+  const pence = addons.reduce((running, addon) => running + toPence(addon.priceGbp), 0)
+
+  return {
+    coverId: cover.id,
+    ordinal: cover.ordinal,
+    guestName: cover.guestName,
+    count: addons.length,
+    totalGbp: pence / 100,
+    hasUnpricedAddon: addons.some((addon) => addon.priceGbp === null),
+    items: addons.map((addon) => ({
+      menuItemId: addon.menuItemId,
+      itemName: addon.itemName,
+      priceGbp: addon.priceGbp,
+      itemWithdrawn: addon.itemWithdrawn,
+    })),
+  }
+}
+
+/**
+ * The whole booking's add-on bill, and the per-seat breakdown behind it.
+ *
+ * Seats with nothing ticked are kept in `perCover` with a count of zero, so a staff screen can render
+ * one row per seat straight from this without having to reconcile two lists.
+ */
+export function summariseOrderAddons(
+  order: Pick<PreorderOrder, 'covers'>,
+): PreorderOrderAddonSummary {
+  const perCover = order.covers
+    .map((cover) => summariseCoverAddons(cover))
+    .sort((a, b) => a.ordinal - b.ordinal)
+
+  const totals = perCover.reduce<PreorderAddonSummary>(
+    (running, cover) => ({
+      count: running.count + cover.count,
+      // Back to pence for the addition, for the same reason as above.
+      totalGbp: (toPence(running.totalGbp) + toPence(cover.totalGbp)) / 100,
+      hasUnpricedAddon: running.hasUnpricedAddon || cover.hasUnpricedAddon,
+    }),
+    { count: 0, totalGbp: 0, hasUnpricedAddon: false },
+  )
+
+  return { ...totals, perCover }
 }
 
 // ---------------------------------------------------------------------------
@@ -344,8 +477,13 @@ async function loadCoversWithSelections(supabase: Db, tableBookingId: string): P
   }
 
   return covers.map((cover) => {
+    // Menu order, add-ons last because they sit alongside the meal rather than inside it. Ties broken
+    // by name so the several add-ons a seat may hold come back in a stable order rather than whatever
+    // order PostgREST happened to return them in.
     const coverSelections = (byCover.get(cover.id) ?? []).sort(
-      (a, b) => PREORDER_COURSES.indexOf(a.course) - PREORDER_COURSES.indexOf(b.course),
+      (a, b) =>
+        PREORDER_SELECTION_COURSES.indexOf(a.course) - PREORDER_SELECTION_COURSES.indexOf(b.course) ||
+        a.itemName.localeCompare(b.itemName),
     )
     return mapPreorderCoverRow(cover, coverSelections)
   })
@@ -455,6 +593,10 @@ export async function isPreorderEnabled(supabase: Db): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 export type PreorderSelectionInput = {
+  /**
+   * A single-choice course only. Add-ons cannot come through here: they are multi-select, so
+   * "the add-on for this seat" is not a question with one answer. Use `addonMenuItemIds`.
+   */
   course: PreorderCourse
   /** null clears the course. Clearing a main leaves the cover incomplete, which is allowed: a booker
    *  half way through the form must be able to save. */
@@ -468,6 +610,16 @@ export type SavePreorderCoverInput = {
   dietaryNote?: string | null
   /** Only the courses named here are touched. Omit a course to leave it alone. */
   selections?: PreorderSelectionInput[]
+  /**
+   * The COMPLETE set of add-ons this seat wants, as menu item ids. Whole-set, not a patch: whatever
+   * is not in the list is unticked. Omit the field to leave add-ons alone, pass `[]` to clear them
+   * all.
+   *
+   * It has to be whole-set because the form is tick-boxes. A patch shape cannot express "the guest
+   * has just unticked the cheeseboard" without inventing a separate remove list, and a form that can
+   * add but not remove is the classic way a guest ends up charged for something they took off.
+   */
+  addonMenuItemIds?: string[]
 }
 
 /**
@@ -507,17 +659,36 @@ export async function savePreorderCover(
 
   const selections = input.selections ?? []
   if (selections.length > 0) {
+    for (const entry of selections) {
+      // The type already forbids it, but this path is reached from a JSON request body on the
+      // booker's manage page, where types are a promise rather than a guarantee. An add-on smuggled
+      // in here would be written as a single-choice course and would silently replace whatever the
+      // seat had.
+      if (!isPreorderCourse(entry.course)) {
+        throw new Error('Add-ons are ticked separately, not chosen as a course.')
+      }
+    }
+
     const cleared = selections.filter((entry) => !entry.menuItemId).map((entry) => entry.course)
     const chosen = selections.filter(
       (entry): entry is PreorderSelectionInput & { menuItemId: string } => Boolean(entry.menuItemId),
     )
 
-    if (cleared.length > 0) {
+    // Clear every course this call names, whether it is being cleared or replaced, then insert the
+    // replacements. This used to be an upsert on the (cover_id, course) UNIQUE constraint, and that
+    // constraint is gone: the one that replaced it is PARTIAL, and Postgres will not infer a partial
+    // index for ON CONFLICT without a matching predicate, which PostgREST has no way to send. A
+    // delete then insert says the same thing and does not depend on index inference at all. The two
+    // statements are not one transaction, so a failure between them leaves the course CLEARED rather
+    // than wrong, and the guest picks again. That is the safe half of the pair: the kitchen is never
+    // told about a dish nobody chose.
+    const touched = [...cleared, ...chosen.map((entry) => entry.course)]
+    if (touched.length > 0) {
       const { error } = await supabase
         .from('booking_preorder_selections')
         .delete()
         .eq('cover_id', cover.id)
-        .in('course', cleared)
+        .in('course', Array.from(new Set(touched)))
       if (error) throw error
     }
 
@@ -544,17 +715,84 @@ export async function savePreorderCover(
         }
       })
 
-      const { error } = await supabase
-        .from('booking_preorder_selections')
-        .upsert(rows, { onConflict: 'cover_id,course' })
+      const { error } = await supabase.from('booking_preorder_selections').insert(rows)
       if (error) throw error
     }
+  }
+
+  if (input.addonMenuItemIds !== undefined) {
+    await saveCoverAddons(supabase, cover, input.addonMenuItemIds)
   }
 
   const covers = await loadCoversWithSelections(supabase, cover.table_booking_id)
   const saved = covers.find((entry) => entry.id === cover.id)
   if (!saved) throw new Error('That seat no longer exists on this booking.')
   return saved
+}
+
+/**
+ * Make this seat's ticked add-ons match `wantedMenuItemIds` exactly.
+ *
+ * Written as a DIFF, not a wipe and rewrite. An add-on the guest has not touched keeps the row it
+ * already had, and therefore keeps the price it was snapshotted at: a guest quoted £8 in November is
+ * still charged £8 in December even if the owner has since put the menu up. Deleting and reinserting
+ * everything would quietly re-quote every untouched add-on on every save, which is precisely the
+ * silent restatement the snapshot exists to prevent.
+ *
+ * Rows are deleted by primary key rather than by a NOT IN filter on menu_item_id, because a long
+ * negated uuid list is the sort of PostgREST filter that fails on quoting and takes the whole save
+ * with it.
+ */
+async function saveCoverAddons(
+  supabase: Db,
+  cover: PreorderCoverRow,
+  wantedMenuItemIds: string[],
+): Promise<void> {
+  const wanted = Array.from(new Set(wantedMenuItemIds.filter((id) => Boolean(id))))
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('booking_preorder_selections')
+    .select('id, menu_item_id')
+    .eq('cover_id', cover.id)
+    .eq('course', PREORDER_ADDON_COURSE)
+
+  if (existingError) throw existingError
+
+  const existing = (existingRows ?? []) as Array<{ id: string; menu_item_id: string }>
+  const keep = new Set(wanted)
+  const doomed = existing.filter((row) => !keep.has(row.menu_item_id)).map((row) => row.id)
+  const already = new Set(existing.map((row) => row.menu_item_id))
+  const toAdd = wanted.filter((id) => !already.has(id))
+
+  if (doomed.length > 0) {
+    const { error } = await supabase.from('booking_preorder_selections').delete().in('id', doomed)
+    if (error) throw error
+  }
+
+  if (toAdd.length === 0) return
+
+  const items = await loadMenuItemsForSnapshot(supabase, cover.table_booking_id, toAdd)
+
+  const rows = toAdd.map((menuItemId) => {
+    const item = items.get(menuItemId)
+    if (!item) throw new Error('That add-on is not on the menu for this booking.')
+    if (!item.isActive) throw new Error(`${item.name} is no longer available.`)
+    // An item is one thing or the other. Ticking a main as though it were an add-on would give the
+    // seat two mains, one of them charged again on the night.
+    if (item.course !== PREORDER_ADDON_COURSE) {
+      throw new Error(`${item.name} is not an add-on.`)
+    }
+    return {
+      cover_id: cover.id,
+      course: PREORDER_ADDON_COURSE,
+      menu_item_id: menuItemId,
+      item_name: item.name,
+      price_gbp: item.priceGbp,
+    }
+  })
+
+  const { error } = await supabase.from('booking_preorder_selections').insert(rows)
+  if (error) throw error
 }
 
 function normaliseText(value: string | null, maxLength: number): string | null {
@@ -684,16 +922,51 @@ export type PreorderDishTotal = {
   count: number
 }
 
+/** An add-on line carries money as well as a count, because somebody has to charge for it. */
+export type PreorderAddonDishTotal = PreorderDishTotal & {
+  /**
+   * The snapshot price most guests were quoted, or null when none of them carried one. Only a label:
+   * `totalGbp` is summed from the individual snapshots, so a price that changed mid-season still
+   * totals correctly even though one number cannot describe it.
+   */
+  unitPriceGbp: number | null
+  totalGbp: number
+  hasUnpricedSelection: boolean
+}
+
 export type PreorderDishTotals = {
   date: string
   /** Bookings on that date that have at least one pre-order seat. */
   bookingCount: number
   coverCount: number
   byCourse: Record<PreorderCourse, PreorderDishTotal[]>
+  /**
+   * Add-ons, counted SEPARATELY from the courses and never folded into them. The kitchen reads the
+   * course lists as "plates to make" and this as "extras to put out and charge for", and a
+   * cheeseboard counted as a dessert would have the kitchen make one pudding too few.
+   */
+  addons: PreorderAddonDishTotal[]
+  /** What the pub should take across the day for add-ons, on the night, from the snapshotted prices. */
+  addonTotalGbp: number
+  /** True when any add-on that day is unpriced, so `addonTotalGbp` is not the whole of it. */
+  addonHasUnpricedSelection: boolean
+}
+
+/** The shape to return when a date has nothing on it. One definition, so no caller invents its own. */
+export function emptyPreorderDishTotals(date: string): PreorderDishTotals {
+  return {
+    date,
+    bookingCount: 0,
+    coverCount: 0,
+    byCourse: { starter: [], main: [], dessert: [] },
+    addons: [],
+    addonTotalGbp: 0,
+    addonHasUnpricedSelection: false,
+  }
 }
 
 /**
- * Group choices into "how many of each dish", by course.
+ * Group choices into "how many of each dish", by course, with add-ons on their own list.
  *
  * Grouped by menu item id, not by name: names are snapshots, so a dish renamed mid-season would
  * otherwise split into two lines and the kitchen would cook the wrong quantities of both. The label
@@ -704,15 +977,42 @@ export function summarisePreorderDishTotals(input: {
   date: string
   bookingCount: number
   coverCount: number
-  selections: Array<Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'>>
+  selections: Array<
+    Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & { priceGbp?: number | null }
+  >
 }): PreorderDishTotals {
-  const tallies = new Map<string, { course: PreorderCourse; names: Map<string, number>; count: number }>()
+  type Tally = {
+    course: PreorderSelectionCourse
+    names: Map<string, number>
+    count: number
+    /** Snapshot prices seen for this item, so the busiest one can label the line. */
+    prices: Map<number, number>
+    pence: number
+    unpriced: number
+  }
+
+  const tallies = new Map<string, Tally>()
 
   for (const selection of input.selections) {
     const key = `${selection.course}:${selection.menuItemId}`
-    const tally = tallies.get(key) ?? { course: selection.course, names: new Map(), count: 0 }
+    const tally: Tally = tallies.get(key) ?? {
+      course: selection.course,
+      names: new Map(),
+      count: 0,
+      prices: new Map(),
+      pence: 0,
+      unpriced: 0,
+    }
     tally.count += 1
     tally.names.set(selection.itemName, (tally.names.get(selection.itemName) ?? 0) + 1)
+
+    const price = selection.priceGbp ?? null
+    if (price === null) tally.unpriced += 1
+    else {
+      tally.prices.set(price, (tally.prices.get(price) ?? 0) + 1)
+      tally.pence += toPence(price)
+    }
+
     tallies.set(key, tally)
   }
 
@@ -721,25 +1021,44 @@ export function summarisePreorderDishTotals(input: {
     main: [],
     dessert: [],
   }
+  const addons: PreorderAddonDishTotal[] = []
 
   for (const [key, tally] of tallies) {
     const menuItemId = key.slice(key.indexOf(':') + 1)
     const itemName = Array.from(tally.names.entries()).sort(
       (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
     )[0][0]
-    byCourse[tally.course].push({ menuItemId, itemName, count: tally.count })
+
+    if (tally.course === PREORDER_ADDON_COURSE) {
+      const commonestPrice =
+        Array.from(tally.prices.entries()).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null
+      addons.push({
+        menuItemId,
+        itemName,
+        count: tally.count,
+        unitPriceGbp: commonestPrice,
+        totalGbp: tally.pence / 100,
+        hasUnpricedSelection: tally.unpriced > 0,
+      })
+    } else {
+      byCourse[tally.course].push({ menuItemId, itemName, count: tally.count })
+    }
   }
 
   for (const course of PREORDER_COURSES) {
     // Busiest dish first: that is the order the kitchen prepping the day wants to read it in.
     byCourse[course].sort((a, b) => b.count - a.count || a.itemName.localeCompare(b.itemName))
   }
+  addons.sort((a, b) => b.count - a.count || a.itemName.localeCompare(b.itemName))
 
   return {
     date: input.date,
     bookingCount: input.bookingCount,
     coverCount: input.coverCount,
     byCourse,
+    addons,
+    addonTotalGbp: addons.reduce((running, addon) => running + toPence(addon.totalGbp), 0) / 100,
+    addonHasUnpricedSelection: addons.some((addon) => addon.hasUnpricedSelection),
   }
 }
 
@@ -752,12 +1071,7 @@ export function summarisePreorderDishTotals(input: {
  * bookings, not a year.
  */
 export async function loadPreorderDishTotals(supabase: Db, date: string): Promise<PreorderDishTotals> {
-  const empty: PreorderDishTotals = {
-    date,
-    bookingCount: 0,
-    coverCount: 0,
-    byCourse: { starter: [], main: [], dessert: [] },
-  }
+  const empty = emptyPreorderDishTotals(date)
 
   const { data: bookingRows, error: bookingError } = await supabase
     .from('table_bookings')
@@ -780,9 +1094,11 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
   const covers = (coverRows ?? []) as Array<{ id: string; table_booking_id: string }>
   if (covers.length === 0) return empty
 
+  // price_gbp is read here and nowhere else in this query, purely so the add-on money total is
+  // summed from what each guest was actually quoted rather than from today's menu.
   const { data: selectionRows, error: selectionError } = await supabase
     .from('booking_preorder_selections')
-    .select('cover_id, course, menu_item_id, item_name')
+    .select('cover_id, course, menu_item_id, item_name, price_gbp')
     .in(
       'cover_id',
       covers.map((cover) => cover.id),
@@ -790,14 +1106,22 @@ export async function loadPreorderDishTotals(supabase: Db, date: string): Promis
 
   if (selectionError) throw selectionError
 
-  const selections: Array<Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'>> = []
+  const selections: Array<
+    Pick<PreorderSelection, 'course' | 'menuItemId' | 'itemName'> & { priceGbp: number | null }
+  > = []
   for (const row of (selectionRows ?? []) as Array<{
     course: string
     menu_item_id: string
     item_name: string
+    price_gbp: number | string | null
   }>) {
-    if (!isPreorderCourse(row.course)) continue
-    selections.push({ course: row.course, menuItemId: row.menu_item_id, itemName: row.item_name })
+    if (!isPreorderSelectionCourse(row.course)) continue
+    selections.push({
+      course: row.course,
+      menuItemId: row.menu_item_id,
+      itemName: row.item_name,
+      priceGbp: toNullableNumber(row.price_gbp),
+    })
   }
 
   return summarisePreorderDishTotals({
@@ -819,7 +1143,8 @@ export type WithdrawnPreorderChoice = {
   coverId: string
   ordinal: number
   guestName: string | null
-  course: PreorderCourse
+  /** May be 'addon': a withdrawn add-on is still a call to make, so it is reported like any other. */
+  course: PreorderSelectionCourse
   menuItemId: string
   itemName: string
 }
@@ -909,7 +1234,7 @@ export async function findWithdrawnPreorderChoices(
 
   const results: WithdrawnPreorderChoice[] = []
   for (const selection of selections) {
-    if (!isPreorderCourse(selection.course)) continue
+    if (!isPreorderSelectionCourse(selection.course)) continue
     const cover = covers.get(selection.cover_id)
     if (!cover) continue
     const booking = bookings.get(cover.tableBookingId)
