@@ -1,7 +1,18 @@
 import { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
-import { computeBookingMoney } from '@/lib/private-bookings/vat'
+import { computeBookingMoney, itemLineTotal } from '@/lib/private-bookings/vat'
+import {
+  GROUP_LABELS,
+  GROUP_ORDER,
+  NOT_RECORDED,
+  cateringZeroPriceQualifier,
+  discountPhrase,
+  itemDisplayName,
+  itemGroup,
+  quantityWording,
+  toNum,
+} from '@/lib/private-bookings/item-labels'
 import { logger } from '@/lib/logger'
 
 export interface ContractData {
@@ -237,6 +248,183 @@ export function generateContractHTML(data: ContractData): string {
   const regShort = `${regLegal}${versionLine}`
   const regWaiver = `<b>${company.name}</b> &middot; Self-catering and outside food agreement &middot; Registered in England &amp; Wales no. ${company.registrationNumber} &middot; VAT ${company.vatNumber}${versionLine}`
 
+  // ---- schedule of booked items ----
+  // Rendered only when the booking has items; a zero-item booking keeps the
+  // four-sheet contract exactly as it was.
+  //
+  // Every figure on this page is either a member of `money`, the sum of the
+  // already-rounded values printed in the table, or the subtraction of two
+  // figures printed on the same page. Nothing is re-derived from quantity,
+  // unit_price, discount_value, discount_amount or vat_rate: doing so
+  // reintroduces penny drift against the summary on page 1.
+
+  // PostgREST does not guarantee embedded-resource order and the contract query
+  // applies no .order(), so sort here. Two generations of the same booking must
+  // print the same order: these documents are immutable versioned snapshots.
+  const orderedItems = [...items].sort(
+    (a, b) =>
+      (Number(a.display_order ?? 0) - Number(b.display_order ?? 0)) ||
+      String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')),
+  )
+
+  const printedLines = orderedItems.map((item) => round2(itemLineTotal(item)))
+  const printedSubtotal = round2(printedLines.reduce((sum, n) => sum + n, 0))
+  // Derived by subtraction, never computed independently: round2(N) - round2(N * f)
+  // is not round2(N * (1 - f)), so an independent figure would fail to tie out.
+  const bookingDiscount = round2(printedSubtotal - money.discountedNet)
+  const hasBookingDiscount = bookingDiscount > 0
+
+  // At most one sub-line per row, at most one line long, so the measured row
+  // ceiling of 12.40mm holds. Truncate the raw text BEFORE escaping: slicing
+  // escaped HTML would cut an entity in half (&amp; becoming &am).
+  const SUB_LINE_MAX = 88
+  const buildSubLine = (parts: (string | null)[]): string | null => {
+    const joined = parts.filter((p): p is string => Boolean(p && p.trim())).join(' · ')
+    if (!joined) return null
+    const truncated = joined.length > SUB_LINE_MAX ? `${joined.slice(0, SUB_LINE_MAX - 1)}…` : joined
+    return clean(truncated)
+  }
+
+  const scheduleRowHtml = (item: PrivateBookingItem): string => {
+    const qty = toNum(item.quantity)
+    const unitPrice = toNum(item.unit_price)
+    const lineTotal = round2(itemLineTotal(item))
+    const base = qty !== null && unitPrice !== null ? round2(qty * unitPrice) : 0
+
+    const wording = quantityWording(item)
+    const qualifier = cateringZeroPriceQualifier(item)
+    const name = itemDisplayName(item)
+    const nameHtml = escapeHtml(qualifier ? `${name} (${qualifier})` : name)
+
+    const subLine = buildSubLine([discountPhrase(item, base, lineTotal), item.notes ?? null])
+
+    const unitCell =
+      unitPrice === null
+        ? NOT_RECORDED
+        : `${formatCurrency(unitPrice)}<br>${escapeHtml(wording.unitSuffix)}`
+
+    return `
+              <div class="sched-c">${nameHtml}${subLine ? `<span class="sched-sub">${subLine}</span>` : ''}</div>
+              <div class="sched-c num">${escapeHtml(wording.text)}</div>
+              <div class="sched-c num">${unitCell}</div>
+              <div class="sched-c num">${formatCurrency(lineTotal)}</div>`
+  }
+
+  // 8 rows fill 99.22mm of the 124.15mm available once the worst-case furniture
+  // (group headings, header row, totals block and both footnotes) is subtracted,
+  // leaving 20% headroom. Production maxes out at 6 items, so this is dormant
+  // insurance rather than a routine path.
+  const MAX_ROWS_PER_SHEET = 8
+
+  // Group in a fixed order, omitting empty groups, then flatten back to a linear
+  // list of renderables so pagination can chunk them without splitting a row.
+  type ScheduleEntry = { kind: 'group'; label: string } | { kind: 'row'; item: PrivateBookingItem }
+  const scheduleEntries: ScheduleEntry[] = []
+  for (const groupType of GROUP_ORDER) {
+    const groupItems = orderedItems.filter((item) => itemGroup(item) === groupType)
+    if (groupItems.length === 0) continue
+    scheduleEntries.push({ kind: 'group', label: GROUP_LABELS[groupType] })
+    for (const item of groupItems) scheduleEntries.push({ kind: 'row', item })
+  }
+
+  // Chunk by ROW count only: a group heading rides with the rows beneath it.
+  const chunks: ScheduleEntry[][] = []
+  let currentChunk: ScheduleEntry[] = []
+  let rowsInChunk = 0
+  for (const entry of scheduleEntries) {
+    if (entry.kind === 'row' && rowsInChunk >= MAX_ROWS_PER_SHEET) {
+      chunks.push(currentChunk)
+      currentChunk = []
+      rowsInChunk = 0
+      // Repeat the group heading, marked as continued, when a group spans sheets.
+      const lastGroup = [...scheduleEntries.slice(0, scheduleEntries.indexOf(entry))]
+        .reverse()
+        .find((e): e is { kind: 'group'; label: string } => e.kind === 'group')
+      if (lastGroup) currentChunk.push({ kind: 'group', label: `${lastGroup.label} (continued)` })
+    }
+    currentChunk.push(entry)
+    if (entry.kind === 'row') rowsInChunk += 1
+  }
+  if (currentChunk.length > 0) chunks.push(currentChunk)
+
+  // The tie-out is built from `money` and from figures already printed above it.
+  // The label on the final row is verbatim page 1's, so the reader can match the
+  // two pages by eye. "VAT" is deliberately not "VAT at 20%": on a discounted
+  // booking the VAT is round2(vatRaw * factor) and can differ from 20% of the
+  // printed net by a penny, which would be false on the face of the page.
+  const tieOutHtml = `
+            <p class="section-label gap">Totals</p>
+            <div class="fin">
+              <div class="fin-row"><span class="fk">Sum of items listed above (excl. VAT)</span><span class="fv">${formatCurrency(printedSubtotal)}</span></div>
+              ${hasBookingDiscount ? `<div class="fin-row"><span class="fk">Less discount applied to the booking as a whole (excl. VAT)</span><span class="fv">&minus;${formatCurrency(bookingDiscount)}</span></div>
+              <div class="fin-row"><span class="fk">Event price before VAT</span><span class="fv">${formatCurrency(money.discountedNet)}</span></div>` : ''}
+              <div class="fin-row"><span class="fk">VAT</span><span class="fv">${formatCurrency(money.vatAmount)}</span></div>
+              <div class="fin-row total"><span class="fk">Event price, excluding deposit</span><span class="fv">${formatCurrency(eventPriceGross)}</span></div>
+            </div>`
+
+  // A booking-level discount is spread pro-rata across the lines and belongs to
+  // none of them, so it has to be explained in words or the table looks wrong.
+  // The discount REASON is deliberately never printed: it is internal shorthand
+  // (the one production value is "reg") and does not belong on a customer's
+  // legal document.
+  let bookingDiscountSentence = ''
+  if (hasBookingDiscount) {
+    if (booking.discount_type === 'percent') {
+      const pct = String(round2(Number(booking.discount_amount ?? 0)))
+      bookingDiscountSentence = ` A discount of ${pct}% has been agreed on the booking as a whole. It applies to the total before VAT, not to any single item above, and the VAT shown is charged on the reduced amount.`
+    } else if (money.discountedNet <= 0) {
+      bookingDiscountSentence = ` A discount has been agreed on the booking as a whole. It reduces the total before VAT to nil; nothing further is carried forward.`
+    } else {
+      bookingDiscountSentence = ` A fixed discount of ${formatCurrency(bookingDiscount)} has been agreed on the booking as a whole. It is not attached to any single item above: it reduces the total before VAT, and the VAT shown is charged on the reduced amount.`
+    }
+  }
+
+  // The deposit must appear nowhere as a figure on this page, or the customer
+  // will read the schedule total as everything owed. It is named in words only.
+  const scheduleFootnotesHtml = `
+            <p class="callout">All values in the table above exclude VAT. The VAT shown is the VAT included in the event price on page 1, and the event price, excluding deposit, is the same figure as the financial summary on page 1.${bookingDiscountSentence}</p>
+            <p class="callout" style="margin-bottom:0;">${depositRequired
+              ? `This schedule covers the event price only. The booking and damage deposit of ${formatCurrency(depositAmount)} is not part of the event price and is not included in the figures above. It is shown separately on page 1, where it is added to give the total to pay before the event.`
+              : 'This schedule covers the event price only. No booking and damage deposit is payable for this event.'}</p>`
+
+  const scheduleSheetsHtml =
+    orderedItems.length === 0
+      ? ''
+      : chunks
+          .map((chunk, index) => {
+            const isLast = index === chunks.length - 1
+            const body = chunk
+              .map((entry) =>
+                entry.kind === 'group'
+                  ? `
+              <div class="sched-group">${escapeHtml(entry.label)}</div>`
+                  : scheduleRowHtml(entry.item),
+              )
+              .join('')
+            return `
+    <!-- ===== CONTRACT SCHEDULE SHEET ===== -->
+    <section class="sheet" data-doc="contract">
+      <div class="sheet-inner">
+        ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
+        <div class="body sched-body">
+          <p class="section-label">Schedule of booked items${chunks.length > 1 ? ` (${index + 1} of ${chunks.length})` : ''}</p>
+          <div class="sched-wrap">
+            <div class="sched">
+              <div class="sched-h">Item</div>
+              <div class="sched-h num">Qty</div>
+              <div class="sched-h num">Unit &pound;</div>
+              <div class="sched-h num">Line &pound;</div>${body}
+            </div>
+          </div>
+          <div class="sched-tail">${isLast ? `${tieOutHtml}
+${scheduleFootnotesHtml}` : ''}</div>
+        </div>
+        ${runFoot(regShort, 'Page')}
+      </div>
+    </section>`
+          })
+          .join('\n')
+
   return `<!DOCTYPE html>
 <html lang="en-GB">
 <head>
@@ -333,6 +521,24 @@ export function generateContractHTML(data: ContractData): string {
   .deposit-box small{ font-weight:500; font-size:9px; color:var(--ink-mute); line-height:1.35; }
   .callout{ font-size:10px; line-height:1.45; color:var(--ink-soft); border-left:2px solid var(--ink); padding:0.6mm 0 0.6mm 3.6mm; margin:0 0 4mm; }
   .callout b{ color:var(--ink); font-weight:700; }
+
+  /* ---------- schedule of booked items ----------
+     .sheet is fixed-height with overflow:hidden and .run-foot pins to the bottom,
+     so overflowing content paints over the legal footer from the first millimetre.
+     Giving the table the flexible slot means item rows clip before the totals do:
+     a visibly missing row rather than an invisible legal defect.
+     All padding is in mm, and every line-height is declared, so the reader's
+     browser minimum-font-size setting cannot reflow this block. */
+  .sched-body{ display:flex; flex-direction:column; }
+  .sched-wrap{ flex:1 1 auto; min-height:0; overflow:hidden; }
+  .sched-tail{ flex:0 0 auto; }
+  .sched{ display:grid; grid-template-columns:1fr 20mm 20mm 20mm; border:1px solid var(--ink); margin:0 0 4mm; }
+  .sched-h{ font-weight:700; font-size:9px; line-height:1.25; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-mute); padding:2.2mm 3.6mm; border-bottom:1px solid var(--ink); }
+  .sched-c{ font-size:11px; line-height:1.35; color:var(--ink-soft); padding:2.2mm 3.6mm; border-bottom:1px solid var(--rule); overflow-wrap:anywhere; }
+  .sched-h.num, .sched-c.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  .sched-c.num{ font-weight:600; color:var(--ink); }
+  .sched-sub{ display:block; font-size:9px; line-height:1.35; color:var(--ink-mute); margin-top:0.6mm; }
+  .sched-group{ grid-column:1 / -1; font-weight:700; font-size:9px; line-height:1.25; letter-spacing:.14em; text-transform:uppercase; color:var(--ink); padding:2mm 3.6mm 1.4mm; border-bottom:1px solid var(--rule); background:#f4f1ea; }
 
   /* ---------- numbered clauses (waiver) ---------- */
   ol.contract{ list-style:none; margin:0; padding:0; counter-reset:l1; }
@@ -481,7 +687,9 @@ export function generateContractHTML(data: ContractData): string {
       </div>
     </section>
 
-    <!-- ===== CONTRACT PAGE 2 — deposit info, agreement & signatures ===== -->
+${scheduleSheetsHtml}
+
+    <!-- ===== CONTRACT PAGE: deposit info, agreement & signatures ===== -->
     <section class="sheet" data-doc="contract">
       <div class="sheet-inner">
         ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
@@ -534,7 +742,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
       </div>
     </section>
 
-    <!-- ===== CONTRACT PAGE 3 — terms (1 of 2) ===== -->
+    <!-- ===== CONTRACT PAGE: terms (1 of 2) ===== -->
     <section class="sheet" data-doc="contract">
       <div class="sheet-inner">
         ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
@@ -587,7 +795,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
       </div>
     </section>
 
-    <!-- ===== CONTRACT PAGE 4 — terms (2 of 2) + company ===== -->
+    <!-- ===== CONTRACT PAGE: terms (2 of 2) + company ===== -->
     <section class="sheet" data-doc="contract">
       <div class="sheet-inner">
         ${runHead('Private booking contract', `Ref <b>${ref}</b>`)}
