@@ -9,10 +9,10 @@ export type PostEventStatus = 'awaiting_inspection' | 'inspection_complete' | 'd
 export type CancellationChannel = 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
 type PaymentMethod = 'cash' | 'card' | 'invoice' | 'paypal'
 export type ItemType = 'space' | 'catering' | 'vendor' | 'other'
-type DiscountType = 'percent' | 'fixed'
+export type DiscountType = 'percent' | 'fixed'
 type PackageType = 'buffet' | 'sit-down' | 'canapes' | 'drinks' | 'pizza' | 'other'
-type PricingModel = 'per_head' | 'total_value' | 'variable' | 'per_jar' | 'per_tray' | 'menu_priced' | 'free'
-type VendorServiceType =
+export type PricingModel = 'per_head' | 'total_value' | 'variable' | 'per_jar' | 'per_tray' | 'menu_priced' | 'free'
+export type VendorServiceType =
   | 'dj'
   | 'band'
   | 'photographer'

@@ -66,7 +66,7 @@ const baseData = (booking: PrivateBookingWithDetails): ContractData => ({
 })
 
 describe('generateContractHTML', () => {
-  it('renders the four-page contract with the customer name and reference', () => {
+  it('keeps the four-sheet contract when the booking has no items', () => {
     const html = generateContractHTML(baseData(makeBooking()))
     expect(html).toContain('Private booking contract')
     expect(html).toContain('Paula Campbell')
@@ -252,6 +252,329 @@ describe('balance due date', () => {
     expect(html).toContain(
       'no later than <b>14 calendar days</b> before the event unless otherwise stated in this contract',
     )
+  })
+})
+
+describe('schedule of booked items', () => {
+  // Fixture warning: makeItem defaults line_total to 0. Any test that sets
+  // unit_price without also setting line_total will print £0.00 lines against a
+  // non-zero page 1 original. That is a test-authoring trap, not a defect.
+  const priced = (overrides: Partial<PrivateBookingItem>): PrivateBookingItem => {
+    const item = makeItem(overrides)
+    const qty = Number(item.quantity)
+    const price = Number(item.unit_price)
+    if (item.line_total === 0 && Number.isFinite(qty) && Number.isFinite(price)) {
+      return { ...item, line_total: Math.round(qty * price * 100) / 100 }
+    }
+    return item
+  }
+
+  const sheetCount = (html: string) => (html.match(/data-doc="contract"/g) || []).length
+  const countOf = (html: string, needle: string) => html.split(needle).length - 1
+
+  const space = priced({ item_type: 'space', description: 'The Dining Room', quantity: 5, unit_price: 25 })
+
+  it('renders a fifth contract sheet when the booking has items', () => {
+    const html = generateContractHTML(baseData(makeBooking([space])))
+    expect(sheetCount(html)).toBe(5)
+    expect(html).toContain('Schedule of booked items')
+  })
+
+  it('omits the schedule entirely for a zero-item booking', () => {
+    const html = generateContractHTML(baseData(makeBooking()))
+    expect(html).not.toContain('Schedule of booked items')
+    expect(sheetCount(html)).toBe(4)
+  })
+
+  it('prints a space line as hours at the hourly rate', () => {
+    const html = generateContractHTML(baseData(makeBooking([space])))
+    expect(html).toContain('5 hours')
+    expect(html).toContain('per hour')
+    expect(html).toContain('£125.00')
+  })
+
+  it('prints a catering per-head line as guests', () => {
+    const item = priced({
+      item_type: 'catering',
+      description: 'Finger Buffet',
+      quantity: 30,
+      unit_price: 10.5,
+      package: { name: 'Finger Buffet', pricing_model: 'per_head' } as never,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('30 guests')
+    expect(html).toContain('per guest')
+    expect(html).toContain('£315.00')
+  })
+
+  it('prints per-tray and per-jar catering with the right noun', () => {
+    const tray = priced({
+      item_type: 'catering', description: 'Goujons', quantity: 2, unit_price: 25,
+      package: { name: 'Goujons', pricing_model: 'per_tray' } as never,
+    })
+    const jar = priced({
+      item_type: 'catering', description: 'Pickles', quantity: 3, unit_price: 4,
+      package: { name: 'Pickles', pricing_model: 'per_jar' } as never,
+    })
+    const html = generateContractHTML(baseData(makeBooking([tray, jar])))
+    expect(html).toContain('2 trays')
+    expect(html).toContain('per tray')
+    expect(html).toContain('3 jars')
+    expect(html).toContain('per jar')
+  })
+
+  it('prints a vendor line as services charged each, with the title-cased type', () => {
+    const item = priced({
+      item_type: 'vendor', description: "Nick's Disco (dj)", quantity: 1, unit_price: 350,
+      vendor: { name: "Nick's Disco", service_type: 'dj' } as never,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('1 service')
+    expect(html).toContain('each')
+    expect(html).toContain('(DJ)')
+    expect(html).toContain('£350.00')
+  })
+
+  it('prints an other line as items charged each', () => {
+    const item = priced({ item_type: 'other', description: 'Additional Electricity Supply', quantity: 1, unit_price: 25 })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('1 item')
+    expect(html).toContain('each')
+  })
+
+  it('formats a string quantity without trailing zeros', () => {
+    const item = makeItem({
+      item_type: 'space', description: 'The Dining Room',
+      quantity: '5.00' as never, unit_price: '25.00' as never, line_total: '125.00' as never,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('5 hours')
+    expect(html).not.toContain('5.00 hours')
+    expect(html).toContain('£125.00')
+  })
+
+  it('renders a fractional quantity', () => {
+    const item = makeItem({
+      item_type: 'space', description: 'The Dining Room',
+      quantity: '2.50' as never, unit_price: '25.00' as never, line_total: '62.50' as never,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('2.5 hours')
+  })
+
+  it('survives a non-finite quantity and a non-finite unit price', () => {
+    const item = makeItem({
+      item_type: 'other', description: 'Mystery charge',
+      quantity: undefined as never, unit_price: undefined as never, line_total: 0,
+    })
+    let html = ''
+    expect(() => { html = generateContractHTML(baseData(makeBooking([item]))) }).not.toThrow()
+    expect(html).toContain('Not recorded')
+    expect(html).not.toContain('NaN')
+  })
+
+  it('prints a comped line at zero with a 100% discount note', () => {
+    const item = makeItem({
+      item_type: 'space', description: 'The Dining Room',
+      quantity: 5, unit_price: 25, line_total: 0, discount_type: 'percent', discount_value: 100,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('100% discount applied (included at no charge)')
+    expect(html).toContain('£0.00')
+  })
+
+  it('prints no discount when the type is set but the value is zero', () => {
+    const item = priced({
+      item_type: 'space', description: 'The Dining Room',
+      quantity: 5, unit_price: 25, discount_type: 'percent', discount_value: 0,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).not.toContain('discount applied')
+  })
+
+  it('prints no discount when a value is stored without a type, matching the generated column', () => {
+    const item = priced({
+      item_type: 'space', description: 'The Dining Room',
+      quantity: 5, unit_price: 25, discount_type: undefined, discount_value: 25,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).not.toContain('discount applied')
+  })
+
+  it('prints the clamped effective discount, never the stored value', () => {
+    const item = makeItem({
+      item_type: 'other', description: 'Small charge',
+      quantity: 1, unit_price: 20, line_total: 0, discount_type: 'fixed', discount_value: 35,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('£20.00 discount applied')
+    expect(html).not.toContain('£35.00 discount applied')
+  })
+
+  it('escapes ampersands and angle brackets in the description and note', () => {
+    const item = priced({
+      item_type: 'other', description: 'Fish & Chips <script>alert(1)</script>',
+      quantity: 1, unit_price: 10, notes: 'Note with <b>markup</b> & an ampersand',
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('Fish &amp; Chips')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;b&gt;markup&lt;/b&gt;')
+  })
+
+  it('truncates a long note to a single sub-line', () => {
+    const longNote = 'x'.repeat(150)
+    const item = priced({ item_type: 'other', description: 'Charge', quantity: 1, unit_price: 10, notes: longNote })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).toContain('…')
+    expect(html).not.toContain(longNote)
+    expect(html).toContain('x'.repeat(87))
+    expect(html).not.toContain('x'.repeat(88))
+  })
+
+  it('orders rows by display_order then created_at', () => {
+    const items = [
+      priced({ item_type: 'other', description: 'Third', quantity: 1, unit_price: 3, display_order: 2 }),
+      priced({ item_type: 'other', description: 'First', quantity: 1, unit_price: 1, display_order: 0 }),
+      priced({ item_type: 'other', description: 'Second', quantity: 1, unit_price: 2, display_order: 1 }),
+    ]
+    const html = generateContractHTML(baseData(makeBooking(items)))
+    expect(html.indexOf('First')).toBeLessThan(html.indexOf('Second'))
+    expect(html.indexOf('Second')).toBeLessThan(html.indexOf('Third'))
+  })
+
+  it('groups rows under the four headings and omits empty groups', () => {
+    const html = generateContractHTML(baseData(makeBooking([space])))
+    expect(html).toContain('Venue hire')
+    expect(html).not.toContain('Food and drink')
+    expect(html).not.toContain('Suppliers and entertainment')
+    expect(html).not.toContain('Other charges')
+  })
+
+  it('renders the three-row tie-out when there is no booking-level discount', () => {
+    const html = generateContractHTML(baseData(makeBooking([space])))
+    expect(html).toContain('Sum of items listed above (excl. VAT)')
+    expect(html).toContain('Event price, excluding deposit')
+    expect(html).not.toContain('Less discount applied to the booking as a whole')
+  })
+
+  it('renders the five-row tie-out when a booking-level discount applies', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([space], { discount_type: 'percent', discount_amount: 10 } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toContain('Sum of items listed above (excl. VAT)')
+    expect(html).toContain('Less discount applied to the booking as a whole (excl. VAT)')
+    expect(html).toContain('Event price before VAT')
+    expect(html).toContain('Event price, excluding deposit')
+    expect(html).toContain('A discount of 10% has been agreed on the booking as a whole')
+  })
+
+  it('never prints the booking-level discount reason', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([space], {
+        discount_type: 'percent', discount_amount: 10, discount_reason: 'reg',
+      } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).not.toContain('Reason:')
+    expect(html).not.toContain('reg</')
+  })
+
+  it('makes the five-row tie-out subtract exactly, in integer pence', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking(
+        [priced({ item_type: 'other', description: 'Odd amount', quantity: 1, unit_price: 100.12 })],
+        { discount_type: 'percent', discount_amount: 12.5 } as Partial<PrivateBookingWithDetails>,
+      )),
+    )
+    const pence = (label: string): number => {
+      // The whole entity is optional, not just its semicolon: `&minus;?` would
+      // require the literal "&minus" and only make the ";" optional.
+      const match = html.match(new RegExp(`${label}</span><span class="fv">(?:&minus;)?£([0-9.]+)</span>`))
+      if (!match) throw new Error(`row not found: ${label}`)
+      return Math.round(Number(match[1]) * 100)
+    }
+    const subtotal = pence('Sum of items listed above \\(excl\\. VAT\\)')
+    const discount = pence('Less discount applied to the booking as a whole \\(excl\\. VAT\\)')
+    const net = pence('Event price before VAT')
+    expect(subtotal - discount).toBe(net)
+  })
+
+  it('makes the printed line values sum to the printed sub-total', () => {
+    const items = [
+      makeItem({ item_type: 'space', description: 'Room', quantity: 5, unit_price: 25, line_total: 0, discount_type: 'percent', discount_value: 100 }),
+      priced({ item_type: 'catering', description: 'Buffet', quantity: 30, unit_price: 10.5, package: { name: 'Buffet', pricing_model: 'per_head' } as never }),
+      priced({ item_type: 'catering', description: 'Tea', quantity: 10, unit_price: 4.49, package: { name: 'Tea', pricing_model: 'per_head' } as never }),
+      priced({ item_type: 'catering', description: 'Squash', quantity: 20, unit_price: 3.5, package: { name: 'Squash', pricing_model: 'per_head' } as never }),
+      priced({ item_type: 'other', description: 'Electricity', quantity: 1, unit_price: 25, notes: 'tbc' }),
+    ]
+    const html = generateContractHTML(baseData(makeBooking(items)))
+    const lineCells = [...html.matchAll(/<div class="sched-c num">£([0-9.]+)<\/div>/g)].map((m) =>
+      Math.round(Number(m[1]) * 100),
+    )
+    const summed = lineCells.reduce((s, n) => s + n, 0)
+    // 0 + 315.00 + 44.90 + 70.00 + 25.00
+    expect(summed).toBe(45490)
+    const subtotal = html.match(
+      /Sum of items listed above \(excl\. VAT\)<\/span><span class="fv">£([0-9.]+)<\/span>/,
+    )
+    expect(subtotal).not.toBeNull()
+    expect(Math.round(Number(subtotal![1]) * 100)).toBe(summed)
+  })
+
+  it('ends the tie-out at the same gross event price as page 1', () => {
+    const html = generateContractHTML(baseData(makeBooking([space])))
+    // Once in the page 1 financial summary, once as the schedule's final row.
+    expect(countOf(html, 'Event price, excluding deposit')).toBe(2)
+    // 5 x £25.00 net = £125.00, plus 20% VAT = £150.00. Both rows carry it, and
+    // so does the agreement clause on the signature page, which is why this
+    // asserts the labelled rows rather than a raw count of the figure.
+    expect(
+      countOf(html, 'Event price, excluding deposit</span><span class="fv">£150.00</span>'),
+    ).toBe(2)
+  })
+
+  it('renders a zero-value schedule for an all-comped booking', () => {
+    const item = makeItem({
+      item_type: 'space', description: 'The Dining Room',
+      quantity: 5, unit_price: 25, line_total: 0, discount_type: 'percent', discount_value: 100,
+    })
+    const html = generateContractHTML(baseData(makeBooking([item])))
+    expect(html).not.toContain('NaN')
+    expect(html).toContain('Sum of items listed above (excl. VAT)</span><span class="fv">£0.00</span>')
+  })
+
+  it('states the deposit is held separately and excluded from the schedule', () => {
+    const html = generateContractHTML(baseData(makeBooking([space], { deposit_amount: 100 })))
+    expect(html).toContain('is not part of the event price')
+    expect(html).toContain('The booking and damage deposit of £100.00')
+  })
+
+  it('states that no deposit is payable when the booking has none', () => {
+    const html = generateContractHTML(baseData(makeBooking([space], { deposit_amount: 0 })))
+    expect(html).toContain('No booking and damage deposit is payable for this event.')
+  })
+
+  it('splits into a second schedule sheet above eight items', () => {
+    const items = Array.from({ length: 9 }, (_, i) =>
+      priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
+    )
+    const html = generateContractHTML(baseData(makeBooking(items)))
+    expect(sheetCount(html)).toBe(6)
+  })
+
+  it('puts the tie-out on the last schedule sheet only', () => {
+    const items = Array.from({ length: 9 }, (_, i) =>
+      priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
+    )
+    const html = generateContractHTML(baseData(makeBooking(items)))
+    expect(countOf(html, 'Sum of items listed above (excl. VAT)')).toBe(1)
+  })
+
+  it('never emits the strings the existing near-miss assertions guard', () => {
+    const html = generateContractHTML(baseData(makeBooking([space], { deposit_amount: 0 })))
+    expect(html).not.toContain('Special requirements')
+    expect(html).not.toContain('deposit of <b>£0.00</b>')
   })
 })
 

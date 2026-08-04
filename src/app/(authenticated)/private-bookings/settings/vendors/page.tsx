@@ -7,7 +7,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { createVendor, updateVendor, deleteVendor, getVendorsForManagement } from '@/app/actions/privateBookingActions'
 import { VendorDeleteButton } from '@/components/features/invoices/VendorDeleteButton'
-import type { Vendor } from '@/types/private-bookings'
+import type { Vendor, VendorServiceType } from '@/types/private-bookings'
+import { VENDOR_SERVICE_TYPE_LABELS } from '@/lib/private-bookings/item-labels'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Section } from '@/ds'
@@ -156,18 +157,13 @@ export default async function VendorsPage({
     'other'
   ]
 
+  // Built from the shared map so the contract and this screen never name the
+  // same supplier type differently.
   const vendorTypeOptions = [
     { value: '', label: 'Select type...' },
-    { value: 'dj', label: 'DJ' },
-    { value: 'band', label: 'Band' },
-    { value: 'photographer', label: 'Photographer' },
-    { value: 'florist', label: 'Florist' },
-    { value: 'decorator', label: 'Decorator' },
-    { value: 'cake', label: 'Cake' },
-    { value: 'entertainment', label: 'Entertainment' },
-    { value: 'transport', label: 'Transport' },
-    { value: 'equipment', label: 'Equipment Rental' },
-    { value: 'other', label: 'Other' }
+    ...(Object.entries(VENDOR_SERVICE_TYPE_LABELS) as [VendorServiceType, string][]).map(
+      ([value, label]) => ({ value, label })
+    )
   ]
 
   const preferredOptions = [
