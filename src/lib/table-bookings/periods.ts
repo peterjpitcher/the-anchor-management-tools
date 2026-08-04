@@ -44,8 +44,60 @@ export const PERIOD_KIND_LABELS: Record<PeriodKind, string> = {
 export const DEPOSIT_BASES = ['none', 'per_head', 'per_booking'] as const
 export type DepositBasis = (typeof DEPOSIT_BASES)[number]
 
-export const MENU_COURSES = ['starter', 'main', 'dessert', 'side', 'drink', 'other'] as const
+/**
+ * The parts of a seasonal menu a manager may file an item under.
+ *
+ * 'addon' is last on purpose: it is the only value that is not part of the meal. An add-on is an
+ * optional extra a guest TICKS on top of their three courses and pays for on their bill at the pub.
+ * It exists because the farmhouse cheeseboard was filed as a dessert, and a seat holds only one
+ * dessert, so ticking it cost the guest their pudding and the pub the extra sale.
+ *
+ * Adding a value here is not cosmetic. `toMenuCourse` below silently falls back to 'other' for
+ * anything it does not recognise, so a course missing from this list is read back as 'other' and
+ * never renders as itself anywhere.
+ *
+ * NOT the same list as `PREORDER_COURSES` in src/types/preorders.ts, which is only the three courses
+ * a seat picks exactly one of.
+ */
+export const MENU_COURSES = ['starter', 'main', 'dessert', 'side', 'drink', 'other', 'addon'] as const
 export type MenuCourse = (typeof MENU_COURSES)[number]
+
+/** The tick-box course. Named so nothing has to spell the string literal to test for it. */
+export const MENU_COURSE_ADDON: MenuCourse = 'addon'
+
+/** Short label, for a list line or a badge. */
+export const MENU_COURSE_LABELS: Record<MenuCourse, string> = {
+  starter: 'Starter',
+  main: 'Main',
+  dessert: 'Dessert',
+  side: 'Side',
+  drink: 'Drink',
+  other: 'Other',
+  addon: 'Add-on',
+}
+
+/**
+ * What a manager reads when CHOOSING the course. 'Add-on' on its own says nothing about money, and
+ * the consequence of the choice (the guest is charged extra, on the night) is the whole point of it,
+ * so the picker spells it out where the decision is actually made.
+ */
+export const MENU_COURSE_PICKER_LABELS: Record<MenuCourse, string> = {
+  ...MENU_COURSE_LABELS,
+  addon: 'Add-on, charged extra',
+}
+
+/**
+ * An add-on with no price is a trap: the guest sees a tick-box with nothing beside it, ticks it, and
+ * it lands on no bill. Every other course keeps its price optional, because a set-menu course is
+ * covered by the menu price and never billed on its own.
+ */
+export function menuCourseRequiresPrice(course: MenuCourse): boolean {
+  return course === MENU_COURSE_ADDON
+}
+
+/** One wording for that rule, so the form and the API cannot tell a manager two different things. */
+export const MENU_ITEM_ADDON_PRICE_MESSAGE =
+  'An add-on needs a price above zero. The guest sees it beside the tick-box and pays it on their bill at the pub.'
 
 export type BookingPeriodMenuItem = {
   id: string

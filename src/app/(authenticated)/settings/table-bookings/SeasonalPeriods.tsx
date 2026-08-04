@@ -4,13 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Badge, Button, Card, Input, Section, Select, Textarea } from '@/ds'
 import {
-  DEPOSIT_BASES,
   MENU_COURSES,
+  MENU_COURSE_ADDON,
+  MENU_COURSE_LABELS,
+  MENU_COURSE_PICKER_LABELS,
+  MENU_ITEM_ADDON_PRICE_MESSAGE,
   PERIOD_KINDS,
   PERIOD_KIND_LABELS,
   describeDeposit,
   formatGbp,
   mapBookingPeriodRow,
+  menuCourseRequiresPrice,
   type BookingPeriod,
   type BookingPeriodRow,
   type DepositBasis,
@@ -18,6 +22,7 @@ import {
   type PeriodKind,
 } from '@/lib/table-bookings/periods'
 import { resolveTableBookingDeposit } from '@/lib/table-bookings/period-deposit'
+import { PREORDER_ADDON_STAFF_NOTE } from '@/types/preorders'
 
 /**
  * Seasonal booking periods: Christmas dinner, Mother's Day, Easter, Father's Day.
@@ -92,9 +97,11 @@ const BASIS_OPTIONS: { value: DepositBasis; label: string }[] = [
   { value: 'per_booking', label: 'Per booking' },
 ]
 
+// Labelled from the shared list rather than by capitalising the stored value, so 'addon' reads as
+// what it does to the guest's bill instead of as a raw enum.
 const COURSE_OPTIONS = MENU_COURSES.map((course) => ({
   value: course,
-  label: course.charAt(0).toUpperCase() + course.slice(1),
+  label: MENU_COURSE_PICKER_LABELS[course],
 }))
 
 function toDraft(period: BookingPeriod): PeriodDraft {
@@ -365,6 +372,11 @@ export function SeasonalPeriods() {
                     {isOpen && (
                       <div className="mt-4 border-t border-gray-200 pt-4">
                         <h5 className="text-sm font-medium text-gray-900">Pre-order menu</h5>
+                        {/* Verbatim from the shared constant. Four separate wordings for this
+                            eventually produce one that implies the guest has already paid. */}
+                        {period.menuItems.some((item) => item.course === MENU_COURSE_ADDON) && (
+                          <p className="mt-1 text-xs text-gray-600">{PREORDER_ADDON_STAFF_NOTE}</p>
+                        )}
                         {period.menuItems.length === 0 ? (
                           <p className="mt-1 text-sm text-gray-600">
                             No dishes yet. Add them when the menu is published.
@@ -378,12 +390,22 @@ export function SeasonalPeriods() {
                               >
                                 <div className="min-w-0">
                                   <span className="font-medium text-gray-900">{item.name}</span>{' '}
-                                  <span className="text-xs uppercase text-gray-500">{item.course}</span>
+                                  <span className="text-xs uppercase text-gray-500">
+                                    {MENU_COURSE_LABELS[item.course]}
+                                  </span>
                                   {item.priceGbp !== null && (
                                     <span className="text-gray-700"> &middot; {formatGbp(item.priceGbp)}</span>
                                   )}
                                   {item.description && (
                                     <p className="text-xs text-gray-600">{item.description}</p>
+                                  )}
+                                  {/* Only reachable if the row was written outside this screen, which
+                                      refuses to save it. Say so rather than showing a silent blank. */}
+                                  {menuCourseRequiresPrice(item.course) && item.priceGbp === null && (
+                                    <p className="text-xs text-amber-700">
+                                      This add-on has no price, so guests would tick it and it would land on
+                                      no bill. Remove it and add it again with a price.
+                                    </p>
                                   )}
                                 </div>
                                 <Button
@@ -421,11 +443,20 @@ export function SeasonalPeriods() {
                               }
                             />
                             <Input
-                              label="Price (GBP, optional)"
+                              label={
+                                menuCourseRequiresPrice(menuDraft.course)
+                                  ? 'Price (GBP)'
+                                  : 'Price (GBP, optional)'
+                              }
                               type="number"
                               step="0.01"
                               value={menuDraft.price_gbp}
                               onChange={(e) => setMenuDraft({ ...menuDraft, price_gbp: e.target.value })}
+                              hint={
+                                menuCourseRequiresPrice(menuDraft.course)
+                                  ? 'Required for an add-on. This is what the guest is quoted and what goes on their bill.'
+                                  : undefined
+                              }
                             />
                             <Input
                               label="Allergens (optional)"
@@ -442,12 +473,35 @@ export function SeasonalPeriods() {
                                 }
                               />
                             </div>
+                            {menuCourseRequiresPrice(menuDraft.course) && (
+                              <div className="sm:col-span-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                                <p className="font-medium text-gray-900">
+                                  An add-on sits alongside the courses, not inside them.
+                                </p>
+                                <p className="mt-1">
+                                  Guests tick it as well as their starter, main and dessert, and may tick more
+                                  than one. It never replaces a course and it never stops a booking counting as
+                                  complete.
+                                </p>
+                                {/* Verbatim from the shared constant, for the same reason as above. */}
+                                <p className="mt-1">{PREORDER_ADDON_STAFF_NOTE}</p>
+                              </div>
+                            )}
                             <div className="flex gap-2 sm:col-span-2">
                               <Button
                                 disabled={busy}
                                 onClick={async () => {
                                   if (menuDraft.name.trim().length === 0) {
                                     toast.error('Give the dish a name')
+                                    return
+                                  }
+                                  // The API runs this same rule with the same words and is the
+                                  // authority. This is here so the manager hears it without a round trip.
+                                  if (
+                                    menuCourseRequiresPrice(menuDraft.course) &&
+                                    !(Number(menuDraft.price_gbp) > 0)
+                                  ) {
+                                    toast.error(MENU_ITEM_ADDON_PRICE_MESSAGE)
                                     return
                                   }
                                   const ok = await post(

@@ -5,6 +5,10 @@
  * on for this booking at all, what dishes may be chosen, and is the form still open. Gathering them
  * here keeps the page component to rendering and the route to writing.
  *
+ * Add-ons come back as their own list rather than as a fourth course. A seat picks one starter, one
+ * main and one dessert, but may tick as many add-ons as it likes, so they are a different question
+ * and the page renders them as tick-boxes rather than as another dropdown.
+ *
  * CUTOFF OWNERSHIP. The cutoff rule itself now lives in the shared library
  * (src/lib/table-bookings/preorder.ts), alongside the completeness rule and the chase rule, because
  * the staff screen, this page and the reminder cron must all give the guest the same answer.
@@ -15,7 +19,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { mapMenuItemRow, type BookingPeriodMenuItem, type BookingPeriodMenuItemRow } from '@/lib/table-bookings/periods'
 import { getPreorderCutoff, isPreorderEnabled, loadPreorderOrder } from '@/lib/table-bookings/preorder'
-import { PREORDER_COURSES, type PreorderCourse, type PreorderOrder } from '@/types/preorders'
+import {
+  PREORDER_ADDON_COURSE,
+  PREORDER_COURSES,
+  type PreorderCourse,
+  type PreorderOrder,
+} from '@/types/preorders'
 
 type Db = SupabaseClient<any, any, any>
 
@@ -39,6 +48,11 @@ export type BookerPreorderView = {
   order: PreorderOrder
   /** Only live dishes, in the order the manager sorted them. A withdrawn choice is flagged instead. */
   menuByCourse: Record<PreorderCourse, BookingPeriodMenuItem[]>
+  /**
+   * The optional extras a seat may tick, several at a time. Empty when this menu has none, in which
+   * case the page shows no add-on block at all rather than an empty one.
+   */
+  addons: BookingPeriodMenuItem[]
   cutoff: PreorderCutoff
 }
 
@@ -73,10 +87,18 @@ export async function loadBookerPreorderView(
     dessert: [],
   }
 
+  const addons: BookingPeriodMenuItem[] = []
+
   for (const row of (data ?? []) as unknown as BookingPeriodMenuItemRow[]) {
     const item = mapMenuItemRow(row)
-    if ((PREORDER_COURSES as readonly string[]).includes(item.course)) {
-      menuByCourse[item.course as PreorderCourse].push(item)
+    // Sorted on the RAW course column rather than on `item.course`. `toMenuCourse` in periods.ts
+    // folds any value it does not recognise into 'other'. 'addon' is on MENU_COURSES now, so the
+    // mapper handles it, but the column is the truth and reading it directly means this form stays
+    // right even if the two lists drift apart again.
+    if (row.course === PREORDER_ADDON_COURSE) {
+      addons.push(item)
+    } else if ((PREORDER_COURSES as readonly string[]).includes(row.course)) {
+      menuByCourse[row.course as PreorderCourse].push(item)
     }
   }
 
@@ -85,6 +107,7 @@ export async function loadBookerPreorderView(
   return {
     order,
     menuByCourse,
+    addons,
     cutoff: resolvePreorderCutoff(order.bookingDate, order.preorderCutoffDays),
   }
 }

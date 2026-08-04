@@ -19,7 +19,16 @@ import {
   getTableBookingStatusLabel,
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
-import { PREORDER_COURSES, PREORDER_COURSE_LABELS, type PreorderCourse } from '@/types/preorders'
+import {
+  formatPreorderAddonPrice,
+  formatPreorderMoney,
+} from '@/lib/table-bookings/preorder'
+import {
+  PREORDER_ADDON_STAFF_NOTE,
+  PREORDER_COURSES,
+  PREORDER_COURSE_LABELS,
+  type PreorderCourse,
+} from '@/types/preorders'
 
 type BohViewMode = 'day' | 'week' | 'month'
 
@@ -32,7 +41,35 @@ type PreorderDishTotalsResponse = {
     bookingCount: number
     coverCount: number
     byCourse: Record<PreorderCourse, Array<{ menuItemId: string; itemName: string; count: number }>>
+    /**
+     * Add-ons, in their OWN group and never folded into the dessert count. An add-on is an extra the
+     * guest has on top of their meal, so counting a cheeseboard as a pudding would have the kitchen
+     * make one dessert too few and nobody would charge for the cheeseboard.
+     */
+    addons: Array<{
+      menuItemId: string
+      itemName: string
+      count: number
+      unitPriceGbp: number | null
+      totalGbp: number
+      hasUnpricedSelection: boolean
+    }>
+    /** What the pub should take across the day for add-ons, charged on the night. */
+    addonTotalGbp: number
+    /** True when any add-on that day is unpriced, so the total above is not the whole of it. */
+    addonHasUnpricedSelection: boolean
   }
+}
+
+/**
+ * What one add-on line is worth on the night.
+ *
+ * Every item on the Christmas menu is unpriced at the time of writing, so a bare "£0.00" is the
+ * figure a manager would see most often, and it reads as free. Say what is actually known instead.
+ */
+function formatAddonLineMoney(totalGbp: number, hasUnpricedSelection: boolean): string {
+  if (!hasUnpricedSelection) return formatPreorderMoney(totalGbp)
+  return totalGbp > 0 ? `At least ${formatPreorderMoney(totalGbp)}` : 'No price yet'
 }
 type StatusFilter =
   | 'all'
@@ -961,6 +998,48 @@ export function BohBookingsClient({
               )
             })}
           </div>
+
+          {(dishTotals.addons ?? []).length > 0 && (
+            <div className="border-t border-gray-200 px-4 py-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Add-ons, extra to the courses
+                </p>
+                <p className="text-sm font-semibold tabular-nums text-gray-900">
+                  {formatAddonLineMoney(
+                    dishTotals.addonTotalGbp ?? 0,
+                    dishTotals.addonHasUnpricedSelection ?? false
+                  )}
+                </p>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {(dishTotals.addons ?? []).map((addon) => (
+                  <li
+                    key={addon.menuItemId}
+                    className="flex items-baseline justify-between gap-3 text-sm text-gray-900"
+                  >
+                    <span className="min-w-0 break-words">
+                      {addon.itemName}
+                      <span className="ml-2 text-xs text-gray-500">
+                        {addon.unitPriceGbp === null
+                          ? formatPreorderAddonPrice(null)
+                          : `${formatPreorderMoney(addon.unitPriceGbp)} each`}
+                      </span>
+                    </span>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="font-semibold">{addon.count}</span>
+                      <span className="ml-3 text-gray-600">
+                        {formatAddonLineMoney(addon.totalGbp, addon.hasUnpricedSelection)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {/* Verbatim from the shared constant: four surfaces wording this four ways is how one
+                  of them ends up implying the guest has already paid. */}
+              <p className="mt-3 text-xs text-gray-500">{PREORDER_ADDON_STAFF_NOTE}</p>
+            </div>
+          )}
         </div>
       )}
 

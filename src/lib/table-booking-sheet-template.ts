@@ -1,9 +1,39 @@
+import { PREORDER_ADDON_STAFF_NOTE } from '@/types/preorders'
+
+/** One optional extra a seat ticked. Deliberately not a course: see `renderCoverAddons` below. */
+export interface TableBookingSheetPreorderAddon {
+  itemName: string
+  /** "£8.50", or "Price on the day" when the item carries no price. Pre-formatted by the caller. */
+  priceLabel: string
+}
+
+/** What add-ons come to, and whether that figure is the whole of it. */
+export interface TableBookingSheetPreorderAddonTotal {
+  /** How many add-ons are ticked. */
+  count: number
+  /** "£17.00", summed by the caller from the price snapshotted when each add-on was ticked. */
+  totalLabel: string
+  /**
+   * True when at least one ticked add-on carries no price, so `totalLabel` understates the bill.
+   * The whole Christmas menu is unpriced at the time of writing, so this is the normal case rather
+   * than an edge one, and a total printed without the caveat would be read as the final figure.
+   */
+  hasUnpriced: boolean
+}
+
 /** One seat's food, as the kitchen reads it. All values are pre-formatted by the caller. */
 export interface TableBookingSheetPreorderCover {
   /** "Seat 1", or "Seat 1 · Jo Bloggs" when a name was given. Never blank. */
   seatLabel: string
   /** Starter, main, dessert, in that order. Empty when this seat has chosen nothing yet. */
   courses: Array<{ courseLabel: string; itemName: string }>
+  /**
+   * Extras this seat ticked, on top of the courses above. Optional on the interface so a sheet with
+   * no add-ons, and every caller written before they existed, is unchanged.
+   */
+  addons?: TableBookingSheetPreorderAddon[]
+  /** This seat's own add-on total. Omitted when the seat ticked nothing. */
+  addonTotal?: TableBookingSheetPreorderAddonTotal
   /** What the guest typed about their own requirements. Staff and kitchen only, never emailed. */
   dietaryNote: string | null
 }
@@ -19,6 +49,8 @@ export interface TableBookingSheetPreorder {
    */
   allergies: string[]
   covers: TableBookingSheetPreorderCover[]
+  /** The whole booking's add-on total, so the bill is right. Omitted when nobody ticked anything. */
+  addonTotal?: TableBookingSheetPreorderAddonTotal
 }
 
 export interface TableBookingSheetData {
@@ -166,7 +198,54 @@ function preorderPageStyles(): string {
   .seat-empty{ font-size:13px; color:var(--ink-mute); margin:0; }
   .seat-note{ margin:2.6mm 0 0; padding-top:2.4mm; border-top:1px solid var(--rule); }
   .seat-note-label{ display:block; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 1.4mm; }
-  .seat-note-value{ font-size:13px; line-height:1.45; color:var(--ink); margin:0; overflow-wrap:anywhere; word-break:break-word; }`
+  .seat-note-value{ font-size:13px; line-height:1.45; color:var(--ink); margin:0; overflow-wrap:anywhere; word-break:break-word; }
+  .seat-addons{ margin:2.6mm 0 0; padding:2.6mm 3.2mm; border:1px dashed var(--ink); }
+  .seat-addons-label{ display:block; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 1.8mm; }
+  .seat-addon{ display:flex; justify-content:space-between; gap:4mm; font-size:13px; line-height:1.45; color:var(--ink); margin:0 0 1.2mm; overflow-wrap:anywhere; word-break:break-word; }
+  .seat-addon-price{ flex-shrink:0; font-weight:600; }
+  .seat-addon-total{ font-size:12px; font-weight:600; color:var(--ink); margin:2mm 0 0; padding-top:1.6mm; border-top:1px solid var(--rule); }
+  .seat-addon-caveat{ display:block; font-weight:400; font-size:11px; line-height:1.4; color:var(--ink-mute); margin-top:1mm; }
+  .addons{ border:1px solid var(--ink); padding:4.8mm 5mm; margin-top:6mm; }
+  .addons-label{ font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 2.2mm; }
+  .addons-value{ font-family:var(--font-body); font-weight:600; font-size:15px; line-height:1.4; color:var(--ink); margin:0; overflow-wrap:anywhere; word-break:break-word; }
+  .addons-note{ font-size:11px; line-height:1.45; color:var(--ink-soft); margin:2.2mm 0 0; }`
+}
+
+/**
+ * A seat's add-ons, in their own boxed and labelled block below the courses.
+ *
+ * Deliberately NOT another line in the course list. The farmhouse cheeseboard sat on the menu as a
+ * dessert, so a guest who wanted it lost their pudding, and that confusion is the entire reason
+ * add-ons exist. A kitchen reading this page has to see at a glance that these are extras to put out
+ * alongside the meal, not plates to make instead of one.
+ */
+function renderCoverAddons(cover: TableBookingSheetPreorderCover): string {
+  const addons = cover.addons ?? []
+  if (addons.length === 0) return ''
+
+  const lines = addons
+    .map(
+      (addon) =>
+        `<p class="seat-addon"><span>${escapeHtml(addon.itemName)}</span><span class="seat-addon-price">${escapeHtml(addon.priceLabel)}</span></p>`
+    )
+    .join('\n            ')
+
+  // The caveat is not decoration: every Christmas item is unpriced today, so a seat total printed
+  // bare would be read at the till as the finished figure.
+  const caveat = cover.addonTotal?.hasUnpriced
+    ? '<span class="seat-addon-caveat">Some of these are not priced yet, so this is not the whole of it.</span>'
+    : ''
+
+  const total = cover.addonTotal
+    ? `
+            <p class="seat-addon-total">Seat add-on total ${escapeHtml(cover.addonTotal.totalLabel)}${caveat}</p>`
+    : ''
+
+  return `
+          <div class="seat-addons">
+            <span class="seat-addons-label">Add-ons, extra to the courses</span>
+            ${lines}${total}
+          </div>`
 }
 
 function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
@@ -190,8 +269,29 @@ function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
   return `
         <div class="seat">
           <p class="seat-head">${escapeHtml(cover.seatLabel)}</p>
-          ${courses}${note}
+          ${courses}${renderCoverAddons(cover)}${note}
         </div>`
+}
+
+/**
+ * What the pub charges for add-ons across the whole booking.
+ *
+ * The staff wording is rendered from the shared constant rather than retyped here, because four
+ * surfaces saying this four ways eventually produces one that implies the guest has already paid,
+ * and that argument happens at the till on the busiest night of the year.
+ */
+function renderPreorderAddonTotal(total: TableBookingSheetPreorderAddonTotal): string {
+  const note = total.hasUnpriced
+    ? `${PREORDER_ADDON_STAFF_NOTE} Some of them are not priced yet, so this figure is not the whole charge.`
+    : PREORDER_ADDON_STAFF_NOTE
+
+  return `
+      <div class="addons">
+        <p class="addons-label">Add-ons, whole booking</p>
+        <p class="addons-value">${total.count} add-on${total.count === 1 ? '' : 's'} · ${escapeHtml(total.totalLabel)}</p>
+        <p class="addons-note">${escapeHtml(note)}</p>
+      </div>
+`
 }
 
 /**
@@ -225,7 +325,7 @@ function renderPreorderPage(
 
       <div class="seats">${preorder.covers.map((cover) => renderPreorderCover(cover)).join('')}
       </div>
-
+${preorder.addonTotal ? renderPreorderAddonTotal(preorder.addonTotal) : ''}
       <div class="foot">
         <p class="foot-line">Generated at ${escapeHtml(data.generatedAt)}</p>
         <p class="foot-line">Live system is the source of truth</p>

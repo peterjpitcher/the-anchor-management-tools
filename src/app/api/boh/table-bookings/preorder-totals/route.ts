@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getLondonDateIso, requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isPreorderEnabled, loadPreorderDishTotals } from '@/lib/table-bookings/preorder'
-import type { PreorderDishTotals } from '@/lib/table-bookings/preorder'
+import {
+  emptyPreorderDishTotals,
+  isPreorderEnabled,
+  loadPreorderDishTotals,
+} from '@/lib/table-bookings/preorder'
 
 /** Rejects bad shape *and* bad calendar dates (2026-13-45, 2026-02-31). Never coerces. */
 function isIsoDate(value: string): boolean {
@@ -13,12 +16,9 @@ function isIsoDate(value: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
 }
 
-function emptyTotals(date: string): PreorderDishTotals {
-  return { date, bookingCount: 0, coverCount: 0, byCourse: { starter: [], main: [], dessert: [] } }
-}
-
 /**
- * How many of each dish the kitchen has to cook on a date, grouped by course.
+ * How many of each dish the kitchen has to cook on a date, grouped by course, with add-ons counted
+ * separately so a cheeseboard is never mistaken for a pudding the kitchen has to make.
  *
  * A separate route from the day list rather than another field on it: the totals are only wanted on
  * the day view, and the list is loaded for a whole month at a time.
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
     if (!(await isPreorderEnabled(admin))) {
-      return NextResponse.json({ success: true, data: emptyTotals(date) })
+      return NextResponse.json({ success: true, data: emptyPreorderDishTotals(date) })
     }
 
     return NextResponse.json({ success: true, data: await loadPreorderDishTotals(admin, date) })

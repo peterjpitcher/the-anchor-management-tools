@@ -19,13 +19,25 @@ import {
   generateTableBookingSheetsHTML,
   type TableBookingSheetData,
   type TableBookingSheetPreorder,
+  type TableBookingSheetPreorderAddonTotal,
+  type TableBookingSheetPreorderCover,
 } from '@/lib/table-booking-sheet-template'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isPreorderEnabled, mapPreorderCoverRow, mapPreorderSelectionRow } from '@/lib/table-bookings/preorder'
 import {
-  PREORDER_COURSES,
-  PREORDER_COURSE_LABELS,
-  type PreorderCourse,
+  formatPreorderAddonPrice,
+  formatPreorderMoney,
+  isPreorderAddon,
+  isPreorderEnabled,
+  mapPreorderCoverRow,
+  mapPreorderSelectionRow,
+  summariseCoverAddons,
+  summariseOrderAddons,
+} from '@/lib/table-bookings/preorder'
+import {
+  PREORDER_SELECTION_COURSES,
+  PREORDER_SELECTION_COURSE_LABELS,
+  type PreorderAddonSummary,
+  type PreorderCover,
   type PreorderCoverRow,
   type PreorderSelectionRow,
 } from '@/types/preorders'
@@ -171,6 +183,50 @@ function toSheetData(
   }
 }
 
+/** The template wants money as text; the summary carries it as numbers. One place to bridge them. */
+function toSheetAddonTotal(summary: PreorderAddonSummary): TableBookingSheetPreorderAddonTotal {
+  return {
+    count: summary.count,
+    totalLabel: formatPreorderMoney(summary.totalGbp),
+    hasUnpriced: summary.hasUnpricedAddon,
+  }
+}
+
+/**
+ * One seat, as the kitchen page wants it.
+ *
+ * Add-ons are pulled OUT of the course list rather than printed as another course line. The whole
+ * point of the feature is that the cheeseboard is an extra, not a pudding, and a kitchen sheet that
+ * listed it beside the courses would reproduce exactly the mistake this fixes.
+ */
+function toSheetCover(cover: PreorderCover): TableBookingSheetPreorderCover {
+  const addons = summariseCoverAddons(cover)
+
+  return {
+    seatLabel: cover.guestName
+      ? `Seat ${cover.ordinal} · ${cover.guestName}`
+      : `Seat ${cover.ordinal}`,
+    courses: cover.selections
+      .filter((selection) => !isPreorderAddon(selection))
+      .map((selection) => ({
+        courseLabel: PREORDER_SELECTION_COURSE_LABELS[selection.course],
+        itemName: selection.itemName,
+      })),
+    ...(addons.count > 0
+      ? {
+          addons: addons.items.map((item) => ({
+            itemName: item.itemName,
+            // Null is the normal case: every Christmas item is unpriced today, and "Price on the
+            // day" is honest where "£0.00" would be read as free.
+            priceLabel: formatPreorderAddonPrice(item.priceGbp),
+          })),
+          addonTotal: toSheetAddonTotal(addons),
+        }
+      : {}),
+    dietaryNote: cover.dietaryNote,
+  }
+}
+
 /**
  * The day's pre-orders, keyed by booking.
  *
@@ -219,24 +275,34 @@ async function loadPreordersForSheets(
     else selectionsByCover.set(row.cover_id, [row])
   }
 
+  // Group by booking first, then build each page, because the add-on total is a property of the whole
+  // booking and cannot be worked out one seat at a time.
+  const coversByBooking = new Map<string, PreorderCover[]>()
   for (const coverRow of coverRows) {
     const selections = (selectionsByCover.get(coverRow.id) ?? [])
       .map((row) => mapPreorderSelectionRow(row))
-      .sort((a, b) => PREORDER_COURSES.indexOf(a.course) - PREORDER_COURSES.indexOf(b.course))
+      // PREORDER_SELECTION_COURSES, not PREORDER_COURSES: indexOf on the three-course list returns
+      // -1 for an add-on, which would sort the cheeseboard ABOVE the starter. Name breaks the tie so
+      // a seat with several add-ons prints in a stable order.
+      .sort(
+        (a, b) =>
+          PREORDER_SELECTION_COURSES.indexOf(a.course) -
+            PREORDER_SELECTION_COURSES.indexOf(b.course) || a.itemName.localeCompare(b.itemName)
+      )
     const cover = mapPreorderCoverRow(coverRow, selections)
 
-    const block = byBooking.get(cover.tableBookingId) ?? { allergies: [], covers: [] }
-    block.covers.push({
-      seatLabel: cover.guestName
-        ? `Seat ${cover.ordinal} · ${cover.guestName}`
-        : `Seat ${cover.ordinal}`,
-      courses: cover.selections.map((selection) => ({
-        courseLabel: PREORDER_COURSE_LABELS[selection.course as PreorderCourse],
-        itemName: selection.itemName,
-      })),
-      dietaryNote: cover.dietaryNote,
+    const covers = coversByBooking.get(cover.tableBookingId)
+    if (covers) covers.push(cover)
+    else coversByBooking.set(cover.tableBookingId, [cover])
+  }
+
+  for (const [tableBookingId, covers] of coversByBooking) {
+    const addons = summariseOrderAddons({ covers })
+    byBooking.set(tableBookingId, {
+      allergies: [],
+      covers: covers.map((cover) => toSheetCover(cover)),
+      ...(addons.count > 0 ? { addonTotal: toSheetAddonTotal(addons) } : {}),
     })
-    byBooking.set(cover.tableBookingId, block)
   }
 
   return byBooking
