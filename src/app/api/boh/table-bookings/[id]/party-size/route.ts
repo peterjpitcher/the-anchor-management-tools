@@ -11,6 +11,10 @@ import {
   applyPartySizeDepositTransition,
   type PartySizeDepositTransitionResult
 } from '@/lib/table-bookings/staff-deposit-transitions'
+import {
+  syncPreorderCovers,
+  type PreorderRemovedCover
+} from '@/lib/table-bookings/preorder'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -151,12 +155,34 @@ export async function POST(
       depositWarning = depositTransition.message
     }
 
+    // Bring the pre-order seats back in line with the new party size. Only seasonal bookings can
+    // have seats at all, so an ordinary Tuesday amendment skips this entirely rather than paying
+    // for a round trip that has nothing to do. A booking whose seasonal answer has since been
+    // switched off still qualifies: it may have seats left to tidy away.
+    //
+    // Like the deposit above, a failure here must not be reported as a failed amendment. The size
+    // is already saved, a stale cover list is recoverable, and the nightly drift check reports it.
+    let preorderRemoved: PreorderRemovedCover[] = []
+    if (result.state === 'updated' && currentBooking.booking_period_id) {
+      try {
+        const sync = await syncPreorderCovers(auth.supabase, id)
+        preorderRemoved = sync.removed
+      } catch (preorderError) {
+        logger.error('BOH party-size pre-order cover sync failed after party size saved', {
+          error: preorderError instanceof Error ? preorderError : new Error(String(preorderError)),
+          metadata: { tableBookingId: id, previousPartySize, newPartySize },
+        })
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: result,
       booking: updatedBooking,
       depositTransition,
       warning: depositWarning,
+      // What the shrink dropped, so staff can tell the booker whose food choice has gone.
+      preorderRemoved,
       depositRequired: depositTransition?.state === 'deposit_required',
       depositUrl: depositTransition?.state === 'deposit_required' ? depositTransition.depositUrl : null,
       depositAmount: depositTransition?.state === 'deposit_required' ? depositTransition.depositAmount : null,

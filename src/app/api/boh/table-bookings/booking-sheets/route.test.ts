@@ -40,6 +40,40 @@ vi.mock('@/lib/foh/api-auth', () => ({
   getLondonDateIso: vi.fn(() => '2026-07-16'),
 }))
 
+// The pre-order tables are service-role only, so the route reads them through the admin client after
+// permission has been proven. Both chains it uses are covered: covers are ordered, selections are not.
+const preorderState: {
+  enabled: boolean
+  covers: Record<string, unknown>[]
+  selections: Record<string, unknown>[]
+} = { enabled: false, covers: [], selections: [] }
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    from: (table: string) => ({
+      select: () => {
+        const rows =
+          table === 'booking_preorder_covers' ? preorderState.covers : preorderState.selections
+        const result = { data: rows, error: null }
+        const chain = {
+          in: () => chain,
+          order: () => Promise.resolve(result),
+          then: (resolve: (value: typeof result) => unknown) =>
+            Promise.resolve(result).then(resolve),
+        }
+        return chain
+      },
+    }),
+  }),
+}))
+
+vi.mock('@/lib/table-bookings/preorder', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/table-bookings/preorder')>(
+    '@/lib/table-bookings/preorder'
+  )
+  return { ...actual, isPreorderEnabled: vi.fn(async () => preorderState.enabled) }
+})
+
 vi.mock('@/lib/pdf-generator', () => ({
   generatePDFFromHTML: vi.fn(() => Promise.resolve(Buffer.from('%PDF'))),
 }))
@@ -72,6 +106,14 @@ type Sheet = {
   status: string
   requirements: string[]
   generatedAt: string
+  preorder?: {
+    allergies: string[]
+    covers: Array<{
+      seatLabel: string
+      courses: Array<{ courseLabel: string; itemName: string }>
+      dietaryNote: string | null
+    }>
+  }
 }
 
 function makeRequest(date?: string | null) {
@@ -100,6 +142,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     is_outside_seating: false,
     high_chair_count: 0,
     requires_accessible_table: false,
+    allergies: null,
     customer: { first_name: 'Jo', last_name: 'Bloggs' },
     table_booking_tables: [
       { table: { id: 't1', name: 'Window', table_number: '1', is_bookable: true } },
@@ -116,6 +159,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   queryResult.data = []
   queryResult.error = null
+  preorderState.enabled = false
+  preorderState.covers = []
+  preorderState.selections = []
   vi.mocked(getLondonDateIso).mockReturnValue('2026-07-16')
   vi.mocked(generatePDFFromHTML).mockResolvedValue(Buffer.from('%PDF'))
   vi.mocked(requireBohTableBookingPermission).mockResolvedValue({
@@ -427,5 +473,111 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     const sheets = lastSheets()
     expect(sheets[0].customerName).toBe('ANC-001')
     expect(sheets[1].customerName).toBe('Walk-in guest')
+  })
+
+  describe('seasonal pre-orders', () => {
+    function coverRow(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'c1',
+        table_booking_id: 'b1',
+        ordinal: 1,
+        guest_name: null,
+        dietary_note: null,
+        created_at: '2026-07-01T10:00:00Z',
+        updated_at: '2026-07-01T10:00:00Z',
+        ...overrides,
+      }
+    }
+
+    function selectionRow(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 's1',
+        cover_id: 'c1',
+        course: 'main',
+        menu_item_id: 'm1',
+        item_name: 'Roast turkey',
+        price_gbp: '24.95',
+        created_at: '2026-07-01T10:00:00Z',
+        updated_at: '2026-07-01T10:00:00Z',
+        ...overrides,
+      }
+    }
+
+    it('attaches no pre-order block while the feature is switched off', async () => {
+      preorderState.enabled = false
+      preorderState.covers = [coverRow()]
+      queryResult.data = [makeRow({ id: 'b1' })]
+
+      await GET(makeRequest('2026-07-16'))
+
+      expect(lastSheets()[0].preorder).toBeUndefined()
+    })
+
+    it('attaches no pre-order block to a booking that has no covers', async () => {
+      preorderState.enabled = true
+      preorderState.covers = [coverRow({ id: 'c9', table_booking_id: 'b2' })]
+      queryResult.data = [
+        makeRow({ id: 'b1', booking_reference: 'ANC-001', booking_time: '18:00' }),
+        makeRow({ id: 'b2', booking_reference: 'ANC-002', booking_time: '19:00' }),
+      ]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const sheets = lastSheets()
+      expect(sheets[0].preorder).toBeUndefined()
+      expect(sheets[1].preorder?.covers).toHaveLength(1)
+    })
+
+    it('builds a seat per cover, labelled with the guest name when one was given', async () => {
+      preorderState.enabled = true
+      preorderState.covers = [
+        coverRow({ id: 'c1', ordinal: 1, guest_name: 'Jo Bloggs' }),
+        coverRow({ id: 'c2', ordinal: 2, guest_name: null }),
+      ]
+      preorderState.selections = [
+        selectionRow({ id: 's1', cover_id: 'c1', course: 'main', item_name: 'Roast turkey' }),
+        selectionRow({ id: 's2', cover_id: 'c1', course: 'starter', item_name: 'Parsnip soup' }),
+        selectionRow({ id: 's3', cover_id: 'c2', course: 'main', item_name: 'Nut roast' }),
+      ]
+      queryResult.data = [makeRow({ id: 'b1' })]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const preorder = lastSheets()[0].preorder
+      expect(preorder?.covers.map((cover) => cover.seatLabel)).toEqual([
+        'Seat 1 · Jo Bloggs',
+        'Seat 2',
+      ])
+      // Starter before main regardless of the order the rows came back in.
+      expect(preorder?.covers[0].courses).toEqual([
+        { courseLabel: 'Starter', itemName: 'Parsnip soup' },
+        { courseLabel: 'Main', itemName: 'Roast turkey' },
+      ])
+    })
+
+    // Spec section 6 item 3: losing either allergy source is the worst regression this feature has.
+    it('carries the booking allergy list and the per-seat dietary note together', async () => {
+      preorderState.enabled = true
+      preorderState.covers = [coverRow({ dietary_note: 'No dairy please' })]
+      preorderState.selections = [selectionRow()]
+      queryResult.data = [makeRow({ id: 'b1', allergies: ['Nuts', 'Shellfish'] })]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const preorder = lastSheets()[0].preorder
+      expect(preorder?.allergies).toEqual(['Nuts', 'Shellfish'])
+      expect(preorder?.covers[0].dietaryNote).toBe('No dairy please')
+    })
+
+    it('treats a null allergy column as an empty list rather than dropping the block', async () => {
+      preorderState.enabled = true
+      preorderState.covers = [coverRow()]
+      preorderState.selections = [selectionRow()]
+      queryResult.data = [makeRow({ id: 'b1', allergies: null })]
+
+      await GET(makeRequest('2026-07-16'))
+
+      expect(lastSheets()[0].preorder?.allergies).toEqual([])
+    })
   })
 })

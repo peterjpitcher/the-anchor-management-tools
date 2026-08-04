@@ -18,7 +18,17 @@ import { getTableBookingStatusLabel, getTableBookingVisualState } from '@/lib/ta
 import {
   generateTableBookingSheetsHTML,
   type TableBookingSheetData,
+  type TableBookingSheetPreorder,
 } from '@/lib/table-booking-sheet-template'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isPreorderEnabled, mapPreorderCoverRow, mapPreorderSelectionRow } from '@/lib/table-bookings/preorder'
+import {
+  PREORDER_COURSES,
+  PREORDER_COURSE_LABELS,
+  type PreorderCourse,
+  type PreorderCoverRow,
+  type PreorderSelectionRow,
+} from '@/types/preorders'
 
 /** One A4 page per booking — a hard ceiling keeps the Chromium render inside maxDuration. */
 const MAX_PRINTABLE_ROWS = 200
@@ -57,6 +67,8 @@ type BookingRow = {
   is_outside_seating: boolean | null
   high_chair_count: number | null
   requires_accessible_table: boolean | null
+  /** Booking-level allergy list the pub already records. Printed on the food page, never elsewhere. */
+  allergies: string[] | null
   customer: CustomerRow | CustomerRow[] | null
   table_booking_tables: AssignmentRow[] | null
 }
@@ -139,7 +151,12 @@ function requirementsField(row: BookingRow): string[] {
   return requirements
 }
 
-function toSheetData(row: BookingRow, bookingDate: string, generatedAt: string): TableBookingSheetData {
+function toSheetData(
+  row: BookingRow,
+  bookingDate: string,
+  generatedAt: string,
+  preorder?: TableBookingSheetPreorder
+): TableBookingSheetData {
   return {
     bookingRef: row.booking_reference || '',
     customerName: customerName(row),
@@ -150,7 +167,79 @@ function toSheetData(row: BookingRow, bookingDate: string, generatedAt: string):
     status: getTableBookingStatusLabel(getTableBookingVisualState(row)),
     requirements: requirementsField(row),
     generatedAt,
+    ...(preorder ? { preorder } : {}),
   }
+}
+
+/**
+ * The day's pre-orders, keyed by booking.
+ *
+ * Read in bulk rather than one booking at a time: a December print run is a couple of hundred pages
+ * inside one maxDuration, and a per-booking read would be several hundred round trips. The pre-order
+ * tables are service-role only under RLS, so this uses the admin client. Permission was already
+ * proven by requireBohTableBookingPermission before we got here.
+ *
+ * Bookings with no covers get no entry, and so no food page: an order nobody has started is the
+ * reminder cron's business (spec section 7), not the kitchen's.
+ */
+async function loadPreordersForSheets(
+  bookingIds: string[]
+): Promise<Map<string, TableBookingSheetPreorder>> {
+  const byBooking = new Map<string, TableBookingSheetPreorder>()
+  if (bookingIds.length === 0) return byBooking
+
+  const admin = createAdminClient()
+  if (!(await isPreorderEnabled(admin))) return byBooking
+
+  const { data: coverData, error: coverError } = await admin
+    .from('booking_preorder_covers')
+    .select('id, table_booking_id, ordinal, guest_name, dietary_note, created_at, updated_at')
+    .in('table_booking_id', bookingIds)
+    .order('ordinal', { ascending: true })
+
+  if (coverError) throw coverError
+
+  const coverRows = (coverData ?? []) as unknown as PreorderCoverRow[]
+  if (coverRows.length === 0) return byBooking
+
+  const { data: selectionData, error: selectionError } = await admin
+    .from('booking_preorder_selections')
+    .select('id, cover_id, course, menu_item_id, item_name, price_gbp, created_at, updated_at')
+    .in(
+      'cover_id',
+      coverRows.map((cover) => cover.id)
+    )
+
+  if (selectionError) throw selectionError
+
+  const selectionsByCover = new Map<string, PreorderSelectionRow[]>()
+  for (const row of (selectionData ?? []) as unknown as PreorderSelectionRow[]) {
+    const list = selectionsByCover.get(row.cover_id)
+    if (list) list.push(row)
+    else selectionsByCover.set(row.cover_id, [row])
+  }
+
+  for (const coverRow of coverRows) {
+    const selections = (selectionsByCover.get(coverRow.id) ?? [])
+      .map((row) => mapPreorderSelectionRow(row))
+      .sort((a, b) => PREORDER_COURSES.indexOf(a.course) - PREORDER_COURSES.indexOf(b.course))
+    const cover = mapPreorderCoverRow(coverRow, selections)
+
+    const block = byBooking.get(cover.tableBookingId) ?? { allergies: [], covers: [] }
+    block.covers.push({
+      seatLabel: cover.guestName
+        ? `Seat ${cover.ordinal} · ${cover.guestName}`
+        : `Seat ${cover.ordinal}`,
+      courses: cover.selections.map((selection) => ({
+        courseLabel: PREORDER_COURSE_LABELS[selection.course as PreorderCourse],
+        itemName: selection.itemName,
+      })),
+      dietaryNote: cover.dietaryNote,
+    })
+    byBooking.set(cover.tableBookingId, block)
+  }
+
+  return byBooking
 }
 
 export async function GET(request: NextRequest) {
@@ -178,6 +267,7 @@ export async function GET(request: NextRequest) {
         is_outside_seating,
         high_chair_count,
         requires_accessible_table,
+        allergies,
         customer:customers!table_bookings_customer_id_fkey(first_name, last_name),
         table_booking_tables:booking_table_assignments!booking_table_assignments_table_booking_id_fkey(
           table:tables!booking_table_assignments_table_id_fkey(id, name, table_number, is_bookable)
@@ -221,7 +311,20 @@ export async function GET(request: NextRequest) {
       `${formatDateDdMmmmYyyy(now)} at ${formatTime12Hour(toLondonDateTimeLocalValue(now).slice(11))}`
     const bookingDate = formatDateFull(date)
 
-    const sheets = ordered.map((row) => toSheetData(row, bookingDate, generatedAt))
+    const preorders = await loadPreordersForSheets(ordered.map((row) => row.id))
+
+    const sheets = ordered.map((row) => {
+      const preorder = preorders.get(row.id)
+      // The booking-level allergy list is attached here, not in the loader, because it lives on the
+      // booking rather than on a cover. Both sources must reach the food page: showing only the
+      // per-seat notes would drop an allergy the pub already records.
+      return toSheetData(
+        row,
+        bookingDate,
+        generatedAt,
+        preorder ? { ...preorder, allergies: row.allergies ?? [] } : undefined
+      )
+    })
 
     const logoDataUrl = await imageDataUrl('booking-confirmation/anchor-logo-black.png', 'image/png')
     const html = generateTableBookingSheetsHTML(sheets, { logoDataUrl })

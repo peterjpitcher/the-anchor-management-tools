@@ -11,6 +11,10 @@ import {
   applyPartySizeDepositTransition,
   type PartySizeDepositTransitionResult
 } from '@/lib/table-bookings/staff-deposit-transitions'
+import {
+  syncPreorderCovers,
+  type PreorderRemovedCover
+} from '@/lib/table-bookings/preorder'
 
 const UpdatePartySizeSchema = z.object({
   party_size: z.preprocess(
@@ -143,12 +147,37 @@ export async function POST(
       depositWarning = depositTransition.message
     }
 
+    // Bring the pre-order seats back in line with the new party size, exactly as the BOH route does.
+    // Both screens write party size through their own route, so a fix applied to one of them leaves
+    // the other silently stale: a manager shrinking a Christmas table on the iPad would strand a
+    // seat, and the kitchen would cook for someone who is no longer coming.
+    //
+    // Only seasonal bookings can have seats at all, so an ordinary amendment skips this rather than
+    // paying for a round trip with nothing to do. A booking whose seasonal answer has since been
+    // switched off still qualifies, because it may have seats left to tidy away.
+    //
+    // Like the deposit above, a failure here must not be reported as a failed amendment. The size is
+    // already saved, a stale cover list is recoverable, and the nightly drift check reports it.
+    let preorderRemoved: PreorderRemovedCover[] = []
+    if (result.state === 'updated' && currentBooking.booking_period_id) {
+      try {
+        const sync = await syncPreorderCovers(auth.supabase, id)
+        preorderRemoved = sync.removed
+      } catch (preorderError) {
+        logger.error('FOH party-size pre-order cover sync failed after party size saved', {
+          error: preorderError instanceof Error ? preorderError : new Error(String(preorderError)),
+          metadata: { tableBookingId: id, previousPartySize, newPartySize },
+        })
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: result,
       booking: updatedBooking,
       depositTransition,
       warning: depositWarning,
+      preorderRemoved,
     })
   } catch (error) {
     logger.error('FOH table-booking party-size update failed', {

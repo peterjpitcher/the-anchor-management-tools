@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   generateTableBookingSheetsHTML,
   type TableBookingSheetData,
+  type TableBookingSheetPreorder,
 } from '@/lib/table-booking-sheet-template'
 
 const LOGO = 'data:image/png;base64,iVBORw0KGgo='
@@ -21,8 +24,31 @@ function makeSheet(overrides: Partial<TableBookingSheetData> = {}): TableBooking
   }
 }
 
+function makePreorder(
+  overrides: Partial<TableBookingSheetPreorder> = {}
+): TableBookingSheetPreorder {
+  return {
+    allergies: [],
+    covers: [
+      {
+        seatLabel: 'Seat 1 · Jo Bloggs',
+        courses: [
+          { courseLabel: 'Starter', itemName: 'Parsnip soup' },
+          { courseLabel: 'Main', itemName: 'Roast turkey' },
+        ],
+        dietaryNote: null,
+      },
+    ],
+    ...overrides,
+  }
+}
+
 function countPages(html: string): number {
   return html.match(/<section class="page">/g)?.length ?? 0
+}
+
+function countFoodPages(html: string): number {
+  return html.match(/<section class="food-page">/g)?.length ?? 0
 }
 
 function countOccurrences(html: string, needle: string): number {
@@ -346,6 +372,238 @@ describe('generateTableBookingSheetsHTML', () => {
       expect(html).not.toContain('pay-label')
       expect(html).not.toContain('Booking total')
       expect(html.toLowerCase()).not.toContain('attendee')
+    })
+  })
+
+  // The fixture was generated from the template as it stood BEFORE seasonal pre-orders existed. It is
+  // the only proof that adding the food page did not quietly change every sheet the pub prints today,
+  // and it covers the stylesheet as well as the markup. If a deliberate change to the ordinary sheet
+  // is ever made, regenerate the fixture in the same commit and say so in the message.
+  describe('baseline: an ordinary sheet is byte-identical to what we printed before pre-orders', () => {
+    const BASELINE = readFileSync(
+      path.join(__dirname, '__fixtures__', 'table-booking-sheet-baseline.html'),
+      'utf8'
+    )
+
+    const baselineSheets: TableBookingSheetData[] = [
+      makeSheet(),
+      makeSheet({
+        bookingRef: 'TB-0002',
+        customerName: "O'Neill & Sons",
+        startTime: '1:15pm',
+        partySize: '12',
+        tableLabel: 'Outside',
+        status: 'Pending payment',
+        requirements: ['Step-free table', 'High chair ×2'],
+      }),
+    ]
+
+    it('should reproduce the recorded baseline byte for byte', () => {
+      expect(generateTableBookingSheetsHTML(baselineSheets, { logoDataUrl: LOGO })).toBe(BASELINE)
+    })
+
+    it('should emit no pre-order markup or styles at all when no sheet carries a pre-order', () => {
+      const html = generateTableBookingSheetsHTML(baselineSheets, { logoDataUrl: LOGO })
+
+      expect(countFoodPages(html)).toBe(0)
+      expect(html).not.toContain('.food-page')
+      expect(html).not.toContain('class="seat')
+      expect(html).not.toContain('class="alerts')
+    })
+
+    it('should leave the ordinary page untouched on a booking that also has a pre-order', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ preorder: makePreorder() })],
+        { logoDataUrl: LOGO }
+      )
+      const bookingPage = html.slice(
+        html.indexOf('<section class="page">'),
+        html.indexOf('<section class="food-page">')
+      )
+
+      expect(countPages(html)).toBe(1)
+      expect(countFoodPages(html)).toBe(1)
+      expect(bookingPage.toLowerCase()).not.toContain('allerg')
+      expect(bookingPage.toLowerCase()).not.toContain('dietary')
+    })
+  })
+
+  describe('pre-order food page', () => {
+    it('should list every seat with its name and its courses in the order supplied', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1 · Jo Bloggs',
+                  courses: [
+                    { courseLabel: 'Starter', itemName: 'Parsnip soup' },
+                    { courseLabel: 'Main', itemName: 'Roast turkey' },
+                    { courseLabel: 'Dessert', itemName: 'Christmas pudding' },
+                  ],
+                  dietaryNote: null,
+                },
+                {
+                  seatLabel: 'Seat 2',
+                  courses: [{ courseLabel: 'Main', itemName: 'Nut roast' }],
+                  dietaryNote: null,
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Kitchen pre-order')
+      expect(countOccurrences(html, 'class="seat"')).toBe(2)
+      expect(html).toContain('Seat 1 · Jo Bloggs')
+      expect(html).toContain('Seat 2')
+      expect(html.indexOf('Parsnip soup')).toBeLessThan(html.indexOf('Roast turkey'))
+      expect(html.indexOf('Roast turkey')).toBeLessThan(html.indexOf('Christmas pudding'))
+      expect(html).toContain('<span class="seat-course-label">Main</span>Nut roast')
+    })
+
+    it('should say so plainly when a seat has chosen nothing rather than printing a blank', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [{ seatLabel: 'Seat 3', courses: [], dietaryNote: null }],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Nothing chosen yet')
+    })
+
+    // Spec section 6 item 3. Dropping either source would be the most dangerous regression here.
+    it('should show booking allergies and per-seat dietary notes, each labelled', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              allergies: ['Nuts', 'Shellfish'],
+              covers: [
+                {
+                  seatLabel: 'Seat 1 · Jo Bloggs',
+                  courses: [{ courseLabel: 'Main', itemName: 'Roast turkey' }],
+                  dietaryNote: 'No dairy please',
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Allergies, whole booking')
+      expect(html).toContain('Nuts · Shellfish')
+      expect(html).toContain('Dietary requirement, this guest')
+      expect(html).toContain('No dairy please')
+    })
+
+    it('should still print the allergy line, marked as empty, when none are recorded', () => {
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ preorder: makePreorder({ allergies: [] }) })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Allergies, whole booking')
+      expect(html).toContain('None recorded')
+    })
+
+    it('should omit the dietary block for a seat that gave no note', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: makePreorder({
+              covers: [
+                {
+                  seatLabel: 'Seat 1',
+                  courses: [{ courseLabel: 'Main', itemName: 'Roast turkey' }],
+                  dietaryNote: null,
+                },
+                {
+                  seatLabel: 'Seat 2',
+                  courses: [{ courseLabel: 'Main', itemName: 'Nut roast' }],
+                  dietaryNote: 'Coeliac',
+                },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(countOccurrences(html, 'Dietary requirement, this guest')).toBe(1)
+    })
+
+    it('should escape hostile characters in seat labels, dish names, notes and allergies', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            preorder: {
+              allergies: ['<script>alert(1)</script>'],
+              covers: [
+                {
+                  seatLabel: '<script>alert(1)</script>',
+                  courses: [
+                    {
+                      courseLabel: '<script>alert(1)</script>',
+                      itemName: '<script>alert(1)</script>',
+                    },
+                  ],
+                  dietaryNote: '<script>alert(1)</script>',
+                },
+              ],
+            },
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).not.toContain('<script>')
+      expect(html).not.toContain('</script>')
+      expect(countOccurrences(html, '&lt;script&gt;alert(1)&lt;/script&gt;')).toBe(5)
+    })
+
+    it('should let a long party flow onto another page rather than clipping the last seats', () => {
+      const covers = Array.from({ length: 24 }, (_unused, index) => ({
+        seatLabel: `Seat ${index + 1}`,
+        courses: [{ courseLabel: 'Main', itemName: `Dish ${index + 1}` }],
+        dietaryNote: null,
+      }))
+      const html = generateTableBookingSheetsHTML(
+        [makeSheet({ partySize: '24', preorder: makePreorder({ covers }) })],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('Seat 24')
+      expect(html).toContain('Dish 24')
+
+      const rule = html.slice(html.indexOf('.food-page{'), html.indexOf('}', html.indexOf('.food-page{')))
+      expect(rule).toContain('min-height:297mm')
+      expect(rule).not.toContain('overflow:hidden')
+      expect(html).toContain('page-break-inside:avoid')
+    })
+
+    it('should give a food page only to the bookings that have a pre-order', () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({ bookingRef: 'TB-0001' }),
+          makeSheet({ bookingRef: 'TB-0002', preorder: makePreorder() }),
+          makeSheet({ bookingRef: 'TB-0003' }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(countPages(html)).toBe(3)
+      expect(countFoodPages(html)).toBe(1)
+      expect(countOccurrences(html, 'Kitchen pre-order')).toBe(1)
     })
   })
 })
