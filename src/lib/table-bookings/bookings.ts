@@ -1012,7 +1012,24 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     smsBody = `${base}${highChairSuffix}${outsideSuffix} ${cta}`
   } else {
     const bookingNoun = isOutside ? 'outside booking' : 'table booking'
-    smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${highChairSuffix}${outsideSuffix}${manageLink ? ` Manage booking: ${manageLink}` : ''}`
+    // A booking on a seasonal menu that needs choices gets told so here, and the link is named for
+    // the job rather than for the screen it opens. "Manage booking" reads as an amend-or-cancel link,
+    // so a Christmas guest who needs to pick three courses has no reason to open it, and the first
+    // they would hear of it is the chase seven days out. That is late for the kitchen and it makes
+    // the reminder do work the confirmation should already have done.
+    // Only when the guest actually accepted the seasonal menu. Someone who declined it is on the
+    // ordinary menu and has nothing to choose in advance, so pointing them at a food form would be
+    // a job they cannot do.
+    const needsFoodChoices =
+      Boolean(input.bookingResult.booking_period_id) &&
+      input.bookingResult.booking_period_requires_preorder === true &&
+      input.bookingResult.booking_period_answer === true
+    const linkSuffix = manageLink
+      ? needsFoodChoices
+        ? ` Choose your food: ${manageLink}`
+        : ` Manage booking: ${manageLink}`
+      : ''
+    smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${highChairSuffix}${outsideSuffix}${linkSuffix}`
   }
 
   const templateKey = input.bookingResult.state === 'pending_payment'
