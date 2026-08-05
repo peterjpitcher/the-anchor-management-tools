@@ -17,7 +17,9 @@ import {
 } from '@/lib/email/employee-invite-emails';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
+// This builds invite links that go out by email, so the fallback must resolve.
+// `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk';
 
 // DEF-015 verified: the employee_invite_tokens table column is defined as
 // `expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days'`
