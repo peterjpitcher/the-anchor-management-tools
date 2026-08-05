@@ -1,5 +1,11 @@
-import Link from 'next/link'
-import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import {
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_LEAD_CLASS,
+  GuestButton,
+  GuestShell,
+} from '@/components/features/guest'
+import { cn } from '@/lib/utils'
 import { sanitizeFeedbackSource } from '@/app/api/feedback/source'
 
 export const metadata = {
@@ -19,31 +25,37 @@ export default async function FeedbackLandingPage({ searchParams }: FeedbackLand
     ? `/feedback/tell-us?src=${encodeURIComponent(src)}`
     : '/feedback/tell-us'
   return (
-    <GuestPageShell>
-      <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-        <h1 className="text-center text-2xl font-semibold text-slate-900">
-          How was your visit with us?
-        </h1>
-        <p className="mt-2 text-center text-sm text-slate-600">
-          It only takes a moment to let us know how we did.
-        </p>
+    // Body padding 40px 18px 44px. The `sm:` half repeats the override because
+    // GuestShell carries its own `sm:` padding, which would otherwise win back.
+    <GuestShell centred bodyClassName="pt-10 pb-11 sm:pt-10 sm:pb-11">
+      <section className="flex w-full flex-col items-center gap-[26px]">
+        <div className={cn(GUEST_INTRO_CLASS, 'items-center')}>
+          {/* The locality line is the one decorative flourish in the guest
+              system, used here and on /feedback/thanks only. */}
+          <p className="font-anchor-script text-[30px] leading-[1.3] text-guest-accent-text">
+            Stanwell Moor Village
+          </p>
 
-        <div className="mt-8 flex flex-col gap-3">
-          <a
-            href={GOOGLE_REVIEW_URL}
-            className="inline-flex min-h-[48px] w-full items-center justify-center rounded-md bg-sidebar px-4 py-3 text-base font-semibold text-white transition hover:bg-sidebar/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar focus-visible:ring-offset-2"
-          >
-            I enjoyed my visit
-          </a>
+          {/* `leading-[1.2]` is repeated deliberately: tailwind-merge counts
+              `text-[size]` as conflicting with `leading-*`, so overriding the
+              size drops the shared class's line height unless it is restated. */}
+          <h1 className={cn(GUEST_H1_CLASS, 'text-[32px] leading-[1.2] sm:text-[32px]')}>
+            How was your visit with us?
+          </h1>
 
-          <Link
-            href={tellUsHref}
-            className="inline-flex min-h-[48px] w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
-          >
-            It could have been better
-          </Link>
+          <p className={GUEST_LEAD_CLASS}>It only takes a moment to let us know how we did.</p>
         </div>
-      </div>
-    </GuestPageShell>
+
+        <div className="flex w-full flex-col gap-3">
+          <GuestButton as="a" href={GOOGLE_REVIEW_URL} variant="primary" size="lg" fullWidth>
+            I enjoyed my visit
+          </GuestButton>
+
+          <GuestButton as="link" href={tellUsHref} variant="outline" size="lg" fullWidth>
+            It could have been better
+          </GuestButton>
+        </div>
+      </section>
+    </GuestShell>
   )
 }

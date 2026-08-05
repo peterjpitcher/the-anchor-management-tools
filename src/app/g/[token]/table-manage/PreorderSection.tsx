@@ -1,5 +1,15 @@
+import {
+  GuestAlert,
+  GuestField,
+  guestFieldControlProps,
+  GUEST_CHOICE_ROW_CLASS,
+  GUEST_INPUT_CLASS,
+  GUEST_INPUT_INVALID_CLASS,
+  GUEST_SUNK_BOX_CLASS,
+} from '@/components/features/guest'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 import {
   formatPreorderAddonPrice,
   formatPreorderMoney,
@@ -9,6 +19,7 @@ import {
   summariseCoverAddons,
   summariseOrderAddons,
 } from '@/lib/table-bookings/preorder'
+import { cn } from '@/lib/utils'
 import {
   PREORDER_ADDON_GUEST_NOTE,
   PREORDER_COURSES,
@@ -18,6 +29,7 @@ import {
   type PreorderCourse,
   type PreorderCover,
 } from '@/types/preorders'
+import { GUEST_SUBMIT_PRIMARY_CLASS, PREORDER_SEAT_BLOCK_CLASS } from './formStyles'
 import type { BookerPreorderView } from './preorder-data'
 
 /**
@@ -95,9 +107,12 @@ function addonCountPhrase(count: number): string {
   return count === 1 ? '1 add-on' : `${count} add-ons`
 }
 
-const FIELD_CLASS =
-  'mt-1 block w-full min-h-11 rounded-md border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 sm:text-sm'
-const LABEL_CLASS = 'block text-sm font-medium text-gray-900'
+/** Seat title, shared by the editable fieldset legend and the read-only row. */
+const SEAT_TITLE_CLASS =
+  'font-anchor-body text-[14px] font-bold leading-[1.4] text-guest-text-strong'
+
+/** Small print inside a seat block: the read-only choices and dietary lines. */
+const SEAT_TEXT_CLASS = 'font-anchor-body text-[14px] leading-[1.6] text-guest-text'
 
 export function PreorderSection({
   order,
@@ -111,7 +126,7 @@ export function PreorderSection({
   const seats = Array.from({ length: Math.max(1, order.partySize) }, (_, index) => index + 1)
   const completeness = getPreorderCompleteness(order)
   const menuName = order.periodName || 'seasonal'
-  const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
+  const contactPhone = GUEST_CONTACT.phoneDisplay
   const hasAddons = addons.length > 0
 
   // The whole booking's add-on bill. Withdrawn items are left out on the editable form for the same
@@ -120,19 +135,27 @@ export function PreorderSection({
   const savedOrderAddons = summariseOrderAddons(order)
 
   return (
-    <section aria-labelledby="preorder-heading" className="mt-8 border-t border-gray-200 pt-6">
-      <h2 id="preorder-heading" className="text-lg font-semibold text-gray-900">
-        Your food choices
-      </h2>
-      <p className="mt-2 text-sm text-gray-600">
-        Everyone eating from the {menuName} menu chooses their main course in advance so the kitchen can
-        prepare it. A starter and a pudding are optional.
-      </p>
+    <section
+      aria-labelledby="preorder-heading"
+      className="flex flex-col gap-[14px] border-t border-guest-border-strong pt-5"
+    >
+      <div className="flex flex-col gap-2">
+        <h2
+          id="preorder-heading"
+          className="font-anchor-display text-[22px] font-normal leading-[1.25] text-guest-text-strong"
+        >
+          Your food choices
+        </h2>
+        <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          Everyone eating from the {menuName} menu chooses their main course in advance so the kitchen can
+          prepare it. A starter and a pudding are optional.
+        </p>
+      </div>
 
       {hasAddons && (
         <p
           id={ADDON_NOTE_ID}
-          className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700"
+          className="rounded-guest-card border border-anchor-gold/[0.35] bg-anchor-gold/[0.07] px-[15px] py-[13px] font-anchor-body text-[13px] leading-[1.6] text-guest-text"
         >
           {PREORDER_ADDON_GUEST_NOTE}
         </p>
@@ -141,20 +164,20 @@ export function PreorderSection({
       {cutoff.editable ? (
         <>
           {cutoff.at && (
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="font-anchor-body text-[13px] leading-[1.55] text-guest-text-muted">
               You can change these until {formatDateTime12Hour(cutoff.at)}.
             </p>
           )}
 
           {!completeness.complete && (
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <GuestAlert tone="notice">
               {completeness.ordinalsMissingMain.length > 0 || completeness.coverCount < completeness.partySize
                 ? 'Still to choose: a main course for every seat below.'
                 : 'Please finish choosing below.'}
-            </p>
+            </GuestAlert>
           )}
 
-          <form method="post" action={actionUrl} className="mt-4 space-y-6">
+          <form method="post" action={actionUrl} className="flex flex-col gap-5">
             <input type="hidden" name="action" value="preorder" />
 
             {seats.map((ordinal) => {
@@ -175,187 +198,189 @@ export function PreorderSection({
               )
 
               return (
-                <fieldset key={ordinal} className="rounded-md border border-gray-200 p-4">
-                  <legend className="px-1 text-sm font-semibold text-gray-900">
-                    {seatLabel(cover, ordinal)}
-                  </legend>
+                <fieldset key={ordinal} className={PREORDER_SEAT_BLOCK_CLASS}>
+                  <legend className={cn('px-1', SEAT_TITLE_CLASS)}>{seatLabel(cover, ordinal)}</legend>
 
-                  {withdrawn.length > 0 && (
-                    <p
-                      id={`seat-${ordinal}-withdrawn`}
-                      className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
-                    >
-                      {withdrawn.join(' and ')} is no longer on the menu. Please choose again.
-                    </p>
-                  )}
-
-                  {hasError && (
-                    <p
-                      id={`seat-${ordinal}-error`}
-                      role="alert"
-                      className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                    >
-                      We could not save this seat. The dish you chose may have come off the menu. Please
-                      choose again, or call us on {contactPhone}.
-                    </p>
-                  )}
-
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor={`seat-${ordinal}-name`} className={LABEL_CLASS}>
-                        Name (optional)
-                      </label>
-                      <input
-                        id={`seat-${ordinal}-name`}
-                        name={`seat_${ordinal}_name`}
-                        type="text"
-                        maxLength={100}
-                        autoComplete="off"
-                        defaultValue={cover?.guestName ?? ''}
-                        className={FIELD_CLASS}
-                      />
-                    </div>
-
-                    {PREORDER_COURSES.map((course: PreorderCourse) => {
-                      const items = menuByCourse[course]
-                      if (items.length === 0) return null
-                      const selected = cover ? getCoverCourse(cover, course) : null
-                      const chosenId = selected && !selected.itemWithdrawn ? selected.menuItemId : ''
-
-                      return (
-                        <div key={course}>
-                          <label htmlFor={`seat-${ordinal}-${course}`} className={LABEL_CLASS}>
-                            {PREORDER_COURSE_LABELS[course]}
-                            {course === 'main' ? '' : ' (optional)'}
-                          </label>
-                          <select
-                            id={`seat-${ordinal}-${course}`}
-                            name={`seat_${ordinal}_${course}`}
-                            defaultValue={chosenId}
-                            aria-invalid={hasError || undefined}
-                            aria-describedby={describedBy}
-                            className={FIELD_CLASS}
-                          >
-                            <option value="">
-                              {course === 'main' ? 'Please choose' : 'None, thank you'}
-                            </option>
-                            {items.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )
-                    })}
-
-                    {hasAddons && (
-                      <fieldset
-                        className="rounded-md border border-gray-200 bg-gray-50 p-3"
-                        aria-describedby={ADDON_NOTE_ID}
-                      >
-                        <legend className="px-1 text-sm font-medium text-gray-900">
-                          Add-ons for seat {ordinal} (optional)
-                        </legend>
-
-                        {/*
-                          An unticked box sends nothing at all, so "everything unticked" and "this form
-                          had no add-on block" arrive identically. This marker is what tells them apart,
-                          and without it a guest could tick an add-on but never remove one.
-                        */}
-                        <input type="hidden" name={`seat_${ordinal}_addons_present`} value="1" />
-
-                        <ul className="mt-1 space-y-1">
-                          {addons.map((addon) => {
-                            const inputId = `seat-${ordinal}-addon-${addon.id}`
-                            return (
-                              <li key={addon.id}>
-                                <label
-                                  htmlFor={inputId}
-                                  className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-gray-900"
-                                >
-                                  <input
-                                    id={inputId}
-                                    name={`seat_${ordinal}_addon`}
-                                    type="checkbox"
-                                    value={addon.id}
-                                    defaultChecked={tickedAddonIds.has(addon.id)}
-                                    aria-invalid={hasError || undefined}
-                                    aria-describedby={describedBy}
-                                    className="h-5 w-5 shrink-0 rounded border-gray-300 text-green-600"
-                                  />
-                                  <span>
-                                    {addon.name}, {formatPreorderAddonPrice(addon.priceGbp)}
-                                  </span>
-                                </label>
-                              </li>
-                            )
-                          })}
-                        </ul>
-
-                        <p aria-live="polite" className="mt-2 text-sm text-gray-700">
-                          {seatAddons.count === 0
-                            ? 'No add-ons saved for this seat yet.'
-                            : `Saved for this seat: ${addonCountPhrase(seatAddons.count)}, ${addonMoneyPhrase(seatAddons)}.`}{' '}
-                          This updates when you save.
-                        </p>
-                      </fieldset>
+                  <div className="flex flex-col gap-[14px]">
+                    {/*
+                      `GuestAlert` carries no id of its own, so the id each seat's controls point
+                      `aria-describedby` at lives on this wrapper. The described text is the same
+                      either way, and the alert keeps its own role.
+                    */}
+                    {withdrawn.length > 0 && (
+                      <div id={`seat-${ordinal}-withdrawn`}>
+                        <GuestAlert tone="notice">
+                          {withdrawn.join(' and ')} is no longer on the menu. Please choose again.
+                        </GuestAlert>
+                      </div>
                     )}
 
-                    <div>
-                      <label htmlFor={`seat-${ordinal}-note`} className={LABEL_CLASS}>
-                        Dietary requirement (optional)
-                      </label>
-                      <input
+                    {hasError && (
+                      <div id={`seat-${ordinal}-error`}>
+                        <GuestAlert tone="problem">
+                          We could not save this seat. The dish you chose may have come off the menu. Please
+                          choose again, or call us on {contactPhone}.
+                        </GuestAlert>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+                      <GuestField id={`seat-${ordinal}-name`} label="Name (optional)">
+                        <input
+                          {...guestFieldControlProps({ id: `seat-${ordinal}-name` })}
+                          name={`seat_${ordinal}_name`}
+                          type="text"
+                          maxLength={100}
+                          autoComplete="off"
+                          defaultValue={cover?.guestName ?? ''}
+                          className={GUEST_INPUT_CLASS}
+                        />
+                      </GuestField>
+
+                      {PREORDER_COURSES.map((course: PreorderCourse) => {
+                        const items = menuByCourse[course]
+                        if (items.length === 0) return null
+                        const selected = cover ? getCoverCourse(cover, course) : null
+                        const chosenId = selected && !selected.itemWithdrawn ? selected.menuItemId : ''
+                        const courseId = `seat-${ordinal}-${course}`
+
+                        return (
+                          <GuestField
+                            key={course}
+                            id={courseId}
+                            label={`${PREORDER_COURSE_LABELS[course]}${course === 'main' ? '' : ' (optional)'}`}
+                          >
+                            <select
+                              {...guestFieldControlProps({ id: courseId })}
+                              name={`seat_${ordinal}_${course}`}
+                              defaultValue={chosenId}
+                              aria-invalid={hasError || undefined}
+                              aria-describedby={describedBy}
+                              className={cn(GUEST_INPUT_CLASS, hasError && GUEST_INPUT_INVALID_CLASS)}
+                            >
+                              <option value="">
+                                {course === 'main' ? 'Please choose' : 'None, thank you'}
+                              </option>
+                              {items.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                          </GuestField>
+                        )
+                      })}
+
+                      {hasAddons && (
+                        <fieldset
+                          className="rounded-guest-field border border-guest-border bg-guest-sunk px-[14px] py-3 sm:col-span-2"
+                          aria-describedby={ADDON_NOTE_ID}
+                        >
+                          <legend className="px-1 font-anchor-body text-[13px] font-semibold leading-[1.4] text-guest-text">
+                            Add-ons for seat {ordinal} (optional)
+                          </legend>
+
+                          {/*
+                            An unticked box sends nothing at all, so "everything unticked" and "this form
+                            had no add-on block" arrive identically. This marker is what tells them apart,
+                            and without it a guest could tick an add-on but never remove one.
+                          */}
+                          <input type="hidden" name={`seat_${ordinal}_addons_present`} value="1" />
+
+                          <ul>
+                            {addons.map((addon) => {
+                              const inputId = `seat-${ordinal}-addon-${addon.id}`
+                              return (
+                                <li key={addon.id}>
+                                  {/*
+                                    No size utility on the box: `.guest-theme` sizes every tick and
+                                    radio at 20px, and the row carries the 44px target.
+                                  */}
+                                  <label htmlFor={inputId} className={GUEST_CHOICE_ROW_CLASS}>
+                                    <input
+                                      id={inputId}
+                                      name={`seat_${ordinal}_addon`}
+                                      type="checkbox"
+                                      value={addon.id}
+                                      defaultChecked={tickedAddonIds.has(addon.id)}
+                                      aria-invalid={hasError || undefined}
+                                      aria-describedby={describedBy}
+                                    />
+                                    <span>
+                                      {addon.name}, {formatPreorderAddonPrice(addon.priceGbp)}
+                                    </span>
+                                  </label>
+                                </li>
+                              )
+                            })}
+                          </ul>
+
+                          <p
+                            aria-live="polite"
+                            className="mt-2 font-anchor-body text-[13px] leading-[1.55] text-guest-text-muted"
+                          >
+                            {seatAddons.count === 0
+                              ? 'No add-ons saved for this seat yet.'
+                              : `Saved for this seat: ${addonCountPhrase(seatAddons.count)}, ${addonMoneyPhrase(seatAddons)}.`}{' '}
+                            This updates when you save.
+                          </p>
+                        </fieldset>
+                      )}
+
+                      <GuestField
                         id={`seat-${ordinal}-note`}
-                        name={`seat_${ordinal}_note`}
-                        type="text"
-                        maxLength={200}
-                        autoComplete="off"
-                        defaultValue={cover?.dietaryNote ?? ''}
-                        placeholder="For example, no dairy"
-                        className={FIELD_CLASS}
-                      />
+                        label="Dietary requirement (optional)"
+                        className="sm:col-span-2"
+                      >
+                        <input
+                          {...guestFieldControlProps({ id: `seat-${ordinal}-note` })}
+                          name={`seat_${ordinal}_note`}
+                          type="text"
+                          maxLength={200}
+                          autoComplete="off"
+                          defaultValue={cover?.dietaryNote ?? ''}
+                          placeholder="For example, no dairy"
+                          className={GUEST_INPUT_CLASS}
+                        />
+                      </GuestField>
                     </div>
                   </div>
                 </fieldset>
               )
             })}
 
-            {hasAddons && (
-              <p
-                aria-live="polite"
-                className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800"
-              >
-                <span className="font-medium">Add-ons across this booking:</span>{' '}
-                {orderAddons.count === 0
-                  ? 'none saved yet.'
-                  : `${addonCountPhrase(orderAddons.count)}, ${addonMoneyPhrase(orderAddons)}.`}{' '}
-                This goes on your bill at the pub on the day, and updates when you save.
+            <div className={GUEST_SUNK_BOX_CLASS}>
+              {hasAddons && (
+                <p aria-live="polite">
+                  <span className="font-semibold">Add-ons across this booking:</span>{' '}
+                  {orderAddons.count === 0
+                    ? 'none saved yet.'
+                    : `${addonCountPhrase(orderAddons.count)}, ${addonMoneyPhrase(orderAddons)}.`}{' '}
+                  This goes on your bill at the pub on the day, and updates when you save.
+                </p>
+              )}
+
+              <p className={hasAddons ? 'mt-2' : undefined}>
+                If anyone has a serious allergy, please ring us on {contactPhone} so we can talk it through.
+                A text box is not a safe way to handle one.
               </p>
-            )}
+            </div>
 
-            <p className="text-sm text-gray-600">
-              If anyone has a serious allergy, please ring us on {contactPhone} so we can talk it through.
-              A text box is not a safe way to handle one.
-            </p>
-
-            <GuestSubmitButton
-              className="inline-flex w-full min-h-11 items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 sm:w-auto"
-              loadingText="Saving..."
-            >
-              Save food choices
-            </GuestSubmitButton>
+            <div>
+              <GuestSubmitButton className={GUEST_SUBMIT_PRIMARY_CLASS} loadingText="Saving...">
+                Save food choices
+              </GuestSubmitButton>
+            </div>
           </form>
         </>
       ) : (
         <>
-          <p className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <p className={GUEST_SUNK_BOX_CLASS}>
             Food choices are now closed for this booking. Please ring us on {contactPhone} if anything
             needs to change.
           </p>
 
-          <ul className="mt-4 space-y-3">
+          <ul className="flex flex-col gap-[14px]">
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
               const chosen = PREORDER_COURSES.map((course) => {
@@ -370,10 +395,10 @@ export function PreorderSection({
                 : { count: 0, totalGbp: 0, hasUnpricedAddon: false, items: [] }
 
               return (
-                <li key={ordinal} className="rounded-md border border-gray-200 p-4 text-sm text-gray-700">
-                  <p className="font-medium text-gray-900">{seatLabel(cover, ordinal)}</p>
+                <li key={ordinal} className={cn(PREORDER_SEAT_BLOCK_CLASS, SEAT_TEXT_CLASS)}>
+                  <p className={SEAT_TITLE_CLASS}>{seatLabel(cover, ordinal)}</p>
                   {chosen.length > 0 ? (
-                    <ul className="mt-1 space-y-0.5">
+                    <ul className="mt-1">
                       {chosen.map((line) => (
                         <li key={line}>{line}</li>
                       ))}
@@ -383,7 +408,7 @@ export function PreorderSection({
                   )}
                   {seatAddons.count > 0 && (
                     <>
-                      <ul className="mt-1 space-y-0.5">
+                      <ul className="mt-1">
                         {seatAddons.items.map((item) => (
                           <li key={item.menuItemId}>
                             {PREORDER_SELECTION_COURSE_LABELS.addon}: {item.itemName},{' '}
@@ -404,8 +429,8 @@ export function PreorderSection({
           </ul>
 
           {savedOrderAddons.count > 0 && (
-            <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
-              <span className="font-medium">Add-ons across this booking:</span>{' '}
+            <p className={GUEST_SUNK_BOX_CLASS}>
+              <span className="font-semibold">Add-ons across this booking:</span>{' '}
               {addonCountPhrase(savedOrderAddons.count)}, {addonMoneyPhrase(savedOrderAddons)}. This goes on
               your bill at the pub on the day.
             </p>

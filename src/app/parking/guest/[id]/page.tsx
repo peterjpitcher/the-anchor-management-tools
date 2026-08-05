@@ -9,7 +9,18 @@ interface GuestBookingPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+// Static and non-personal on purpose: no token, customer name or booking reference may reach
+// a browser title or history entry. These routes are noindex via the X-Robots-Tag header.
+export const metadata = { title: 'Guest parking - The Anchor' }
+
 export const dynamic = 'force-dynamic'
+
+// This route is public (anyone holding the booking id can load it) and it queries with the
+// service-role client, so the projection must stay an explicit allow-list of the columns the
+// guest page actually renders. Never widen this to '*' and never add staff-only columns such
+// as `notes`, which staff use for internal operational comments.
+const PUBLIC_BOOKING_COLUMNS =
+  'id, reference, status, payment_status, payment_due_at, start_at, end_at, calculated_price, override_price, vehicle_registration, vehicle_make, vehicle_model, customer_first_name, customer_last_name'
 
 export default async function ParkingGuestBookingPage({ params, searchParams }: GuestBookingPageProps) {
   const { id } = await params
@@ -19,7 +30,7 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
   const supabase = createAdminClient()
   const { data: booking, error } = await supabase
     .from('parking_bookings')
-    .select('*')
+    .select(PUBLIC_BOOKING_COLUMNS)
     .eq('id', id)
     .maybeSingle()
 

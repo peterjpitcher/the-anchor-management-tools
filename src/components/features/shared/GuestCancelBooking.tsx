@@ -1,4 +1,12 @@
 import { CANCELLATION_REASONS, CANCELLATION_DETAIL_MAX_LENGTH } from '@/lib/table-bookings/cancellation-reasons'
+// Imported from the styles module rather than the `guest` barrel on purpose: the barrel pulls in
+// `GuestShell` and with it the guest webfont module, which this component has no need of.
+import {
+  GUEST_CHOICE_ROW_CLASS,
+  GUEST_INPUT_CLASS,
+  GUEST_TEXTAREA_CLASS,
+} from '@/components/features/guest/styles'
+import { cn } from '@/lib/utils'
 
 /**
  * Cancel booking section for the guest manage page.
@@ -27,14 +35,14 @@ export function GuestCancelBooking({
 }) {
   if (!confirmCancel) {
     return (
-      <div className="mt-6 border-t border-gray-200 pt-4">
+      <div className="border-t border-guest-border-strong pt-5">
         <a
           href={`${manageUrl}?confirmCancel=1`}
-          className="inline-flex w-full items-center justify-center rounded-md border border-red-300 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 sm:w-auto"
+          className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-anchor-danger/[0.45] px-8 text-center font-anchor-body text-[16px] font-semibold text-anchor-danger no-underline transition-colors duration-200 ease-out hover:bg-anchor-danger/[0.06]"
         >
           Cancel booking
         </a>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
           Cancelling within 24 hours of your booking may incur a late-cancellation fee.
         </p>
       </div>
@@ -42,10 +50,12 @@ export function GuestCancelBooking({
   }
 
   return (
-    <div className="mt-6 border-t border-gray-200 pt-4">
-      <div className="rounded-md border border-red-200 bg-red-50 p-4">
-        <p className="text-sm font-medium text-red-800">Are you sure you want to cancel?</p>
-        <p className="mt-1 text-xs text-red-700">
+    <div className="border-t border-guest-border-strong pt-5">
+      <div className="rounded-guest-card border border-anchor-danger/[0.30] bg-anchor-danger/[0.06] p-4">
+        <p className="font-anchor-body text-[15px] font-bold leading-[1.4] text-anchor-danger">
+          Are you sure you want to cancel?
+        </p>
+        <p className="mt-1 font-anchor-body text-[13px] leading-[1.55] text-guest-text">
           This cannot be undone. Cancelling within 24 hours may incur a fee.
         </p>
 
@@ -54,35 +64,41 @@ export function GuestCancelBooking({
           <input type="hidden" name="confirm" value="1" />
 
           <fieldset className="mt-1">
-            <legend className="text-sm font-medium text-red-800">
+            <legend className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
               If you don&apos;t mind us asking, why?
             </legend>
-            <p className="mt-1 text-xs text-red-700">
+            <p className="mt-1 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
               Entirely optional, and it helps us put things right.
             </p>
 
-            <div className="mt-3 space-y-2">
+            <div className="mt-2">
               {CANCELLATION_REASONS.map((reason) => (
-                <div key={reason.code} className="flex items-start gap-2">
+                // The whole row is the label, so the full 44px target is clickable rather than
+                // just the radio and its text. As a `div` the shared row class showed a pointer
+                // cursor over dead padding.
+                <label
+                  key={reason.code}
+                  htmlFor={`cancellation_reason_${reason.code}`}
+                  className={GUEST_CHOICE_ROW_CLASS}
+                >
+                  {/* No size utility: `.guest-theme` sizes every radio at 20px and the row
+                      carries the 44px target. */}
                   <input
                     id={`cancellation_reason_${reason.code}`}
                     name="cancellation_reason"
                     type="radio"
                     value={reason.code}
-                    className="mt-1 h-4 w-4 border-red-300 text-red-600 focus:ring-red-500"
                   />
-                  <label
-                    htmlFor={`cancellation_reason_${reason.code}`}
-                    className="text-sm text-red-900"
-                  >
-                    {reason.label}
-                  </label>
-                </div>
+                  {reason.label}
+                </label>
               ))}
             </div>
 
             <div className="mt-3">
-              <label htmlFor="cancellation_reason_detail" className="block text-sm text-red-900">
+              <label
+                htmlFor="cancellation_reason_detail"
+                className="block font-anchor-body text-[14px] font-semibold text-guest-text"
+              >
                 Anything else you&apos;d like to tell us
               </label>
               <textarea
@@ -90,21 +106,21 @@ export function GuestCancelBooking({
                 name="cancellation_reason_detail"
                 rows={2}
                 maxLength={CANCELLATION_DETAIL_MAX_LENGTH}
-                className="mt-1 w-full rounded-md border border-red-300 px-3 py-2 text-sm"
+                className={cn('mt-2', GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS)}
               />
             </div>
           </fieldset>
 
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 sm:w-auto"
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-transparent bg-anchor-danger px-8 text-center font-anchor-body text-[16px] font-semibold text-white transition-colors duration-200 ease-out hover:bg-anchor-danger/[0.88] sm:w-auto"
             >
               Yes, cancel my booking
             </button>
             <a
               href={manageUrl}
-              className="inline-flex w-full items-center justify-center rounded-md border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto"
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border-2 border-anchor-green px-8 text-center font-anchor-body text-[16px] font-semibold text-anchor-green no-underline transition-colors duration-200 ease-out hover:bg-anchor-green hover:text-anchor-cream sm:w-auto"
             >
               No, keep my booking
             </a>
@@ -115,7 +131,7 @@ export function GuestCancelBooking({
           Fallback for sandboxed frames that block form submission, and for anyone who would rather
           not answer. Cancels with no reason recorded.
         */}
-        <p className="mt-3 text-xs text-red-700">
+        <p className="mt-3 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
           <a
             href={`${actionUrl}?action=cancel&confirm=1`}
             rel="nofollow"

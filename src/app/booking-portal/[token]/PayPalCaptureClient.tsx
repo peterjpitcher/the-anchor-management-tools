@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { captureDepositPaymentByToken } from '@/app/actions/portalPayPalActions'
+import { GuestAlert } from '@/components/features/guest'
 
 interface PayPalCaptureClientProps {
   portalToken: string
@@ -46,25 +47,25 @@ export function PayPalCaptureClient({ portalToken, depositPaid }: PayPalCaptureC
 
   if (status === 'capturing') {
     return (
-      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-4 text-sm text-blue-800">
-        <strong>Processing your payment...</strong> Please wait while we confirm your deposit.
-      </div>
+      <GuestAlert tone="notice" title="Processing your payment...">
+        Please wait while we confirm your deposit.
+      </GuestAlert>
     )
   }
 
   if (status === 'success') {
     return (
-      <div className="rounded-xl border border-green-200 bg-green-50 p-4 mb-4 text-sm text-green-800">
-        <strong>Payment confirmed — thank you!</strong> Your deposit has been received and your booking is confirmed.
-      </div>
+      <GuestAlert tone="success" title="Payment confirmed, thank you!">
+        Your deposit has been received and your booking is confirmed.
+      </GuestAlert>
     )
   }
 
   if (status === 'error') {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 mb-4 text-sm text-red-800">
-        <strong>Payment issue</strong> — {errorMessage} If you need help, please call us.
-      </div>
+      <GuestAlert tone="problem" title="Payment issue">
+        {errorMessage} If you need help, please call us.
+      </GuestAlert>
     )
   }
 

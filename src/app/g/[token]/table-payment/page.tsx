@@ -1,14 +1,24 @@
-import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
-import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import {
+  GuestAlert,
+  GuestBlockedState,
+  GuestButton,
+  GuestShell,
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+} from '@/components/features/guest'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
 import { TablePaymentClient } from './TablePaymentClient'
+import { TablePaymentSuccessPanel } from './TablePaymentSuccessPanel'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
 import {
   buildPayPalDepositCompletedUpdate,
@@ -25,6 +35,10 @@ type TablePaymentPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+// Static and non-personal on purpose: no token, customer name or booking reference may reach
+// a browser title or history entry. These routes are noindex via the X-Robots-Tag header.
+export const metadata = { title: 'Pay your deposit - The Anchor' }
+
 export const dynamic = 'force-dynamic'
 
 function getSingleValue(value: string | string[] | undefined): string | undefined {
@@ -34,33 +48,54 @@ function getSingleValue(value: string | string[] | undefined): string | undefine
   return value
 }
 
-function DepositReceivedPanel({
-  contactPhone,
-  guestFirstName,
-}: {
-  contactPhone: string
-  guestFirstName: string | null
-}) {
+/** Where both the blocked and success screens send a guest who wants to start again. */
+const BOOK_TABLE_URL = `${GUEST_CONTACT.website}/book-table`
+
+/**
+ * Every unavailable, expired and rate-limited screen on this route.
+ *
+ * This is the shared blocked pattern the other guest routes reuse: one
+ * `GuestBlockedState`, a route-specific kicker, heading and lead, the mapped
+ * reason string verbatim as the alert title, a `tel:` primary and a way back.
+ * Only the four text values change per route.
+ */
+function BlockedScreen({ reason }: { reason: string | undefined }): React.JSX.Element {
   return (
-    <GuestPageShell>
-      <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">Deposit received</h1>
-        <p className="mt-2 text-sm text-slate-700">
-          {formatGuestGreeting(guestFirstName, 'your deposit payment has been received.')}
-        </p>
-        <p className="mt-3 text-sm text-slate-700">
-          Thanks. We are confirming your booking now. You will receive a text confirmation shortly.
-        </p>
-        <p className="mt-3 text-sm text-slate-700">
-          If you do not receive confirmation, call {contactPhone}.
-        </p>
-        <div className="mt-6">
-          <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
-            Back to The Anchor
-          </Link>
-        </div>
+    <GuestShell>
+      <GuestBlockedState
+        kicker="Table booking"
+        heading="Payment link unavailable"
+        lead={formatGuestGreeting(null, 'we could not open your payment link.')}
+        reason={tablePaymentBlockedReasonMessage(reason)}
+        primaryAction={{
+          label: `Call ${GUEST_CONTACT.phoneDisplay}`,
+          href: GUEST_CONTACT.telHref,
+        }}
+        secondaryAction={{ label: 'Back to book a table', href: BOOK_TABLE_URL }}
+      />
+    </GuestShell>
+  )
+}
+
+/**
+ * PayPal order setup failed. Distinct from `BlockedScreen`: the link itself is
+ * fine, so there is no blocked reason to name, and the guest is asked to call.
+ */
+function PaymentSetupFailedScreen({ lead }: { lead: string }): React.JSX.Element {
+  return (
+    <GuestShell>
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>Table booking</p>
+        <h1 className={GUEST_H1_CLASS}>Payment unavailable</h1>
+        <p className={GUEST_LEAD_CLASS}>{lead}</p>
       </div>
-    </GuestPageShell>
+
+      <GuestAlert tone="problem">Please call {GUEST_CONTACT.phoneDisplay} for help.</GuestAlert>
+
+      <GuestButton as="a" href={GUEST_CONTACT.telHref} variant="primary" fullWidth>
+        Call {GUEST_CONTACT.phoneDisplay}
+      </GuestButton>
+    </GuestShell>
   )
 }
 
@@ -69,26 +104,9 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const state = getSingleValue(resolvedSearchParams.state)
   const reason = getSingleValue(resolvedSearchParams.reason)
-  const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
 
   if (state === 'blocked') {
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Payment link unavailable</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(null, 'we could not open your payment link.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">{tablePaymentBlockedReasonMessage(reason)}</p>
-          <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
-          <div className="mt-6">
-            <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/book-table">
-              Back to book a table
-            </Link>
-          </div>
-        </div>
-      </GuestPageShell>
-    )
+    return <BlockedScreen reason={reason} />
   }
 
   const headerValues = await headers()
@@ -100,36 +118,14 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   })
 
   if (!throttle.allowed) {
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Payment link unavailable</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(null, 'we could not open your payment link.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">{tablePaymentBlockedReasonMessage('rate_limited')}</p>
-          <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
-        </div>
-      </GuestPageShell>
-    )
+    return <BlockedScreen reason="rate_limited" />
   }
 
   const supabase = createAdminClient()
   const preview = await getTablePaymentPreviewByRawToken(supabase, token)
 
   if (preview.state !== 'ready') {
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Payment link unavailable</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(null, 'we could not open your payment link.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">{tablePaymentBlockedReasonMessage(preview.reason)}</p>
-          <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
-        </div>
-      </GuestPageShell>
-    )
+    return <BlockedScreen reason={preview.reason} />
   }
 
   // preview.state === 'ready' from here — all fields are available
@@ -142,12 +138,20 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
 
   const isOutsideSeating = Boolean(booking?.is_outside_seating)
 
+  // Computed once and used twice: rendered directly when the deposit is already
+  // settled, and handed to the client as its `success` prop so a capture that
+  // completes in the browser lands on the identical screen (spec F11).
+  const successContent = <TablePaymentSuccessPanel guestFirstName={guestFirstName} />
+
   if (booking?.payment_status === 'completed') {
-    return <DepositReceivedPanel contactPhone={contactPhone} guestFirstName={guestFirstName} />
+    return <GuestShell>{successContent}</GuestShell>
   }
 
   // Create or reuse PayPal order (only reuse if still valid on PayPal's side)
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.the-anchor.pub'
+  // Fallback must be a domain that actually resolves: these build the PayPal return and cancel
+  // URLs, so a dead host would strand a guest who has just paid. `app.the-anchor.pub` did not
+  // resolve; `management.orangejelly.co.uk` is the live application domain.
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
   let paypalOrderId = ''
   let needsNewOrder = true
 
@@ -183,15 +187,9 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
       })
     } catch {
       return (
-        <GuestPageShell>
-          <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-            <h1 className="text-2xl font-semibold text-slate-900">Payment unavailable</h1>
-            <p className="mt-2 text-sm text-slate-700">
-              {formatGuestGreeting(null, 'we could not set up your payment right now.')}
-            </p>
-            <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
-          </div>
-        </GuestPageShell>
+        <PaymentSetupFailedScreen
+          lead={formatGuestGreeting(null, 'we could not set up your payment right now.')}
+        />
       )
     }
 
@@ -223,15 +221,9 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         },
       })
       return (
-        <GuestPageShell>
-          <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-            <h1 className="text-2xl font-semibold text-slate-900">Payment unavailable</h1>
-            <p className="mt-2 text-sm text-slate-700">
-              {formatGuestGreeting(null, 'we could not save your payment setup right now.')}
-            </p>
-            <p className="mt-3 text-sm text-slate-700">Please call {contactPhone} for help.</p>
-          </div>
-        </GuestPageShell>
+        <PaymentSetupFailedScreen
+          lead={formatGuestGreeting(null, 'we could not save your payment setup right now.')}
+        />
       )
     }
 
@@ -447,31 +439,22 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const paypalEnvironment = process.env.PAYPAL_ENVIRONMENT ?? 'live'
 
   return (
-    <GuestPageShell>
-      <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">Complete your deposit payment</h1>
-        <p className="mt-2 text-sm text-slate-700">
-          {formatGuestGreeting(guestFirstName, 'your booking and deposit details are below.')}
-        </p>
-        <div className="mt-4">
-          <TablePaymentClient
-            orderId={paypalOrderId}
-            bookingReference={preview.bookingReference}
-            depositAmount={preview.totalAmount}
-            currency={preview.currency}
-            partySize={preview.partySize}
-            holdExpiresAt={preview.holdExpiresAt}
-            showCancelledMessage={state === 'cancelled'}
-            paypalClientId={paypalClientId}
-            paypalEnvironment={paypalEnvironment}
-            captureAction={captureDeposit}
-            isOutsideSeating={isOutsideSeating}
-          />
-        </div>
-        <p className="mt-4 text-sm text-slate-700">
-          Need help? Call {contactPhone}.
-        </p>
-      </div>
-    </GuestPageShell>
+    <GuestShell>
+      <TablePaymentClient
+        orderId={paypalOrderId}
+        bookingReference={preview.bookingReference}
+        depositAmount={preview.totalAmount}
+        currency={preview.currency}
+        partySize={preview.partySize}
+        holdExpiresAt={preview.holdExpiresAt}
+        showCancelledMessage={state === 'cancelled'}
+        paypalClientId={paypalClientId}
+        paypalEnvironment={paypalEnvironment}
+        captureAction={captureDeposit}
+        isOutsideSeating={isOutsideSeating}
+        greeting={formatGuestGreeting(guestFirstName, 'your booking and deposit details are below.')}
+        success={successContent}
+      />
+    </GuestShell>
   )
 }

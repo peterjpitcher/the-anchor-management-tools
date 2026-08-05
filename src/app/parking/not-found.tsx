@@ -1,31 +1,26 @@
+import { GuestBlockedState, GuestShell } from '@/components/features/guest'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+
+/**
+ * The 404 boundary for every `/parking/*` miss, including a guest arriving with
+ * a booking id that no longer exists.
+ *
+ * The phone number comes from `GUEST_CONTACT` rather than
+ * `NEXT_PUBLIC_CONTACT_PHONE_NUMBER`: that variable is documented as a Twilio
+ * sending number (`docs/DEPLOYMENT.md`) and is a placeholder in `.env.example`,
+ * so it can print something that is not the pub's landline. Guest contact facts
+ * have one source per the spec (F26).
+ */
 export default function ParkingNotFound() {
-  const phone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
-
   return (
-    <div className="public">
-      <div className="public__hero public__hero--slim">
-        <div className="public__hero-bg" />
-        <div className="public__hero-inner">
-          <div className="public__brand-mini">The Anchor</div>
-          <h1 className="public__hero-title">Guest Parking</h1>
-          <p className="public__hero-sub">We could not find that parking booking.</p>
-        </div>
-      </div>
-
-      <div className="public__main public__main--prose">
-        <div className="public__card">
-          <h2 className="text-lg font-semibold text-text-strong">Booking link not found</h2>
-          <p className="mt-2 text-sm text-text">
-            Please check the link, or contact the team and quote your parking reference if you have one.
-          </p>
-          <p className="mt-4 text-sm text-text-muted">
-            Need help? Call <span className="font-semibold text-text-strong">{phone}</span>.
-          </p>
-          <a href="https://www.the-anchor.pub" className="mt-5 inline-flex text-sm font-medium text-primary hover:underline">
-            Return to The Anchor website
-          </a>
-        </div>
-      </div>
-    </div>
+    <GuestShell>
+      <GuestBlockedState
+        kicker="Guest parking"
+        heading="Booking link not found"
+        lead="We could not find that parking booking."
+        reason="Please check the link, or contact the team and quote your parking reference if you have one."
+        primaryAction={{ label: 'Return to The Anchor website', href: GUEST_CONTACT.website }}
+      />
+    </GuestShell>
   )
 }

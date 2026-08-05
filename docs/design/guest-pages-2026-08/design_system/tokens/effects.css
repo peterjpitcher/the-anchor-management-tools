@@ -1,0 +1,37 @@
+/* ============================================================
+   THE ANCHOR — EFFECTS: shadows, overlays, motion, signature motifs
+   ============================================================ */
+
+:root {
+  /* ---- Shadows (warm, soft — "luxury" set from live site) ---- */
+  --shadow-sm: 0 2px 8px rgba(26, 26, 26, 0.06);
+  --shadow-md: 0 8px 20px rgba(26, 26, 26, 0.08);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.10);
+  --shadow-gold: 0 6px 24px rgba(165, 118, 38, 0.28);
+
+  /* ---- Image protection gradient (dark-to-clear over photos) ---- */
+  --scrim-bottom: linear-gradient(180deg, rgba(12,29,17,0) 0%, rgba(12,29,17,0.0) 40%, rgba(12,29,17,0.85) 100%); /* @kind other */
+  --scrim-green: linear-gradient(180deg, rgba(0,81,49,0) 0%, rgba(0,61,37,0.9) 100%); /* @kind other */
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);    /* @kind other */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);  /* @kind other */
+  --dur-fast: 0.15s;  /* @kind other */
+  --dur: 0.2s;        /* @kind other */
+  --dur-slow: 0.4s;   /* @kind other */
+
+  /* ---- Film grain texture (signature site overlay) ---- */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E"); /* @kind other */
+}
+
+/* ---- Signature: inset gold inner frame (echoes the logo rule-box) ---- */
+.anchor-frame {
+  position: relative;
+}
+.anchor-frame::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px solid var(--border-gold);
+  pointer-events: none;
+}

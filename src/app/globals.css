@@ -96,6 +96,61 @@
 
   /* Easing */
   --ease-default: cubic-bezier(0.2, 0.7, 0.1, 1);
+
+  /* ------------------------------------------------
+     GUEST PAGES (The Anchor brand). Additive only.
+     Namespaced so nothing above changes. Consumed
+     only by src/components/features/guest/*, which
+     render inside `.guest-theme`. Staff screens never
+     reference an `anchor-*` or `guest-*` utility.
+     Source: docs/design/guest-pages-2026-08/HANDOFF.md
+     ------------------------------------------------ */
+
+  /* Raw brand palette. Use only where a brand colour must stay fixed. */
+  --color-anchor-green: #005131;
+  --color-anchor-green-deep: #0c1d11;
+  --color-anchor-green-light: #006b45;
+  --color-anchor-gold: #a57626;
+  --color-anchor-gold-dark: #8b6914;
+  /* Hover pair for the primary button. Spec C1 deepens #8b6914 to this on hover. */
+  --color-anchor-gold-deep: #6f5410;
+  --color-anchor-gold-bright: #c9a020;
+  --color-anchor-cream: #faf8f3;
+  --color-anchor-cream-text: #f0e6c6;
+  --color-anchor-charcoal: #1a1a1a;
+  --color-anchor-grey-500: #6f6a61;
+  --color-anchor-sand: #f5e6d3;
+  --color-anchor-success: #006b45;
+  --color-anchor-danger: #b1372f;
+
+  /* Semantic layer. Build against these, not the raw palette. Light only. */
+  --color-guest-bg: #faf8f3;
+  --color-guest-surface: #ffffff;
+  --color-guest-sunk: #f2ede3;
+  --color-guest-border: #e2dccf;
+  --color-guest-border-strong: #d2c9b4;
+  --color-guest-text: #1a1a1a;
+  --color-guest-text-strong: #005131;
+  --color-guest-text-muted: #6f6a61;
+  --color-guest-accent-text: #8b6914;
+
+  /* Radii. The theme above has 6/8/10/14/20px and no 12px, so `rounded-md`
+     would silently give 10px on every guest card. These are unconditional. */
+  --radius-guest-field: 6px;
+  --radius-guest-card: 12px;
+
+  /* Shadows */
+  --shadow-guest-card: 0 2px 8px rgba(26, 26, 26, 0.06);
+  --shadow-guest-gold: 0 6px 24px rgba(139, 105, 20, 0.28);
+  /* Soft ring drawn on a focused field, under the `.guest-theme` outline. */
+  --shadow-guest-focus: 0 0 0 4px rgba(139, 105, 20, 0.12);
+
+  /* Font aliases. The runtime variables are set by src/lib/fonts/guest.ts and
+     applied by GuestShell, so staff routes never download these faces. The two
+     names must differ or the alias would reference itself and resolve to nothing. */
+  --font-anchor-display: var(--font-dm-serif-runtime), 'Times New Roman', serif;
+  --font-anchor-body: var(--font-outfit-runtime), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-anchor-script: var(--font-clicker-runtime), 'Brush Script MT', cursive;
 }
 
 /* ================================================
@@ -128,7 +183,10 @@ nav[aria-label="Mobile navigation"],
 
 /* Ensure proper touch targets (44px minimum) */
 @media (max-width: 768px) {
-  button:not(.sidebar-item):not([role="switch"]),
+  /* `.guest-btn` is excluded because GuestButton sets its own 44/48/56px heights, all of which
+     already meet the 44px minimum. Without this exclusion the rule's higher specificity would
+     flatten every md and lg guest button to 44px on mobile. */
+  button:not(.sidebar-item):not([role="switch"]):not(.guest-btn),
   a[role="button"],
   [role="button"],
   select,
@@ -453,7 +511,7 @@ nav[aria-label="Mobile navigation"],
    ================================================ */
 
 /* Shared full-bleed reset for standalone screens */
-.kiosk, .portal, .onboard, .auth, .public {
+.kiosk, .portal, .onboard, .auth {
   margin: -22px -28px -40px -28px;
   min-height: calc(100vh - 52px);
 }
@@ -540,306 +598,6 @@ nav[aria-label="Mobile navigation"],
   margin-top: 28px;
   font-size: 12px;
   text-align: center;
-}
-
-/* ===== Public (customer-facing) ===== */
-.public {
-  background: var(--color-surface);
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-.public__hero {
-  position: relative;
-  padding: 64px 24px 48px;
-  background: linear-gradient(160deg, var(--color-brand-700) 0%, var(--color-brand-600) 100%);
-  color: #fff;
-  overflow: hidden;
-}
-.public__hero--slim {
-  padding: 40px 24px 32px;
-}
-.public__hero-bg {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.12), transparent 60%);
-  pointer-events: none;
-}
-.public__hero-inner {
-  max-width: 720px;
-  margin: 0 auto;
-  position: relative;
-}
-.public__brand-mini {
-  font-size: 13px;
-  opacity: 0.8;
-  margin-bottom: 16px;
-  font-weight: 500;
-}
-.public__hero-title {
-  font-size: 40px;
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.025em;
-  line-height: 1.1;
-}
-.public__hero-sub {
-  font-size: 15px;
-  margin: 12px 0 0;
-  opacity: 0.85;
-  max-width: 480px;
-}
-.public__main {
-  flex: 1;
-  max-width: 720px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px;
-}
-.public__main--prose {
-  max-width: 680px;
-}
-.public__steps {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-.public__step {
-  font-weight: 500;
-}
-.public__step.active {
-  color: var(--color-primary);
-  font-weight: 600;
-}
-.public__step-sep {
-  width: 28px;
-  height: 1px;
-  background: var(--color-border-strong);
-}
-.public__card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  padding: 32px;
-  box-shadow: var(--shadow-sm);
-}
-.public__card--confirmation {
-  text-align: left;
-}
-.public__check {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: var(--color-success-soft);
-  color: var(--color-success-fg);
-  display: grid;
-  place-items: center;
-  margin: 0 auto 20px;
-}
-.public__h2 {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0 0 20px;
-  letter-spacing: -0.015em;
-  color: var(--color-text-strong);
-}
-.public__party,
-.public__dates,
-.public__slots {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.public__chip,
-.public__slot,
-.public__date {
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  color: var(--color-text);
-  transition: background 120ms, border-color 120ms;
-}
-.public__chip {
-  min-width: 44px;
-}
-.public__chip:hover,
-.public__slot:hover,
-.public__date:hover {
-  border-color: var(--color-primary);
-  background: var(--color-primary-soft);
-}
-.public__chip.active,
-.public__slot.active,
-.public__date.active {
-  background: var(--color-primary);
-  color: var(--color-primary-fg);
-  border-color: var(--color-primary);
-}
-.public__date {
-  text-align: center;
-  min-width: 64px;
-  padding: 8px 10px;
-}
-.public__date-day {
-  font-size: 11px;
-  opacity: 0.75;
-}
-.public__date-num {
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 2px;
-}
-.public__slot {
-  min-width: 76px;
-  text-align: center;
-}
-.public__slot.unavailable {
-  opacity: 0.4;
-  text-decoration: line-through;
-  cursor: not-allowed;
-}
-.public__slot.unavailable:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface);
-}
-.public__summary {
-  margin-top: 32px;
-  padding-top: 20px;
-  border-top: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.public__assurance {
-  margin-top: 28px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.public__assure {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.public__assure-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--color-primary-soft);
-  color: var(--color-primary-soft-fg);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-.public__pricing {
-  margin-top: 24px;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface-2);
-}
-.public__total {
-  display: flex;
-  justify-content: space-between;
-  padding-top: 10px;
-  margin-top: 6px;
-  border-top: 1px solid var(--color-border);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--color-text-strong);
-}
-.public__ticket {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 20px;
-  margin-top: 8px;
-}
-.public__ticket-stub {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.public__ticket-qr {
-  width: 96px;
-  height: 96px;
-  background: #fff;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border-strong);
-}
-.public__ticket-divider {
-  height: 1px;
-  margin: 16px 0;
-  background-image: linear-gradient(
-    to right,
-    var(--color-border-strong) 50%,
-    transparent 50%
-  );
-  background-size: 8px 1px;
-  background-repeat: repeat-x;
-  border: none;
-}
-.public__what-next {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--color-border);
-}
-.public__footer {
-  margin-top: auto;
-  border-top: 1px solid var(--color-border);
-  padding: 20px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  background: var(--color-surface-2);
-}
-.public__link {
-  color: var(--color-text-muted);
-  margin-left: 16px;
-  text-decoration: none;
-}
-.public__link:hover {
-  color: var(--color-primary);
-}
-.public__prose {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--color-text);
-}
-.public__prose h2 {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 32px 0 12px;
-  letter-spacing: -0.01em;
-  color: var(--color-text-strong);
-}
-.public__prose h2:first-child {
-  margin-top: 0;
-}
-.public__prose p {
-  margin: 0 0 12px;
-}
-.public__prose ul {
-  margin: 0 0 16px;
-  padding-left: 22px;
-}
-.public__prose li {
-  margin-bottom: 4px;
-}
-.public__prose a {
-  color: var(--color-primary);
 }
 
 /* ===== Staff Portal ===== */
@@ -1238,7 +996,10 @@ nav[aria-label="Mobile navigation"],
     font-size: 16px !important;
   }
 
-  button:not(.ds-sidebar button):not([role="switch"]),
+  /* `.guest-btn` is excluded for the same reason as the rule higher up: GuestButton sets its
+     own 44/48/56px heights, all already at or above the 44px minimum, and this rule's
+     specificity would otherwise flatten every md and lg guest button on mobile. */
+  button:not(.ds-sidebar button):not([role="switch"]):not(.guest-btn),
   a[role="button"],
   [role="button"],
   select,
@@ -1276,7 +1037,6 @@ nav[aria-label="Mobile navigation"],
 
   .portal__grid > .grid,
   .staff-portal-shell [class*="grid-cols"],
-  .public__assurance,
   .onboard__body {
     grid-template-columns: 1fr !important;
   }
@@ -1318,109 +1078,12 @@ nav[aria-label="Mobile navigation"],
 
   /* Shared standalone screens. */
   .auth,
-  .public,
   .portal,
   .onboard,
   .kiosk {
     margin: 0;
     min-height: 100dvh;
     width: 100%;
-  }
-
-  /* Public booking/customer-facing screens. */
-  .public__hero {
-    padding: 36px 20px 28px;
-  }
-
-  .public__hero--slim {
-    padding: 28px 20px 22px;
-  }
-
-  .public__hero-title {
-    font-size: 28px;
-    line-height: 1.12;
-  }
-
-  .public__hero-inner,
-  .public__main {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-
-  .public__main {
-    padding-top: 24px;
-    padding-bottom: 24px;
-  }
-
-  .public__steps {
-    align-items: center;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-    white-space: nowrap;
-  }
-
-  .public__steps::-webkit-scrollbar {
-    display: none;
-  }
-
-  .public__card {
-    padding: 20px;
-  }
-
-  .public__chip,
-  .public__date,
-  .public__slot {
-    min-height: 44px;
-  }
-
-  .public__summary {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-    margin: 24px -20px 0;
-    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
-    background: color-mix(in oklch, var(--color-surface) 94%, transparent);
-    border-top: 1px solid var(--color-border);
-    box-shadow: 0 -12px 24px -20px rgba(0, 0, 0, 0.28);
-  }
-
-  .public__summary > .flex {
-    width: 100%;
-  }
-
-  .public__summary button,
-  .public__summary .inline-flex {
-    flex: 1 1 0;
-  }
-
-  .public__assurance {
-    gap: 12px;
-  }
-
-  .public__ticket-stub {
-    align-items: stretch;
-    flex-direction: column-reverse;
-    gap: 16px;
-  }
-
-  .public__ticket-qr {
-    align-self: center;
-  }
-
-  .public__footer {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
-    padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
-  }
-
-  .public__link {
-    margin-left: 0;
-    margin-right: 16px;
   }
 
   /* Auth/login/error screens. */
@@ -1567,11 +1230,73 @@ nav[aria-label="Mobile navigation"],
     grid-template-columns: 1fr !important;
   }
 
-  .public__hero-title {
-    font-size: 25px;
-  }
-
   .kiosk__time {
     font-size: 40px;
+  }
+}
+
+/* ================================================================
+   GUEST THEME (The Anchor brand, public token-authenticated pages)
+   ================================================================
+   Every rule below is scoped under `.guest-theme`, which only
+   `GuestShell` renders. Nothing here can reach a staff screen.
+
+   Do NOT add a bare element selector or a bare `:focus-visible`
+   rule in this block. A document-level `:focus-visible` would
+   restyle focus across the whole authenticated application.
+
+   Source: docs/design/guest-pages-2026-08/HANDOFF.md
+   "Focus, checkboxes, motion".
+   ================================================================ */
+
+/* Re-declare the three font aliases here, not only in `@theme`.
+   `@theme` puts them on `:root`, where they resolve `var(--font-dm-serif-runtime)` and friends.
+   Those runtime variables are declared by `GuestShell` on its own wrapper, not on `:root`, so at
+   `:root` the substitution has nothing to resolve and each alias becomes guaranteed-invalid,
+   which then inherits invalid all the way down. Custom-property substitution is not re-run when
+   a descendant later declares the missing variable, so the aliases must also be declared here,
+   on the same element that carries the runtime variables. Without this every guest page silently
+   renders in the staff app's Inter instead of the brand faces. */
+.guest-theme {
+  --font-anchor-display: var(--font-dm-serif-runtime), 'Times New Roman', serif;
+  --font-anchor-body: var(--font-outfit-runtime), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-anchor-script: var(--font-clicker-runtime), 'Brush Script MT', cursive;
+}
+
+/* Gold focus ring. Scoped to descendants of the guest shell only. */
+.guest-theme :focus-visible {
+  outline: 3px solid var(--color-anchor-gold-dark);
+  outline-offset: 2px;
+  border-radius: var(--radius-guest-field);
+}
+
+/* Ticks and radios are 20px everywhere on these pages (spec C2), in brand
+   green. Enclosing label rows carry `min-h-[44px]` from the component side. */
+.guest-theme input[type='checkbox'],
+.guest-theme input[type='radio'] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--color-anchor-green);
+}
+
+/* Honour a reduced-motion preference by dropping the hover lift. Tailwind v4
+   emits `translate`, not `transform`, so both properties are reset. The
+   `.guest-theme .guest-motion-lift:hover` specificity (0,3,0) beats the
+   utility it overrides (0,2,0), so no `!important` is needed. */
+@media (prefers-reduced-motion: reduce) {
+  .guest-theme .guest-motion-lift:hover,
+  .guest-theme .guest-motion-lift:focus-visible,
+  .guest-theme .guest-motion-lift:active {
+    transform: none;
+    translate: none;
+  }
+
+  .guest-theme *,
+  .guest-theme *::before,
+  .guest-theme *::after {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
   }
 }

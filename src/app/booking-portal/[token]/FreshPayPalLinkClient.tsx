@@ -2,12 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createDepositPaymentOrderByToken } from '@/app/actions/portalPayPalActions'
+import { GuestAlert, GuestButton } from '@/components/features/guest'
 
 interface FreshPayPalLinkClientProps {
   portalToken: string
   autoStart?: boolean
 }
 
+/**
+ * The deposit call to action.
+ *
+ * This does not embed PayPal buttons. It asks the server to create an order and
+ * then sends the browser to PayPal's approval URL, so the amount is only ever
+ * decided server-side and no figure is passed in here.
+ */
 export function FreshPayPalLinkClient({ portalToken, autoStart = false }: FreshPayPalLinkClientProps) {
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -39,24 +47,29 @@ export function FreshPayPalLinkClient({ portalToken, autoStart = false }: FreshP
   }, [autoStart, createFreshLink])
 
   return (
-    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-      <p className="text-sm font-medium text-amber-900">Deposit payment link</p>
-      <p className="mt-1 text-sm text-amber-800">
-        PayPal links usually expire after 6 hours. Use this button to create a fresh link.
-      </p>
-      <button
-        type="button"
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-[3px]">
+        <p className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
+          Deposit payment link
+        </p>
+        <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
+          PayPal links usually expire after 6 hours. Use this button to create a fresh link.
+        </p>
+      </div>
+
+      <GuestButton
+        variant="primary"
+        size="md"
+        fullWidth
+        disabled={loading}
         onClick={() => {
           if (!loading) void createFreshLink()
         }}
-        disabled={loading}
-        className="mt-3 inline-flex min-h-10 items-center justify-center rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {loading ? 'Creating link...' : 'Pay deposit via PayPal'}
-      </button>
-      {errorMessage && (
-        <p className="mt-2 text-sm text-red-700">{errorMessage}</p>
-      )}
+      </GuestButton>
+
+      {errorMessage && <GuestAlert tone="problem">{errorMessage}</GuestAlert>}
     </div>
   )
 }
