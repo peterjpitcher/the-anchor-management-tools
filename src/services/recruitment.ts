@@ -158,7 +158,9 @@ function createToken(): string {
 }
 
 function recruitmentBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub'
+  // Builds candidate-facing booking links sent by email, so the fallback must resolve.
+  // `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
 }
 
 function retentionMonths(): number {

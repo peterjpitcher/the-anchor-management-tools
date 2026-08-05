@@ -1,4 +1,5 @@
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://manage.the-anchor.pub';
+// `manage.the-anchor.pub` does not resolve. Fall back to the live application domain.
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk';
 
 interface OnboardingSuccessPageProps {
   searchParams?: Promise<{ type?: string }>;
