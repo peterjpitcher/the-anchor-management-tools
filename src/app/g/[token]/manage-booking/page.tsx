@@ -1,20 +1,53 @@
-import Link from 'next/link'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import {
   getEventManagePreviewByRawToken,
   getEventRefundPolicy
 } from '@/lib/events/manage-booking'
-import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import {
+  DetailRow,
+  GuestAlert,
+  GuestBlockedState,
+  GuestButton,
+  GuestCard,
+  GuestField,
+  guestFieldControlProps,
+  GuestShell,
+  GUEST_H1_CLASS,
+  GUEST_INPUT_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+  GUEST_SUNK_BOX_CLASS,
+} from '@/components/features/guest'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 type ManageBookingPageProps = {
   params: Promise<{ token: string }>
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+// Static and non-personal on purpose: no token, customer name or booking reference may reach
+// a browser title or history entry. These routes are noindex via the X-Robots-Tag header.
+export const metadata = { title: 'Manage your booking - The Anchor' }
+
 export const dynamic = 'force-dynamic'
+
+/** Names the flow in the intro block. Carries no facts. */
+const KICKER = 'Event booking'
+
+/** Where a guest goes when this link cannot help them any more. */
+const WHATS_ON_URL = 'https://www.the-anchor.pub/whats-on'
+
+/**
+ * The seats label keeps its existing uppercase treatment. GuestField has no
+ * label-class prop, so it is targeted here rather than by patching the shared
+ * primitive, which seven other routes depend on.
+ */
+const UPPERCASE_FIELD_LABEL_CLASS =
+  '[&>label]:text-[11px] [&>label]:font-semibold [&>label]:uppercase [&>label]:tracking-[0.16em] [&>label]:text-guest-text-muted'
 
 function getSingleValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
@@ -117,6 +150,28 @@ function actionStatusMessage(state: string | undefined, delta: number, refundSta
   return null
 }
 
+/**
+ * The shared unavailable screen: a throttled view and any preview that does
+ * not come back ready both land here.
+ */
+function BlockedPanel({ reason }: { reason: string | undefined }): React.JSX.Element {
+  return (
+    <GuestShell>
+      <GuestBlockedState
+        kicker={KICKER}
+        heading="Manage booking unavailable"
+        lead={formatGuestGreeting(null, 'we could not load your booking details right now.')}
+        reason={blockedReasonMessage(reason)}
+        primaryAction={{
+          label: `Call ${GUEST_CONTACT.phoneDisplay}`,
+          href: GUEST_CONTACT.telHref,
+        }}
+        secondaryAction={{ label: 'View events', href: WHATS_ON_URL }}
+      />
+    </GuestShell>
+  )
+}
+
 export default async function ManageBookingPage({ params, searchParams }: ManageBookingPageProps) {
   const { token } = await params
   const resolvedSearch = searchParams ? await searchParams : {}
@@ -125,7 +180,6 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
   const delta = Number.parseInt(getSingleValue(resolvedSearch.delta) || '0', 10) || 0
   const refundStatus = getSingleValue(resolvedSearch.refund_status) || 'none'
   const refundAmount = Number.parseFloat(getSingleValue(resolvedSearch.refund_amount) || '0') || 0
-  const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
   const headerValues = await headers()
   const throttle = await checkGuestTokenThrottle({
     headers: headerValues,
@@ -135,46 +189,14 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
   })
 
   if (!throttle.allowed) {
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Manage booking unavailable</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage('rate_limited')}</p>
-          <p className="mt-3 text-sm text-slate-700">Call {contactPhone} for help.</p>
-          <div className="mt-6">
-            <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/whats-on">
-              View events
-            </Link>
-          </div>
-        </div>
-      </GuestPageShell>
-    )
+    return <BlockedPanel reason="rate_limited" />
   }
 
   const supabase = createAdminClient()
   const preview = await getEventManagePreviewByRawToken(supabase, token)
 
   if (preview.state !== 'ready') {
-    return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Manage booking unavailable</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
-          </p>
-          <p className="mt-3 text-sm text-slate-700">{blockedReasonMessage(preview.reason)}</p>
-          <p className="mt-3 text-sm text-slate-700">Call {contactPhone} for help.</p>
-          <div className="mt-6">
-            <Link className="text-sm font-medium text-slate-900 underline underline-offset-4" href="https://www.the-anchor.pub/whats-on">
-              View events
-            </Link>
-          </div>
-        </div>
-      </GuestPageShell>
-    )
+    return <BlockedPanel reason={preview.reason} />
   }
 
   const currentSeats = Math.max(1, Number(preview.seats ?? 1))
@@ -185,76 +207,107 @@ export default async function ManageBookingPage({ params, searchParams }: Manage
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customer_id)
 
   return (
-    <GuestPageShell>
-      <div className="mx-auto w-full max-w-xl rounded-xl border border-white/15 bg-white px-6 py-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">Manage your booking</h1>
-        <p className="mt-2 text-sm text-slate-700">
-          {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
-        </p>
+    <GuestShell>
+      <section className="flex flex-col gap-[18px]">
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
+          <h1 className={GUEST_H1_CLASS}>Manage your booking</h1>
+          <p className={GUEST_LEAD_CLASS}>
+            {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+          </p>
+        </div>
 
-        {statusMessage && (
-          <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-            {statusMessage}
-          </div>
-        )}
+        {statusMessage && <GuestAlert tone="success">{statusMessage}</GuestAlert>}
 
         {state === 'blocked' && (
-          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            {blockedReasonMessage(reason)}
-          </div>
+          <GuestAlert tone="notice">{blockedReasonMessage(reason)}</GuestAlert>
         )}
 
-        <p className="mt-4 text-sm text-slate-700">
-          <span className="font-medium">{preview.event_name || 'Event booking'}</span>
-        </p>
-        <p className="mt-1 text-sm text-slate-700">Event time: <span className="font-medium">{eventStart}</span></p>
-        <p className="mt-1 text-sm text-slate-700">Current seats: <span className="font-medium">{currentSeats}</span></p>
-        <p className="mt-1 text-sm text-slate-700">Payment mode: <span className="font-medium">{preview.payment_mode || 'free'}</span></p>
+        <GuestCard variant="accent">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-[5px]">
+              <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted">
+                Event
+              </span>
+              <span className="font-anchor-display text-[26px] font-normal leading-[1.15] tracking-[-0.02em] text-guest-text-strong">
+                {preview.event_name || 'Event booking'}
+              </span>
+            </div>
 
-        {preview.payment_mode === 'prepaid' && (
-          <div className="mt-3 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-800">
-            Refund policy for cancellations or seat reductions:
-            {' '}
-            {policy.policyBand === 'full' ? '100% refund window' : policy.policyBand === 'partial' ? '50% refund window' : 'No refund window'}.
-            {' '}
-            Price per seat: {formatMoney(pricePerSeat)}.
+            <div>
+              <DetailRow label="Event time" value={eventStart} />
+              <DetailRow label="Current seats" value={currentSeats} />
+              <DetailRow label="Payment mode" value={preview.payment_mode || 'free'} />
+            </div>
+
+            {preview.payment_mode === 'prepaid' && (
+              <p className={GUEST_SUNK_BOX_CLASS}>
+                Refund policy for cancellations or seat reductions:
+                {' '}
+                {policy.policyBand === 'full' ? '100% refund window' : policy.policyBand === 'partial' ? '50% refund window' : 'No refund window'}.
+                {' '}
+                Price per seat: {formatMoney(pricePerSeat)}.
+              </p>
+            )}
+
+            {!preview.can_change_seats && (
+              <p className={GUEST_SUNK_BOX_CLASS}>
+                This booking can no longer be changed online.
+              </p>
+            )}
           </div>
-        )}
+        </GuestCard>
 
         {preview.can_change_seats && (
-          <form method="post" action={`/g/${token}/manage-booking/action`} className="mt-6 space-y-3">
-            <input type="hidden" name="intent" value="update_seats" />
-            <label htmlFor="seats" className="block text-xs font-medium uppercase tracking-wide text-slate-600">
-              Change seats
-            </label>
-            <input
-              id="seats"
-              name="seats"
-              type="number"
-              min={1}
-              max={20}
-              defaultValue={currentSeats}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-            <button
-              type="submit"
-              className="inline-flex w-full items-center justify-center rounded-md bg-sidebar px-4 py-2 text-sm font-semibold text-white transition hover:bg-sidebar/90"
+          <GuestCard>
+            {/*
+              Server-rendered POST, deliberately. A seat change has to work
+              with no JavaScript, so this stays a plain form.
+            */}
+            <form
+              method="post"
+              action={`/g/${token}/manage-booking/action`}
+              className="flex flex-col gap-4"
             >
-              Update seats
-            </button>
-          </form>
+              <input type="hidden" name="intent" value="update_seats" />
+
+              <GuestField id="seats" label="Change seats" className={UPPERCASE_FIELD_LABEL_CLASS}>
+                <input
+                  {...guestFieldControlProps({ id: 'seats' })}
+                  name="seats"
+                  type="number"
+                  min={1}
+                  max={20}
+                  defaultValue={currentSeats}
+                  className={GUEST_INPUT_CLASS}
+                />
+              </GuestField>
+
+              <GuestButton
+                as="button"
+                type="submit"
+                variant="primary"
+                size="md"
+                className="w-full sm:w-auto"
+              >
+                Update seats
+              </GuestButton>
+            </form>
+          </GuestCard>
         )}
 
-        {!preview.can_change_seats && (
-          <p className="mt-5 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-            This booking can no longer be changed online.
-          </p>
-        )}
-
-        <p className="mt-4 text-xs text-slate-600">
-          Need to cancel or need help? Call {contactPhone}.
+        <p className="text-center font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          Need to cancel or need help? Call{' '}
+          <a
+            href={GUEST_CONTACT.telHref}
+            referrerPolicy="no-referrer"
+            className="font-semibold text-guest-accent-text underline underline-offset-[3px]"
+          >
+            {GUEST_CONTACT.phoneDisplay}
+          </a>
+          .
         </p>
-      </div>
-    </GuestPageShell>
+      </section>
+    </GuestShell>
   )
 }

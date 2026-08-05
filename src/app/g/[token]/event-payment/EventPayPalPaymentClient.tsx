@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
+import { GuestAlert, TrustLine } from '@/components/features/guest'
 
 type PaymentState = 'idle' | 'creating' | 'paying' | 'success' | 'manual_review' | 'error'
 
@@ -26,36 +27,41 @@ export function EventPayPalPaymentClient({
 
   if (!paypalClientId) {
     return (
-      <div role="alert" className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <GuestAlert tone="notice" role="alert">
         Online payment is temporarily unavailable. Please call us, or try the payment link again shortly.
-      </div>
+      </GuestAlert>
     )
   }
 
   if (paymentState === 'success') {
     return (
-      <div role="status" className="mt-4 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+      <GuestAlert tone="success" role="status">
         Payment received. Your booking is confirmed and we will send confirmation shortly.
-      </div>
+      </GuestAlert>
     )
   }
 
   if (paymentState === 'manual_review') {
     return (
-      <div role="status" className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <GuestAlert tone="notice" role="status">
         Payment received. Staff need to check your booking before confirming. We will contact you shortly.
-      </div>
+      </GuestAlert>
     )
   }
 
   return (
-    <div className="mt-6" style={{ pointerEvents: paymentState === 'creating' || paymentState === 'paying' ? 'none' : 'auto' }}>
+    // The pointer-events guard stays: it stops a second tap reaching PayPal
+    // while an order is being created or captured.
+    <div
+      className="flex flex-col gap-3"
+      style={{ pointerEvents: paymentState === 'creating' || paymentState === 'paying' ? 'none' : 'auto' }}
+    >
       {paymentState === 'error' && (
-        <div role="alert" className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+        <GuestAlert tone="problem" role="alert">
           {errorMessage || 'Payment failed. Please try again.'}
           <button
             type="button"
-            className="ml-2 underline"
+            className="ml-2 font-semibold underline underline-offset-[3px]"
             onClick={() => {
               setErrorMessage(null)
               setPaymentState('idle')
@@ -63,7 +69,7 @@ export function EventPayPalPaymentClient({
           >
             Try again
           </button>
-        </div>
+        </GuestAlert>
       )}
 
       <PayPalScriptProvider
@@ -74,6 +80,10 @@ export function EventPayPalPaymentClient({
           environment: paypalEnvironment === 'sandbox' ? 'sandbox' : 'production',
         }}
       >
+        {/*
+          PayPal owns this button's look. The handoff is explicit that the SDK
+          output is not restyled: only the chrome around it is ours.
+        */}
         <PayPalButtons
           style={{ layout: 'vertical', shape: 'rect' }}
           disabled={paymentState === 'creating' || paymentState === 'paying'}
@@ -135,11 +145,23 @@ export function EventPayPalPaymentClient({
       </PayPalScriptProvider>
 
       {(paymentState === 'creating' || paymentState === 'paying') && (
-        <p className="mt-2 text-center text-xs text-slate-500">Processing payment, please wait.</p>
+        <p className="text-center font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">
+          Processing payment, please wait.
+        </p>
       )}
 
-      <p className="mt-3 text-center text-xs text-slate-500">
-        If PayPal does not load, <a className="underline" href={fallbackUrl}>refresh this payment page</a>.
+      <TrustLine />
+
+      <p className="text-center font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">
+        If PayPal does not load,{' '}
+        <a
+          className="font-medium text-guest-accent-text underline underline-offset-[3px]"
+          href={fallbackUrl}
+          referrerPolicy="no-referrer"
+        >
+          refresh this payment page
+        </a>
+        .
       </p>
     </div>
   )

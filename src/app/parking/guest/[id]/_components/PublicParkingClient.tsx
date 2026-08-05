@@ -1,19 +1,64 @@
-import { Icon } from '@/ds'
+import { Bell, Check, Clock, type LucideIcon } from 'lucide-react'
+import {
+  DetailGrid,
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+  GUEST_SUNK_BOX_CLASS,
+  GuestAlert,
+  GuestAmount,
+  GuestBadge,
+  GuestButton,
+  GuestCard,
+  GuestShell,
+  TrustLine,
+  guestBadgeToneForStatus,
+} from '@/components/features/guest'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 import type { ParkingBooking } from '@/types/parking'
 import { formatDateTime } from '@/lib/dateUtils'
+import { cn } from '@/lib/utils'
 import type { ParkingPaymentNotice, ParkingPaymentNoticeTone } from '../paymentNotice'
 function formatCurrency(amount: number, currency = 'GBP', locale = 'en-GB'): string {
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
 }
 
+// Deliberately narrower than ParkingBooking: this page is public, so it may only ever see the
+// columns the guest projection selects. Staff-only fields such as `notes` are excluded here so
+// that referencing one is a compile error rather than a silent data leak.
+export type PublicParkingBooking = Pick<
+  ParkingBooking,
+  | 'id'
+  | 'reference'
+  | 'status'
+  | 'payment_status'
+  | 'start_at'
+  | 'end_at'
+  | 'calculated_price'
+  | 'override_price'
+  | 'vehicle_registration'
+  | 'vehicle_make'
+  | 'vehicle_model'
+  | 'customer_first_name'
+  | 'customer_last_name'
+>
+
 interface PublicParkingClientProps {
-  booking: ParkingBooking
+  booking: PublicParkingBooking
   paymentNotice: ParkingPaymentNotice | null
   canRetryPayment: boolean
   customerFirstName: string | null
 }
 
-function formatVehicle(booking: ParkingBooking): string {
+/** Reassurance rows, rendered as one sunk box under the booking card. */
+const ASSURANCES: Array<{ icon: LucideIcon; title: string; sub: string }> = [
+  { icon: Check, title: 'Secure Booking', sub: 'Your details are stored securely' },
+  { icon: Bell, title: 'Confirmation', sub: 'You will receive email confirmation' },
+  { icon: Clock, title: 'Support', sub: 'Contact us anytime' },
+]
+
+function formatVehicle(booking: PublicParkingBooking): string {
   const parts = [booking.vehicle_make, booking.vehicle_model].filter(Boolean)
   return parts.length > 0 ? parts.join(' ') : '--'
 }
@@ -23,16 +68,20 @@ function formatGuestGreeting(name: string | null, suffix: string): string {
   return suffix.charAt(0).toUpperCase() + suffix.slice(1)
 }
 
-function noticeClasses(tone: ParkingPaymentNoticeTone): string {
+/**
+ * The payment notice keeps its own four tones; the guest system has three.
+ * Warning and info both read as "something needs your attention but nothing has
+ * gone wrong", which is exactly `notice`.
+ */
+function noticeTone(tone: ParkingPaymentNoticeTone): 'success' | 'notice' | 'problem' {
   switch (tone) {
     case 'success':
-      return 'border-green-200 bg-green-50 text-green-900'
-    case 'warning':
-      return 'border-amber-200 bg-amber-50 text-amber-950'
+      return 'success'
     case 'error':
-      return 'border-red-200 bg-red-50 text-red-950'
+      return 'problem'
+    case 'warning':
     case 'info':
-      return 'border-blue-200 bg-blue-50 text-blue-950'
+      return 'notice'
   }
 }
 
@@ -42,139 +91,119 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
   const bookingStatus = booking.status
   const headingStatus = paymentStatus === 'paid' ? 'confirmed' : canRetryPayment ? 'awaiting payment' : 'received'
 
+  // Same text as before, humanised the same way; only the wrapper is new.
+  const bookingStatusLabel = bookingStatus.replace('_', ' ')
+  const paymentStatusLabel = paymentStatus.replace('_', ' ')
+
+  const retryAction = canRetryPayment ? (
+    <form action="/api/parking/payment/retry" method="post" className="flex flex-col gap-2.5">
+      <input type="hidden" name="booking_id" value={booking.id} />
+      <GuestButton type="submit" variant="primary" size="md" fullWidth>
+        {paymentStatus === 'failed' ? 'Try payment again' : 'Pay now'}
+      </GuestButton>
+      <TrustLine />
+    </form>
+  ) : null
+
   return (
-    <div className="public">
-      <div className="public__hero public__hero--slim">
-        <div className="public__hero-bg" />
-        <div className="public__hero-inner">
-          <div className="public__brand-mini">The Anchor</div>
-          <h1 className="public__hero-title">Guest Parking</h1>
-          <p className="public__hero-sub">
-            {formatGuestGreeting(customerFirstName, 'your parking booking details are below.')}
-          </p>
-        </div>
+    <GuestShell>
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>Guest parking</p>
+        <h1 className={GUEST_H1_CLASS}>Parking booking {headingStatus}</h1>
+        <p className={GUEST_LEAD_CLASS}>
+          {formatGuestGreeting(customerFirstName, 'your parking booking details are below.')}
+        </p>
       </div>
 
-      <div className="public__main">
-        <div className="public__card">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-full bg-primary-soft flex items-center justify-center">
-              <Icon name="truck" size={20} className="text-primary" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-text-strong">
-                Parking booking {headingStatus}
-              </h2>
-            </div>
-          </div>
+      {paymentNotice && (
+        // The role is passed explicitly rather than left to the tone default, so
+        // the error case keeps `role="alert"` even if the tone map ever moves.
+        <GuestAlert
+          tone={noticeTone(paymentNotice.tone)}
+          title={paymentNotice.title}
+          role={paymentNotice.tone === 'error' ? 'alert' : 'status'}
+          action={retryAction}
+        >
+          {paymentNotice.message}
+        </GuestAlert>
+      )}
 
-          {paymentNotice && (
-            <div
-              role={paymentNotice.tone === 'error' ? 'alert' : 'status'}
-              className={`mb-5 rounded-lg border p-4 text-sm ${noticeClasses(paymentNotice.tone)}`}
+      <GuestCard variant="accent" className="flex flex-col gap-5">
+        <GuestAmount label="Amount" value={formatCurrency(amount)} />
+
+        <DetailGrid
+          items={[
+            {
+              label: 'Booking reference',
+              value: <span className="font-mono">{booking.reference}</span>,
+            },
+            {
+              label: 'Customer',
+              value: `${booking.customer_first_name} ${booking.customer_last_name ?? ''}`,
+            },
+            {
+              label: 'Vehicle registration',
+              value: <span className="font-mono">{booking.vehicle_registration}</span>,
+            },
+            { label: 'Vehicle make/model', value: formatVehicle(booking) },
+            { label: 'Start', value: formatDateTime(booking.start_at) },
+            { label: 'End', value: formatDateTime(booking.end_at) },
+            {
+              label: 'Parking status',
+              value: (
+                <GuestBadge tone={guestBadgeToneForStatus(bookingStatusLabel)} dot>
+                  {bookingStatusLabel}
+                </GuestBadge>
+              ),
+            },
+            {
+              label: 'Payment status',
+              value: (
+                <GuestBadge tone={guestBadgeToneForStatus(paymentStatusLabel)} dot>
+                  {paymentStatusLabel}
+                </GuestBadge>
+              ),
+            },
+          ]}
+        />
+      </GuestCard>
+
+      <div className={cn(GUEST_SUNK_BOX_CLASS, 'flex flex-col gap-3')}>
+        {ASSURANCES.map(({ icon: AssuranceIcon, title, sub }) => (
+          <div key={title} className="flex items-start gap-2.5">
+            <span
+              aria-hidden="true"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-anchor-green/10 text-anchor-green"
             >
-              <p className="font-semibold">{paymentNotice.title}</p>
-              <p className="mt-1">{paymentNotice.message}</p>
-              {canRetryPayment && (
-                <form action="/api/parking/payment/retry" method="post" className="mt-4">
-                  <input type="hidden" name="booking_id" value={booking.id} />
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                  >
-                    {paymentStatus === 'failed' ? 'Try payment again' : 'Pay now'}
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <Detail label="Booking reference" value={booking.reference} />
-            <Detail label="Customer" value={`${booking.customer_first_name} ${booking.customer_last_name ?? ''}`} />
-            <Detail label="Vehicle registration" value={booking.vehicle_registration} />
-            <Detail label="Vehicle make/model" value={formatVehicle(booking)} />
-            <Detail label="Start" value={formatDateTime(booking.start_at)} />
-            <Detail label="End" value={formatDateTime(booking.end_at)} />
-            <Detail label="Parking status" value={bookingStatus.replace('_', ' ')} />
-            <Detail label="Payment status" value={paymentStatus.replace('_', ' ')} />
-          </dl>
-
-          {/* Pricing breakdown */}
-          <div className="public__pricing">
-            <div className="public__total">
-              <span>Amount</span>
-              <span>{formatCurrency(amount)}</span>
+              <AssuranceIcon className="h-[15px] w-[15px]" />
+            </span>
+            <div className="flex min-w-0 flex-col">
+              <p className="text-[13px] font-semibold leading-[1.4] text-guest-text">{title}</p>
+              <p className="text-[12px] leading-[1.5] text-guest-text-muted">{sub}</p>
             </div>
           </div>
-
-          {booking.notes && (
-            <div className="mt-5 bg-surface-2 rounded-lg border border-border p-4 text-sm text-text">
-              <p className="font-medium text-text-strong mb-1">Notes</p>
-              <p className="whitespace-pre-wrap break-words">{booking.notes}</p>
-            </div>
-          )}
-
-          <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-between items-center">
-            <p className="text-sm text-text-muted">
-              Need help? Call us on{' '}
-              <span className="font-semibold text-text-strong">{process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'}</span>
-            </p>
-            <a
-              href="https://www.the-anchor.pub"
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Return to The Anchor website
-            </a>
-          </div>
-        </div>
-
-        <div className="public__assurance">
-          <div className="public__assure">
-            <div className="public__assure-icon">
-              <Icon name="check" size={16} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text-strong">Secure Booking</p>
-              <p className="text-xs text-text-muted">Your details are stored securely</p>
-            </div>
-          </div>
-          <div className="public__assure">
-            <div className="public__assure-icon">
-              <Icon name="bell" size={16} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text-strong">Confirmation</p>
-              <p className="text-xs text-text-muted">You will receive email confirmation</p>
-            </div>
-          </div>
-          <div className="public__assure">
-            <div className="public__assure-icon">
-              <Icon name="clock" size={16} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text-strong">Support</p>
-              <p className="text-xs text-text-muted">Contact us anytime</p>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      <div className="public__footer">
-        <span>&copy; {new Date().getFullYear()} The Anchor, Staines-upon-Thames</span>
-        <div>
-          <a href="/privacy" className="public__link">Privacy Policy</a>
-        </div>
-      </div>
-    </div>
-  )
-}
+      <div className="flex flex-col gap-2.5">
+        <p className="font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+          Need help? Call us on{' '}
+          <span className="font-bold text-guest-text">{GUEST_CONTACT.phoneDisplay}</span>
+        </p>
 
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium uppercase tracking-wider text-text-muted">{label}</dt>
-      <dd className="mt-1 text-sm text-text-strong">{value}</dd>
-    </div>
+        {/*
+          no-referrer: the URL of this page is the booking id, which is the only
+          thing standing between a stranger and the booking, so it must not be
+          handed to another origin in a Referer header.
+        */}
+        <a
+          href={GUEST_CONTACT.website}
+          referrerPolicy="no-referrer"
+          className="font-anchor-body text-[13px] font-semibold leading-[1.6] text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
+        >
+          Return to The Anchor website
+        </a>
+      </div>
+    </GuestShell>
   )
 }

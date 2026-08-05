@@ -1,0 +1,103 @@
+/* ============================================================
+   THE ANCHOR — COLOUR TOKENS
+   Primary green #005131, secondary gold #a57626, plus black & white.
+   Base palette (raw values) + semantic aliases.
+   RULE: consumers use the SEMANTIC tokens (--bg, --text, --accent…).
+   The raw --anchor-* palette is internal to this system.
+   ============================================================ */
+
+:root {
+  /* ---- Brand: Green (primary) ---- */
+  --anchor-green: #005131;          /* primary brand green */
+  --anchor-green-dark: #003d25;     /* pressed / deep panels */
+  --anchor-green-deep: #0c1d11;     /* cinematic near-black green surface */
+  --anchor-green-raised: #132318;   /* raised dark surface */
+  --anchor-green-card: #172d1e;     /* dark card surface */
+  --anchor-green-light: #006b45;    /* hover / lighter green (AA on white) */
+  --anchor-sage: #7a8b7f;           /* muted desaturated green */
+
+  /* ---- Brand: Gold (secondary) — exactly three. ----
+     fills → gold · text on light → gold-dark · accents on dark → gold-bright */
+  --anchor-gold: #a57626;           /* secondary brand gold (large areas, fills) */
+  --anchor-gold-dark: #8b6914;      /* AA-safe gold for text on light (4.5:1) */
+  --anchor-gold-bright: #c9a020;    /* vivid gold accents on dark */
+
+  /* ---- Neutrals: black & white family ---- */
+  --anchor-black: #000000;          /* true black */
+  --anchor-charcoal: #1a1a1a;       /* near-black ink */
+  --anchor-white: #ffffff;          /* pure white */
+  --anchor-cream: #faf8f3;          /* warm off-white surface */
+  --anchor-cream-text: #f0e6c6;     /* warm cream text (on dark green) */
+  --anchor-sand: #f5e6d3;           /* warm tan tint for tags / fills */
+
+  /* ---- Grey (single warm mid-grey; charcoal and cream cover the ends) ---- */
+  --anchor-grey-500: #6f6a61;
+
+  /* ---- Status ---- */
+  --anchor-success: #006b45;
+  --anchor-danger:  #b1372f;
+
+  /* ============================================================
+     SEMANTIC ALIASES — default (light / cream) theme
+     Clean, bold, statement-making: cream + white surfaces,
+     deep green ink, gold accents.
+     ============================================================ */
+  --bg: var(--anchor-cream);
+  --surface: var(--anchor-white);
+  --surface-raised: var(--anchor-cream);
+  --surface-sunk: #f2ede3;
+  --surface-inverse: var(--anchor-green);
+
+  --text: var(--anchor-charcoal);
+  --text-strong: var(--anchor-green);
+  --text-muted: var(--anchor-grey-500);
+  --text-on-green: var(--anchor-white);
+  --text-on-gold: var(--anchor-charcoal);
+  --text-inverse: var(--anchor-cream-text);
+
+  --accent: var(--anchor-green);
+  --accent-2: var(--anchor-gold);
+  --accent-text: var(--anchor-gold-dark);   /* gold used as text on light */
+
+  --border: #e2dccf;
+  --border-strong: #d2c9b4;
+  --border-gold: rgba(165, 118, 38, 0.35);
+
+  --focus-ring: var(--anchor-gold-dark);
+  --link: var(--anchor-green);
+  --link-hover: var(--anchor-gold-dark);
+}
+
+/* ============================================================
+   DARK CINEMATIC THEME — the pub at night.
+   Apply with class="theme-dark" or [data-theme="dark"].
+   Deep green surfaces, cream text, vivid gold accents.
+   This is the real the-anchor.pub website surface.
+   ============================================================ */
+.theme-dark,
+[data-theme="dark"] {
+  --bg: var(--anchor-green-deep);
+  --surface: var(--anchor-green-card);
+  --surface-raised: var(--anchor-green-raised);
+  --surface-sunk: #081509;
+  --surface-inverse: var(--anchor-cream);
+
+  --text: var(--anchor-cream-text);
+  --text-strong: var(--anchor-cream-text);
+  --text-muted: var(--anchor-sage);
+  --text-on-green: var(--anchor-cream-text);
+  --text-on-gold: var(--anchor-charcoal);
+  --text-inverse: var(--anchor-charcoal);
+
+  --accent: var(--anchor-gold-bright);
+  --accent-2: var(--anchor-gold-bright);
+  --accent-text: var(--anchor-gold-bright);
+
+  --border: rgba(201, 160, 32, 0.22);
+  --border-strong: rgba(201, 160, 32, 0.45);
+  --border-gold: rgba(201, 160, 32, 0.55);
+
+  --focus-ring: var(--anchor-gold-bright);
+  --link: var(--anchor-gold-bright);
+  --link-hover: var(--anchor-cream-text);
+}

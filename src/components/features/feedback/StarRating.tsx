@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Star } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface StarRatingProps {
   value: number
@@ -8,6 +10,14 @@ interface StarRatingProps {
   max?: number
 }
 
+/**
+ * Restyled onto the guest design system, logic untouched.
+ *
+ * The 44x44px button is the touch target and the 30px star is the mark inside
+ * it. Focus is deliberately unstyled here: the gold ring comes from the
+ * `.guest-theme :focus-visible` rule in globals.css, which is why the old
+ * `focus-visible:ring-blue-500` is gone rather than recoloured.
+ */
 export function StarRating({ value, onChange, max = 5 }: StarRatingProps) {
   const [hovered, setHovered] = useState(0)
 
@@ -22,7 +32,7 @@ export function StarRating({ value, onChange, max = 5 }: StarRatingProps) {
   }
 
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Star rating">
+    <div className="flex items-center gap-0.5" role="group" aria-label="Star rating">
       {Array.from({ length: max }, (_, i) => i + 1).map((n) => {
         const active = (hovered || value) >= n
         return (
@@ -37,16 +47,20 @@ export function StarRating({ value, onChange, max = 5 }: StarRatingProps) {
             onFocus={() => setHovered(n)}
             onBlur={() => setHovered(0)}
             onKeyDown={(event) => handleKeyDown(event, n)}
-            className="flex h-11 w-11 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+            className="flex h-11 w-11 items-center justify-center rounded-guest-field"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className={`h-8 w-8 ${active ? 'text-yellow-400' : 'text-gray-300'}`}
-              fill="currentColor"
+            {/*
+              Lucide ships `fill="none" stroke="currentColor"` as presentation
+              attributes. `fill-current` and `stroke-none` are CSS, which wins,
+              turning the outline star into the solid one the design calls for.
+            */}
+            <Star
               aria-hidden="true"
-            >
-              <path d="M12 2.5l2.9 5.88 6.49.94-4.7 4.58 1.11 6.46L12 17.77 6.2 20.36l1.11-6.46-4.7-4.58 6.49-.94L12 2.5z" />
-            </svg>
+              className={cn(
+                'h-[30px] w-[30px] fill-current stroke-none transition-colors duration-200',
+                active ? 'text-anchor-gold' : 'text-guest-border-strong'
+              )}
+            />
           </button>
         )
       })}

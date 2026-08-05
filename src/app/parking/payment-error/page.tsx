@@ -1,3 +1,14 @@
+import { CircleAlert } from 'lucide-react'
+import {
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GuestButton,
+  GuestCard,
+  GuestShell,
+} from '@/components/features/guest'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+
 type ParkingPaymentErrorPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
@@ -13,6 +24,10 @@ const COPY: Record<string, { title: string; body: string }> = {
   },
 }
 
+// Static and non-personal on purpose: no token, customer name or booking reference may reach
+// a browser title or history entry. These routes are noindex via the X-Robots-Tag header.
+export const metadata = { title: 'Parking payment - The Anchor' }
+
 export const dynamic = 'force-dynamic'
 
 export default async function ParkingPaymentErrorPage({ searchParams }: ParkingPaymentErrorPageProps) {
@@ -23,36 +38,39 @@ export default async function ParkingPaymentErrorPage({ searchParams }: ParkingP
     title: 'Parking payment issue',
     body: 'We could not confirm this parking payment.',
   }
-  const phone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
 
   return (
-    <div className="public">
-      <div className="public__hero public__hero--slim">
-        <div className="public__hero-bg" />
-        <div className="public__hero-inner">
-          <div className="public__brand-mini">The Anchor</div>
-          <h1 className="public__hero-title">Guest Parking</h1>
-          <p className="public__hero-sub">{copy.title}</p>
-        </div>
+    <GuestShell>
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>Guest parking</p>
+        <h1 className={GUEST_H1_CLASS}>{copy.title}</h1>
       </div>
 
-      <div className="public__main public__main--prose">
-        <div className="public__card">
-          <h2 className="text-lg font-semibold text-text-strong">{copy.title}</h2>
-          <p className="mt-2 text-sm text-text">{copy.body}</p>
-          {bookingId && (
-            <p className="mt-3 text-sm text-text-muted">
-              Booking ID: <span className="font-mono text-text-strong">{bookingId}</span>
-            </p>
-          )}
-          <p className="mt-4 text-sm text-text-muted">
-            Please try the payment link again, or call <span className="font-semibold text-text-strong">{phone}</span>.
+      <GuestCard variant="accent" className="flex flex-col gap-4">
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-anchor-danger/10 text-anchor-danger"
+        >
+          <CircleAlert className="h-5 w-5" />
+        </span>
+
+        <p className="font-anchor-body text-[15px] leading-[1.65] text-guest-text">{copy.body}</p>
+
+        {bookingId && (
+          <p className="font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
+            Booking ID: <span className="font-mono font-semibold text-guest-text">{bookingId}</span>
           </p>
-          <a href="https://www.the-anchor.pub" className="mt-5 inline-flex text-sm font-medium text-primary hover:underline">
-            Return to The Anchor website
-          </a>
-        </div>
-      </div>
-    </div>
+        )}
+
+        <p className="border-t border-guest-border pt-4 font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          Please try the payment link again, or call{' '}
+          <span className="font-bold text-guest-text">{GUEST_CONTACT.phoneDisplay}</span>.
+        </p>
+      </GuestCard>
+
+      <GuestButton as="a" href={GUEST_CONTACT.website} variant="outline" size="md">
+        Return to The Anchor website
+      </GuestButton>
+    </GuestShell>
   )
 }

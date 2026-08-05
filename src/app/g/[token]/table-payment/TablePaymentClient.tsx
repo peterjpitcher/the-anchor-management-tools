@@ -1,7 +1,23 @@
 'use client'
 
 import { useState } from 'react'
+import { Clock } from 'lucide-react'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
+// Imported file by file rather than through '@/components/features/guest': the
+// barrel re-exports GuestShell, which loads the guest webfonts, and a font
+// loader must not be pulled into a client module graph.
+import { DetailRow } from '@/components/features/guest/DetailRow'
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
+import { GuestAmount } from '@/components/features/guest/GuestAmount'
+import { GuestCard } from '@/components/features/guest/GuestCard'
+import { TrustLine } from '@/components/features/guest/TrustLine'
+import {
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+} from '@/components/features/guest/styles'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 interface TablePaymentClientProps {
   orderId: string
@@ -14,8 +30,17 @@ interface TablePaymentClientProps {
   paypalClientId: string
   paypalEnvironment: string
   captureAction: (orderId: string) => Promise<{ success: boolean; error?: string }>
-  // Outside bookings hold no indoor table — used to keep the "reserved" copy table-free.
+  // Outside bookings hold no indoor table, so the "reserved" copy stays table-free.
   isOutsideSeating?: boolean
+  /** Greeting line under the h1, computed on the server from the customer record. */
+  greeting: string
+  /**
+   * The whole success state, computed on the server (spec, "table-payment
+   * success-state boundary"). This component owns everything below
+   * `GuestShell`, so on capture success it swaps the entire page body, h1
+   * included, with no refresh and no second trip to the server.
+   */
+  success: React.ReactNode
 }
 
 type PaymentState = 'idle' | 'paying' | 'success' | 'error'
@@ -51,6 +76,8 @@ export function TablePaymentClient({
   paypalEnvironment,
   captureAction,
   isOutsideSeating = false,
+  greeting,
+  success,
 }: TablePaymentClientProps) {
   const [paymentState, setPaymentState] = useState<PaymentState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -59,103 +86,126 @@ export function TablePaymentClient({
   const seatWord = partySize === 1 ? 'person' : 'people'
 
   if (paymentState === 'success') {
-    return (
-      <div>
-        <h2 className="text-xl font-semibold text-slate-900">Deposit received!</h2>
-        <p className="mt-2 text-sm text-slate-700">
-          Thank you — your deposit payment has been received. We are confirming your booking now. You will receive a text confirmation shortly.
-        </p>
-      </div>
-    )
+    return <>{success}</>
   }
 
   return (
-    <div>
+    <>
       {showCancelledMessage && paymentState === 'idle' && (
-        <div role="alert" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Payment was not completed. Your {isOutsideSeating ? 'booking' : 'table'} is still reserved if you pay before the hold expiry time below.
-        </div>
+        <GuestAlert tone="notice" role="alert" icon={Clock}>
+          Payment was not completed. Your {isOutsideSeating ? 'booking' : 'table'} is still
+          reserved if you pay before the hold expiry time below.
+        </GuestAlert>
       )}
 
-      <p className="text-sm text-slate-700">
-        Booking reference: <span className="font-medium">{bookingReference}</span>
-      </p>
-      <p className="mt-2 text-sm text-slate-700">
-        Covers: <span className="font-medium">{partySize} {seatWord}</span>
-      </p>
-      <p className="mt-2 text-sm text-slate-700">
-        Deposit due now: <span className="font-medium">{formatMoney(depositAmount, currency)}</span>
-      </p>
-      <p className="mt-2 text-sm text-slate-700">
-        Hold expires: <span className="font-medium">{formatLondonDateTime(holdExpiresAt)}</span>
-      </p>
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>Table booking</p>
+        <h1 className={GUEST_H1_CLASS}>Complete your deposit payment</h1>
+        <p className={GUEST_LEAD_CLASS}>{greeting}</p>
+      </div>
 
-      {holdExpired ? (
-        <div role="alert" className="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-          This hold has expired. Please call us to arrange a new booking.
+      <GuestCard variant="accent">
+        <GuestAmount label="Deposit due now" value={formatMoney(depositAmount, currency)} />
+
+        <div className="mt-[18px]">
+          <DetailRow label="Booking reference" value={bookingReference} />
+          <DetailRow label="Covers" value={`${partySize} ${seatWord}`} />
+          <DetailRow
+            label="Hold expires"
+            value={formatLondonDateTime(holdExpiresAt)}
+            emphasis="deadline"
+          />
         </div>
-      ) : (
-        <div className="mt-6" style={{ pointerEvents: paymentState === 'paying' ? 'none' : 'auto' }}>
-          {paymentState === 'error' && (
-            <div role="alert" className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
-              {errorMessage || 'Payment failed. Please try again.'}
-              <button
-                type="button"
-                className="ml-2 underline"
-                onClick={() => {
-                  setErrorMessage(null)
-                  setPaymentState('idle')
-                }}
-              >
-                Try again
-              </button>
-            </div>
-          )}
 
-          <PayPalScriptProvider
-            options={{
-              clientId: paypalClientId,
-              currency: currency,
-              intent: 'capture',
-              environment: paypalEnvironment === 'sandbox' ? 'sandbox' : 'production',
-            }}
+        {holdExpired ? (
+          <GuestAlert tone="problem" role="alert" className="mt-[18px]">
+            This hold has expired. Please call us to arrange a new booking.
+          </GuestAlert>
+        ) : (
+          <div
+            className="mt-[18px] flex flex-col gap-3"
+            style={{ pointerEvents: paymentState === 'paying' ? 'none' : 'auto' }}
           >
-            <PayPalButtons
-              style={{ layout: 'vertical', shape: 'rect' }}
-              disabled={paymentState === 'paying'}
-              createOrder={() => {
-                setPaymentState('paying')
-                return Promise.resolve(orderId)
+            {paymentState === 'error' && (
+              <GuestAlert tone="problem" role="alert">
+                {errorMessage || 'Payment failed. Please try again.'}
+                <button
+                  type="button"
+                  className="ml-2 font-semibold text-anchor-danger underline underline-offset-2"
+                  onClick={() => {
+                    setErrorMessage(null)
+                    setPaymentState('idle')
+                  }}
+                >
+                  Try again
+                </button>
+              </GuestAlert>
+            )}
+
+            <PayPalScriptProvider
+              options={{
+                clientId: paypalClientId,
+                currency: currency,
+                intent: 'capture',
+                environment: paypalEnvironment === 'sandbox' ? 'sandbox' : 'production',
               }}
-              onApprove={async () => {
-                try {
-                  const result = await captureAction(orderId)
-                  if (result.success) {
-                    setPaymentState('success')
-                  } else {
-                    setErrorMessage(result.error || 'Payment capture failed. Please call us.')
+            >
+              {/* PayPal's own button. Never restyle it: this style prop is fixed. */}
+              <PayPalButtons
+                style={{ layout: 'vertical', shape: 'rect' }}
+                disabled={paymentState === 'paying'}
+                createOrder={() => {
+                  setPaymentState('paying')
+                  return Promise.resolve(orderId)
+                }}
+                onApprove={async () => {
+                  try {
+                    const result = await captureAction(orderId)
+                    if (result.success) {
+                      setPaymentState('success')
+                    } else {
+                      setErrorMessage(result.error || 'Payment capture failed. Please call us.')
+                      setPaymentState('error')
+                    }
+                  } catch {
+                    setErrorMessage(
+                      'An unexpected error occurred. Please call us to confirm your payment.'
+                    )
                     setPaymentState('error')
                   }
-                } catch {
-                  setErrorMessage('An unexpected error occurred. Please call us to confirm your payment.')
+                }}
+                onCancel={() => {
+                  setPaymentState('idle')
+                }}
+                onError={() => {
+                  setErrorMessage('PayPal encountered an error. Please try again.')
                   setPaymentState('error')
-                }
-              }}
-              onCancel={() => {
-                setPaymentState('idle')
-              }}
-              onError={() => {
-                setErrorMessage('PayPal encountered an error. Please try again.')
-                setPaymentState('error')
-              }}
-            />
-          </PayPalScriptProvider>
+                }}
+              />
+            </PayPalScriptProvider>
 
-          {paymentState === 'paying' && (
-            <p className="mt-2 text-center text-xs text-slate-500">Processing payment, please wait…</p>
-          )}
-        </div>
-      )}
-    </div>
+            {paymentState === 'paying' && (
+              <p className="text-center font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">
+                Processing payment, please wait…
+              </p>
+            )}
+
+            <TrustLine />
+          </div>
+        )}
+      </GuestCard>
+
+      <p className="text-center font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+        Need help? Call{' '}
+        <a
+          href={GUEST_CONTACT.telHref}
+          referrerPolicy="no-referrer"
+          className="font-semibold text-guest-accent-text no-underline hover:underline"
+        >
+          {GUEST_CONTACT.phoneDisplay}
+        </a>
+        .
+      </p>
+    </>
   )
 }

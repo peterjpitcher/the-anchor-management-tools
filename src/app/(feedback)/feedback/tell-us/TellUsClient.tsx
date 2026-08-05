@@ -3,6 +3,21 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { StarRating } from '@/components/features/feedback/StarRating'
+import {
+  GUEST_CHOICE_ROW_CLASS,
+  GUEST_H1_CLASS,
+  GUEST_INPUT_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+  GUEST_TEXTAREA_CLASS,
+  GuestAlert,
+  GuestButton,
+  GuestCard,
+  GuestField,
+  guestFieldControlProps,
+} from '@/components/features/guest'
+import { cn } from '@/lib/utils'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -90,53 +105,51 @@ export function TellUsClient({ src }: TellUsClientProps) {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-8 sm:py-12">
-      <form
-        onSubmit={handleSubmit}
-        className="mx-auto w-full max-w-[600px] rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-[18px]">
+      {/* Warm, empathetic header */}
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>The Anchor</p>
+        <h1 className={GUEST_H1_CLASS}>We&apos;re sorry it wasn&apos;t quite right</h1>
+        <p className={GUEST_LEAD_CLASS}>
+          Thank you for telling us. We care when something has not gone as it should, and your
+          feedback helps us understand what happened and improve.
+        </p>
+      </div>
+
+      {/* Honeypot, visually hidden, still submitted */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
+        style={{ left: '-9999px' }}
       >
-        {/* Warm, empathetic header */}
-        <div>
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-gray-400">The Anchor</p>
-          <h1 className="mt-1 text-xl font-semibold text-gray-900 sm:text-[22px]">
-            We&apos;re sorry it wasn&apos;t quite right
-          </h1>
-          <p className="mt-2 text-[15px] leading-relaxed text-gray-600">
-            Thank you for telling us. We care when something has not gone as it should, and your
-            feedback helps us understand what happened and improve.
-          </p>
-        </div>
+        <label htmlFor="company">Company</label>
+        <input
+          id="company"
+          name="company"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+        />
+      </div>
 
-        {/* Honeypot — visually hidden, still submitted */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
-          style={{ left: '-9999px' }}
-        >
-          <label htmlFor="company">Company</label>
-          <input
-            id="company"
-            name="company"
-            type="text"
-            tabIndex={-1}
-            autoComplete="off"
-            value={honeypot}
-            onChange={(e) => setHoneypot(e.target.value)}
-          />
-        </div>
-
+      <GuestCard variant="accent" className="flex flex-col gap-[18px]">
         {/* Star rating */}
-        <div className="mt-6">
-          <label id="rating-label" className="block text-[15px] font-medium text-gray-800">
+        <div className="flex flex-col gap-2">
+          <label
+            id="rating-label"
+            className="font-anchor-body text-[15px] font-semibold text-guest-text"
+          >
             How would you rate your visit?
           </label>
-          <div className="mt-2" aria-labelledby="rating-label">
+          <div aria-labelledby="rating-label">
             <StarRating value={rating} onChange={setRating} />
           </div>
         </div>
 
         {/* Comments */}
-        <div className="mt-4">
+        <div>
           <label htmlFor="comments" className="sr-only">
             Tell us what happened
           </label>
@@ -147,115 +160,112 @@ export function TellUsClient({ src }: TellUsClientProps) {
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             placeholder="Tell us what happened, what could have been better, or anything you'd like us to understand."
-            className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-[15px] text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className={cn(GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS, 'min-h-[118px]')}
           />
         </div>
 
         {/* Optional contact details */}
-        <div className="mt-4">
+        <div className="flex flex-col gap-3">
           <button
             type="button"
             onClick={() => setShowContact((v) => !v)}
             aria-expanded={showContact}
             aria-controls="contact-details"
-            className="text-[14px] font-medium text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+            className="self-start text-left font-anchor-body text-[14px] font-semibold text-guest-accent-text underline underline-offset-[3px] hover:no-underline"
           >
             {showContact ? 'Hide contact details' : 'Add your contact details if you\'d like us to follow up'}
           </button>
 
           {showContact && (
-            <div id="contact-details" className="mt-3 flex flex-col gap-3">
-              <div className="flex flex-col">
-                <label htmlFor="customerName" className="mb-1 text-[13px] font-medium text-gray-700">
-                  Name
-                </label>
+            <div id="contact-details" className="flex flex-col gap-3">
+              <GuestField id="customerName" label="Name">
                 <input
-                  id="customerName"
+                  {...guestFieldControlProps({ id: 'customerName' })}
                   name="customerName"
                   type="text"
                   autoComplete="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[15px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className={GUEST_INPUT_CLASS}
                 />
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor="customerEmail" className="mb-1 text-[13px] font-medium text-gray-700">
-                  Email
-                </label>
+              </GuestField>
+
+              <GuestField id="customerEmail" label="Email">
                 <input
-                  id="customerEmail"
+                  {...guestFieldControlProps({ id: 'customerEmail' })}
                   name="customerEmail"
                   type="email"
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[15px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className={GUEST_INPUT_CLASS}
                 />
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor="customerPhone" className="mb-1 text-[13px] font-medium text-gray-700">
-                  Phone
-                </label>
+              </GuestField>
+
+              <GuestField id="customerPhone" label="Phone">
                 <input
-                  id="customerPhone"
+                  {...guestFieldControlProps({ id: 'customerPhone' })}
                   name="customerPhone"
                   type="tel"
                   autoComplete="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[15px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className={GUEST_INPUT_CLASS}
                 />
-              </div>
-              <div className="flex items-start gap-2">
+              </GuestField>
+
+              {/* The tick box is sized globally inside `.guest-theme`; the row
+                  class is what keeps the tap target at 44px. */}
+              <label
+                htmlFor="contactConsent"
+                className={cn(GUEST_CHOICE_ROW_CLASS, 'text-[13px] leading-[1.55]')}
+              >
                 <input
                   id="contactConsent"
                   name="contactConsent"
                   type="checkbox"
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500/40"
                 />
-                <label htmlFor="contactConsent" className="text-[13px] text-gray-700">
-                  Leave your details only if you&apos;re happy for us to contact you about your feedback.
-                </label>
-              </div>
+                <span>
+                  Leave your details only if you&apos;re happy for us to contact you about your
+                  feedback.
+                </span>
+              </label>
             </div>
           )}
         </div>
+      </GuestCard>
 
-        {error && (
-          <p className="mt-4 text-[13px] text-red-600" role="alert">
-            {error}
-          </p>
-        )}
+      {error && (
+        <GuestAlert tone="problem" role="alert">
+          {error}
+        </GuestAlert>
+      )}
 
-        {/* Post button */}
-        <div className="mt-5 flex justify-end">
-          <button
-            type="submit"
-            disabled={submitting || rating < 1}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-blue-600 px-6 py-2 text-[15px] font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting && (
-              <svg
-                className="h-4 w-4 animate-spin"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-              >
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-            )}
-            {submitting ? 'Sending…' : 'Send feedback'}
-          </button>
-        </div>
-      </form>
-    </main>
+      {/* Post button */}
+      <div className="flex justify-end">
+        <GuestButton
+          as="button"
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={submitting || rating < 1}
+          className="w-full gap-2 sm:w-auto"
+        >
+          {submitting && (
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+          )}
+          {submitting ? 'Sending…' : 'Send feedback'}
+        </GuestButton>
+      </div>
+    </form>
   )
 }

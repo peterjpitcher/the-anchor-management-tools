@@ -3,12 +3,52 @@ import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-booking'
-import { GuestPageShell } from '@/components/features/shared/GuestPageShell'
+import {
+  DetailRow,
+  GuestAlert,
+  GuestBadge,
+  GuestBlockedState,
+  GuestButton,
+  GuestCard,
+  GuestField,
+  GuestShell,
+  guestBadgeToneForStatus,
+  guestFieldControlProps,
+  GUEST_H1_CLASS,
+  GUEST_INPUT_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+  GUEST_TEXTAREA_CLASS,
+} from '@/components/features/guest'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { GuestCancelBooking } from '@/components/features/shared/GuestCancelBooking'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { logger } from '@/lib/logger'
+import { cn } from '@/lib/utils'
+import { GUEST_SUBMIT_PRIMARY_CLASS } from './formStyles'
 import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data'
 import { PreorderSection } from './PreorderSection'
+
+/** Names the flow at the top of the page, per the approved kicker list. */
+// Static and non-personal on purpose: no token, customer name or booking reference may reach
+// a browser title or history entry. This route is noindex via the X-Robots-Tag header.
+export const metadata = { title: 'Manage your booking - The Anchor' }
+
+const KICKER = 'Table booking'
+
+/*
+  What the special-requirements box is for, said before the guest types rather than buried in a
+  privacy page. Dietary and allergy details are special-category data, and the condition we rely on
+  is the guest telling us themselves so we can cater for them. That only holds if they were told
+  what it is used for at the point of asking, so this line is the basis, not decoration. It must
+  stay ABOVE the textarea, which is where `GuestField` renders a hint.
+
+  It also names the phone as the route for a serious allergy. A text box read hours later by
+  whoever is on shift is not a safe channel for something that could put someone in hospital, and
+  saying so is more honest than implying the box is enough.
+*/
+const NOTES_HINT = `Only our kitchen and floor team see this, and we keep it so we can cater for you on a future visit. If you have a serious allergy, please ring us on ${GUEST_CONTACT.phoneDisplay} as well, so we can talk it through properly.`
 
 function formatDateTime(value?: string | null): string {
   if (!value) return 'Unknown'
@@ -104,6 +144,13 @@ function preorderMessage(preorder?: string): { tone: 'green' | 'amber' | 'red'; 
   }
 }
 
+/** The banner tones these pages have always used, in the design system's vocabulary. */
+function alertTone(tone: 'green' | 'amber' | 'red'): 'success' | 'notice' | 'problem' {
+  if (tone === 'green') return 'success'
+  if (tone === 'amber') return 'notice'
+  return 'problem'
+}
+
 export default async function TableManageBookingPage({
   params,
   searchParams
@@ -126,15 +173,16 @@ export default async function TableManageBookingPage({
 
   if (!throttle.allowed) {
     return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-gray-900">Manage booking unavailable</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
-          </p>
-          <p className="mt-3 text-sm text-gray-600">{mapBlockedReason('rate_limited')}</p>
-        </div>
-      </GuestPageShell>
+      <GuestShell maxWidthClassName="max-w-2xl">
+        <GuestBlockedState
+          kicker={KICKER}
+          heading="Manage booking unavailable"
+          lead={formatGuestGreeting(null, 'we could not load your booking details right now.')}
+          reason={mapBlockedReason('rate_limited')}
+          primaryAction={{ label: `Call ${GUEST_CONTACT.phoneDisplay}`, href: GUEST_CONTACT.telHref }}
+          secondaryAction={{ label: 'Back to The Anchor', href: GUEST_CONTACT.website }}
+        />
+      </GuestShell>
     )
   }
 
@@ -145,15 +193,16 @@ export default async function TableManageBookingPage({
 
   if (preview.state !== 'ready') {
     return (
-      <GuestPageShell>
-        <div className="mx-auto w-full max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-gray-900">Manage booking unavailable</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            {formatGuestGreeting(null, 'we could not load your booking details right now.')}
-          </p>
-          <p className="mt-3 text-sm text-gray-600">{mapBlockedReason(preview.reason)}</p>
-        </div>
-      </GuestPageShell>
+      <GuestShell maxWidthClassName="max-w-2xl">
+        <GuestBlockedState
+          kicker={KICKER}
+          heading="Manage booking unavailable"
+          lead={formatGuestGreeting(null, 'we could not load your booking details right now.')}
+          reason={mapBlockedReason(preview.reason)}
+          primaryAction={{ label: `Call ${GUEST_CONTACT.phoneDisplay}`, href: GUEST_CONTACT.telHref }}
+          secondaryAction={{ label: 'Back to The Anchor', href: GUEST_CONTACT.website }}
+        />
+      </GuestShell>
     )
   }
 
@@ -164,6 +213,9 @@ export default async function TableManageBookingPage({
   const bookingIsLive = preview.status !== 'cancelled' && preview.status !== 'no_show'
 
   let preorderView: BookerPreorderView | null = null
+  // Told apart from "this booking has no pre-order" on purpose: a null view is a booking that was
+  // never going to show food choices, while this is a booking that should have and could not.
+  let preorderLoadFailed = false
   if (bookingIsLive && preview.table_booking_id) {
     try {
       preorderView = await loadBookerPreorderView(supabase, preview.table_booking_id)
@@ -171,6 +223,11 @@ export default async function TableManageBookingPage({
       // A fault in the pre-order section must not take the whole page down with it. The booking
       // details and the cancel button are what this link exists for, and a guest who cannot cancel
       // because the Christmas menu failed to load is a worse outcome than a missing form.
+      //
+      // Silence is worse still. A guest who followed a "choose your food" reminder used to land on
+      // a page with no food section, no reason and no way forward, so the failure is now said out
+      // loud with the phone number on it (spec F28).
+      preorderLoadFailed = true
       logger.warn('Guest table-manage could not load the pre-order section', {
         metadata: {
           tableBookingId: preview.table_booking_id,
@@ -182,114 +239,115 @@ export default async function TableManageBookingPage({
 
   const preorderBanner = preorderMessage(query.preorder)
   const errorSeat = Number.parseInt(query.seat || '', 10)
+  const bookingReference = preview.booking_reference || preview.table_booking_id
+  const statusLabel = humanizeStatus(preview.status)
 
   return (
-    <GuestPageShell maxWidthClassName="max-w-2xl">
-      <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-gray-900">Manage table booking</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
-        </p>
+    <GuestShell maxWidthClassName="max-w-2xl">
+      <section className="flex w-full flex-col gap-5">
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>{KICKER}</p>
+          <h1 className={GUEST_H1_CLASS}>Manage table booking</h1>
+          <p className={GUEST_LEAD_CLASS}>
+            {formatGuestGreeting(guestFirstName, 'your booking details are below.')}
+          </p>
+        </div>
 
+        {/* `role="alert"` on both banners is what this page has always sent. Kept verbatim. */}
         {banner && (
-          <div
-            role="alert"
-            className={`mt-4 rounded-md border px-4 py-3 text-sm ${
-              banner.tone === 'green'
-                ? 'border-green-200 bg-green-50 text-green-800'
-                : banner.tone === 'amber'
-                  ? 'border-amber-200 bg-amber-50 text-amber-900'
-                  : 'border-red-200 bg-red-50 text-red-800'
-            }`}
-          >
+          <GuestAlert tone={alertTone(banner.tone)} role="alert">
             {banner.text}
-          </div>
+          </GuestAlert>
         )}
 
         {preorderBanner && (
-          <div
-            role="alert"
-            className={`mt-4 rounded-md border px-4 py-3 text-sm ${
-              preorderBanner.tone === 'green'
-                ? 'border-green-200 bg-green-50 text-green-800'
-                : preorderBanner.tone === 'amber'
-                  ? 'border-amber-200 bg-amber-50 text-amber-900'
-                  : 'border-red-200 bg-red-50 text-red-800'
-            }`}
-          >
+          <GuestAlert tone={alertTone(preorderBanner.tone)} role="alert">
             {preorderBanner.text}
-          </div>
+          </GuestAlert>
         )}
 
-        <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-          <p><span className="font-medium text-gray-900">Booking:</span> {preview.booking_reference || preview.table_booking_id}</p>
-          <p className="mt-1"><span className="font-medium text-gray-900">Time:</span> {formatDateTime(preview.start_datetime)}</p>
-          <p className="mt-1"><span className="font-medium text-gray-900">Table:</span> {preview.is_outside_seating ? 'Outside' : (preview.table_name || 'Unassigned')}</p>
-          <p className="mt-1"><span className="font-medium text-gray-900">Party size:</span> {preview.party_size || 1}</p>
-          <p className="mt-1"><span className="font-medium text-gray-900">Status:</span> {humanizeStatus(preview.status)}</p>
-        </div>
+        <GuestCard variant="accent">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-[3px]">
+              <span className="font-anchor-body text-[11px] font-semibold uppercase leading-none tracking-[0.1em] text-guest-text-muted">
+                Booking
+              </span>
+              <span className="break-words font-anchor-display text-[26px] font-normal leading-[1.15] text-guest-text-strong">
+                {bookingReference}
+              </span>
+            </div>
+
+            <GuestBadge tone={guestBadgeToneForStatus(statusLabel)} dot className="mt-1">
+              {statusLabel}
+            </GuestBadge>
+          </div>
+
+          <div className="mt-4">
+            <DetailRow label="Time" value={formatDateTime(preview.start_datetime)} />
+            <DetailRow
+              label="Table"
+              value={preview.is_outside_seating ? 'Outside' : (preview.table_name || 'Unassigned')}
+            />
+            <DetailRow label="Party size" value={preview.party_size || 1} />
+          </div>
+        </GuestCard>
 
         {!preview.can_edit ? (
-          <p className="mt-6 text-sm text-gray-600">
-            Booking changes are no longer available. Please call to make any changes.
-          </p>
+          <GuestCard>
+            <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+              Booking changes are no longer available. Please call to make any changes.
+            </p>
+          </GuestCard>
         ) : (
-          <form method="post" action={actionUrl} className="mt-6 space-y-4">
-            <input type="hidden" name="action" value="update" />
+          <GuestCard>
+            <form method="post" action={actionUrl} className="flex flex-col gap-5">
+              <input type="hidden" name="action" value="update" />
 
-            <div>
-              <label htmlFor="party_size" className="block text-sm font-medium text-gray-900">
-                Party size
-              </label>
-              <input
-                id="party_size"
-                name="party_size"
-                type="number"
-                min="1"
-                max="20"
-                defaultValue={String(preview.party_size || 1)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                required
-              />
-            </div>
+              <GuestField id="party_size" label="Party size" required>
+                <input
+                  {...guestFieldControlProps({ id: 'party_size', required: true })}
+                  name="party_size"
+                  type="number"
+                  min="1"
+                  max="20"
+                  defaultValue={String(preview.party_size || 1)}
+                  className={GUEST_INPUT_CLASS}
+                />
+              </GuestField>
 
-            <div>
-              <label htmlFor="notes" className="block text-sm font-medium text-gray-900">
-                Special requirements
-              </label>
-              {/*
-                What this is for, said before the guest types rather than buried in a privacy page.
-                Dietary and allergy details are special-category data, and the condition we rely on is
-                the guest telling us themselves so we can cater for them. That only holds if they were
-                told what it is used for at the point of asking, so this line is the basis, not decoration.
+              <GuestField id="notes" label="Special requirements" hint={NOTES_HINT}>
+                <textarea
+                  {...guestFieldControlProps({ id: 'notes', hint: NOTES_HINT })}
+                  name="notes"
+                  rows={3}
+                  defaultValue={preview.special_requirements || ''}
+                  placeholder="Allergies, dietary needs, accessibility requirements, etc."
+                  className={cn(GUEST_INPUT_CLASS, GUEST_TEXTAREA_CLASS)}
+                />
+              </GuestField>
 
-                It also names the phone as the route for a serious allergy. A text box read hours later
-                by whoever is on shift is not a safe channel for something that could put someone in
-                hospital, and saying so is more honest than implying the box is enough.
-              */}
-              <p id="notes-help" className="mt-1 text-xs text-gray-600">
-                Only our kitchen and floor team see this, and we keep it so we can cater for you on a
-                future visit. If you have a serious allergy, please ring us on 01753 682707 as well, so
-                we can talk it through properly.
-              </p>
-              <textarea
-                id="notes"
-                name="notes"
-                rows={3}
-                aria-describedby="notes-help"
-                defaultValue={preview.special_requirements || ''}
-                placeholder="Allergies, dietary needs, accessibility requirements, etc."
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
+              <div>
+                <GuestSubmitButton className={GUEST_SUBMIT_PRIMARY_CLASS} loadingText="Saving...">
+                  Save changes
+                </GuestSubmitButton>
+              </div>
+            </form>
+          </GuestCard>
+        )}
 
-            <GuestSubmitButton
-              className="inline-flex w-full items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 sm:w-auto"
-              loadingText="Saving..."
-            >
-              Save changes
-            </GuestSubmitButton>
-          </form>
+        {preorderLoadFailed && (
+          <GuestAlert
+            tone="problem"
+            title="We could not load your food choices"
+            action={
+              <GuestButton as="a" href={GUEST_CONTACT.telHref} variant="outline" size="sm">
+                Call {GUEST_CONTACT.phoneDisplay}
+              </GuestButton>
+            }
+          >
+            Your booking itself is fine, and you can still change or cancel it on this page. Please
+            ring us and we will take your food choices over the phone.
+          </GuestAlert>
         )}
 
         {preorderView && (
@@ -307,7 +365,7 @@ export default async function TableManageBookingPage({
             manageUrl={manageUrl}
           />
         )}
-      </div>
-    </GuestPageShell>
+      </section>
+    </GuestShell>
   )
 }

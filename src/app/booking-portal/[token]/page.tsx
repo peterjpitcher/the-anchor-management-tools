@@ -1,12 +1,31 @@
-import Image from 'next/image'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { formatCurrency } from '@/lib/format'
-import { COMPANY_DETAILS } from '@/lib/company-details'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { cn } from '@/lib/utils'
+import {
+  DetailGrid,
+  GuestAlert,
+  GuestBadge,
+  GuestBlockedState,
+  GuestCard,
+  GuestShell,
+  GUEST_H1_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_SUNK_BOX_CLASS,
+  guestBadgeToneForStatus,
+  TrustLine,
+  type GuestBadgeTone,
+} from '@/components/features/guest'
 import { PayPalCaptureClient } from './PayPalCaptureClient'
 import { FreshPayPalLinkClient } from './FreshPayPalLinkClient'
 import type { BookingStatus } from '@/types/private-bookings'
+
+// Static and non-personal on purpose: no token, customer name or booking reference may reach
+// a browser title or history entry. These routes are noindex via the X-Robots-Tag header.
+export const metadata = { title: 'Your booking - The Anchor' }
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +34,7 @@ interface PageProps {
   searchParams: Promise<{ fresh_payment_link?: string; payment_pending?: string }>
 }
 
-// Status badge colours — customer-friendly language only
+// Status badge labels: customer-friendly language only.
 const statusLabels: Record<BookingStatus, string> = {
   draft: 'Pending Confirmation',
   confirmed: 'Confirmed',
@@ -23,12 +42,13 @@ const statusLabels: Record<BookingStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-const statusClasses: Record<BookingStatus, string> = {
-  draft: 'bg-amber-100 text-amber-800',
-  confirmed: 'bg-green-100 text-green-800',
-  completed: 'bg-blue-100 text-blue-800',
-  cancelled: 'bg-red-100 text-red-800',
-}
+/**
+ * Card headings on this page are labels, not headings, so they use Outfit at
+ * 12px rather than the display serif. Kept local: the other guest routes lead
+ * with the page `h1` and have no equivalent.
+ */
+const CARD_LABEL_CLASS =
+  'font-anchor-body text-[12px] font-semibold uppercase leading-none tracking-[0.16em] text-guest-text-muted'
 
 interface BookingRow {
   id: string
@@ -56,80 +76,85 @@ interface BookingRow {
   customer_requests: string | null
 }
 
-function InvalidToken() {
+function InvalidToken(): React.JSX.Element {
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full text-center">
-        <div className="w-24 mx-auto mb-6">
-          <Image
-            src="/logo.png"
-            alt="The Anchor"
-            width={96}
-            height={96}
-            className="w-full h-auto"
-            priority
-          />
-        </div>
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Link not valid</h1>
-        <p className="text-gray-600 mb-6">
-          This booking link is invalid or has been used incorrectly. Please check the link in
-          your email and try again.
-        </p>
-        <p className="text-sm text-gray-500">
-          Need help?{' '}
-          <a href={`tel:${COMPANY_DETAILS.phone}`} className="text-green-700 hover:underline">
-            Call us on {COMPANY_DETAILS.phone}
-          </a>
-        </p>
-      </div>
-    </main>
+    <GuestShell bodyClassName="gap-4">
+      <GuestBlockedState
+        kicker="Private hire"
+        heading="Link not valid"
+        lead="This booking link is invalid or has been used incorrectly. Please check the link in your email and try again."
+        reason="Need help?"
+        primaryAction={{ label: `Call ${GUEST_CONTACT.phoneDisplay}`, href: GUEST_CONTACT.telHref }}
+        secondaryAction={{ label: 'Back to The Anchor', href: GUEST_CONTACT.website }}
+      />
+    </GuestShell>
   )
 }
 
-function BookingNotFound() {
+function BookingNotFound(): React.JSX.Element {
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full text-center">
-        <div className="w-24 mx-auto mb-6">
-          <Image
-            src="/logo.png"
-            alt="The Anchor"
-            width={96}
-            height={96}
-            className="w-full h-auto"
-            priority
-          />
-        </div>
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Booking not found</h1>
-        <p className="text-gray-600 mb-6">
-          We couldn&apos;t find the booking associated with this link. It may have been removed.
-        </p>
-        <p className="text-sm text-gray-500">
-          Need help?{' '}
-          <a href={`tel:${COMPANY_DETAILS.phone}`} className="text-green-700 hover:underline">
-            Call us on {COMPANY_DETAILS.phone}
-          </a>
-        </p>
-      </div>
-    </main>
+    <GuestShell bodyClassName="gap-4">
+      <GuestBlockedState
+        kicker="Private hire"
+        heading="Booking not found"
+        lead="We couldn't find the booking associated with this link. It may have been removed."
+        reason="Need help?"
+        primaryAction={{ label: `Call ${GUEST_CONTACT.phoneDisplay}`, href: GUEST_CONTACT.telHref }}
+        secondaryAction={{ label: 'Back to The Anchor', href: GUEST_CONTACT.website }}
+      />
+    </GuestShell>
   )
 }
 
-function DescriptionItem({ label, value }: { label: string; value: string | null | undefined }) {
-  if (!value) return null
+type DetailEntry = { label: string; value: string | null | undefined }
+
+/**
+ * Keeps the old `DescriptionItem` behaviour: an entry with no value is dropped
+ * rather than rendered as an empty cell.
+ */
+function presentDetails(entries: DetailEntry[]): Array<{ label: string; value: string }> {
+  return entries.filter((entry): entry is { label: string; value: string } => Boolean(entry.value))
+}
+
+interface PaymentRowProps {
+  name: string
+  sub?: string | null
+  amount: string
+  badge?: { tone: GuestBadgeTone; label: string }
+}
+
+/** One money line: name and sub on the left, the figure and its badge on the right. */
+function PaymentRow({ name, sub, amount, badge }: PaymentRowProps): React.JSX.Element {
   return (
-    <div>
-      <dt className="text-sm font-medium text-gray-500">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900 break-words">{value}</dd>
+    <div className="flex items-start justify-between gap-4 py-3">
+      <div className="flex min-w-0 flex-col gap-[3px]">
+        <p className="font-anchor-body text-[14px] font-semibold leading-[1.4] text-guest-text">
+          {name}
+        </p>
+        {sub ? (
+          <p className="font-anchor-body text-[12px] leading-[1.5] text-guest-text-muted">{sub}</p>
+        ) : null}
+      </div>
+
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        {/* DM Serif Display is weight 400 only: never embolden the figure. */}
+        <p className="font-anchor-display text-[22px] font-normal leading-none tracking-[-0.02em] text-guest-text-strong">
+          {amount}
+        </p>
+        {badge ? <GuestBadge tone={badge.tone}>{badge.label}</GuestBadge> : null}
+      </div>
     </div>
   )
 }
 
-export default async function BookingPortalPage({ params, searchParams }: PageProps) {
+export default async function BookingPortalPage({
+  params,
+  searchParams,
+}: PageProps): Promise<React.JSX.Element> {
   const { token } = await params
   const { fresh_payment_link } = await searchParams
 
-  // Verify the HMAC-signed token — this is the access control mechanism
+  // Verify the HMAC-signed token: this is the access control mechanism
   const bookingId = verifyBookingToken(token)
   if (!bookingId) {
     return <InvalidToken />
@@ -169,9 +194,10 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   const depositPaid = !!b.deposit_paid_date
   const balancePaid = !!b.final_payment_date
   const depositRequired = b.deposit_amount > 0
-  // Booking and damage deposit — separate from event balance, not deducted from event cost
-  // Stored prices are net: show the customer the VAT-inclusive gross total
-  // from the view, falling back to legacy net figures for old rows
+  // Booking and damage deposit, separate from the event balance and not
+  // deducted from the event cost. Stored prices are net: show the customer the
+  // VAT-inclusive gross total from the view, falling back to legacy net figures
+  // for old rows
   const effectiveTotal = b.gross_total ?? b.calculated_total ?? b.total_amount
   const balanceRemaining = balancePaid
     ? 0
@@ -187,203 +213,175 @@ export default async function BookingPortalPage({ params, searchParams }: PagePr
   }
 
   const statusLabel = statusLabels[b.status] ?? b.status
-  const statusClass = statusClasses[b.status] ?? 'bg-gray-100 text-gray-800'
+  const statusTone = guestBadgeToneForStatus(statusLabel)
+
+  const depositDue =
+    depositRequired && !depositPaid && b.status !== 'cancelled' && b.status !== 'completed'
+
+  const eventDetails = presentDetails([
+    { label: 'Date', value: formatDateFull(b.event_date) },
+    {
+      label: 'Time',
+      value: endTimeDisplay
+        ? `${formatTime12Hour(b.start_time)} – ${endTimeDisplay}`
+        : formatTime12Hour(b.start_time),
+    },
+    { label: 'Guests', value: b.guest_count != null ? `${b.guest_count} guests` : null },
+    { label: 'Event type', value: b.event_type },
+  ])
 
   return (
-    <main className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-20 sm:w-24 mb-4">
-            <Image
-              src="/logo.png"
-              alt="The Anchor"
-              width={96}
-              height={96}
-              className="w-full h-auto"
-              priority
-            />
-          </div>
-          <p className="text-sm text-gray-500">{COMPANY_DETAILS.tradingName}</p>
-        </div>
-
-        {/* Booking header card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                {b.event_type ? b.event_type : 'Private Event'} — {customerName}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">Your booking summary</p>
-            </div>
-            <span
-              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusClass}`}
-            >
-              {statusLabel}
-            </span>
-          </div>
-        </div>
-
-        {/* PayPal capture — active capture on return from PayPal */}
-        <PayPalCaptureClient portalToken={token} depositPaid={depositPaid} />
-
-        {/* Cancelled notice */}
-        {b.status === 'cancelled' && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 mb-4 text-sm text-red-800">
-            This booking has been cancelled. If you believe this is an error, please contact us.
-          </div>
-        )}
-
-        {/* Event details */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
-            Event Details
-          </h2>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <DescriptionItem label="Date" value={formatDateFull(b.event_date)} />
-            <DescriptionItem
-              label="Time"
-              value={
-                endTimeDisplay
-                  ? `${formatTime12Hour(b.start_time)} – ${endTimeDisplay}`
-                  : formatTime12Hour(b.start_time)
-              }
-            />
-            {b.guest_count != null && (
-              <DescriptionItem label="Guests" value={`${b.guest_count} guests`} />
-            )}
-            {b.event_type && (
-              <DescriptionItem label="Event type" value={b.event_type} />
-            )}
-          </dl>
-        </div>
-
-        {/* Payment status */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
-            Payment Status
-          </h2>
-
-          {/* Deposit row */}
-          <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-            <div>
-              <p className="text-sm font-medium text-gray-900">Deposit</p>
-              <p className="text-xs text-gray-500">
-                {!depositRequired
-                  ? 'No deposit required'
-                  : depositPaid
-                    ? `Paid on ${formatDateFull(b.deposit_paid_date!)}`
-                    : 'Not yet received'}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold text-gray-900">
-                {depositRequired ? formatCurrency(b.deposit_amount) : 'None'}
-              </p>
-              <span
-                className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                  !depositRequired || depositPaid
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-amber-100 text-amber-700'
-                }`}
-              >
-                {!depositRequired ? 'Not required' : depositPaid ? 'Paid' : 'Outstanding'}
-              </span>
-            </div>
-          </div>
-
-          {depositRequired && !depositPaid && b.status !== 'cancelled' && b.status !== 'completed' && (
-            <>
-              <FreshPayPalLinkClient portalToken={token} autoStart={fresh_payment_link === '1'} />
-              <p className="text-xs text-gray-500 py-2">
-                Paying the deposit confirms that you accept the booking terms and conditions in the
-                contract we&apos;ve sent to your email address. If you haven&apos;t received it, please
-                contact us on 01753 682707 or{' '}
-                <a href="mailto:manager@the-anchor.pub" className="underline">manager@the-anchor.pub</a>{' '}
-                before paying. How we use your data:{' '}
-                <a href="https://www.the-anchor.pub/privacy-policy" className="underline" rel="noopener noreferrer" target="_blank">privacy notice</a>.
-              </p>
-            </>
-          )}
-
-          {/* Total / balance row */}
-          <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-            <div>
-              <p className="text-sm font-medium text-gray-900">Total</p>
-              <p className="text-xs text-gray-500">Full event cost — includes VAT</p>
-            </div>
-            <p className="text-sm font-semibold text-gray-900">
-              {formatCurrency(effectiveTotal)}
-            </p>
-          </div>
-
-          {/* Balance remaining row — only shown if not fully paid */}
-          {!balancePaid && balanceRemaining > 0 && (
-            <div className="flex items-center justify-between py-3">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Balance remaining</p>
-                {b.balance_due_date && (
-                  <p className="text-xs text-gray-500">
-                    Due by {formatDateFull(b.balance_due_date)}
-                  </p>
-                )}
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-gray-900">
-                  {formatCurrency(balanceRemaining)}
-                </p>
-                <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                  Outstanding
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Fully paid banner */}
-          {balancePaid && (
-            <div className="mt-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
-              Paid in full — thank you!
-            </div>
-          )}
-        </div>
-
-        {/* Special requests — only if present */}
-        {b.customer_requests && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
-              Your Requests
-            </h2>
-            <dl className="space-y-3">
-              <DescriptionItem label="Special requests" value={b.customer_requests} />
-            </dl>
-          </div>
-        )}
-
-        {/* Contact footer */}
-        <div className="rounded-xl bg-gray-100 border border-gray-200 p-5 text-center text-sm text-gray-600">
-          <p className="font-medium text-gray-800 mb-1">Questions about your booking?</p>
-          <p>
-            Call us on{' '}
-            <a
-              href={`tel:${COMPANY_DETAILS.phone}`}
-              className="text-green-700 font-medium hover:underline"
-            >
-              {COMPANY_DETAILS.phone}
-            </a>{' '}
-            or email{' '}
-            <a
-              href={`mailto:${COMPANY_DETAILS.email}`}
-              className="text-green-700 font-medium hover:underline"
-            >
-              {COMPANY_DETAILS.email}
-            </a>
-          </p>
-          <p className="mt-3 text-xs text-gray-400">
-            {COMPANY_DETAILS.tradingName} · {COMPANY_DETAILS.address.street},{' '}
-            {COMPANY_DETAILS.address.city}, {COMPANY_DETAILS.address.postcode}
-          </p>
+    <GuestShell bodyClassName="gap-4">
+      {/* Intro */}
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>Private hire</p>
+        <h1 className={GUEST_H1_CLASS}>
+          {b.event_type ? b.event_type : 'Private Event'} - {customerName}
+        </h1>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          <GuestBadge tone={statusTone}>{statusLabel}</GuestBadge>
+          <span className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+            Your booking summary
+          </span>
         </div>
       </div>
-    </main>
+
+      {/* PayPal capture: active capture on return from PayPal */}
+      <PayPalCaptureClient portalToken={token} depositPaid={depositPaid} />
+
+      {/* Cancelled notice */}
+      {b.status === 'cancelled' && (
+        <GuestAlert tone="problem">
+          This booking has been cancelled. If you believe this is an error, please contact us.
+        </GuestAlert>
+      )}
+
+      {/* Event details */}
+      <GuestCard>
+        <h2 className={CARD_LABEL_CLASS}>Event Details</h2>
+        <DetailGrid className="mt-4" items={eventDetails} />
+      </GuestCard>
+
+      {/* Payment status */}
+      <GuestCard variant="accent">
+        <h2 className={CARD_LABEL_CLASS}>Payment Status</h2>
+
+        <div className="mt-4 divide-y divide-guest-border">
+          {/* Deposit row */}
+          <PaymentRow
+            name="Deposit"
+            sub={
+              !depositRequired
+                ? 'No deposit required'
+                : depositPaid
+                  ? `Paid on ${formatDateFull(b.deposit_paid_date!)}`
+                  : 'Not yet received'
+            }
+            amount={depositRequired ? formatCurrency(b.deposit_amount) : 'None'}
+            badge={{
+              tone: !depositRequired || depositPaid ? 'success' : 'outstanding',
+              label: !depositRequired ? 'Not required' : depositPaid ? 'Paid' : 'Outstanding',
+            }}
+          />
+
+          {/* Pay now, between the deposit and total rows */}
+          {depositDue && (
+            <div className="flex flex-col gap-2.5 py-3">
+              <FreshPayPalLinkClient portalToken={token} autoStart={fresh_payment_link === '1'} />
+              <TrustLine />
+              <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
+                Paying the deposit confirms that you accept the booking terms and conditions in the
+                contract we&apos;ve sent to your email address. If you haven&apos;t received it,
+                please contact us on {GUEST_CONTACT.phoneDisplay} or{' '}
+                <a
+                  href={GUEST_CONTACT.emailHref}
+                  referrerPolicy="no-referrer"
+                  className="text-guest-accent-text underline"
+                >
+                  {GUEST_CONTACT.email}
+                </a>{' '}
+                before paying. How we use your data:{' '}
+                <a
+                  href="https://www.the-anchor.pub/privacy-policy"
+                  className="text-guest-accent-text underline"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  referrerPolicy="no-referrer"
+                >
+                  privacy notice
+                </a>
+                .
+              </p>
+            </div>
+          )}
+
+          {/* Total row */}
+          <PaymentRow
+            name="Total"
+            sub="Full event cost, includes VAT"
+            amount={formatCurrency(effectiveTotal)}
+          />
+
+          {/* Balance remaining row: only shown if not fully paid */}
+          {!balancePaid && balanceRemaining > 0 && (
+            <PaymentRow
+              name="Balance remaining"
+              sub={b.balance_due_date ? `Due by ${formatDateFull(b.balance_due_date)}` : null}
+              amount={formatCurrency(balanceRemaining)}
+              badge={{ tone: 'outstanding', label: 'Outstanding' }}
+            />
+          )}
+        </div>
+
+        {/* Fully paid banner */}
+        {balancePaid && (
+          <GuestAlert tone="success" className="mt-4">
+            Paid in full, thank you!
+          </GuestAlert>
+        )}
+      </GuestCard>
+
+      {/* Special requests: only if present */}
+      {b.customer_requests && (
+        <GuestCard>
+          <h2 className={CARD_LABEL_CLASS}>Your Requests</h2>
+          {/* One column: free text needs the full width, unlike the paired event facts. */}
+          <DetailGrid
+            className="mt-4 min-[380px]:grid-cols-1"
+            items={[
+              {
+                label: 'Special requests',
+                value: <span className="break-words">{b.customer_requests}</span>,
+              },
+            ]}
+          />
+        </GuestCard>
+      )}
+
+      {/* Contact block */}
+      <div className={cn(GUEST_SUNK_BOX_CLASS, 'p-[18px] text-center')}>
+        <p className="text-[14px] font-bold leading-[1.4] text-guest-text-strong">
+          Questions about your booking?
+        </p>
+        <p className="mt-1.5 text-[14px] leading-[1.6] text-guest-text">
+          Call us on{' '}
+          <a
+            href={GUEST_CONTACT.telHref}
+            referrerPolicy="no-referrer"
+            className="font-medium text-guest-accent-text underline"
+          >
+            {GUEST_CONTACT.phoneDisplay}
+          </a>{' '}
+          or email{' '}
+          <a
+            href={GUEST_CONTACT.emailHref}
+            referrerPolicy="no-referrer"
+            className="font-medium text-guest-accent-text underline"
+          >
+            {GUEST_CONTACT.email}
+          </a>
+        </p>
+      </div>
+    </GuestShell>
   )
 }
