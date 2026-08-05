@@ -24,6 +24,11 @@ const PUBLIC_PATH_PREFIXES = [
   '/feedback',
   '/table-booking',
   '/parking/guest',
+  // Guests are redirected here by the PayPal return and retry handlers when a parking payment
+  // fails (see src/lib/parking/public-links.ts). Without this they land on the staff login page.
+  // The page does no database lookup: it renders static copy plus the booking id echoed from the
+  // query string, so nothing is exposed by making it reachable.
+  '/parking/payment-error',
   '/onboarding',
   '/recruitment/book', // Public candidate interview/trial slot picker (token-gated). Scoped to /book so staff /recruitment pages stay protected.
   '/timeclock',
