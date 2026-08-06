@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import PrivacyPolicy from '@/app/privacy/page'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 
 describe('privacy policy page', () => {
   it('renders the hero inside the guest shell with a single main landmark', () => {
@@ -67,10 +68,17 @@ describe('privacy policy page', () => {
     expect(controller).not.toHaveTextContent('TW19 6BJ')
     expect(controller).toHaveTextContent('Phone: 01753 682 707')
 
-    const mailboxLinks = screen.getAllByRole('link', { name: 'privacy@theanchorpub.co.uk' })
-    expect(mailboxLinks).toHaveLength(3)
+    // Changed 2026-08-06: privacy@theanchorpub.co.uk is not a mailbox the pub uses, so every
+    // contact point on the policy is the single GUEST_CONTACT address.
+    expect(screen.queryByText(/theanchorpub\.co\.uk/)).toBeNull()
+
+    // Four, not three: the policy body has three contact points (controller, your rights,
+    // contact us) and the shared guest footer adds a fourth. They were three before, when the
+    // policy used a different address from the footer.
+    const mailboxLinks = screen.getAllByRole('link', { name: GUEST_CONTACT.email })
+    expect(mailboxLinks).toHaveLength(4)
     for (const link of mailboxLinks) {
-      expect(link).toHaveAttribute('href', 'mailto:privacy@theanchorpub.co.uk')
+      expect(link).toHaveAttribute('href', GUEST_CONTACT.emailHref)
     }
 
     expect(screen.getByRole('link', { name: 'ico.org.uk' })).toHaveAttribute(
