@@ -246,3 +246,93 @@ them. Nothing here is destructive.
 4. **Drinks toggle wording.** Recommendation: replace the second clause, for
    example "We will seat you in the bar, and your table will not be held for
    food." Keep the grid behaviour exactly as it is.
+
+**All four were approved by the owner on 2026-08-06, built and SHIPPED TO
+PRODUCTION the same day.**
+
+- AMS: commit `d5fd8f48`, deployed under `9432714b`, Vercel commit status
+  success, aliased to management.orangejelly.co.uk.
+- Website: commit `b996a4b4` on main, deployment `the-anchor-ecdcq9kve` Ready
+  and aliased to the-anchor.pub.
+
+Full pipeline green on both before pushing: typecheck, lint, 4571 AMS tests,
+1279 website tests, cold production builds. Both corrected sentences were then
+verified against the live production DOM: the two false claims are absent, the
+new copy is present, and the word "fee" appears nowhere in the booking options.
+
+---
+
+## Issue 5: review-request SMS and bookings not marked as left
+
+Raised after the four above: "clean up any tables that haven't been marked as
+left at the end of each day so they get their sms message asking for a review."
+
+### The premise does not hold. `left_at` has nothing to do with it.
+
+The table-booking review request is real and working. It is sent by
+`src/app/api/cron/event-guest-engagement/route.ts`, which Vercel runs every 15
+minutes. Email first where there is a usable address, SMS otherwise.
+
+Its eligibility test, `route.ts:1335-1340`:
+
+```ts
+if (booking.status !== 'confirmed' || booking.review_sms_sent_at) return false
+return now >= startMs + 4 * 60 * 60 * 1000 && now - startMs <= maxAgeMs   // 7 days
+```
+
+So a booking qualifies when it is still `confirmed`, four hours after it started,
+inside a seven-day window. `left_at` is not read, here or anywhere in the sweep.
+
+Marking a table as left does not touch `status` at all. The route
+(`src/app/api/foh/bookings/[id]/left/route.ts:47-52`) writes `left_at`,
+`end_datetime` and `updated_at`, nothing else.
+
+**A booking that was never marked as left is therefore already eligible**, and
+gets its review request exactly like any other. There is nothing to release.
+
+### Production evidence
+
+Past bookings still sitting at `confirmed` with no review sent and no suppression:
+
+```
+within the 7-day window (may still fire)   : 9    (1 not marked left, 8 marked left)
+older than 7 days (permanently missed)     : 221  (133 not marked left, 88 marked left)
+```
+
+Being marked as left made no difference either way: 88 of the missed ones had
+been marked left and 133 had not.
+
+Why the 221 were missed:
+
+```
+no usable contact channel (no active mobile, no usable email) : 187
+contactable, genuinely missed                                 :  34
+```
+
+All 34 contactable ones fall in August to December 2025, before the review
+feature existed. The earliest review message in production is 2026-04-05. Since
+the feature went live, **no contactable guest has been missed**.
+
+### What is actually worth doing
+
+One narrow gap, and it is housekeeping rather than lost reviews. When the sweep
+skips a booking because the customer has no usable contact channel, it increments
+`result.skipped` and moves on without writing `review_suppressed_at`. Those rows
+are therefore re-evaluated every 15 minutes for seven days, then age out of the
+window and sit at `confirmed` forever. That is the pile-up the owner has noticed.
+
+Writing the suppression flag in that branch closes them out properly. It changes
+no guest-facing behaviour and cannot change how many reviews are requested.
+
+**What must NOT be built: an end-of-day sweep that moves bookings out of
+`confirmed`.** Review eligibility depends on the booking still being `confirmed`
+four hours after it started. A 9pm table does not become eligible until 1am, so
+any overnight sweep would race the delay and silently cancel that guest's review
+request. This is the exact opposite of the intent.
+
+### Decision needed
+
+5. Nothing is currently being missed, so do you want the housekeeping change
+   (flag bookings that have no contactable customer as suppressed, so they stop
+   accumulating at `confirmed`)? Recommendation: yes, it is small and safe, but
+   it will not produce a single extra review.
