@@ -7,6 +7,21 @@ conflict.
 
 ---
 
+## Round 5, settled 2026-08-05
+
+| # | Decision |
+|---|----------|
+| 28 | **Machine cleaning moves out of the daily opening list.** The opening task is now "Switch on TVs, fruit machine and jukebox". A separate "Clean TVs, fruit machine and jukebox" task runs every other day. |
+| 29 | **The daily opening menu task is reworded.** It now reads "Whatsapp Pete if you need more menus (main, Sunday, Kids, etc)." |
+| 30 | **A mayonnaise task is added to daily closing.** It reads "Put all mayonnaise bottles into the fridge". |
+| 31 | **Three daily garden tasks are added to opening.** Water the outside plants in the back garden (one watering can per pot), sweep the stones and empty the ashtrays. |
+| 32 | **Pool-table free play has weekly controls.** Turn free play on every Thursday and off every Friday. |
+| 33 | **Periodic tasks are simplified.** Remove Stock rotation because Restock fridges/snacks/bottles and rotate covers it. Remove Refill caddies because Restock Caddies is already daily at opening. Remove Hoover/mop because Hoover Carpet Area and Spot Mop are already daily at opening. Remove Glass clean jukebox because the every-other-day machine clean covers it. Clean glass racks every 3 days. Clean window seals every other day, with windows removed from the task. Start the daily candle season on 1 September instead of 1 October. |
+| 34 | **Three overlapping tasks are narrowed.** "Wipe chairs and tables" becomes "Wipe chairs and table legs". "Restock fridges snacks bottles and rotate" becomes "Rotate fridge and bottle stock". The broad opening cleanliness task becomes "Final walk-round: no glasses or litter". The mayonnaise task stays separate. |
+| 35 | **Daily checks are adjusted.** Opening uses "Hoover carpet area if needed", combines the inside/outside check with emptying ashtrays, resets tables to the right standard, checks menus are ready in the holder, removes the utensils task, and adds highchairs to the till/chalkboard check. Sunday opening swaps weekday menus for Sunday menus; Tuesday opening swaps them back. The two-hourly toilet check now includes spraying/wiping sinks and toilets if required and mopping if needed. Closing table cleaning explicitly throws out dirty beer mats. |
+
+---
+
 ## Round 4, settled 2026-07-17 (from the spec review)
 
 | # | Decision |

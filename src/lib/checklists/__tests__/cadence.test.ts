@@ -25,6 +25,12 @@ describe('isCalendarDueOn', () => {
     const t = cal({ freq: 'daily' })
     expect(isCalendarDueOn(t, '2026-07-17')).toBe(true)
   })
+  it('daily with interval 2 runs every other day from its anchor', () => {
+    const t = cal({ freq: 'daily', freqInterval: 2, anchorDate: '2026-08-05' })
+    expect(isCalendarDueOn(t, '2026-08-05')).toBe(true)
+    expect(isCalendarDueOn(t, '2026-08-06')).toBe(false)
+    expect(isCalendarDueOn(t, '2026-08-07')).toBe(true)
+  })
   it('weekly by weekday', () => {
     // 2026-07-20 is a Monday (weekday 1)
     const t = cal({ freq: 'weekly', byWeekday: [1], anchorDate: '2026-07-20' })
