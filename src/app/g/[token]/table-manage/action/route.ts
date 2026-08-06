@@ -123,17 +123,10 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
     }
 
     if (result.state === 'cancelled') {
-      if (result.charge_request_id) {
-        return redirectWithStatus(request, token, 'late_cancel_charge_requested')
-      }
       return redirectWithStatus(request, token, 'cancelled')
     }
 
     const sync = await syncCoversAfterPartySizeChange(supabase, result.table_booking_id)
-
-    if (result.charge_request_id) {
-      return redirectWithStatus(request, token, 'charge_requested')
-    }
 
     if (sync.removed > 0) {
       return redirectWithPreorderStatus(request, token, 'seats_removed')

@@ -43,7 +43,7 @@ export function GuestCancelBooking({
           Cancel booking
         </a>
         <p className="mt-2 font-anchor-body text-[12px] leading-[1.55] text-guest-text-muted">
-          Cancelling within 24 hours of your booking may incur a late-cancellation fee.
+          If you can let us know early, we can offer the table to someone else.
         </p>
       </div>
     )
@@ -56,7 +56,7 @@ export function GuestCancelBooking({
           Are you sure you want to cancel?
         </p>
         <p className="mt-1 font-anchor-body text-[13px] leading-[1.55] text-guest-text">
-          This cannot be undone. Cancelling within 24 hours may incur a fee.
+          This cannot be undone.
         </p>
 
         <form method="post" action={actionUrl} className="mt-4">

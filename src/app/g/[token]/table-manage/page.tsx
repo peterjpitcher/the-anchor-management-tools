@@ -110,10 +110,6 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
       return { tone: 'green', text: 'Booking updated.' }
     case 'cancelled':
       return { tone: 'green', text: 'Booking cancelled.' }
-    case 'charge_requested':
-      return { tone: 'amber', text: 'Booking updated. A fee may apply for reducing your party size.' }
-    case 'late_cancel_charge_requested':
-      return { tone: 'amber', text: 'Booking cancelled. A late-cancellation fee may apply.' }
     case 'error':
       return { tone: 'red', text: 'We could not process that request. Please try again.' }
     case 'rate_limited':

@@ -25,7 +25,17 @@ vi.mock('@/lib/logger', () => ({
 
 import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-booking'
 
-function buildSupabaseWithFailingFeeLookup() {
+/**
+ * A guest cancelling ten hours before their table used to be the late-cancel
+ * case: a `charge_requests` row and an approval email to the manager. That was
+ * removed on 2026-08-06 because no card is held for any customer, so the charge
+ * could never be taken.
+ *
+ * The `from` map below deliberately omits `charge_requests` and
+ * `system_settings`. Both are needed to price and raise a fee, so touching
+ * either fails the test loudly rather than quietly re-introducing the machinery.
+ */
+function buildSupabaseForLateCancellation() {
   const guestTokenMaybeSingle = vi.fn().mockResolvedValue({
     data: {
       customer_id: 'customer-1',
@@ -70,13 +80,12 @@ function buildSupabaseWithFailingFeeLookup() {
   const assignmentEq = vi.fn().mockResolvedValue({ data: [], error: null })
   const assignmentSelect = vi.fn().mockReturnValue({ eq: assignmentEq })
 
-  const systemSettingsSelect = vi.fn(() => {
-    throw new Error('settings unavailable')
-  })
+  const tablesTouched: string[] = []
 
   return {
     supabase: {
       from: vi.fn((table: string) => {
+        tablesTouched.push(table)
         if (table === 'guest_tokens') return { select: guestTokenSelect }
         if (table === 'table_bookings') {
           return {
@@ -85,13 +94,12 @@ function buildSupabaseWithFailingFeeLookup() {
           }
         }
         if (table === 'booking_table_assignments') return { select: assignmentSelect }
-        if (table === 'system_settings') return { select: systemSettingsSelect }
         throw new Error(`Unexpected table: ${table}`)
       }),
     },
     spies: {
       bookingUpdate,
-      systemSettingsSelect,
+      tablesTouched,
     },
   }
 }
@@ -100,6 +108,8 @@ describe('table manage cancellation side effects', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    // Ten hours before the booking, so this is well inside the old 24-hour
+    // late-cancel window. It must still be an ordinary cancellation.
     vi.setSystemTime(new Date('2026-06-04T10:00:00.000Z'))
   })
 
@@ -107,8 +117,8 @@ describe('table manage cancellation side effects', () => {
     vi.useRealTimers()
   })
 
-  it('returns cancelled after the booking update when late-cancel charge evaluation fails', async () => {
-    const { supabase, spies } = buildSupabaseWithFailingFeeLookup()
+  it('cancels without raising a charge request when the guest cancels late', async () => {
+    const { supabase, spies } = buildSupabaseForLateCancellation()
 
     const result = await updateTableBookingByRawToken(supabase as any, {
       rawToken: 'raw-token',
@@ -125,10 +135,30 @@ describe('table manage cancellation side effects', () => {
       charge_amount: null,
     })
     expect(spies.bookingUpdate).toHaveBeenCalled()
-    expect(spies.systemSettingsSelect).toHaveBeenCalled()
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Failed to evaluate late-cancel charge after guest cancellation',
-      expect.any(Object)
-    )
+  })
+
+  it('never emails the manager for approval after a late cancellation', async () => {
+    const { supabase } = buildSupabaseForLateCancellation()
+
+    await updateTableBookingByRawToken(supabase as any, {
+      rawToken: 'raw-token',
+      action: 'cancel',
+      appBaseUrl: 'https://example.com',
+    })
+
+    expect(mocks.sendManagerChargeApprovalEmail).not.toHaveBeenCalled()
+  })
+
+  it('reads neither the fee setting nor the charge_requests table', async () => {
+    const { supabase, spies } = buildSupabaseForLateCancellation()
+
+    await updateTableBookingByRawToken(supabase as any, {
+      rawToken: 'raw-token',
+      action: 'cancel',
+      appBaseUrl: 'https://example.com',
+    })
+
+    expect(spies.tablesTouched).not.toContain('system_settings')
+    expect(spies.tablesTouched).not.toContain('charge_requests')
   })
 })
