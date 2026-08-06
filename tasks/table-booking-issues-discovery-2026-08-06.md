@@ -330,9 +330,41 @@ four hours after it started. A 9pm table does not become eligible until 1am, so
 any overnight sweep would race the delay and silently cancel that guest's review
 request. This is the exact opposite of the intent.
 
-### Decision needed
+### Built and shipped
 
-5. Nothing is currently being missed, so do you want the housekeeping change
-   (flag bookings that have no contactable customer as suppressed, so they stop
-   accumulating at `confirmed`)? Recommendation: yes, it is small and safe, but
-   it will not produce a single extra review.
+Approved by the owner and shipped the same day as commit `ac3aeb90`, deployment
+`h2pq9h64d`, Vercel status success, prod alias moved.
+
+The no-contactable-channel branch in `processTableReviewFollowups` now writes
+`review_suppressed_at` and counts the booking as suppressed, matching what the
+neighbouring suppression branches already do, instead of counting it skipped and
+flagging nothing. Two tests cover it, and the first was checked against the
+unfixed code and fails there.
+
+Deliberately not built, for the reason given above: any sweep that moves
+bookings out of `confirmed`.
+
+### Still outstanding: a one-off backfill
+
+The code change is forward-looking only. The 221 rows already stuck sit outside
+the seven-day load window, so the sweep will never see them again and they will
+stay at `confirmed` indefinitely.
+
+Clearing them is a single data update, and it cannot cost a review because every
+one of them is already past the window:
+
+```sql
+update table_bookings
+set review_suppressed_at = now(), updated_at = now()
+where status = 'confirmed'
+  and start_datetime < now() - interval '7 days'
+  and review_sms_sent_at is null
+  and review_suppressed_at is null;
+```
+
+It is reversible (set the column back to null) and touches no guest-facing
+behaviour. The 9 bookings still inside the window are deliberately excluded, so
+none of them lose their pending review request.
+
+Not applied yet: the workspace CLAUDE.md requires clarifying whether a "clean up"
+means a code change or a data change before touching production data.
