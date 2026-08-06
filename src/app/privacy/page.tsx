@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import { GUEST_SUNK_BOX_CLASS, GuestShell } from '@/components/features/guest'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
@@ -16,9 +17,9 @@ export const metadata: Metadata = {
  * now matches `COMPANY_DETAILS` and the shared guest footer. The previous
  * Staines-upon-Thames TW19 6BJ address was wrong.
  *
- * Still outstanding: the `privacy@theanchorpub.co.uk` mailbox is on a domain
- * that does not match either the company or the pub, and the owner has not yet
- * confirmed whether it is monitored. Everything else is unchanged wording.
+ * The contact mailbox was changed on 2026-08-06 from `privacy@theanchorpub.co.uk`,
+ * which the owner confirmed is not used, to the single guest contact address in
+ * `GUEST_CONTACT`. Everything else is unchanged wording.
  */
 
 /** One numbered section: heading plus its paragraphs and lists. */
@@ -84,7 +85,7 @@ export default function PrivacyPolicy() {
             Horton Road<br />
             Stanwell Moor Village<br />
             Surrey TW19 6AQ<br />
-            Email: <a href="mailto:privacy@theanchorpub.co.uk" className={LINK_CLASS}>privacy@theanchorpub.co.uk</a><br />
+            Email: <a href={GUEST_CONTACT.emailHref} className={LINK_CLASS}>{GUEST_CONTACT.email}</a><br />
             Phone: 01753 682 707
           </p>
         </section>
@@ -173,7 +174,7 @@ export default function PrivacyPolicy() {
           </ul>
           <p className={P_CLASS}>
             To exercise these rights, contact us at{' '}
-            <a href="mailto:privacy@theanchorpub.co.uk" className={LINK_CLASS}>privacy@theanchorpub.co.uk</a>
+            <a href={GUEST_CONTACT.emailHref} className={LINK_CLASS}>{GUEST_CONTACT.email}</a>
           </p>
         </section>
 
@@ -256,7 +257,7 @@ export default function PrivacyPolicy() {
           <p className={P_CLASS}>For any questions about this privacy policy or your personal data:</p>
           <p className={CONTACT_BOX_CLASS}>
             <strong>Data Protection Contact:</strong><br />
-            Email: <a href="mailto:privacy@theanchorpub.co.uk" className={LINK_CLASS}>privacy@theanchorpub.co.uk</a><br />
+            Email: <a href={GUEST_CONTACT.emailHref} className={LINK_CLASS}>{GUEST_CONTACT.email}</a><br />
             Phone: 01753 682 707<br />
             Post: Orange Jelly Limited, The Anchor, Horton Road, Stanwell Moor Village, Surrey TW19 6AQ
           </p>
