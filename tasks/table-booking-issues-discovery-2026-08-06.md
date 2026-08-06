@@ -344,27 +344,52 @@ unfixed code and fails there.
 Deliberately not built, for the reason given above: any sweep that moves
 bookings out of `confirmed`.
 
-### Still outstanding: a one-off backfill
+### The one-off backfill: applied
 
-The code change is forward-looking only. The 221 rows already stuck sit outside
-the seven-day load window, so the sweep will never see them again and they will
-stay at `confirmed` indefinitely.
+Owner-approved and applied to production on 2026-08-06.
 
-Clearing them is a single data update, and it cannot cost a review because every
-one of them is already past the window:
+The code change is forward-looking only, so the rows already stuck had to be
+cleared directly: they sit outside the seven-day load window and the sweep would
+never have seen them again.
 
 ```sql
 update table_bookings
-set review_suppressed_at = now(), updated_at = now()
+set review_suppressed_at = now()
 where status = 'confirmed'
   and start_datetime < now() - interval '7 days'
   and review_sms_sent_at is null
   and review_suppressed_at is null;
 ```
 
-It is reversible (set the column back to null) and touches no guest-facing
-behaviour. The 9 bookings still inside the window are deliberately excluded, so
-none of them lose their pending review request.
+**221 rows updated**, all stamped `2026-08-06 13:43:53.846884+00`. That single
+shared timestamp is the reversal key: `set review_suppressed_at = null where
+review_suppressed_at = '2026-08-06 13:43:53.846884+00'` undoes exactly this run
+and nothing else.
 
-Not applied yet: the workspace CLAUDE.md requires clarifying whether a "clean up"
-means a code change or a data change before touching production data.
+Trigger pre-flight, done before running, because seven triggers sit on
+`table_bookings`:
+
+- `update_customer_booking_stats` fires on any UPDATE with no column list, but
+  both of its branches test `OLD.status != NEW.status`. This update never touches
+  `status`, so it does nothing. No booking counts were double-incremented.
+- `table_bookings_updated_at` fires and sets `updated_at`, which is why the
+  statement above does not set it by hand.
+- The other five are all scoped to columns this update does not touch
+  (`is_outside_seating`, `start_datetime`, `end_datetime`, `party_size`,
+  `booking_type`, `booking_date`, `status`, the two deposit-refund columns), or
+  are INSERT-only.
+
+Verified after: 0 rows remain unresolved, 221 carry the backfill stamp, 0 rows
+of any other status were touched, and the bookings still inside the window were
+not affected.
+
+### The new code, confirmed working on live data
+
+The first cron run after the deploy suppressed 9 bookings at 07:45:11 UTC,
+timestamps 70 milliseconds apart. Every one of the 9 had no active mobile AND no
+usable email, which is exactly the branch this change added, and none of them had
+a review sent. Those were the 9 that would previously have been re-read every
+fifteen minutes and then stuck at `confirmed` for good.
+
+Net effect: 230 bookings closed out (221 backfilled, 9 by the new code), and the
+unresolved pile is now zero.
