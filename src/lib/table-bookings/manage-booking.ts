@@ -1,12 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
-import { getFeePerHead } from '@/lib/foh/bookings'
-import { sendManagerChargeApprovalEmail } from '@/lib/table-bookings/charge-approvals'
 import { logger } from '@/lib/logger'
 import { formatCancellationReason } from './cancellation-reasons'
-
-type ChargeRequestType = 'late_cancel' | 'reduction_fee'
 
 export type TableManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -69,10 +65,6 @@ function parseIsoDate(value?: string | null): Date | null {
 
 function getThreeDayCommitTime(startAt: Date): Date {
   return new Date(startAt.getTime() - 3 * 24 * 60 * 60 * 1000)
-}
-
-function getLateCancelCutoff(startAt: Date): Date {
-  return new Date(startAt.getTime() - 24 * 60 * 60 * 1000)
 }
 
 async function findTableAssignment(
@@ -254,117 +246,6 @@ async function maybeMoveTableForPartySizeIncrease(
   }
 }
 
-async function computePerHeadFeeCapRemaining(
-  supabase: SupabaseClient<any, 'public', any>,
-  input: {
-    bookingId: string
-    committedPartySize: number
-    feePerHead: number
-  }
-): Promise<number> {
-  const totalCap = Math.max(0, input.committedPartySize * input.feePerHead)
-
-  const { data: existingRequests } = await supabase.from('charge_requests')
-    .select('amount, type, manager_decision, charge_status')
-    .eq('table_booking_id', input.bookingId)
-    .in('type', ['late_cancel', 'no_show', 'reduction_fee'])
-
-  const alreadyAllocated = (existingRequests || [])
-    .filter((row) => row.manager_decision !== 'waived' && row.charge_status !== 'waived')
-    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
-
-  return Math.max(0, Number((totalCap - alreadyAllocated).toFixed(2)))
-}
-
-async function createSystemChargeRequestWithApproval(
-  supabase: SupabaseClient<any, 'public', any>,
-  input: {
-    bookingId: string
-    customerId: string
-    type: ChargeRequestType
-    amount: number
-    metadata: Record<string, unknown>
-    appBaseUrl?: string
-  }
-): Promise<{ chargeRequestId: string | null }> {
-  const amount = Number(input.amount.toFixed(2))
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return { chargeRequestId: null }
-  }
-
-  const { data: chargeRequest, error } = await supabase.from('charge_requests')
-    .insert({
-      table_booking_id: input.bookingId,
-      type: input.type,
-      amount,
-      currency: 'GBP',
-      metadata: input.metadata,
-      requested_by: 'system',
-      requested_by_user_id: null,
-      charge_status: 'pending'
-    })
-    .select('id')
-    .maybeSingle()
-
-  if (error) {
-    throw error
-  }
-
-  const chargeRequestId = chargeRequest?.id || null
-
-  if (chargeRequestId) {
-    try {
-      await recordAnalyticsEvent(supabase, {
-        customerId: input.customerId,
-        tableBookingId: input.bookingId,
-        eventType: 'charge_request_created',
-        metadata: {
-          charge_type: input.type,
-          amount,
-          currency: 'GBP',
-          requested_by: 'system'
-        }
-      })
-    } catch (analyticsError) {
-      logger.warn('Failed to record system charge-request analytics event', {
-        metadata: {
-          chargeRequestId,
-          bookingId: input.bookingId,
-          customerId: input.customerId,
-          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-        }
-      })
-    }
-
-    try {
-      const emailResult = await sendManagerChargeApprovalEmail(supabase, {
-        chargeRequestId,
-        appBaseUrl: input.appBaseUrl
-      })
-
-      if (!emailResult.sent) {
-        logger.warn('Failed to send manager charge-approval email for system request', {
-          metadata: {
-            chargeRequestId,
-            bookingId: input.bookingId,
-            error: emailResult.error || 'unknown'
-          }
-        })
-      }
-    } catch (emailError) {
-      logger.warn('Failed to dispatch manager charge-approval email for system request', {
-        metadata: {
-          chargeRequestId,
-          bookingId: input.bookingId,
-          error: emailError instanceof Error ? emailError.message : String(emailError)
-        }
-      })
-    }
-  }
-
-  return { chargeRequestId }
-}
-
 export async function createTableManageToken(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -510,7 +391,7 @@ export async function updateTableBookingByRawToken(
   // If it arrives as null/undefined here the TypeScript type is telling us something unexpected
   // happened (e.g. a direct DB insert that bypassed the RPC). We fall back to oldPartySize to
   // preserve existing behaviour, but we log a warning so the assumption is visible in the audit
-  // trail rather than silently affecting charge calculations.
+  // trail rather than silently affecting the party-size commit rules.
   const committedPartySizeWasNull = preview.committed_party_size == null
   if (committedPartySizeWasNull) {
     logger.warn('[manage-booking] committed_party_size is null, falling back to party_size', {
@@ -573,103 +454,26 @@ export async function updateTableBookingByRawToken(
       })
     }
 
-    const lateCancelCutoff = getLateCancelCutoff(startAt)
-    if (now.getTime() < lateCancelCutoff.getTime()) {
-      return {
-        state: 'cancelled',
-        table_booking_id: bookingId,
-        customer_id: customerId,
-        status: 'cancelled',
-        charge_request_id: null,
-        charge_amount: null
-      }
-    }
-
-    let chargeAmount = 0
-    let feePerHead = 0
-
-    try {
-      feePerHead = await getFeePerHead(supabase)
-      const remainingCap = await computePerHeadFeeCapRemaining(supabase, {
-        bookingId,
-        committedPartySize: oldCommittedSize,
-        feePerHead
-      })
-
-      const suggestedAmount = Number((oldPartySize * feePerHead).toFixed(2))
-      chargeAmount = Math.max(0, Math.min(suggestedAmount, remainingCap))
-    } catch (chargeEvaluationError) {
-      logger.error('Failed to evaluate late-cancel charge after guest cancellation', {
-        error: chargeEvaluationError instanceof Error ? chargeEvaluationError : new Error(String(chargeEvaluationError)),
-        metadata: {
-          bookingId,
-          customerId
-        }
-      })
-
-      return {
-        state: 'cancelled',
-        table_booking_id: bookingId,
-        customer_id: customerId,
-        status: 'cancelled',
-        charge_request_id: null,
-        charge_amount: null
-      }
-    }
-
-    if (chargeAmount <= 0) {
-      return {
-        state: 'cancelled',
-        table_booking_id: bookingId,
-        customer_id: customerId,
-        status: 'cancelled',
-        charge_request_id: null,
-        charge_amount: 0
-      }
-    }
-
-    try {
-      const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
-        bookingId,
-        customerId,
-        type: 'late_cancel',
-        amount: chargeAmount,
-        appBaseUrl: input.appBaseUrl,
-        metadata: {
-          source: 'guest_late_cancel',
-          old_party_size: oldPartySize,
-          committed_party_size: oldCommittedSize,
-          fee_per_head: feePerHead,
-          ...(committedPartySizeWasNull ? { committed_party_size_was_null: true } : {})
-        }
-      })
-
-      return {
-        state: 'cancelled',
-        table_booking_id: bookingId,
-        customer_id: customerId,
-        status: 'cancelled',
-        charge_request_id: chargeRequest.chargeRequestId,
-        charge_amount: chargeRequest.chargeRequestId ? chargeAmount : null
-      }
-    } catch (chargeRequestError) {
-      logger.error('Failed to create late-cancel charge request after guest cancellation', {
-        error: chargeRequestError instanceof Error ? chargeRequestError : new Error(String(chargeRequestError)),
-        metadata: {
-          bookingId,
-          customerId,
-          chargeAmount
-        }
-      })
-
-      return {
-        state: 'cancelled',
-        table_booking_id: bookingId,
-        customer_id: customerId,
-        status: 'cancelled',
-        charge_request_id: null,
-        charge_amount: null
-      }
+    // A guest cancellation is just a cancellation, however late it is.
+    //
+    // This used to raise a `late_cancel` charge request and email the manager for
+    // approval. It was removed on 2026-08-06 because the charge could never be
+    // taken: no card is held for any customer (there is no stored payment-method
+    // column in the schema at all, and no customer has a `stripe_customer_id`).
+    // In production it produced 21 approval emails worth GBP 1,020 and zero
+    // successful charges. Telling a guest a fee "may apply" when we cannot
+    // collect it, then asking a manager to rule on it, was cost with no benefit.
+    //
+    // Do not reinstate this without card capture landing first. The approval
+    // machinery it called (`charge-approvals.ts`) is still used by the FOH
+    // no-show and walkout buttons, which a person chooses to press.
+    return {
+      state: 'cancelled',
+      table_booking_id: bookingId,
+      customer_id: customerId,
+      status: 'cancelled',
+      charge_request_id: null,
+      charge_amount: null
     }
   }
 
@@ -725,42 +529,10 @@ export async function updateTableBookingByRawToken(
     }
   }
 
-  let plannedReductionCharge:
-    | {
-        amount: number
-        metadata: Record<string, unknown>
-      }
-    | null = null
-
-  if (newPartySize < oldPartySize && now.getTime() >= commitTime.getTime()) {
-    const reductionCount = Math.max(0, oldCommittedSize - newPartySize)
-    if (reductionCount > 0) {
-      const feePerHead = await getFeePerHead(supabase)
-      const remainingCap = await computePerHeadFeeCapRemaining(supabase, {
-        bookingId,
-        committedPartySize: oldCommittedSize,
-        feePerHead
-      })
-
-      const suggestedAmount = Number((reductionCount * feePerHead).toFixed(2))
-      const chargeAmount = Math.max(0, Math.min(suggestedAmount, remainingCap))
-
-      if (chargeAmount > 0) {
-        plannedReductionCharge = {
-          amount: chargeAmount,
-          metadata: {
-            source: 'guest_reduction_inside_3_days',
-            old_party_size: oldPartySize,
-            new_party_size: newPartySize,
-            committed_party_size: oldCommittedSize,
-            reduction_count: reductionCount,
-            fee_per_head: feePerHead,
-            ...(committedPartySizeWasNull ? { committed_party_size_was_null: true } : {})
-          }
-        }
-      }
-    }
-  }
+  // Shrinking a party inside the three-day commit window used to raise a
+  // `reduction_fee` charge request and email the manager. Removed on 2026-08-06
+  // for the same reason as the late-cancel charge above: no card is held, so the
+  // fee could never be collected. See the note in the cancel branch.
 
   const { data: updatedBooking, error: updateError } = await supabase.from('table_bookings')
     .update({
@@ -785,36 +557,6 @@ export async function updateTableBookingByRawToken(
     }
   }
 
-  let chargeRequestId: string | null = null
-  let chargeAmount: number | null = null
-  if (plannedReductionCharge) {
-    try {
-      const chargeRequest = await createSystemChargeRequestWithApproval(supabase, {
-        bookingId,
-        customerId,
-        type: 'reduction_fee',
-        amount: plannedReductionCharge.amount,
-        appBaseUrl: input.appBaseUrl,
-        metadata: plannedReductionCharge.metadata
-      })
-      chargeRequestId = chargeRequest.chargeRequestId
-      if (chargeRequestId) {
-        chargeAmount = plannedReductionCharge.amount
-      }
-    } catch (chargeRequestError) {
-      logger.error('Failed to create reduction-fee charge request after guest booking update', {
-        error: chargeRequestError instanceof Error ? chargeRequestError : new Error(String(chargeRequestError)),
-        metadata: {
-          bookingId,
-          customerId,
-          newPartySize,
-          oldPartySize,
-          plannedChargeAmount: plannedReductionCharge.amount
-        }
-      })
-    }
-  }
-
   return {
     state: 'updated',
     table_booking_id: bookingId,
@@ -823,7 +565,7 @@ export async function updateTableBookingByRawToken(
     old_party_size: oldPartySize,
     new_party_size: newPartySize,
     committed_party_size: nextCommittedSize,
-    charge_request_id: chargeRequestId,
-    charge_amount: chargeAmount
+    charge_request_id: null,
+    charge_amount: null
   }
 }
