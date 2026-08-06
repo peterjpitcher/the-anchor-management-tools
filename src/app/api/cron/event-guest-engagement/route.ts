@@ -1411,7 +1411,27 @@ async function processTableReviewFollowups(
     const hasSmsChannel = Boolean(customer?.mobile_number && customer.sms_status === 'active')
 
     if (!customer || (!hasEmailChannel && !hasSmsChannel)) {
-      result.skipped += 1
+      // There is no way to reach this guest, so there is no review to ask for.
+      //
+      // This used to `skipped++` and move on without flagging anything, which
+      // left the booking `confirmed` and eligible. The sweep then re-read it
+      // every fifteen minutes until it aged out of the seven-day window, after
+      // which it sat at `confirmed` for good. That is how 187 of the 221
+      // permanently unreviewed bookings on record got there.
+      //
+      // Flagging costs no reviews: a booking only lands here because the
+      // customer has neither a usable email nor an active mobile, so there was
+      // never a way to ask them.
+      const nowIso = new Date().toISOString()
+      await supabase
+        .from('table_bookings')
+        .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+        .eq('id', booking.id)
+        .is('review_suppressed_at', null)
+      logger.info('Table review suppressed: customer has no contactable channel', {
+        metadata: { tableBookingId: booking.id, customerId: booking.customer_id }
+      })
+      result.suppressed += 1
       continue
     }
 
