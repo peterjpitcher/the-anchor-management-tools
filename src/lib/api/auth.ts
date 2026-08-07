@@ -203,11 +203,23 @@ export function createApiResponse(
     ...headers,
   }
 
-  // Only include ETag for cacheable responses
+  // Only include ETag for cacheable responses.
+  //
+  // This used to base64 the payload and keep the first 27 characters. 27 base64
+  // characters cover about 20 bytes, and the payload is normalised just above
+  // to `{ success: true, data }`, so those bytes were always the literal
+  // `{"success":true,"dat`. Every endpoint therefore returned the same ETag,
+  // and a client honouring If-None-Match could ask for /api/menu carrying an
+  // ETag it got from /api/events and be told 304 Not Modified, then serve the
+  // wrong cached body. Verified against production before changing it.
+  //
+  // Hashing the whole payload matches the pattern already used correctly in
+  // src/app/api/portal/calendar-feed/route.ts.
   if (isGet) {
-    responseHeaders['ETag'] = `"${Buffer.from(JSON.stringify(payload))
-      .toString('base64')
-      .slice(0, 27)}"`
+    responseHeaders['ETag'] = `"${createHash('sha256')
+      .update(JSON.stringify(payload))
+      .digest('hex')
+      .slice(0, 32)}"`
   }
 
   return NextResponse.json(payload, {
