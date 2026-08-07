@@ -36,6 +36,7 @@ import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { getCurrentMonthEntryDateRange } from '@/lib/oj-projects/date-ranges'
 import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
+import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -438,7 +439,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       return (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
     }
     if (entry.entry_type === 'mileage') {
-      return Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
+      return Number(entry.miles || 0) * resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
     }
     return Number(entry.amount_ex_vat_snapshot || 0)
   }

@@ -6,6 +6,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 
 const CreateProjectSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -54,7 +55,7 @@ function calculateEntryAmountExVat(entry: {
     return (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
   }
   if (entry.entry_type === 'mileage') {
-    return Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
+    return Number(entry.miles || 0) * resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
   }
   if (entry.entry_type === 'one_off') {
     return Number(entry.amount_ex_vat_snapshot || 0)

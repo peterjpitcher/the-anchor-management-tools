@@ -14,6 +14,7 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { sendBillingRunAlert } from '@/lib/oj-projects/billing-alerts'
+import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 import {
   buildLastChargedPeriodStarts,
   buildRecurringChargeDescription,
@@ -594,7 +595,7 @@ function buildInvoiceNotes(input: {
         const mileageMiles = cfMileage.reduce((acc: number, e: any) => acc + Number(e.miles || 0), 0)
         const mileageIncVat = cfMileage.reduce((acc: number, e: any) => {
           const miles = Number(e.miles || 0)
-          const rate = Number(e.mileage_rate_snapshot || 0.55)
+          const rate = resolveRate(e.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
           return acc + roundMoney(miles * rate)
         }, 0)
 
@@ -628,7 +629,7 @@ function getEntryCharge(entry: any, settings: any) {
   const entryType = String(entry?.entry_type || '')
   if (entryType === 'mileage') {
     const miles = Number(entry.miles || 0)
-    const rate = Number(entry.mileage_rate_snapshot || settings?.mileage_rate || 0.55)
+    const rate = resolveRate(entry.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
     const exVat = roundMoney(miles * rate)
     const vatRate = 0
     const incVat = roundMoney(exVat)
@@ -644,7 +645,7 @@ function getEntryCharge(entry: any, settings: any) {
 
   const minutes = Number(entry.duration_minutes_rounded || 0)
   const hours = minutes / 60
-  const rate = Number(entry.hourly_rate_ex_vat_snapshot || settings?.hourly_rate_ex_vat || 75)
+  const rate = resolveRate(entry.hourly_rate_ex_vat_snapshot, settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
   const vatRate = Number(entry.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
   const exVat = roundMoney(hours * rate)
   const incVat = moneyIncVat(exVat, vatRate)
@@ -956,7 +957,7 @@ async function splitMileageEntryForCap(input: {
   const totalMiles = Number(candidate.miles || 0)
   if (!Number.isFinite(totalMiles) || totalMiles <= 0) return null
 
-  const rate = Number(candidate.mileage_rate_snapshot || input.settings?.mileage_rate || 0.55)
+  const rate = resolveRate(candidate.mileage_rate_snapshot, input.settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
   const partial = computePartialMilesForHeadroom(totalMiles, rate, input.headroom)
   if (!partial) return null
   if (partial.miles < 0.01) return null
@@ -1039,7 +1040,7 @@ async function splitTimeEntryForCap(input: {
   const totalMinutes = Number(candidate.duration_minutes_rounded || 0)
   if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return null
 
-  const rate = Number(candidate.hourly_rate_ex_vat_snapshot || input.settings?.hourly_rate_ex_vat || 75)
+  const rate = resolveRate(candidate.hourly_rate_ex_vat_snapshot, input.settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
   const vatRate = Number(candidate.vat_rate_snapshot ?? input.settings?.vat_rate ?? 20)
   const partial = computePartialMinutesForHeadroom(totalMinutes, rate, vatRate, input.headroom)
   if (!partial) return null
@@ -1517,7 +1518,7 @@ function buildDetailedLineItems(input: {
   const selectedMileage = input.selectedMileageEntries || []
   if (selectedMileage.length > 0) {
     const totalMiles = selectedMileage.reduce((acc: number, e: any) => acc + Number(e.miles || 0), 0)
-    const rateSet = new Set(selectedMileage.map((e: any) => Number(e.mileage_rate_snapshot || input.settings?.mileage_rate || 0.55)))
+    const rateSet = new Set(selectedMileage.map((e: any) => resolveRate(e.mileage_rate_snapshot, input.settings?.mileage_rate, DEFAULT_MILEAGE_RATE)))
     if (rateSet.size === 1) {
       const rate = [...rateSet][0]
       lineItems.push({
@@ -1531,7 +1532,7 @@ function buildDetailedLineItems(input: {
     } else {
       const totalExVat = selectedMileage.reduce((acc: number, e: any) => {
         const miles = Number(e.miles || 0)
-        const rate = Number(e.mileage_rate_snapshot || input.settings?.mileage_rate || 0.55)
+        const rate = resolveRate(e.mileage_rate_snapshot, input.settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
         return acc + roundMoney(miles * rate)
       }, 0)
       lineItems.push({
@@ -1561,7 +1562,7 @@ function buildDetailedLineItems(input: {
     const totalExVat = bucket.entries.reduce((acc: number, e: any) => {
       const minutes = Number(e.duration_minutes_rounded || 0)
       const hours = minutes / 60
-      const rate = Number(e.hourly_rate_ex_vat_snapshot || input.settings?.hourly_rate_ex_vat || 75)
+      const rate = resolveRate(e.hourly_rate_ex_vat_snapshot, input.settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
       return acc + roundMoney(hours * rate)
     }, 0)
 
@@ -3116,7 +3117,7 @@ export async function GET(request: Request) {
 
       for (const e of mileageEntries) {
         const miles = Number(e.miles || 0)
-        const rate = Number(e.mileage_rate_snapshot || settings?.mileage_rate || 0.55)
+        const rate = resolveRate(e.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
         const exVat = roundMoney(miles * rate)
         const incVat = exVat
         if (includeItem(incVat)) selectedMileage.push(e)
@@ -3126,7 +3127,7 @@ export async function GET(request: Request) {
       for (const e of timeEntries) {
         const minutes = Number(e.duration_minutes_rounded || 0)
         const hours = minutes / 60
-        const rate = Number(e.hourly_rate_ex_vat_snapshot || settings?.hourly_rate_ex_vat || 75)
+        const rate = resolveRate(e.hourly_rate_ex_vat_snapshot, settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
         const vatRate = Number(e.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
         const exVat = roundMoney(hours * rate)
         const incVat = moneyIncVat(exVat, vatRate)
@@ -3185,13 +3186,13 @@ export async function GET(request: Request) {
             }, 0) +
             (skippedMileage || []).reduce((acc: number, item: any) => {
               const miles = Number(item.miles || 0)
-              const rate = Number(item.mileage_rate_snapshot || settings?.mileage_rate || 0.55)
+              const rate = resolveRate(item.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
               return acc + roundMoney(miles * rate)
             }, 0) +
             (skippedTime || []).reduce((acc: number, item: any) => {
               const minutes = Number(item.duration_minutes_rounded || 0)
               const hours = minutes / 60
-              const rate = Number(item.hourly_rate_ex_vat_snapshot || settings?.hourly_rate_ex_vat || 75)
+              const rate = resolveRate(item.hourly_rate_ex_vat_snapshot, settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
               const vatRate = Number(item.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
               return acc + moneyIncVat(roundMoney(hours * rate), vatRate)
             }, 0)

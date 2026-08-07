@@ -27,6 +27,7 @@ import { updateProjectStatus, deleteProject } from '@/app/actions/oj-projects/pr
 import { deleteEntry } from '@/app/actions/oj-projects/entries'
 import { removeProjectContact } from '@/app/actions/oj-projects/project-contacts'
 import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
+import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -68,7 +69,7 @@ export function ProjectDetailClient({
         exVat = hours * rate
         t.hours += hours
       } else if (entry.entry_type === 'mileage') {
-        exVat = Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
+        exVat = Number(entry.miles || 0) * resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
       } else if (entry.entry_type === 'one_off') {
         exVat = Number(entry.amount_ex_vat_snapshot || 0)
       }
@@ -275,7 +276,7 @@ export function ProjectDetailClient({
                     const amount = entry.entry_type === 'time'
                       ? (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
                       : entry.entry_type === 'mileage'
-                        ? Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
+                        ? Number(entry.miles || 0) * resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
                         : Number(entry.amount_ex_vat_snapshot || 0)
                     const typeTone = entry.entry_type === 'time' ? 'info' : entry.entry_type === 'mileage' ? 'warning' : 'neutral'
                     const statusEntryTone = entry.status === 'paid' ? 'success' : entry.status === 'billed' ? 'info' : 'warning'
@@ -336,7 +337,7 @@ export function ProjectDetailClient({
                     if (entry.entry_type === 'time') {
                       amount = (Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot || 0)
                     } else if (entry.entry_type === 'mileage') {
-                      amount = Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot || 0.55)
+                      amount = Number(entry.miles || 0) * resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
                     } else {
                       amount = Number(entry.amount_ex_vat_snapshot || 0)
                     }
