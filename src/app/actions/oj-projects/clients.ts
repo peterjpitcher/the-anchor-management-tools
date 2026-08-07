@@ -4,8 +4,14 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { parsePaymentTermsValue } from '@/lib/vendors/paymentTerms'
+import { deriveClientCode } from '@/lib/oj-projects/utils'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+
+// Seeded onto every new client so billing never falls back to hardcoded values.
+const DEFAULT_HOURLY_RATE_EX_VAT = 62.5
+const DEFAULT_VAT_RATE = 20
+const DEFAULT_MILEAGE_RATE = 0.55
 
 function optionalText(value: FormDataEntryValue | null): string | null {
   const text = String(value || '').trim()
@@ -140,6 +146,30 @@ export async function createOJClient(formData: FormData) {
     .single()
 
   if (error) return { error: error.message }
+
+  // Give every new client a billing settings row up front. Without one, billing
+  // silently falls back to hardcoded defaults (GBP 75/hour) and the client has
+  // no code for project references.
+  const { error: settingsError } = await supabase
+    .from('oj_vendor_billing_settings')
+    .upsert(
+      {
+        vendor_id: data.id,
+        client_code: deriveClientCode(String(data.name || '')),
+        billing_mode: 'full',
+        monthly_cap_inc_vat: null,
+        hourly_rate_ex_vat: DEFAULT_HOURLY_RATE_EX_VAT,
+        vat_rate: DEFAULT_VAT_RATE,
+        mileage_rate: DEFAULT_MILEAGE_RATE,
+        retainer_included_hours_per_month: 0,
+        statement_mode: false,
+      },
+      { onConflict: 'vendor_id', ignoreDuplicates: true }
+    )
+
+  if (settingsError) {
+    console.error('Failed to seed OJ billing settings for new client', settingsError)
+  }
 
   await logAuditEvent({
     user_id: user?.id,

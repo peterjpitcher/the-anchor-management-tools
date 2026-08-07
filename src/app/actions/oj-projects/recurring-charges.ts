@@ -28,6 +28,31 @@ const RecurringChargeSchema = z.object({
   sort_order: z.coerce.number().int().min(0).max(1000).optional(),
 })
 
+/**
+ * Removes charge instances that were queued but never invoiced, once the charge
+ * behind them is switched off. Without this they sit unbilled forever: the
+ * billing run skips instances of inactive charges, but the client balance still
+ * counts them. Anything already attached to an invoice is left untouched.
+ */
+async function discardUnbilledInstancesForCharge(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  chargeId: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('oj_recurring_charge_instances')
+    .delete()
+    .eq('recurring_charge_id', chargeId)
+    .eq('status', 'unbilled')
+    .is('invoice_id', null)
+    .select('id')
+
+  if (error) {
+    console.error('Failed to discard unbilled OJ recurring charge instances', error)
+    return 0
+  }
+  return (data || []).length
+}
+
 export async function getRecurringCharges(vendorId: string) {
   const hasPermission = await checkUserPermission('oj_projects', 'view')
   if (!hasPermission) return { error: 'You do not have permission to view recurring charges' }
@@ -130,6 +155,10 @@ export async function updateRecurringCharge(formData: FormData) {
   if (error) return { error: error.message }
   if (!data) return { error: 'Charge not found' }
 
+  const discardedInstances = data.is_active === false
+    ? await discardUnbilledInstancesForCharge(supabase, id)
+    : 0
+
   await logAuditEvent({
     user_id: user?.id,
     user_email: user?.email,
@@ -138,6 +167,7 @@ export async function updateRecurringCharge(formData: FormData) {
     resource_id: id,
     operation_status: 'success',
     new_values: { description: data.description, amount_ex_vat: data.amount_ex_vat, is_active: data.is_active },
+    additional_info: discardedInstances > 0 ? { discarded_unbilled_instances: discardedInstances } : undefined,
   })
 
   return { charge: data, success: true as const }
@@ -166,6 +196,8 @@ export async function disableRecurringCharge(formData: FormData) {
   if (error) return { error: error.message }
   if (!updatedCharge) return { error: 'Charge not found' }
 
+  const discardedInstances = await discardUnbilledInstancesForCharge(supabase, id)
+
   await logAuditEvent({
     user_id: user?.id,
     user_email: user?.email,
@@ -173,7 +205,7 @@ export async function disableRecurringCharge(formData: FormData) {
     resource_type: 'oj_recurring_charge',
     resource_id: id,
     operation_status: 'success',
-    additional_info: { action: 'disable' },
+    additional_info: { action: 'disable', discarded_unbilled_instances: discardedInstances },
   })
 
   return { success: true as const }

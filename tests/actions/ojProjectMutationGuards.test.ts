@@ -195,9 +195,29 @@ describe('OJ project action mutation row-effect guards', () => {
       return { eq }
     })
 
+    // Deactivating a charge also clears any instance it queued but never billed.
+    const instanceFilters: Array<[string, unknown]> = []
+    const instanceSelect = vi.fn().mockResolvedValue({ data: [{ id: 'instance-1' }], error: null })
+    const instanceIs = vi.fn((column: string, value: unknown) => {
+      instanceFilters.push([column, value])
+      return { select: instanceSelect }
+    })
+    const instanceEqStatus = vi.fn((column: string, value: unknown) => {
+      instanceFilters.push([column, value])
+      return { is: instanceIs }
+    })
+    const instanceEqCharge = vi.fn((column: string, value: unknown) => {
+      instanceFilters.push([column, value])
+      return { eq: instanceEqStatus }
+    })
+    const instanceDelete = vi.fn().mockReturnValue({ eq: instanceEqCharge })
+
     mockedCreateClient.mockResolvedValue({
       auth: mockAuth,
       from: vi.fn((table: string) => {
+        if (table === 'oj_recurring_charge_instances') {
+          return { delete: instanceDelete }
+        }
         if (table !== 'oj_vendor_recurring_charges') {
           throw new Error(`Unexpected table: ${table}`)
         }
@@ -220,6 +240,12 @@ describe('OJ project action mutation row-effect guards', () => {
 
     expect(result.success).toBe(true)
     expect(updatedPayloads[0]).toEqual(expect.objectContaining({ is_active: false }))
+    expect(instanceDelete).toHaveBeenCalledTimes(1)
+    expect(instanceFilters).toEqual([
+      ['recurring_charge_id', 'charge-1'],
+      ['status', 'unbilled'],
+      ['invoice_id', null],
+    ])
   })
 
   it('returns project-not-found when deleteProject delete affects no rows after entry precheck', async () => {

@@ -10,6 +10,11 @@ import {
   type OjInvoiceRevisionEntry,
   type OjInvoiceRevisionRecurringInstance,
 } from '@/lib/oj-projects/invoice-revision'
+import {
+  buildLastChargedPeriodStarts,
+  getRecurringChargeCoverage,
+  getRecurringChargePeriod,
+} from '@/lib/oj-projects/recurring-periods'
 import type { InvoiceLineItemInput } from '@/types/invoices'
 
 type ReissueMode = 'rebuild_draft' | 'replacement'
@@ -70,6 +75,8 @@ type VirtualRecurringInstance = {
   period_yyyymm: string
   period_start: string
   period_end: string
+  coverage_start: string
+  coverage_end: string
   description_snapshot: string
   amount_ex_vat_snapshot: number
   vat_rate_snapshot: number
@@ -150,41 +157,6 @@ function periodFromEntryDate(entryDate: string): Period | null {
   const match = String(entryDate || '').match(/^(\d{4})-(\d{2})-\d{2}$/)
   if (!match) return null
   return parseOjPeriodFromReference(`OJ Projects ${match[1]}-${match[2]}`)
-}
-
-function getRecurringChargePeriod(
-  frequency: string | null | undefined,
-  billingPeriod: Period
-): Omit<Period, 'label'> | null {
-  const rawFrequency = String(frequency || 'monthly')
-  if (rawFrequency === 'monthly') return billingPeriod
-
-  const endDate = new Date(`${billingPeriod.period_end}T00:00:00.000Z`)
-  const month = endDate.getUTCMonth() + 1
-  const year = endDate.getUTCFullYear()
-
-  if (rawFrequency === 'quarterly') {
-    if (month % 3 !== 0) return null
-    const quarter = Math.ceil(month / 3)
-    const qStart = new Date(Date.UTC(year, (quarter - 1) * 3, 1)).toISOString().slice(0, 10)
-    const qEnd = new Date(Date.UTC(year, quarter * 3, 0)).toISOString().slice(0, 10)
-    return {
-      period_yyyymm: `${year}-Q${quarter}`,
-      period_start: qStart,
-      period_end: qEnd,
-    }
-  }
-
-  if (rawFrequency === 'yearly' || rawFrequency === 'annually') {
-    if (month !== 12) return null
-    return {
-      period_yyyymm: String(year),
-      period_start: `${year}-01-01`,
-      period_end: `${year}-12-31`,
-    }
-  }
-
-  return billingPeriod
 }
 
 function getEntryAmount(entry: any, settings: any): number {
@@ -424,6 +396,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
         period_yyyymm,
         period_start,
         period_end,
+        coverage_start,
+        coverage_end,
         description_snapshot,
         amount_ex_vat_snapshot,
         vat_rate_snapshot,
@@ -449,6 +423,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
         period_yyyymm,
         period_start,
         period_end,
+        coverage_start,
+        coverage_end,
         description_snapshot,
         amount_ex_vat_snapshot,
         vat_rate_snapshot,
@@ -505,13 +481,30 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
     [...allRecurringInstances.values()].map((instance: any) => `${instance.recurring_charge_id}:${instance.period_yyyymm}`)
   )
 
+  // Quarterly and annual charges are scheduled from their own anniversary, so
+  // we need what was charged before this invoice's period.
+  const { data: priorInstances, error: priorInstancesError } = await admin
+    .from('oj_recurring_charge_instances')
+    .select('recurring_charge_id, period_start')
+    .eq('vendor_id', invoice.vendor_id)
+    .lt('period_start', period.period_start)
+    .order('period_start', { ascending: false })
+    .limit(10000)
+  if (priorInstancesError) return { eligible: false, error: priorInstancesError.message, sourceInvoice: invoice, period }
+  const lastChargedPeriodStarts = buildLastChargedPeriodStarts(priorInstances, period.period_start)
+
   for (const charge of activeCharges || []) {
     if (charge.is_active === false) continue
-    const chargePeriod = getRecurringChargePeriod(String(charge.frequency || 'monthly'), period)
+    const chargePeriod = getRecurringChargePeriod(
+      String(charge.frequency || 'monthly'),
+      period,
+      lastChargedPeriodStarts.get(String(charge.id)) ?? null
+    )
     if (!chargePeriod) continue
     dueChargePeriods.set(`${charge.id}:${chargePeriod.period_yyyymm}`, chargePeriod)
     const existingKey = `${charge.id}:${chargePeriod.period_yyyymm}`
     if (existingByChargePeriod.has(existingKey)) continue
+    const coverage = getRecurringChargeCoverage(String(charge.frequency || 'monthly'), chargePeriod)
     const virtualId = `virtual:${charge.id}:${chargePeriod.period_yyyymm}`
     const virtual = {
       id: virtualId,
@@ -520,6 +513,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
       period_yyyymm: chargePeriod.period_yyyymm,
       period_start: chargePeriod.period_start,
       period_end: chargePeriod.period_end,
+      coverage_start: coverage.start,
+      coverage_end: coverage.end,
       description_snapshot: String(charge.description || ''),
       amount_ex_vat_snapshot: roundMoney(Number(charge.amount_ex_vat || 0)),
       vat_rate_snapshot: Number(charge.vat_rate || 0),
@@ -537,6 +532,8 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
       period_yyyymm: chargePeriod.period_yyyymm,
       period_start: chargePeriod.period_start,
       period_end: chargePeriod.period_end,
+      coverage_start: coverage.start,
+      coverage_end: coverage.end,
       description_snapshot: String(charge.description || ''),
       amount_ex_vat_snapshot: roundMoney(Number(charge.amount_ex_vat || 0)),
       vat_rate_snapshot: Number(charge.vat_rate || 0),

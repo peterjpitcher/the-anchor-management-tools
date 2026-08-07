@@ -1,4 +1,5 @@
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
+import { buildRecurringChargeDescription } from '@/lib/oj-projects/recurring-periods'
 import type { InvoiceLineItemInput } from '@/types/invoices'
 
 type RevisionInvoice = {
@@ -44,6 +45,8 @@ export type OjInvoiceRevisionEntry = {
 export type OjInvoiceRevisionRecurringInstance = {
   id: string
   period_yyyymm: string | null
+  coverage_start?: string | null
+  coverage_end?: string | null
   description_snapshot: string
   amount_ex_vat_snapshot: number
   vat_rate_snapshot: number
@@ -158,11 +161,13 @@ function buildDetailedLineItems(input: {
   const lineItems: InvoiceLineItemInput[] = []
 
   for (const instance of input.recurringInstances) {
-    const periodLabel = formatPeriodLabel(instance.period_yyyymm)
-    const description =
-      periodLabel && periodLabel !== input.periodYyyymm
-        ? `${instance.description_snapshot} (${periodLabel})`
-        : instance.description_snapshot
+    const description = buildRecurringChargeDescription({
+      description: instance.description_snapshot,
+      periodYyyymm: instance.period_yyyymm,
+      coverageStart: instance.coverage_start,
+      coverageEnd: instance.coverage_end,
+      currentPeriodYyyymm: input.periodYyyymm,
+    })
 
     lineItems.push({
       catalog_item_id: undefined,

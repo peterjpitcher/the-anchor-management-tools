@@ -1113,7 +1113,11 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Frequency" required>
+            <Field
+              label="Frequency"
+              required
+              hint="Quarterly and annual charges go out on the next monthly invoice, then repeat every 3 or 12 months from there."
+            >
               <Select
                 value={chargeForm.frequency}
                 onChange={(e) => setChargeForm((current) => ({ ...current, frequency: e.target.value as RecurringChargeFrequency }))}
