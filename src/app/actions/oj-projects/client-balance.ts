@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 
 function roundMoney(v: number) {
   return Math.round((v + Number.EPSILON) * 100) / 100
@@ -114,12 +115,12 @@ export async function getClientBalance(
     const vatRate = typeof entry.vat_rate_snapshot === 'number' ? entry.vat_rate_snapshot : defaultVatRate
     if (entry.entry_type === 'time') {
       const mins = Number(entry.duration_minutes_rounded || 0)
-      const rate = Number(entry.hourly_rate_ex_vat_snapshot || 75)
+      const rate = resolveRate(entry.hourly_rate_ex_vat_snapshot, DEFAULT_HOURLY_RATE_EX_VAT)
       unbilledTimeTotal = roundMoney(unbilledTimeTotal + moneyIncVat(roundMoney((mins / 60) * rate), vatRate))
     } else if (entry.entry_type === 'mileage') {
       // Mileage is a disbursement and is billed with no VAT, as in getEntryCharge.
       const miles = Number(entry.miles || 0)
-      const mileageRate = Number(entry.mileage_rate_snapshot || 0.55)
+      const mileageRate = resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
       unbilledMileageTotal = roundMoney(unbilledMileageTotal + roundMoney(miles * mileageRate))
     } else if (entry.entry_type === 'one_off') {
       const amount = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
