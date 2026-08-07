@@ -47,7 +47,7 @@
 //   website must tolerate their absence.
 // =============================================================================
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import contract from './fixtures/table-availability-contract.json'
 import {
@@ -152,8 +152,23 @@ function makeRequest(query: string) {
 }
 
 beforeEach(() => {
+  // The fixture is a capture of one moment and records it as `scenario.now`.
+  // Pin the clock to it, so nothing here depends on when the suite runs.
+  //
+  // The website mirror of this file needs the pin to survive at all: its route
+  // applies a same-day cutoff, so on the fixture's own date (2026-08-07) the
+  // asserted slots vanished from about 17:00 London. This side is less exposed,
+  // but the two files are meant to stay in step, and an unpinned clock around a
+  // dated fixture is a bomb waiting for the right afternoon.
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date(scenario.now))
+
   rpcResult.data = null
   rpcResult.error = null
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('availability contract: pacing slots (data.slots)', () => {
@@ -187,7 +202,7 @@ describe('availability contract: table_availability', () => {
   it('passes the RPC JSON through to data.table_availability untouched', async () => {
     rpcResult.data = contract.table_availability
 
-    const res = await GET(makeRequest('date=2026-08-07&party_size=4'))
+    const res = await GET(makeRequest(`date=${scenario.date}&party_size=4`))
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -197,7 +212,7 @@ describe('availability contract: table_availability', () => {
   it('substitutes exactly the fixture unknown fallback when the RPC fails', async () => {
     rpcResult.error = { message: 'boom' }
 
-    const res = await GET(makeRequest('date=2026-08-07&party_size=4'))
+    const res = await GET(makeRequest(`date=${scenario.date}&party_size=4`))
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -205,7 +220,7 @@ describe('availability contract: table_availability', () => {
   })
 
   it('returns null table_availability when no party size is supplied (old-website path)', async () => {
-    const res = await GET(makeRequest('date=2026-08-07'))
+    const res = await GET(makeRequest(`date=${scenario.date}`))
     const json = await res.json()
 
     expect(json.data.table_availability).toBeNull()
