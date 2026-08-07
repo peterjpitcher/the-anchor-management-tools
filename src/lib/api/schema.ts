@@ -193,6 +193,18 @@ function createOrganizer(): SchemaOrganization {
   };
 }
 
+/**
+ * Normalise a stored timestamp to an ISO string, or undefined when it is
+ * missing or unparseable. Used for schema fields that must be stable across
+ * requests: emitting nothing beats emitting a value that changes on every
+ * crawl or a date that is simply wrong.
+ */
+function toIsoOrUndefined(value: unknown): string | undefined {
+  if (typeof value !== 'string' && !(value instanceof Date)) return undefined;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
 // Convert database event to Schema.org format
 export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
   const storedStart = event.start_datetime ? new Date(event.start_datetime) : null;
@@ -252,7 +264,13 @@ export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
       price: offerPrice.toString(),
       priceCurrency: 'GBP',
       availability,
-      validFrom: new Date().toISOString(),
+      // When the offer became available, which for us is when the event was
+      // created. This used to be new Date(), so every crawl of the same event
+      // saw a different validFrom and the field carried no information at all.
+      // Omitted rather than guessed when created_at is missing: Google treats
+      // validFrom as recommended, not required, and a wrong date is worse than
+      // an absent one.
+      validFrom: toIsoOrUndefined(event.created_at),
     },
     organizer: createOrganizer(),
     isAccessibleForFree: event.is_free === true,
