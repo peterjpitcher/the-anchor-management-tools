@@ -60,7 +60,7 @@ function createMockSupabase(tableResponses: Record<string, { data: unknown; erro
         : responses || { data: [], error: null }
 
       const chain: Record<string, ReturnType<typeof vi.fn>> = {}
-      const methods = ['select', 'eq', 'is', 'ilike', 'not', 'order', 'limit']
+      const methods = ['select', 'eq', 'is', 'ilike', 'not', 'in', 'lt', 'lte', 'gt', 'gte', 'order', 'limit', 'maybeSingle', 'single']
       for (const m of methods) {
         chain[m] = vi.fn().mockReturnValue(chain)
       }
@@ -96,7 +96,7 @@ describe('getClientBalance', () => {
     expect(result.balance).toBeUndefined()
   })
 
-  it('includes one_off entries in unbilled total', async () => {
+  it('includes one_off entries in unbilled total, inc VAT', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(true)
 
     const mockSb = createMockSupabase({
@@ -108,7 +108,7 @@ describe('getClientBalance', () => {
             duration_minutes_rounded: null,
             miles: null,
             hourly_rate_ex_vat_snapshot: null,
-            vat_rate_snapshot: null,
+            vat_rate_snapshot: 20,
             mileage_rate_snapshot: null,
             amount_ex_vat_snapshot: 150,
           },
@@ -122,8 +122,61 @@ describe('getClientBalance', () => {
     const result = await getClientBalance('vendor-1')
 
     expect(result.error).toBeUndefined()
-    expect(result.balance?.unbilledOneOffTotal).toBe(150)
-    expect(result.balance?.unbilledTotal).toBe(150)
+    // Unbilled work must be inc VAT, because it is summed with the invoice
+    // balance, which is inc VAT. 150 ex VAT at 20% is 180.
+    expect(result.balance?.unbilledOneOffTotal).toBe(180)
+    expect(result.balance?.unbilledTotal).toBe(180)
+  })
+
+  it('bills mileage with no VAT, matching the billing engine', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: { data: [] },
+      oj_entries: {
+        data: [
+          {
+            entry_type: 'mileage',
+            duration_minutes_rounded: null,
+            miles: 100,
+            hourly_rate_ex_vat_snapshot: null,
+            vat_rate_snapshot: 20,
+            mileage_rate_snapshot: 0.55,
+            amount_ex_vat_snapshot: null,
+          },
+        ],
+      },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.balance?.unbilledMileageTotal).toBe(55)
+  })
+
+  it('ignores unbilled charges whose recurring charge has been switched off', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: { data: [] },
+      oj_entries: { data: [] },
+      oj_recurring_charge_instances: {
+        data: [
+          { amount_ex_vat_snapshot: 30, vat_rate_snapshot: 20, recurring_charge: { is_active: false } },
+          { amount_ex_vat_snapshot: 40, vat_rate_snapshot: 20, recurring_charge: { is_active: true } },
+        ],
+      },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    // Only the active charge counts: 40 ex VAT at 20% is 48. The billing run
+    // will never bill the inactive one, so counting it would overstate.
+    expect(result.balance?.unbilledRecurringTotal).toBe(48)
   })
 
   it('subtracts credit notes from unpaid invoice balance', async () => {
@@ -229,7 +282,7 @@ describe('getClientBalance', () => {
             duration_minutes_rounded: 90,
             miles: null,
             hourly_rate_ex_vat_snapshot: 75,
-            vat_rate_snapshot: 0.2,
+            vat_rate_snapshot: 20,
             mileage_rate_snapshot: null,
             amount_ex_vat_snapshot: null,
           },
@@ -242,9 +295,49 @@ describe('getClientBalance', () => {
 
     const result = await getClientBalance('vendor-1')
 
-    // 90 mins at 75/hr = 112.50
-    expect(result.balance?.unbilledTimeTotal).toBe(112.5)
-    // Total outstanding = 33.33 + 112.50 = 145.83
-    expect(result.balance?.totalOutstanding).toBe(145.83)
+    // 90 mins at 75/hr = 112.50 ex VAT, 135.00 inc VAT
+    expect(result.balance?.unbilledTimeTotal).toBe(135)
+    // Both halves are now inc VAT: 33.33 + 135.00 = 168.33
+    expect(result.balance?.totalOutstanding).toBe(168.33)
+  })
+
+  it('never lets credit notes push the invoice balance below zero', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: {
+        data: [
+          { id: 'inv-1', invoice_number: 'INV-1', invoice_date: '2026-01-01', due_date: '2026-01-31', reference: 'OJ Projects', status: 'sent', total_amount: 100, paid_amount: 0 },
+        ],
+      },
+      oj_entries: { data: [] },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [{ amount_inc_vat: 500, invoice_id: 'inv-1' }] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.balance?.unpaidInvoiceBalance).toBe(0)
+    expect(result.balance?.totalOutstanding).toBe(0)
+  })
+
+  it('ignores credit notes entirely when no OJ invoice is unsettled', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      // Every OJ invoice is settled, so none is counted in the balance and no
+      // credit note against one should reduce it either.
+      invoices: [{ data: [] }, { data: [] }],
+      oj_entries: { data: [] },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [{ amount_inc_vat: 200, invoice_id: 'inv-settled' }] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    expect(result.balance?.creditNoteTotal).toBe(0)
+    expect(result.balance?.totalOutstanding).toBe(0)
   })
 })

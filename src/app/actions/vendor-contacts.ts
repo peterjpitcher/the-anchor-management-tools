@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { formBooleanSchema } from '@/lib/forms/formBoolean'
 import { logAuditEvent } from './audit'
 
 const ContactSchema = z.object({
@@ -12,8 +13,8 @@ const ContactSchema = z.object({
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
   role: z.string().optional(),
-  isPrimary: z.coerce.boolean().optional(),
-  receiveInvoiceCopy: z.coerce.boolean().optional(),
+  isPrimary: formBooleanSchema,
+  receiveInvoiceCopy: formBooleanSchema,
 })
 
 export async function getVendorContacts(vendorId: string) {

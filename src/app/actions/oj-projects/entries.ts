@@ -16,6 +16,7 @@ import {
 } from '@/lib/oj-projects/invoice-revision'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
+import { formBooleanSchema } from '@/lib/forms/formBoolean'
 
 function hasAtMostOneDecimalPlace(value: number): boolean {
   return Math.abs(Math.round(value * 10) - value * 10) < 0.000001
@@ -35,7 +36,7 @@ const TimeEntrySchema = z.object({
   work_type_id: z.string().uuid('Invalid work type').optional().or(z.literal('')).optional(),
   description: z.string().max(5000).optional(),
   internal_notes: z.string().max(10000).optional(),
-  billable: z.coerce.boolean().optional(),
+  billable: formBooleanSchema,
 })
 
 const MileageEntrySchema = z.object({
@@ -45,7 +46,7 @@ const MileageEntrySchema = z.object({
   miles: MileageMilesSchema,
   description: z.string().max(5000).optional(),
   internal_notes: z.string().max(10000).optional(),
-  billable: z.coerce.boolean().optional(),
+  billable: formBooleanSchema,
 })
 
 const OneOffChargeSchema = z.object({
@@ -55,7 +56,7 @@ const OneOffChargeSchema = z.object({
   amount_ex_vat: z.coerce.number().positive('Amount must be greater than 0'),
   description: z.string().max(5000).optional(),
   internal_notes: z.string().max(10000).optional(),
-  billable: z.coerce.boolean().optional(),
+  billable: formBooleanSchema,
 })
 
 const UpdateEntrySchema = z.object({
@@ -70,7 +71,7 @@ const UpdateEntrySchema = z.object({
   work_type_id: z.string().uuid().optional().or(z.literal('')).optional(),
   description: z.string().max(5000).optional(),
   internal_notes: z.string().max(10000).optional(),
-  billable: z.coerce.boolean().optional(),
+  billable: formBooleanSchema,
 })
 
 async function getVendorSettingsOrDefault(supabase: Awaited<ReturnType<typeof createClient>>, vendorId: string) {

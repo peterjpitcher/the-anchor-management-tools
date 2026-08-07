@@ -27,6 +27,9 @@ export const maxDuration = 300
 
 const LONDON_TZ = 'Europe/London'
 const OJ_INVOICE_NOTES_MAX_CHARS = 8000
+// A run cannot outlive the function timeout (maxDuration 300s), so anything
+// younger than this is treated as still in flight rather than crashed.
+const IN_FLIGHT_RUN_GRACE_MS = 10 * 60 * 1000
 const OJ_TIMESHEET_MARKER = 'OJ_TIMESHEET_ATTACHMENT=1'
 
 function roundMoney(value: number) {
@@ -131,15 +134,22 @@ async function updateBillingRunById(
 }
 
 /**
- * Closes out billing runs from earlier months that never reached a finished
- * state. Each run locks its entries and charges at 'billing_pending', and the
- * main loop only ever looks at the current month, so without this a crashed run
- * strands those rows forever: they are neither billed nor available to bill.
+ * Closes out billing runs from earlier months that left rows locked.
  *
- * If the run's invoice did go out, the locked rows are settled against it. If
- * there is no invoice, they are released back to unbilled so the current run
- * picks them up. Runs sitting on a draft invoice are left alone and reported,
- * because releasing them could duplicate the draft.
+ * A run locks its entries and charges at 'billing_pending', and the main loop
+ * only ever looks at the current month, so without this those rows are stranded
+ * forever: nothing bills them (every eligibility query wants 'unbilled') and
+ * nothing settles them (the invoice-paid trigger only touches 'billed').
+ *
+ * This is driven off the LOCKED ROWS, not the run's status. Every failure path
+ * in this route stamps run_finished_at alongside status 'failed' while leaving
+ * rows locked, so selecting on run state would miss exactly the common cases
+ * and only catch a hard process kill.
+ *
+ * If an invoice covers the run, the locked rows are settled against it. If none
+ * does, they are released back to unbilled so the current run picks them up.
+ * A run whose invoice is still a draft is left alone and reported, because
+ * releasing its rows would duplicate that draft.
  */
 async function recoverUnfinishedBillingRuns(
   supabase: ReturnType<typeof createAdminClient>,
@@ -147,11 +157,28 @@ async function recoverUnfinishedBillingRuns(
 ) {
   const summary = { settled: 0, released: 0, needs_review: [] as string[] }
 
+  // Find the runs that still own locked rows, from either table.
+  const [lockedEntries, lockedInstances] = await Promise.all([
+    supabase.from('oj_entries').select('billing_run_id').eq('status', 'billing_pending').limit(10000),
+    supabase
+      .from('oj_recurring_charge_instances')
+      .select('billing_run_id')
+      .eq('status', 'billing_pending')
+      .limit(10000),
+  ])
+  if (lockedEntries.error) throw new Error(lockedEntries.error.message)
+  if (lockedInstances.error) throw new Error(lockedInstances.error.message)
+
+  const lockedRunIds = new Set<string>()
+  for (const row of [...(lockedEntries.data || []), ...(lockedInstances.data || [])]) {
+    if (row?.billing_run_id) lockedRunIds.add(String(row.billing_run_id))
+  }
+  if (lockedRunIds.size === 0) return summary
+
   const { data: staleRuns, error: staleRunsError } = await supabase
     .from('oj_billing_runs')
     .select('id, vendor_id, period_yyyymm, invoice_id, status')
-    .in('status', ['processing', 'failed'])
-    .is('run_finished_at', null)
+    .in('id', [...lockedRunIds])
     .lt('period_yyyymm', currentPeriodYyyymm)
     .limit(1000)
 
@@ -160,15 +187,37 @@ async function recoverUnfinishedBillingRuns(
   for (const run of staleRuns || []) {
     const nowIso = new Date().toISOString()
     let invoiceStatus = ''
+    let coveringInvoiceId: string | null = run.invoice_id ? String(run.invoice_id) : null
 
-    if (run.invoice_id) {
+    // A run can crash between creating its invoice and persisting the linkage,
+    // so an unlinked run may still have an invoice. The main loop already does
+    // this lookup; recovery must too, or it would release invoiced rows and
+    // bill the client a second time for the same work.
+    if (!coveringInvoiceId) {
+      const { data: orphanInvoice, error: orphanError } = await supabase
+        .from('invoices')
+        .select('id, status')
+        .eq('vendor_id', run.vendor_id)
+        .eq('reference', `OJ Projects ${run.period_yyyymm}`)
+        .ilike('internal_notes', `%${run.id}%`)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (orphanError) throw new Error(orphanError.message)
+      if (orphanInvoice?.id) {
+        coveringInvoiceId = String(orphanInvoice.id)
+        invoiceStatus = String(orphanInvoice.status || '')
+      }
+    }
+
+    if (coveringInvoiceId && !invoiceStatus) {
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .select('id, status')
-        .eq('id', run.invoice_id)
+        .eq('id', coveringInvoiceId)
         .maybeSingle()
       if (invoiceError) throw new Error(invoiceError.message)
       invoiceStatus = String(invoice?.status || '')
+      if (!invoice) coveringInvoiceId = null
     }
 
     if (invoiceStatus === 'draft') {
@@ -179,8 +228,8 @@ async function recoverUnfinishedBillingRuns(
     if (['sent', 'paid', 'overdue', 'partially_paid'].includes(invoiceStatus)) {
       const settlePayload =
         invoiceStatus === 'paid'
-          ? { status: 'paid', invoice_id: run.invoice_id, billed_at: nowIso, paid_at: nowIso, updated_at: nowIso }
-          : { status: 'billed', invoice_id: run.invoice_id, billed_at: nowIso, updated_at: nowIso }
+          ? { status: 'paid', invoice_id: coveringInvoiceId, billed_at: nowIso, paid_at: nowIso, updated_at: nowIso }
+          : { status: 'billed', invoice_id: coveringInvoiceId, billed_at: nowIso, updated_at: nowIso }
 
       await throwOnMutationError(
         supabase.from('oj_entries').update(settlePayload).eq('billing_run_id', run.id).eq('status', 'billing_pending'),
@@ -197,6 +246,8 @@ async function recoverUnfinishedBillingRuns(
       await updateBillingRunById(supabase, run.id, {
         status: 'sent',
         error_message: null,
+        // Persist the linkage when we recovered it from internal_notes.
+        invoice_id: coveringInvoiceId,
         run_finished_at: nowIso,
         updated_at: nowIso,
       })
@@ -757,6 +808,11 @@ function buildRecurringInstanceInsertPayload(instance: any, overrides: Record<st
     period_yyyymm: instance.period_yyyymm,
     period_start: instance.period_start,
     period_end: instance.period_end,
+    // The remainder of a cap-split charge covers the same span as the parent.
+    // Without this it would be NULL and the next invoice would relabel a year's
+    // domain renewal as a single month.
+    coverage_start: instance.coverage_start ?? instance.period_start,
+    coverage_end: instance.coverage_end ?? instance.period_end,
     description_snapshot: instance.description_snapshot,
     amount_ex_vat_snapshot: instance.amount_ex_vat_snapshot,
     vat_rate_snapshot: instance.vat_rate_snapshot,
@@ -2384,6 +2440,27 @@ export async function GET(request: Request) {
         results.skipped++
         results.vendors.push({ vendor_id: vendorId, status: 'skipped', invoice_id: billingRun.invoice_id || undefined })
         continue
+      }
+
+      // A second invocation (cron double-fire, or ?force=true while the
+      // scheduled run is in flight) hits the unique (vendor_id, period_yyyymm)
+      // constraint and loads the FIRST run's row. If that run is still working,
+      // its rows are locked at billing_pending but its invoice_id is not yet
+      // persisted, so the stranded-pending release below would unlock them and
+      // both invocations would invoice the same work. Stand down instead: only
+      // touch a 'processing' run once it is provably dead.
+      if (billingRun.status === 'processing' && !billingRun.invoice_id) {
+        const startedAt = Date.parse(String(billingRun.run_started_at || billingRun.created_at || ''))
+        const ageMs = Number.isFinite(startedAt) ? Date.now() - startedAt : Number.POSITIVE_INFINITY
+        if (ageMs < IN_FLIGHT_RUN_GRACE_MS) {
+          results.skipped++
+          results.vendors.push({
+            vendor_id: vendorId,
+            status: 'skipped',
+            error: 'A billing run for this client and period is already in flight',
+          })
+          continue
+        }
       }
 
       // Recover invoice_id if the run created an invoice but crashed before persisting the linkage.

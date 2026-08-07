@@ -441,7 +441,10 @@ export function ProjectDetailClient({
           {/* Payment History */}
           {payments && payments.invoices && payments.invoices.length > 0 && (
             <Card>
-              <CardHeader title="Payment History" />
+              <CardHeader
+                title="Payment History"
+                subtitle="This project's share of each client invoice, inc VAT"
+              />
               <CardBody>
                 <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-3">
                   <div>
@@ -468,6 +471,11 @@ export function ProjectDetailClient({
                       </div>
                       <div className="text-right">
                         <p className="font-medium">{formatCurrency(item.invoice.total)}</p>
+                        {typeof item.invoice.invoiceTotal === 'number' && item.invoice.invoiceTotal !== item.invoice.total && (
+                          <p className="text-xs text-text-muted">
+                            of {formatCurrency(item.invoice.invoiceTotal)} invoice
+                          </p>
+                        )}
                         <Badge tone={item.invoice.status === 'paid' ? 'success' : 'warning'}>
                           {item.invoice.status}
                         </Badge>
