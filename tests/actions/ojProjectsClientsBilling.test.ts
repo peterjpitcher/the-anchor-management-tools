@@ -53,9 +53,12 @@ describe('OJ client CRUD actions', () => {
       })),
     }))
 
+    const settingsUpsert = vi.fn().mockResolvedValue({ error: null })
+
     mockedCreateClient.mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
       from: vi.fn((table: string) => {
+        if (table === 'oj_vendor_billing_settings') return { upsert: settingsUpsert }
         expect(table).toBe('invoice_vendors')
         return { insert }
       }),
@@ -74,6 +77,18 @@ describe('OJ client CRUD actions', () => {
       payment_terms: 14,
       is_active: true,
     }))
+    // A new client must get billing settings, or billing silently uses defaults.
+    expect(settingsUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vendor_id: '550e8400-e29b-41d4-a716-446655440000',
+        client_code: 'A',
+        billing_mode: 'full',
+        hourly_rate_ex_vat: 62.5,
+        vat_rate: 20,
+        mileage_rate: 0.55,
+      }),
+      expect.objectContaining({ onConflict: 'vendor_id' })
+    )
     expect(mockedAudit).toHaveBeenCalledWith(expect.objectContaining({
       operation_type: 'create',
       resource_type: 'oj_client',

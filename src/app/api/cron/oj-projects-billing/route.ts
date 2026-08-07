@@ -14,6 +14,12 @@ import {
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
 import { sendBillingRunAlert } from '@/lib/oj-projects/billing-alerts'
+import {
+  buildLastChargedPeriodStarts,
+  buildRecurringChargeDescription,
+  getRecurringChargeCoverage,
+  getRecurringChargePeriod,
+} from '@/lib/oj-projects/recurring-periods'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -122,6 +128,105 @@ async function updateBillingRunById(
   if (!updatedBillingRun) {
     throw new Error(`Billing run not found while updating status: ${billingRunId}`)
   }
+}
+
+/**
+ * Closes out billing runs from earlier months that never reached a finished
+ * state. Each run locks its entries and charges at 'billing_pending', and the
+ * main loop only ever looks at the current month, so without this a crashed run
+ * strands those rows forever: they are neither billed nor available to bill.
+ *
+ * If the run's invoice did go out, the locked rows are settled against it. If
+ * there is no invoice, they are released back to unbilled so the current run
+ * picks them up. Runs sitting on a draft invoice are left alone and reported,
+ * because releasing them could duplicate the draft.
+ */
+async function recoverUnfinishedBillingRuns(
+  supabase: ReturnType<typeof createAdminClient>,
+  currentPeriodYyyymm: string
+) {
+  const summary = { settled: 0, released: 0, needs_review: [] as string[] }
+
+  const { data: staleRuns, error: staleRunsError } = await supabase
+    .from('oj_billing_runs')
+    .select('id, vendor_id, period_yyyymm, invoice_id, status')
+    .in('status', ['processing', 'failed'])
+    .is('run_finished_at', null)
+    .lt('period_yyyymm', currentPeriodYyyymm)
+    .limit(1000)
+
+  if (staleRunsError) throw new Error(staleRunsError.message)
+
+  for (const run of staleRuns || []) {
+    const nowIso = new Date().toISOString()
+    let invoiceStatus = ''
+
+    if (run.invoice_id) {
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .select('id, status')
+        .eq('id', run.invoice_id)
+        .maybeSingle()
+      if (invoiceError) throw new Error(invoiceError.message)
+      invoiceStatus = String(invoice?.status || '')
+    }
+
+    if (invoiceStatus === 'draft') {
+      summary.needs_review.push(String(run.id))
+      continue
+    }
+
+    if (['sent', 'paid', 'overdue', 'partially_paid'].includes(invoiceStatus)) {
+      const settlePayload =
+        invoiceStatus === 'paid'
+          ? { status: 'paid', invoice_id: run.invoice_id, billed_at: nowIso, paid_at: nowIso, updated_at: nowIso }
+          : { status: 'billed', invoice_id: run.invoice_id, billed_at: nowIso, updated_at: nowIso }
+
+      await throwOnMutationError(
+        supabase.from('oj_entries').update(settlePayload).eq('billing_run_id', run.id).eq('status', 'billing_pending'),
+        `Failed to settle stranded OJ entries for billing run ${run.id}`
+      )
+      await throwOnMutationError(
+        supabase
+          .from('oj_recurring_charge_instances')
+          .update(settlePayload)
+          .eq('billing_run_id', run.id)
+          .eq('status', 'billing_pending'),
+        `Failed to settle stranded OJ recurring instances for billing run ${run.id}`
+      )
+      await updateBillingRunById(supabase, run.id, {
+        status: 'sent',
+        error_message: null,
+        run_finished_at: nowIso,
+        updated_at: nowIso,
+      })
+      summary.settled++
+      continue
+    }
+
+    const releasePayload = { status: 'unbilled', billing_run_id: null, updated_at: nowIso }
+    await throwOnMutationError(
+      supabase.from('oj_entries').update(releasePayload).eq('billing_run_id', run.id).eq('status', 'billing_pending'),
+      `Failed to release stranded OJ entries for billing run ${run.id}`
+    )
+    await throwOnMutationError(
+      supabase
+        .from('oj_recurring_charge_instances')
+        .update(releasePayload)
+        .eq('billing_run_id', run.id)
+        .eq('status', 'billing_pending'),
+      `Failed to release stranded OJ recurring instances for billing run ${run.id}`
+    )
+    await updateBillingRunById(supabase, run.id, {
+      status: 'failed',
+      error_message: 'Unfinished run from an earlier period; its items were released for reprocessing',
+      run_finished_at: nowIso,
+      updated_at: nowIso,
+    })
+    summary.released++
+  }
+
+  return summary
 }
 
 async function throwOnMutationError(
@@ -251,44 +356,26 @@ function getPreviousMonthPeriod(now: Date) {
   }
 }
 
-function getRecurringChargePeriod(
-  frequency: string,
-  billingPeriod: { period_start: string; period_end: string; period_yyyymm: string }
-): { period_start: string; period_end: string; period_yyyymm: string } | null {
-  if (frequency === 'monthly' || !frequency) {
-    return billingPeriod
-  }
+/**
+ * Loads the last period each recurring charge was billed under, so quarterly
+ * and annual charges can be scheduled from their own anniversary rather than a
+ * fixed calendar date. See @/lib/oj-projects/recurring-periods.
+ */
+async function loadLastChargedPeriodStarts(
+  supabase: ReturnType<typeof createAdminClient>,
+  vendorId: string,
+  currentPeriodStart: string
+) {
+  const { data, error } = await supabase
+    .from('oj_recurring_charge_instances')
+    .select('recurring_charge_id, period_start')
+    .eq('vendor_id', vendorId)
+    .lt('period_start', currentPeriodStart)
+    .order('period_start', { ascending: false })
+    .limit(10000)
 
-  // Extract the billing month (1-12) from the period_end date
-  const endDate = parseIsoDateUtc(billingPeriod.period_end)
-  const month = endDate.getUTCMonth() + 1 // 1-12
-  const year = endDate.getUTCFullYear()
-
-  if (frequency === 'quarterly') {
-    // Due when billing month is last month of quarter: 3, 6, 9, 12
-    if (month % 3 !== 0) return null
-    const quarter = Math.ceil(month / 3)
-    const qStart = new Date(Date.UTC(year, (quarter - 1) * 3, 1))
-    const qEnd = new Date(Date.UTC(year, quarter * 3, 0)) // last day of quarter
-    return {
-      period_yyyymm: `${year}-Q${quarter}`,
-      period_start: toIsoDateUtc(qStart),
-      period_end: toIsoDateUtc(qEnd),
-    }
-  }
-
-  if (frequency === 'annually') {
-    // Due when billing month is December
-    if (month !== 12) return null
-    return {
-      period_yyyymm: `${year}`,
-      period_start: `${year}-01-01`,
-      period_end: `${year}-12-31`,
-    }
-  }
-
-  // Unknown frequency, treat as monthly
-  return billingPeriod
+  if (error) throw new Error(error.message)
+  return buildLastChargedPeriodStarts(data, currentPeriodStart)
 }
 
 function buildInvoiceNotes(input: {
@@ -1337,12 +1424,13 @@ function buildDetailedLineItems(input: {
   }> = []
 
   for (const c of input.selectedRecurringInstances || []) {
-    const baseDescription = String(c.description_snapshot || '')
-    const periodLabel = formatPeriodLabel(c?.period_yyyymm)
-    const description =
-      periodLabel && String(periodLabel) !== input.periodYyyymm
-        ? `${baseDescription} (${periodLabel})`
-        : baseDescription
+    const description = buildRecurringChargeDescription({
+      description: c?.description_snapshot,
+      periodYyyymm: c?.period_yyyymm,
+      coverageStart: c?.coverage_start,
+      coverageEnd: c?.coverage_end,
+      currentPeriodYyyymm: input.periodYyyymm,
+    })
     lineItems.push({
       catalog_item_id: null,
       description,
@@ -1488,9 +1576,15 @@ async function buildDryRunPreview(input: {
 
   if (periodInstancesError) throw new Error(periodInstancesError.message)
 
+  const lastChargedPeriodStarts = await loadLastChargedPeriodStarts(supabase, vendorId, period.period_start)
+
   const virtualInstances: any[] = []
   for (const c of (recurringChargeDefs || [])) {
-    const chargePeriod = getRecurringChargePeriod(String(c.frequency || 'monthly'), period)
+    const chargePeriod = getRecurringChargePeriod(
+      String(c.frequency || 'monthly'),
+      period,
+      lastChargedPeriodStarts.get(String(c.id)) ?? null
+    )
     if (!chargePeriod) continue // not due this billing run
 
     // Check if instance already exists for this charge's specific period
@@ -1501,12 +1595,15 @@ async function buildDryRunPreview(input: {
     )
     if (alreadyExists) continue
 
+    const coverage = getRecurringChargeCoverage(String(c.frequency || 'monthly'), chargePeriod)
     virtualInstances.push({
       vendor_id: vendorId,
       recurring_charge_id: c.id,
       period_yyyymm: chargePeriod.period_yyyymm,
       period_start: chargePeriod.period_start,
       period_end: chargePeriod.period_end,
+      coverage_start: coverage.start,
+      coverage_end: coverage.end,
       description_snapshot: String(c.description || ''),
       amount_ex_vat_snapshot: roundMoney(Number(c.amount_ex_vat || 0)),
       vat_rate_snapshot: Number(c.vat_rate || 0),
@@ -2093,6 +2190,17 @@ export async function GET(request: Request) {
   const invoiceDate = formatInTimeZone(now, LONDON_TZ, 'yyyy-MM-dd')
 
   const supabase = createAdminClient()
+
+  // Unblock anything left locked by a run that never finished in an earlier
+  // month, before we work out who to bill. Read-only modes skip this.
+  let recovery: Awaited<ReturnType<typeof recoverUnfinishedBillingRuns>> | null = null
+  if (!dryRun && !preview) {
+    try {
+      recovery = await recoverUnfinishedBillingRuns(supabase, period.period_yyyymm)
+    } catch (recoveryError) {
+      console.error('Failed to recover unfinished OJ billing runs', recoveryError)
+    }
+  }
 
   const vendorIds = new Set<string>()
 
@@ -2805,28 +2913,44 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: true })
       if (recurringError) throw new Error(recurringError.message)
 
-      // Ensure recurring charge instances exist for this billing period (idempotent insert)
+      // Ensure recurring charge instances exist for this billing period (idempotent insert).
+      // Quarterly and annual charges only produce an instance when they are due.
       if ((recurringChargeDefs?.length ?? 0) > 0) {
-        const instancePayload = (recurringChargeDefs || []).map((c: any) => ({
-          vendor_id: vendorId,
-          recurring_charge_id: c.id,
-          period_yyyymm: period.period_yyyymm,
-          period_start: period.period_start,
-          period_end: period.period_end,
-          description_snapshot: String(c.description || ''),
-          amount_ex_vat_snapshot: roundMoney(Number(c.amount_ex_vat || 0)),
-          vat_rate_snapshot: Number(c.vat_rate || 0),
-          sort_order_snapshot: Number(c.sort_order || 0),
-        }))
+        const lastChargedPeriodStarts = await loadLastChargedPeriodStarts(supabase, vendorId, period.period_start)
 
-        const { error: instanceUpsertError } = await supabase
-          .from('oj_recurring_charge_instances')
-          .upsert(instancePayload, {
-            onConflict: 'vendor_id,recurring_charge_id,period_yyyymm',
-            ignoreDuplicates: true,
-          })
+        const instancePayload = (recurringChargeDefs || []).flatMap((c: any) => {
+          const chargePeriod = getRecurringChargePeriod(
+            String(c.frequency || 'monthly'),
+            period,
+            lastChargedPeriodStarts.get(String(c.id)) ?? null
+          )
+          if (!chargePeriod) return []
+          const coverage = getRecurringChargeCoverage(String(c.frequency || 'monthly'), chargePeriod)
+          return [{
+            vendor_id: vendorId,
+            recurring_charge_id: c.id,
+            period_yyyymm: chargePeriod.period_yyyymm,
+            period_start: chargePeriod.period_start,
+            period_end: chargePeriod.period_end,
+            coverage_start: coverage.start,
+            coverage_end: coverage.end,
+            description_snapshot: String(c.description || ''),
+            amount_ex_vat_snapshot: roundMoney(Number(c.amount_ex_vat || 0)),
+            vat_rate_snapshot: Number(c.vat_rate || 0),
+            sort_order_snapshot: Number(c.sort_order || 0),
+          }]
+        })
 
-        if (instanceUpsertError) throw new Error(instanceUpsertError.message)
+        if (instancePayload.length > 0) {
+          const { error: instanceUpsertError } = await supabase
+            .from('oj_recurring_charge_instances')
+            .upsert(instancePayload, {
+              onConflict: 'vendor_id,recurring_charge_id,period_yyyymm',
+              ignoreDuplicates: true,
+            })
+
+          if (instanceUpsertError) throw new Error(instanceUpsertError.message)
+        }
       }
 
       // Load eligible recurring charge instances (including older carry-forward items)
@@ -3593,5 +3717,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json(results)
+  return NextResponse.json(recovery ? { ...results, recovered_runs: recovery } : results)
 }

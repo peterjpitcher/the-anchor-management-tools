@@ -104,17 +104,23 @@ export async function getClientBalance(
     }
   }
 
-  // Unbilled recurring charge instances
+  // Unbilled recurring charge instances. Instances whose charge has since been
+  // switched off are skipped: the billing run will never bill them, so counting
+  // them here would overstate what the client owes.
   const { data: instances, error: instancesError } = await supabase
     .from('oj_recurring_charge_instances')
-    .select('amount_ex_vat_snapshot, vat_rate_snapshot')
+    .select('amount_ex_vat_snapshot, vat_rate_snapshot, recurring_charge:oj_vendor_recurring_charges(is_active)')
     .eq('vendor_id', vendorId)
     .eq('status', 'unbilled')
 
   if (instancesError) return { error: instancesError.message }
 
+  const billableInstances = (instances || []).filter(
+    (inst: any) => inst?.recurring_charge?.is_active !== false
+  )
+
   const unbilledRecurringTotal = roundMoney(
-    (instances || []).reduce((acc, inst) => {
+    billableInstances.reduce((acc, inst) => {
       const exVat = Number(inst.amount_ex_vat_snapshot || 0)
       return acc + exVat
     }, 0)
