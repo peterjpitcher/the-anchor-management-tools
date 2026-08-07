@@ -162,6 +162,8 @@ const [categories, setCategories] = useState<EventCategory[]>([])
         return <span style={iconStyle}>🎬</span>
       case 'MicrophoneIcon':
         return <span style={iconStyle}>🎤</span>
+      case 'BuildingStorefrontIcon':
+        return <span style={iconStyle}>🍽️</span>
       default:
         return <span style={iconStyle}>📅</span>
     }

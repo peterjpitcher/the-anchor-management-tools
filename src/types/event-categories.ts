@@ -36,6 +36,8 @@ export interface EventCategory {
   default_doors_time?: string | null
   default_last_entry_time?: string | null
   default_booking_url?: string | null
+  default_booking_mode: 'table' | 'general' | 'mixed' | 'communal'
+  default_payment_mode: 'free' | 'cash_only' | 'prepaid'
   default_promo_sms_enabled: boolean
   default_bookings_enabled: boolean
   faqs?: Array<{
@@ -125,6 +127,8 @@ export interface CategoryFormData {
   default_doors_time?: string
   default_last_entry_time?: string
   default_booking_url?: string
+  default_booking_mode?: 'table' | 'general' | 'mixed' | 'communal'
+  default_payment_mode?: 'free' | 'cash_only' | 'prepaid'
   default_promo_sms_enabled?: boolean
   default_bookings_enabled?: boolean
   faqs?: Array<{
@@ -155,7 +159,8 @@ import {
   UsersIcon,
   MicrophoneIcon,
   FilmIcon,
-  PaintBrushIcon
+  PaintBrushIcon,
+  BuildingStorefrontIcon
 } from '@heroicons/react/24/outline'
 
 // Icon options for categories
@@ -175,6 +180,7 @@ export const CATEGORY_ICONS = [
   { value: 'MicrophoneIcon', label: 'Microphone', icon: MicrophoneIcon },
   { value: 'FilmIcon', label: 'Film', icon: FilmIcon },
   { value: 'PaintBrushIcon', label: 'Art', icon: PaintBrushIcon },
+  { value: 'BuildingStorefrontIcon', label: 'Dining', icon: BuildingStorefrontIcon },
 ] as const
 
 // Color presets for categories

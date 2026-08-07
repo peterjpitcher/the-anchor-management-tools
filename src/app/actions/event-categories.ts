@@ -99,7 +99,14 @@ const categorySchema = z.object({
   ),
   highlight_video_urls: z.array(z.string().url()).optional(),
   default_duration_minutes: z.number().min(1).max(1440).optional(), // Max 24 hours
-  default_doors_time: z.string().optional(),
+  default_doors_time: z.preprocess(
+    (val) => {
+      if (!val || val === '') return undefined
+      if (typeof val === 'string' && val.length > 5) return val.substring(0, 5)
+      return val
+    },
+    z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid doors time format').optional()
+  ),
   default_last_entry_time: z.preprocess(
     (val) => {
       if (!val || val === '') return undefined;
@@ -115,6 +122,8 @@ const categorySchema = z.object({
     (val) => (!val || val === '' ? undefined : val),
     z.string().url().optional()
   ),
+  default_booking_mode: z.enum(['table', 'general', 'mixed', 'communal']).optional(),
+  default_payment_mode: z.enum(['free', 'cash_only', 'prepaid']).optional(),
   faqs: z.array(z.object({
     question: z.string(),
     answer: z.string(),
@@ -641,6 +650,10 @@ export async function createEventCategoryFromFormData(formData: FormData) {
     default_doors_time: getOptionalStringFromForm(formData, 'default_doors_time'),
     default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
     default_booking_url: getOptionalStringFromForm(formData, 'default_booking_url'),
+    default_booking_mode: (getOptionalStringFromForm(formData, 'default_booking_mode') as CategoryFormData['default_booking_mode']) || 'table',
+    default_payment_mode: (getOptionalStringFromForm(formData, 'default_payment_mode') as CategoryFormData['default_payment_mode']) || 'free',
+    default_promo_sms_enabled: formData.get('default_promo_sms_enabled') !== 'false',
+    default_bookings_enabled: formData.get('default_bookings_enabled') !== 'false',
     faqs: parseFAQs(),
     // SEO default fields
     primary_keywords: parseArrayField('primary_keywords'),
@@ -711,6 +724,10 @@ export async function updateEventCategoryFromFormData(id: string, formData: Form
     default_doors_time: getOptionalStringFromForm(formData, 'default_doors_time'),
     default_last_entry_time: formatTimeToHHMM(formData.get('default_last_entry_time') as string) || undefined,
     default_booking_url: getOptionalStringFromForm(formData, 'default_booking_url'),
+    default_booking_mode: (getOptionalStringFromForm(formData, 'default_booking_mode') as CategoryFormData['default_booking_mode']) || 'table',
+    default_payment_mode: (getOptionalStringFromForm(formData, 'default_payment_mode') as CategoryFormData['default_payment_mode']) || 'free',
+    default_promo_sms_enabled: formData.get('default_promo_sms_enabled') !== 'false',
+    default_bookings_enabled: formData.get('default_bookings_enabled') !== 'false',
     faqs: parseFAQs(),
     // SEO default fields
     primary_keywords: parseArrayField('primary_keywords'),

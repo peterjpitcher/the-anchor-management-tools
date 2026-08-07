@@ -27,14 +27,16 @@ export interface EventChecklistItem extends EventChecklistDefinition {
   status: 'completed' | 'due_today' | 'overdue' | 'upcoming'
 }
 
+const EVENT_LAUNCH_OFFSET_DAYS = -56
+
 export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
-  { key: 'write_event_brief', label: 'Write Event Brief', offsetDays: -28, channel: 'Admin', required: true, order: 0 },
-  { key: 'design_table_talkers', label: 'Design Printed Materials', offsetDays: -28, channel: 'Print File', required: true, order: 1 },
-  { key: 'create_facebook_event', label: 'Create Facebook Event', offsetDays: -28, channel: 'Facebook', required: true, order: 2 },
-  { key: 'add_google_business_post', label: 'Add GBP Event Post', offsetDays: -28, channel: 'Google', required: true, order: 3 },
-  { key: 'schedule_social_content', label: 'Schedule Social Posts', offsetDays: -28, channel: 'FB/IG', required: true, order: 4 },
-  { key: 'schedule_stories', label: 'Scheduled Stories', offsetDays: -28, channel: 'FB/IG', required: true, order: 5 },
-  { key: 'setup_paid_advertising', label: 'Set Up Paid Advertising', offsetDays: -28, channel: 'Paid Ads', required: true, order: 6 },
+  { key: 'write_event_brief', label: 'Update All Event Details and Publish', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Admin', required: true, order: 0 },
+  { key: 'design_table_talkers', label: 'Design Printed Materials', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Print File', required: true, order: 1 },
+  { key: 'create_facebook_event', label: 'Create Facebook Event', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Facebook', required: true, order: 2 },
+  { key: 'add_google_business_post', label: 'Add GBP Event Post', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Google', required: true, order: 3 },
+  { key: 'schedule_social_content', label: 'Schedule Social Posts', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 4 },
+  { key: 'schedule_stories', label: 'Scheduled Stories', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 5 },
+  { key: 'setup_paid_advertising', label: 'Set Up Paid Advertising', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Paid Ads', required: true, order: 6 },
   { key: 'send_whatsapp_reminder', label: 'Whatsapp Reminder (Day of)', offsetDays: 0, channel: 'WhatsApp', required: true, order: 7 }
 ]
 

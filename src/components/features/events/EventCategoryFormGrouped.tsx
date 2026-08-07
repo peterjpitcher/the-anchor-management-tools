@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { EventCategory } from '@/types/event-categories'
 import { KeywordStrategyCard } from './KeywordStrategyCard'
+import { FaqEditor } from './FaqEditor'
 import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
@@ -93,6 +94,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [defaultEndTime, setDefaultEndTime] = useState(category?.default_end_time?.substring(0, 5) ?? '')
   const [defaultPrice, setDefaultPrice] = useState(category?.default_price?.toString() ?? '0')
   const [defaultIsFree, setDefaultIsFree] = useState(category?.default_is_free ?? true)
+  const [defaultCapacity, setDefaultCapacity] = useState(category?.default_capacity?.toString() ?? '')
+  const [defaultBookingMode, setDefaultBookingMode] = useState(category?.default_booking_mode ?? 'table')
+  const [defaultPaymentMode, setDefaultPaymentMode] = useState(category?.default_payment_mode ?? 'free')
   const [defaultPerformerName, setDefaultPerformerName] = useState(category?.default_performer_name ?? '')
   const [defaultPerformerType, setDefaultPerformerType] = useState(category?.default_performer_type ?? '')
   const [defaultReminderHours, setDefaultReminderHours] = useState(category?.default_reminder_hours?.toString() ?? '24')
@@ -108,7 +112,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   
   // Additional timing fields
   const [defaultDurationMinutes, setDefaultDurationMinutes] = useState(category?.default_duration_minutes?.toString() ?? '')
-  const [defaultDoorsTime, setDefaultDoorsTime] = useState(category?.default_doors_time ?? '')
+  const [defaultDoorsTime, setDefaultDoorsTime] = useState(category?.default_doors_time?.substring(0, 5) ?? '')
   const [defaultLastEntryTime, setDefaultLastEntryTime] = useState(category?.default_last_entry_time?.substring(0, 5) ?? '')
   const [defaultBookingUrl, setDefaultBookingUrl] = useState(category?.default_booking_url ?? '')
   const [defaultPromoSmsEnabled, setDefaultPromoSmsEnabled] = useState(category?.default_promo_sms_enabled ?? true)
@@ -122,6 +126,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
   const [imageAltText, setImageAltText] = useState((category as any)?.image_alt_text ?? '')
   const [cancellationPolicy, setCancellationPolicy] = useState((category as any)?.cancellation_policy ?? '')
   const [accessibilityNotes, setAccessibilityNotes] = useState((category as any)?.accessibility_notes ?? '')
+  const [faqs, setFaqs] = useState<Array<{ question: string; answer: string; sort_order?: number }>>(category?.faqs ?? [])
 
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -155,6 +160,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         default_end_time: defaultEndTime || null,
         default_price: parseFloat(defaultPrice) || 0,
         default_is_free: defaultIsFree,
+        default_capacity: defaultCapacity ? parseInt(defaultCapacity) : null,
+        default_booking_mode: defaultBookingMode,
+        default_payment_mode: defaultPaymentMode,
         default_performer_name: defaultPerformerName.trim() || undefined,
         default_performer_type: defaultPerformerType || undefined,
         default_reminder_hours: parseInt(defaultReminderHours) || 24,
@@ -180,6 +188,9 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
         image_alt_text: imageAltText || null,
         cancellation_policy: cancellationPolicy || null,
         accessibility_notes: accessibilityNotes || null,
+        faqs: faqs
+          .filter(faq => faq.question.trim() && faq.answer.trim())
+          .map((faq, index) => ({ ...faq, sort_order: index })),
       } as Partial<EventCategory>
 
       await onSubmit(categoryData)
@@ -417,11 +428,10 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             </label>
             <div className="mt-2">
               <Input
-                type="text"
+                type="time"
                 id="default_doors_time"
                 value={defaultDoorsTime}
                 onChange={(e) => setDefaultDoorsTime(e.target.value)}
-                placeholder="e.g., 30 mins before"
                 fullWidth
               />
             </div>
@@ -456,8 +466,11 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
                 id="default_price"
                 value={defaultPrice}
                 onChange={(e) => {
+                  const nextPrice = parseFloat(e.target.value) || 0
                   setDefaultPrice(e.target.value)
-                  setDefaultIsFree(parseFloat(e.target.value) === 0)
+                  setDefaultIsFree(nextPrice === 0)
+                  if (nextPrice === 0) setDefaultPaymentMode('free')
+                  if (nextPrice > 0 && defaultPaymentMode === 'free') setDefaultPaymentMode('cash_only')
                 }}
                 min="0"
                 step="0.01"
@@ -466,7 +479,66 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
             </div>
           </div>
 
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-2">
+            <label htmlFor="default_capacity" className="block text-sm font-medium leading-6 text-gray-900">
+              Default Capacity
+            </label>
+            <div className="mt-2">
+              <Input
+                type="number"
+                id="default_capacity"
+                value={defaultCapacity}
+                onChange={(e) => setDefaultCapacity(e.target.value)}
+                min="1"
+                max="10000"
+                placeholder="Unlimited"
+                fullWidth
+              />
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label htmlFor="default_booking_mode" className="block text-sm font-medium leading-6 text-gray-900">
+              Seating / Booking
+            </label>
+            <div className="mt-2">
+              <Select
+                id="default_booking_mode"
+                value={defaultBookingMode}
+                onChange={(e) => setDefaultBookingMode(e.target.value as EventCategory['default_booking_mode'])}
+                fullWidth
+              >
+                <option value="table">Table booking</option>
+                <option value="communal">Communal seating</option>
+                <option value="general">Individual tickets</option>
+                <option value="mixed">Mixed seating</option>
+              </Select>
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label htmlFor="default_payment_mode" className="block text-sm font-medium leading-6 text-gray-900">
+              Payment
+            </label>
+            <div className="mt-2">
+              <Select
+                id="default_payment_mode"
+                value={defaultPaymentMode}
+                onChange={(e) => {
+                  const value = e.target.value as EventCategory['default_payment_mode']
+                  setDefaultPaymentMode(value)
+                  setDefaultIsFree(value === 'free')
+                }}
+                fullWidth
+              >
+                <option value="free">Free</option>
+                <option value="cash_only">Cash on arrival</option>
+                <option value="prepaid">Prepaid ticket</option>
+              </Select>
+            </div>
+          </div>
+
+          <div className="col-span-full">
             <label htmlFor="default_booking_url" className="block text-sm font-medium leading-6 text-gray-900">
               Default Booking URL
             </label>
@@ -773,6 +845,10 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
               />
               <p className="mt-1 text-xs text-gray-500">Default accessibility information for events in this category</p>
             </div>
+          </div>
+
+          <div className="col-span-full">
+            <FaqEditor faqs={faqs} onChange={setFaqs} onModified={() => undefined} />
           </div>
         </div>
       </CollapsibleSection>
