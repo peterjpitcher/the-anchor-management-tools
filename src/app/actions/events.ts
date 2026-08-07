@@ -192,28 +192,36 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         default_duration_minutes,
         default_doors_time,
         default_last_entry_time,
+        default_capacity,
         default_price,
         default_is_free,
+        default_booking_mode,
+        default_payment_mode,
         short_description,
         long_description,
         highlights,
         primary_keywords,
         secondary_keywords,
         local_seo_keywords,
+        keywords,
         image_alt_text,
         cancellation_policy,
         accessibility_notes,
         meta_title,
         meta_description,
         default_image_url,
+        poster_image_url,
+        thumbnail_image_url,
         promo_video_url,
         highlight_video_urls,
         gallery_image_urls,
         default_performer_type,
+        default_performer_name,
         default_event_status,
         default_booking_url,
         default_promo_sms_enabled,
-        default_bookings_enabled
+        default_bookings_enabled,
+        faqs
       `)
       .eq('id', categoryId)
       .single();
@@ -226,28 +234,36 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
         duration_minutes: category.default_duration_minutes,
         doors_time: category.default_doors_time,
         last_entry_time: category.default_last_entry_time,
+        capacity: category.default_capacity,
         price: category.default_price,
         is_free: category.default_is_free,
+        booking_mode: category.default_booking_mode,
+        payment_mode: category.default_payment_mode,
         short_description: category.short_description,
         long_description: category.long_description,
         highlights: category.highlights,
         primary_keywords: category.primary_keywords,
         secondary_keywords: category.secondary_keywords,
         local_seo_keywords: category.local_seo_keywords,
+        keywords: category.keywords,
         image_alt_text: category.image_alt_text,
         cancellation_policy: category.cancellation_policy,
         accessibility_notes: category.accessibility_notes,
         meta_title: category.meta_title,
         meta_description: category.meta_description,
         hero_image_url: category.default_image_url,
+        poster_image_url: category.poster_image_url || category.default_image_url,
+        thumbnail_image_url: category.thumbnail_image_url || category.default_image_url,
         promo_video_url: category.promo_video_url,
         highlight_video_urls: category.highlight_video_urls,
         gallery_image_urls: category.gallery_image_urls,
         performer_type: category.default_performer_type,
+        performer_name: category.default_performer_name,
         event_status: category.default_event_status || 'scheduled',
         booking_url: category.default_booking_url,
         promo_sms_enabled: category.default_promo_sms_enabled,
-        bookings_enabled: category.default_bookings_enabled
+        bookings_enabled: category.default_bookings_enabled,
+        faqs: Array.isArray(category.faqs) ? category.faqs : []
       };
     }
   }
@@ -266,7 +282,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     bookingModeInput === 'mixed' ||
     bookingModeInput === 'communal'
       ? bookingModeInput
-      : 'table'
+      : categoryDefaults.booking_mode || 'table'
 
   // Handle specific fields from form data
   const data: Partial<CreateEventInput> = {
@@ -275,6 +291,8 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     time: rawData.time as string || categoryDefaults.time,
     ...(rawData.capacity !== undefined && rawData.capacity !== null && rawData.capacity !== ''
       ? { capacity: Number(rawData.capacity) || null }
+      : !_existingEventId && categoryDefaults.capacity
+        ? { capacity: categoryDefaults.capacity }
       : {}),
     ...(rawData.seated_capacity !== undefined && rawData.seated_capacity !== null
       ? { seated_capacity: rawData.seated_capacity === '' ? null : Number(rawData.seated_capacity) || null }
@@ -284,7 +302,9 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
       : {}),
     ...(rawData.payment_mode && ['free', 'cash_only', 'prepaid'].includes(rawData.payment_mode as string)
       ? { payment_mode: rawData.payment_mode as 'free' | 'cash_only' | 'prepaid' }
-      : {}),
+      : categoryDefaults.payment_mode
+        ? { payment_mode: categoryDefaults.payment_mode }
+        : {}),
     booking_mode: bookingMode,
     event_type: categorySlug,
     category_id: categoryId,
@@ -292,11 +312,11 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     long_description: rawData.long_description as string || categoryDefaults.long_description || null,
     brief: (rawData.brief as string)?.trim() || null,
     highlights: parseJsonFormField(rawData.highlights, stringArrayFormFieldSchema, categoryDefaults.highlights || [], 'highlights'),
-    keywords: parseJsonFormField(rawData.keywords, stringArrayFormFieldSchema, [], 'keywords'),
+    keywords: parseJsonFormField(rawData.keywords, stringArrayFormFieldSchema, categoryDefaults.keywords || [], 'keywords'),
     primary_keywords: parseJsonFormField(rawData.primary_keywords, stringArrayFormFieldSchema, categoryDefaults.primary_keywords || [], 'primary_keywords'),
     secondary_keywords: parseJsonFormField(rawData.secondary_keywords, stringArrayFormFieldSchema, categoryDefaults.secondary_keywords || [], 'secondary_keywords'),
     local_seo_keywords: parseJsonFormField(rawData.local_seo_keywords, stringArrayFormFieldSchema, categoryDefaults.local_seo_keywords || [], 'local_seo_keywords'),
-    image_alt_text: rawData.image_alt_text as string || null,
+    image_alt_text: rawData.image_alt_text as string || categoryDefaults.image_alt_text || null,
     social_copy_whatsapp: rawData.social_copy_whatsapp as string || null,
     previous_event_summary: rawData.previous_event_summary as string || null,
     attendance_note: rawData.attendance_note as string || null,
@@ -310,7 +330,7 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     doors_time: rawData.doors_time as string || categoryDefaults.doors_time || null,
     last_entry_time: rawData.last_entry_time as string || categoryDefaults.last_entry_time || null,
     event_status: rawData.event_status as string || categoryDefaults.event_status || 'scheduled',
-    performer_name: rawData.performer_name as string || null,
+    performer_name: rawData.performer_name as string || categoryDefaults.performer_name || null,
     performer_type: rawData.performer_type as string || categoryDefaults.performer_type || null,
     price: (rawData.price as string) ? Number(rawData.price) : categoryDefaults.price || 0,
     ...(rawData.online_discount_type === 'fixed' || rawData.online_discount_type === 'percent'
@@ -322,8 +342,8 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
     is_free: isFree,
     booking_url: rawData.booking_url as string || categoryDefaults.booking_url || null,
     hero_image_url: rawData.hero_image_url as string || categoryDefaults.hero_image_url || null,
-    thumbnail_image_url: rawData.thumbnail_image_url as string || null,
-    poster_image_url: rawData.poster_image_url as string || null,
+    thumbnail_image_url: rawData.thumbnail_image_url as string || categoryDefaults.thumbnail_image_url || null,
+    poster_image_url: rawData.poster_image_url as string || categoryDefaults.poster_image_url || null,
     promo_video_url: rawData.promo_video_url as string || categoryDefaults.promo_video_url || null,
     highlight_video_urls: parseJsonFormField(rawData.highlight_video_urls, stringArrayFormFieldSchema, categoryDefaults.highlight_video_urls || [], 'highlight_video_urls'),
     gallery_image_urls: parseJsonFormField(rawData.gallery_image_urls, stringArrayFormFieldSchema, categoryDefaults.gallery_image_urls || [], 'gallery_image_urls'),
@@ -358,6 +378,8 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
   const faqsJson = formData.get('faqs') as string | null;
   if (faqsJson !== null) {
     data.faqs = parseJsonFormField(faqsJson, eventFaqFormFieldSchema, [], 'faqs')
+  } else if (!_existingEventId && categoryDefaults.faqs) {
+    data.faqs = categoryDefaults.faqs
   }
   // If faqsJson was null (not in FormData), data.faqs remains undefined — service layer will skip FAQ replacement
 

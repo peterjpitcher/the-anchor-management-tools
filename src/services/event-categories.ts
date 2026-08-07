@@ -28,6 +28,8 @@ export class EventCategoryService {
         sort_order: nextSortOrder,
         default_price: input.default_price ?? 0,
         default_is_free: input.default_is_free ?? true,
+        default_booking_mode: input.default_booking_mode || 'table',
+        default_payment_mode: input.default_payment_mode || 'free',
         default_event_status: input.default_event_status || 'scheduled',
       })
       .select()
@@ -63,6 +65,8 @@ export class EventCategoryService {
         slug,
         default_price: input.default_price ?? oldCategory.default_price ?? 0,
         default_is_free: input.default_is_free ?? oldCategory.default_is_free ?? true,
+        default_booking_mode: input.default_booking_mode || oldCategory.default_booking_mode || 'table',
+        default_payment_mode: input.default_payment_mode || oldCategory.default_payment_mode || 'free',
         default_event_status: input.default_event_status || oldCategory.default_event_status || 'scheduled',
       })
       .eq('id', id)

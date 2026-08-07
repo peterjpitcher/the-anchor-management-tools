@@ -52,8 +52,8 @@ export function SeoHealthIndicator({
 
     return [
       {
-        label: 'Meta title present and under 40 chars',
-        passed: !!metaTitle && metaTitle.length > 0 && metaTitle.length <= 40,
+        label: 'Meta title present and under 60 chars',
+        passed: !!metaTitle && metaTitle.length > 0 && metaTitle.length <= 60,
         points: 8,
       },
       {
@@ -77,13 +77,13 @@ export function SeoHealthIndicator({
         points: 5,
       },
       {
-        label: 'Long description 450+ words',
-        passed: countWords(longDescription) >= 450,
+        label: 'Long description 250+ words',
+        passed: countWords(longDescription) >= 250,
         points: 10,
       },
       {
-        label: 'Long description has 4+ paragraphs',
-        passed: countParagraphs(longDescription) >= 4,
+        label: 'Long description has 3+ paragraphs',
+        passed: countParagraphs(longDescription) >= 3,
         points: 5,
       },
       {

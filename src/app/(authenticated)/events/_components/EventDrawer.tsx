@@ -290,6 +290,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setPrice(cat.default_price.toString())
       setIsFree(cat.default_is_free)
     }
+    if (cat.default_capacity) setCapacity(cat.default_capacity.toString())
+    setBookingMode(cat.default_booking_mode || 'table')
+    setPaymentMode(cat.default_payment_mode || (cat.default_is_free ? 'free' : 'cash_only'))
     if (!performerName && cat.default_performer_name) setPerformerName(cat.default_performer_name)
     if (!performerType && cat.default_performer_type) setPerformerType(cat.default_performer_type)
     if (!heroImageUrl && cat.default_image_url) setHeroImageUrl(cat.default_image_url)
@@ -305,6 +308,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
     if (!cancellationPolicy && catAny.cancellation_policy) setCancellationPolicy(catAny.cancellation_policy)
     if (!accessibilityNotes && catAny.accessibility_notes) setAccessibilityNotes(catAny.accessibility_notes)
     if (!imageAltText && catAny.image_alt_text) setImageAltText(catAny.image_alt_text)
+    if (cat.faqs?.length) {
+      setFaqs(cat.faqs.map((faq, index) => ({ ...faq, sort_order: index })))
+    }
     if (!durationMinutes && cat.default_duration_minutes) setDurationMinutes(cat.default_duration_minutes.toString())
     if (!doorsTime && cat.default_doors_time) setDoorsTime(cat.default_doors_time)
     if (!lastEntryTime && cat.default_last_entry_time) setLastEntryTime(cat.default_last_entry_time)
@@ -863,10 +869,10 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               placeholder="event-name-2024-01-01"
             />
             <Input
-              label={`Meta Title (${metaTitle.length}/40)`}
+              label={`Meta Title (${metaTitle.length}/60)`}
               value={metaTitle}
               onChange={(e) => setMetaTitle(e.target.value)}
-              maxLength={40}
+              maxLength={60}
               placeholder="SEO page title"
             />
           </div>

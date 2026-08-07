@@ -2414,6 +2414,7 @@ export type Database = {
           color: string
           created_at: string | null
           default_booking_url: string | null
+          default_booking_mode: string
           default_capacity: number | null
           default_doors_time: string | null
           default_duration_minutes: number | null
@@ -2424,6 +2425,7 @@ export type Database = {
           default_last_entry_time: string | null
           default_performer_name: string | null
           default_performer_type: string | null
+          default_payment_mode: string
           default_price: number | null
           default_reminder_hours: number | null
           default_start_time: string | null
@@ -2459,6 +2461,7 @@ export type Database = {
           color?: string
           created_at?: string | null
           default_booking_url?: string | null
+          default_booking_mode?: string
           default_capacity?: number | null
           default_doors_time?: string | null
           default_duration_minutes?: number | null
@@ -2469,6 +2472,7 @@ export type Database = {
           default_last_entry_time?: string | null
           default_performer_name?: string | null
           default_performer_type?: string | null
+          default_payment_mode?: string
           default_price?: number | null
           default_reminder_hours?: number | null
           default_start_time?: string | null
@@ -2504,6 +2508,7 @@ export type Database = {
           color?: string
           created_at?: string | null
           default_booking_url?: string | null
+          default_booking_mode?: string
           default_capacity?: number | null
           default_doors_time?: string | null
           default_duration_minutes?: number | null
@@ -2514,6 +2519,7 @@ export type Database = {
           default_last_entry_time?: string | null
           default_performer_name?: string | null
           default_performer_type?: string | null
+          default_payment_mode?: string
           default_price?: number | null
           default_reminder_hours?: number | null
           default_start_time?: string | null

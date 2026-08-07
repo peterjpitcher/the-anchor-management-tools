@@ -4,7 +4,7 @@ import { buildEventChecklist, EVENT_CHECKLIST_DEFINITIONS } from './event-checkl
 describe('event checklist definitions', () => {
   it('uses the consolidated, title-style event todo labels', () => {
     expect(EVENT_CHECKLIST_DEFINITIONS.map(({ label }) => label)).toEqual([
-      'Write Event Brief',
+      'Update All Event Details and Publish',
       'Design Printed Materials',
       'Create Facebook Event',
       'Add GBP Event Post',
@@ -13,6 +13,36 @@ describe('event checklist definitions', () => {
       'Set Up Paid Advertising',
       'Whatsapp Reminder (Day of)'
     ])
+  })
+
+  it('starts all launch tasks 56 days before the event', () => {
+    expect(EVENT_CHECKLIST_DEFINITIONS.map(({ offsetDays }) => offsetDays)).toEqual([
+      -56,
+      -56,
+      -56,
+      -56,
+      -56,
+      -56,
+      -56,
+      0
+    ])
+
+    const checklist = buildEventChecklist(
+      { id: 'event-1', name: 'Test Event', date: '2026-10-01' },
+      [],
+      '2026-08-06'
+    )
+
+    expect(checklist[0]).toMatchObject({
+      label: 'Update All Event Details and Publish',
+      dueDate: '2026-08-06',
+      status: 'due_today'
+    })
+    expect(checklist[7]).toMatchObject({
+      label: 'Whatsapp Reminder (Day of)',
+      dueDate: '2026-10-01',
+      status: 'upcoming'
+    })
   })
 
   it('keeps existing table-talker completion against the consolidated print todo', () => {

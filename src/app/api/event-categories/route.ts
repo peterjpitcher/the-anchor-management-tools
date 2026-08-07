@@ -44,12 +44,10 @@ export async function GET(_request: NextRequest) {
       color: category.color,
       icon: category.icon,
       slug: category.slug,
-      // Image fields - currently no image_url in database
-      // These will work once migration is applied
-      imageUrl: null, // category.image_url once migration applied
-      defaultImageUrl: null, // category.image_url once migration applied
-      thumbnailImageUrl: null, // category.image_url once migration applied
-      posterImageUrl: null, // category.image_url once migration applied
+      imageUrl: category.default_image_url,
+      defaultImageUrl: category.default_image_url,
+      thumbnailImageUrl: category.thumbnail_image_url,
+      posterImageUrl: category.poster_image_url,
       // SEO/Content fields
       shortDescription: category.short_description,
       longDescription: category.long_description,
@@ -73,6 +71,9 @@ export async function GET(_request: NextRequest) {
       default_doors_time: category.default_doors_time,
       default_last_entry_time: category.default_last_entry_time,
       default_booking_url: category.default_booking_url,
+      default_booking_mode: category.default_booking_mode,
+      default_payment_mode: category.default_payment_mode,
+      default_performer_name: category.default_performer_name,
       faqs: category.faqs || [],
       sort_order: category.sort_order,
       is_active: category.is_active,

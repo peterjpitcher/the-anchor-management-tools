@@ -44,8 +44,8 @@ describe('SeoHealthIndicator', () => {
     expect(screen.getByText('100/100 — Good')).toBeTruthy()
   })
 
-  it('fails meta title check when over 40 chars', () => {
-    render(<SeoHealthIndicator {...makeProps({ metaTitle: 'A'.repeat(41) })} />)
+  it('fails meta title check when over 60 chars', () => {
+    render(<SeoHealthIndicator {...makeProps({ metaTitle: 'A'.repeat(61) })} />)
     // Score should be less than 100 (lost 8 points for title length, possibly also keyword check)
     expect(screen.queryByText('100/100 — Good')).toBeNull()
   })
