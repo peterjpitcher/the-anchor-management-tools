@@ -7,6 +7,18 @@ function roundMoney(v: number) {
   return Math.round((v + Number.EPSILON) * 100) / 100
 }
 
+/**
+ * Unbilled work has to be reported inc VAT, because it is added to the unpaid
+ * invoice balance, which is inc VAT (invoices.total_amount). Mixing the two
+ * bases produced a Total Outstanding that understated the real figure by the
+ * VAT on the unbilled work. This mirrors the billing engine's getEntryCharge.
+ */
+function moneyIncVat(exVat: number, vatRate: number) {
+  const safeExVat = Number.isFinite(exVat) ? exVat : 0
+  const safeVatRate = Number.isFinite(vatRate) ? vatRate : 0
+  return roundMoney(safeExVat + roundMoney(safeExVat * (safeVatRate / 100)))
+}
+
 type ClientInvoiceSummary = {
   id: string
   invoice_number: string
@@ -86,21 +98,32 @@ export async function getClientBalance(
 
   if (entriesError) return { error: entriesError.message }
 
+  // Fall back to the client's configured VAT rate when an entry predates the
+  // snapshot column, matching what the billing engine will actually charge.
+  const { data: vendorSettings } = await supabase
+    .from('oj_vendor_billing_settings')
+    .select('vat_rate')
+    .eq('vendor_id', vendorId)
+    .maybeSingle()
+  const defaultVatRate = typeof vendorSettings?.vat_rate === 'number' ? vendorSettings.vat_rate : 20
+
   let unbilledTimeTotal = 0
   let unbilledMileageTotal = 0
   let unbilledOneOffTotal = 0
   for (const entry of entries || []) {
+    const vatRate = typeof entry.vat_rate_snapshot === 'number' ? entry.vat_rate_snapshot : defaultVatRate
     if (entry.entry_type === 'time') {
       const mins = Number(entry.duration_minutes_rounded || 0)
       const rate = Number(entry.hourly_rate_ex_vat_snapshot || 75)
-      unbilledTimeTotal = roundMoney(unbilledTimeTotal + (mins / 60) * rate)
+      unbilledTimeTotal = roundMoney(unbilledTimeTotal + moneyIncVat(roundMoney((mins / 60) * rate), vatRate))
     } else if (entry.entry_type === 'mileage') {
+      // Mileage is a disbursement and is billed with no VAT, as in getEntryCharge.
       const miles = Number(entry.miles || 0)
       const mileageRate = Number(entry.mileage_rate_snapshot || 0.55)
-      unbilledMileageTotal = roundMoney(unbilledMileageTotal + miles * mileageRate)
+      unbilledMileageTotal = roundMoney(unbilledMileageTotal + roundMoney(miles * mileageRate))
     } else if (entry.entry_type === 'one_off') {
-      const amount = Number(entry.amount_ex_vat_snapshot || 0)
-      unbilledOneOffTotal = roundMoney(unbilledOneOffTotal + amount)
+      const amount = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
+      unbilledOneOffTotal = roundMoney(unbilledOneOffTotal + moneyIncVat(amount, vatRate))
     }
   }
 
@@ -121,31 +144,43 @@ export async function getClientBalance(
 
   const unbilledRecurringTotal = roundMoney(
     billableInstances.reduce((acc, inst) => {
-      const exVat = Number(inst.amount_ex_vat_snapshot || 0)
-      return acc + exVat
+      const exVat = roundMoney(Number(inst.amount_ex_vat_snapshot || 0))
+      const vatRate = typeof inst.vat_rate_snapshot === 'number' ? inst.vat_rate_snapshot : defaultVatRate
+      return acc + moneyIncVat(exVat, vatRate)
     }, 0)
   )
 
   const unbilledTotal = roundMoney(unbilledTimeTotal + unbilledMileageTotal + unbilledOneOffTotal + unbilledRecurringTotal)
 
-  // Subtract issued credit notes from the unpaid invoice balance
-  const { data: creditNotes, error: cnError } = await supabase
-    .from('credit_notes')
-    .select('amount_inc_vat')
-    .eq('vendor_id', vendorId)
-    .eq('status', 'issued')
+  // Credit notes only reduce the balance of invoices that are still counted in
+  // it. Scoping to the unsettled OJ invoice ids keeps two things out: notes
+  // against invoices already settled (which have contributed nothing since the
+  // filter above), and notes against this vendor's non-OJ invoices, since
+  // invoice_vendors is shared with the rest of the invoicing module.
+  const unsettledInvoiceIds = (unsettledInvoices || []).map((inv) => String(inv.id))
 
   let creditNoteTotal = 0
-  if (cnError) {
-    // Table may not exist yet if migration hasn't been applied
-    console.warn('[client-balance] credit_notes query failed (table may not exist):', cnError.message)
-  } else {
-    creditNoteTotal = roundMoney(
-      (creditNotes || []).reduce((acc, cn) => acc + Number(cn.amount_inc_vat || 0), 0)
-    )
+  if (unsettledInvoiceIds.length > 0) {
+    const { data: creditNotes, error: cnError } = await supabase
+      .from('credit_notes')
+      .select('amount_inc_vat, invoice_id')
+      .eq('vendor_id', vendorId)
+      .eq('status', 'issued')
+      .in('invoice_id', unsettledInvoiceIds)
+
+    if (cnError) {
+      // Table may not exist yet if migration hasn't been applied
+      console.warn('[client-balance] credit_notes query failed (table may not exist):', cnError.message)
+    } else {
+      creditNoteTotal = roundMoney(
+        (creditNotes || []).reduce((acc, cn) => acc + Number(cn.amount_inc_vat || 0), 0)
+      )
+    }
   }
 
-  const adjustedUnpaidInvoiceBalance = roundMoney(unpaidInvoiceBalance - creditNoteTotal)
+  // A credit note can never take an invoice below zero, so clamp at zero rather
+  // than letting an over-credit eat into other invoices' balances.
+  const adjustedUnpaidInvoiceBalance = roundMoney(Math.max(unpaidInvoiceBalance - creditNoteTotal, 0))
   const totalOutstanding = roundMoney(adjustedUnpaidInvoiceBalance + unbilledTotal)
 
   const invoiceSummaries: ClientInvoiceSummary[] = (displayInvoices || []).map((inv) => ({

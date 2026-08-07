@@ -3,12 +3,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
+import { formBooleanSchema } from '@/lib/forms/formBoolean'
 import { z } from 'zod'
 
 const WorkTypeSchema = z.object({
   name: z.string().min(1, 'Work type name is required').max(80, 'Work type name is too long'),
   sort_order: z.coerce.number().int().min(0).max(1000).optional(),
-  is_active: z.coerce.boolean().optional(),
+  is_active: formBooleanSchema,
 })
 
 export async function getWorkTypes() {

@@ -3,20 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
+import { formBooleanSchema } from '@/lib/forms/formBoolean'
 import { z } from 'zod'
-
-const formBooleanSchema = z.preprocess((value) => {
-  if (value == null || value === '') return undefined
-  if (typeof value === 'boolean') return value
-
-  if (typeof value === 'string') {
-    const normalized = value.toLowerCase()
-    if (normalized === 'true' || normalized === 'on' || normalized === '1') return true
-    if (normalized === 'false' || normalized === 'off' || normalized === '0') return false
-  }
-
-  return value
-}, z.boolean().optional())
 
 const RecurringChargeSchema = z.object({
   vendor_id: z.string().uuid('Invalid vendor ID'),
@@ -28,29 +16,50 @@ const RecurringChargeSchema = z.object({
   sort_order: z.coerce.number().int().min(0).max(1000).optional(),
 })
 
+export type DiscardedInstancesSummary = {
+  count: number
+  amountExVat: number
+  periods: string[]
+}
+
 /**
  * Removes charge instances that were queued but never invoiced, once the charge
  * behind them is switched off. Without this they sit unbilled forever: the
- * billing run skips instances of inactive charges, but the client balance still
- * counts them. Anything already attached to an invoice is left untouched.
+ * billing run skips instances of inactive charges, so nothing can ever bill
+ * them. Anything already attached to an invoice is left untouched.
+ *
+ * Under cap billing these can include months that were genuinely owed but
+ * pushed past the cap, so the caller must never discard them silently: the
+ * count, value and periods are returned for the UI and written to the audit
+ * trail.
  */
 async function discardUnbilledInstancesForCharge(
   supabase: Awaited<ReturnType<typeof createClient>>,
   chargeId: string
-): Promise<number> {
+): Promise<DiscardedInstancesSummary> {
+  const empty: DiscardedInstancesSummary = { count: 0, amountExVat: 0, periods: [] }
+
   const { data, error } = await supabase
     .from('oj_recurring_charge_instances')
     .delete()
     .eq('recurring_charge_id', chargeId)
     .eq('status', 'unbilled')
     .is('invoice_id', null)
-    .select('id')
+    .select('id, period_yyyymm, amount_ex_vat_snapshot')
 
   if (error) {
     console.error('Failed to discard unbilled OJ recurring charge instances', error)
-    return 0
+    return empty
   }
-  return (data || []).length
+
+  const rows = data || []
+  const amountExVat = rows.reduce((total, row) => total + Number(row.amount_ex_vat_snapshot || 0), 0)
+
+  return {
+    count: rows.length,
+    amountExVat: Math.round((amountExVat + Number.EPSILON) * 100) / 100,
+    periods: rows.map((row) => String(row.period_yyyymm)).sort(),
+  }
 }
 
 export async function getRecurringCharges(vendorId: string) {
@@ -155,9 +164,9 @@ export async function updateRecurringCharge(formData: FormData) {
   if (error) return { error: error.message }
   if (!data) return { error: 'Charge not found' }
 
-  const discardedInstances = data.is_active === false
+  const discarded = data.is_active === false
     ? await discardUnbilledInstancesForCharge(supabase, id)
-    : 0
+    : null
 
   await logAuditEvent({
     user_id: user?.id,
@@ -167,10 +176,10 @@ export async function updateRecurringCharge(formData: FormData) {
     resource_id: id,
     operation_status: 'success',
     new_values: { description: data.description, amount_ex_vat: data.amount_ex_vat, is_active: data.is_active },
-    additional_info: discardedInstances > 0 ? { discarded_unbilled_instances: discardedInstances } : undefined,
+    additional_info: discarded && discarded.count > 0 ? { discarded_unbilled_instances: discarded } : undefined,
   })
 
-  return { charge: data, success: true as const }
+  return { charge: data, discarded: discarded ?? undefined, success: true as const }
 }
 
 export async function disableRecurringCharge(formData: FormData) {
@@ -196,7 +205,7 @@ export async function disableRecurringCharge(formData: FormData) {
   if (error) return { error: error.message }
   if (!updatedCharge) return { error: 'Charge not found' }
 
-  const discardedInstances = await discardUnbilledInstancesForCharge(supabase, id)
+  const discarded = await discardUnbilledInstancesForCharge(supabase, id)
 
   await logAuditEvent({
     user_id: user?.id,
@@ -205,8 +214,8 @@ export async function disableRecurringCharge(formData: FormData) {
     resource_type: 'oj_recurring_charge',
     resource_id: id,
     operation_status: 'success',
-    additional_info: { action: 'disable', discarded_unbilled_instances: discardedInstances },
+    additional_info: { action: 'disable', discarded_unbilled_instances: discarded },
   })
 
-  return { success: true as const }
+  return { discarded, success: true as const }
 }

@@ -316,14 +316,54 @@ export async function getProjectPaymentHistory(projectId: string) {
 
   const supabase = await createClient()
 
-  // Get distinct invoice IDs from entries linked to this project
+  // One invoice covers a whole client: every project plus any recurring
+  // charges. Reporting the invoice total here would credit this project with
+  // other projects' work and the client's recurring charges, and would show the
+  // same money again on every sibling project. So we apportion each invoice by
+  // the value of THIS project's own entries on it.
   const { data: entries, error: entriesError } = await supabase
     .from('oj_entries')
-    .select('invoice_id')
+    .select(
+      'invoice_id, vendor_id, entry_type, billable, duration_minutes_rounded, hourly_rate_ex_vat_snapshot, miles, mileage_rate_snapshot, amount_ex_vat_snapshot, vat_rate_snapshot'
+    )
     .eq('project_id', projectId)
     .not('invoice_id', 'is', null)
 
   if (entriesError) return { error: entriesError.message }
+
+  const vendorId = (entries || []).find((e: any) => e.vendor_id)?.vendor_id
+  const { data: vendorSettings } = vendorId
+    ? await supabase
+        .from('oj_vendor_billing_settings')
+        .select('vat_rate, hourly_rate_ex_vat, mileage_rate')
+        .eq('vendor_id', vendorId)
+        .maybeSingle()
+    : { data: null }
+
+  const defaultVatRate = typeof vendorSettings?.vat_rate === 'number' ? vendorSettings.vat_rate : 20
+  const defaultHourlyRate = typeof vendorSettings?.hourly_rate_ex_vat === 'number' ? vendorSettings.hourly_rate_ex_vat : 75
+  const defaultMileageRate = typeof vendorSettings?.mileage_rate === 'number' ? vendorSettings.mileage_rate : 0.55
+
+  // Mirrors getEntryCharge in the billing cron: mileage carries no VAT.
+  const projectValueByInvoice = new Map<string, number>()
+  for (const entry of entries || []) {
+    if (entry.billable === false) continue
+    const invoiceId = String(entry.invoice_id)
+    const vatRate = typeof entry.vat_rate_snapshot === 'number' ? entry.vat_rate_snapshot : defaultVatRate
+    let incVat = 0
+    if (entry.entry_type === 'mileage') {
+      const miles = Number(entry.miles || 0)
+      incVat = roundMoney(miles * Number(entry.mileage_rate_snapshot ?? defaultMileageRate))
+    } else if (entry.entry_type === 'one_off') {
+      const exVat = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
+      incVat = roundMoney(exVat + roundMoney(exVat * (vatRate / 100)))
+    } else {
+      const hours = Number(entry.duration_minutes_rounded || 0) / 60
+      const exVat = roundMoney(hours * Number(entry.hourly_rate_ex_vat_snapshot ?? defaultHourlyRate))
+      incVat = roundMoney(exVat + roundMoney(exVat * (vatRate / 100)))
+    }
+    projectValueByInvoice.set(invoiceId, roundMoney((projectValueByInvoice.get(invoiceId) || 0) + incVat))
+  }
 
   const invoiceIds = Array.from(new Set((entries || []).map((e) => e.invoice_id).filter(Boolean)))
 
@@ -360,14 +400,22 @@ export async function getProjectPaymentHistory(projectId: string) {
   let totalPaid = 0
 
   const mapped = (invoices || []).map((inv: any) => {
-    const total = Number(inv.total_amount || 0)
+    const invoiceTotal = Number(inv.total_amount || 0)
     const payments = (inv.payments || []) as Array<{
       id: string
       payment_date: string | null
       amount: number
       payment_method: string | null
     }>
-    const paid = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+    const invoicePaid = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+
+    // This project's slice of the invoice, and the same slice of what has been
+    // paid against it. Falls back to the whole invoice only when we cannot
+    // value the entries at all, so the figure is never silently zero.
+    const projectShare = projectValueByInvoice.get(String(inv.id))
+    const total = typeof projectShare === 'number' ? Math.min(projectShare, invoiceTotal || projectShare) : invoiceTotal
+    const shareRatio = invoiceTotal > 0 ? Math.min(total / invoiceTotal, 1) : 1
+    const paid = roundMoney(invoicePaid * shareRatio)
 
     totalBilled += total
     totalPaid += paid
@@ -380,6 +428,8 @@ export async function getProjectPaymentHistory(projectId: string) {
         status: inv.status,
         total,
         paid,
+        invoiceTotal,
+        invoicePaid: roundMoney(invoicePaid),
       },
       payments: payments.map((p: any) => ({
         id: p.id,

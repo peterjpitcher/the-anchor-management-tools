@@ -13,6 +13,7 @@ import {
 import {
   buildLastChargedPeriodStarts,
   getRecurringChargeCoverage,
+  getRecurringChargeIntervalMonths,
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
 import type { InvoiceLineItemInput } from '@/types/invoices'
@@ -482,19 +483,32 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
   )
 
   // Quarterly and annual charges are scheduled from their own anniversary, so
-  // we need what was charged before this invoice's period.
-  const { data: priorInstances, error: priorInstancesError } = await admin
+  // we need the charge's whole instance history, not just this month's.
+  const { data: chargeHistory, error: chargeHistoryError } = await admin
     .from('oj_recurring_charge_instances')
     .select('recurring_charge_id, period_start')
     .eq('vendor_id', invoice.vendor_id)
-    .lt('period_start', period.period_start)
     .order('period_start', { ascending: false })
     .limit(10000)
-  if (priorInstancesError) return { eligible: false, error: priorInstancesError.message, sourceInvoice: invoice, period }
-  const lastChargedPeriodStarts = buildLastChargedPeriodStarts(priorInstances, period.period_start)
+  if (chargeHistoryError) return { eligible: false, error: chargeHistoryError.message, sourceInvoice: invoice, period }
+  const lastChargedPeriodStarts = buildLastChargedPeriodStarts(chargeHistory, period.period_start)
+
+  // A reissue can target ANY past month, unlike the cron which only ever bills
+  // the month just gone. Looking only backwards would treat a non-monthly charge
+  // whose single instance sits in a LATER month as never charged, and mint a
+  // second one onto the older invoice: the client gets billed twice for the same
+  // year or quarter. So a non-monthly charge is only ever reused here, never
+  // created, once it has any instance at or after the reissued period.
+  const chargeIdsWithLaterInstance = new Set(
+    (chargeHistory || [])
+      .filter((row: any) => String(row?.period_start || '') >= period.period_start)
+      .map((row: any) => String(row.recurring_charge_id))
+  )
 
   for (const charge of activeCharges || []) {
     if (charge.is_active === false) continue
+    const isNonMonthly = getRecurringChargeIntervalMonths(charge.frequency) > 1
+    if (isNonMonthly && chargeIdsWithLaterInstance.has(String(charge.id))) continue
     const chargePeriod = getRecurringChargePeriod(
       String(charge.frequency || 'monthly'),
       period,

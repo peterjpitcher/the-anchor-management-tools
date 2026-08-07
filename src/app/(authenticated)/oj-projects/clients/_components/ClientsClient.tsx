@@ -139,6 +139,26 @@ const recurringFrequencyOptions = [
   { label: 'Annually', value: 'annually' },
 ]
 
+type DiscardedInstancesSummary = {
+  count: number
+  amountExVat: number
+  periods: string[]
+}
+
+/**
+ * Switching a charge off drops any months it had queued but never invoiced.
+ * Those can be real money under cap billing, so always say what went.
+ */
+function describeDiscardedCharges(
+  message: string,
+  discarded?: DiscardedInstancesSummary
+): string {
+  if (!discarded || discarded.count < 1) return message
+  const months = discarded.periods.join(', ')
+  const plural = discarded.count === 1 ? 'month' : 'months'
+  return `${message}. ${discarded.count} unbilled ${plural} (${months}) worth ${formatCurrency(discarded.amountExVat)} ex VAT were removed and can no longer be invoiced.`
+}
+
 function formatFrequency(value: string): string {
   switch (value) {
     case 'quarterly':
@@ -429,7 +449,13 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
       const res = chargeForm.id ? await updateRecurringCharge(fd) : await createRecurringCharge(fd)
       if (res.error) throw new Error(res.error)
 
-      toast.success(chargeForm.id ? 'Recurring charge updated' : 'Recurring charge added')
+      const discarded = (res as { discarded?: DiscardedInstancesSummary }).discarded
+      toast.success(
+        describeDiscardedCharges(
+          chargeForm.id ? 'Recurring charge updated' : 'Recurring charge added',
+          discarded
+        )
+      )
       setChargeModalOpen(false)
       setChargeForm(emptyRecurringChargeForm)
       await reloadRecurringCharges(drawerVendor.id)
@@ -449,7 +475,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
       const res = await disableRecurringCharge(fd)
       if (res.error) throw new Error(res.error)
 
-      toast.success('Recurring charge disabled')
+      toast.success(describeDiscardedCharges('Recurring charge disabled', res.discarded))
       setDisableChargeId(null)
       await reloadRecurringCharges(drawerVendor.id)
     } catch (err) {
@@ -633,15 +659,15 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               <h3 className="text-sm font-semibold text-text mb-3">Balance Summary</h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="p-3 rounded-lg bg-surface-2">
-                  <p className="text-xs text-text-muted">Unpaid Invoices</p>
+                  <p className="text-xs text-text-muted">Unpaid Invoices (inc VAT)</p>
                   <p className="text-lg font-semibold">{formatCurrency(balance.unpaidInvoiceBalance)}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-surface-2">
-                  <p className="text-xs text-text-muted">Unbilled Work</p>
+                  <p className="text-xs text-text-muted">Unbilled Work (inc VAT)</p>
                   <p className="text-lg font-semibold">{formatCurrency(balance.unbilledTotal)}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-surface-2 col-span-2">
-                  <p className="text-xs text-text-muted">Total Outstanding</p>
+                  <p className="text-xs text-text-muted">Total Outstanding (inc VAT)</p>
                   <p className={`text-xl font-bold ${balance.totalOutstanding > 0 ? 'text-danger' : 'text-success'}`}>
                     {formatCurrency(balance.totalOutstanding)}
                   </p>
