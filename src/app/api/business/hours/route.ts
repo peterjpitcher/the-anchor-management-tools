@@ -395,18 +395,31 @@ export async function GET(_request: NextRequest) {
       }
     : null;
 
-  // Helper to find service times from config
-  const findServiceTimes = (type: string, dayOfWeek: number = 5) => {
-      const dayConfig = regularHours?.find(h => h.day_of_week === dayOfWeek)?.schedule_config;
-      if (Array.isArray(dayConfig)) {
-          const slot = dayConfig.find((s: any) => s.name.toLowerCase().includes(type) || s.booking_type.toLowerCase().includes(type));
-          if (slot) return { start: `${slot.starts_at}:00`, end: `${slot.ends_at}:00` };
+  // Summarise the venue's named kitchen services from schedule_config.
+  // This previously read Friday alone (a hardcoded dayOfWeek default) and fell
+  // back to a hardcoded 12:00-14:30 lunch, so it advertised a lunch service even
+  // when no day had one. Scan every configured day instead, and report null
+  // rather than inventing a window the kitchen does not work.
+  const findServiceTimes = (type: string) => {
+      for (const day of regularHours ?? []) {
+          const dayConfig = day?.schedule_config;
+          if (!Array.isArray(dayConfig)) continue;
+
+          const slot = dayConfig.find((s: any) => {
+              const name = typeof s?.name === 'string' ? s.name.toLowerCase() : '';
+              const bookingType = typeof s?.booking_type === 'string' ? s.booking_type.toLowerCase() : '';
+              return name.includes(type) || bookingType.includes(type);
+          });
+
+          if (slot?.starts_at && slot?.ends_at) {
+              return { start: `${slot.starts_at}:00`, end: `${slot.ends_at}:00` };
+          }
       }
       return null;
   };
 
-  const lunchTimes = findServiceTimes('lunch') || { start: '12:00:00', end: '14:30:00' };
-  const dinnerTimes = findServiceTimes('dinner') || { start: '17:00:00', end: '21:00:00' };
+  const lunchTimes = findServiceTimes('lunch');
+  const dinnerTimes = findServiceTimes('dinner');
 
   // Build comprehensive response
   const response = {

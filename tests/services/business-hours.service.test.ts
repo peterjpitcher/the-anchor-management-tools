@@ -55,6 +55,45 @@ describe('BusinessHoursService reliability guards', () => {
     )
   })
 
+  it('surfaces the schedule_config guard message so staff can see which slot is wrong', async () => {
+    // validate_schedule_config() raises check_violation (23514) naming the slot.
+    // A generic "Failed to create special hours" would leave staff with no idea
+    // what to change, so this one class of error is passed through verbatim.
+    const guardMessage =
+      'schedule_config on special_hours date=2026-02-14: "lunch" runs 12:00-14:30 but the venue is only open 16:00-22:00'
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table !== 'special_hours') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi
+              .fn()
+              .mockResolvedValue({ data: null, error: { code: '23514', message: guardMessage } }),
+          }),
+        }
+      }),
+      rpc: vi.fn(),
+    }
+
+    mockedCreateAdminClient.mockReturnValue(client)
+
+    const formData = new FormData()
+    formData.set('date', '2026-02-14')
+    formData.set('end_date', '2026-02-14')
+    formData.set('opens', '16:00')
+    formData.set('closes', '22:00')
+    formData.set('kitchen_opens', '16:00')
+    formData.set('kitchen_closes', '21:00')
+    formData.set('is_closed', 'false')
+    formData.set('is_kitchen_closed', 'false')
+
+    await expect(BusinessHoursService.createSpecialHours(formData)).rejects.toThrow(guardMessage)
+  })
+
   it('returns load error (not not-found) when delete prefetch query fails', async () => {
     const maybeSingle = vi.fn().mockResolvedValue({
       data: null,

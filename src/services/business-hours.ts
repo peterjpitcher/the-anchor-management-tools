@@ -24,6 +24,20 @@ const toMinutes = (value: string) => {
   return hours * 60 + minutes;
 };
 
+// Postgres check_violation. validate_schedule_config() raises this and names the
+// exact slot that falls outside the day's trading hours, which is the only way
+// the person saving can tell what to change, so that message is worth passing
+// through. Every other database error keeps its generic message.
+const CHECK_VIOLATION = '23514';
+
+const saveError = (
+  error: { code?: string; message?: string } | null,
+  fallback: string,
+): Error =>
+  error?.code === CHECK_VIOLATION && error.message
+    ? new Error(error.message)
+    : new Error(fallback);
+
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const businessHoursSchema = z
@@ -301,7 +315,7 @@ export class BusinessHoursService {
       .from('business_hours')
       .upsert(updatedData, { onConflict: 'day_of_week' });
 
-    if (error) throw new Error('Failed to update business hours');
+    if (error) throw saveError(error, 'Failed to update business hours');
 
     // Trigger legacy slot regeneration (non-fatal — populates service_slots, not used for booking validation)
     const { error: regenerateSlotsError } = await supabase.rpc('auto_generate_weekly_slots');
@@ -653,7 +667,7 @@ export class BusinessHoursService {
       .upsert(payloads, { onConflict: 'date' })
       .select();
 
-    if (error) throw new Error('Failed to create special hours');
+    if (error) throw saveError(error, 'Failed to create special hours');
 
     // Trigger legacy slot regeneration (non-fatal — populates service_slots, not used for booking validation)
     const { error: regenCreateError } = await supabase.rpc('auto_generate_weekly_slots');
@@ -713,7 +727,7 @@ export class BusinessHoursService {
 
     if (error) {
       if (error.code === '23505') throw new Error('Special hours already exist for this date');
-      throw new Error('Failed to update special hours');
+      throw saveError(error, 'Failed to update special hours');
     }
     if (!data) throw new Error('Special hours not found');
 
