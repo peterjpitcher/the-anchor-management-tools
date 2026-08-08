@@ -198,7 +198,9 @@ describe('sendCrossPromoForEvent', () => {
       expect(body).toContain('Quiz Night')
       expect(body).toContain('Saturday, 18 April 2026')
       expect(body).toContain('How many seats? Text a number back, like 4.')
-      expect(body).toContain('Reply STOP to opt out')
+      // Marketing-only opt-out. A bare STOP would also stop booking
+      // confirmations, so promos point at NOEVENTS instead.
+      expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('http') // free template has no link
       expect(options.metadata?.template_key).toBe('event_cross_promo_7d')
     })
@@ -261,7 +263,9 @@ describe('sendCrossPromoForEvent', () => {
 
       const [, body, options] = mockSendSMS.mock.calls[0]
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
-      expect(body).toContain('Reply STOP to opt out')
+      // Marketing-only opt-out. A bare STOP would also stop booking
+      // confirmations, so promos point at NOEVENTS instead.
+      expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('reply with how many seats')
       expect(options.metadata?.template_key).toBe('event_cross_promo_7d_paid')
     })
@@ -377,7 +381,9 @@ describe('sendCrossPromoForEvent', () => {
       expect(body).toContain('Quiz Night')
       expect(body).toContain('Saturday, 18 April 2026')
       expect(body).toContain('How many seats? Text a number back, like 4.')
-      expect(body).toContain('Reply STOP to opt out')
+      // Marketing-only opt-out. A bare STOP would also stop booking
+      // confirmations, so promos point at NOEVENTS instead.
+      expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('http')
       expect(options.metadata?.template_key).toBe('event_general_promo_7d')
     })
@@ -424,7 +430,9 @@ describe('sendCrossPromoForEvent', () => {
       expect(body).not.toContain('Drag Bingo')
       expect(body).not.toContain('Had a great time at')
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
-      expect(body).toContain('Reply STOP to opt out')
+      // Marketing-only opt-out. A bare STOP would also stop booking
+      // confirmations, so promos point at NOEVENTS instead.
+      expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(body).not.toContain('reply with how many seats')
       expect(options.metadata?.template_key).toBe('event_general_promo_7d_paid')
     })
@@ -578,7 +586,9 @@ describe('sendFollowUpForEvent', () => {
       expect(body).toContain('Quiz Night')
       expect(body).toContain('is tomorrow')
       expect(body).toContain('How many seats? Text a number back, like 4.')
-      expect(body).toContain('Reply STOP to opt out')
+      // Marketing-only opt-out. A bare STOP would also stop booking
+      // confirmations, so promos point at NOEVENTS instead.
+      expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(options.metadata?.template_key).toBe('event_reminder_promo_24h')
     })
   })
@@ -604,7 +614,9 @@ describe('sendFollowUpForEvent', () => {
       const [, body, options] = mockSendSMS.mock.calls[0]
       expect(body).toContain('Last chance for seats')
       expect(body).toContain('https://the-anchor.pub/s/spABC123')
-      expect(body).toContain('Reply STOP to opt out')
+      // Marketing-only opt-out. A bare STOP would also stop booking
+      // confirmations, so promos point at NOEVENTS instead.
+      expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(options.metadata?.template_key).toBe('event_reminder_promo_24h_paid')
     })
   })
