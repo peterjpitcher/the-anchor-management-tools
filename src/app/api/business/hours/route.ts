@@ -406,8 +406,13 @@ export async function GET(_request: NextRequest) {
           if (!Array.isArray(dayConfig)) continue;
 
           const slot = dayConfig.find((s: any) => {
-              const name = typeof s?.name === 'string' ? s.name.toLowerCase() : '';
               const bookingType = typeof s?.booking_type === 'string' ? s.booking_type.toLowerCase() : '';
+              // The Sunday roast has its own services.kitchen.sundayLunch field.
+              // Skip it here, or 'sunday_lunch'.includes('lunch') would report the
+              // roast window as the venue's regular lunch service.
+              if (bookingType === 'sunday_lunch') return false;
+
+              const name = typeof s?.name === 'string' ? s.name.toLowerCase() : '';
               return name.includes(type) || bookingType.includes(type);
           });
 
