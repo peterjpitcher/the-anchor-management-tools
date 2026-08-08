@@ -76,11 +76,27 @@ window. It was also unsafe on `s.name` for the Sunday row, which has no `name`.
 - A valid write still succeeds (no false positives).
 - Public API now returns Friday with the dinner slot only.
 
-## Open, needs an owner decision
+## Saturday, resolved
 
-Saturday's `dinner` slot runs 17:00-21:00 but the Saturday kitchen closes at
-19:00. Its `booking_type` is `regular`, which gates drinks as well as food, so
-the guard accepts it and food bookings are still clamped to 19:00 by the kitchen
-check. It is not breaking anything today, but "dinner until 21:00" on a day the
-kitchen shuts at 19:00 is misleading. Either shorten the slot to 17:00-19:00 or
-extend the Saturday kitchen hours.
+Saturday's `dinner` slot ran 17:00-21:00 while the Saturday kitchen closes at
+19:00. Food bookings were already clamped to 19:00 by the kitchen check, so
+nothing was over-booked, but the advertised window was wrong. Owner confirmed on
+8 August 2026 that the kitchen hours are correct, so the slot was shortened to
+17:00-19:00 in `20260808130000_saturday_dinner_within_kitchen_hours.sql`.
+
+Every day now agrees with its own opening and kitchen hours:
+
+| Day | Opens | Kitchen | Slots |
+|---|---|---|---|
+| Sun | 12:00-22:00 | 13:00-18:00 | sunday_lunch 13:00-18:00 |
+| Mon | 16:00-22:00 | closed | none |
+| Tue-Thu | 16:00-22:00 | 16:00-21:00 | dinner 17:00-21:00 |
+| Fri | 16:00-22:00 | 16:00-21:00 | dinner 17:00-21:00 |
+| Sat | 12:00-22:00 | 12:00-19:00 | lunch 12:00-14:30, dinner 17:00-19:00 |
+
+## Still open, not touched here
+
+The live `create_table_booking_v05` no longer calls
+`table_booking_matches_service_window_v05`, so `schedule_config` is not enforced
+at booking time. Pub and kitchen hours still are, which is what actually blocked
+the bad Friday slot. Worth a separate look.
