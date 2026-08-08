@@ -33,7 +33,7 @@ export const OUTPUT_RUBRIC = `HOW TO WRITE — follow strictly:
 - Lead with why the night will be fun, then give the details.
 - Keep sentences short. One idea at a time. Read it back: would a real person actually say it out loud?
 - Show, don't tell. Describe what happens on the night instead of claiming it will be "exciting", "thrilling" or "high-energy".
-- Sound like these: "a proper night out", "big laughs", "great atmosphere", "bring your mates", "get involved", "full of energy", "sing along", "loads of fun", "book your seats", "walk-ins welcome where space allows", "a brilliant night at your local".
+- Sound like these: "a proper night out", "big laughs", "great atmosphere", "bring your mates", "get involved", "full of energy", "sing along", "loads of fun", "book your seats", "a brilliant night at your local".
 - Never sound posh, corporate or salesy. Banned words and phrases — and anything close to them: "premium experience", "elevated entertainment", "curated evening", "sophisticated event", "unforgettable journey/evening", "exclusive night", "hidden gem", "nestled", "vibrant atmosphere", "something for everyone", "a night to remember", "set to be", "promises to", "guarantees", "filled with entertainment", "plays a vital role", "high-energy experience".
 - No empty hype adjectives (thrilling, exhilarating, unmissable, incredible) and no section labels ("Practical information includes…", "Food and drink play a part…"). Just say it plainly.
 - Don't over-explain and don't repeat yourself. Don't lead with Heathrow or airport talk — name the location plainly and only mention Heathrow if it genuinely helps.
@@ -59,7 +59,7 @@ longDescription: 5-6 short paragraphs separated by double newlines (\\n\\n), aro
   Paragraph 2: what actually happens on the night — the format, the rounds, the music, whatever the facts say.
   Paragraph 3: the host or performer and what they bring.
   Paragraph 4: drinks and the feel of the room, using VENUE_CONTEXT. Mention food only when FACTS_JSON.kitchen_service confirms the event overlaps kitchen hours. When it does, say the full menu is available and state when service ends. Never present pizza as the only food available. If the kitchen is closed or the event does not overlap its hours, do not claim food is available.
-  Paragraph 5: the practical bits — price, booking, capacity, when to arrive, walk-ins.
+  Paragraph 5: the practical bits, price, capacity and when to arrive. For booking, point at the booking form on this page as the way to reserve, with the phone number as a fallback for anyone who would rather call. Do not invite walk-ins on a paid event and never suggest turning up on spec instead of booking: the page carries a booking form directly below this copy and telling people to pop in undercuts it.
   Paragraph 6: where to find us — Stanwell Moor, parking, nearby areas. Mention Heathrow only if it genuinely adds something.
   Write it the way you'd tell a regular. No section labels, no posh words, no padding.
 

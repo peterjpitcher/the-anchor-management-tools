@@ -685,24 +685,55 @@ async function handleInboundSMS(
       }
     }
     
-    // Check for opt-out keywords
+    // Two tiers of opt-out.
+    //
+    // A bare STOP (and the carrier-recognised variants) is a FULL opt-out: it
+    // stops every message including booking confirmations, because that is what
+    // the sender means by it and what carriers enforce anyway.
+    //
+    // A marketing keyword stops event promotion ONLY and leaves the service
+    // channel intact, so someone who is tired of event invites still gets the
+    // confirmation and reminder for a table they book next week. Without this
+    // tier the only way to escape marketing was STOP, which also silenced the
+    // messages people actually want.
+    //
+    // Both tiers stamp the *_opted_out_at column. That timestamp is what
+    // distinguishes "said no" from "never asked", and the soft opt-in audience in
+    // get_cross_promo_audience keys off it, so it must always be written.
     const stopKeywords = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL'];
+    const marketingStopKeywords = ['NOEVENTS', 'NOPROMO', 'NOOFFERS'];
     const messageUpper = messageBody.toUpperCase();
-    const isOptOut = stopKeywords.some(keyword => messageUpper === keyword || messageUpper.startsWith(keyword + ' '));
-    
+    const matchesAny = (keywords: string[]) =>
+      keywords.some(keyword => messageUpper === keyword || messageUpper.startsWith(keyword + ' '));
+    const isMarketingOnlyOptOut = matchesAny(marketingStopKeywords);
+    const isOptOut = isMarketingOnlyOptOut || matchesAny(stopKeywords);
+
     if (isOptOut) {
+      const optedOutAt = new Date().toISOString();
       const optOutPayload = isWhatsApp
-        ? {
-            whatsapp_opt_in: false,
-            marketing_whatsapp_opt_in: false,
-            whatsapp_status: 'opted_out',
-            whatsapp_opted_out_at: new Date().toISOString(),
-          }
-        : {
-            sms_opt_in: false,
-            sms_status: 'opted_out',
-            marketing_sms_opt_in: false,
-          }
+        ? (isMarketingOnlyOptOut
+            ? {
+                marketing_whatsapp_opt_in: false,
+                marketing_whatsapp_opted_out_at: optedOutAt,
+              }
+            : {
+                whatsapp_opt_in: false,
+                marketing_whatsapp_opt_in: false,
+                whatsapp_status: 'opted_out',
+                whatsapp_opted_out_at: optedOutAt,
+                marketing_whatsapp_opted_out_at: optedOutAt,
+              })
+        : (isMarketingOnlyOptOut
+            ? {
+                marketing_sms_opt_in: false,
+                marketing_sms_opted_out_at: optedOutAt,
+              }
+            : {
+                sms_opt_in: false,
+                sms_status: 'opted_out',
+                marketing_sms_opt_in: false,
+                marketing_sms_opted_out_at: optedOutAt,
+              })
 
       const { data: optedOutCustomer, error: optOutError } = await adminClient
         .from('customers')
@@ -735,8 +766,10 @@ async function handleInboundSMS(
               keyword: messageUpper.split(' ')[0],
               twilio_message_sid: messageSid,
               channel,
+              scope: isMarketingOnlyOptOut ? 'marketing_only' : 'all',
             },
-          }
+          },
+          isMarketingOnlyOptOut ? ['marketing'] : ['service', 'marketing']
         )
       } catch (consentError) {
         logger.error('Failed to write inbound opt-out consent audit row', {
@@ -755,7 +788,8 @@ async function handleInboundSMS(
           eventType: isWhatsApp ? 'whatsapp_opted_out' : 'sms_opted_out',
           metadata: {
             source: isWhatsApp ? 'twilio_whatsapp_inbound_stop' : 'twilio_inbound_stop',
-            keyword: messageUpper.split(' ')[0]
+            keyword: messageUpper.split(' ')[0],
+            scope: isMarketingOnlyOptOut ? 'marketing_only' : 'all'
           }
         }, isWhatsApp ? 'whatsapp_inbound_opt_out' : 'inbound_opt_out')
       }

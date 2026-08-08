@@ -37,28 +37,40 @@ const EVENT_PROMO_MIN_CAPACITY = parsePositiveIntEnv('EVENT_PROMO_MIN_CAPACITY',
 const EVENT_PROMO_FREQUENCY_WINDOW_DAYS = parsePositiveIntEnv('EVENT_PROMO_FREQUENCY_WINDOW_DAYS', 14)
 const EVENT_PROMO_MAX_EVENTS_PER_WINDOW = parsePositiveIntEnv('EVENT_PROMO_MAX_EVENTS_PER_WINDOW', 2)
 
-// Sized above the whole six month audience (about 35 people) so the cap acts as a
-// runaway guard rather than a silent truncation. At 30 it was clipping the pool.
+// Sized above the whole eligible audience so the cap acts as a runaway guard
+// rather than a silent truncation. At 30 it was clipping a 35-person pool, and at
+// 60 it would clip the current pool: widening the recency window to two years and
+// moving to soft opt-in takes the audience to about 113. Keep this comfortably
+// above the real pool whenever those two settings change.
 // This does not change how often any individual is messaged: that is governed by
 // EVENT_PROMO_MAX_EVENTS_PER_WINDOW above.
 const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv(
   'EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT',
-  60
+  250
 )
 
 /**
- * Recency windows. Both sit at six months so that anyone who has been to any event
- * in the last half year is invited to the others, which is the cross-pollination
- * the venue wants. The whole six-month pool is about 35 people, so these windows
- * are the binding constraint, not the recipient caps below.
+ * Recency windows. Both sit at two years so that anyone who has been to any event
+ * since then is invited to the others, which is the cross-pollination the venue
+ * wants. These windows are the binding constraint on reach, not the recipient
+ * caps below.
+ *
+ * Why two years and not six months: at six months the pool was about 35 people.
+ * Event bookings collapsed when the pre-event nudge stopped in December 2025
+ * (average seats per event fell from 49 to 13), and because this audience is
+ * defined as "attended an event recently", that collapse shrank the very pool
+ * used to promote the next event. A six-month window turns a quiet spell into a
+ * ratchet it cannot recover from. Two years reaches 113 people on the same
+ * consent rules, which is close to the roughly 83 nudges per event that were
+ * going out while attendance was healthy.
  */
 const EVENT_PROMO_CATEGORY_RECENCY_DAYS = parsePositiveIntEnv(
   'EVENT_PROMO_CATEGORY_RECENCY_DAYS',
-  180
+  730
 )
 const EVENT_PROMO_GENERAL_RECENCY_DAYS = parsePositiveIntEnv(
   'EVENT_PROMO_GENERAL_RECENCY_DAYS',
-  180
+  730
 )
 
 const TEMPLATE_CROSS_PROMO_FREE = 'event_cross_promo_7d'
@@ -69,7 +81,13 @@ const TEMPLATE_GENERAL_PROMO_PAID = 'event_general_promo_7d_paid'
 const TEMPLATE_REMINDER_24H_FREE = 'event_reminder_promo_24h'
 const TEMPLATE_REMINDER_24H_PAID = 'event_reminder_promo_24h_paid'
 
-const PROMO_OPT_OUT_TEXT = ' Reply STOP to opt out.'
+// Offer the marketing-only opt-out here, not a bare STOP. STOP is a full opt-out:
+// it clears sms_opt_in and so also stops booking confirmations and reminders, which
+// is a heavy price for someone who just does not want event invites. NOEVENTS is
+// handled in the Twilio inbound webhook and clears marketing consent only, leaving
+// the service channel intact. STOP still works and is still honoured, it just is
+// not what we push people towards.
+const PROMO_OPT_OUT_TEXT = ' Reply NOEVENTS to stop event texts.'
 
 const SEND_LOOP_TIME_BUDGET_MS = 240_000 // 4 minutes — leave headroom for 300s cron timeout
 const SEND_LOOP_CHECK_INTERVAL = 25 // check every N recipients

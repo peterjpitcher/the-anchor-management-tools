@@ -217,72 +217,93 @@ export class ConsentService {
     customerId: string,
     channel: Extract<ConsentChannel, 'sms' | 'whatsapp' | 'email'>,
     source: ConsentSource,
-    context: Partial<ConsentContext> = {}
+    context: Partial<ConsentContext> = {},
+    // Which purposes the opt-out covers. A bare STOP covers both, which is the
+    // default and the historic behaviour. A marketing-only keyword covers
+    // 'marketing' alone, so the audit trail does not claim the customer opted out
+    // of service messages when the service channel was deliberately left intact.
+    purposes: ReadonlyArray<'service' | 'marketing'> = ['service', 'marketing']
   ): Promise<void> {
+    const coversService = purposes.includes('service')
+    const coversMarketing = purposes.includes('marketing')
+
     if (channel === 'sms') {
-      await this.recordConsent({
-        customerId,
-        channel: 'sms',
-        purpose: 'service',
-        status: 'opted_out',
-        legalBasis: 'legitimate_interests',
-        source,
-        captureMethod: context.captureMethod || 'inbound_keyword',
-        consentTextVersion: context.consentTextVersion,
-        consentText: context.consentText,
-        actorUserId: context.actorUserId,
-        relatedEntityType: context.relatedEntityType,
-        relatedEntityId: context.relatedEntityId,
-        metadata: context.metadata,
-      })
-      await this.recordConsent({
-        customerId,
-        channel: 'sms',
-        purpose: 'marketing',
-        status: 'opted_out',
-        legalBasis: 'consent',
-        source,
-        captureMethod: context.captureMethod || 'inbound_keyword',
-        consentTextVersion: context.consentTextVersion,
-        actorUserId: context.actorUserId,
-        relatedEntityType: context.relatedEntityType,
-        relatedEntityId: context.relatedEntityId,
-        metadata: context.metadata,
-        updateSummary: false,
-      })
+      if (coversService) {
+        await this.recordConsent({
+          customerId,
+          channel: 'sms',
+          purpose: 'service',
+          status: 'opted_out',
+          legalBasis: 'legitimate_interests',
+          source,
+          captureMethod: context.captureMethod || 'inbound_keyword',
+          consentTextVersion: context.consentTextVersion,
+          consentText: context.consentText,
+          actorUserId: context.actorUserId,
+          relatedEntityType: context.relatedEntityType,
+          relatedEntityId: context.relatedEntityId,
+          metadata: context.metadata,
+        })
+      }
+      if (coversMarketing) {
+        await this.recordConsent({
+          customerId,
+          channel: 'sms',
+          purpose: 'marketing',
+          status: 'opted_out',
+          legalBasis: 'consent',
+          source,
+          captureMethod: context.captureMethod || 'inbound_keyword',
+          consentTextVersion: context.consentTextVersion,
+          actorUserId: context.actorUserId,
+          relatedEntityType: context.relatedEntityType,
+          relatedEntityId: context.relatedEntityId,
+          metadata: context.metadata,
+          // The service write above normally refreshes the summary. When this is
+          // a marketing-only opt-out there is no service write, so this one has
+          // to do it or the summary never reflects the change.
+          updateSummary: !coversService,
+        })
+      }
       return
     }
 
     if (channel === 'whatsapp') {
-      await this.recordConsent({
-        customerId,
-        channel: 'whatsapp',
-        purpose: 'service',
-        status: 'opted_out',
-        legalBasis: 'consent',
-        source,
-        captureMethod: context.captureMethod || 'inbound_keyword',
-        consentTextVersion: context.consentTextVersion,
-        actorUserId: context.actorUserId,
-        relatedEntityType: context.relatedEntityType,
-        relatedEntityId: context.relatedEntityId,
-        metadata: context.metadata,
-      })
-      await this.recordConsent({
-        customerId,
-        channel: 'whatsapp',
-        purpose: 'marketing',
-        status: 'opted_out',
-        legalBasis: 'consent',
-        source,
-        captureMethod: context.captureMethod || 'inbound_keyword',
-        consentTextVersion: context.consentTextVersion,
-        actorUserId: context.actorUserId,
-        relatedEntityType: context.relatedEntityType,
-        relatedEntityId: context.relatedEntityId,
-        metadata: context.metadata,
-        updateSummary: false,
-      })
+      if (coversService) {
+        await this.recordConsent({
+          customerId,
+          channel: 'whatsapp',
+          purpose: 'service',
+          status: 'opted_out',
+          legalBasis: 'consent',
+          source,
+          captureMethod: context.captureMethod || 'inbound_keyword',
+          consentTextVersion: context.consentTextVersion,
+          actorUserId: context.actorUserId,
+          relatedEntityType: context.relatedEntityType,
+          relatedEntityId: context.relatedEntityId,
+          metadata: context.metadata,
+        })
+      }
+      if (coversMarketing) {
+        await this.recordConsent({
+          customerId,
+          channel: 'whatsapp',
+          purpose: 'marketing',
+          status: 'opted_out',
+          legalBasis: 'consent',
+          source,
+          captureMethod: context.captureMethod || 'inbound_keyword',
+          consentTextVersion: context.consentTextVersion,
+          actorUserId: context.actorUserId,
+          relatedEntityType: context.relatedEntityType,
+          relatedEntityId: context.relatedEntityId,
+          metadata: context.metadata,
+          // See the note in the sms branch: this write owns the summary refresh
+          // when there is no service write alongside it.
+          updateSummary: !coversService,
+        })
+      }
       return
     }
 

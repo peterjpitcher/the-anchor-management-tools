@@ -60,13 +60,17 @@ const EVENT_PROMO_INTRO_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_DAYS
 // published a day or two late still gets promoted rather than being skipped
 // silently for ever.
 const EVENT_PROMO_INTRO_MIN_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_MIN_DAYS_AHEAD', 1)
-// These three are runaway guards, not policy. The whole six month audience is about
-// 35 people, so at 30 they were silently clipping a normal send. How often any one
+// These three are runaway guards, not policy. They must stay above the real
+// eligible audience or they truncate a normal send in silence: at 30 they were
+// clipping a 35-person pool, and at 80 they would clip the current one. Widening
+// the recency window to two years and moving to soft opt-in takes the audience to
+// about 113 per event, so these sit at 250. Re-check them whenever
+// EVENT_PROMO_CATEGORY_RECENCY_DAYS or the consent rule changes. How often any one
 // customer hears from us is controlled by EVENT_PROMO_MAX_EVENTS_PER_WINDOW in
 // src/lib/sms/cross-promo.ts, not here.
-const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 80)
-const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 60)
-const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 80)
+const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 250)
+const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 250)
+const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 250)
 const EVENT_PROMO_TEMPLATE_KEYS = [
   'event_cross_promo_7d',
   'event_cross_promo_7d_paid',
