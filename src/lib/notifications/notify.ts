@@ -29,6 +29,7 @@ type CustomerChannelState = {
   email_status?: string | null
   email_deactivated_at?: string | null
   marketing_email_opt_in?: boolean | null
+  marketing_email_opted_out_at?: string | null
 }
 
 type NotifyCustomerInput = {
@@ -78,7 +79,7 @@ async function loadCustomer(
 
   const { data, error } = await supabase
     .from('customers')
-    .select('id, email, mobile_number, mobile_e164, sms_status, sms_opt_in, marketing_sms_opt_in, whatsapp_status, whatsapp_opt_in, marketing_whatsapp_opt_in, last_whatsapp_inbound_at, email_status, email_deactivated_at, marketing_email_opt_in')
+    .select('id, email, mobile_number, mobile_e164, sms_status, sms_opt_in, marketing_sms_opt_in, whatsapp_status, whatsapp_opt_in, marketing_whatsapp_opt_in, last_whatsapp_inbound_at, email_status, email_deactivated_at, marketing_email_opt_in, marketing_email_opted_out_at')
     .eq('id', customerId)
     .maybeSingle()
 
@@ -180,7 +181,19 @@ async function isEmailEligible(customer: CustomerChannelState | null, category: 
     return false
   }
 
-  if (category === 'marketing' && customer?.marketing_email_opt_in !== true) {
+  // SOFT OPT-IN, matching the decision taken for SMS on 8 August in
+  // 20260808100000_cross_promo_soft_opt_in_audience.sql.
+  //
+  // The old test was `marketing_email_opt_in !== true`. That column defaults to FALSE for
+  // every customer created by a booking, so it records "never asked", not "said no", and
+  // gating on it made the marketing audience permanently empty no matter how many people
+  // gave us their address. `marketing_email_opted_out_at` is the only field that carries
+  // a stated preference, so it is the only one an opt-out check should read.
+  //
+  // This is lawful only while a working opt-out is offered at the point of collection and
+  // in every marketing message. Both exist: the booking form carries the notice, and
+  // /api/unsubscribe plus the List-Unsubscribe headers carry the opt-out.
+  if (category === 'marketing' && customer?.marketing_email_opted_out_at) {
     return false
   }
 
