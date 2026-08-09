@@ -12,14 +12,21 @@ export default async function TimeclockPage() {
   const [{ data: employees }, sessionsResult] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name')
+      // preferred_name so the kiosk cards read as the name the team actually
+      // uses. Nothing else about the row is exposed on this public screen.
+      .select('employee_id, first_name, last_name, preferred_name')
       .in('status', ['Active', 'Started Separation'])
       .order('first_name')
       .order('last_name'),
     getOpenSessions(),
   ])
 
-  const activeEmployees = (employees ?? []) as { employee_id: string; first_name: string | null; last_name: string | null }[]
+  const activeEmployees = (employees ?? []) as {
+    employee_id: string
+    first_name: string | null
+    last_name: string | null
+    preferred_name: string | null
+  }[]
   const openSessions = sessionsResult.success ? sessionsResult.data : []
 
   return (

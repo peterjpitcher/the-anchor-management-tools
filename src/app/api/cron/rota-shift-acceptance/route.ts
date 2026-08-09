@@ -8,6 +8,7 @@ import {
   type PortalShiftEmailSummary,
 } from '@/lib/rota/email-templates';
 import { recordShiftReliabilityEvent } from '@/services/employee-reliability';
+import { displayName } from '@/lib/employees/display-name';
 
 const TIMEZONE = 'Europe/London';
 const MANAGER_SHIFT_EMAIL = 'manager@the-anchor.pub';
@@ -33,6 +34,7 @@ type EmployeeRow = {
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
+  preferred_name: string | null;
   email_address: string | null;
 };
 
@@ -50,8 +52,9 @@ function shiftStartInstant(shift: Pick<PendingShiftRow, 'shift_date' | 'start_ti
   return fromZonedTime(`${shift.shift_date}T${shift.start_time}`, TIMEZONE);
 }
 
+// Goes to the employee and greets them, so use the name they go by.
 function employeeName(employee: EmployeeRow | undefined): string {
-  return [employee?.first_name, employee?.last_name].filter(Boolean).join(' ') || 'there';
+  return displayName(employee ?? {}, 'there');
 }
 
 function toEmailSummary(shift: PendingShiftRow): PortalShiftEmailSummary {
@@ -120,7 +123,7 @@ export async function GET(request: Request) {
   const { data: employees } = employeeIds.length > 0
     ? await supabase
         .from('employees')
-        .select('employee_id, first_name, last_name, email_address')
+        .select('employee_id, first_name, last_name, preferred_name, email_address')
         .in('employee_id', employeeIds)
     : { data: [] as EmployeeRow[] };
 

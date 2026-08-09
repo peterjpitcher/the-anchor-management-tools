@@ -5,6 +5,7 @@ import type { OAuth2Client } from 'google-auth-library'
 import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOAuth2Client } from '@/lib/google-calendar'
+import { displayName } from '@/lib/employees/display-name'
 
 const calendar = google.calendar('v3')
 const CALENDAR_TIME_ZONE = 'Europe/London'
@@ -137,15 +138,15 @@ export async function syncRotaWeekToCalendar(
     )]
     const { data: employees } = await admin
       .from('employees')
-      .select('employee_id, first_name, last_name')
+      .select('employee_id, first_name, last_name, preferred_name')
       .in('employee_id', employeeIds)
 
     empName = new Map<string, string>()
     for (const e of employees ?? []) {
-      empName.set(
-        e.employee_id,
-        [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
-      )
+      // The shared ops calendar is read by the whole team, so shifts carry the
+      // name the team uses. Event identity is the shiftId/weekId extended
+      // properties, never the name, so this only changes what is displayed.
+      empName.set(e.employee_id, displayName(e, 'Unknown'))
     }
   }
 

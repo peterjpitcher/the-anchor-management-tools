@@ -9,7 +9,7 @@
 import { addMinutes, subMinutes } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { inSeason, isCalendarDueOn, everySlots, nextFloatingDue } from './cadence'
-import { businessDayBounds } from './window'
+import { businessDayBounds, closingGraceEnd } from './window'
 import type { InstanceState } from './types'
 
 const TZ = 'Europe/London'
@@ -168,12 +168,18 @@ export function computeDesiredInstances(
 
       case 'close': {
         const dueAt = closesAt
+        // Closing tasks get until 05:00 the next morning, not just the standard
+        // grace. A 22:00 close with 60 minutes' grace expired at 23:00, so a
+        // late night lost its closing checks while staff were still locking up.
+        // A template with a longer custom grace keeps it.
+        const standardGrace = addMinutes(dueAt, grace)
+        const lateCutoff = closingGraceEnd(businessDate)
         out.push({
           ...snapshot,
           slot: 'close',
           windowStart: subMinutes(dueAt, settings.closeLeadMinutes),
           dueAt,
-          graceUntil: addMinutes(dueAt, grace),
+          graceUntil: standardGrace.getTime() > lateCutoff.getTime() ? standardGrace : lateCutoff,
         })
         break
       }

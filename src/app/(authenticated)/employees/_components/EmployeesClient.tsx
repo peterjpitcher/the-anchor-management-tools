@@ -11,6 +11,7 @@ import type { EmployeeRosterResult } from '@/app/actions/employeeQueries'
 import type { EmployeeRosterEmployee } from '@/services/employees'
 import { formatDate } from '@/lib/dateUtils'
 import { calculateLengthOfService } from '@/lib/employeeUtils'
+import { displayName, displayNameWithLegal } from '@/lib/employees/display-name'
 import InviteEmployeeModal from '@/components/features/employees/InviteEmployeeModal'
 
 import {
@@ -54,8 +55,22 @@ function statusBadgeTone(status: string): 'success' | 'info' | 'warning' | 'neut
   }
 }
 
+// Onboarding rows have no name on them yet, so the email address stays the fallback.
+// A preferred name on its own is enough to name someone, even before the legal name
+// has been filled in.
+function hasNameToShow(employee: EmployeeRosterEmployee): boolean {
+  return Boolean((employee.first_name && employee.last_name) || employee.preferred_name)
+}
+
 function employeeDisplayName(employee: EmployeeRosterEmployee): string {
-  if (employee.first_name && employee.last_name) return `${employee.first_name} ${employee.last_name}`
+  if (hasNameToShow(employee)) return displayName(employee, employee.email_address)
+  return employee.email_address
+}
+
+// The list keeps the legal name alongside so people can still be found by the name on
+// their paperwork.
+function employeeListName(employee: EmployeeRosterEmployee): string {
+  if (hasNameToShow(employee)) return displayNameWithLegal(employee, employee.email_address)
   return employee.email_address
 }
 
@@ -235,7 +250,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
                             <Avatar name={employeeDisplayName(emp)} size="md" />
                             <div>
                               <Link href={`/employees/${emp.employee_id}`} className="text-[13px] font-semibold text-text-strong hover:text-primary">
-                                {employeeDisplayName(emp)}
+                                {employeeListName(emp)}
                               </Link>
                               {!emp.first_name && <span className="text-[11px] text-text-subtle ml-1">(pending)</span>}
                             </div>

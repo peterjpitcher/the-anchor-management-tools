@@ -511,7 +511,7 @@ describe('Timeclock actions', () => {
         work_date: '2026-04-06',
         clock_in_at: '2026-04-06T08:00:00Z',
         clock_out_at: '2026-04-06T16:00:00Z',
-        employees: { first_name: 'John', last_name: 'Doe' },
+        employees: { first_name: 'John', last_name: 'Doe', preferred_name: 'Johnny' },
       }
 
       const client = mockAdminClient()
@@ -540,7 +540,8 @@ describe('Timeclock actions', () => {
       const result = await createTimeclockSession('emp-1', '2026-04-06', '09:00', '17:00')
       expect(result.success).toBe(true)
       if (result.success) {
-        expect(result.data.employee_name).toBe('John Doe')
+        // The kiosk confirms by the name the person goes by, not their legal name.
+        expect(result.data.employee_name).toBe('Johnny')
       }
     })
   })

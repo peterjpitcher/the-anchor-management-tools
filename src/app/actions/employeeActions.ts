@@ -12,6 +12,7 @@ import { checkUserPermission } from './rbac';
 import { sendEmail } from '@/lib/email/emailService';
 import { formatDateInLondon } from '@/lib/dateUtils';
 import { hashTimeclockPin, isValidTimeclockPin } from '@/lib/timeclock/pin';
+import { displayName, legalName, normalisePreferredName, preferredNameKey, SELECTABLE_EMPLOYEE_STATUSES } from '@/lib/employees/display-name';
 // Import services and schemas
 import {
   EmployeeService,
@@ -141,7 +142,7 @@ async function maybeSendEmployeeAttachmentEmail(params: {
 
   const { data: employee, error: employeeError } = await adminClient
     .from('employees')
-    .select('first_name, last_name, email_address')
+    .select('first_name, last_name, preferred_name, email_address')
     .eq('employee_id', employeeId)
     .maybeSingle();
 
@@ -165,7 +166,10 @@ async function maybeSendEmployeeAttachmentEmail(params: {
   }
 
   const buffer = await normaliseToBuffer(download);
-  const employeeName = `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim() || 'there';
+  // Greets the employee themselves, so it uses the name they go by, matching the
+  // rota and leave emails. The document attached to it is unaffected: paperwork
+  // still carries the legal name.
+  const employeeName = displayName(employee, 'there');
   const { subject, text } = buildEmployeeDocumentEmail({
     employeeName,
     documentName: fileName,
@@ -284,6 +288,69 @@ function cleanFormDataForEmployee(formData: FormData, includeFiles = false) {
 }
 
 
+// Preferred name is deliberately not part of employeeSchema: that schema is shared
+// with EmployeeService and with the create_employee_transaction RPC payload, both of
+// which have a fixed shape. It is read, checked and written here instead, in the same
+// style as the timeclock PIN below.
+
+/**
+ * Who, if anyone, already answers to this preferred name.
+ *
+ * The real guard is the partial unique index employees_preferred_name_active_unique.
+ * This look-up exists only so a manager gets told who has the name rather than a raw
+ * Postgres error. Matching happens in JS on the normalised key so it lines up exactly
+ * with the index (lower(btrim(...))) and so a name containing % or _ is not treated as
+ * an ilike wildcard.
+ */
+async function findActivePreferredNameHolder(
+  preferredName: string,
+  excludeEmployeeId?: string
+): Promise<string | null> {
+  const key = preferredNameKey(preferredName);
+  if (!key) return null;
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from('employees')
+    .select('employee_id, first_name, last_name, preferred_name')
+    // Same scope as the unique index: anyone still on a picker must be tellable
+    // apart, and staff working their notice are still on every one of them.
+    .in('status', [...SELECTABLE_EMPLOYEE_STATUSES])
+    .not('preferred_name', 'is', null);
+
+  if (error) {
+    // Never block a save because the friendly check failed. The unique index still
+    // catches a genuine clash, and isPreferredNameClash() turns that into a message.
+    console.error('Preferred name clash check failed:', error);
+    return null;
+  }
+
+  type PreferredNameRow = {
+    employee_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_name: string | null;
+  };
+
+  const clash = ((data ?? []) as PreferredNameRow[]).find((row) =>
+    row.employee_id !== excludeEmployeeId && preferredNameKey(row.preferred_name) === key
+  );
+
+  return clash ? legalName(clash) : null;
+}
+
+function preferredNameClashMessage(preferredName: string, holderLegalName: string | null): string {
+  const who = holderLegalName ? ` (${holderLegalName})` : '';
+  return `Another current employee${who} already goes by "${preferredName}". Please choose a different preferred name.`;
+}
+
+/** A 23505 raised by the preferred-name index, as opposed to any other unique violation. */
+function isPreferredNameClash(error: unknown): boolean {
+  return isPostgrestError(error)
+    && error.code === '23505'
+    && String(error.message ?? '').includes('employees_preferred_name_active_unique');
+}
+
 // Employee Actions
 export async function addEmployee(prevState: ActionFormState, formData: FormData): Promise<ActionFormState> {
     const hasPermission = await checkUserPermission('employees', 'create');
@@ -320,6 +387,21 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
     }
 
+    const preferredName = normalisePreferredName(formData.get('preferred_name') as string | null);
+
+    // Checked before the employee is created so a clash costs nothing. Once the row
+    // exists we cannot un-create it just because the nickname was taken.
+    if (preferredName) {
+        const holder = await findActivePreferredNameHolder(preferredName);
+        if (holder) {
+            return {
+                type: 'error',
+                message: preferredNameClashMessage(preferredName, holder),
+                errors: { preferred_name: ['Already in use by another current employee.'] }
+            };
+        }
+    }
+
     const userInfo = await getCurrentUser();
 
     try {
@@ -328,6 +410,26 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         financial: Object.keys(financialData).length > 0 ? financialData : undefined,
         health: Object.keys(healthData).length > 0 ? healthData : undefined,
       });
+
+      // Written after creation because create_employee_transaction takes a fixed
+      // payload. Only a race with another save can fail here (the check above already
+      // ran), so keep the employee and tell the manager to set the name again rather
+      // than losing the whole record.
+      let preferredNameWarning: string | null = null;
+      if (preferredName) {
+          const adminClient = createAdminClient();
+          const { error: preferredNameError } = await adminClient
+              .from('employees')
+              .update({ preferred_name: preferredName } as any)
+              .eq('employee_id', newEmployee.employee_id);
+
+          if (preferredNameError) {
+              console.error('Failed to save preferred name for new employee:', preferredNameError);
+              preferredNameWarning = isPreferredNameClash(preferredNameError)
+                  ? preferredNameClashMessage(preferredName, null)
+                  : 'The preferred name could not be saved. Please set it from the employee record.';
+          }
+      }
 
       await logAuditEvent({
           ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -342,12 +444,19 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
               job_title: newEmployee.job_title,
               status: newEmployee.status,
               has_financial_details: Object.values(financialData).some(val => val !== null),
-              has_health_record: Object.values(healthData).some(val => val !== null)
+              has_health_record: Object.values(healthData).some(val => val !== null),
+              preferred_name_set: Boolean(preferredName) && !preferredNameWarning
           }
       });
 
       revalidatePath('/employees');
-      return { type: 'success', message: 'Employee created successfully.', employeeId: newEmployee.employee_id };
+      return {
+          type: 'success',
+          message: preferredNameWarning
+              ? `Employee created successfully. ${preferredNameWarning}`
+              : 'Employee created successfully.',
+          employeeId: newEmployee.employee_id
+      };
     } catch (error: unknown) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : getErrorMessage(error);
         await logAuditEvent({
@@ -391,6 +500,26 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
         return { type: 'error', message: 'Invalid data provided. Please check your input and try again.', errors: result.error.flatten().fieldErrors };
     }
 
+    // Only touch preferred_name when the form actually carried the field. Forms that
+    // do not render it (and any other caller of this action) must not silently wipe a
+    // name someone is already known by.
+    const preferredNameSubmitted = formData.has('preferred_name');
+    const preferredName = preferredNameSubmitted
+        ? normalisePreferredName(formData.get('preferred_name') as string | null)
+        : null;
+
+    // Checked before anything is written so a clash leaves the whole record untouched.
+    if (preferredName) {
+        const holder = await findActivePreferredNameHolder(preferredName, employeeId);
+        if (holder) {
+            return {
+                type: 'error',
+                message: preferredNameClashMessage(preferredName, holder),
+                errors: { preferred_name: ['Already in use by another current employee.'] }
+            };
+        }
+    }
+
     const userInfo = await getCurrentUser();
 
     try {
@@ -408,6 +537,23 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 
           if (pinError) {
               throw pinError;
+          }
+      }
+
+      // Separate write for the same reason as the PIN: preferred_name is outside
+      // employeeSchema, so EmployeeService.updateEmployee never sees it.
+      const preferredNameChanged = preferredNameSubmitted
+          && (((oldEmployee as { preferred_name?: string | null } | null)?.preferred_name ?? null) !== preferredName);
+
+      if (preferredNameChanged) {
+          const adminClient = createAdminClient();
+          const { error: preferredNameError } = await adminClient
+              .from('employees')
+              .update({ preferred_name: preferredName } as any)
+              .eq('employee_id', employeeId);
+
+          if (preferredNameError) {
+              throw preferredNameError;
           }
       }
 
@@ -430,7 +576,13 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
           old_values: sanitiseEmployeeForAudit(oldEmployee as Record<string, unknown>),
           new_values: sanitiseEmployeeForAudit(updatedEmployee as Record<string, unknown>),
           additional_info: {
-              fields_changed: timeclockPin ? [...changedFields, 'timeclock_pin'] : changedFields
+              // updatedEmployee was read back before the preferred_name write above, so
+              // the diff cannot see that change: record it explicitly.
+              fields_changed: [
+                  ...changedFields,
+                  ...(timeclockPin ? ['timeclock_pin'] : []),
+                  ...(preferredNameChanged ? ['preferred_name'] : [])
+              ]
           }
       });
 
@@ -450,7 +602,11 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
       revalidatePath(`/employees/${employeeId}`);
       return { type: 'success', message: 'Employee updated successfully.', employeeId };
     } catch (error: unknown) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+        // A preferred-name clash only reaches here if someone claimed the name between
+        // the check above and the write. Say so plainly instead of leaking a 23505.
+        const message = isPreferredNameClash(error) && preferredName
+            ? preferredNameClashMessage(preferredName, null)
+            : isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
             ...(userInfo.user_email && { user_email: userInfo.user_email }),

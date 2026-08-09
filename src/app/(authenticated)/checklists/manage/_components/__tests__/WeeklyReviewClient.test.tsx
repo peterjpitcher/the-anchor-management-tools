@@ -120,17 +120,18 @@ describe('WeeklyReviewClient', () => {
 
     const doneCell = screen.getByRole('button', { name: /Done by Jacob Hambridge/i })
     expect(doneCell).toBeInTheDocument()
-    // Visible initials text is present (icon/text signal, not colour only).
-    expect(doneCell).toHaveTextContent('JH')
+    // The grid shows the name people use, not initials: "JH" told a manager
+    // nothing without decoding it first.
+    expect(doneCell).toHaveTextContent('Jacob Hambridge')
   })
 
-  it('shows a recorded number alongside the completer initials', () => {
+  it('shows a recorded number alongside the completer name', () => {
     render(<WeeklyReviewClient data={buildData()} />)
 
     const doneCell = screen.getByRole('button', {
       name: /Done by Billy Summers.*reading 4\.5°C/i,
     })
-    expect(doneCell).toHaveTextContent('BS·4.5°C')
+    expect(doneCell).toHaveTextContent('Billy Summers·4.5°C')
   })
 
   it('renders a missed cell that is visible and labelled', () => {

@@ -143,7 +143,6 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
                 : null}
             </p>
           )}
-          {selectedBooking.notes && <p className="mt-1 text-xs text-gray-600">Note: {selectedBooking.notes}</p>}
           {selectedBookingDeposit.kind !== 'none' && (
             <span
               className={`mt-2 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getTableBookingDepositBadgeClasses(selectedBookingDeposit.kind)}`}
@@ -154,6 +153,8 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             </span>
           )}
         </div>
+
+        <GuestRequirements booking={selectedBooking} />
 
         {selectedBooking.is_private_block && (
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
@@ -203,6 +204,62 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   )
 })
 
+/**
+ * Everything the guest asked for, in one block the floor cannot miss.
+ *
+ * These details were previously either invisible (allergies, dietary
+ * requirements and the celebration were never even fetched by the FOH API) or
+ * buried as 11px grey text under the booking reference. On an iPad carried
+ * across a busy room, an allergy set in that style is a note nobody reads.
+ * Allergies lead, and are styled as a warning, because they are the only entry
+ * here where missing it can hurt somebody.
+ */
+function GuestRequirements({ booking }: { booking: FohBooking }) {
+  const allergies = (booking.allergies ?? []).filter((entry) => entry && entry.trim().length > 0)
+  const dietary = (booking.dietary_requirements ?? []).filter(
+    (entry) => entry && entry.trim().length > 0,
+  )
+  const highChairs = booking.high_chair_count ?? 0
+  const rows: Array<{ label: string; value: string }> = []
+
+  if (dietary.length > 0) rows.push({ label: 'Dietary', value: dietary.join(', ') })
+  if (booking.requires_accessible_table === true) {
+    rows.push({ label: 'Access', value: 'Step-free table required' })
+  }
+  if (highChairs > 0) {
+    rows.push({ label: 'High chairs', value: String(highChairs) })
+  }
+  if (booking.celebration_type) rows.push({ label: 'Occasion', value: booking.celebration_type })
+  if (booking.notes) rows.push({ label: 'Guest note', value: booking.notes })
+  if (booking.internal_notes) rows.push({ label: 'Staff note', value: booking.internal_notes })
+
+  if (allergies.length === 0 && rows.length === 0) return null
+
+  return (
+    <div className="rounded-md border border-gray-200 p-3">
+      <p className="text-sm font-semibold text-gray-900">Guest requirements</p>
+
+      {allergies.length > 0 && (
+        <div className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-red-900">Allergies</p>
+          <p className="mt-0.5 text-sm font-semibold text-red-900">{allergies.join(', ')}</p>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <dl className="mt-2 space-y-1.5">
+          {rows.map((row) => (
+            <div key={row.label} className="flex gap-2 text-sm">
+              <dt className="w-24 shrink-0 text-gray-500">{row.label}</dt>
+              <dd className="min-w-0 flex-1 text-gray-900">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  )
+}
+
 // Inner component for the action buttons section
 function BookingActions(props: {
   selectedBooking: FohBooking
@@ -249,75 +306,6 @@ function BookingActions(props: {
 
   return (
     <div className="space-y-3">
-      {/* Move table.
-          This screen runs on an iPad on the floor. The previous control was a 12px dropdown next to
-          a 28px button, both well under the 44px minimum touch target, sitting below every other
-          action in the modal. Guests sitting themselves on the wrong table is routine, so this is
-          now the first thing in the modal and each table is a single large tap target.
-          One tap moves. There is no confirm step because a move is not destructive, is visible on
-          the timeline immediately, notifies nobody, and is undone by tapping the original table. */}
-      {selectedBookingIsOutside ? (
-        <p className="text-xs text-gray-500">Outside booking, so there is no table to move.</p>
-      ) : (
-        <div className="rounded-md border border-gray-200 p-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-            <p className="text-sm font-semibold text-gray-900">Move to another table</p>
-            {currentTableName ? (
-              <p className="text-xs text-gray-500">Currently on {currentTableName}</p>
-            ) : null}
-          </div>
-
-          {loadingSelectedMoveOptions ? (
-            <p className="mt-2 text-xs text-gray-500">Loading available tables...</p>
-          ) : selectedMoveOptions.length === 0 ? (
-            <p className="mt-2 text-xs text-gray-500">No other table is free for this time.</p>
-          ) : (
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {selectedMoveOptions.map((table) => {
-                const moving = bookingActionInFlight === 'move' && selectedMoveTarget === table.id
-                return (
-                  <button
-                    key={table.id}
-                    type="button"
-                    disabled={Boolean(bookingActionInFlight)}
-                    onClick={() => {
-                      // Recorded so the tapped tile, and only that tile, shows the in-flight state.
-                      onMoveTargetChange(selectedBooking.id, table.id)
-                      void (async () => {
-                        const ok = await onRunAction(
-                          () =>
-                            postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
-                              table_ids: table.table_ids?.length ? table.table_ids : [table.id]
-                            }),
-                          `Moved to ${table.name}`,
-                          'move'
-                        )
-                        if (ok) onClose()
-                      })()
-                    }}
-                    className={cn(
-                      'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-2 py-2 text-center',
-                      'focus:outline-none focus:ring-2 focus:ring-green-500',
-                      'disabled:cursor-not-allowed disabled:opacity-50',
-                      moving
-                        ? 'border-green-600 bg-green-50 text-green-800'
-                        : 'border-gray-300 text-gray-800 hover:bg-gray-50'
-                    )}
-                  >
-                    <span className="text-sm font-semibold leading-tight">
-                      {moving ? 'Moving...' : table.name}
-                    </span>
-                    {!moving && table.capacity ? (
-                      <span className="mt-0.5 text-xs text-gray-500">Seats {table.capacity}</span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -479,6 +467,76 @@ function BookingActions(props: {
         </div>
       )}
 
+      {/* Move table, last.
+          Each table is a single large tap target rather than the old 12px dropdown, because this
+          screen runs on an iPad on the floor. One tap moves. There is no confirm step: a move is
+          not destructive, shows on the timeline immediately, notifies nobody, and is undone by
+          tapping the original table.
+          It sits below the action buttons because the grid grows with the number of free tables,
+          and with a quiet room it ran to twenty-odd tiles that pushed Mark seated, Mark left and
+          the rest off the bottom of the screen. The frequent actions stay reachable without
+          scrolling; moving a table is worth a scroll. */}
+      {selectedBookingIsOutside ? (
+        <p className="text-xs text-gray-500">Outside booking, so there is no table to move.</p>
+      ) : (
+        <div className="rounded-md border border-gray-200 p-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+            <p className="text-sm font-semibold text-gray-900">Move to another table</p>
+            {currentTableName ? (
+              <p className="text-xs text-gray-500">Currently on {currentTableName}</p>
+            ) : null}
+          </div>
+
+          {loadingSelectedMoveOptions ? (
+            <p className="mt-2 text-xs text-gray-500">Loading available tables...</p>
+          ) : selectedMoveOptions.length === 0 ? (
+            <p className="mt-2 text-xs text-gray-500">No other table is free for this time.</p>
+          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {selectedMoveOptions.map((table) => {
+                const moving = bookingActionInFlight === 'move' && selectedMoveTarget === table.id
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    disabled={Boolean(bookingActionInFlight)}
+                    onClick={() => {
+                      // Recorded so the tapped tile, and only that tile, shows the in-flight state.
+                      onMoveTargetChange(selectedBooking.id, table.id)
+                      void (async () => {
+                        const ok = await onRunAction(
+                          () =>
+                            postBookingAction(`/api/foh/bookings/${selectedBooking.id}/move-table`, {
+                              table_ids: table.table_ids?.length ? table.table_ids : [table.id]
+                            }),
+                          `Moved to ${table.name}`,
+                          'move'
+                        )
+                        if (ok) onClose()
+                      })()
+                    }}
+                    className={cn(
+                      'flex min-h-[3.5rem] flex-col items-center justify-center rounded-lg border px-2 py-2 text-center',
+                      'focus:outline-none focus:ring-2 focus:ring-green-500',
+                      'disabled:cursor-not-allowed disabled:opacity-50',
+                      moving
+                        ? 'border-green-600 bg-green-50 text-green-800'
+                        : 'border-gray-300 text-gray-800 hover:bg-gray-50'
+                    )}
+                  >
+                    <span className="text-sm font-semibold leading-tight">
+                      {moving ? 'Moving...' : table.name}
+                    </span>
+                    {!moving && table.capacity ? (
+                      <span className="mt-0.5 text-xs text-gray-500">Seats {table.capacity}</span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

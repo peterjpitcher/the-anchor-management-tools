@@ -67,7 +67,15 @@ describe('computeDesiredInstances', () => {
     expect(out[0].slot).toBe('close')
     expect(out[0].dueAt.toISOString()).toBe(closesAt.toISOString())
     expect(out[0].windowStart.toISOString()).toBe('2026-07-18T20:00:00.000Z') // 22:00 - 60m BST
-    expect(out[0].graceUntil.toISOString()).toBe('2026-07-18T21:30:00.000Z')
+    // Closing tasks run to 05:00 London the next morning, not due + the default
+    // 30m grace. A late night used to lose its closing checks to `missed` at
+    // 22:30 while staff were still locking up. 04:00Z = 05:00 BST on the 19th.
+    expect(out[0].graceUntil.toISOString()).toBe('2026-07-19T04:00:00.000Z')
+  })
+
+  it('keeps a template grace that runs past 05:00 rather than shortening it', () => {
+    const out = run([tpl({ anchor: 'close', graceMinutes: 10 * 60 })])
+    expect(out[0].graceUntil.toISOString()).toBe('2026-07-19T07:00:00.000Z') // 22:00 + 10h BST
   })
 
   it('a daily every-2h template yields 4 slots (14:00..20:00), 22:00 dropped at close', () => {

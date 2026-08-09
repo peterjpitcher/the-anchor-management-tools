@@ -532,6 +532,11 @@ export interface Employee {
   employee_id: string; // UUID
   first_name: string | null; // NULL for Onboarding employees
   last_name: string | null; // NULL for Onboarding employees
+  // What the team actually calls this person. Shown on every internal screen via
+  // src/lib/employees/display-name.ts; first_name/last_name stay the legal name
+  // for contracts, payroll and right-to-work records. Unique (case-insensitive)
+  // among Active employees, enforced by employees_preferred_name_active_unique.
+  preferred_name?: string | null;
   date_of_birth?: string | null; // Date
   address?: string | null;
   post_code?: string | null;

@@ -8,6 +8,7 @@ import HealthRecordsForm from '@/components/features/employees/HealthRecordsForm
 import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
 import { updateEmployee } from '@/app/actions/employeeActions'
 import type { Employee, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeRightToWork } from '@/types/database'
+import { displayName } from '@/lib/employees/display-name'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Tabs } from '@/ds'
@@ -95,7 +96,7 @@ export default function EmployeeEditClient({
 
   return (
     <PageLayout
-      title={`Edit: ${employee.first_name} ${employee.last_name}`}
+      title={`Edit: ${displayName(employee, employee.email_address)}`}
       subtitle="Update employee details"
       backButton={{
         label: 'Back to Employee',

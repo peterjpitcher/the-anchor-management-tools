@@ -36,6 +36,7 @@ import {
   type RotaSummaryShift,
 } from '@/lib/rota/summary';
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
+import { displayName } from '@/lib/employees/display-name';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -354,8 +355,13 @@ function initialAcceptanceForShift(input: {
   };
 }
 
-function employeeDisplayName(employee: { first_name?: string | null; last_name?: string | null } | null | undefined): string {
-  return [employee?.first_name, employee?.last_name].filter(Boolean).join(' ') || 'Unknown staff member';
+// Rota alerts go to the duty manager, who knows the team by the name they are
+// called on the floor, so these use the preferred name. Payroll, contracts and
+// other official records keep the legal name.
+function employeeDisplayName(
+  employee: { first_name?: string | null; last_name?: string | null; preferred_name?: string | null } | null | undefined,
+): string {
+  return displayName(employee ?? {}, 'Unknown staff member');
 }
 
 function shiftEmailSummary(shift: {
@@ -385,8 +391,8 @@ type OpenShiftRequestContextRow = {
   is_open_shift: boolean;
   status: string;
   employees:
-    | { first_name: string | null; last_name: string | null; job_title: string | null }
-    | { first_name: string | null; last_name: string | null; job_title: string | null }[]
+    | { first_name: string | null; last_name: string | null; preferred_name: string | null; job_title: string | null }
+    | { first_name: string | null; last_name: string | null; preferred_name: string | null; job_title: string | null }[]
     | null;
 };
 
@@ -400,7 +406,7 @@ async function getOpenShiftRequestDayContext(
 
   const { data } = await admin
     .from('rota_published_shifts')
-    .select('employee_id, shift_date, start_time, end_time, department, name, is_open_shift, status, employees(first_name, last_name, job_title)')
+    .select('employee_id, shift_date, start_time, end_time, department, name, is_open_shift, status, employees(first_name, last_name, preferred_name, job_title)')
     .gte('shift_date', startDate)
     .lte('shift_date', endDate)
     .eq('status', 'scheduled')
@@ -431,6 +437,7 @@ async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createCl
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
+  preferred_name: string | null;
   email_address: string | null;
 } | null> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -438,7 +445,7 @@ async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createCl
 
   let query = supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, email_address')
+    .select('employee_id, first_name, last_name, preferred_name, email_address')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation']);
 
@@ -449,6 +456,7 @@ async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createCl
     employee_id: string;
     first_name: string | null;
     last_name: string | null;
+    preferred_name: string | null;
     email_address: string | null;
   } | null;
 }
@@ -2704,6 +2712,7 @@ export type RotaEmployee = {
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
+  preferred_name: string | null;
   job_title: string | null;
   max_weekly_hours: number | null;
   is_active: boolean;
@@ -2717,9 +2726,11 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
 
   const supabase = await createClient();
 
+  // Ordering stays on the legal first/last name so the grid keeps a stable,
+  // predictable order even when someone's preferred name starts elsewhere.
   const { data: employees, error: empError } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, job_title')
+    .select('employee_id, first_name, last_name, preferred_name, job_title')
     .in('status', ['Active', 'Started Separation'])
     .order('first_name')
     .order('last_name');
@@ -2730,7 +2741,7 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   const activeIds = new Set(activeList.map((e: { employee_id: string }) => e.employee_id));
 
   // If a week is provided, also include any former employees who have shifts that week
-  type EmpRow = { employee_id: string; first_name: string | null; last_name: string | null; job_title: string | null };
+  type EmpRow = { employee_id: string; first_name: string | null; last_name: string | null; preferred_name: string | null; job_title: string | null };
   let formerList: EmpRow[] = [];
   if (weekStart) {
     const weekEnd = new Date(weekStart + 'T00:00:00');
@@ -2754,7 +2765,7 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
     if (formerIds.length > 0) {
       const { data: formerEmployees } = await supabase
         .from('employees')
-        .select('employee_id, first_name, last_name, job_title')
+        .select('employee_id, first_name, last_name, preferred_name, job_title')
         .in('employee_id', formerIds)
         .order('first_name')
         .order('last_name');
@@ -2778,6 +2789,7 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
     employee_id: e.employee_id,
     first_name: e.first_name,
     last_name: e.last_name,
+    preferred_name: e.preferred_name,
     job_title: e.job_title,
     max_weekly_hours: settingsMap[e.employee_id] ?? null,
     is_active: isActive,

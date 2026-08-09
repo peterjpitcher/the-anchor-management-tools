@@ -10,8 +10,6 @@ import { cn } from '@/lib/utils'
 import { useNavCounts } from './NavCountsContext'
 import { navCount, type NavGroup, type NavItem } from './SidebarNav'
 
-const DRAWER_GROUP_TITLES = ['Overview', 'Operations', 'Staff', 'Finance', 'Admin']
-
 const MOBILE_TABS = [
   { id: 'dashboard', label: 'Home', icon: 'home', href: '/dashboard' },
   { id: 'events', label: 'Events', icon: 'calendar', href: '/events' },
@@ -19,23 +17,21 @@ const MOBILE_TABS = [
   { id: 'messages', label: 'Messages', icon: 'message', href: '/messages' },
 ] satisfies Array<Pick<NavItem, 'id' | 'label' | 'icon' | 'href'>>
 
-function mobileNavGroups(navGroups: NavGroup[]): NavGroup[] {
-  return navGroups.map((group) => ({
-    ...group,
-    items: group.items.map((item) =>
-      item.id === 'dashboard' ? { ...item, href: '/dashboard' } : item
-    ),
-  }))
-}
-
 function isActivePath(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
+function badgeText(count: number): string {
+  return count > 99 ? '99+' : String(count)
+}
+
 export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
+  const { unreadCount } = useNavCounts()
+
   return (
-    <header className="md:hidden sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border bg-sidebar-bg px-3 text-sidebar-fg">
+    // z-45 for the same reason as the desktop rail: page chrome reaches z-40.
+    <header className="shell:hidden sticky top-0 z-[45] flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border bg-sidebar-bg px-3 text-sidebar-fg">
       <button
         type="button"
         onClick={onMenuOpen}
@@ -61,13 +57,21 @@ export function MobileTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
         <Icon name="search" size={20} />
       </button>
 
+      {/* This was a bell that showed an unread dot permanently and linked to the
+          dashboard, so it signalled "something is waiting" whether or not
+          anything was, and never led anywhere useful. It now carries the real
+          unread count and opens the inbox. */}
       <Link
-        href="/dashboard"
+        href="/messages"
         className="relative grid h-10 w-10 place-items-center rounded-[10px] text-sidebar-fg transition-colors active:bg-white/10"
-        aria-label="Notifications"
+        aria-label={unreadCount > 0 ? `Messages, ${unreadCount} unread` : 'Messages'}
       >
         <Icon name="bell" size={20} />
-        <span className="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-brand-300 shadow-[0_0_0_2px_var(--color-sidebar-bg)]" />
+        {unreadCount > 0 ? (
+          <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9.5px] font-bold leading-none text-white shadow-[0_0_0_2px_var(--color-sidebar-bg)]">
+            {badgeText(unreadCount)}
+          </span>
+        ) : null}
       </Link>
     </header>
   )
@@ -82,7 +86,7 @@ export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; 
 
   return (
     <nav
-      className="md:hidden grid shrink-0 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_var(--color-border),0_-8px_24px_-16px_rgba(0,0,0,0.18)]"
+      className="shell:hidden grid shrink-0 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_var(--color-border),0_-8px_24px_-16px_rgba(0,0,0,0.18)]"
       style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}
       aria-label="Mobile navigation"
     >
@@ -106,7 +110,7 @@ export function MobileBottomNav({ navGroups, onMore }: { navGroups: NavGroup[]; 
             <span>{tab.label}</span>
             {count ? (
               <span className="absolute left-[calc(50%+6px)] top-1 grid h-4 min-w-4 place-items-center rounded-full border border-surface bg-danger px-1 text-[9.5px] font-bold leading-none text-white">
-                {count}
+                {badgeText(count)}
               </span>
             ) : null}
           </Link>
@@ -150,10 +154,9 @@ export function MobileDrawer({
 }) {
   const pathname = usePathname() ?? '/'
   const { unreadCount, counts } = useNavCounts()
-  const groups = mobileNavGroups(navGroups)
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-50 md:hidden">
+    <Dialog open={open} onClose={onClose} className="relative z-50 shell:hidden">
       <DialogBackdrop className="fixed inset-0 bg-stone-950/50" />
       <DialogPanel className="fixed inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-sidebar-bg text-sidebar-fg shadow-lg">
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
@@ -177,11 +180,13 @@ export function MobileDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto px-2.5 py-2">
-          {groups.map((group, groupIndex) => (
+          {navGroups.map((group, groupIndex) => (
             <div key={groupIndex}>
-              <div className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-sidebar-fg-muted">
-                {group.label ?? DRAWER_GROUP_TITLES[groupIndex]}
-              </div>
+              {group.label ? (
+                <div className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-sidebar-fg-muted">
+                  {group.label}
+                </div>
+              ) : null}
               {group.items.map((item) => {
                 const active = isActivePath(pathname, item.href)
                 const count = navCount(item, unreadCount, counts)
@@ -203,7 +208,7 @@ export function MobileDrawer({
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {count ? (
                       <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">
-                        {count}
+                        {badgeText(count)}
                       </span>
                     ) : null}
                   </Link>
@@ -229,7 +234,10 @@ export function MobileDrawer({
             className="grid h-9 w-9 place-items-center rounded-[9px] text-sidebar-fg-muted transition-colors hover:bg-sidebar-hover-bg hover:text-sidebar-fg disabled:opacity-50"
             aria-label="Sign out"
           >
-            <Icon name="x" size={16} />
+            {/* Deliberately not an `x`: the drawer header already has an `x` that
+                closes the panel, and two identical glyphs a thumb apart made
+                signing out an easy mis-tap. */}
+            <Icon name="logout" size={16} />
           </button>
         </div>
       </DialogPanel>

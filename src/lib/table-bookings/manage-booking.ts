@@ -524,9 +524,11 @@ export async function updateTableBookingByRawToken(
     // successful charges. Telling a guest a fee "may apply" when we cannot
     // collect it, then asking a manager to rule on it, was cost with no benefit.
     //
-    // Do not reinstate this without card capture landing first. The approval
-    // machinery it called (`charge-approvals.ts`) is still used by the FOH
-    // no-show and walkout buttons, which a person chooses to press.
+    // Do not reinstate this without card capture landing first. As of
+    // 2026-08-09 nothing raises a charge request at all: the FOH walkout button
+    // now only records the incident, and the 27 requests still sitting pending
+    // were waived. `charge-approvals.ts` and /m/<token>/charge-request remain in
+    // the tree but are unreachable.
     return {
       state: 'cancelled',
       table_booking_id: bookingId,

@@ -1,23 +1,65 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { format, subDays } from 'date-fns'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { buildEventChecklist, type EventChecklistStatusRecord } from '@/lib/event-checklist'
 
+/**
+ * Every field here is a count of work a staff member can clear themselves. A
+ * nav pill is a to-do list, so anything that only clears when a customer pays,
+ * replies, or lets a hold expire must stay out: those pills can never reach
+ * zero however much work gets done, and a pill that never clears teaches people
+ * to ignore all of them.
+ *
+ * Deliberately absent:
+ * - parking. Every parking queue is "waiting on the guest to pay", which
+ *   resolves itself to paid or expired. There is no staff action.
+ * - table bookings. The only queue there was charge requests awaiting a manager
+ *   decision, and charge requests were withdrawn entirely (nothing raises them
+ *   and none could ever be charged).
+ */
 export type OutstandingCounts = {
   events: number
   menu_management: number
-  table_bookings: number
   private_bookings: number
-  parking: number
   cashing_up: number
   invoices: number
   receipts: number
+  rota: number
+  checklists: number
+  feedback: number
+}
+
+const EMPTY_COUNTS: OutstandingCounts = {
+  events: 0,
+  menu_management: 0,
+  private_bookings: 0,
+  cashing_up: 0,
+  invoices: 0,
+  receipts: 0,
+  rota: 0,
+  checklists: 0,
+  feedback: 0,
 }
 
 export async function getOutstandingCounts(): Promise<OutstandingCounts> {
   const supabase = await createClient()
+
+  // Two of the tables below are readable only by the service role, so they need
+  // the admin client. That bypasses RLS, so establish there is a signed-in user
+  // first and return zeros otherwise. Every caller is authenticated staff chrome.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return EMPTY_COUNTS
+
+  // `checklist_task_instances` has a service_role-only policy and
+  // `review_feedback` has RLS on with no policies at all, so both return zero
+  // rows through the cookie client. Counting them with `supabase` would have
+  // shown a permanently empty badge rather than an error.
+  const admin = createAdminClient()
   const todayIso = getTodayIsoDate()
 
   const [
@@ -25,13 +67,13 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
     menuResult,
     privateBookingDraftsResult,
     privateBookingPendingSmsResult,
-    parkingPendingPaymentsResult,
     invoicesOutstandingResult,
     receiptsPendingResult,
     cashingUpDraftsResult,
     cashingUpRecentSessionsResult,
-    tableBookingsPendingResult,
-    tableBookingPendingChargeRequestsResult
+    leaveRequestsPendingResult,
+    checklistTasksOpenResult,
+    feedbackOpenResult
   ] = await Promise.all([
     // Events: upcoming events used for checklist todo count
     supabase
@@ -54,17 +96,13 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending'),
 
-    // Parking: pending payment actions (aligned with Parking dashboard)
-    supabase
-      .from('parking_bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('payment_status', 'pending'),
-
-    // Invoices: outstanding items (same unpaid model as invoices workspace)
+    // Invoices: only the ones needing staff work. `sent` and `partially_paid`
+    // are waiting on the customer to pay, so counting them meant the pill could
+    // never reach zero. Drafts need finishing and sending; overdue need chasing.
     supabase
       .from('invoices')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['draft', 'sent', 'overdue', 'partially_paid'])
+      .in('status', ['draft', 'overdue'])
       .is('deleted_at', null),
 
     // Receipts: pending
@@ -86,16 +124,24 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
       .gte('session_date', format(subDays(new Date(), 7), 'yyyy-MM-dd'))
       .lte('session_date', format(subDays(new Date(), 1), 'yyyy-MM-dd')),
 
-    // Table Bookings: unresolved booking states
-    supabase.from('table_bookings')
+    // Rota: leave requests waiting on a manager decision
+    supabase.from('leave_requests')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['pending_payment']),
+      .eq('status', 'pending'),
 
-    // Table Bookings: manager approvals still pending for charge requests
-    supabase.from('charge_requests')
+    // Checklists: tasks still open and already due. Anything already recorded
+    // as `missed` is excluded: that outcome is settled and cannot be worked off.
+    admin.from('checklist_task_instances')
       .select('*', { count: 'exact', head: true })
-      .eq('charge_status', 'pending')
-      .is('manager_decision', null)
+      .eq('state', 'pending')
+      .is('completed_at', null)
+      .lte('business_date', todayIso),
+
+    // Feedback: the inbox's own open states, matching OPEN_STATUSES in
+    // src/app/actions/feedback.ts
+    admin.from('review_feedback')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['new', 'in_progress'])
   ])
 
   let eventsCount = 0
@@ -136,12 +182,12 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
 
   const privateBookingsCount =
     (privateBookingDraftsResult.count ?? 0) + (privateBookingPendingSmsResult.count ?? 0)
-  const parkingCount = parkingPendingPaymentsResult.count ?? 0
   const invoicesCount = invoicesOutstandingResult.count ?? 0
   const receiptsCount = receiptsPendingResult.count ?? 0
   const cashingUpDrafts = cashingUpDraftsResult.count ?? 0
-  const tableBookingsCount =
-    (tableBookingsPendingResult.count ?? 0) + (tableBookingPendingChargeRequestsResult.count ?? 0)
+  const rotaCount = leaveRequestsPendingResult.count ?? 0
+  const checklistsCount = checklistTasksOpenResult.count ?? 0
+  const feedbackCount = feedbackOpenResult.count ?? 0
 
   // Calculate missing cashing up days
   const existingSessions = (cashingUpRecentSessionsResult.data as { session_date: string }[] | null) ?? []
@@ -158,11 +204,12 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
   return {
     events: eventsCount,
     menu_management: menuCount,
-    table_bookings: tableBookingsCount,
     private_bookings: privateBookingsCount,
-    parking: parkingCount,
     cashing_up: cashingUpDrafts + missingDaysCount,
     invoices: invoicesCount,
-    receipts: receiptsCount
+    receipts: receiptsCount,
+    rota: rotaCount,
+    checklists: checklistsCount,
+    feedback: feedbackCount
   }
 }
