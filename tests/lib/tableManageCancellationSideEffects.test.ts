@@ -45,9 +45,15 @@ function buildSupabaseForLateCancellation() {
     },
     error: null,
   })
+  // The action_type filter is `.in(...)` rather than `.eq(...)`, because the 24h confirm
+  // link reaches this same cancel path with a 'booking_confirm' token. Both terminators
+  // are offered so this double does not care which the query uses.
   const guestTokenSecondEq = vi.fn().mockReturnValue({ maybeSingle: guestTokenMaybeSingle })
-  const guestTokenFirstEq = vi.fn().mockReturnValue({ eq: guestTokenSecondEq })
-  const guestTokenSelect = vi.fn().mockReturnValue({ eq: guestTokenFirstEq })
+  const guestTokenIn = vi.fn().mockReturnValue({ maybeSingle: guestTokenMaybeSingle })
+  const guestTokenFirstEq = vi
+    .fn()
+    .mockReturnValue({ eq: guestTokenSecondEq, in: guestTokenIn })
+  const guestTokenSelect = vi.fn().mockReturnValue({ eq: guestTokenFirstEq, in: guestTokenIn })
 
   const bookingPreviewMaybeSingle = vi.fn().mockResolvedValue({
     data: {
