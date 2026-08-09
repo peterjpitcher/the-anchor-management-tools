@@ -171,11 +171,11 @@ describe('a seasonal booking is never silently re-priced', () => {
 })
 
 describe('an ordinary booking behaves exactly as it always has', () => {
-  it('clears the pending deposit when the party drops below ten', async () => {
+  it('clears the pending deposit when the party drops below fifteen', async () => {
     const updates: UpdateCall[] = []
     const result = await applyPartySizeDepositTransition(fakeSupabase(updates), {
       booking: ordinaryBooking(),
-      previousPartySize: 12,
+      previousPartySize: 16,
       newPartySize: 8,
       sendSms: false,
       appBaseUrl: 'https://example.test',
@@ -186,20 +186,37 @@ describe('an ordinary booking behaves exactly as it always has', () => {
     expect(updates[0]).toMatchObject({ status: 'confirmed', deposit_amount: null })
   })
 
-  it('asks for a deposit when the party grows past ten', async () => {
+  it('asks for a deposit when the party grows past fifteen', async () => {
     const updates: UpdateCall[] = []
     const result = await applyPartySizeDepositTransition(fakeSupabase(updates), {
       booking: ordinaryBooking({ party_size: 4, status: 'confirmed', payment_status: null, deposit_amount: null }),
       previousPartySize: 4,
-      newPartySize: 12,
+      newPartySize: 16,
       sendSms: false,
       appBaseUrl: 'https://example.test',
     })
 
     expect(result.state).toBe('deposit_required')
     if (result.state !== 'deposit_required') return
-    expect(result.depositAmount).toBe(120)
-    expect(updates[0]).toMatchObject({ status: 'pending_payment', deposit_amount: 120 })
+    expect(result.depositAmount).toBe(160)
+    expect(updates[0]).toMatchObject({ status: 'pending_payment', deposit_amount: 160 })
+  })
+
+  it('leaves a party of fourteen alone that would once have owed GBP 140', async () => {
+    // The boundary at the layer that actually rewrites the booking. Growing from 4 to 14 used
+    // to flip the booking into pending_payment and text the guest a payment link; after the
+    // 2026-08-09 threshold change it must do nothing at all.
+    const updates: UpdateCall[] = []
+    const result = await applyPartySizeDepositTransition(fakeSupabase(updates), {
+      booking: ordinaryBooking({ party_size: 4, status: 'confirmed', payment_status: null, deposit_amount: null }),
+      previousPartySize: 4,
+      newPartySize: 14,
+      sendSms: false,
+      appBaseUrl: 'https://example.test',
+    })
+
+    expect(result.state).toBe('unchanged')
+    expect(updates).toHaveLength(0)
   })
 
   it('does nothing when the party stays on the same side of the threshold', async () => {

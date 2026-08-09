@@ -22,8 +22,8 @@ describe('FOH booking deposit guards', () => {
         status: 'confirmed',
         payment_status: 'pending',
         deposit_waived: false,
-        party_size: 10,
-        committed_party_size: 10,
+        party_size: 16,
+        committed_party_size: 16,
         paypal_deposit_capture_id: null,
       }),
     ).toBe(true)
@@ -35,8 +35,8 @@ describe('FOH booking deposit guards', () => {
         status: 'pending_payment',
         payment_status: 'pending',
         deposit_waived: true,
-        party_size: 12,
-        committed_party_size: 12,
+        party_size: 16,
+        committed_party_size: 16,
         paypal_deposit_capture_id: null,
       }),
     ).toBe(false)
@@ -46,8 +46,8 @@ describe('FOH booking deposit guards', () => {
         status: 'confirmed',
         payment_status: 'pending',
         deposit_waived: false,
-        party_size: 12,
-        committed_party_size: 12,
+        party_size: 16,
+        committed_party_size: 16,
         paypal_deposit_capture_id: 'PAYPAL-CAPTURE-1',
       }),
     ).toBe(false)

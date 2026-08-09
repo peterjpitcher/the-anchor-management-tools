@@ -91,16 +91,25 @@ describe('resolveTableBookingDeposit: the party-size rule on its own', () => {
     expect(deposit.rule).toBe('none')
   })
 
-  it('charges GBP 10 a head from 10 guests', () => {
-    const deposit = expectOk(resolve({ partySize: 10 }))
-    expect(deposit.amount).toBe(100)
+  it('charges GBP 10 a head from 15 guests', () => {
+    const deposit = expectOk(resolve({ partySize: 15 }))
+    expect(deposit.amount).toBe(150)
     expect(deposit.rule).toBe('group')
     expect(deposit.basis).toBe('per_head')
   })
 
+  it('charges nothing at fourteen, the guest immediately below the threshold', () => {
+    // The boundary itself, pinned. Fourteen used to pay GBP 140 and now pays nothing;
+    // an off-by-one here is a payment screen in front of an ordinary family Sunday.
+    const deposit = expectOk(resolve({ partySize: 14 }))
+    expect(deposit.required).toBe(false)
+    expect(deposit.amount).toBe(0)
+    expect(deposit.rule).toBe('none')
+  })
+
   it('is unchanged by a period the guest declined', () => {
-    const deposit = expectOk(resolve({ partySize: 12, period: christmasPeriod(), periodAccepted: false }))
-    expect(deposit.amount).toBe(120)
+    const deposit = expectOk(resolve({ partySize: 16, period: christmasPeriod(), periodAccepted: false }))
+    expect(deposit.amount).toBe(160)
     expect(deposit.rule).toBe('group')
     expect(deposit.periodId).toBeNull()
   })
@@ -145,16 +154,16 @@ describe('resolveTableBookingDeposit: largest wins, never stacks', () => {
   })
 
   it('takes the party-size deposit when it is larger', () => {
-    // Party of 12 on Mother's Day: period GBP 25 flat, party-size rule GBP 120.
+    // Party of 16 on Mother's Day: period GBP 25 flat, party-size rule GBP 160.
     const deposit = expectOk(
       resolve({
-        partySize: 12,
+        partySize: 16,
         bookingDate: '2027-03-14',
         period: mothersDayPeriod(),
         periodAccepted: true,
       }),
     )
-    expect(deposit.amount).toBe(120)
+    expect(deposit.amount).toBe(160)
     expect(deposit.rule).toBe('group')
     // The period is still recorded on the booking even though its deposit did not win.
     expect(deposit.periodCode).toBe('mothers-day-2027')
@@ -180,21 +189,25 @@ describe('resolveTableBookingDeposit: largest wins, never stacks', () => {
 
   it('leaves an ordinary large-group deposit on the terms it has always had', () => {
     // No period, so no seasonal promise was ever made. Inventing one here would change the refund
-    // rule for every ten-plus booking in the pub, which is not what this feature is for.
-    const deposit = expectOk(resolve({ partySize: 12, period: null }))
+    // rule for every fifteen-plus booking in the pub, which is not what this feature is for.
+    const deposit = expectOk(resolve({ partySize: 16, period: null }))
     expect(deposit.rule).toBe('group')
     expect(deposit.refundCutoffDays).toBeNull()
     expect(deposit.refundPolicy).toBeNull()
   })
 
-  it('THE TIE: a party of 12 inside Christmas pays GBP 120 once, never GBP 240', () => {
+  it('THE TIE: a party of 15 inside Christmas pays GBP 150 once, never GBP 300', () => {
     // Christmas is GBP 10 per head and the party-size rule is GBP 10 per head, so both routes
     // produce the identical number. That equality makes a double-charge bug invisible unless it is
     // tested for deliberately. This is that test.
-    const deposit = expectOk(resolve({ partySize: 12, period: christmasPeriod(), periodAccepted: true }))
+    //
+    // The tie sat at 12 until the group threshold moved to 15 on 2026-08-09. Below 15 the
+    // party-size rule now yields nothing, so there is no longer anything for Christmas to tie
+    // with; 15 is the smallest party where both rules fire and the double-charge is possible.
+    const deposit = expectOk(resolve({ partySize: 15, period: christmasPeriod(), periodAccepted: true }))
 
-    expect(deposit.amount).toBe(120)
-    expect(deposit.amount).not.toBe(240)
+    expect(deposit.amount).toBe(150)
+    expect(deposit.amount).not.toBe(300)
     // A tie resolves to the period so the guest-facing wording names the season.
     expect(deposit.rule).toBe('period')
     expect(deposit.reason).toContain('matches the large-group deposit rather than adding to it')
@@ -281,10 +294,10 @@ describe('resolveTableBookingDeposit: the kill switch', () => {
 
   it('leaves the large-group deposit completely alone', () => {
     const deposit = expectOk(
-      resolve({ partySize: 12, period: christmasPeriod(), periodAccepted: true, collectPeriodDeposits: false }),
+      resolve({ partySize: 16, period: christmasPeriod(), periodAccepted: true, collectPeriodDeposits: false }),
     )
     expect(deposit.required).toBe(true)
-    expect(deposit.amount).toBe(120)
+    expect(deposit.amount).toBe(160)
     expect(deposit.rule).toBe('group')
   })
 
@@ -392,8 +405,8 @@ describe('resolveTableBookingDeposit: an inactive period is completely inert', (
   it('is genuinely inert when no period is passed at all, which is what an inactive period looks like', () => {
     // The lookup only ever returns LIVE periods, so an inactive Christmas reaches the resolver as
     // no period whatsoever. That is the path that proves the seeded, unpublished period is safe.
-    const deposit = expectOk(resolve({ partySize: 12, period: null, periodAccepted: false }))
-    expect(deposit.amount).toBe(120)
+    const deposit = expectOk(resolve({ partySize: 16, period: null, periodAccepted: false }))
+    expect(deposit.amount).toBe(160)
     expect(deposit.rule).toBe('group')
     expect(deposit.periodId).toBeNull()
   })
@@ -489,11 +502,11 @@ describe('buildPeriodTermsSnapshot', () => {
   })
 
   it('leaves the period fields null when no period applied', () => {
-    const deposit = expectOk(resolve({ partySize: 12 }))
+    const deposit = expectOk(resolve({ partySize: 16 }))
     const snapshot = buildPeriodTermsSnapshot(deposit, null, false)
     expect(snapshot.booking_period_id).toBeNull()
     expect(snapshot.booking_period_answer).toBeNull()
-    expect(snapshot.deposit_amount).toBe(120)
+    expect(snapshot.deposit_amount).toBe(160)
   })
 })
 

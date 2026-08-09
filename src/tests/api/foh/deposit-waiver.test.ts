@@ -36,7 +36,7 @@ const baseBookingPayload = {
   customer_id: '00000000-0000-0000-0000-000000000001',
   date: '2026-04-05',
   time: '13:00',
-  party_size: 10,
+  party_size: 16,
   purpose: 'food'
 }
 
@@ -198,7 +198,7 @@ describe('POST /api/foh/bookings — deposit waiver', () => {
       customer_id: '00000000-0000-0000-0000-000000000001',
       date: '2026-04-05',
       time: '13:00',
-      party_size: 12,
+      party_size: 16,
       purpose: 'food',
       management_override: true
       // Critically: no sunday_deposit_method — would fail the deposit gate

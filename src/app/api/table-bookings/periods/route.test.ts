@@ -7,8 +7,8 @@ import { NextRequest } from 'next/server'
  * Two things here are worth more than the rest of the file put together:
  *
  *   1. THE TIE. The Christmas deposit is GBP 10 per head, which is exactly the existing
- *      10-or-more party rate. A party of 12 therefore comes to GBP 120 under BOTH rules, so a
- *      stacking bug would bill GBP 240 and look completely normal in casual testing, because
+ *      15-or-more party rate. A party of 16 therefore comes to GBP 160 under BOTH rules, so a
+ *      stacking bug would bill GBP 320 and look completely normal in casual testing, because
  *      every other figure on the page would still be right. It is asserted explicitly.
  *   2. AN INACTIVE PERIOD IS INERT. The seeded Christmas period ships switched off, so the
  *      endpoint must behave as though it does not exist: no question, no deposit, no menu.
@@ -176,7 +176,7 @@ describe('GET /api/table-bookings/periods', () => {
 
   it('says there is no period when none is live for that date', async () => {
     state.period = null
-    const res = await GET(makeRequest('?date=2026-06-15&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-06-15&party_size=16'))
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -207,14 +207,14 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.deposit).toBeNull()
   })
 
-  it('THE TIE: a party of 12 is quoted GBP 120 once, never GBP 240', async () => {
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+  it('THE TIE: a party of 16 is quoted GBP 160 once, never GBP 320', async () => {
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
 
-    // GBP 10 per head across 12 guests is 120 by the period rule AND 120 by the 10-or-more rule.
+    // GBP 10 per head across 16 guests is 160 by the period rule AND 160 by the 15-or-more rule.
     // One charge, not the sum of two.
-    expect(json.data.deposit.if_accepted.amount).toBe(120)
-    expect(json.data.deposit.if_accepted.amount).not.toBe(240)
+    expect(json.data.deposit.if_accepted.amount).toBe(160)
+    expect(json.data.deposit.if_accepted.amount).not.toBe(320)
     expect(json.data.deposit.if_accepted.rule).toBe('period')
     expect(json.data.deposit.if_accepted.required).toBe(true)
     expect(json.data.deposit.if_accepted.refund_cutoff_days).toBe(7)
@@ -222,12 +222,12 @@ describe('GET /api/table-bookings/periods', () => {
   })
 
   it('gives a guest who says no the normal menu at normal terms', async () => {
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
 
     // Declining in December is a supported answer: the 10-or-more rule still applies, the
-    // seasonal one does not, and the total is the same single 120.
-    expect(json.data.deposit.if_declined.amount).toBe(120)
+    // seasonal one does not, and the total is the same single 160.
+    expect(json.data.deposit.if_declined.amount).toBe(160)
     expect(json.data.deposit.if_declined.rule).toBe('group')
   })
 
@@ -253,7 +253,7 @@ describe('GET /api/table-bookings/periods', () => {
 
   it('never shows an empty menu: a pre-order period with no dishes is not bookable', async () => {
     state.menu = []
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
 
     expect(json.data.period.bookable).toBe(false)
@@ -264,12 +264,12 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.deposit.if_accepted).toBeNull()
     expect(json.data.deposit.if_accepted_rejection).toBeNull()
     // The ordinary terms still stand, because the guest can still book a normal table.
-    expect(json.data.deposit.if_declined.amount).toBe(120)
+    expect(json.data.deposit.if_declined.amount).toBe(160)
   })
 
   it('quotes nothing when the kill switch is off, because nothing will be charged', async () => {
     // This used to assert the figure was "still worked out while collection is paused", priced for
-    // a party of 12, where the large-group rule gives GBP 120 whatever the switch does. So it
+    // a party of 16, where the large-group rule gives GBP 160 whatever the switch does. So it
     // passed while the endpoint quoted a seasonal deposit the create path would never take: switch
     // off, a party of 6 was shown GBP 60 and charged GBP 0. Six isolates the seasonal rule.
     state.settingsRow = { value: { value: false } }
@@ -294,24 +294,24 @@ describe('GET /api/table-bookings/periods', () => {
     // The kill switch stops seasonal collection only. The deposit big parties have always paid is
     // a different rule and must be quoted exactly as before.
     state.settingsRow = { value: { value: false } }
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
 
-    expect(json.data.deposit.if_accepted.amount).toBe(120)
+    expect(json.data.deposit.if_accepted.amount).toBe(160)
     expect(json.data.deposit.if_accepted.rule).toBe('group')
   })
 
   it('an OFF switch stays off even if the row was written unwrapped', async () => {
     // A switch a manager turned off must never read back as on because of a storage shape.
     state.settingsRow = { value: false }
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
     expect(json.data.deposit.collect).toBe(false)
   })
 
   it('defaults to collecting when the switch has never been set', async () => {
     state.settingsRow = null
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
     expect(json.data.deposit.collect).toBe(true)
   })
@@ -323,7 +323,7 @@ describe('GET /api/table-bookings/periods', () => {
     // website would then hide the payment step from a guest the database had just put into
     // pending_payment, and their hold would expire with nobody having been asked for anything.
     state.settingsError = new Error('permission denied')
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
     expect(json.data.deposit.collect).toBe(true)
   })
@@ -338,12 +338,12 @@ describe('GET /api/table-bookings/periods', () => {
     // A manager may rename the period to anything. Nothing in the response contract may depend
     // on the display name, so a rename must change only the name.
     state.period = { ...CHRISTMAS_ROW, name: 'Festive feasting' }
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=12'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=16'))
     const json = await res.json()
 
     expect(json.data.period.name).toBe('Festive feasting')
     expect(json.data.period.period_kind).toBe('christmas')
     expect(json.data.period.code).toBe('christmas-2026')
-    expect(json.data.deposit.if_accepted.amount).toBe(120)
+    expect(json.data.deposit.if_accepted.amount).toBe(160)
   })
 })
