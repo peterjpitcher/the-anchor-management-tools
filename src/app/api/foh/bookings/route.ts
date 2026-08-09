@@ -102,7 +102,7 @@ const CreateFohTableBookingSchema = z.object({
   }
 
   // Deposit not required for management overrides, deposit waivers, or venue events — they bypass deposit restrictions.
-  // The deposit threshold is the centralised 10+ rule; the deprecated `sunday_lunch`
+  // The deposit threshold is the centralised 15+ rule; the deprecated `sunday_lunch`
   // flag no longer drives deposit or pre-order behaviour.
   if (
     value.management_override !== true &&
@@ -1182,7 +1182,7 @@ export async function POST(request: NextRequest) {
 
   const effectiveSundayLunch = false
 
-  // Deposit-required decision uses the centralised 10+ rule with explicit
+  // Deposit-required decision uses the centralised 15+ rule with explicit
   // waiver support. Sunday pre-orders have been retired, so FOH bookings always
   // enter the generic table-booking path.
   //
