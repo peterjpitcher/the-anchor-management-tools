@@ -6,6 +6,7 @@ import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { displayName } from '@/lib/employees/display-name'
 
 // Todos (spec 3.6 / 15). One-off, non-recurring jobs. Not scored, never an instance.
 // The `checklist_todos` table is RLS deny-all, so every read/write goes through the admin
@@ -94,14 +95,12 @@ export async function listTodos(
     if (employeeIds.size > 0) {
       const { data: employees, error: empError } = await db
         .from('employees')
-        .select('employee_id, first_name, last_name')
+        .select('employee_id, first_name, last_name, preferred_name')
         .in('employee_id', Array.from(employeeIds))
       if (empError) throw empError
       for (const e of employees ?? []) {
-        nameMap.set(
-          e.employee_id as string,
-          [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown',
-        )
+        // Internal manage screen: assignee and completer read as the team knows them.
+        nameMap.set(e.employee_id as string, displayName(e))
       }
     }
 

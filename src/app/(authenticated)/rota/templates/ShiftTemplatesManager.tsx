@@ -18,6 +18,7 @@ import {
 } from '@/app/actions/rota-templates';
 import type { RotaEmployee } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
+import { displayName } from '@/lib/employees/display-name';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -52,7 +53,7 @@ function paidHours(start: string, end: string, breakMins: number): string {
 }
 
 function empName(emp: RotaEmployee): string {
-  return [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown';
+  return displayName(emp, 'Unknown');
 }
 
 interface TemplateFormProps {

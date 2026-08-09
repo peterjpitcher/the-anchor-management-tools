@@ -28,6 +28,9 @@ import type { PeriodSummary } from './PaySummaryCard';
 import ShiftDecisionControls from './ShiftDecisionControls';
 import OpenShiftRequestButton from './OpenShiftRequestButton';
 import type { ShiftAcceptanceStatus } from '@/app/actions/rota';
+// Rota-facing names only. The pay figures on this page are guidance, not a
+// payslip, so the preferred name is right here; payroll keeps the legal name.
+import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,8 +119,12 @@ function deptColour(dept: string): string {
     : 'bg-orange-50 border-orange-200 text-orange-800';
 }
 
-function employeeDisplayName(employee: { first_name: string | null; last_name: string | null } | null | undefined): string {
-  return [employee?.first_name, employee?.last_name].filter(Boolean).join(' ') || 'Staff member';
+function employeeDisplayName(
+  employee: { first_name: string | null; last_name: string | null; preferred_name: string | null } | null | undefined,
+): string {
+  // `?? {}` preserves the old null handling: no employee row still reads
+  // "Staff member" rather than an empty label.
+  return displayName(employee ?? {}, 'Staff member');
 }
 
 type ShiftPremiumRow = {
@@ -472,7 +479,7 @@ export default async function MyShiftsPage({
 
   const { data: employee } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name')
+    .select('employee_id, first_name, last_name, preferred_name')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .single();
@@ -570,7 +577,7 @@ export default async function MyShiftsPage({
     if (shiftEmployeeIds.length > 0) {
       const { data: shiftEmployees } = await admin
         .from('employees')
-        .select('employee_id, first_name, last_name')
+        .select('employee_id, first_name, last_name, preferred_name')
         .in('employee_id', shiftEmployeeIds);
 
       for (const shiftEmployee of shiftEmployees ?? []) {
@@ -579,6 +586,7 @@ export default async function MyShiftsPage({
           employeeDisplayName({
             first_name: shiftEmployee.first_name,
             last_name: shiftEmployee.last_name,
+            preferred_name: shiftEmployee.preferred_name,
           }),
         );
       }
@@ -626,7 +634,9 @@ export default async function MyShiftsPage({
   }, {});
   const dates = Object.keys(byDate).sort();
 
-  const empName = [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'there';
+  // A greeting, so use the name they go by. 'there' keeps "Hi there" readable
+  // when an employee record somehow carries no name at all.
+  const empName = displayName(employee, 'there');
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
   const calToken = generateCalendarToken(employee.employee_id);
   const feedUrl = `${baseUrl}/api/portal/calendar-feed?employee_id=${employee.employee_id}&token=${calToken}`;

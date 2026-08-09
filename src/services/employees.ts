@@ -4,6 +4,7 @@ import { normalizePersonName } from '@/lib/names';
 import { z } from 'zod';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { formatPhoneForStorage } from '@/lib/utils';
+import { displayName } from '@/lib/employees/display-name';
 import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
 import type { AuditLogEntry } from '@/app/actions/employeeDetails';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeEmergencyContact, EmployeeRightToWork, AttachmentCategory, EmployeeNote, AuditLog } from '@/types/database';
@@ -540,7 +541,7 @@ export class EmployeeService {
 
     const { data, error } = await adminClient
       .from('employees')
-      .select('employee_id, first_name, last_name')
+      .select('employee_id, first_name, last_name, preferred_name')
       .in('status', OPERATIONALLY_ACTIVE_EMPLOYEE_STATUSES)  // Show currently employable staff in dropdowns
       .order('last_name')
       .order('first_name');
@@ -550,7 +551,8 @@ export class EmployeeService {
       throw new Error('Failed to fetch employee list');
     }
 
-    return data.map(emp => ({ id: emp.employee_id, name: `${emp.first_name} ${emp.last_name}` }));
+    // Staff-facing dropdowns, so show the name the team uses.
+    return data.map(emp => ({ id: emp.employee_id, name: displayName(emp) }));
   }
 
   static async addEmployeeNote(noteData: z.infer<typeof noteSchema>) {
@@ -1117,6 +1119,9 @@ export class EmployeeService {
           [
             `first_name.ilike.${searchPattern}`,
             `last_name.ilike.${searchPattern}`,
+            // The roster shows the preferred name, so searching it has to work:
+            // without this, looking up "Mandy" finds nobody.
+            `preferred_name.ilike.${searchPattern}`,
             `email_address.ilike.${searchPattern}`,
             `job_title.ilike.${searchPattern}`,
             `mobile_number.ilike.${searchPattern}`,

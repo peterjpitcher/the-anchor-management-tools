@@ -42,7 +42,13 @@ export function AppShell({
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
   const shell = (
-    <div className={cn('flex min-h-screen bg-bg', showSidebar && !fohMode && 'max-md:h-[100dvh] max-md:flex-col max-md:overflow-hidden')}>
+    // `min-h-dvh`, not `min-h-screen`. min-height always beats height in CSS, so
+    // pairing `min-h-screen` (100vh) with `h-[100dvh]` left the shell taller
+    // than the visible viewport whenever a mobile browser toolbar was showing.
+    // The bottom tab bar, Messages included, sat underneath the browser chrome,
+    // and because the shell is overflow-hidden with the scrolling on <main>, the
+    // page could never be scrolled to bring it back.
+    <div className={cn('flex min-h-dvh bg-bg', showSidebar && !fohMode && 'max-shell:h-[100dvh] max-shell:flex-col max-shell:overflow-hidden')}>
       {/* Desktop sidebar. Its badges read the NavCountsProvider below, which is
           mounted on `showSidebar && !fohMode`. The caller keeps `showSidebar`
           and `!fohMode` equal, so the sidebar is always inside the provider; if
@@ -71,7 +77,7 @@ export function AppShell({
       )}
 
       {/* Main content area */}
-      <div className="flex-1 min-w-0 flex flex-col max-md:min-h-0">
+      <div className="flex-1 min-w-0 flex flex-col max-shell:min-h-0">
         {showSidebar && !fohMode ? (
           <MobileTopbar onMenuOpen={openMobile} />
         ) : (
@@ -86,12 +92,16 @@ export function AppShell({
         {fohMode && fohEmployeeId && (
           <FohClockBand employeeId={fohEmployeeId} />
         )}
+        {/* The bottom tab bar is a flex sibling in normal flow, not an overlay,
+            and it carries its own safe-area padding, so <main> only needs
+            ordinary bottom padding. Reserving a further 88px plus the inset on
+            top of that left a dead band at the foot of every mobile page. */}
         <main
           className={cn(
             'flex-1 overflow-auto bg-bg',
             showSidebar && !fohMode
-              ? 'p-[12px_16px_calc(88px+env(safe-area-inset-bottom))] md:p-[22px_28px_40px]'
-              : 'p-[12px_16px_40px] md:p-[22px_28px_40px]',
+              ? 'p-[12px_16px_24px] shell:p-[22px_28px_40px]'
+              : 'p-[12px_16px_40px] shell:p-[22px_28px_40px]',
           )}
         >
           {children}

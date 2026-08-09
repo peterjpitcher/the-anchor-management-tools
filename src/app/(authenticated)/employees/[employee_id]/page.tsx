@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { formatDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { calculateAge, calculateLengthOfService } from '@/lib/employeeUtils'
+import { displayNameWithLegal } from '@/lib/employees/display-name'
 import { Badge } from '@/ds'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
@@ -118,8 +119,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   }, {})
 
   const isOnboarding = employee.status === 'Onboarding'
-  const displayName = employee.first_name && employee.last_name
-    ? `${employee.first_name} ${employee.last_name}`
+  // Preferred name first, legal name in brackets after it, so whoever is looking at
+  // the record can still match it to a contract or payslip. Onboarding rows have no
+  // name yet, so the email address stays the fallback.
+  const hasNameToShow = Boolean((employee.first_name && employee.last_name) || employee.preferred_name)
+  const headerName = hasNameToShow
+    ? displayNameWithLegal(employee, employee.email_address)
     : employee.email_address
   const age = calculateAge(employee.date_of_birth ?? null)
 
@@ -321,7 +326,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       <DeleteEmployeeButton
         key="delete"
         employeeId={employee.employee_id}
-        employeeName={displayName}
+        employeeName={headerName}
       />
     ) : null,
   ].filter(Boolean)
@@ -332,7 +337,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
   return (
     <PageLayout
-      title={displayName}
+      title={headerName}
       subtitle={isOnboarding ? 'Onboarding — profile not yet complete' : (employee.job_title ?? undefined)}
       backButton={{ label: 'Back to Employees', href: '/employees' }}
       headerActions={headerActions}
@@ -446,7 +451,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             <Card>
               <EmployeeAuditTrail
                 employeeId={employee.employee_id}
-                employeeName={displayName}
+                employeeName={headerName}
                 auditLogs={auditLogs}
                 notes={notes}
                 canViewAudit={permissions.canView}

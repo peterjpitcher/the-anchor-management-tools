@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
-import { createChargeRequestForBooking, getTableBookingForFoh } from '@/lib/foh/bookings'
+import { getTableBookingForFoh, recordWalkoutForBooking } from '@/lib/foh/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -52,24 +52,24 @@ export async function POST(
 
   const amount = Number(parsed.data.amount.toFixed(2))
 
-  const { chargeRequestId, amount: chargeAmount } = await createChargeRequestForBooking(auth.supabase, {
+  // Records the incident only. This used to raise a charge request and email a
+  // manager for approval, which could never lead to a charge: no card is held
+  // for a table booking, so every approval failed on "No card on file". Charge
+  // requests were withdrawn entirely, so the walkout is now just a logged fact
+  // about the booking.
+  await recordWalkoutForBooking(auth.supabase, {
     bookingId: booking.id,
     customerId: booking.customer_id,
-    type: 'walkout',
     amount,
-    requestedByUserId: auth.userId,
-    metadata: {
-      source: 'foh_walkout',
-      notes: parsed.data.notes || null
-    }
+    recordedByUserId: auth.userId,
+    notes: parsed.data.notes || null
   })
 
   return NextResponse.json({
     success: true,
     data: {
       booking_id: booking.id,
-      charge_request_id: chargeRequestId,
-      amount: chargeAmount,
+      amount,
       booking: {
         id: booking.id,
         status: booking.status

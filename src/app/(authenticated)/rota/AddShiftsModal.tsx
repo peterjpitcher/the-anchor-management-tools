@@ -7,6 +7,7 @@ import { Button } from '@/ds';
 import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
+import { displayName } from '@/lib/employees/display-name';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,7 +61,7 @@ function formatDayHeader(isoDate: string): string {
 }
 
 function empName(emp: RotaEmployee): string {
-  return [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown';
+  return displayName(emp, 'Unknown');
 }
 
 function deptBadgeClass(dept: string): string {

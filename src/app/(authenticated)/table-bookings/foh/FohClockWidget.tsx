@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Modal, ModalActions, ConfirmDialog } from '@/ds';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
 import type { TimeclockSession } from '@/app/actions/timeclock';
+import { displayName } from '@/lib/employees/display-name';
 
 type OpenSession = TimeclockSession & { employee_name: string };
 
@@ -12,6 +13,7 @@ interface Employee {
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
+  preferred_name: string | null;
 }
 
 interface FohClockWidgetProps {
@@ -27,8 +29,11 @@ function formatClockInTime(clockInAt: string): string {
   });
 }
 
+// The clock band is a staff-facing screen, so people are named the way the team
+// calls them. The helper still falls back to the legal name, so nobody renders
+// blank when no preferred name is set.
 function empName(e: Employee): string {
-  return [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown';
+  return displayName(e);
 }
 
 export default function FohClockWidget({ employees, initialSessions }: FohClockWidgetProps) {

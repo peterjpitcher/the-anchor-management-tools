@@ -3,6 +3,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calculatePaidHours } from '@/lib/rota/pay-calculator';
+import { displayName } from '@/lib/employees/display-name';
 import { PageLayout } from '@/ds';
 import { rotaNavItems } from '../nav';
 import HoursByEmployeeClient, {
@@ -50,6 +51,7 @@ type EmployeeRow = {
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
+  preferred_name: string | null;
   job_title: string | null;
   status: string | null;
 };
@@ -110,8 +112,10 @@ function weekLabel(weekStart: string): string {
   });
 }
 
-function employeeName(employee: Pick<EmployeeRow, 'first_name' | 'last_name'>): string {
-  return [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown';
+// Hours by employee is a planning screen, not a payroll record, so it shows the
+// name the team uses. Payroll itself still reports on the legal name.
+function employeeName(employee: Pick<EmployeeRow, 'first_name' | 'last_name' | 'preferred_name'>): string {
+  return displayName(employee, 'Unknown');
 }
 
 function actualHours(session: SessionRow): number {
@@ -172,7 +176,7 @@ export default async function RotaHoursPage({ searchParams }: HoursPageProps) {
   const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult, plannedShiftsResult] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, job_title, status')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, status')
       .order('first_name')
       .order('last_name'),
     supabase

@@ -6,6 +6,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { buildStaffRotaEmailHtml, buildRotaChangeEmailHtml, type ShiftSummary, type ShiftChange } from '@/lib/rota/email-templates';
+import { displayName } from '@/lib/employees/display-name';
 
 function addDays(isoDate: string, n: number): string {
   const d = new Date(isoDate + 'T00:00:00Z');
@@ -43,7 +44,7 @@ export async function sendRotaWeekEmails(
   const [{ data: employees }, { data: shifts }, { data: openShifts }] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, email_address')
       .in('status', ['Active', 'Started Separation']),
     supabase
       .from('rota_published_shifts')
@@ -83,7 +84,8 @@ export async function sendRotaWeekEmails(
   const results = await Promise.allSettled(
     eligible.map(async emp => {
       const empShifts = shiftsByEmployee[emp.employee_id]!;
-      const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'there';
+      // Goes to the employee and greets them, so use the name they go by.
+      const empName = displayName(emp, 'there');
 
       const shiftSummaries: ShiftSummary[] = empShifts.map((s: ShiftRow) => ({
         date: s.shift_date,
@@ -218,7 +220,7 @@ export async function sendRotaWeekChangeEmails(
   const [{ data: employees }, { data: openShifts }] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, email_address')
       .in('status', ['Active', 'Started Separation']),
     supabase
       .from('rota_published_shifts')
@@ -279,7 +281,8 @@ export async function sendRotaWeekChangeEmails(
         prevByEmployee[emp.employee_id] ?? [],
         newByEmployee[emp.employee_id] ?? [],
       );
-      const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'there';
+      // Goes to the employee and greets them, so use the name they go by.
+      const empName = displayName(emp, 'there');
       const allShifts: ShiftSummary[] = (newByEmployee[emp.employee_id] ?? []).map(toShiftSummary);
 
       const emailResult = await sendEmail({

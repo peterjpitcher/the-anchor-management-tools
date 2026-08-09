@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/app/actions/audit';
+import { displayName } from '@/lib/employees/display-name';
 import {
   calculateBusinessReliabilityScore,
   RELIABILITY_WINDOW_DAYS,
@@ -578,9 +579,14 @@ export async function getEmployeeReliabilityData(employeeId: string): Promise<Em
   };
 }
 
-function employeeName(employee: { first_name: string | null; last_name: string | null; email_address: string | null }): string {
-  const name = [employee.first_name, employee.last_name].filter(Boolean).join(' ');
-  return name || employee.email_address || 'Unknown employee';
+function employeeName(employee: {
+  first_name: string | null;
+  last_name: string | null;
+  preferred_name: string | null;
+  email_address: string | null;
+}): string {
+  // Same fallback chain as before: name, then email address, then a placeholder.
+  return displayName(employee, employee.email_address || 'Unknown employee');
 }
 
 function sortLeaderboard(rows: TeamReliabilityRow[], sortBy: TeamReliabilitySort): TeamReliabilityRow[] {
@@ -625,7 +631,7 @@ export async function getTeamReliabilityLeaderboard(input: {
 
   const { data: employees, error } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, email_address, job_title, status')
+    .select('employee_id, first_name, last_name, preferred_name, email_address, job_title, status')
     .in('status', statuses)
     .order('last_name')
     .order('first_name');

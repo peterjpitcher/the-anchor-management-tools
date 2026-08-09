@@ -7,6 +7,7 @@ import { mapVoucherRow } from '@/types/vouchers'
 import type { VoucherErrorCode, VoucherRow, VoucherStatus } from '@/types/vouchers'
 import { UNDO_WINDOW_SECONDS } from '@/lib/vouchers/constants'
 import { normaliseVoucherNumberInput, isFullVoucherNumber } from '@/lib/vouchers/numbering'
+import { displayName } from '@/lib/employees/display-name'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -98,7 +99,7 @@ export async function getActiveEmployee(
 ): Promise<{ id: string; name: string } | null> {
   const { data, error } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name')
+    .select('employee_id, first_name, last_name, preferred_name')
     .eq('employee_id', employeeId)
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle()
@@ -107,10 +108,10 @@ export async function getActiveEmployee(
     return null
   }
 
-  const name = [data.first_name, data.last_name]
-    .map((part: string | null) => (part ?? '').trim())
-    .filter(Boolean)
-    .join(' ')
+  // Stamped on the voucher as who handed it out or took it, and only ever read
+  // by staff, so it shows the name the team uses. The empty fallback keeps the
+  // old behaviour of treating a nameless row as no employee at all.
+  const name = displayName(data, '')
 
   return name ? { id: data.employee_id as string, name } : null
 }

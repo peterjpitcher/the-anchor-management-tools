@@ -497,24 +497,42 @@ export function useFohCreateBooking(input: {
           const remainingText = typeof payload.data.seats_remaining === 'number' ? ` (${payload.data.seats_remaining} seats left)` : ''
           setErrorMessage(`This event is full for that seat request${remainingText}.`); return
         }
-        const bookingRef = payload.data.booking_id || 'booking'
-        const eventNameText = payload.data.event_name ? ` for ${payload.data.event_name}` : ''
-        const outcome = payload.data.state === 'pending_payment' ? 'reserved and awaiting payment' : isWalkIn ? 'created, confirmed and seated' : 'created and confirmed'
-        let tableText = payload.data.table_name ? ` Table: ${payload.data.table_name}.` : ''
+        // Written for someone standing at the bar with a guest in front of
+        // them. The old version led with the raw booking UUID, which is not
+        // something anybody reads out or checks, and phrased the outcome as
+        // "was created and confirmed" when what the person needs to know is who
+        // is in, for what, and where to sit them.
+        let tableName = payload.data.table_name
         let walkInTableMoveText = ''
         if (isWalkIn && walkInTargetTable?.id && payload.data.table_booking_id) {
           try {
             await postBookingAction(`/api/foh/bookings/${payload.data.table_booking_id}/move-table`, { table_id: walkInTargetTable.id })
-            tableText = ` Table: ${walkInTargetTable.name}.`
+            tableName = walkInTargetTable.name
           } catch (moveError) {
-            walkInTableMoveText = ` (booking created but not moved to ${walkInTargetTable.name}: ${moveError instanceof Error ? moveError.message : 'table assignment update failed'})`
+            walkInTableMoveText = ` Could not put them on ${walkInTargetTable.name}: ${moveError instanceof Error ? moveError.message : 'the table assignment did not update'}.`
           }
         }
+
+        const who = (firstName || selectedCustomer?.first_name || '').trim() || 'Guest'
+        const seatWord = seats === 1 ? 'seat' : 'seats'
+        const eventName = payload.data.event_name
+        const forEvent = eventName ? ` for ${eventName}` : ''
+        const tableSentence = tableName
+          ? isWalkIn
+            ? ` Sat on ${tableName}.`
+            : ` They are on ${tableName}.`
+          : ''
+
+        const headline =
+          payload.data.state === 'pending_payment'
+            ? `${who} has ${seats} ${seatWord} held${forEvent}, waiting on payment.`
+            : isWalkIn
+              ? `${who} is in${forEvent} with ${seats} ${seatWord}.`
+              : `${who} is booked in${forEvent} with ${seats} ${seatWord}.`
+
         const paymentLinkText = payload.data.next_step_url ? ` Payment link: ${payload.data.next_step_url}` : ''
         const manageLinkText = payload.data.manage_booking_url ? ` Manage link: ${payload.data.manage_booking_url}` : ''
-        const bookingLabel = isWalkIn ? 'Walk-in event booking' : 'Event booking'
-        const seatingText = payload.data.event_seating_type ? ` (${payload.data.event_seating_type})` : ''
-        setStatusMessage(`${bookingLabel} ${bookingRef}${eventNameText}${seatingText} was ${outcome}.${tableText}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
+        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to create event booking')

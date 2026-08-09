@@ -27,6 +27,46 @@ export type MoveTableAvailability = {
   tables: MoveTableCandidateTable[]
 }
 
+/**
+ * How many spare seats a move option may carry before it stops being a
+ * sensible suggestion. A two is fine on a six, so four covers the useful cases
+ * without offering them a 22-cover join of four tables.
+ */
+export const MOVE_OPTION_SLACK_SEATS = 4
+
+/**
+ * Trims move options down to the ones that actually suit the party.
+ *
+ * `getMoveTableAvailability` enumerates every free table plus every joinable
+ * combination up to four tables, filtered only by a lower bound (it must seat
+ * the party). For a party of two in a quiet room that produced a wall of
+ * choices running up to 22 covers, which is noise on an iPad mid-service.
+ *
+ * Never returns an empty list while any option exists: if the only free tables
+ * are far too big, they are still offered, because a table that is too big
+ * beats telling staff there is nowhere to move to.
+ */
+export function rightSizeMoveOptions<T extends { capacity: number | null }>(
+  options: T[],
+  partySize: number,
+): T[] {
+  if (options.length === 0) return options
+
+  const seats = (option: T) => Number(option.capacity || 0)
+  const covers = Math.max(1, partySize)
+
+  // The lower bound is applied upstream too, but this keeps the helper honest
+  // on its own: never suggest a table the party cannot physically sit at. If
+  // nothing fits, fall back to the full list rather than returning nothing.
+  const fits = options.filter((option) => seats(option) >= covers)
+  const candidates = fits.length > 0 ? fits : options
+
+  const smallestAvailable = Math.min(...candidates.map(seats))
+  const ceiling = Math.max(covers + MOVE_OPTION_SLACK_SEATS, smallestAvailable)
+
+  return candidates.filter((option) => seats(option) <= ceiling)
+}
+
 type ResolveMoveTableTargetResult =
   | { ok: true; target: MoveTableCandidateTable | null }
   | { ok: false; status: 500; error: string }
