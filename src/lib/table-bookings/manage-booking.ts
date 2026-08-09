@@ -98,16 +98,32 @@ async function findTableAssignment(
   }
 }
 
+/**
+ * Which token types may drive the manage flow.
+ *
+ * Defaults to 'manage' alone so every existing caller behaves exactly as before. The
+ * 24-hour confirm link passes 'booking_confirm', because its "no, cancel my table" button
+ * has to reach this same code path: that path owns freeing the table, the audit row and
+ * the cancellation message, and a second cancel implementation would drift from it and
+ * quietly stop releasing capacity.
+ *
+ * Widening this is not a widening of access. Both token types are per-booking, hashed,
+ * expiring and tied to the same customer, and the confirm PAGE still demands
+ * action_type = 'booking_confirm', so an old manage link cannot be used to answer.
+ */
+type ManageTokenActionType = 'manage' | 'booking_confirm'
+
 async function getTableManageTokenRow(
   supabase: SupabaseClient<any, 'public', any>,
-  rawToken: string
+  rawToken: string,
+  allowedActionTypes: readonly ManageTokenActionType[] = ['manage']
 ): Promise<{ customer_id: string; table_booking_id: string } | null> {
   const tokenHash = hashGuestToken(rawToken)
 
   const { data: tokenRow } = await supabase.from('guest_tokens')
     .select('customer_id, table_booking_id, expires_at, consumed_at')
     .eq('hashed_token', tokenHash)
-    .eq('action_type', 'manage')
+    .in('action_type', allowedActionTypes as unknown as string[])
     .maybeSingle()
 
   if (!tokenRow || !tokenRow.table_booking_id || !tokenRow.customer_id) {
@@ -271,11 +287,49 @@ export async function createTableManageToken(
   }
 }
 
+/**
+ * The token behind the "are you still coming?" text.
+ *
+ * Deliberately its own action type rather than reusing 'manage'. A manage token is a
+ * general key to the booking that the guest may have been given days earlier for another
+ * reason; this one exists to answer one question at one moment, and keeping them separate
+ * means the confirm page cannot be reached by an old link and a manage link cannot be
+ * mistaken for an answer.
+ *
+ * Expiry follows the manage-token rule, so the link dies with the sitting rather than
+ * lingering as a working key to a booking that has already happened.
+ */
+export async function createBookingConfirmToken(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    customerId: string
+    tableBookingId: string
+    bookingStartIso?: string | null
+    appBaseUrl?: string
+  }
+): Promise<{ rawToken: string; url: string; expiresAt: string }> {
+  const expiresAt = computeManageTokenExpiry(input.bookingStartIso)
+  const token = await createGuestToken(supabase, {
+    customerId: input.customerId,
+    actionType: 'booking_confirm',
+    tableBookingId: input.tableBookingId,
+    expiresAt
+  })
+
+  const baseUrl = resolveAppBaseUrl(input.appBaseUrl)
+  return {
+    rawToken: token.rawToken,
+    url: `${baseUrl}/g/${token.rawToken}/confirm-booking`,
+    expiresAt
+  }
+}
+
 export async function getTableManagePreviewByRawToken(
   supabase: SupabaseClient<any, 'public', any>,
-  rawToken: string
+  rawToken: string,
+  allowedActionTypes: readonly ManageTokenActionType[] = ['manage']
 ): Promise<TableManagePreviewResult> {
-  const tokenRow = await getTableManageTokenRow(supabase, rawToken)
+  const tokenRow = await getTableManageTokenRow(supabase, rawToken, allowedActionTypes)
   if (!tokenRow) {
     return { state: 'blocked', reason: 'invalid_token' }
   }
@@ -343,9 +397,15 @@ export async function updateTableBookingByRawToken(
     cancellationReason?: string | null
     cancellationReasonDetail?: string | null
     appBaseUrl?: string
+    /** See ManageTokenActionType. Defaults to manage-only, as every existing caller expects. */
+    allowedActionTypes?: readonly ManageTokenActionType[]
   }
 ): Promise<TableManageUpdateResult> {
-  const preview = await getTableManagePreviewByRawToken(supabase, input.rawToken)
+  const preview = await getTableManagePreviewByRawToken(
+    supabase,
+    input.rawToken,
+    input.allowedActionTypes ?? ['manage']
+  )
   if (preview.state !== 'ready' || !preview.table_booking_id || !preview.customer_id) {
     return {
       state: 'blocked',
