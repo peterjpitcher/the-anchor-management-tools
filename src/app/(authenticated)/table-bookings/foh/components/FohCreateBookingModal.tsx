@@ -478,7 +478,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   className="h-4 w-4 rounded border-gray-300 text-sidebar focus:ring-sidebar"
                 />
                 <label htmlFor="is-venue-event" className="cursor-pointer text-xs font-medium text-gray-700">
-                  Pub Event (remove deposit for 10+ group)
+                  Pub Event (remove deposit for {LARGE_GROUP_DEPOSIT_THRESHOLD}+ group)
                 </label>
               </div>
 

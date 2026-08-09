@@ -195,18 +195,18 @@ describe('what each create route will be told the deposit is', () => {
     expect(deposit?.amount).toBe(0)
   })
 
-  it('with the switch OFF, a party of 12 STILL owes the large-group deposit', () => {
+  it('with the switch OFF, a party of 16 STILL owes the large-group deposit', () => {
     // The kill switch stops seasonal collection. It must never stop the deposit the pub has taken
     // from big parties for years, which is a different rule with nothing to do with seasons.
     const deposit = expectedDepositForCreate({
       context: off,
-      partySize: 12,
+      partySize: 16,
       bookingDate: '2026-12-05',
       periodAccepted: true,
       depositWaived: false,
     })
     expect(deposit?.required).toBe(true)
-    expect(deposit?.amount).toBe(120)
+    expect(deposit?.amount).toBe(160)
     expect(deposit?.rule).toBe('group')
   })
 
@@ -255,13 +255,13 @@ describe('the figure quoted to the guest is the figure charged', () => {
   })
 
   it('agrees with the old rule when the old rule was right, so nothing else moves', () => {
-    // A party of 12 with no period: both routes give GBP 120 and always did.
-    expect(chargedDepositAmount({ deposit_amount: 120 }, () => computeDepositAmount(12, {}))).toBe(120)
+    // A party of 16 with no period: both routes give GBP 160.
+    expect(chargedDepositAmount({ deposit_amount: 160 }, () => computeDepositAmount(16, {}))).toBe(160)
   })
 
   it('falls back to the party-size rule only when the RPC sent no figure at all', () => {
-    expect(chargedDepositAmount({}, () => computeDepositAmount(12, {}))).toBe(120)
-    expect(chargedDepositAmount({ deposit_amount: 0 }, () => computeDepositAmount(12, {}))).toBe(120)
+    expect(chargedDepositAmount({}, () => computeDepositAmount(16, {}))).toBe(160)
+    expect(chargedDepositAmount({ deposit_amount: 0 }, () => computeDepositAmount(16, {}))).toBe(160)
   })
 
   it('rounds to the penny', () => {

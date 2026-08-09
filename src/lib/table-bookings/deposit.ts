@@ -1,7 +1,7 @@
 /**
  * Centralised deposit helper for table bookings.
  *
- * Single source of truth for the 10+ deposit threshold and £10/person rate. Any
+ * Single source of truth for the 15+ deposit threshold and £10/person rate. Any
  * code path that decides "does this booking require a deposit" or "what amount"
  * MUST go through these helpers — duplicating the rule elsewhere is a footgun
  * (the threshold has changed twice already and we don't want a third drift).
@@ -14,14 +14,19 @@
  *   2. A Christmas booking (`isChristmas`, i.e. `booking_type = 'christmas'`)
  *      always takes a deposit, at ANY party size. Christmas parties start at 6
  *      guests, so a party of 6 owes £60, not £0.
- *   3. Otherwise a deposit is due from 10 guests upwards.
+ *   3. Otherwise a deposit is due from 15 guests upwards.
  * The per-person rate is £10 in every case.
+ *
+ * The threshold moved from 10 to 15 on 2026-08-09. A party of ten is an ordinary
+ * family Sunday, not a risk worth putting a payment screen in front of. The SQL side
+ * lives in `resolve_table_booking_deposit`; the two are pinned together by the parity
+ * test in `create-path-deposit.test.ts`, which reads the migration text directly.
  */
 
 import { isChristmasBookingType } from './christmas';
 
 export const LARGE_GROUP_DEPOSIT_PER_PERSON_GBP = 10;
-export const LARGE_GROUP_DEPOSIT_THRESHOLD = 10;
+export const LARGE_GROUP_DEPOSIT_THRESHOLD = 15;
 
 export type DepositOptions = {
   depositWaived?: boolean;
@@ -67,7 +72,7 @@ export type BookingForDeposit = {
   /**
    * Include `booking_type` in the select wherever a deposit is read. When it is
    * `'christmas'` the fresh-compute branch below charges a deposit at any party
-   * size. Omitting it silently degrades to the 10+ rule, which would return a
+   * size. Omitting it silently degrades to the 15+ rule, which would return a
    * zero deposit for a Christmas party of 6 and make PayPal refuse the order.
    */
   booking_type?: string | null;

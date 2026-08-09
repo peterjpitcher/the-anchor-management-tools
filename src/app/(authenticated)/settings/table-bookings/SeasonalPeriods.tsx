@@ -22,6 +22,7 @@ import {
   type PeriodKind,
 } from '@/lib/table-bookings/periods'
 import { resolveTableBookingDeposit } from '@/lib/table-bookings/period-deposit'
+import { LARGE_GROUP_DEPOSIT_THRESHOLD } from '@/lib/table-bookings/deposit'
 import { PREORDER_ADDON_STAFF_NOTE } from '@/types/preorders'
 
 /**
@@ -592,7 +593,7 @@ export function SeasonalPeriods() {
               </label>
               <p className="text-xs text-gray-500">
                 Off means a deposit is still worked out and shown to staff, but no money is asked for. The
-                deposit for a party of 10 or more is unaffected.
+                deposit for a party of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is unaffected.
               </p>
             </div>
           </div>
@@ -829,8 +830,8 @@ function PeriodEditor({ draft, setDraft, onSave, busy, collectPeriodDeposits }: 
               ))}
             </ul>
             <p className="mt-2 text-xs text-gray-500">
-              Where the deposit for parties of 10 or more is larger, that one applies instead. The two are
-              never added together.
+              Where the deposit for parties of {LARGE_GROUP_DEPOSIT_THRESHOLD} or more is larger, that one
+              applies instead. The two are never added together.
             </p>
           </div>
         )}

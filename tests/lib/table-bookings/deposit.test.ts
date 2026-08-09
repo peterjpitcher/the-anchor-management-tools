@@ -6,18 +6,22 @@ import {
 } from '../../../src/lib/table-bookings/deposit';
 
 describe('requiresDeposit', () => {
-  it('returns false for parties under 10', () => {
+  it('returns false for parties under 15', () => {
     expect(requiresDeposit(1)).toBe(false);
     expect(requiresDeposit(9)).toBe(false);
+    // Ten to fourteen owed a deposit until 2026-08-09 and now do not. This is the band
+    // the change was made for, so it is asserted explicitly rather than left implied.
+    expect(requiresDeposit(10)).toBe(false);
+    expect(requiresDeposit(14)).toBe(false);
   });
 
-  it('returns true for parties of 10 or more', () => {
-    expect(requiresDeposit(10)).toBe(true);
+  it('returns true for parties of 15 or more', () => {
+    expect(requiresDeposit(15)).toBe(true);
     expect(requiresDeposit(20)).toBe(true);
   });
 
-  it('returns false when deposit is waived even for 10+', () => {
-    expect(requiresDeposit(10, { depositWaived: true })).toBe(false);
+  it('returns false when deposit is waived even for 15+', () => {
+    expect(requiresDeposit(15, { depositWaived: true })).toBe(false);
     expect(requiresDeposit(50, { depositWaived: true })).toBe(false);
   });
 });
@@ -25,11 +29,12 @@ describe('requiresDeposit', () => {
 describe('computeDepositAmount', () => {
   it('returns 0 below threshold', () => {
     expect(computeDepositAmount(9)).toBe(0);
+    expect(computeDepositAmount(14)).toBe(0);
   });
 
   it('returns party_size * 10 at and above threshold', () => {
-    expect(computeDepositAmount(10)).toBe(100);
     expect(computeDepositAmount(15)).toBe(150);
+    expect(computeDepositAmount(20)).toBe(200);
   });
 });
 
@@ -54,8 +59,8 @@ describe('getCanonicalDeposit', () => {
   });
 
   it('falls back to fresh compute when no locked or stored amount and no payment-required state', () => {
-    const b = { ...baseBooking, deposit_amount_locked: null, deposit_amount: null, status: 'confirmed', payment_status: null, party_size: 12 };
-    expect(getCanonicalDeposit(b)).toBe(120);
+    const b = { ...baseBooking, deposit_amount_locked: null, deposit_amount: null, status: 'confirmed', payment_status: null, party_size: 16 };
+    expect(getCanonicalDeposit(b)).toBe(160);
   });
 
   it('returns 0 fresh-compute when party size is below threshold and nothing is stored', () => {
@@ -110,7 +115,7 @@ describe('getCanonicalDeposit', () => {
 });
 
 // Christmas bookings always take a 10 pounds per person deposit, at any party
-// size. Regular bookings keep the 10+ threshold. A manager waiver still wins.
+// size. Regular bookings keep the 15+ threshold. A manager waiver still wins.
 describe('Christmas deposits', () => {
   it('requires a deposit for a Christmas booking of 6', () => {
     expect(requiresDeposit(6, { isChristmas: true })).toBe(true);
@@ -129,9 +134,17 @@ describe('Christmas deposits', () => {
     expect(computeDepositAmount(9, { isChristmas: false })).toBe(0);
   });
 
-  it('still requires 100 pounds for a normal booking of 10', () => {
-    expect(requiresDeposit(10)).toBe(true);
-    expect(computeDepositAmount(10)).toBe(100);
+  it('still requires 150 pounds for a normal booking of 15', () => {
+    expect(requiresDeposit(15)).toBe(true);
+    expect(computeDepositAmount(15)).toBe(150);
+  });
+
+  it('a Christmas booking of 12 still pays, where an ordinary booking of 12 no longer does', () => {
+    // The two rules diverged when the threshold moved. Christmas is deliberately unchanged.
+    expect(requiresDeposit(12, { isChristmas: true })).toBe(true);
+    expect(computeDepositAmount(12, { isChristmas: true })).toBe(120);
+    expect(requiresDeposit(12)).toBe(false);
+    expect(computeDepositAmount(12)).toBe(0);
   });
 
   it('charges 10 pounds per person for a larger Christmas booking', () => {

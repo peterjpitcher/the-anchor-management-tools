@@ -226,7 +226,7 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
         booking_time: '18:00',
         status: 'confirmed',
         payment_status: 'pending',
-        party_size: 12,
+        party_size: 16,
       }),
       makeRow({
         id: 'b2',

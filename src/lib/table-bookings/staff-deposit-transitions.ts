@@ -88,7 +88,7 @@ export async function applyPartySizeDepositTransition(
 ): Promise<PartySizeDepositTransitionResult> {
   const depositWaived = input.booking.deposit_waived === true
   // A Christmas booking already owes a deposit at any party size, so resizing it
-  // never crosses the 10+ threshold: both sides evaluate to true and the
+  // never crosses the 15+ threshold: both sides evaluate to true and the
   // transition is correctly a no-op here (the amount is re-locked elsewhere).
   const isChristmas = isChristmasBookingType(input.booking.booking_type)
 

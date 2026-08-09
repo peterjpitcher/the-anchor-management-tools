@@ -52,7 +52,7 @@ vi.mock('@/app/actions/audit', () => ({
 function buildBookingRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'booking-canonical',
-    party_size: 12,
+    party_size: 16,
     status: 'pending_payment',
     payment_status: 'pending',
     hold_expires_at: '2099-01-01T12:00:00Z',
@@ -94,7 +94,7 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
     // must not silently bump the charge to £120.
     mockFetchAndUpdate(
       buildBookingRow({
-        party_size: 12,
+        party_size: 16,
         deposit_amount: 120,
         deposit_amount_locked: 80,
       })
@@ -112,7 +112,7 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
   it('stored amount used when locked is null: deposit_amount=50 wins over the £10*party_size compute', async () => {
     mockFetchAndUpdate(
       buildBookingRow({
-        party_size: 12,
+        party_size: 16,
         deposit_amount: 50,
         deposit_amount_locked: null,
       })
@@ -128,10 +128,10 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
   })
 
   it('falls back to fresh compute when neither locked nor stored is set', async () => {
-    // 12 guests * £10 = £120
+    // 16 guests * £10 = £160
     mockFetchAndUpdate(
       buildBookingRow({
-        party_size: 12,
+        party_size: 16,
         deposit_amount: null,
         deposit_amount_locked: null,
       })
@@ -142,14 +142,14 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
     expect(res.status).toBe(200)
 
     expect(mockCreatePayPalOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 120 })
+      expect.objectContaining({ amount: 160 })
     )
   })
 
   it('NEVER persists deposit_amount on the create-order path, even when canonical resolves from stored', async () => {
     mockFetchAndUpdate(
       buildBookingRow({
-        party_size: 12,
+        party_size: 16,
         deposit_amount: 50,
         deposit_amount_locked: null,
       })
@@ -202,14 +202,14 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
     it('reuses cached order when its amount matches the current canonical', async () => {
       mockFetchAndUpdate(
         buildBookingRow({
-          party_size: 12,
+          party_size: 16,
           paypal_deposit_order_id: 'ORDER-CACHED-MATCH',
           deposit_amount: null,
           deposit_amount_locked: null,
         })
       )
       mockGetPayPalOrder.mockResolvedValueOnce({
-        purchase_units: [{ amount: { value: '120.00', currency_code: 'GBP' } }],
+        purchase_units: [{ amount: { value: '160.00', currency_code: 'GBP' } }],
       })
 
       const res = await callRoute('booking-canonical')
@@ -222,7 +222,7 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
     })
 
     it('invalidates cached order and creates a fresh one when canonical drifted', async () => {
-      // Party-size resize from 12 → 15 means canonical = £150 but cached
+      // Party-size resize down to 15 means canonical = £150 but the cached
       // PayPal order is for £120. Old order must be cleared.
       mockTwoUpdates(
         buildBookingRow({
@@ -256,7 +256,7 @@ describe('paypal create-order canonical deposit precedence (walk-in launch)', ()
     it('invalidates cached order when getPayPalOrder fails (cannot verify)', async () => {
       mockTwoUpdates(
         buildBookingRow({
-          party_size: 12,
+          party_size: 16,
           paypal_deposit_order_id: 'ORDER-CACHED-UNVERIFIABLE',
           deposit_amount: null,
           deposit_amount_locked: null,

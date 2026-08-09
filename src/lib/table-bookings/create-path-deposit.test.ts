@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DEFAULT_GROUP_DEPOSIT_RULE,
@@ -27,11 +27,37 @@ import type { BookingPeriod } from './periods'
  */
 
 const MIGRATIONS = join(process.cwd(), 'supabase/migrations')
-const CREATE_PATH = join(MIGRATIONS, '20260803000200_seasonal_deposit_on_create.sql')
 const PERIODS = join(MIGRATIONS, '20260803000100_seasonal_booking_periods.sql')
 
-const createPathSql = readFileSync(CREATE_PATH, 'utf8')
 const periodsSql = readFileSync(PERIODS, 'utf8')
+
+/**
+ * The newest migration that redefines a function IS its live definition, so pinning this
+ * test to one filename quietly stops testing the database the moment anybody replaces the
+ * function. That is not hypothetical: raising the group threshold to 15 did exactly that,
+ * and a hardcoded path would have kept asserting the superseded body while reporting green.
+ *
+ * Migration filenames are timestamp-prefixed and applied in filename order, so the last
+ * file containing the declaration is the one Postgres ends up running.
+ */
+function latestDefinitionOf(declaration: string): string {
+  const match = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .reverse()
+    .map((f) => readFileSync(join(MIGRATIONS, f), 'utf8'))
+    .find((sql) => sql.includes(declaration))
+
+  if (!match) throw new Error(`No migration defines: ${declaration}`)
+  return match
+}
+
+const createPathSql = latestDefinitionOf(
+  'CREATE OR REPLACE FUNCTION public.create_table_booking_core_v06('
+)
+const resolverSql = latestDefinitionOf(
+  'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit('
+)
 
 /** The body of a named SQL function, so an assertion cannot drift onto a different one. */
 function functionBody(sql: string, declaration: string): string {
@@ -46,7 +72,7 @@ function functionBody(sql: string, declaration: string): string {
 }
 
 const core = functionBody(createPathSql, 'CREATE OR REPLACE FUNCTION public.create_table_booking_core_v06(')
-const resolver = functionBody(periodsSql, 'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit(')
+const resolver = functionBody(resolverSql, 'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit(')
 
 describe('the create path resolves the deposit rather than inventing one', () => {
   it('calls resolve_table_booking_deposit', () => {
