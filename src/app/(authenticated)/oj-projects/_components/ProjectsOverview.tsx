@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -31,10 +31,16 @@ import {
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
-import { createTimeEntry, createMileageEntry, createOneOffCharge, deleteEntry, getEntries, updateEntry } from '@/app/actions/oj-projects/entries'
+import { createTimeEntry, createMileageEntry, createOneOffCharge, deleteEntry, updateEntry } from '@/app/actions/oj-projects/entries'
 import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
-import { getCurrentMonthEntryDateRange } from '@/lib/oj-projects/date-ranges'
+import {
+  DEFAULT_WORK_HISTORY_DAYS,
+  WORK_HISTORY_RANGES,
+  getWorkHistoryRange,
+  type WorkHistoryBucket,
+  type WorkHistoryRangeDays,
+} from '@/lib/oj-projects/date-ranges'
 import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
 
@@ -64,6 +70,11 @@ interface ProjectsOverviewProps {
   entries: any[]
   workTypes: any[]
   clients: OJClientSummary[]
+  selectedVendorId: string
+  workHistory: WorkHistoryBucket[]
+  workHistoryDays: WorkHistoryRangeDays
+  /** Every unbilled billable entry, not just this month's. */
+  billableUnbilledCount: number
 }
 
 function createBlankEntryForm(vendorId = '') {
@@ -81,17 +92,24 @@ function createBlankEntryForm(vendorId = '') {
   }
 }
 
-export function ProjectsOverview({ projects, entries: initialEntries, workTypes, clients }: ProjectsOverviewProps): React.ReactElement {
+export function ProjectsOverview({
+  projects,
+  entries,
+  workTypes,
+  clients,
+  selectedVendorId,
+  workHistory,
+  workHistoryDays,
+  billableUnbilledCount,
+}: ProjectsOverviewProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('oj_projects', 'create')
   const canEdit = hasPermission('oj_projects', 'edit')
   const canDelete = hasPermission('oj_projects', 'delete')
 
-  const [entries, setEntries] = useState(initialEntries)
-  const [entriesLoading, setEntriesLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [selectedVendorId, setSelectedVendorId] = useState('')
   const [lastCreateVendorId, setLastCreateVendorId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createType, setCreateType] = useState<'time' | 'mileage' | 'one_off'>('time')
@@ -126,8 +144,11 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     entries.forEach((entry: any) => {
       if (entry.vendor?.id && entry.vendor?.name) map.set(entry.vendor.id, entry.vendor.name)
     })
+    // A filtered client with no entries and no projects would otherwise drop out of the
+    // options and silently snap the dropdown back to "All clients".
+    if (selectedVendorId && !map.has(selectedVendorId)) map.set(selectedVendorId, 'Selected client')
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [clients, entries, projects])
+  }, [clients, entries, projects, selectedVendorId])
 
   const addableProjects = useMemo(
     () => projects.filter((p: any) => p.status !== 'completed' && p.status !== 'archived'),
@@ -186,32 +207,31 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     setEditOpen(true)
   }
 
-  const loadEntriesForClient = useCallback(async (vendorId: string) => {
-    setEntriesLoading(true)
-    setEntries([])
-    try {
-      const currentMonthRange = getCurrentMonthEntryDateRange()
-      const res = await getEntries({
-        ...currentMonthRange,
-        ...(vendorId ? { vendorId } : {}),
-      })
-      if (res.error) throw new Error(res.error)
-      if (res.entries) setEntries(res.entries)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load entries')
-    } finally {
-      setEntriesLoading(false)
-    }
-  }, [])
+  /**
+   * Filter state lives in the URL. `replace` rather than `push` keeps the Back button
+   * pointing at wherever the user came from instead of at every filter they tried.
+   */
+  function applyFilters(next: { vendorId?: string; days?: WorkHistoryRangeDays }): void {
+    const vendorId = next.vendorId ?? selectedVendorId
+    const days = next.days ?? workHistoryDays
+    const params = new URLSearchParams()
+    if (vendorId) params.set('client', vendorId)
+    if (days !== DEFAULT_WORK_HISTORY_DAYS) params.set('range', String(days))
+    const query = params.toString()
+    startTransition(() => {
+      router.replace(query ? `/oj-projects?${query}` : '/oj-projects', { scroll: false })
+    })
+  }
 
-  const reload = useCallback(async () => {
-    await loadEntriesForClient(selectedVendorId)
-  }, [loadEntriesForClient, selectedVendorId])
+  function reload(): void {
+    startTransition(() => {
+      router.refresh()
+    })
+  }
 
   function handleClientFilterChange(vendorId: string): void {
-    setSelectedVendorId(vendorId)
     setLastCreateVendorId(vendorId)
-    void loadEntriesForClient(vendorId)
+    applyFilters({ vendorId })
   }
 
   async function handleCreateSubmit(e: React.FormEvent): Promise<void> {
@@ -241,13 +261,15 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
 
       if (res.error) throw new Error(res.error)
       const submittedVendorId = createForm.vendor_id
-      toast.success('Entry created')
-      setSelectedVendorId(submittedVendorId)
+      toast.success(
+        selectedVendorId && selectedVendorId !== submittedVendorId
+          ? 'Entry created. It is hidden by the current client filter.'
+          : 'Entry created'
+      )
       setLastCreateVendorId(submittedVendorId)
       setCreateForm(createBlankEntryForm(submittedVendorId))
       setCreateOpen(false)
-      await loadEntriesForClient(submittedVendorId)
-      router.refresh()
+      reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create entry')
     } finally {
@@ -289,8 +311,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           : 'Entry updated'
       )
       setEditOpen(false)
-      await reload()
-      router.refresh()
+      reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update entry')
     } finally {
@@ -314,8 +335,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           : 'Entry deleted'
       )
       setDeleteId(null)
-      await reload()
-      router.refresh()
+      reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete entry')
     }
@@ -347,51 +367,9 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     return Math.round(hours * 100) / 100
   }, [entries])
 
-  const dailyHoursData = useMemo(() => {
-    const { startDate, endDate } = getCurrentMonthEntryDateRange()
-    const today = getTodayIsoDate()
-    const chartEndDate = today < endDate ? today : endDate
-    const hoursByDate = new Map<string, number>()
-
-    for (const entry of entries) {
-      if (entry.entry_type !== 'time') continue
-      const entryDate = String(entry.entry_date || '')
-      if (entryDate < startDate || entryDate > chartEndDate) continue
-      const hours = Number(entry.duration_minutes_rounded || 0) / 60
-      if (!Number.isFinite(hours) || hours <= 0) continue
-      hoursByDate.set(entryDate, (hoursByDate.get(entryDate) || 0) + hours)
-    }
-
-    const data: { day: string; amount: number }[] = []
-    const cursor = new Date(`${startDate}T12:00:00Z`)
-    const end = new Date(`${chartEndDate}T12:00:00Z`)
-
-    while (cursor <= end) {
-      const date = cursor.toISOString().slice(0, 10)
-      data.push({
-        day: cursor.toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          timeZone: 'UTC',
-        }),
-        amount: Math.round((hoursByDate.get(date) || 0) * 100) / 100,
-      })
-      cursor.setUTCDate(cursor.getUTCDate() + 1)
-    }
-
-    return data
-  }, [entries])
-
-  const currentMonthLabel = useMemo(() => {
-    const { startDate } = getCurrentMonthEntryDateRange()
-    return new Date(`${startDate}T12:00:00Z`).toLocaleDateString('en-GB', {
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'UTC',
-    })
-  }, [])
-
-  const hasLoggedHours = dailyHoursData.some((day) => day.amount > 0)
+  const workHistoryRange = getWorkHistoryRange(workHistoryDays)
+  const workHistoryDescription = `Hours per ${workHistoryRange.bucketNoun} over the last ${workHistoryRange.label}`
+  const hasLoggedHours = workHistory.some((bucket) => bucket.amount > 0)
   const selectedVendorName = vendors.find((vendor) => vendor.id === selectedVendorId)?.name
 
   const revenueThisMonth = useMemo(() => {
@@ -401,11 +379,6 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
     }
     return Math.round(total * 100) / 100
   }, [visibleProjects])
-
-  const billableUnbilledCount = useMemo(
-    () => entries.filter((e) => e.status === 'unbilled' && isEntryBillable(e)).length,
-    [entries],
-  )
 
   const statusTone = (status: string): 'success' | 'warning' | 'info' | 'neutral' => {
     switch (status) {
@@ -450,9 +423,9 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
         {/* Stats row */}
         <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Active Projects" value={String(activeProjects.length)} icon={<Icon name="briefcase" size={20} />} />
-          <Stat label="Total Hours" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
+          <Stat label="Hours This Month" value={totalHours.toFixed(1)} icon={<Icon name="clock" size={20} />} />
           <Stat label="Revenue This Month" value={formatCurrency(revenueThisMonth)} icon={<Icon name="pound" size={20} />} />
-          <Stat label="Billable Unbilled" value={String(billableUnbilledCount)} icon={<Icon name="clock" size={20} />} />
+          <Stat label="Billable Unbilled" value={String(billableUnbilledCount)} icon={<Icon name="clock" size={20} />} hint="All unbilled work, not just this month" />
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end lg:ml-4">
           <Select
@@ -476,7 +449,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
       <Card>
         <CardHeader
           title="Work History"
-          subtitle={`Hours per day · ${currentMonthLabel} · ${selectedVendorName || 'All clients'}`}
+          subtitle={`${workHistoryDescription} · ${selectedVendorName || 'All clients'}`}
           action={(
             <Button
               type="button"
@@ -493,23 +466,32 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
           )}
         />
         {historyOpen && (
-          <div id="oj-projects-work-history" className="p-[var(--spacing-pad-card)]">
-            {entriesLoading ? (
+          <div id="oj-projects-work-history" className="flex flex-col gap-3 p-[var(--spacing-pad-card)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[13px] font-medium text-text">Period</span>
+              <Segmented
+                options={WORK_HISTORY_RANGES.map((range) => ({ id: String(range.days), label: range.label }))}
+                value={String(workHistoryDays)}
+                onChange={(id) => applyFilters({ days: Number(id) as WorkHistoryRangeDays })}
+                size="sm"
+              />
+            </div>
+            {isPending ? (
               <Empty title="Loading work history" size="sm" variant="minimal" />
             ) : hasLoggedHours ? (
               <figure
-                aria-label={`Daily hours logged in ${currentMonthLabel} for ${selectedVendorName || 'all clients'}`}
+                aria-label={`${workHistoryDescription} for ${selectedVendorName || 'all clients'}`}
               >
                 <RevenueChart
-                  data={dailyHoursData}
+                  data={workHistory}
                   height={240}
-                  barSize={18}
+                  barSize={workHistoryRange.granularity === 'day' ? 18 : 28}
                   valueFormatter={(value) => `${value.toLocaleString('en-GB', { maximumFractionDigits: 2 })}h`}
                 />
                 <figcaption className="sr-only">
-                  {dailyHoursData
-                    .filter((day) => day.amount > 0)
-                    .map((day) => `${day.day}: ${day.amount} hours`)
+                  {workHistory
+                    .filter((bucket) => bucket.amount > 0)
+                    .map((bucket) => `${bucket.day}: ${bucket.amount} hours`)
                     .join(', ')}
                 </figcaption>
               </figure>
@@ -517,7 +499,7 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
               <Empty
                 icon="chart"
                 title="No hours logged"
-                description="There are no time entries for this view in the current month."
+                description={`There are no time entries for this view in the last ${workHistoryRange.label}.`}
                 size="sm"
                 variant="minimal"
               />
@@ -647,13 +629,17 @@ export function ProjectsOverview({ projects, entries: initialEntries, workTypes,
 
       {/* Recent Entries */}
       <Card>
-        <CardHeader title="Recent Entries" />
-        {entriesLoading ? (
+        <CardHeader title="Recent Entries" subtitle="This month" />
+        {isPending ? (
           <Empty title="Loading entries" />
         ) : entries.length === 0 ? (
           <Empty
             title="No entries"
-            description={selectedVendorId ? 'No entries found for this client.' : 'No time entries recorded yet.'}
+            description={
+              selectedVendorId
+                ? 'No entries recorded for this client this month.'
+                : 'No entries recorded this month.'
+            }
           />
         ) : (
           <>

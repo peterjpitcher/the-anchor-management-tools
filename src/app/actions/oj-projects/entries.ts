@@ -8,6 +8,7 @@ import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
 import { getEntryDatePeriod } from '@/lib/oj-projects/retainers'
+import type { WorkHistoryPoint } from '@/lib/oj-projects/date-ranges'
 import {
   buildOjInvoiceRevision,
   getOjInvoiceRevisionBlockReason,
@@ -20,6 +21,19 @@ import { formBooleanSchema } from '@/lib/forms/formBoolean'
 
 function hasAtMostOneDecimalPlace(value: number): boolean {
   return Math.abs(Math.round(value * 10) - value * 10) < 0.000001
+}
+
+/**
+ * One logged entry moves the figures on every OJ Projects screen and on the dashboard.
+ * Without this only the tab that made the change sees fresh numbers; everywhere else
+ * keeps serving the cached render until something unrelated invalidates it.
+ */
+function revalidateOjEntryPaths(projectId?: string | null): void {
+  revalidatePath('/oj-projects')
+  revalidatePath('/oj-projects/entries')
+  revalidatePath('/oj-projects/projects')
+  if (projectId) revalidatePath(`/oj-projects/projects/${projectId}`)
+  revalidateTag('dashboard')
 }
 
 const MileageMilesSchema = z.coerce
@@ -665,6 +679,8 @@ async function buildUpdateEntryResult(input: {
   revisableInvoice: RevisableLinkedInvoice | null
   user?: { id?: string | null; email?: string | null } | null
 }) {
+  revalidateOjEntryPaths(input.entry?.project_id)
+
   if (!input.revisableInvoice) {
     return { entry: input.entry, success: true as const }
   }
@@ -687,9 +703,12 @@ async function buildUpdateEntryResult(input: {
 
 async function buildDeleteEntryResult(input: {
   entry: { id: string }
+  projectId?: string | null
   revisableInvoice: RevisableLinkedInvoice | null
   user?: { id?: string | null; email?: string | null } | null
 }) {
+  revalidateOjEntryPaths(input.projectId)
+
   if (!input.revisableInvoice) {
     return { success: true as const }
   }
@@ -778,6 +797,65 @@ export async function getEntries(options?: {
   }
 }
 
+/**
+ * Every billable entry still waiting to be invoiced, with no date window. Scoping this to
+ * the current month used to hide older unbilled work, which is exactly the work most worth
+ * chasing. `billable` and `status` are both NOT NULL, so plain equality is exact.
+ */
+export async function getBillableUnbilledCount(options?: {
+  vendorId?: string
+}): Promise<{ count?: number; error?: string }> {
+  const hasPermission = await checkUserPermission('oj_projects', 'view')
+  if (!hasPermission) return { error: 'You do not have permission to view entries' }
+
+  const supabase = await createClient()
+  let query = supabase
+    .from('oj_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'unbilled')
+    .eq('billable', true)
+
+  if (options?.vendorId) query = query.eq('vendor_id', options.vendorId)
+
+  const { count, error } = await query
+  if (error) return { error: error.message }
+  return { count: count ?? 0 }
+}
+
+/**
+ * Daily logged hours for the Work History chart. Deliberately narrow: no joins and only
+ * the two columns the chart needs, so a 365-day window stays cheap to fetch and to ship.
+ */
+export async function getEntryHoursByDate(options: {
+  vendorId?: string
+  startDate: string
+  endDate: string
+}): Promise<{ points?: WorkHistoryPoint[]; error?: string }> {
+  const hasPermission = await checkUserPermission('oj_projects', 'view')
+  if (!hasPermission) return { error: 'You do not have permission to view entries' }
+
+  const supabase = await createClient()
+  let query = supabase
+    .from('oj_entries')
+    .select('entry_date, duration_minutes_rounded')
+    .eq('entry_type', 'time')
+    .gte('entry_date', options.startDate)
+    .lte('entry_date', options.endDate)
+    .limit(20000)
+
+  if (options.vendorId) query = query.eq('vendor_id', options.vendorId)
+
+  const { data, error } = await query
+  if (error) return { error: error.message }
+
+  return {
+    points: (data || []).map((row) => ({
+      date: String(row.entry_date || ''),
+      hours: Number(row.duration_minutes_rounded || 0) / 60,
+    })),
+  }
+}
+
 export async function createTimeEntry(formData: FormData) {
   const hasPermission = await checkUserPermission('oj_projects', 'create')
   if (!hasPermission) return { error: 'You do not have permission to create entries' }
@@ -856,6 +934,8 @@ export async function createTimeEntry(formData: FormData) {
     },
   })
 
+  revalidateOjEntryPaths(data.project_id)
+
   return { entry: data, success: true as const }
 }
 
@@ -928,6 +1008,8 @@ export async function createMileageEntry(formData: FormData) {
   // are applied correctly across all trips.
   await recalculateTaxYearMileage(parsed.data.entry_date)
 
+  revalidateOjEntryPaths(data.project_id)
+
   return { entry: data, success: true as const }
 }
 
@@ -995,6 +1077,8 @@ export async function createOneOffCharge(formData: FormData) {
     operation_status: 'success',
     new_values: { entry_type: 'one_off', project_id: data.project_id, entry_date: data.entry_date, amount_ex_vat_snapshot: data.amount_ex_vat_snapshot },
   })
+
+  revalidateOjEntryPaths(data.project_id)
 
   return { entry: data, success: true as const }
 }
@@ -1249,7 +1333,7 @@ export async function deleteEntry(formData: FormData) {
 
   const { data: entry, error: fetchError } = await supabase
     .from('oj_entries')
-    .select('id, status, entry_type, entry_date, invoice_id, vendor_id')
+    .select('id, status, entry_type, entry_date, invoice_id, vendor_id, project_id')
     .eq('id', id)
     .single()
 
@@ -1293,5 +1377,5 @@ export async function deleteEntry(formData: FormData) {
     await recalculateTaxYearMileage(entry.entry_date)
   }
 
-  return buildDeleteEntryResult({ entry: deletedEntry, revisableInvoice, user })
+  return buildDeleteEntryResult({ entry: deletedEntry, projectId: entry.project_id, revisableInvoice, user })
 }
