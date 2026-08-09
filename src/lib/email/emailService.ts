@@ -28,6 +28,18 @@ export interface EmailOptions {
   invoiceId?: string | null;
   quoteId?: string | null;
   idempotencyKey?: string;
+  /**
+   * A working one-click unsubscribe URL for this recipient.
+   *
+   * OPT-IN PER CALL, never defaulted. `sendEmail` is the single chokepoint for every
+   * outbound email in the app, invoices and quotes and rota mail included, and putting a
+   * List-Unsubscribe header on a VAT invoice would be wrong. Only marketing sends pass it.
+   *
+   * Build it with `getOrCreateUnsubscribeUrl`. Both headers below are set together on
+   * purpose: `List-Unsubscribe` alone, without `List-Unsubscribe-Post`, does not satisfy
+   * Gmail's one-click requirement and reads as a half-implemented opt-out.
+   */
+  unsubscribeUrl?: string;
 }
 
 export interface EmailAttachment {
@@ -183,6 +195,16 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       resendPayload.text = '';
     }
 
+    if (options.unsubscribeUrl) {
+      const mailto = process.env.EMAIL_REPLY_TO
+        ? `, <mailto:${process.env.EMAIL_REPLY_TO}?subject=unsubscribe>`
+        : '';
+      resendPayload.headers = {
+        'List-Unsubscribe': `<${options.unsubscribeUrl}>${mailto}`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      };
+    }
+
     const { data, error } = options.idempotencyKey
       ? await client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
       : await client.emails.send(resendPayload as any);
@@ -296,6 +318,19 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
       },
       toRecipients
     };
+
+    // The same two headers as the Resend branch. Without this, unsubscribe silently
+    // disappears from every message whenever EMAIL_PROVIDER is graph, and the opt-out the
+    // soft opt-in basis depends on would exist on only one of the two send paths.
+    if (options.unsubscribeUrl) {
+      const mailto = process.env.EMAIL_REPLY_TO
+        ? `, <mailto:${process.env.EMAIL_REPLY_TO}?subject=unsubscribe>`
+        : '';
+      message.internetMessageHeaders = [
+        { name: 'List-Unsubscribe', value: `<${options.unsubscribeUrl}>${mailto}` },
+        { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+      ];
+    }
 
     if (ccRecipients.length > 0) {
       message.ccRecipients = ccRecipients;
