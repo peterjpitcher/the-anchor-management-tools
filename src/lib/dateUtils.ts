@@ -161,6 +161,17 @@ export function eachIsoDateInRange(startIsoDate: string, endIsoDate: string): st
   return dates
 }
 
+/**
+ * Moves a YYYY-MM-DD calendar date by a whole number of days, forwards or backwards.
+ * Returns null when the input is not a real date. Anchored in UTC so the result never
+ * depends on the host machine's timezone or on a DST boundary being crossed.
+ */
+export function shiftIsoDate(isoDate: string, days: number): string | null {
+  const ms = isoDateToUtcMs(isoDate)
+  if (ms === null || !Number.isInteger(days)) return null
+  return utcMsToIsoDate(ms + days * MS_PER_DAY)
+}
+
 export function getLocalIsoDateDaysAgo(days: number): string {
   const date = new Date()
   date.setDate(date.getDate() - days)
