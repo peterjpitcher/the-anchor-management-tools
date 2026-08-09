@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getAllBirthdays } from '@/app/actions/employee-birthdays'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { displayName } from '@/lib/employees/display-name'
 import {
   CakeIcon,
   ExclamationTriangleIcon,
@@ -21,6 +22,7 @@ interface EmployeeBirthday {
   employee_id: string;
   first_name: string;
   last_name: string;
+  preferred_name: string | null;
   job_title: string | null;
   date_of_birth: string;
   email_address: string | null;
@@ -151,7 +153,7 @@ export default async function EmployeeBirthdaysPage() {
                               href={`/employees/${birthday.employee_id}`}
                               className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate"
                             >
-                              {birthday.first_name} {birthday.last_name}
+                              {displayName(birthday)}
                             </Link>
                             {birthday.days_until_birthday === 0 && (
                               <span className="ml-1.5 sm:ml-2 text-base sm:text-xl">🎉</span>

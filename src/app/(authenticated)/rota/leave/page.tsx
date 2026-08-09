@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import LeaveManagerClient from './LeaveManagerClient';
 import { rotaNavItems } from '../nav';
+import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export default async function LeaveManagementPage() {
     getLeaveRequests(),
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name')
+      .select('employee_id, first_name, last_name, preferred_name')
       .order('first_name'),
   ]);
 
@@ -33,9 +34,8 @@ export default async function LeaveManagementPage() {
 
   // Build name lookup
   const employeeMap: Record<string, string> = {};
-  (employees ?? []).forEach((e: { employee_id: string; first_name: string | null; last_name: string | null }) => {
-    const name = [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown';
-    employeeMap[e.employee_id] = name;
+  (employees ?? []).forEach((e: { employee_id: string; first_name: string | null; last_name: string | null; preferred_name: string | null }) => {
+    employeeMap[e.employee_id] = displayName(e, 'Unknown');
   });
 
   // Fetch holiday usage for each unique employee+year combination in requests

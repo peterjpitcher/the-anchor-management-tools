@@ -57,12 +57,9 @@ export default async function TableBookingsFohPage() {
         { label: 'Front of House', href: '/table-bookings/foh' },
         ...(canViewReports ? [{ label: 'Reports', href: '/table-bookings/reports' }] : [])
       ]
-  const backButton = fohOnlyMode
-    ? undefined
-    : {
-        label: 'Back to Dashboard',
-        href: '/'
-      }
+  // No "Back to Dashboard" here. This is the floor screen and the people using it
+  // work the floor, so the dashboard is a dead end for them. The nav items above
+  // are the only exits this screen offers.
   const useManagerKioskStyle = authResult.data.user?.email?.toLowerCase() === MANAGER_IPAD_EMAIL
   const pageClassName = useManagerKioskStyle ? '!bg-sidebar' : undefined
   const headerClassName = useManagerKioskStyle
@@ -72,14 +69,19 @@ export default async function TableBookingsFohPage() {
   const subtitle = useManagerKioskStyle ? undefined : 'Live swimlane view for table bookings and floor actions'
 
   // Fetch clock widget data for manager kiosk
-  type ClockEmployee = { employee_id: string; first_name: string | null; last_name: string | null }
+  type ClockEmployee = {
+    employee_id: string
+    first_name: string | null
+    last_name: string | null
+    preferred_name: string | null
+  }
   type ClockSession = import('@/app/actions/timeclock').TimeclockSession & { employee_name: string }
   let clockWidgetEmployees: ClockEmployee[] = []
   let clockWidgetSessions: ClockSession[] = []
   if (useManagerKioskStyle) {
     const admin = createAdminClient()
     const [{ data: emps }, sessionsResult] = await Promise.all([
-      admin.from('employees').select('employee_id, first_name, last_name').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
+      admin.from('employees').select('employee_id, first_name, last_name, preferred_name').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
       getOpenSessions(),
     ])
     clockWidgetEmployees = (emps ?? []) as ClockEmployee[]
@@ -113,7 +115,6 @@ export default async function TableBookingsFohPage() {
       title="Front of House Schedule"
       subtitle={subtitle}
       navItems={navItems}
-      backButton={backButton}
       className={pageClassName}
       headerClassName={headerClassName}
       contentClassName={contentClassName}

@@ -5,7 +5,11 @@ import { Button, Badge, Field, Input, Textarea, Alert } from '@/ds'
 import { Icon } from '@/ds/icons'
 import toast from 'react-hot-toast'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
-import { completeChecklistInstance, undoChecklistInstance } from '@/app/actions/checklists'
+import {
+  completeChecklistInstance,
+  skipChecklistInstance,
+  undoChecklistInstance,
+} from '@/app/actions/checklists'
 import type { ChecklistTaskView } from '@/app/actions/checklists'
 import type { Identity } from './AttributionPicker'
 
@@ -32,6 +36,8 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity }: TaskRowPr
   const [notes, setNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [showSkipReason, setShowSkipReason] = useState(false)
+  const [skipReason, setSkipReason] = useState('')
 
   const isActionable = task.state === 'pending' && !task.locked
 
@@ -86,6 +92,46 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity }: TaskRowPr
     }
     if (res.breach) toast.error('Out of range, contact Billy or Peter')
     else toast.success(`Done, ${identity.name}`)
+    onChanged()
+  }
+
+  async function handleNotDone() {
+    if (!identity) {
+      toast.error('Choose who you are first')
+      onNeedIdentity()
+      return
+    }
+
+    // First tap opens the reason box rather than saving, because a skip is only
+    // useful to whoever reviews the week if it says why.
+    if (!showSkipReason) {
+      setShowSkipReason(true)
+      return
+    }
+
+    if (!skipReason.trim()) {
+      toast.error('Say why it was not done')
+      return
+    }
+
+    setSubmitting(true)
+    const res = await skipChecklistInstance({
+      instanceId: task.id,
+      employeeId: identity.employeeId,
+      reason: skipReason.trim(),
+    })
+    setSubmitting(false)
+
+    if (res.alreadyResolved) {
+      toast('Already handled by someone else')
+      onChanged()
+      return
+    }
+    if (res.error) {
+      toast.error(res.error)
+      return
+    }
+    toast.success('Recorded as not done')
     onChanged()
   }
 
@@ -172,9 +218,13 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity }: TaskRowPr
     return (
       <div className="rounded-md border border-border p-3">
         <div className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm text-muted">{task.title}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-muted">{task.title}</span>
           <Badge tone={tone}>{label}</Badge>
         </div>
+        {/* The whole point of asking for a reason is that somebody reads it. */}
+        {task.skipReason && (
+          <p className="mt-1 text-xs text-subtle">Reason: {task.skipReason}</p>
+        )}
       </div>
     )
   }
@@ -224,7 +274,21 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity }: TaskRowPr
         </button>
       )}
 
-      <div className="mt-3">
+      {showSkipReason && (
+        <div className="mt-3">
+          <Textarea
+            label="Why was it not done?"
+            rows={2}
+            required
+            value={skipReason}
+            onChange={(e) => setSkipReason(e.target.value)}
+            disabled={submitting}
+            placeholder="e.g. delivery did not arrive"
+          />
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-2">
         <Button
           variant="primary"
           size="lg"
@@ -234,6 +298,27 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity }: TaskRowPr
         >
           Done
         </Button>
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={handleNotDone}
+          disabled={submitting}
+        >
+          {showSkipReason ? 'Save reason' : 'Not done'}
+        </Button>
+        {showSkipReason && (
+          <Button
+            variant="ghost"
+            size="lg"
+            onClick={() => {
+              setShowSkipReason(false)
+              setSkipReason('')
+            }}
+            disabled={submitting}
+          >
+            Cancel
+          </Button>
+        )}
       </div>
     </div>
   )

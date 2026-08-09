@@ -14,6 +14,7 @@ import {
   ICS_CALENDAR_REFRESH_LINES,
   type PublishedShiftRow,
 } from '@/lib/ics/utils'
+import { displayName } from '@/lib/employees/display-name'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Verify employee exists and still has staff portal access.
   const { data: employee } = await supabase
     .from('employees')
-    .select('first_name, last_name, status')
+    .select('first_name, last_name, preferred_name, status')
     .eq('employee_id', employeeId)
     .maybeSingle()
 
@@ -77,7 +78,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     return new Response('Forbidden', { status: 403 })
   }
 
-  const empName = [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Staff'
+  // This calendar is the employee's own, so it is named the way the team names them.
+  const empName = displayName(employee, 'Staff')
 
   // Last 4 weeks to next 12 weeks (QA-015: use London timezone)
   const today = getTodayIsoDate()

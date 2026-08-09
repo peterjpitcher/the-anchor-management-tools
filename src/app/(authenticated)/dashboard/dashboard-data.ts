@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
+import { displayName } from '@/lib/employees/display-name'
 import type { ScheduleDailyOps } from '@/components/schedule-calendar'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
 import {
@@ -327,6 +328,7 @@ function getBirthdayOccurrencesInRange(input: {
   employee_id: string
   first_name: string | null
   last_name: string | null
+  preferred_name: string | null
   job_title: string | null
   date_of_birth: string | null
 }, startIso: string, endIso: string): EmployeeBirthdaySummary[] {
@@ -337,7 +339,7 @@ function getBirthdayOccurrencesInRange(input: {
 
   const start = new Date(`${startIso}T12:00:00`)
   const end = new Date(`${endIso}T12:00:00`)
-  const name = [input.first_name, input.last_name].filter(Boolean).join(' ') || 'Employee'
+  const name = displayName(input, 'Employee')
   const out: EmployeeBirthdaySummary[] = []
 
   for (let year = start.getFullYear(); year <= end.getFullYear(); year += 1) {
@@ -1324,7 +1326,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .in('status', ['Active', 'Started Separation']),
             supabase
               .from('employees')
-              .select('employee_id, first_name, last_name, job_title, date_of_birth')
+              .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth')
               .in('status', ['Active', 'Started Separation'])
               .not('date_of_birth', 'is', null)
               .order('first_name', { ascending: true })
@@ -1340,6 +1342,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               employee_id: String(employee.employee_id),
               first_name: typeof employee.first_name === 'string' ? employee.first_name : null,
               last_name: typeof employee.last_name === 'string' ? employee.last_name : null,
+              preferred_name: typeof employee.preferred_name === 'string' ? employee.preferred_name : null,
               job_title: typeof employee.job_title === 'string' ? employee.job_title : null,
               date_of_birth: typeof employee.date_of_birth === 'string' ? employee.date_of_birth : null,
             }, eventsLookbackIso, calendarNotesHorizonIso))
@@ -1569,12 +1572,20 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           if (empIds.length > 0) {
             const { data: emps } = await supabase
               .from('employees')
-              .select('employee_id, first_name')
+              .select('employee_id, first_name, last_name, preferred_name')
               .in('employee_id', empIds)
 
             const firstNameById = new Map<string, string>()
-            for (const e of (emps ?? []) as { employee_id: string; first_name: string | null }[]) {
-              if (e.first_name) firstNameById.set(e.employee_id, e.first_name)
+            for (const e of (emps ?? []) as {
+              employee_id: string
+              first_name: string | null
+              last_name: string | null
+              preferred_name: string | null
+            }[]) {
+              // Empty fallback keeps the existing behaviour: an employee with no
+              // usable name is skipped rather than rendered as a blank entry.
+              const name = displayName(e, '')
+              if (name) firstNameById.set(e.employee_id, name)
             }
 
             // Per day, list each staff member once, ordered by their earliest

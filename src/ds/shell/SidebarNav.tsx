@@ -25,11 +25,20 @@ export interface NavGroup {
   items: NavItem[]
 }
 
+/**
+ * Group labels live on the data, not on position. The mobile drawer used to
+ * title its groups from a fixed array indexed by position, but
+ * `filterNavGroupsForPermissions` drops groups a user cannot see, so the indexes
+ * shifted and a restricted user got the wrong heading over every group.
+ */
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: null,
+    label: 'Overview',
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: 'home', href: '/', permission: { module: 'dashboard', action: 'view' } },
+      // `/` only ever redirects to `/dashboard` (src/app/page.tsx), so linking
+      // to `/` meant the active check never matched the path the user actually
+      // lands on and Dashboard was never highlighted.
+      { id: 'dashboard', label: 'Dashboard', icon: 'home', href: '/dashboard', permission: { module: 'dashboard', action: 'view' } },
       { id: 'events', label: 'Events', icon: 'calendar', href: '/events', permission: { module: 'events', action: 'view' } },
       { id: 'customers', label: 'Customers', icon: 'users', href: '/customers', permission: { module: 'customers', action: 'view' } },
       { id: 'messages', label: 'Messages', icon: 'message', href: '/messages', permission: { module: 'messages', action: 'view' } },
@@ -37,7 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: null,
+    label: 'Operations',
     items: [
       { id: 'menu', label: 'Menu Management', icon: 'grid', href: '/menu-management', permission: { module: 'menu_management', action: 'view' } },
       { id: 'tables', label: 'Table Bookings', icon: 'table', href: '/table-bookings', permission: { module: 'table_bookings', action: 'view' } },
@@ -47,7 +56,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: null,
+    label: 'Staff',
     items: [
       { id: 'employees', label: 'Employees', icon: 'user', href: '/employees', permission: { module: 'employees', action: 'view' } },
       { id: 'recruitment', label: 'Recruitment', icon: 'briefcase', href: '/recruitment', permission: { module: 'recruitment', action: 'view' } },
@@ -56,7 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: null,
+    label: 'Finance',
     items: [
       { id: 'cashing-up', label: 'Cashing Up', icon: 'cash', href: '/cashing-up/dashboard', permission: { module: 'cashing_up', action: 'view' } },
       { id: 'invoices', label: 'Invoices', icon: 'file', href: '/invoices', permission: { module: 'invoices', action: 'view' } },
@@ -70,7 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: null,
+    label: 'Admin',
     items: [
       { id: 'settings', label: 'Settings', icon: 'cog', href: '/settings', permission: { module: 'settings', action: 'view' } },
       { id: 'users', label: 'Users', icon: 'users', href: '/users', permission: { module: 'users', action: 'view' } },
@@ -99,6 +108,10 @@ export function filterNavGroupsForPermissions(
  * Resolves the live outstanding-count badge for a nav item. Shared by the
  * desktop sidebar and the mobile chrome so both stay in sync. Falls back to any
  * static `item.badge` when live counts are unavailable.
+ *
+ * A badge means "work you can clear from here". Only add an id to the map below
+ * when the underlying count drops as staff do the work: a count that waits on a
+ * customer never reaches zero and trains people to ignore every badge.
  */
 export function navCount(
   item: Pick<NavItem, 'id' | 'badge'>,
@@ -111,12 +124,13 @@ export function navCount(
   const countById: Record<string, number | undefined> = {
     events: counts.events,
     menu: counts.menu_management,
-    tables: counts.table_bookings,
     'private-bookings': counts.private_bookings,
-    parking: counts.parking,
     'cashing-up': counts.cashing_up,
     invoices: counts.invoices,
     receipts: counts.receipts,
+    rota: counts.rota,
+    checklists: counts.checklists,
+    feedback: counts.feedback,
   }
 
   // A live count wins even when it is 0 (0 = "nothing outstanding", not "no
@@ -160,11 +174,22 @@ export function SidebarNav({ items, onNavigate }: SidebarNavProps) {
                     : 'text-sidebar-fg-muted hover:bg-sidebar-hover-bg hover:text-sidebar-fg'
                 }`}
               >
-                <Icon name={item.icon as IconName} size={20} className="shrink-0" />
+                <span className="relative shrink-0">
+                  <Icon name={item.icon as IconName} size={20} className="shrink-0" />
+                  {/* The numeric badge below is a `.ds-label`, so it is hidden
+                      while the rail is collapsed. This dot is its stand-in, and
+                      fades out as the real badge fades in. */}
+                  {count ? (
+                    <span
+                      className="ds-collapsed-dot absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-danger ring-2 ring-sidebar-bg"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </span>
                 <span className="ds-label truncate">{item.label}</span>
                 {count ? (
                   <span className="ds-label ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-sidebar-active-bg text-[11px] font-semibold text-sidebar-fg">
-                    {count}
+                    {count > 99 ? '99+' : count}
                   </span>
                 ) : null}
               </Link>

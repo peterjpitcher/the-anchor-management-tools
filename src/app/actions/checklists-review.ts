@@ -17,6 +17,7 @@ import {
   type ReviewInstanceInput,
 } from '@/lib/checklists/weekly-review'
 import type { WeeklyReview, DateHealth } from '@/types/checklists-review'
+import { displayName } from '@/lib/employees/display-name'
 
 // ---------------------------------------------------------------------------
 // Local helpers (duplicated from checklists-spotcheck rather than edited there,
@@ -111,6 +112,7 @@ interface EmployeeRow {
   employee_id: string
   first_name: string | null
   last_name: string | null
+  preferred_name: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -200,12 +202,12 @@ export async function getWeeklyReview(
     try {
       const employees = (await db
         .from('employees')
-        .select('employee_id, first_name, last_name')
+        .select('employee_id, first_name, last_name, preferred_name')
         .in('employee_id', completerIds)) as { data: EmployeeRow[] | null; error: unknown }
       if (employees.error) throw employees.error
       for (const employee of employees.data ?? []) {
-        const name = [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown'
-        nameMap[employee.employee_id] = name
+        // Internal oversight grid, so the completer reads as the team knows them.
+        nameMap[employee.employee_id] = displayName(employee)
       }
     } catch {
       warnings.push('Employee names could not be loaded; completers show as Unknown.')

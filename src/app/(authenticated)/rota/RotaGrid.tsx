@@ -37,6 +37,7 @@ import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaSummary } from '@/lib/rota/summary';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import { displayName } from '@/lib/employees/display-name';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
@@ -98,8 +99,7 @@ function paidHours(start: string, end: string, breakMins: number, overnight: boo
 }
 
 function empDisplayName(emp: RotaEmployee): string {
-  const full = [emp.first_name, emp.last_name].filter(Boolean).join(' ');
-  return full || 'Unknown';
+  return displayName(emp, 'Unknown');
 }
 
 function formatDayHeader(iso: string): string {
@@ -1457,7 +1457,7 @@ export default function RotaGrid({
         <ShiftDetailModal
           shift={selectedShift}
           employee={employees.find(e => e.employee_id === selectedShift.employee_id)}
-          acceptanceDeciderName={selectedShift.acceptance_decided_by ? empDisplayName(employees.find(e => e.employee_id === selectedShift.acceptance_decided_by) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true }) : null}
+          acceptanceDeciderName={selectedShift.acceptance_decided_by ? empDisplayName(employees.find(e => e.employee_id === selectedShift.acceptance_decided_by) ?? { employee_id: '', first_name: null, last_name: null, preferred_name: null, job_title: null, max_weekly_hours: null, is_active: true }) : null}
           canEdit={canEdit}
           departments={departments}
           openShiftRequests={openShiftRequests.filter(request => request.shift_id === selectedShift.id)}
@@ -1476,7 +1476,7 @@ export default function RotaGrid({
         <CreateShiftModal
           weekId={week.id}
           employeeId={createTarget.employeeId}
-          employeeName={createTarget.employeeId === OPEN_ROW_ID ? 'Open shift' : empDisplayName(employees.find(e => e.employee_id === createTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
+          employeeName={createTarget.employeeId === OPEN_ROW_ID ? 'Open shift' : empDisplayName(employees.find(e => e.employee_id === createTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, preferred_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
           shiftDate={createTarget.date}
           departments={departments}
           onClose={() => setCreateTarget(null)}
@@ -1505,7 +1505,7 @@ export default function RotaGrid({
       {holidayTarget && (
         <BookHolidayModal
           employeeId={holidayTarget.employeeId}
-          employeeName={empDisplayName(employees.find(e => e.employee_id === holidayTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
+          employeeName={empDisplayName(employees.find(e => e.employee_id === holidayTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, preferred_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
           initialDate={holidayTarget.date}
           onClose={() => setHolidayTarget(null)}
           onBooked={(days) => {
@@ -1522,7 +1522,7 @@ export default function RotaGrid({
           weekId={week.id}
           employeeId={sickTarget.employeeId}
           shiftDate={sickTarget.date}
-          employeeName={empDisplayName(employees.find(e => e.employee_id === sickTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
+          employeeName={empDisplayName(employees.find(e => e.employee_id === sickTarget.employeeId) ?? { employee_id: '', first_name: null, last_name: null, preferred_name: null, job_title: null, max_weekly_hours: null, is_active: true })}
           onClose={() => setSickTarget(null)}
           onMarked={(updated) => {
             setShifts(prev => {

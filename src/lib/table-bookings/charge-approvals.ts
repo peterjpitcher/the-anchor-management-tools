@@ -4,6 +4,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { createStripeOffSessionCharge, isStripeConfigured } from '@/lib/payments/stripe'
+import { formatChargeRequestType } from './charge-request-labels'
 
 const MANAGER_APPROVAL_EMAIL = process.env.MANAGER_APPROVAL_EMAIL || 'manager@the-anchor.pub'
 
@@ -79,20 +80,9 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-export function formatChargeRequestType(type?: string | null): string {
-  switch (type) {
-    case 'late_cancel':
-      return 'Late cancellation'
-    case 'no_show':
-      return 'No-show'
-    case 'reduction_fee':
-      return 'Reduction fee'
-    case 'walkout':
-      return 'Walkout / unpaid bill'
-    default:
-      return 'Charge request'
-  }
-}
+// Re-exported so existing server-side callers keep working. The implementation
+// lives in a pure module that client components can import safely.
+export { formatChargeRequestType }
 
 function formatDateTime(dateIso?: string | null): string {
   if (!dateIso) return 'Unknown time'

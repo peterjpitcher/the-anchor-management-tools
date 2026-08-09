@@ -9,6 +9,7 @@ import {
 } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import PrintTrigger from './PrintTrigger';
+import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,8 +35,10 @@ function paidHours(start: string, end: string, breakMins: number, overnight: boo
   return Math.max(0, endM - startM - breakMins) / 60;
 }
 
+// The printed rota goes on the staff noticeboard, so it reads the same as the
+// on-screen grid. Payroll and contract paperwork keep the legal name.
 function empDisplayName(emp: RotaEmployee): string {
-  return [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown';
+  return displayName(emp, 'Unknown');
 }
 
 function formatTime(t: string): string {

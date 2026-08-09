@@ -163,8 +163,9 @@ describe('getWeeklyReview happy path', () => {
     tableData['checklist_spot_checks'] = { data: [{ instance_id: 'iC' }], error: null }
     tableData['employees'] = {
       data: [
-        { employee_id: 'e1', first_name: 'Jacob', last_name: 'Hambridge' },
-        { employee_id: 'e2', first_name: 'Sam', last_name: 'Barwood' },
+        // Two Jacobs is the real case: preferred names are what tell them apart.
+        { employee_id: 'e1', first_name: 'Jacob', last_name: 'Hambridge', preferred_name: 'Jacob H' },
+        { employee_id: 'e2', first_name: 'Sam', last_name: 'Barwood', preferred_name: null },
       ],
       error: null,
     }
@@ -203,7 +204,7 @@ describe('getWeeklyReview happy path', () => {
 
     // Cell states along the opening row.
     expect(opening.cells[0].state).toBe('done')
-    expect(opening.cells[0].completedByName).toBe('Jacob Hambridge')
+    expect(opening.cells[0].completedByName).toBe('Jacob H')
     expect(opening.cells[0].completedAt).toBe('2026-07-20T06:15:00Z')
     expect(opening.cells[1].state).toBe('missed')
     // No instance on a 'none' health day -> no_data (not a clean blank).
@@ -216,7 +217,8 @@ describe('getWeeklyReview happy path', () => {
     expect(closing.cells[0].valueRecorded).toBe(9)
     expect(closing.cells[0].valueBreach).toBe(true)
     expect(closing.cells[0].spotCheckFailed).toBe(true)
-    expect(closing.cells[0].completedByName).toBe('Sam Barwood')
+    // No preferred name set, so the review grid falls back to the first name.
+    expect(closing.cells[0].completedByName).toBe('Sam')
   })
 })
 

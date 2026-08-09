@@ -58,6 +58,7 @@ type EmployeeSetupState = {
   employee: {
     first_name: string
     last_name: string
+    preferred_name: string
     email_address: string
     job_title: string
     employment_start_date: string
@@ -137,6 +138,7 @@ const DEFAULT_STATE: EmployeeSetupState = {
   employee: {
     first_name: '',
     last_name: '',
+    preferred_name: '',
     email_address: '',
     job_title: '',
     employment_start_date: '',
@@ -294,6 +296,11 @@ export default function NewEmployeeOnboardingClient() {
         // Employee (Section 1 + office fields)
         employeeFormData.append('first_name', state.employee.first_name.trim())
         employeeFormData.append('last_name', state.employee.last_name.trim())
+        // Only sent when filled in. The action treats an absent field as "leave alone",
+        // and a blank preferred name is stored as NULL rather than an empty string.
+        if (state.employee.preferred_name.trim()) {
+          employeeFormData.append('preferred_name', state.employee.preferred_name.trim())
+        }
         employeeFormData.append('email_address', state.employee.email_address.trim())
         employeeFormData.append('job_title', state.employee.job_title.trim())
         employeeFormData.append('employment_start_date', state.employee.employment_start_date)
@@ -512,6 +519,17 @@ export default function NewEmployeeOnboardingClient() {
             </FormGroup>
             <FormGroup label="Last Name" required>
               <Input value={state.employee.last_name} onChange={(e) => updateEmployee('last_name', e.target.value)} />
+            </FormGroup>
+            <FormGroup
+              label="Preferred Name"
+              className="sm:col-span-2"
+              help="Optional. What the team calls this person. Used everywhere in the app. Their legal name is still used for contracts and payroll."
+            >
+              <Input
+                value={state.employee.preferred_name}
+                onChange={(e) => updateEmployee('preferred_name', e.target.value)}
+                placeholder="e.g. Mandy"
+              />
             </FormGroup>
             <FormGroup label="Email Address" required>
               <Input

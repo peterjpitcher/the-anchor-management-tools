@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useTransition, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { clockIn, clockOut } from '@/app/actions/timeclock'
 import { Avatar } from '@/ds'
+import { disambiguatedNames } from '@/lib/employees/display-name'
 import type { TimeclockSession } from '@/app/actions/timeclock'
 
 interface Employee {
   employee_id: string
   first_name: string | null
   last_name: string | null
+  preferred_name: string | null
 }
 
 interface TimeclockClientProps {
@@ -18,8 +20,18 @@ interface TimeclockClientProps {
   openSessions: (TimeclockSession & { employee_name: string })[]
 }
 
-function empName(e: Employee): string {
-  return [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Staff'
+// The kiosk is a shared screen, so staff need to spot themselves at a glance:
+// the preferred name is what they answer to. 'Staff' stays as the last-resort
+// fallback so a card is never blank.
+//
+// Names are resolved across the whole list rather than per card, so two people
+// who would otherwise read identically (two Jacobs with no preferred name set)
+// each gain a surname. Tapping the wrong card on a shared kiosk clocks the
+// wrong person in, so an ambiguous card is not acceptable here.
+function buildNameMap(employees: Employee[]): Map<string, string> {
+  return new Map(
+    disambiguatedNames(employees, 'Staff').map(({ employee, name }) => [employee.employee_id, name]),
+  )
 }
 
 function formatTime(iso: string): string {
@@ -34,6 +46,12 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
   const [currentDate, setCurrentDate] = useState('')
   const [pinTarget, setPinTarget] = useState<Employee | null>(null)
   const [pin, setPin] = useState('')
+
+  const nameById = useMemo(() => buildNameMap(employees), [employees])
+  const empName = useCallback(
+    (e: Employee) => nameById.get(e.employee_id) ?? 'Staff',
+    [nameById],
+  )
 
   // Live clock
   useEffect(() => {

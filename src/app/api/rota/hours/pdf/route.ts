@@ -4,6 +4,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { calculatePaidHours } from '@/lib/rota/pay-calculator';
+import { displayName } from '@/lib/employees/display-name';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -35,6 +36,7 @@ type EmployeeRow = {
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
+  preferred_name: string | null;
   job_title: string | null;
   status: string | null;
 };
@@ -162,8 +164,9 @@ function fullDate(iso: string): string {
   });
 }
 
-function employeeName(employee: Pick<EmployeeRow, 'first_name' | 'last_name'>): string {
-  return [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown';
+// Internal hours report, so it shows the same preferred name as the on-screen hours page.
+function employeeName(employee: Pick<EmployeeRow, 'first_name' | 'last_name' | 'preferred_name'>): string {
+  return displayName(employee);
 }
 
 function actualHours(session: SessionRow): number {
@@ -588,7 +591,7 @@ async function buildReportModel(searchParams: URLSearchParams): Promise<ReportMo
   const [employeesResult, sessionsResult, leaveDaysResult, sickShiftsResult, plannedShiftsResult] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, job_title, status')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, status')
       .order('first_name')
       .order('last_name'),
     supabase
