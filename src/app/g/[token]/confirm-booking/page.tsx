@@ -15,7 +15,13 @@ import { isAnswerable, lookupConfirmToken } from '@/lib/table-bookings/confirm-t
 
 export const dynamic = 'force-dynamic'
 
-const CONTACT_PHONE = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753 682707'
+const RAW_CONTACT_PHONE = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
+
+/** The env var carries the number unspaced, which reads as a string of digits to a guest. */
+const CONTACT_PHONE_HREF = RAW_CONTACT_PHONE.replace(/\s/g, '')
+const CONTACT_PHONE_DISPLAY = /^0\d{10}$/.test(CONTACT_PHONE_HREF)
+  ? `${CONTACT_PHONE_HREF.slice(0, 5)} ${CONTACT_PHONE_HREF.slice(5)}`
+  : RAW_CONTACT_PHONE
 
 type PageProps = {
   params: Promise<{ token: string }>
@@ -29,8 +35,8 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
       <div className="mt-4 space-y-4 text-gray-700">{children}</div>
       <p className="mt-8 text-sm text-gray-500">
         The Anchor, Stanwell Moor. Anything else, call us on{' '}
-        <a className="underline" href={`tel:${CONTACT_PHONE.replace(/\s/g, '')}`}>
-          {CONTACT_PHONE}
+        <a className="underline" href={`tel:${CONTACT_PHONE_HREF}`}>
+          {CONTACT_PHONE_DISPLAY}
         </a>
         .
       </p>
