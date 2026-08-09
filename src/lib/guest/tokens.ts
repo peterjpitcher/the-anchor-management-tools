@@ -10,6 +10,7 @@ type GuestTokenActionType =
   | 'waitlist_offer'
   | 'private_feedback'
   | 'private_booking_outcome'
+  | 'booking_confirm'
 
 export type CreateGuestTokenInput = {
   customerId: string
