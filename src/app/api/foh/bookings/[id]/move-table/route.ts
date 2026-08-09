@@ -7,7 +7,8 @@ import { logAuditEvent } from '@/app/actions/audit'
 import {
   getMoveTableAvailability,
   moveBookingAssignmentToTables,
-  resolveMoveTableTarget
+  resolveMoveTableTarget,
+  rightSizeMoveOptions
 } from '@/lib/table-bookings/move-table'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -55,6 +56,14 @@ export async function GET(
   try {
     const availability = await getMoveTableAvailability(auth.supabase, booking)
 
+    // Trimmed here rather than in getMoveTableAvailability: the BOH screen uses
+    // the same helper to pick a table when someone *increases* the party size,
+    // and that flow needs the larger options this filter removes.
+    const rightSized = rightSizeMoveOptions(
+      availability.tables,
+      Math.max(1, Number(booking.party_size || 1)),
+    )
+
     return NextResponse.json({
       success: true,
       data: {
@@ -62,7 +71,7 @@ export async function GET(
         start_datetime: availability.startIso,
         end_datetime: availability.endIso,
         assigned_table_ids: availability.assignedTableIds,
-        tables: availability.tables.map((table) => ({
+        tables: rightSized.map((table) => ({
           id: table.id,
           table_ids: table.table_ids,
           table_number: table.table_number,

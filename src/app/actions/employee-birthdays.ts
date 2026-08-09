@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
+import { displayName } from '@/lib/employees/display-name';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import { checkUserPermission } from './rbac';
@@ -19,6 +20,7 @@ interface EmployeeWithBirthday {
   employee_id: string;
   first_name: string;
   last_name: string;
+  preferred_name: string | null;
   job_title: string | null;
   date_of_birth: string;
   email_address: string | null;
@@ -57,7 +59,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
     // Get all active employees with date of birth
     const { data: employees, error } = await supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth, email_address')
       .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
@@ -124,7 +126,7 @@ async function sendBirthdayRemindersInternal(daysAhead: number = 7) {
       additional_info: {
         employees_badge: upcomingBirthdays.length,
         sent_to: managerEmail,
-        employee_names: upcomingBirthdays.map(e => `${e.first_name} ${e.last_name}`).join(', ')
+        employee_names: upcomingBirthdays.map(e => displayName(e)).join(', ')
       }
     });
 
@@ -181,7 +183,7 @@ async function getUpcomingBirthdays(daysAhead: number = 30) {
     // Get all active employees with date of birth
     const { data: employees, error } = await supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth, email_address')
       .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
@@ -235,7 +237,7 @@ export async function getAllBirthdays() {
     // Get all active employees with date of birth
     const { data: employees, error } = await supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth, email_address')
       .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
@@ -283,7 +285,7 @@ function generateBirthdayReminderEmail(birthdays: EmployeeWithBirthday[]): strin
       return `
         <tr>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
-            <strong>${emp.first_name} ${emp.last_name}</strong><br>
+            <strong>${displayName(emp)}</strong><br>
             <span style="color: #6b7280; font-size: 14px;">${emp.job_title || 'No title'}</span>
           </td>
           <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
@@ -356,7 +358,7 @@ function generatePlainTextEmail(birthdays: EmployeeWithBirthday[]): string {
       birthdayDate.setFullYear(birthdayDate.getFullYear() + 1);
     }
     
-    text += `• ${emp.first_name} ${emp.last_name} (${emp.job_title || 'No title'})\n`;
+    text += `• ${displayName(emp)} (${emp.job_title || 'No title'})\n`;
     text += `  Birthday: ${format(birthdayDate, 'EEEE, MMMM d')}\n`;
     text += `  Turning: ${emp.turning_age}\n\n`;
   });

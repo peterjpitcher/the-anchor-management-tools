@@ -54,7 +54,7 @@ const STATE_STYLE: Record<DisplayState, string> = {
 }
 
 // Short visible glyph for each state. Never the only signal: paired with an aria-label
-// and, for done cells, the completer initials.
+// and, for done cells, the name of whoever ticked it.
 const STATE_GLYPH: Record<DisplayState, string> = {
   done: '✓', // check
   missed: '×', // cross
@@ -84,16 +84,6 @@ function displayStateFor(cell: ReviewCell, todayBusiness: string): DisplayState 
     return 'future'
   }
   return cell.state
-}
-
-function initials(name: string | undefined): string {
-  if (!name) return ''
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('')
 }
 
 function readingLabel(cell: ReviewCell): string | null {
@@ -513,24 +503,33 @@ function CellButton({ row, cell, todayBusiness, onSelect }: CellButtonProps) {
   const display = displayStateFor(cell, todayBusiness)
   const flags = display === 'future' ? [] : cellFlags(cell)
   const reading = readingLabel(cell)
-  const glyph =
-    display === 'done' && cell.completedByName
-      ? initials(cell.completedByName)
-      : STATE_GLYPH[display]
+  // A done cell names the person rather than showing a tick: on a week at a glance,
+  // "who did this" is the thing a manager is actually reading for. The name arrives
+  // already resolved to the preferred name from getWeeklyReview.
+  const label =
+    display === 'done' && cell.completedByName ? cell.completedByName : STATE_GLYPH[display]
 
   return (
     <button
       type="button"
       onClick={() => onSelect(row, cell, display)}
       aria-label={cellAccessibleName(row, cell, display)}
+      // Names truncate in the cell, so hover carries the full detail. Screen readers
+      // ignore title when aria-label is set, so this adds nothing for them to repeat.
+      title={cellAccessibleName(row, cell, display)}
       className={`relative flex h-11 w-full items-center justify-center px-1 text-xs font-semibold transition-colors focus:z-10 focus-visible:outline-none focus-visible:shadow-ring hover:brightness-95 ${STATE_STYLE[display]}`}
     >
-      <span aria-hidden="true" className="flex items-center justify-center gap-1">
-        <span>{glyph}</span>
+      {/* max-w caps what this cell contributes to the column's intrinsic width, so a
+          long name ellipsises instead of stretching the day column across the grid. */}
+      <span
+        aria-hidden="true"
+        className="flex min-w-0 max-w-[88px] items-center justify-center gap-1"
+      >
+        <span className="truncate">{label}</span>
         {reading && (
           <>
-            <span className="text-text-subtle">·</span>
-            <span>{reading}</span>
+            <span className="shrink-0 text-text-subtle">·</span>
+            <span className="shrink-0">{reading}</span>
           </>
         )}
       </span>

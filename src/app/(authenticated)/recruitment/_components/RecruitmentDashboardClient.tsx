@@ -38,6 +38,7 @@ import {
   Textarea,
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
+import { displayName } from '@/lib/employees/display-name'
 import { formatAvailabilityAnswer } from '@/lib/recruitment/answers'
 import {
   addRecruitmentCandidateNoteAction,
@@ -2406,7 +2407,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         {selectedApplicationAppointments.map((apt: any) => {
                           const aptScorecards = scorecards.filter((sc: any) => sc.appointment_id === apt.id)
                           const interviewerName = apt.supervisor
-                            ? [apt.supervisor.first_name, apt.supervisor.last_name].filter(Boolean).join(' ')
+                            ? displayName(apt.supervisor, '')
                             : ''
                           const rescheduleSlots = slots.filter((slot: any) => (
                             !slot.archived_at && slot.status === 'open' && slot.type === apt.type

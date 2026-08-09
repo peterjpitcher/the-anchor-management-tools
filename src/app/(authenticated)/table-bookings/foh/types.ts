@@ -30,6 +30,12 @@ export type FohBooking = {
   high_chair_count?: number
   is_outside_seating?: boolean
   requires_accessible_table?: boolean
+  // Guest requirements. Optional because private-hire and communal blocks are
+  // synthesised rows with no underlying booking to read them from.
+  allergies?: string[]
+  dietary_requirements?: string[]
+  celebration_type?: string | null
+  internal_notes?: string | null
 }
 
 export type FohLane = {

@@ -12,6 +12,7 @@ import {
   buildHolidayDecisionEmailHtml,
 } from '@/lib/rota/email-templates';
 import { logAuditEvent } from '@/app/actions/audit';
+import { displayName } from '@/lib/employees/display-name';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import {
   recordHolidayAuditOnly,
@@ -158,7 +159,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   // Send confirmation email to employee
   const { data: employee } = await supabase
     .from('employees')
-    .select('email_address, first_name')
+    .select('email_address, first_name, preferred_name')
     .eq('employee_id', employeeId)
     .single();
 
@@ -168,7 +169,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
       to: employee.email_address,
       subject: emailSubject,
       html: buildHolidaySubmittedEmailHtml(
-        employee.first_name ?? 'there',
+        displayName(employee, 'there'),
         startDate,
         endDate,
       ),
@@ -226,7 +227,7 @@ export async function reviewLeaveRequest(
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('id, status, start_date, end_date, employee_id, note, created_at, employees(email_address, first_name)')
+    .select('id, status, start_date, end_date, employee_id, note, created_at, employees(email_address, first_name, preferred_name)')
     .eq('id', requestId)
     .single();
 
@@ -258,14 +259,14 @@ export async function reviewLeaveRequest(
   }
 
   // Send decision email to employee
-  const employee = (request as unknown as { employees: { email_address: string; first_name: string } | null }).employees;
+  const employee = (request as unknown as { employees: { email_address: string; first_name: string; preferred_name: string | null } | null }).employees;
   if (employee?.email_address) {
     const decisionSubject = `Holiday Request ${decision === 'approved' ? 'Approved' : 'Declined'}`;
     const decisionResult = await sendEmail({
       to: employee.email_address,
       subject: decisionSubject,
       html: buildHolidayDecisionEmailHtml(
-        employee.first_name ?? 'there',
+        displayName(employee, 'there'),
         request.start_date,
         request.end_date,
         decision,

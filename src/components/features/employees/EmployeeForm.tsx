@@ -33,6 +33,8 @@ type FormField = {
   defaultValue?: string | null;
   defaultChecked?: boolean;
   options?: string[];
+  /** Shown under the input. Added for preferred name, where the distinction from the legal name needs explaining. */
+  hint?: string;
 }
 
 function SubmitButton({ text = 'Save Employee' }: { text?: string }) {
@@ -103,6 +105,13 @@ export default function EmployeeForm({
       fields: [
         { name: 'first_name', label: 'First Name', type: 'text', required: true, defaultValue: employee?.first_name },
         { name: 'last_name', label: 'Last Name', type: 'text', required: true, defaultValue: employee?.last_name },
+        {
+          name: 'preferred_name',
+          label: 'Preferred Name',
+          type: 'text',
+          defaultValue: employee?.preferred_name,
+          hint: 'What the team calls this person, shown everywhere in the app. Their legal name above is still used for contracts and payroll. Leave blank to use their first name. Two active employees cannot share a preferred name, so use "Jacob H" and "Jacob W" where first names clash.',
+        },
         { name: 'email_address', label: 'Email Address', type: 'email', required: true, defaultValue: employee?.email_address },
         { name: 'phone_number', label: 'Telephone', type: 'tel', defaultValue: employee?.phone_number },
         { name: 'mobile_number', label: 'Mobile', type: 'tel', defaultValue: employee?.mobile_number },
@@ -220,6 +229,9 @@ export default function EmployeeForm({
                       error={!!state?.errors?.[field.name]}
                     />
                   )}
+                  {field.hint && !state?.errors?.[field.name] && (
+                    <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
+                  )}
                   {state?.errors?.[field.name] && (
                     <p className="mt-2 text-sm text-red-600" id={`${field.name}-error`}>
                       {state.errors[field.name]}
@@ -275,6 +287,9 @@ export default function EmployeeForm({
                   required={field.required}
                   error={!!state?.errors?.[field.name]}
                 />
+              )}
+              {field.hint && !state?.errors?.[field.name] && (
+                <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
               )}
               {state?.errors?.[field.name] && (
                 <p className="mt-2 text-sm text-red-600" id={`${field.name}-error`}>

@@ -15,6 +15,7 @@ import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRec
 import type { Department } from '@/app/actions/budgets';
 import MarkSickModal from './MarkSickModal';
 import { PremiumControl, usePremiumControl } from './CreateShiftModal';
+import { displayName } from '@/lib/employees/display-name';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
@@ -196,7 +197,7 @@ export default function ShiftDetailModal({
   const [showSickModal, setShowSickModal] = useState(false);
 
   const empName = employee
-    ? [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown'
+    ? displayName(employee, 'Unknown')
     : 'Unknown employee';
 
   const paidH = paidHoursNum(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);

@@ -12,6 +12,9 @@ import {
   verifyTimeclockPin,
 } from '@/lib/timeclock/pin';
 import { hasPremium } from '@/lib/rota/pay-calculator';
+// Timeclock names are shown on the kiosk and the manager review screen, never on
+// payroll or contract paperwork, so they use the preferred (display) name.
+import { displayName } from '@/lib/employees/display-name';
 
 // Timeclock uses the service-role (admin) client so that clock in/out works
 // on the public kiosk without Supabase auth session.
@@ -320,7 +323,7 @@ export async function getOpenSessions(): Promise<
     .from('timeclock_sessions')
     .select(`
       *,
-      employees!timeclock_sessions_employee_id_fkey(first_name, last_name)
+      employees!timeclock_sessions_employee_id_fkey(first_name, last_name, preferred_name)
     `)
     .is('clock_out_at', null)
     .order('clock_in_at', { ascending: true });
@@ -328,10 +331,16 @@ export async function getOpenSessions(): Promise<
   if (error) return { success: false, error: error.message };
 
   const result = (data ?? []).map((row: Record<string, unknown>) => {
-    const emp = row.employees as { first_name: string | null; last_name: string | null } | null;
+    const emp = row.employees as {
+      first_name: string | null;
+      last_name: string | null;
+      preferred_name: string | null;
+    } | null;
     return {
       ...row,
-      employee_name: [emp?.first_name, emp?.last_name].filter(Boolean).join(' ') || 'Unknown',
+      // `?? {}` keeps the old behaviour when the join returns no employee row:
+      // displayName then falls through to the 'Unknown' fallback.
+      employee_name: displayName(emp ?? {}, 'Unknown'),
     };
   });
 
@@ -482,7 +491,7 @@ export async function getTimeclockSessionsForWeek(
     .from('timeclock_sessions')
     .select(`
       ${SESSION_COLUMNS},
-      employees!timeclock_sessions_employee_id_fkey(first_name, last_name),
+      employees!timeclock_sessions_employee_id_fkey(first_name, last_name, preferred_name),
       rota_shifts!linked_shift_id(start_time, end_time, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time)
     `)
     .gte('work_date', weekStart)
@@ -493,7 +502,11 @@ export async function getTimeclockSessionsForWeek(
   if (error) return { success: false, error: error.message };
 
   const result = (data ?? []).map((row: Record<string, unknown>) => {
-    const emp = row.employees as { first_name: string | null; last_name: string | null } | null;
+    const emp = row.employees as {
+      first_name: string | null;
+      last_name: string | null;
+      preferred_name: string | null;
+    } | null;
     const shift = row.rota_shifts as {
       start_time: string;
       end_time: string;
@@ -517,7 +530,7 @@ export async function getTimeclockSessionsForWeek(
       // choice detection doesn't silently fall through to 'none' and wipe it.
       rate_multiplier: coercePremiumNumber(row.rate_multiplier),
       rate_override: coercePremiumNumber(row.rate_override),
-      employee_name: [emp?.first_name, emp?.last_name].filter(Boolean).join(' ') || 'Unknown',
+      employee_name: displayName(emp ?? {}, 'Unknown'),
       clock_in_local: fmt(clockIn),
       clock_out_local: clockOut ? fmt(clockOut) : null,
       planned_start: shift?.start_time?.slice(0, 5) ?? null,
@@ -589,13 +602,17 @@ export async function createTimeclockSession(
       notes: notes ?? null,
       ...premiumColumns,
     })
-    .select(`${SESSION_COLUMNS}, employees!timeclock_sessions_employee_id_fkey(first_name, last_name)`)
+    .select(`${SESSION_COLUMNS}, employees!timeclock_sessions_employee_id_fkey(first_name, last_name, preferred_name)`)
     .single();
 
   if (error) return { success: false, error: error.message };
 
   const row = data as Record<string, unknown>;
-  const emp = row.employees as { first_name: string | null; last_name: string | null } | null;
+  const emp = row.employees as {
+    first_name: string | null;
+    last_name: string | null;
+    preferred_name: string | null;
+  } | null;
   const fmt = (d: Date) => formatInTimeZone(d, TIMEZONE, 'HH:mm');
   const premiumStart = row.premium_start_at ? new Date(row.premium_start_at as string) : null;
   const premiumEnd = row.premium_end_at ? new Date(row.premium_end_at as string) : null;
@@ -605,7 +622,7 @@ export async function createTimeclockSession(
     // Coerce PostgREST numeric strings back to numbers (see coercePremiumNumber).
     rate_multiplier: coercePremiumNumber(row.rate_multiplier),
     rate_override: coercePremiumNumber(row.rate_override),
-    employee_name: [emp?.first_name, emp?.last_name].filter(Boolean).join(' ') || 'Unknown',
+    employee_name: displayName(emp ?? {}, 'Unknown'),
     clock_in_local: fmt(clockInUtc),
     clock_out_local: clockOutUtc ? fmt(clockOutUtc) : null,
     planned_start: null,

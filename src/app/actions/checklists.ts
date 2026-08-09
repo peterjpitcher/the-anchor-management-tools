@@ -11,6 +11,7 @@ import { getChecklistSettings } from '@/lib/checklists/settings'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { buildValueBreachEmail } from '@/lib/checklists/value-breach-email'
+import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
 
 const TZ = 'Europe/London'
 
@@ -39,6 +40,7 @@ export interface ChecklistTaskView {
   valueRecorded: number | null
   valueBreach: boolean
   notes: string | null
+  skipReason: string | null
 }
 
 export interface ChecklistGroupView {
@@ -85,9 +87,9 @@ export async function getTodayChecklist(
       `id, checklist_id, title_snapshot, instruction_snapshot, slot, department,
        requires_value, value_unit, value_min, value_max, due_at, grace_until, state,
        locked_at, completed_by_employee_id, completed_at, was_late, value_recorded,
-       value_breach, notes,
+       value_breach, notes, skip_reason,
        checklists!inner(name, sort_order),
-       employees:completed_by_employee_id(first_name, last_name)`,
+       employees:completed_by_employee_id(first_name, last_name, preferred_name)`,
     )
     .eq('business_date', businessDate)
   // Staff screen only shows tasks whose window has started (open tasks at open,
@@ -100,7 +102,11 @@ export async function getTodayChecklist(
   const groupMap = new Map<string, ChecklistGroupView>()
   for (const row of (rows ?? []) as Record<string, unknown>[]) {
     const checklist = row.checklists as { name: string; sort_order: number } | null
-    const emp = row.employees as { first_name: string | null; last_name: string | null } | null
+    const emp = row.employees as {
+      first_name: string | null
+      last_name: string | null
+      preferred_name: string | null
+    } | null
     const checklistId = row.checklist_id as string
     if (!groupMap.has(checklistId)) {
       groupMap.set(checklistId, {
@@ -126,12 +132,16 @@ export async function getTodayChecklist(
       state: row.state as ChecklistTaskView['state'],
       locked: row.locked_at != null,
       completedByEmployeeId: (row.completed_by_employee_id as string | null) ?? null,
-      completedByName: emp ? [emp.first_name, emp.last_name].filter(Boolean).join(' ') || null : null,
+      // The staff checklist screen is internal, so it shows the name the team uses.
+      // The '' fallback keeps the old behaviour: a joined row with no names at all
+      // stays null rather than becoming the word "Unknown".
+      completedByName: emp ? displayName(emp, '') || null : null,
       completedAt: (row.completed_at as string | null) ?? null,
       wasLate: row.was_late as boolean,
       valueRecorded: (row.value_recorded as number | null) ?? null,
       valueBreach: row.value_breach as boolean,
       notes: (row.notes as string | null) ?? null,
+      skipReason: (row.skip_reason as string | null) ?? null,
     })
   }
 
@@ -214,6 +224,10 @@ export async function completeChecklistInstance(input: {
         .maybeSingle(),
       getChecklistSettings(),
     ])
+    // Deliberately the LEGAL name, not the preferred name. A value breach is a
+    // food-safety record and this alert is the paper trail a manager (or an EHO
+    // reading it over their shoulder) works from, so it names the person as their
+    // records do. Every on-screen surface uses displayName; this one does not.
     const completedByName = employee
       ? [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Team member'
       : 'Team member'
@@ -255,6 +269,76 @@ export async function completeChecklistInstance(input: {
 
   revalidatePath('/checklists')
   return { success: true, breach }
+}
+
+/**
+ * Marks a task as deliberately not done, with a reason.
+ *
+ * Without this the only honest options were to tick something that did not
+ * happen or leave it to expire into `missed`, which reads as forgotten rather
+ * than decided. `skipped` already existed as a state with a `skip_reason`
+ * column; this is the first thing to write to it from the floor.
+ *
+ * The reason is mandatory: a skip with no explanation tells a manager reviewing
+ * the week nothing they did not already know.
+ */
+export async function skipChecklistInstance(input: {
+  instanceId: string
+  employeeId: string
+  reason: string
+}): Promise<{ success?: boolean; error?: string; alreadyResolved?: boolean }> {
+  const canView = await checkUserPermission('checklists', 'view')
+  if (!canView) return { error: 'Insufficient permissions' }
+
+  const reason = input.reason.trim()
+  if (!reason) return { error: 'Give a reason so the manager knows what happened' }
+  if (reason.length > 500) return { error: 'Reason is too long (maximum 500 characters)' }
+
+  const db = createAdminClient()
+  const { data: inst, error: fetchErr } = await db
+    .from('checklist_task_instances')
+    .select('id, state, locked_at, grace_until')
+    .eq('id', input.instanceId)
+    .maybeSingle()
+  if (fetchErr) return { error: fetchErr.message }
+  if (!inst) return { error: 'Task not found' }
+  if (inst.locked_at) return { error: 'This checklist is locked and can no longer be changed' }
+  if (inst.state !== 'pending') return { alreadyResolved: true, error: 'Already handled by someone else' }
+
+  const now = new Date()
+  const wasLate = now.getTime() > new Date(inst.grace_until as string).getTime()
+
+  const { data: updated, error: updErr } = await db
+    .from('checklist_task_instances')
+    .update({
+      state: 'skipped',
+      completed_by_employee_id: input.employeeId,
+      completed_at: now.toISOString(),
+      was_late: wasLate,
+      skip_reason: reason,
+      updated_at: now.toISOString(),
+    })
+    .eq('id', input.instanceId)
+    .eq('state', 'pending')
+    .is('locked_at', null)
+    .select('id')
+    .maybeSingle()
+  if (updErr) return { error: updErr.message }
+  if (!updated) return { alreadyResolved: true, error: 'Already handled by someone else' }
+
+  const { user_id, user_email } = await getCurrentUser()
+  await logAuditEvent({
+    user_id: user_id ?? undefined,
+    user_email: user_email ?? undefined,
+    operation_type: 'update',
+    resource_type: 'checklist_instance',
+    resource_id: input.instanceId,
+    operation_status: 'success',
+    additional_info: { skipped_by_employee_id: input.employeeId, reason },
+  })
+
+  revalidatePath('/checklists')
+  return { success: true }
 }
 
 export async function undoChecklistInstance(input: {
@@ -351,7 +435,7 @@ export async function getAttributionCandidates(input: {
   const db = createAdminClient()
   const { data: employees, error } = await db
     .from('employees')
-    .select('employee_id, first_name, last_name, status')
+    .select('employee_id, first_name, last_name, preferred_name, status')
     .in('status', ['Active', 'Started Separation'])
   if (error) return { error: error.message }
 
@@ -367,13 +451,20 @@ export async function getAttributionCandidates(input: {
     shifts.filter((s) => s.department === input.department && s.employeeId).map((s) => s.employeeId as string),
   )
 
-  const candidates: AttributionCandidate[] = (employees ?? []).map((e) => ({
-    employeeId: e.employee_id as string,
-    name: [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown',
-    clockedIn: clockedInAtByEmployeeId.has(e.employee_id as string),
-    clockedInAt: clockedInAtByEmployeeId.get(e.employee_id as string) ?? null,
-    rostered: rosteredIds.has(e.employee_id as string),
-  }))
+  // "Who are you?" on the floor: staff pick themselves out of this list, so it has
+  // to read as the name they are called by. Surnames are added only where two
+  // people would otherwise read identically, because most staff will have no
+  // preferred name set and would then both show as their shared first name.
+  // Picking the wrong Jacob puts the wrong name against a food-safety check.
+  const candidates: AttributionCandidate[] = disambiguatedNames(employees ?? []).map(
+    ({ employee: e, name }) => ({
+      employeeId: e.employee_id as string,
+      name,
+      clockedIn: clockedInAtByEmployeeId.has(e.employee_id as string),
+      clockedInAt: clockedInAtByEmployeeId.get(e.employee_id as string) ?? null,
+      rostered: rosteredIds.has(e.employee_id as string),
+    }),
+  )
 
   // Clocked-in first, then rostered, then the rest, each alphabetical.
   candidates.sort((a, b) => {

@@ -25,6 +25,7 @@ import RotaGrid from './RotaGrid';
 import RotaPublishStatus from './RotaPublishStatus';
 import { rotaNavItems } from './nav';
 import type { PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +48,10 @@ function formatWeekRange(start: string, end: string): string {
   return `${startStr} – ${endStr}`;
 }
 
-function employeeDisplayName(employee: { first_name: string | null; last_name: string | null }): string {
-  return [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown staff member';
+type EmployeeNameRow = { first_name: string | null; last_name: string | null; preferred_name: string | null };
+
+function employeeDisplayName(employee: { first_name: string | null; last_name: string | null; preferred_name?: string | null }): string {
+  return displayName(employee, 'Unknown staff member');
 }
 
 function collectAuditEmployeeIds(row: {
@@ -164,7 +167,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const { data: openShiftRequestRows } = openShiftIds.length
     ? await supabase
         .from('rota_open_shift_requests')
-        .select('id, shift_id, employee_id, note, status, requested_at, employees(first_name, last_name)')
+        .select('id, shift_id, employee_id, note, status, requested_at, employees(first_name, last_name, preferred_name)')
         .in('shift_id', openShiftIds)
         .order('requested_at', { ascending: false })
     : { data: [] };
@@ -176,12 +179,12 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     note: string | null;
     status: OpenShiftRequestSummary['status'];
     requested_at: string;
-    employees: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null;
+    employees: EmployeeNameRow | EmployeeNameRow[] | null;
   };
 
   const openShiftRequests: OpenShiftRequestSummary[] = ((openShiftRequestRows ?? []) as OpenShiftRequestRow[]).map((row) => {
     const employeeRow = Array.isArray(row.employees) ? row.employees[0] : row.employees;
-    const employeeName = [employeeRow?.first_name, employeeRow?.last_name].filter(Boolean).join(' ') || 'Unknown staff member';
+    const employeeName = employeeDisplayName(employeeRow ?? { first_name: null, last_name: null, preferred_name: null });
     return {
       id: row.id,
       shift_id: row.shift_id,
@@ -241,7 +244,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   if (missingAuditEmployeeIds.length > 0) {
     const { data: missingEmployees } = await admin
       .from('employees')
-      .select('employee_id, first_name, last_name')
+      .select('employee_id, first_name, last_name, preferred_name')
       .in('employee_id', missingAuditEmployeeIds);
 
     (missingEmployees ?? []).forEach(employee => {

@@ -141,8 +141,29 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
     .filter((g) => g.tasks.length > 0)
   const allDone = groups.length > 0 && visibleGroups.length === 0 && !showDone
 
+  const toDoCount = allTasks.length - doneCount
+
   return (
-    <div className="space-y-4">
+    // Same shell as the FOH vouchers screen: centred, capped at max-w-3xl, with
+    // a row of count tiles at the top. Both are iPad screens used mid-shift.
+    <div className="mx-auto w-full max-w-3xl space-y-4">
+      {allTasks.length > 0 && (
+        <dl className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
+            <dd className="text-3xl font-extrabold text-gray-900">{toDoCount}</dd>
+            <dt className="mt-1 text-sm font-medium text-gray-600">To do</dt>
+          </div>
+          <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
+            <dd className="text-3xl font-extrabold text-gray-900">{doneCount}</dd>
+            <dt className="mt-1 text-sm font-medium text-gray-600">Done</dt>
+          </div>
+          <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
+            <dd className="text-3xl font-extrabold text-gray-900">{allTasks.length}</dd>
+            <dt className="mt-1 text-sm font-medium text-gray-600">Total</dt>
+          </div>
+        </dl>
+      )}
+
       {unavailable && (
         <Alert variant="warning" title="Today's checklist is not available">
           Please use the paper list and tell Peter.
@@ -160,7 +181,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
       )}
 
       {groups.length > 0 && (
-        <div className="sticky top-0 z-20 rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
+        <div className="sticky top-0 z-20 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
           <AttributionPicker
             identity={identity}
             candidates={candidates}

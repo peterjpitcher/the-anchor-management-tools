@@ -25,7 +25,7 @@ export function UserFooter({ userName, userRole, onSignOut, isSigningOut }: User
         className="ds-label shrink-0 p-1 rounded-[var(--radius-default)] text-sidebar-fg-muted hover:text-sidebar-fg hover:bg-sidebar-hover-bg transition-colors disabled:opacity-50"
         aria-label="Sign out"
       >
-        <Icon name="x" size={16} />
+        <Icon name="logout" size={16} />
       </button>
     </div>
   )

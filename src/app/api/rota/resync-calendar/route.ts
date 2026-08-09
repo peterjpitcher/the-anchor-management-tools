@@ -5,6 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getOAuth2Client } from '@/lib/google-calendar'
 import type { RotaShiftRow } from '@/lib/google-calendar-rota'
+import { displayName } from '@/lib/employees/display-name'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -143,14 +144,14 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     if (employeeIds.length > 0) {
       const { data: employees } = await admin
         .from('employees')
-        .select('employee_id, first_name, last_name')
+        .select('employee_id, first_name, last_name, preferred_name')
         .in('employee_id', employeeIds)
 
+      // This map is passed to syncRotaWeekToCalendar as options.employeeNames and
+      // used verbatim, so building it from the legal name here would flip every
+      // calendar entry back the moment a manager pressed Resync calendar.
       for (const e of employees ?? []) {
-        employeeNames.set(
-          e.employee_id,
-          [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
-        )
+        employeeNames.set(e.employee_id, displayName(e))
       }
     }
 

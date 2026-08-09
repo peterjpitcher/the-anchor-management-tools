@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { scoreTimeliness } from '@/lib/checklists/scoring'
 import type { ScoredInstance, Band } from '@/lib/checklists/types'
+import { displayName } from '@/lib/employees/display-name'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -326,12 +327,12 @@ async function fetchEmployeeNames(
   if (ids.length === 0) return map
   const { data, error } = await db
     .from('employees')
-    .select('employee_id, first_name, last_name')
+    .select('employee_id, first_name, last_name, preferred_name')
     .in('employee_id', ids)
   if (error) throw error
   for (const e of data ?? []) {
-    const name = [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
-    map.set(e.employee_id as string, name)
+    // Internal insights screen, so the per-person rows read as the team knows them.
+    map.set(e.employee_id as string, displayName(e))
   }
   return map
 }

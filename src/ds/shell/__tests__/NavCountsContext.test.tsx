@@ -5,12 +5,13 @@ import type { OutstandingCounts } from '@/actions/get-outstanding-counts'
 const COUNTS: OutstandingCounts = {
   events: 2,
   menu_management: 0,
-  table_bookings: 0,
   private_bookings: 0,
-  parking: 0,
   cashing_up: 0,
   invoices: 0,
   receipts: 0,
+  rota: 0,
+  checklists: 0,
+  feedback: 0,
 }
 
 vi.mock('@/hooks/useUnreadMessageCount', () => ({

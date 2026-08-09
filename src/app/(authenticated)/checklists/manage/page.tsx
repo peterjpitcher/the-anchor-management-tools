@@ -1,7 +1,7 @@
-import { listChecklistsWithTemplates } from '@/app/actions/checklists-admin'
-import { SetupClient } from './_components/SetupClient'
+import { redirect } from 'next/navigation'
 
-export default async function ChecklistsSetupPage() {
-  const res = await listChecklistsWithTemplates()
-  return <SetupClient checklists={res.data ?? []} error={res.error} />
+// Weekly review is the landing tab: it is the screen managers actually open
+// Checklists for. Setup lives at /checklists/manage/setup.
+export default function ChecklistsManageIndexPage() {
+  redirect('/checklists/manage/review')
 }

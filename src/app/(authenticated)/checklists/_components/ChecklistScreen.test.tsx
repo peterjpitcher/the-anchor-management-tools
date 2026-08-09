@@ -46,6 +46,7 @@ const initial: TodayChecklistResult = {
           valueRecorded: null,
           valueBreach: false,
           notes: null,
+          skipReason: null,
         },
       ],
     },

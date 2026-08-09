@@ -13,8 +13,18 @@ import {
 } from '@/lib/ics/utils';
 import { verifyRotaFeedToken } from '@/lib/portal/calendar-token';
 import { PermissionService } from '@/services/permission';
+import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The shift rows this feed reads, with the employee embed widened to carry the
+ * preferred name. This is an internal staff-facing rota, so shifts are labelled
+ * with the name the team actually uses rather than the legal name.
+ */
+type RotaFeedShift = Omit<PublishedShiftWithEmployee, 'employee'> & {
+  employee: { first_name: string | null; last_name: string | null; preferred_name: string | null } | null;
+};
 
 export async function GET(req: NextRequest): Promise<Response> {
   const token = req.nextUrl.searchParams.get('token');
@@ -73,7 +83,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // ── Full query (QA-008: explicit column selection) ──
   const { data: shifts, error } = await supabase
     .from('rota_published_shifts')
-    .select('id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name, published_at, employee:employees(first_name, last_name)')
+    .select('id, shift_date, start_time, end_time, department, status, notes, is_overnight, is_open_shift, name, published_at, employee:employees(first_name, last_name, preferred_name)')
     .gte('shift_date', fromStr)
     .lte('shift_date', toStr)
     .order('shift_date')
@@ -83,7 +93,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     return new Response('Error loading rota', { status: 500 });
   }
 
-  const typedShifts = (shifts ?? []) as unknown as PublishedShiftWithEmployee[];
+  const typedShifts = (shifts ?? []) as unknown as RotaFeedShift[];
 
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -105,7 +115,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     const empName = shift.is_open_shift
       ? 'Open Shift'
       : emp
-        ? [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown'
+        ? displayName(emp, 'Unknown')
         : 'Unknown';
 
     const deptLabel = formatDeptLabel(shift.department);

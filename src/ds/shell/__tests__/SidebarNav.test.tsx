@@ -27,32 +27,65 @@ vi.mock('@/hooks/useOutstandingCounts', () => ({
     counts: {
       events: 2,
       menu_management: 0,
-      table_bookings: 0,
       private_bookings: 0,
-      parking: 0,
       cashing_up: 0,
       invoices: 0,
       receipts: 0,
+      rota: 0,
+      checklists: 0,
+      feedback: 0,
     } satisfies OutstandingCounts,
     loading: false,
     error: null,
   }),
 }))
 
-import { SidebarNav, navCount } from '../SidebarNav'
+import { SidebarNav, navCount, filterNavGroupsForPermissions, NAV_GROUPS } from '../SidebarNav'
 import type { NavGroup } from '../SidebarNav'
 import { NavCountsProvider } from '../NavCountsContext'
 
 const FULL_COUNTS: OutstandingCounts = {
   events: 4,
   menu_management: 5,
-  table_bookings: 6,
   private_bookings: 7,
-  parking: 8,
   cashing_up: 9,
   invoices: 10,
   receipts: 11,
+  rota: 12,
+  checklists: 13,
+  feedback: 14,
 }
+
+describe('NAV_GROUPS', () => {
+  it('points Dashboard at /dashboard, the path `/` redirects to', () => {
+    // `/` only ever redirects, so an item hrefed to `/` could never match the
+    // path the user actually lands on and was never highlighted as active.
+    const dashboard = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === 'dashboard')
+    expect(dashboard?.href).toBe('/dashboard')
+  })
+
+  it('gives every group its own label', () => {
+    // The mobile drawer renders these. It used to index a positional array of
+    // titles instead, which broke as soon as a group was filtered out.
+    expect(NAV_GROUPS.every((group) => Boolean(group.label))).toBe(true)
+  })
+})
+
+describe('filterNavGroupsForPermissions', () => {
+  it('keeps each surviving group paired with its own label', () => {
+    // A staff user with none of the Overview permissions. Before labels moved
+    // onto the data, dropping group 0 shifted every later group up an index and
+    // the drawer titled Operations "Overview", Staff "Operations", and so on.
+    const allowed = new Set(['table_bookings', 'rota'])
+    const filtered = filterNavGroupsForPermissions(NAV_GROUPS, (module) => allowed.has(module))
+
+    // Admin survives on "My Profile", which every user gets (no permission gate).
+    expect(filtered.map((group) => group.label)).toEqual(['Operations', 'Staff', 'Admin'])
+    expect(filtered[0].items.map((i) => i.id)).toEqual(['tables'])
+    expect(filtered[1].items.map((i) => i.id)).toEqual(['rota'])
+    expect(filtered[2].items.map((i) => i.id)).toEqual(['profile'])
+  })
+})
 
 describe('navCount', () => {
   it('maps the messages item to the unread message count', () => {
@@ -66,12 +99,19 @@ describe('navCount', () => {
   it('maps each outstanding-count section to its live count', () => {
     expect(navCount({ id: 'events' }, 0, FULL_COUNTS)).toBe(4)
     expect(navCount({ id: 'menu' }, 0, FULL_COUNTS)).toBe(5)
-    expect(navCount({ id: 'tables' }, 0, FULL_COUNTS)).toBe(6)
     expect(navCount({ id: 'private-bookings' }, 0, FULL_COUNTS)).toBe(7)
-    expect(navCount({ id: 'parking' }, 0, FULL_COUNTS)).toBe(8)
     expect(navCount({ id: 'cashing-up' }, 0, FULL_COUNTS)).toBe(9)
     expect(navCount({ id: 'invoices' }, 0, FULL_COUNTS)).toBe(10)
     expect(navCount({ id: 'receipts' }, 0, FULL_COUNTS)).toBe(11)
+    expect(navCount({ id: 'rota' }, 0, FULL_COUNTS)).toBe(12)
+    expect(navCount({ id: 'checklists' }, 0, FULL_COUNTS)).toBe(13)
+    expect(navCount({ id: 'feedback' }, 0, FULL_COUNTS)).toBe(14)
+  })
+
+  it('gives Parking no badge, because nothing there is staff-actionable', () => {
+    // Parking only ever waited on the guest to pay, which resolves itself to
+    // paid or expired. A badge there could never be worked down to zero.
+    expect(navCount({ id: 'parking' }, 0, FULL_COUNTS)).toBeUndefined()
   })
 
   it('falls back to the static badge when live counts are unavailable', () => {

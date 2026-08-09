@@ -16,6 +16,7 @@ import type { SessionPremiumInput, TimeclockSessionWithEmployee } from '@/app/ac
 import type { RotaEmployee } from '@/app/actions/rota';
 import { Badge, Button, ConfirmDialog } from '@/ds';
 import { formatTime12Hour, parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
+import { displayName } from '@/lib/employees/display-name';
 
 // Premium rate presets offered in the review UI. 'custom' captures a bespoke
 // £/hr override; 'none' clears any premium.
@@ -99,8 +100,10 @@ function durationHours(clockIn: string, clockOut: string | null): string {
   return `${hrs.toFixed(1)}h`;
 }
 
+// Used for the "who is this session for" picker. The session rows themselves are
+// still labelled by the legal name supplied in TimeclockSessionWithEmployee.
 function empName(emp: RotaEmployee): string {
-  return [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown';
+  return displayName(emp, 'Unknown');
 }
 
 export default function TimeclockManager({

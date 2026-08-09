@@ -9,6 +9,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { generatePhoneVariants } from '@/lib/utils'
+import { displayName } from '@/lib/employees/display-name'
 import {
   MAX_PER_TYPE_PER_BATCH,
   MAX_CARDS_PER_BATCH,
@@ -270,14 +271,21 @@ async function lookupActiveEmployee(
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
-    .select('employee_id, first_name, last_name, status')
+    .select('employee_id, first_name, last_name, preferred_name, status')
     .eq('employee_id', employeeId)
     .single()
   if (error || !data) return { error: 'Staff member not found.' }
-  const row = data as { first_name: string | null; last_name: string | null; status: string | null }
+  const row = data as {
+    first_name: string | null
+    last_name: string | null
+    preferred_name: string | null
+    status: string | null
+  }
   if (row.status !== 'Active') return { error: 'Choose an active staff member.' }
-  const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim()
-  return { name: name || 'Unknown' }
+  // This name is stamped on the voucher as who handed it out or took it, and it
+  // is only ever read by staff, so it shows the name the team uses. The same
+  // "Unknown" backstop applies when nothing is on file.
+  return { name: displayName(row, 'Unknown') }
 }
 
 async function callVoucherRpc(
@@ -1340,7 +1348,7 @@ export async function getHandoutContext(): Promise<{ success?: boolean; error?: 
     admin.from('timeclock_sessions').select('employee_id').is('clock_out_at', null),
     admin
       .from('employees')
-      .select('employee_id, first_name, last_name')
+      .select('employee_id, first_name, last_name, preferred_name')
       .eq('status', 'Active')
       .order('first_name', { ascending: true }),
   ])
@@ -1352,10 +1360,17 @@ export async function getHandoutContext(): Promise<{ success?: boolean; error?: 
   )
 
   const staff: HandoutStaffOption[] = (
-    (employeesResult.data ?? []) as { employee_id: string; first_name: string | null; last_name: string | null }[]
+    (employeesResult.data ?? []) as {
+      employee_id: string
+      first_name: string | null
+      last_name: string | null
+      preferred_name: string | null
+    }[]
   ).map((row) => ({
     employeeId: row.employee_id,
-    name: [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || 'Unknown',
+    // Staff pick themselves off this list, so it shows the name the team uses,
+    // matching the FOH voucher picker. The helper keeps the "Unknown" backstop.
+    name: displayName(row, 'Unknown'),
     clockedIn: clockedIn.has(row.employee_id),
   }))
   staff.sort((a, b) => {

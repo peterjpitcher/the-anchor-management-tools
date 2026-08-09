@@ -9,6 +9,7 @@ import {
 import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/app/actions/rota';
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { checkUserPermission } from '@/app/actions/rbac';
+import { displayName } from '@/lib/employees/display-name';
 
 // ---------------------------------------------------------------------------
 // Helpers (duplicated from print page — no shared module to keep things simple)
@@ -32,8 +33,9 @@ function paidHours(start: string, end: string, breakMins: number, overnight: boo
   return Math.max(0, endM - startM - breakMins) / 60;
 }
 
+// Internal staff-facing sheet, so it shows the same preferred name as the on-screen rota.
 function empDisplayName(emp: RotaEmployee): string {
-  return [emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'Unknown';
+  return displayName(emp);
 }
 
 function formatTime(t: string): string {

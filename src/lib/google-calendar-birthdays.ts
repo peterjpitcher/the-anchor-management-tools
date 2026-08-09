@@ -4,12 +4,16 @@ import { format, getYear } from 'date-fns';
 import { createHash } from 'crypto';
 import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors';
 import { getSharedOperationsCalendarId } from '@/lib/google-calendar-targets';
+import { displayName } from '@/lib/employees/display-name';
 
 // Minimal employee type for birthday sync
 interface EmployeeBirthday {
   employee_id: string;
   first_name: string;
   last_name: string;
+  // Optional so callers that never selected it still compile; when absent the
+  // display name falls back to the legal first name exactly as before.
+  preferred_name?: string | null;
   job_title: string | null;
   date_of_birth: string | null;
   email_address: string | null;
@@ -79,11 +83,16 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     const startDate = new Date(startYear, dob.getMonth(), dob.getDate());
     const birthYear = dob.getFullYear();
 
+    // The shared ops calendar is read by the whole team, so the entry uses the
+    // name they know. The event id above is derived from employee_id, not from
+    // any name, so renaming never orphans an existing calendar entry.
+    const shownName = displayName(employee, 'Unknown');
+
     const event = {
       id: eventId,
-      summary: `🎂 ${employee.first_name} ${employee.last_name}'s Birthday`,
+      summary: `🎂 ${shownName}'s Birthday`,
       description: [
-        `${employee.first_name} ${employee.last_name}`,
+        shownName,
         `Born: ${format(dob, 'MMMM d, yyyy')}`,
         employee.job_title ? `Job Title: ${employee.job_title}` : '',
         employee.email_address ? `Email: ${employee.email_address}` : '',
@@ -258,7 +267,7 @@ async function syncAllBirthdaysToCalendar(): Promise<{
     // Get all active employees with birthdays
     const { data: employees, error } = await supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, job_title, date_of_birth, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth, email_address')
       .in('status', ['Active', 'Started Separation'])
       .not('date_of_birth', 'is', null);
 
@@ -277,11 +286,11 @@ async function syncAllBirthdaysToCalendar(): Promise<{
           synced++;
         } else {
           failed++;
-          errors.push(`Failed to sync ${employee.first_name} ${employee.last_name}`);
+          errors.push(`Failed to sync ${displayName(employee, 'Unknown')}`);
         }
       } catch (error: unknown) {
         failed++;
-        errors.push(`Error syncing ${employee.first_name} ${employee.last_name}: ${getErrorMessage(error)}`);
+        errors.push(`Error syncing ${displayName(employee, 'Unknown')}: ${getErrorMessage(error)}`);
       }
     }
 

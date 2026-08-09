@@ -16,6 +16,7 @@ import { getChecklistSettings } from '@/lib/checklists/settings'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveCloser } from '@/lib/checklists/accountability'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
+import { displayName } from '@/lib/employees/display-name'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,12 +153,13 @@ async function fetchEmployeeNames(
   if (unique.length === 0) return map
   const { data, error } = await db
     .from('employees')
-    .select('employee_id, first_name, last_name')
+    .select('employee_id, first_name, last_name, preferred_name')
     .in('employee_id', unique)
   if (error) throw error
   for (const e of data ?? []) {
-    const name = [e.first_name, e.last_name].filter(Boolean).join(' ') || 'Unknown'
-    map.set(e.employee_id as string, name)
+    // Feeds the internal spot-check and Problems screens only, so it shows the name
+    // the team uses. Nothing here leaves the building.
+    map.set(e.employee_id as string, displayName(e))
   }
   return map
 }

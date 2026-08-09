@@ -42,6 +42,25 @@ export function businessDayBounds(
 }
 
 /**
+ * Closing tasks stay completable until this hour the following morning.
+ *
+ * The default grace (60 minutes) put the cutoff an hour after close, so a
+ * 22:00 close expired at 23:00 and a night that ran late lost its closing
+ * checks to `missed` while staff were still locking up. Five leaves an hour
+ * before the 06:00 business-day boundary, so a late close can never spill into
+ * the next day's checklist.
+ */
+export const CLOSING_GRACE_END_HOUR = 5
+
+/** The instant closing tasks stop being completable: 05:00 London, next day. */
+export function closingGraceEnd(
+  businessDate: string,
+  hour: number = CLOSING_GRACE_END_HOUR,
+): Date {
+  return fromZonedTime(`${addCalendarDays(businessDate, 1)}T${pad2(hour)}:00:00`, TZ)
+}
+
+/**
  * Expand a trading window into UTC instants (spec 5.3). When `closes <= opens`
  * (string compare on HH:MM) the close falls on the next calendar day. A close
  * strictly past the business-day end is rejected as `invalid_hours`; a close

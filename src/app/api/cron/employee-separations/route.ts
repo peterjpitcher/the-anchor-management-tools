@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { formatInTimeZone } from 'date-fns-tz';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { displayName } from '@/lib/employees/display-name';
 import { finalizeEmployeeSeparation } from '@/lib/employees/separation';
 
 const TIMEZONE = 'Europe/London';
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   const { data: employees, error: fetchError } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, employment_end_date')
+    .select('employee_id, first_name, last_name, preferred_name, employment_end_date')
     .eq('status', 'Started Separation')
     .not('employment_end_date', 'is', null)
     .lt('employment_end_date', today)
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
   };
 
   for (const employee of employees ?? []) {
-    const name = [employee.first_name, employee.last_name].filter(Boolean).join(' ') || 'Unknown';
+    const name = displayName(employee, 'Unknown');
     const finalizeResult = await finalizeEmployeeSeparation(employee.employee_id, {
       adminClient: supabase,
       todayIso: today,
