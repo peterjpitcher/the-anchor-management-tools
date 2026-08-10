@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   recordAnalyticsEvent: vi.fn(),
-  sendManagerChargeApprovalEmail: vi.fn(),
   logger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -13,10 +12,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: mocks.recordAnalyticsEvent,
-}))
-
-vi.mock('@/lib/table-bookings/charge-approvals', () => ({
-  sendManagerChargeApprovalEmail: mocks.sendManagerChargeApprovalEmail,
 }))
 
 vi.mock('@/lib/logger', () => ({
@@ -34,6 +29,13 @@ import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-bookin
  * The `from` map below deliberately omits `charge_requests` and
  * `system_settings`. Both are needed to price and raise a fee, so touching
  * either fails the test loudly rather than quietly re-introducing the machinery.
+ *
+ * There is deliberately no spy asserting the manager approval email is unsent.
+ * The runtime that sent it was deleted outright on 2026-08-10, so a spy would
+ * have to mock a module that no longer exists and could never be called, which
+ * passes whatever the code does. The table assertions above are the real guard:
+ * no fee can be raised without reading `system_settings` and writing
+ * `charge_requests`, and both throw here.
  */
 function buildSupabaseForLateCancellation() {
   const guestTokenMaybeSingle = vi.fn().mockResolvedValue({
@@ -141,18 +143,6 @@ describe('table manage cancellation side effects', () => {
       charge_amount: null,
     })
     expect(spies.bookingUpdate).toHaveBeenCalled()
-  })
-
-  it('never emails the manager for approval after a late cancellation', async () => {
-    const { supabase } = buildSupabaseForLateCancellation()
-
-    await updateTableBookingByRawToken(supabase as any, {
-      rawToken: 'raw-token',
-      action: 'cancel',
-      appBaseUrl: 'https://example.com',
-    })
-
-    expect(mocks.sendManagerChargeApprovalEmail).not.toHaveBeenCalled()
   })
 
   it('reads neither the fee setting nor the charge_requests table', async () => {
