@@ -22,7 +22,18 @@ export type ReassignVolunteer = {
   requested_at: string;
 };
 
-/** An unfilled future shift, with the rejection that freed it when there was one. */
+/**
+ * Why a shift has nobody on it. A shift can be free because somebody turned it
+ * down, because a manager took them off it, or because it was created open and
+ * never belonged to anybody. The queue always says which, so an empty slot is
+ * never ambiguous.
+ */
+export type ReassignOrigin =
+  | { kind: 'rejected'; who: string; at: string; note: string | null }
+  | { kind: 'unassigned'; who: string | null; reason: string | null }
+  | { kind: 'never_assigned' };
+
+/** An unfilled future shift, with the reason it is unfilled. */
 export type ReassignOpenShift = {
   shift_id: string;
   week_start: string | null;
@@ -34,10 +45,7 @@ export type ReassignOpenShift = {
   department: string;
   name: string | null;
   notes: string | null;
-  came_from_rejection: boolean;
-  rejected_by_name: string | null;
-  rejected_at: string | null;
-  rejection_note: string | null;
+  origin: ReassignOrigin;
   volunteers: ReassignVolunteer[];
 };
 
@@ -98,6 +106,9 @@ type ShiftRow = {
   is_overnight: boolean;
   is_open_shift: boolean;
   name: string | null;
+  original_employee_id: string | null;
+  reassigned_from_id: string | null;
+  reassignment_reason: string | null;
 };
 
 type RejectionRow = {
@@ -130,7 +141,7 @@ type EmployeeNameRow = {
 };
 
 const SHIFT_COLUMNS =
-  'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name';
+  'id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, original_employee_id, reassigned_from_id, reassignment_reason';
 
 function addDaysIso(isoDate: string, days: number): string {
   const d = new Date(isoDate + 'T00:00:00Z');
@@ -221,7 +232,11 @@ export async function getReassignmentQueue(): Promise<
       [
         ...rejectionRows.map(row => row.employee_id),
         ...requestRows.map(row => row.employee_id),
-        ...[...shiftById.values()].map(shift => shift.employee_id),
+        ...[...shiftById.values()].flatMap(shift => [
+          shift.employee_id,
+          shift.original_employee_id,
+          shift.reassigned_from_id,
+        ]),
       ].filter((id): id is string => Boolean(id)),
     ),
   ];
@@ -275,26 +290,49 @@ export async function getReassignmentQueue(): Promise<
     });
   }
 
-  const openShifts: ReassignOpenShift[] = openShiftRows.map(shift => {
-    const rejection = latestRejectionByShift.get(shift.id) ?? null;
-    return {
-      shift_id: shift.id,
-      week_start: weekStartById.get(shift.week_id) ?? null,
-      shift_date: shift.shift_date,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
-      is_overnight: shift.is_overnight,
-      unpaid_break_minutes: shift.unpaid_break_minutes,
-      department: shift.department,
-      name: shift.name,
-      notes: shift.notes,
-      came_from_rejection: Boolean(rejection),
-      rejected_by_name: rejection ? (nameById.get(rejection.employee_id) ?? 'Unknown') : null,
-      rejected_at: rejection?.rejected_at ?? null,
-      rejection_note: rejection?.rejection_note ?? null,
-      volunteers: volunteersByShift.get(shift.id) ?? [],
-    };
-  });
+  /**
+   * A rejection row is the richest source (it carries the staff member's own
+   * words), so it wins. Failing that the shift itself may remember who it was
+   * taken off and why. If neither exists the shift was created open and has
+   * never belonged to anybody, which is worth saying out loud.
+   */
+  const originOf = (shift: ShiftRow): ReassignOrigin => {
+    const rejection = latestRejectionByShift.get(shift.id);
+    if (rejection) {
+      return {
+        kind: 'rejected',
+        who: nameById.get(rejection.employee_id) ?? 'Unknown',
+        at: rejection.rejected_at,
+        note: rejection.rejection_note,
+      };
+    }
+
+    const previousId = shift.reassigned_from_id ?? shift.original_employee_id;
+    if (previousId || shift.reassignment_reason) {
+      return {
+        kind: 'unassigned',
+        who: previousId ? (nameById.get(previousId) ?? 'Unknown') : null,
+        reason: shift.reassignment_reason,
+      };
+    }
+
+    return { kind: 'never_assigned' };
+  };
+
+  const openShifts: ReassignOpenShift[] = openShiftRows.map(shift => ({
+    shift_id: shift.id,
+    week_start: weekStartById.get(shift.week_id) ?? null,
+    shift_date: shift.shift_date,
+    start_time: shift.start_time,
+    end_time: shift.end_time,
+    is_overnight: shift.is_overnight,
+    unpaid_break_minutes: shift.unpaid_break_minutes,
+    department: shift.department,
+    name: shift.name,
+    notes: shift.notes,
+    origin: originOf(shift),
+    volunteers: volunteersByShift.get(shift.id) ?? [],
+  }));
 
   const covered: ReassignCoveredShift[] = [];
   for (const rejection of rejectionRows) {
