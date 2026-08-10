@@ -527,8 +527,16 @@ export async function updateTableBookingByRawToken(
     // Do not reinstate this without card capture landing first. As of
     // 2026-08-09 nothing raises a charge request at all: the FOH walkout button
     // now only records the incident, and the 27 requests still sitting pending
-    // were waived. `charge-approvals.ts` and /m/<token>/charge-request remain in
-    // the tree but are unreachable.
+    // were waived. The runtime that served them (`charge-approvals.ts`, the
+    // manager approval page at /m/<token>/charge-request, its Stripe
+    // payment-intent webhook branch, and the reports panel) was then deleted,
+    // because unreachable code that moves money reads as a working feature to
+    // the next person and invites exactly the wrong kind of reinstatement.
+    //
+    // The `charge_requests` table and its 28 historical rows are deliberately
+    // KEPT: they record real decisions about real guests, GBP 1,350 of fees
+    // that were waived rather than charged. `guest_tokens.action_type` still
+    // permits 'charge_approval' for the same reason, since 28 rows carry it.
     return {
       state: 'cancelled',
       table_booking_id: bookingId,
