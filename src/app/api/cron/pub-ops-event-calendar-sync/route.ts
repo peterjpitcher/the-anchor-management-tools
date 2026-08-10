@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { formatInTimeZone } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
+import {
+  sweepOrphanedPubOpsEventCalendarEntries,
+  syncPubOpsEventCalendarByEventId,
+} from '@/lib/google-calendar-events'
 import { logger } from '@/lib/logger'
 
 const DEFAULT_LIMIT = 200
@@ -106,6 +109,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Syncing from the events table can only fix entries whose event still exists.
+    // The sweep walks the other way and clears entries left behind by deleted events.
+    // Skipped for a single-event run, which is scoped to that one entry by definition.
+    const sweep = eventId
+      ? null
+      : await sweepOrphanedPubOpsEventCalendarEntries(supabase, {
+          includePast,
+          dryRun: url.searchParams.get('sweepDryRun') === 'true',
+          context: { context: 'pub_ops_event_calendar_backfill' },
+        })
+
     return NextResponse.json({
       success: true,
       processed: eventIds.length,
@@ -113,6 +127,7 @@ export async function GET(request: NextRequest) {
       includePast,
       counts,
       results,
+      sweep,
     })
   } catch (error) {
     logger.error('Failed to sync Pub Ops event calendar backfill', {
