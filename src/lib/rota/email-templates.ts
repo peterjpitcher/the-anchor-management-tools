@@ -263,20 +263,66 @@ export function buildRotaChangeEmailHtml(
 /**
  * Sunday manager alert: next week's rota is not ready.
  */
+/** An unfilled shift for the weekly manager chaser. */
+export type UnfilledShiftSummary = PortalShiftEmailSummary & {
+  /** Set when the shift is open because a staff member turned it down. */
+  rejectedByName?: string | null;
+  rejectionNote?: string | null;
+};
+
+function unfilledShiftLine(shift: UnfilledShiftSummary): string {
+  const base = shiftLine(shift);
+  if (!shift.rejectedByName) {
+    return `<li style="margin-bottom:6px">${base}</li>`;
+  }
+  const note = shift.rejectionNote
+    ? `<br><span style="color:#666;font-style:italic">${escapeHtml(shift.rejectionNote)}</span>`
+    : '';
+  return `<li style="margin-bottom:6px">${base}<br><span style="color:#b91c1c">Turned down by ${escapeHtml(shift.rejectedByName)}</span>${note}</li>`;
+}
+
 export function buildManagerAlertEmailHtml(
   weekStart: string,
-  reason: 'not_published' | 'unpublished_changes',
+  reason: 'not_published' | 'unpublished_changes' | null,
+  unfilledShifts: UnfilledShiftSummary[] = [],
 ): string {
   const weekLabel = format(parseISO(weekStart), 'd MMM yyyy');
-  const message = reason === 'not_published'
-    ? `The rota for the week starting <strong>${weekLabel}</strong> has not been published yet.`
-    : `The rota for the week starting <strong>${weekLabel}</strong> has unpublished changes.`;
+
+  const publishBlock = reason
+    ? `
+      <p>${
+        reason === 'not_published'
+          ? `The rota for the week starting <strong>${weekLabel}</strong> has not been published yet.`
+          : `The rota for the week starting <strong>${weekLabel}</strong> has unpublished changes.`
+      }</p>
+      <p>Staff emails are scheduled for 21:00. Please publish the rota before then.</p>
+    `
+    : '';
+
+  const rejectedCount = unfilledShifts.filter(shift => shift.rejectedByName).length;
+  const unfilledBlock = unfilledShifts.length
+    ? `
+      <h3 style="color:#b91c1c;margin-bottom:4px">${unfilledShifts.length} shift${unfilledShifts.length === 1 ? '' : 's'} still ${unfilledShifts.length === 1 ? 'needs' : 'need'} somebody</h3>
+      <p style="margin-top:0;color:#666">${
+        rejectedCount > 0
+          ? `${rejectedCount} of these ${rejectedCount === 1 ? 'was' : 'were'} turned down by staff and ${rejectedCount === 1 ? 'has' : 'have'} not been picked up.`
+          : 'These are open shifts with nobody assigned.'
+      }</p>
+      <ul style="padding-left:18px">${unfilledShifts.map(unfilledShiftLine).join('')}</ul>
+      <p>
+        <a href="${APP_URL}/rota/reassign"
+           style="background:#b91c1c;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none">
+          Reassign these shifts
+        </a>
+      </p>
+    `
+    : '';
 
   return `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       <h2 style="color:#b91c1c">Rota Action Required</h2>
-      <p>${message}</p>
-      <p>Staff emails are scheduled for 21:00. Please publish the rota before then.</p>
+      ${publishBlock}
+      ${unfilledBlock}
       <p>
         <a href="${APP_URL}/rota"
            style="background:#1F5C2E;color:#fff;padding:10px 20px;border-radius:4px;text-decoration:none">

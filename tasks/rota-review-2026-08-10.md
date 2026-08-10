@@ -83,6 +83,15 @@ rather than leaving the manager to guess.
 whenever a shift stops being available, from both `moveShift` and `updateShift`,
 so requests resolve themselves from now on instead of accumulating.
 
+**The Sunday manager alert now chases unfilled shifts too.** It previously only
+fired when the upcoming week needed publishing, and returned early otherwise, so
+a fully published week with three unfilled shifts sent nothing at all. It now
+also looks 56 days ahead for open shifts (rejections land at least 14 days before
+the shift, so a one week window would miss almost all of them), names who turned
+each one down and why, and links straight to /rota/reassign. An email now goes
+out when EITHER the week needs publishing OR shifts are unfilled, and the subject
+line reflects which.
+
 ## Verified
 
 Typecheck clean, lint clean, 4,706 tests pass, clean production build with the
