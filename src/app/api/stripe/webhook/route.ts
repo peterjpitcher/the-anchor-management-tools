@@ -325,158 +325,6 @@ async function handleCheckoutSessionCompleted(
   })
 }
 
-async function handleApprovedChargePaymentIntentEvent(
-  supabase: ReturnType<typeof createAdminClient>,
-  paymentIntent: any,
-  eventType: string
-): Promise<void> {
-  const paymentIntentId = typeof paymentIntent?.id === 'string' ? paymentIntent.id : null
-  if (!paymentIntentId) {
-    return
-  }
-
-  const metadata =
-    typeof paymentIntent?.metadata === 'object' && paymentIntent.metadata !== null
-      ? (paymentIntent.metadata as Record<string, string>)
-      : {}
-
-  if (metadata.payment_kind !== 'approved_charge') {
-    return
-  }
-
-  const chargeRequestId = typeof metadata.charge_request_id === 'string'
-    ? metadata.charge_request_id
-    : null
-
-  if (!chargeRequestId) {
-    return
-  }
-
-  const amount = typeof paymentIntent?.amount === 'number'
-    ? Number((paymentIntent.amount / 100).toFixed(2))
-    : 0
-  const currency = typeof paymentIntent?.currency === 'string'
-    ? paymentIntent.currency.toUpperCase()
-    : 'GBP'
-
-  const mappedStatus = eventType === 'payment_intent.succeeded' ? 'succeeded' : 'failed'
-  const paymentStatus = mappedStatus
-  const errorMessage =
-    eventType === 'payment_intent.payment_failed'
-      ? typeof paymentIntent?.last_payment_error?.message === 'string'
-        ? paymentIntent.last_payment_error.message
-        : 'payment_failed'
-      : null
-
-  const { data: chargeRequest, error: chargeRequestError } = await supabase.from('charge_requests')
-    .select('id, table_booking_id, metadata, charge_status')
-    .eq('id', chargeRequestId)
-    .maybeSingle()
-
-  if (chargeRequestError) {
-    throw chargeRequestError
-  }
-
-  if (!chargeRequest?.table_booking_id) {
-    return
-  }
-
-  const existingChargeStatus = typeof chargeRequest?.charge_status === 'string' ? chargeRequest.charge_status as string : null
-  const shouldSkipFailureDowngrade = mappedStatus === 'failed' && existingChargeStatus === 'succeeded'
-  if (shouldSkipFailureDowngrade) {
-    logger.warn('Ignoring Stripe payment failure webhook after approved charge already succeeded', {
-      metadata: {
-        chargeRequestId,
-        paymentIntentId,
-        eventType
-      }
-    })
-    return
-  }
-
-  const { data: updatedChargeRequest, error: chargeRequestUpdateError } = await supabase.from('charge_requests')
-    .update({
-      charge_status: mappedStatus,
-      stripe_payment_intent_id: paymentIntentId,
-      updated_at: new Date().toISOString(),
-      metadata: {
-        ...(chargeRequest?.metadata || {}),
-        payment_kind: 'approved_charge',
-        payment_intent_event: eventType,
-        payment_intent_error: errorMessage
-      }
-    })
-    .eq('id', chargeRequestId)
-    .select('id')
-    .maybeSingle()
-
-  if (chargeRequestUpdateError) {
-    throw chargeRequestUpdateError
-  }
-  if (!updatedChargeRequest) {
-    throw new Error(`Charge request missing during approved charge webhook update: ${chargeRequestId}`)
-  }
-
-  let paymentUpdateQuery = supabase.from('payments')
-    .update({
-      status: paymentStatus,
-      metadata: {
-        payment_kind: 'approved_charge',
-        payment_intent_event: eventType,
-        payment_intent_error: errorMessage
-      }
-    })
-    .eq('stripe_payment_intent_id', paymentIntentId)
-    .eq('table_booking_id', chargeRequest.table_booking_id)
-
-  if (mappedStatus === 'failed') {
-    paymentUpdateQuery = paymentUpdateQuery.in('status', ['pending', 'failed'])
-  }
-
-  const { data: updatedPayments, error: paymentUpdateError } = await paymentUpdateQuery.select('id')
-  if (paymentUpdateError) {
-    throw paymentUpdateError
-  }
-  if (!Array.isArray(updatedPayments) || updatedPayments.length === 0) {
-    throw new Error(`Payment rows missing during approved charge webhook update: ${paymentIntentId}`)
-  }
-
-  const { data: booking, error: bookingLookupError } = await supabase.from('table_bookings')
-    .select('customer_id')
-    .eq('id', chargeRequest.table_booking_id)
-    .maybeSingle()
-
-  if (bookingLookupError) {
-    throw bookingLookupError
-  }
-
-  if (booking?.customer_id) {
-    try {
-      await recordAnalyticsEvent(supabase, {
-        customerId: booking.customer_id,
-        tableBookingId: chargeRequest.table_booking_id,
-        eventType: mappedStatus === 'succeeded' ? 'charge_succeeded' : 'charge_failed',
-        metadata: {
-          charge_request_id: chargeRequestId,
-          stripe_payment_intent_id: paymentIntentId,
-          amount,
-          currency,
-          source_event: eventType,
-          reason: errorMessage
-        }
-      })
-    } catch (analyticsError) {
-      logger.warn('Failed to record analytics for approved charge payment intent webhook', {
-        metadata: {
-          chargeRequestId,
-          paymentIntentId,
-          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError)
-        }
-      })
-    }
-  }
-}
-
 async function handleChargeRefunded(
   supabase: ReturnType<typeof createAdminClient>,
   charge: any
@@ -736,8 +584,13 @@ export async function POST(request: NextRequest) {
       await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_expired')
     } else if (event.type === 'checkout.session.async_payment_failed') {
       await handleCheckoutSessionFailure(supabase, event.data?.object, 'checkout_session_async_failed')
-    } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
-      await handleApprovedChargePaymentIntentEvent(supabase, event.data?.object, event.type)
+    // payment_intent.succeeded / payment_intent.payment_failed are deliberately not
+    // handled. They existed only to settle an approved charge request, and nothing raises
+    // one any more (see the note in lib/table-bookings/manage-booking.ts). Table deposits
+    // and event payments both arrive as checkout.session.* and are unaffected.
+    //
+    // Unhandled event types fall through to the no-op below and are still logged and
+    // acknowledged, so Stripe does not retry them.
     } else if (event.type === 'charge.refunded') {
       await handleChargeRefunded(supabase, event.data?.object)
     }
