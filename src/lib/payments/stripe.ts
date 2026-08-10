@@ -59,14 +59,6 @@ type StripeCustomer = {
   id: string
 }
 
-export type StripePaymentIntent = {
-  id: string
-  status: string | null
-  amount: number | null
-  currency: string | null
-  errorMessage?: string | null
-}
-
 type StripeCheckoutExpiryOptions = {
   nowMs?: number
 }
@@ -292,89 +284,6 @@ export async function createStripeTableDepositCheckoutSession(
     amount_total: typeof payload.amount_total === 'number' ? payload.amount_total : null,
     currency: typeof payload.currency === 'string' ? payload.currency : null,
     metadata: typeof payload.metadata === 'object' && payload.metadata !== null ? payload.metadata : undefined
-  }
-}
-
-export async function createStripeOffSessionCharge(input: {
-  idempotencyKey: string
-  amountMinor: number
-  currency: string
-  customerId: string
-  paymentMethodId: string
-  metadata?: Record<string, string>
-}): Promise<StripePaymentIntent> {
-  const secretKey = getStripeSecretKey()
-  const amountMinor = Math.trunc(input.amountMinor)
-  if (!Number.isFinite(amountMinor) || amountMinor <= 0) {
-    throw new Error('Stripe charge amount must be a positive integer')
-  }
-
-  const customerId = input.customerId.trim()
-  const paymentMethodId = input.paymentMethodId.trim()
-  if (!customerId || !paymentMethodId) {
-    throw new Error('Stripe charge requires customer and payment method')
-  }
-
-  const params = new URLSearchParams()
-  params.set('amount', String(amountMinor))
-  params.set('currency', normalizeCurrency(input.currency))
-  params.set('customer', customerId)
-  params.set('payment_method', paymentMethodId)
-  params.set('off_session', 'true')
-  params.set('confirm', 'true')
-  params.set('confirmation_method', 'automatic')
-
-  if (input.metadata) {
-    for (const [key, value] of Object.entries(input.metadata)) {
-      params.set(`metadata[${key}]`, value)
-    }
-  }
-
-  const response = await fetch(`${STRIPE_API_BASE_URL}/payment_intents`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Idempotency-Key': input.idempotencyKey
-    },
-    body: params.toString()
-  })
-
-  const rawText = await response.text()
-  let payload: any = null
-
-  try {
-    payload = rawText ? JSON.parse(rawText) : null
-  } catch {
-    payload = null
-  }
-
-  if (!response.ok) {
-    const paymentIntent = payload?.error?.payment_intent
-    if (paymentIntent?.id && typeof paymentIntent.id === 'string') {
-      return {
-        id: paymentIntent.id,
-        status: typeof paymentIntent.status === 'string' ? paymentIntent.status : null,
-        amount: typeof paymentIntent.amount === 'number' ? paymentIntent.amount : null,
-        currency: typeof paymentIntent.currency === 'string' ? paymentIntent.currency : null,
-        errorMessage: payload?.error?.message || null
-      }
-    }
-
-    const details = payload?.error?.message || rawText || `Stripe payment intent API error (${response.status})`
-    throw new Error(details)
-  }
-
-  if (!payload?.id || typeof payload.id !== 'string') {
-    throw new Error('Stripe payment intent response missing id')
-  }
-
-  return {
-    id: payload.id,
-    status: typeof payload.status === 'string' ? payload.status : null,
-    amount: typeof payload.amount === 'number' ? payload.amount : null,
-    currency: typeof payload.currency === 'string' ? payload.currency : null,
-    errorMessage: null
   }
 }
 

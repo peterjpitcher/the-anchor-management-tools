@@ -1,10 +1,11 @@
 /**
  * The submit look shared by the two server-rendered forms on this page.
  *
- * `GuestSubmitButton` is a client component that the excluded
- * `/m/[token]/charge-request` screen also uses, so its API and its default
- * classes must not change (spec F22). It takes a `className` instead, and this
- * is the one definition of that string, so the change form and the food-choices
+ * `GuestSubmitButton` is a client component that took a `className` rather than
+ * owning its look, because the `/m/[token]/charge-request` screen shared it and
+ * spec F22 froze its API and default classes. That screen was deleted on
+ * 2026-08-10, so this page is now the only consumer, but the split is kept: this
+ * is the one definition of the string, so the change form and the food-choices
  * form cannot drift apart.
  *
  * The values mirror `GuestButton variant="primary" size="md"`: the same pill,
