@@ -23,7 +23,8 @@ import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import RotaGrid from './RotaGrid';
 import RotaPublishStatus from './RotaPublishStatus';
-import { rotaNavItems } from './nav';
+import { rotaNavItems, buildRotaNavItems } from './nav';
+import { getUnfilledShiftCount } from '@/app/actions/rota-reassign';
 import type { PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 import { displayName } from '@/lib/employees/display-name';
 
@@ -286,11 +287,15 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const feedToken = generateRotaFeedToken(user.id);
   const feedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/rota/feed?token=${feedToken}&uid=${user.id}`;
 
+  // Unfilled shifts live across every week, so the badge count needs its own
+  // query rather than the week currently on screen.
+  const unfilledShiftCount = await getUnfilledShiftCount();
+
   return (
     <PageLayout
       title="Weekly Rota"
       subtitle={formatWeekRange(weekStart, weekEnd)}
-      navItems={rotaNavItems}
+      navItems={buildRotaNavItems(unfilledShiftCount)}
       headerActions={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <RotaPublishStatus week={week} shifts={shifts} publishedShifts={publishedShifts} canPublish={canPublish} />

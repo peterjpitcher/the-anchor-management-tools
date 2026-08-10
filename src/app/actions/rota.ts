@@ -1368,6 +1368,12 @@ export async function updateShift(
     .eq('id', data.week_id)
     .eq('status', 'published');
 
+  // Editing an open shift into a cancelled or sick one kills any outstanding
+  // requests to pick it up.
+  if (current.is_open_shift && data.status !== 'scheduled') {
+    await closePendingOpenShiftRequests(shiftId, user?.id, 'Shift is no longer running');
+  }
+
   // When the premium genuinely changed, any frozen payroll approval covering the
   // shift date is now stale — payroll resolves premium live from the shift, so we
   // drop the snapshot and let it recompute. We do NOT touch timeclock_sessions.
@@ -1405,6 +1411,7 @@ export async function updateShift(
   });
 
   revalidatePath('/rota');
+  revalidatePath('/rota/reassign');
   revalidatePath('/rota/timeclock');
   return { success: true, data: data as RotaShift };
 }
@@ -2389,6 +2396,51 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
 // Move an existing shift to a new employee / date (within same week)
 // ---------------------------------------------------------------------------
 
+/**
+ * A shift that is no longer open cannot be picked up, so any request still at
+ * `pending` against it is dead. Left alone these never resolve: the approval RPC
+ * is the only other writer and it is only reachable from the link in the manager
+ * email, so every shift filled on the grid stranded its requests and the staff
+ * who asked kept seeing "requested" indefinitely.
+ */
+async function closePendingOpenShiftRequests(
+  shiftId: string,
+  actorUserId: string | undefined,
+  managerNote: string,
+): Promise<void> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const { data, error } = await admin
+    .from('rota_open_shift_requests')
+    .update({
+      status: 'declined',
+      decided_at: now,
+      decided_by: actorUserId ?? null,
+      manager_note: managerNote,
+      updated_at: now,
+    })
+    .eq('shift_id', shiftId)
+    .eq('status', 'pending')
+    .select('id');
+
+  if (error || !data || data.length === 0) return;
+
+  void logAuditEvent({
+    user_id: actorUserId,
+    operation_type: 'decline_open_shift_request',
+    resource_type: 'rota_shift',
+    resource_id: shiftId,
+    operation_status: 'success',
+    new_values: {
+      status: 'declined',
+      declined_request_ids: (data as Array<{ id: string }>).map(row => row.id),
+    },
+    additional_info: { reason: managerNote, source: 'shift_no_longer_open' },
+  });
+
+  revalidatePath('/portal/shifts');
+}
+
 export async function moveShift(
   shiftId: string,
   newEmployeeId: string | null, // null = make it an open shift
@@ -2448,6 +2500,10 @@ export async function moveShift(
     .eq('id', (data as RotaShift).week_id)
     .eq('status', 'published');
 
+  if (newEmployeeId && currentShift.is_open_shift) {
+    await closePendingOpenShiftRequests(shiftId, user?.id, 'Shift was given to somebody else');
+  }
+
   // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
     user_id: user?.id,
@@ -2464,6 +2520,7 @@ export async function moveShift(
   });
 
   revalidatePath('/rota');
+  revalidatePath('/rota/reassign');
   return { success: true, data: data as RotaShift };
 }
 
