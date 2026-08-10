@@ -275,7 +275,10 @@ export function buildPubOpsEventCalendarEntry(input: {
   const end = getEventEnd(input.event, start)
   const appBaseUrl = input.appBaseUrl || process.env.NEXT_PUBLIC_APP_URL || ''
   const seatLabel = pluralizeSeats(aggregate.totalActiveSeats)
-  const summary = `${input.event.name || 'Untitled event'} - ${seatLabel} booked`
+  // Unpublished events sit on the shared calendar alongside live ones, so mark them
+  // up front rather than leaving managers to open the entry to find out.
+  const statusPrefix = input.event.event_status === 'draft' ? '[DRAFT] ' : ''
+  const summary = `${statusPrefix}${input.event.name || 'Untitled event'} - ${seatLabel} booked`
 
   return {
     shouldDelete: false,
@@ -623,5 +626,224 @@ export async function syncPubOpsEventCalendarByEventId(
       },
     })
     return { state: 'failed', eventId, googleEventId, reason: getGoogleErrorMessage(error) }
+  }
+}
+
+/**
+ * Orphan sweep.
+ *
+ * Per-event sync only ever runs for events that still exist, so an entry whose row
+ * has gone (deleted outside the app, or a delete where the calendar call failed) is
+ * invisible to it and sits on the calendar forever. This closes that gap by walking
+ * the calendar instead of the table.
+ */
+
+const ENTRY_ID_PATTERN = /^aev[0-9a-f]{48}$/
+const EVENT_ID_PAGE_SIZE = 1000
+const CALENDAR_LIST_PAGE_SIZE = 2500
+// A sweep should only ever be clearing up stragglers. If most of the calendar looks
+// orphaned, the far likelier explanation is a bad read of the events table, so bail
+// out rather than empty the calendar.
+const MAX_ORPHAN_RATIO = 0.5
+const ORPHAN_RATIO_FLOOR = 10
+
+export type PubOpsEventCalendarOrphan = {
+  googleEventId: string
+  summary: string | null
+  start: string | null
+  anchorEventId: string | null
+}
+
+export type PubOpsEventCalendarSweepResult = {
+  state: 'completed' | 'skipped' | 'aborted' | 'failed'
+  scanned: number
+  deleted: number
+  failed: number
+  reason?: string
+  orphans: PubOpsEventCalendarOrphan[]
+}
+
+async function loadAllEventIds(
+  supabase: SupabaseClient<any, 'public', any>
+): Promise<string[]> {
+  const ids: string[] = []
+  let offset = 0
+
+  for (;;) {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id')
+      .order('id', { ascending: true })
+      .range(offset, offset + EVENT_ID_PAGE_SIZE - 1)
+
+    if (error) throw error
+
+    const page = (data || []).map((row) => row.id).filter(Boolean)
+    ids.push(...page)
+
+    if (page.length < EVENT_ID_PAGE_SIZE) break
+    offset += EVENT_ID_PAGE_SIZE
+  }
+
+  return ids
+}
+
+async function listPubOpsEventCalendarEntries(
+  auth: CalendarAuth,
+  timeMin: string | null
+): Promise<Array<{ id: string; summary: string | null; start: string | null; anchorEventId: string | null }>> {
+  const entries: Array<{ id: string; summary: string | null; start: string | null; anchorEventId: string | null }> = []
+  let pageToken: string | undefined
+
+  do {
+    const response = await calendar.events.list({
+      auth: calendarAuth(auth),
+      calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
+      maxResults: CALENDAR_LIST_PAGE_SIZE,
+      singleEvents: false,
+      showDeleted: false,
+      pageToken,
+      ...(timeMin ? { timeMin } : {}),
+    })
+
+    for (const item of response.data.items || []) {
+      // The entry id is a deterministic hash of the event UUID, so the shape alone
+      // identifies entries this sync owns. Anything else on the calendar is left alone.
+      if (!item.id || !ENTRY_ID_PATTERN.test(item.id)) continue
+      entries.push({
+        id: item.id,
+        summary: item.summary || null,
+        start: item.start?.dateTime || item.start?.date || null,
+        anchorEventId: item.extendedProperties?.private?.anchorEventId || null,
+      })
+    }
+
+    pageToken = response.data.nextPageToken || undefined
+  } while (pageToken)
+
+  return entries
+}
+
+export async function sweepOrphanedPubOpsEventCalendarEntries(
+  supabase: SupabaseClient<any, 'public', any>,
+  options?: { includePast?: boolean; dryRun?: boolean; context?: Record<string, unknown> }
+): Promise<PubOpsEventCalendarSweepResult> {
+  const empty = { scanned: 0, deleted: 0, failed: 0, orphans: [] as PubOpsEventCalendarOrphan[] }
+
+  if (!hasCalendarAuthConfig()) {
+    return { state: 'skipped', ...empty, reason: 'calendar_not_configured' }
+  }
+
+  try {
+    const auth = await getOAuth2Client()
+    const eventIds = await loadAllEventIds(supabase)
+
+    // A zero-row read means something is wrong with the query, not that every event
+    // was deleted. Deleting the whole calendar off the back of that is unrecoverable.
+    if (eventIds.length === 0) {
+      logger.warn('Skipped Pub Ops event calendar orphan sweep: no events loaded', {
+        metadata: { ...options?.context },
+      })
+      return { state: 'aborted', ...empty, reason: 'no_events_loaded' }
+    }
+
+    const expected = new Set(eventIds.map(generatePubOpsEventCalendarEventId))
+    const timeMin = options?.includePast
+      ? null
+      : fromZonedTime(
+          `${formatInTimeZone(new Date(), CALENDAR_TIME_ZONE, 'yyyy-MM-dd')}T00:00:00`,
+          CALENDAR_TIME_ZONE
+        ).toISOString()
+
+    const entries = await listPubOpsEventCalendarEntries(auth, timeMin)
+    const orphans: PubOpsEventCalendarOrphan[] = entries
+      .filter((entry) => !expected.has(entry.id))
+      .map((entry) => ({
+        googleEventId: entry.id,
+        summary: entry.summary,
+        start: entry.start,
+        anchorEventId: entry.anchorEventId,
+      }))
+
+    if (
+      entries.length >= ORPHAN_RATIO_FLOOR &&
+      orphans.length / entries.length > MAX_ORPHAN_RATIO
+    ) {
+      logger.warn('Aborted Pub Ops event calendar orphan sweep: too many orphans', {
+        metadata: {
+          scanned: entries.length,
+          orphans: orphans.length,
+          eventsLoaded: eventIds.length,
+          ...options?.context,
+        },
+      })
+      return {
+        state: 'aborted',
+        scanned: entries.length,
+        deleted: 0,
+        failed: 0,
+        reason: 'orphan_ratio_exceeded',
+        orphans,
+      }
+    }
+
+    let deleted = 0
+    let failed = 0
+
+    if (!options?.dryRun) {
+      for (const orphan of orphans) {
+        try {
+          await calendar.events.delete({
+            auth: calendarAuth(auth),
+            calendarId: PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID,
+            eventId: orphan.googleEventId,
+          })
+          deleted += 1
+        } catch (error) {
+          const status = getGoogleErrorStatus(error)
+          if (status === 404 || status === 410) {
+            deleted += 1
+            continue
+          }
+          failed += 1
+          logger.warn('Failed to delete orphaned Pub Ops event calendar entry', {
+            metadata: {
+              googleEventId: orphan.googleEventId,
+              summary: orphan.summary,
+              status,
+              error: getGoogleErrorMessage(error),
+              ...options?.context,
+            },
+          })
+        }
+      }
+    }
+
+    if (orphans.length > 0) {
+      logger.warn('Pub Ops event calendar orphan sweep removed stale entries', {
+        metadata: {
+          scanned: entries.length,
+          orphans: orphans.length,
+          deleted,
+          failed,
+          dryRun: Boolean(options?.dryRun),
+          entries: orphans.map((orphan) => ({
+            googleEventId: orphan.googleEventId,
+            summary: orphan.summary,
+            start: orphan.start,
+            anchorEventId: orphan.anchorEventId,
+          })),
+          ...options?.context,
+        },
+      })
+    }
+
+    return { state: 'completed', scanned: entries.length, deleted, failed, orphans }
+  } catch (error) {
+    logger.error('Pub Ops event calendar orphan sweep failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { ...options?.context },
+    })
+    return { state: 'failed', ...empty, reason: getGoogleErrorMessage(error) }
   }
 }
