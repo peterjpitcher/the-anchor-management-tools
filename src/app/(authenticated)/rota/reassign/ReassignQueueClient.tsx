@@ -117,38 +117,79 @@ function OpenShiftCard({
     });
   };
 
+  const { origin } = shift;
+
   return (
     <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-text">
-              {formatShiftDay(shift.shift_date)}, {shiftTimes(shift)}
-            </p>
-            <p className="text-xs text-text-muted">
-              {shift.name ? `${shift.name} · ` : ''}
-              {shift.department}
-              {shift.unpaid_break_minutes > 0 ? ` · ${shift.unpaid_break_minutes} min break` : ''}
-            </p>
-          </div>
-          <Badge tone={shift.came_from_rejection ? 'danger' : 'warning'}>
-            {shift.came_from_rejection ? 'Turned down' : 'Open'}
+      {/* Uses CardHeader's own title/subtitle/action slots: passing children
+          instead leaves its empty title div on the left and justify-between
+          shunts everything to the right edge. */}
+      <CardHeader
+        title={`${formatShiftDay(shift.shift_date)}, ${shiftTimes(shift)}`}
+        subtitle={[
+          shift.name,
+          shift.department,
+          shift.unpaid_break_minutes > 0 ? `${shift.unpaid_break_minutes} min break` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+        action={
+          <Badge tone={origin.kind === 'rejected' ? 'danger' : 'warning'}>
+            {origin.kind === 'rejected' ? 'Turned down' : 'Open'}
           </Badge>
-        </div>
-      </CardHeader>
+        }
+      />
 
       <CardBody>
-        {shift.came_from_rejection && (
-          <div className="mb-3 rounded-default bg-surface-muted p-3">
-            <p className="text-xs text-text">
-              Turned down by <span className="font-medium">{shift.rejected_by_name}</span>
-              {shift.rejected_at ? ` on ${formatWhen(shift.rejected_at)}` : ''}
+        <div className="mb-3 rounded-default bg-surface-muted p-3">
+          {origin.kind === 'rejected' && (
+            <>
+              <p className="text-xs text-text">
+                Was <span className="font-medium">{origin.who}</span>, who turned it down on{' '}
+                {formatWhen(origin.at)}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                {origin.note ? (
+                  <>
+                    Their reason: <span className="italic">{origin.note}</span>
+                  </>
+                ) : (
+                  'They gave no reason.'
+                )}
+              </p>
+            </>
+          )}
+
+          {origin.kind === 'unassigned' && (
+            <>
+              <p className="text-xs text-text">
+                {origin.who ? (
+                  <>
+                    Was <span className="font-medium">{origin.who}</span>, taken off the shift by a
+                    manager
+                  </>
+                ) : (
+                  'Taken off somebody by a manager'
+                )}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                {origin.reason ? (
+                  <>
+                    Reason given: <span className="italic">{origin.reason}</span>
+                  </>
+                ) : (
+                  'No reason was recorded.'
+                )}
+              </p>
+            </>
+          )}
+
+          {origin.kind === 'never_assigned' && (
+            <p className="text-xs text-text-muted">
+              Created as an open shift. It has never been assigned to anybody.
             </p>
-            {shift.rejection_note && (
-              <p className="mt-1 text-xs italic text-text-muted">{shift.rejection_note}</p>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {shift.notes && <p className="mb-3 text-xs text-text-muted">Shift notes: {shift.notes}</p>}
 
@@ -255,7 +296,7 @@ export default function ReassignQueueClient({
   const onChanged = () => router.refresh();
 
   const rejectedCount = useMemo(
-    () => queue.openShifts.filter(shift => shift.came_from_rejection).length,
+    () => queue.openShifts.filter(shift => shift.origin.kind === 'rejected').length,
     [queue.openShifts],
   );
 
