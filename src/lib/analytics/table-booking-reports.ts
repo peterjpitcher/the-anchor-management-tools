@@ -452,16 +452,6 @@ export type TableBookingReportsSnapshot = {
     waitlist_offers_expired: number
     waitlist_acceptance_rate_percent: number
   }
-  charge_request_outcomes: {
-    total_requests: number
-    approved: number
-    waived: number
-    pending: number
-    succeeded: number
-    failed: number
-    total_amount_gbp: number
-    succeeded_amount_gbp: number
-  }
   top_engaged_guests: Array<{
     customer_id: string
     name: string
@@ -535,7 +525,6 @@ export async function loadTableBookingReportsSnapshot(input: {
     eventStatusRowsResult,
     waitlistEntriesRowsResult,
     waitlistOffersRowsResult,
-    chargeRequestsRowsResult,
     eventReviewSentCountResult,
     eventReviewClickedCountResult,
     tableReviewSentCountResult,
@@ -613,12 +602,6 @@ export async function loadTableBookingReportsSnapshot(input: {
       supabase
         .from('waitlist_offers')
         .select('id, status')
-        .range(from, to)
-    ),
-    fetchAllRows((from, to) =>
-      supabase
-        .from('charge_requests')
-        .select('amount, manager_decision, charge_status')
         .range(from, to)
     ),
     supabase
@@ -747,7 +730,6 @@ export async function loadTableBookingReportsSnapshot(input: {
     eventStatusRowsResult,
     waitlistEntriesRowsResult,
     waitlistOffersRowsResult,
-    chargeRequestsRowsResult,
     eventReviewSentCountResult,
     eventReviewClickedCountResult,
     tableReviewSentCountResult,
@@ -805,22 +787,6 @@ export async function loadTableBookingReportsSnapshot(input: {
   const waitlistOffersSent = waitlistOffersRows.length
   const waitlistOffersAccepted = waitlistOffersRows.filter((row) => row.status === 'accepted').length
   const waitlistOffersExpired = waitlistOffersRows.filter((row) => row.status === 'expired').length
-
-  const chargeRows =
-    (chargeRequestsRowsResult.data || []) as Array<{
-      amount: number | string | null
-      manager_decision: string | null
-      charge_status: string | null
-    }>
-  const chargeApproved = chargeRows.filter((row) => row.manager_decision === 'approved').length
-  const chargeWaived = chargeRows.filter((row) => row.manager_decision === 'waived' || row.charge_status === 'waived').length
-  const chargePending = chargeRows.filter((row) => row.charge_status === 'pending').length
-  const chargeSucceeded = chargeRows.filter((row) => row.charge_status === 'succeeded').length
-  const chargeFailed = chargeRows.filter((row) => row.charge_status === 'failed').length
-  const chargeTotalAmount = chargeRows.reduce((sum, row) => sum + asNumber(row.amount), 0)
-  const chargeSucceededAmount = chargeRows
-    .filter((row) => row.charge_status === 'succeeded')
-    .reduce((sum, row) => sum + asNumber(row.amount), 0)
 
   const eventReviewSent = eventReviewSentCountResult.count || 0
   const eventReviewClicked = eventReviewClickedCountResult.count || 0
@@ -1036,16 +1002,6 @@ export async function loadTableBookingReportsSnapshot(input: {
       waitlist_offers_accepted: waitlistOffersAccepted,
       waitlist_offers_expired: waitlistOffersExpired,
       waitlist_acceptance_rate_percent: toRate(waitlistOffersAccepted, waitlistOffersSent)
-    },
-    charge_request_outcomes: {
-      total_requests: chargeRows.length,
-      approved: chargeApproved,
-      waived: chargeWaived,
-      pending: chargePending,
-      succeeded: chargeSucceeded,
-      failed: chargeFailed,
-      total_amount_gbp: Number(chargeTotalAmount.toFixed(2)),
-      succeeded_amount_gbp: Number(chargeSucceededAmount.toFixed(2))
     },
     top_engaged_guests: topEngagedGuests,
     event_type_interest_segments: eventTypeInterestSegments,

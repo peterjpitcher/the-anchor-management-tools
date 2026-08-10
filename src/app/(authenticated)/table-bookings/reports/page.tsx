@@ -210,35 +210,6 @@ export default async function TableBookingReportsPage({ searchParams }: TableBoo
             </dl>
           </Card>
 
-          <Card>
-            <h3 className="text-base font-semibold text-gray-900">Charge Request Outcomes</h3>
-            <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-gray-500">Total Requests</dt>
-                <dd className="font-semibold text-gray-900">{formatNumber(snapshot.charge_request_outcomes.total_requests)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Approved</dt>
-                <dd className="font-semibold text-gray-900">{formatNumber(snapshot.charge_request_outcomes.approved)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Waived</dt>
-                <dd className="font-semibold text-gray-900">{formatNumber(snapshot.charge_request_outcomes.waived)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Pending</dt>
-                <dd className="font-semibold text-gray-900">{formatNumber(snapshot.charge_request_outcomes.pending)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Succeeded Amount</dt>
-                <dd className="font-semibold text-gray-900">{formatCurrency(snapshot.charge_request_outcomes.succeeded_amount_gbp)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Total Amount</dt>
-                <dd className="font-semibold text-gray-900">{formatCurrency(snapshot.charge_request_outcomes.total_amount_gbp)}</dd>
-              </div>
-            </dl>
-          </Card>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
