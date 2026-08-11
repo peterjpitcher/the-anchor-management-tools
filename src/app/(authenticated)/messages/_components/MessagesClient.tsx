@@ -369,6 +369,11 @@ export function MessagesClient() {
       const result = await sendSmsReply(selectedCustomerId, newMessage)
       if ('error' in result && result.error) {
         toast.error(result.error)
+      } else if ('suppressed' in result && result.suppressed) {
+        // Identical text to the same customer inside the dedupe window is not
+        // sent. Reporting this as "Message sent" left staff believing the
+        // customer had been replied to when nothing went out.
+        toast.error('Not sent: identical to a recent message. Change the wording and try again.')
       } else {
         toast.success('Message sent')
         setNewMessage('')
@@ -647,9 +652,18 @@ export function MessagesClient() {
 
 	                        {dateMessages.map((message, index) => {
 	                          const isOutbound = message.direction !== 'inbound'
+	                          const isFailed =
+	                            isOutbound &&
+	                            (message.status === 'failed' || message.status === 'undelivered')
+	                          // A failed message is always shown. Previously the status
+	                          // only rendered on the last message of a date group (or one
+	                          // followed by an inbound reply), so any failure followed by
+	                          // another outbound message the same day was invisible and
+	                          // staff believed the customer had been contacted.
 	                          const showStatus =
 	                            isOutbound &&
-	                            (index === dateMessages.length - 1 ||
+	                            (isFailed ||
+	                              index === dateMessages.length - 1 ||
 	                              (index < dateMessages.length - 1 && dateMessages[index + 1].direction === 'inbound'))
                             const messageText = message.body_text || message.subject || (message.has_attachments ? 'Attachment' : '')
 
@@ -677,9 +691,15 @@ export function MessagesClient() {
                                     {getMessageTime(message.created_at)}
                                   </span>
 	                                  {showStatus && message.status && (
-	                                    <span className="text-[11px] text-text-muted">
-	                                      {getStatusText(message.status) || message.status}
-	                                    </span>
+	                                    isFailed ? (
+	                                      <Badge tone="danger">
+	                                        {getStatusText(message.status) || message.status}
+	                                      </Badge>
+	                                    ) : (
+	                                      <span className="text-[11px] text-text-muted">
+	                                        {getStatusText(message.status) || message.status}
+	                                      </span>
+	                                    )
 	                                  )}
                                 </div>
                               </div>

@@ -88,16 +88,25 @@ export async function sendBulkMessages(
   }
 
   if (customerIds.length <= DIRECT_SEND_THRESHOLD) {
-    // Send directly for small batches — sendBulkSMSDirect handles its own auth/rate-limit checks
+    // Send directly for small batches. sendBulkSMSDirect handles its own
+    // auth/rate-limit checks.
     const result = await sendBulkSMSDirect(customerIds, message, eventId, categoryId)
 
-    if ('error' in result) {
+    if ('error' in result && result.error) {
       return { success: false, error: result.error }
     }
 
+    // Report what actually happened. Hard-coding sent: customerIds.length told
+    // staff every recipient received the message even when sends failed, and
+    // swallowed the deliberate "do not retry, contact engineering" warning that
+    // is raised when outbound logging fails after messages may have gone out.
     return {
       success: true,
-      sent: customerIds.length,
+      sent: result.sent ?? 0,
+      failed: result.failed ?? 0,
+      errors: result.errors,
+      logFailure: result.logFailure,
+      message: result.message,
       queued: false,
     }
   }

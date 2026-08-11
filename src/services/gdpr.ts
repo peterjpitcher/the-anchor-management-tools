@@ -8,6 +8,22 @@ const COMMUNICATION_RETENTION_MONTHS = 24
 const GDPR_BATCH_SIZE = 1000
 const GDPR_UPDATE_BATCH_SIZE = 500
 
+/**
+ * Placeholder mobile number written when a customer is erased.
+ *
+ * customers.mobile_number is NOT NULL and carries chk_customer_phone_format,
+ * which accepts only a valid UK or E.164 number. Erasure used to write
+ * `erased-<uuid>`, which the constraint rejected, so the update threw after the
+ * message, email and consent rows had already been destructively rewritten and
+ * the customer was left half-erased.
+ *
+ * 07700 900000 is inside the Ofcom range reserved for drama and fiction, so it
+ * satisfies the constraint while routing to nobody. mobile_e164 is set to NULL
+ * alongside it, which is where the unique index lives, so many erased customers
+ * can share this value.
+ */
+const ERASED_CUSTOMER_MOBILE = '07700900000'
+
 interface ExportData {
   profile: any
   customers: any[]
@@ -483,7 +499,7 @@ export class GdprService {
             first_name: 'Erased',
             last_name: 'Customer',
             email: null,
-            mobile_number: `erased-${customerId}`,
+            mobile_number: ERASED_CUSTOMER_MOBILE,
             mobile_e164: null,
             mobile_number_raw: null,
             internal_notes: null,

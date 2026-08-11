@@ -7,6 +7,33 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getErrorMessage } from '@/lib/errors';
 
 /**
+ * True when the caller holds the super_admin role.
+ *
+ * Both GDPR entry points used to authorise on profiles.system_role. That column
+ * does not exist in the database, so the query returned an error, system_role
+ * was always undefined, and export-for-another-user and erasure were refused for
+ * everyone including actual super admins. This is the same get_user_roles
+ * mechanism the checklists actions use, and it is the only way to restrict a
+ * path to super_admin, since super_admin bypasses permission rows.
+ */
+async function callerIsSuperAdmin(userId: string): Promise<boolean> {
+  const adminClient = createAdminClient()
+  const { data, error } = await (adminClient.rpc as unknown as (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: Array<{ role_name?: string }> | null; error: unknown }>)('get_user_roles', {
+    p_user_id: userId,
+  })
+
+  if (error) {
+    console.error('[GDPR] Failed to verify caller roles', error)
+    return false
+  }
+
+  return (data ?? []).some((row) => row.role_name === 'super_admin')
+}
+
+/**
  * Export all user data for GDPR compliance
  */
 export async function exportUserData(userId?: string) {
@@ -21,14 +48,7 @@ export async function exportUserData(userId?: string) {
     
     // Check permission if exporting another user's data
     if (userId && userId !== user?.id) {
-      const adminClient = createAdminClient(); // Use admin client for this check
-      const { data: profile } = await adminClient
-        .from('profiles')
-        .select('system_role')
-        .eq('id', user!.id)
-        .single()
-      
-      if (profile?.system_role !== 'super_admin') {
+      if (!(await callerIsSuperAdmin(user!.id))) {
         return { error: 'Insufficient permissions' }
       }
     }
@@ -85,13 +105,7 @@ export async function deleteUserData(confirmEmail: string) {
     }
 
     // Only super admins can delete user data
-    const { data: profile } = await adminClient
-      .from('profiles')
-      .select('system_role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.system_role !== 'super_admin') {
+    if (!(await callerIsSuperAdmin(user.id))) {
       return { error: 'Insufficient permissions' }
     }
 
