@@ -11,6 +11,102 @@ import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import toast from 'react-hot-toast'
 import { TrashIcon } from '@heroicons/react/24/outline'
 
+/** Minutes since midnight from "HH:MM" or "HH:MM:SS". Null when unparseable. */
+function toMinutes(value: string | null | undefined): number | null {
+  if (!value) return null
+  const [hh, mm] = value.split(':')
+  const hours = Number(hh)
+  const minutes = Number(mm)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  return hours * 60 + minutes
+}
+
+/**
+ * Drops service slots that cannot sit inside the given hours.
+ *
+ * This mirrors public.validate_schedule_config in the database, deliberately and
+ * exactly, including the past-midnight handling: a window whose close is at or
+ * before its open runs into the next day, and on such a day an early-clock slot
+ * belongs to the far end of the session rather than before opening. Keeping the
+ * two in step is what stops the database rejecting a save the form allowed.
+ *
+ * Food slots ('food' and 'sunday_lunch') must also sit inside the kitchen
+ * window. 'regular' is excluded from that on purpose: it gates drinks as well as
+ * food, so it may legitimately run past the kitchen close.
+ */
+export function reconcileScheduleConfig(
+  slots: ScheduleConfigItem[],
+  hours: {
+    isClosed: boolean
+    opens: string
+    closes: string
+    isKitchenClosed: boolean
+    kitchenOpens: string
+    kitchenCloses: string
+  }
+): { kept: ScheduleConfigItem[]; dropped: string[] } {
+  if (!slots || slots.length === 0) return { kept: [], dropped: [] }
+
+  // A closed day cannot carry any services at all.
+  if (hours.isClosed) {
+    return { kept: [], dropped: slots.map((s) => s.name || 'service') }
+  }
+
+  const openMin = toMinutes(hours.opens)
+  let closeMin = toMinutes(hours.closes)
+  if (openMin === null || closeMin === null) {
+    // Without both ends of the window the database will reject any slot anyway.
+    return { kept: [], dropped: slots.map((s) => s.name || 'service') }
+  }
+  if (closeMin <= openMin) closeMin += 1440
+
+  const kitchenOpenMin = hours.isKitchenClosed ? null : toMinutes(hours.kitchenOpens)
+  let kitchenCloseMin = hours.isKitchenClosed ? null : toMinutes(hours.kitchenCloses)
+  if (kitchenOpenMin !== null && kitchenCloseMin !== null && kitchenCloseMin <= kitchenOpenMin) {
+    kitchenCloseMin += 1440
+  }
+
+  const kept: ScheduleConfigItem[] = []
+  const dropped: string[] = []
+
+  for (const slot of slots) {
+    const label = slot.name || 'service'
+    let startMin = toMinutes(slot.starts_at)
+    let endMin = toMinutes(slot.ends_at)
+
+    if (startMin === null || endMin === null) {
+      dropped.push(label)
+      continue
+    }
+    if (endMin <= startMin) endMin += 1440
+    if (startMin < openMin && closeMin > 1440) {
+      startMin += 1440
+      endMin += 1440
+    }
+
+    if (startMin < openMin || endMin > closeMin) {
+      dropped.push(label)
+      continue
+    }
+
+    const type = (slot.booking_type || 'regular').trim().toLowerCase()
+    if (type === 'food' || type === 'sunday_lunch') {
+      if (kitchenOpenMin === null || kitchenCloseMin === null) {
+        dropped.push(label)
+        continue
+      }
+      if (startMin < kitchenOpenMin || endMin > kitchenCloseMin) {
+        dropped.push(label)
+        continue
+      }
+    }
+
+    kept.push(slot)
+  }
+
+  return { kept, dropped }
+}
+
 interface SpecialHoursModalProps {
   isOpen: boolean
   onClose: () => void
@@ -201,7 +297,31 @@ export function SpecialHoursModal({
     formData.append('kitchen_opens', kitchenOpens)
     formData.append('kitchen_closes', kitchenCloses)
     formData.append('note', note)
-    formData.append('schedule_config', JSON.stringify(finalConfig))
+
+    // Service slots are pre-filled from the regular weekday so an exception that
+    // only changes the note keeps its seeded config. But an exception usually
+    // changes the hours, and an inherited slot then falls outside them: opening
+    // 12:00-15:00 on Christmas Day, a Friday, inherited Friday's 17:00-21:00
+    // dinner and the database rejected the whole save. Reconcile the slots
+    // against the hours actually entered, using the same rules the database
+    // enforces, and say which ones were dropped.
+    const { kept, dropped } = reconcileScheduleConfig(finalConfig, {
+      isClosed,
+      opens,
+      closes,
+      isKitchenClosed,
+      kitchenOpens,
+      kitchenCloses,
+    })
+
+    if (dropped.length > 0) {
+      toast(
+        `${dropped.length === 1 ? 'One service was' : `${dropped.length} services were`} removed because they fall outside these hours: ${dropped.join(', ')}.`,
+        { duration: 8000 }
+      )
+    }
+
+    formData.append('schedule_config', JSON.stringify(kept))
 
     let result
     if (initialData?.id) {
