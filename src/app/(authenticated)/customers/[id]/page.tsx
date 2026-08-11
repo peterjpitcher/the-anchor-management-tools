@@ -661,7 +661,9 @@ export default function CustomerViewPage() {
       const formData = new FormData()
       formData.append('first_name', data.first_name)
       if (data.last_name) formData.append('last_name', data.last_name)
-      if (data.email) formData.append('email', data.email)
+      // Always sent, even when blank. Omitting a cleared email made the server
+      // treat it as "not edited" and keep the old address.
+      formData.append('email', data.email ?? '')
       if (data.mobile_number) formData.append('mobile_number', data.mobile_number)
       formData.append('default_country_code', '44')
 

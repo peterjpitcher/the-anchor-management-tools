@@ -31,6 +31,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'success'), { status: 303 })
     }
 
+    // Website bookings only get a 30-minute payment window and the notifications
+    // cron expires them the moment it passes, which puts the space back on sale.
+    // Capturing after that charged the customer for a booking the car park no
+    // longer held. PayPal orders use intent CAPTURE, so walking away here takes
+    // no money at all and there is nothing to refund. Matches the guard the
+    // website capture endpoint already applies.
+    if (booking.status === 'expired' || booking.status === 'cancelled') {
+      return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'expired'), { status: 303 })
+    }
+
     await captureParkingPayment(booking, paypalToken, { client: supabase })
 
     return NextResponse.redirect(parkingGuestUrl(appUrl, bookingId, 'success'), { status: 303 })

@@ -38,7 +38,30 @@ function extractBulkSafetyAbortCode(errorMessage: string): string | null {
 }
 
 // This is the corrected bulk SMS function that sends directly for small batches
-export async function sendBulkSMSDirect(customerIds: string[], message: string, eventId?: string, categoryId?: string) {
+/**
+ * Outcome of a direct bulk send. Declared explicitly rather than inferred so
+ * callers can read the real sent/failed counts: bulk-messages.ts used to discard
+ * them and report every recipient as sent.
+ */
+export interface BulkSmsDirectResult {
+  success?: boolean
+  error?: string
+  sent?: number
+  failed?: number
+  results?: unknown[]
+  errors?: Array<{ customerId: string; error: string }>
+  /** Sends may have gone out but could not be logged. Do not retry. */
+  logFailure?: boolean
+  code?: string
+  message?: string
+}
+
+export async function sendBulkSMSDirect(
+  customerIds: string[],
+  message: string,
+  eventId?: string,
+  categoryId?: string
+): Promise<BulkSmsDirectResult> {
   try {
     const hasPermission = await checkUserPermission('messages', 'send_marketing')
     if (!hasPermission) {

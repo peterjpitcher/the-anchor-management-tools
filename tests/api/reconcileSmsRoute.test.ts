@@ -61,14 +61,18 @@ describe('reconcile-sms route error payloads', () => {
       twilio_message_sid: 'SM_MISSING',
       status: 'sent',
       twilio_status: 'sent',
-      created_at: '2020-01-01T00:00:00.000Z',
+      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       direction: 'outbound',
       customer_id: 'customer-1',
     }
 
+    // The route now bounds the queue by age, so the stuck message is dated inside
+    // the window, and it counts what sits outside it via a second head query.
     const messageLimit = vi.fn().mockResolvedValue({ data: [stuckMessage], error: null })
     const messageOrder = vi.fn().mockReturnValue({ limit: messageLimit })
-    const messageNot = vi.fn().mockReturnValue({ order: messageOrder })
+    const messageGte = vi.fn().mockReturnValue({ order: messageOrder })
+    const messageLt = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const messageNot = vi.fn().mockReturnValue({ order: messageOrder, gte: messageGte, lt: messageLt })
     const messageInDirection = vi.fn().mockReturnValue({ not: messageNot })
     const messageInStatus = vi.fn().mockReturnValue({ in: messageInDirection })
     const messageSelect = vi.fn().mockReturnValue({ in: messageInStatus })

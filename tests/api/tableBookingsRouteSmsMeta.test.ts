@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/api/auth', () => ({
+  // The table-bookings route now checks whether the API key actually validates
+  // before skipping the bot check, so the mock has to provide it.
+  isApiKeyAuthenticated: vi.fn().mockResolvedValue(true),
   withApiAuth: vi.fn(
     async (
       handler: (request: Request) => Promise<Response>,

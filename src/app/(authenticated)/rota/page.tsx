@@ -25,6 +25,7 @@ import RotaGrid from './RotaGrid';
 import RotaPublishStatus from './RotaPublishStatus';
 import { rotaNavItems, buildRotaNavItems } from './nav';
 import { getUnfilledShiftCount } from '@/app/actions/rota-reassign';
+import { getRotaOpeningExceptions } from '@/lib/rota/opening-exceptions-query';
 import type { PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 import { displayName } from '@/lib/employees/display-name';
 
@@ -119,16 +120,27 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
 
   const weekEnd = days[6];
 
-  const [weekResult, employeesResult, shiftsResult, templatesResult, leaveDaysResult, dayInfoResult, deptResult] =
-    await Promise.all([
-      getOrCreateRotaWeek(weekStart),
-      getActiveEmployeesForRota(weekStart),
-      getWeekShifts(weekStart, user.id),
-      getShiftTemplates(),
-      getLeaveDaysForWeek(weekStart),
-      getRotaWeekDayInfo(weekStart, weekEnd),
-      getDepartments(),
-    ]);
+  const [
+    weekResult,
+    employeesResult,
+    shiftsResult,
+    templatesResult,
+    leaveDaysResult,
+    dayInfoResult,
+    deptResult,
+    openingExceptions,
+  ] = await Promise.all([
+    getOrCreateRotaWeek(weekStart),
+    getActiveEmployeesForRota(weekStart),
+    getWeekShifts(weekStart, user.id),
+    getShiftTemplates(),
+    getLeaveDaysForWeek(weekStart),
+    getRotaWeekDayInfo(weekStart, weekEnd),
+    getDepartments(),
+    // Opening-hours exceptions for the whole displayed week, fetched alongside
+    // everything else rather than per day.
+    getRotaOpeningExceptions(weekStart, weekEnd),
+  ]);
 
   if (!weekResult.success) {
     return (
@@ -329,6 +341,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         canEditLeave={canEditLeave}
         departments={departments}
         dayInfo={dayInfo}
+        openingExceptions={openingExceptions}
         periodSummary={rotaSummary}
         canViewSpend={canViewSpend}
         canViewSalesTargets={canViewSalesTargets}

@@ -24,14 +24,21 @@ export async function CommunicationsTabServer({
 }) {
   const supabase = await createClient()
 
-  const { data: historyData } = await supabase
+  // The column is twilio_message_sid. Selecting twilio_sid made PostgREST reject
+  // the whole request with 42703, and because the error was discarded the tab
+  // rendered an empty history for every booking instead of failing loudly.
+  const { data: historyData, error: historyError } = await supabase
     .from('private_booking_sms_queue')
     .select(
-      'id, created_at, trigger_type, template_key, status, message_body, twilio_sid, scheduled_for',
+      'id, created_at, trigger_type, template_key, status, message_body, twilio_sid:twilio_message_sid, scheduled_for',
     )
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: false })
     .limit(50)
+
+  if (historyError) {
+    console.error('[CommunicationsTab] Failed to load SMS history', historyError)
+  }
 
   const history: CommunicationsHistoryRow[] = (historyData ?? []).map((row) => ({
     id: String(row.id),

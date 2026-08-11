@@ -186,7 +186,14 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
       if (result.error) {
         toast.error(result.error);
       } else if (result.data) {
-        toast.success(`Applied labels to ${result.data.length} customers`);
+        // Report both halves. The run removes stale New Customer labels as well
+        // as applying matches, and a message about applications alone hid that.
+        const expired = result.expiredNewCustomer ?? 0;
+        toast.success(
+          expired > 0
+            ? `Applied labels to ${result.data.length} customers, and removed New Customer from ${expired}`
+            : `Applied labels to ${result.data.length} customers`
+        );
       }
     } catch {
       toast.error('Failed to apply labels retroactively');
@@ -417,8 +424,8 @@ export default function CustomerLabelsClient({ initialLabels, canManage }: Custo
         <ConfirmDialog
           open
           title="Apply labels retroactively"
-          message="This will scan recent customer activity and apply labels automatically where rules match. Continue?"
-          confirmText="Apply labels"
+          message="This scans customer activity and applies labels where the rules match. It also removes the New Customer label from anyone who is no longer new, so some customers will lose that label. Continue?"
+          confirmText="Apply and tidy labels"
           confirmVariant="primary"
           onClose={() => setRetroactiveConfirm(false)}
           onConfirm={() => void handleApplyRetroactively()}

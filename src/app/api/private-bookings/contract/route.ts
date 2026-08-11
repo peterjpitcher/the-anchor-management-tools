@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { generateContractDocument } from '@/lib/private-bookings/contract-lifecycle'
+import { renderContractPreview } from '@/lib/private-bookings/contract-lifecycle'
 import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
@@ -31,13 +31,13 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Permission denied', { status: 403 })
   }
 
-  // Shared generation path: mints an atomic version, audits, renders, and
-  // stores an immutable snapshot (SOP §28 document generation).
+  // Read-only. This route backs the Contract tab and the download button, both
+  // of which are ordinary navigation, so it must not mint a version, write an
+  // audit row or stamp the waiver as sent. Issuing a contract stays with the
+  // explicit "Send Contract to Customer" action, which calls
+  // generateContractDocument itself (SOP §28 document generation).
   try {
-    const { html } = await generateContractDocument(bookingId, {
-      performedBy: user.id,
-      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
-    })
+    const { html } = await renderContractPreview(bookingId)
 
     if (wantsPdf) {
       // Same settings as the emailed contract PDF (contract CSS owns the A4 page

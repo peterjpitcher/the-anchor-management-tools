@@ -97,6 +97,11 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
         subtitle: `${event.bookedSeatsCount ?? 0} booked`,
         status,
         statusLabel: statusLabel(status),
+        content: {
+            hasImage: event.hasImage ?? Boolean(event.heroImageUrl || event.posterImageUrl),
+            hasBrief: event.hasBrief ?? false,
+            hasDescription: event.hasDescription ?? false,
+        },
         tooltipData: {
             kind: 'event',
             name: event.name,

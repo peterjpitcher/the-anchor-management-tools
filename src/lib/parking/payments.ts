@@ -3,6 +3,7 @@ import { insertParkingPayment, getPendingParkingPayment, updateParkingBooking, l
 import { ParkingBooking, ParkingPaymentRecord } from '@/types/parking'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { formatDateTime } from '@/lib/dateUtils'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -90,11 +91,13 @@ export async function createParkingPaymentOrder(
     }
   }
 
+  // formatDateTime comes from dateUtils so the customer sees Europe/London on
+  // the PayPal checkout page. A local en-GB format with no timeZone rendered the
+  // times in whatever zone the server ran in, which is UTC on Vercel: an hour
+  // out for the whole of British Summer Time.
   const description =
     options.description ||
-    `Parking booking ${booking.reference} from ${formatDateTime(new Date(booking.start_at))} to ${formatDateTime(
-      new Date(booking.end_at)
-    )}`
+    `Parking booking ${booking.reference} from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}`
 
   const { orderId, approveUrl } = await createSimplePayPalOrder({
     customId: booking.id,
@@ -315,12 +318,42 @@ export async function sendParkingPaymentRequest(
   return { sent: true, skipped: false, code: smsCode, logFailure: smsLogFailure }
 }
 
+/**
+ * Thrown when a booking is no longer in a state that may be charged.
+ *
+ * PayPal orders are created with intent CAPTURE, so the customer's approval
+ * alone takes no money. Refusing the capture therefore costs the customer
+ * nothing and needs no refund: the approved order is left uncaptured and
+ * expires at PayPal.
+ */
+export class ParkingBookingNotCapturableError extends Error {
+  bookingStatus: string
+
+  constructor(bookingStatus: string) {
+    super(`Parking booking is ${bookingStatus} and cannot be charged`)
+    this.name = 'ParkingBookingNotCapturableError'
+    this.bookingStatus = bookingStatus
+  }
+}
+
 export async function captureParkingPayment(
   booking: ParkingBooking,
   paypalOrderId: string,
   options: { client?: SupabaseClient<any, 'public', any> } = {}
 ): Promise<ParkingBooking> {
   const supabase = options.client ?? createAdminClient()
+
+  // An expired or cancelled booking has already given its space back: capacity
+  // only counts 'pending_payment' and 'confirmed', so the slot may since have
+  // been sold to someone else. Capturing here charged the customer and quietly
+  // revived the booking as 'confirmed' with no capacity check, so refuse. The
+  // deadline itself is deliberately not checked: while a booking is still
+  // pending_payment it is still holding its space, so a customer who comes back
+  // from PayPal a minute after the window closes is better served by taking the
+  // payment than by losing the sale.
+  if (booking.status === 'expired' || booking.status === 'cancelled') {
+    throw new ParkingBookingNotCapturableError(booking.status)
+  }
 
   const { data: paymentRecord, error: paymentLookupError } = await supabase
     .from('parking_booking_payments')
@@ -491,16 +524,6 @@ async function refundParkingPayment(
   if (!refundedPayment) {
     throw new Error('Parking payment status was not updated to refunded')
   }
-}
-
-function formatDateTime(date: Date) {
-  return date.toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 async function sendConfirmationNotifications(booking: ParkingBooking, supabase: SupabaseClient<any, 'public', any>) {

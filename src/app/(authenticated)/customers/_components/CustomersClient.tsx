@@ -11,6 +11,7 @@ const CustomerImport = dynamic(
   () => import('@/components/features/customers/CustomerImport').then(mod => mod.CustomerImport),
   { ssr: false }
 )
+import type { CustomerImportOutcome } from '@/components/features/customers/CustomerImport'
 import { CustomerName } from '@/components/features/customers/CustomerName'
 import { CustomerLabelDisplay } from '@/components/features/customers/CustomerLabelDisplay'
 import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
@@ -21,6 +22,7 @@ import {
   deleteCustomer as deleteCustomerAction,
   importCustomers as importCustomersAction,
   getCustomerList,
+  type CustomerSmsFilter,
 } from '@/app/actions/customers'
 
 import {
@@ -75,7 +77,7 @@ export interface CustomersClientProps {
   initialPage: number
   initialPageSize: number
   initialSearch: string
-  initialShowDeactivated: boolean
+  initialSmsFilter: CustomerSmsFilter
   canManageCustomers: boolean
   canSendBulkMessages: boolean
 }
@@ -89,7 +91,7 @@ export default function CustomersClient({
   initialPage,
   initialPageSize,
   initialSearch,
-  initialShowDeactivated,
+  initialSmsFilter,
   canManageCustomers,
   canSendBulkMessages,
 }: CustomersClientProps) {
@@ -113,8 +115,7 @@ export default function CustomersClient({
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const [currentPage, setCurrentPage] = useState(initialPage)
   const [pageSize, setPageSize] = useState(initialPageSize)
-  const [showDeactivated, setShowDeactivated] = useState(initialShowDeactivated)
-  const [tab, setTab] = useState('all')
+  const [smsFilter, setSmsFilter] = useState<CustomerSmsFilter>(initialSmsFilter)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Client-side column sorting of the loaded page (list is paginated server-side,
@@ -131,7 +132,7 @@ export default function CustomersClient({
 
   // URL sync
   const pushParams = useCallback(
-    (updates: { page?: number; search?: string; deactivated?: boolean; size?: number }) => {
+    (updates: { page?: number; search?: string; deactivated?: boolean; sms?: CustomerSmsFilter; size?: number }) => {
       const params = new URLSearchParams(window.location.search)
       if (updates.page !== undefined) {
         if (updates.page <= 1) params.delete('page')
@@ -144,6 +145,13 @@ export default function CustomersClient({
       if (updates.deactivated !== undefined) {
         if (!updates.deactivated) params.delete('deactivated')
         else params.set('deactivated', '1')
+      }
+      if (updates.sms !== undefined) {
+        // The legacy ?deactivated=1 param is still read on load, but only one of
+        // the two should ever be in the URL at a time.
+        params.delete('deactivated')
+        if (updates.sms === 'all') params.delete('sms')
+        else params.set('sms', updates.sms)
       }
       if (updates.size !== undefined) {
         if (updates.size === 50) params.delete('size')
@@ -158,11 +166,11 @@ export default function CustomersClient({
 
   // Data fetching
   const fetchPage = useCallback(
-    async (opts: { page: number; size: number; search: string; deactivated: boolean }) => {
+    async (opts: { page: number; size: number; search: string; smsFilter: CustomerSmsFilter }) => {
       setIsFetching(true)
       try {
         const result = await getCustomerList({
-          page: opts.page, pageSize: opts.size, searchTerm: opts.search, showDeactivated: opts.deactivated,
+          page: opts.page, pageSize: opts.size, searchTerm: opts.search, smsFilter: opts.smsFilter,
         })
         setCustomers(result.customers)
         setTotalCount(result.totalCount)
@@ -184,8 +192,8 @@ export default function CustomersClient({
   const isFirstMount = useMemo(() => ({ value: true }), [])
   useEffect(() => {
     if (isFirstMount.value) { isFirstMount.value = false; return }
-    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, deactivated: showDeactivated })
-  }, [currentPage, fetchPage, isFirstMount, pageSize, searchTerm, showDeactivated])
+    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, smsFilter })
+  }, [currentPage, fetchPage, isFirstMount, pageSize, searchTerm, smsFilter])
 
   // Filter handlers
   const handleSearch = useCallback((term: string) => {
@@ -196,13 +204,13 @@ export default function CustomersClient({
     setCurrentPage(page); pushParams({ page })
   }, [pushParams])
 
-  const handleFilterChange = useCallback((deactivated: boolean) => {
-    setShowDeactivated(deactivated); setCurrentPage(1); pushParams({ deactivated, page: 1 })
+  const handleFilterChange = useCallback((next: CustomerSmsFilter) => {
+    setSmsFilter(next); setCurrentPage(1); pushParams({ sms: next, page: 1 })
   }, [pushParams])
 
   const refreshCurrentPage = useCallback(() => {
-    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, deactivated: showDeactivated })
-  }, [currentPage, fetchPage, pageSize, searchTerm, showDeactivated])
+    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, smsFilter })
+  }, [currentPage, fetchPage, pageSize, searchTerm, smsFilter])
 
   const totalPages = Math.ceil(totalCount / pageSize)
 
@@ -268,9 +276,14 @@ export default function CustomersClient({
     } finally { setDeleteTarget(null) }
   }, [deleteTarget, refreshCurrentPage])
 
+  // Returns the outcome rather than toasting it: CustomerImport owns the import
+  // UI and reports the real result, so reporting here as well would double up
+  // and, previously, claim success even when nothing was written.
   const handleImportCustomers = useCallback(
-    async (customersData: Omit<Customer, 'id' | 'created_at'>[]) => {
-      if (!canManageCustomers) { toast.error('You do not have permission.'); return }
+    async (customersData: Omit<Customer, 'id' | 'created_at'>[]): Promise<CustomerImportOutcome> => {
+      if (!canManageCustomers) {
+        return { success: false, error: 'You do not have permission to import customers.' }
+      }
       try {
         const result = await importCustomersAction(
           customersData.map(c => ({
@@ -278,14 +291,18 @@ export default function CustomersClient({
           }))
         )
         if ('error' in result && result.error) {
-          toast.error(typeof result.error === 'string' ? result.error : 'Failed to import customers'); return
+          return { success: false, error: typeof result.error === 'string' ? result.error : 'Failed to import customers' }
         }
-        if (!('success' in result) || !result.success) { toast.error('Failed to import customers'); return }
+        if (!('success' in result) || !result.success) {
+          return { success: false, error: 'Failed to import customers' }
+        }
         const skippedTotal = (result.skippedInvalid ?? 0) + (result.skippedDuplicateInFile ?? 0) + (result.skippedExisting ?? 0)
-        let msg = `Imported ${result.created ?? 0} customers`
-        if (skippedTotal > 0) msg += ` (${skippedTotal} skipped)`
-        toast.success(msg); setShowImport(false); refreshCurrentPage()
-      } catch { toast.error('Failed to import customers') }
+        setShowImport(false)
+        refreshCurrentPage()
+        return { success: true, created: result.created ?? 0, skipped: skippedTotal }
+      } catch {
+        return { success: false, error: 'Failed to import customers' }
+      }
     },
     [canManageCustomers, refreshCurrentPage]
   )
@@ -402,14 +419,21 @@ export default function CustomersClient({
         subtitle={`${totalCount.toLocaleString()} customers`}
         className="mb-0"
         actions={
-          canManageCustomers ? (
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
-              <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
-                Add customer
-              </Button>
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {/* Insights is the only way into the win-back campaign, and it needs
+                nothing more than customers.view, so it sits outside the manage gate. */}
+            <Link href="/customers/insights">
+              <Button variant="secondary" size="sm">Insights</Button>
+            </Link>
+            {canManageCustomers && (
+              <>
+                <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
+                <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
+                  Add customer
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -428,11 +452,11 @@ export default function CustomersClient({
           { id: 'active', label: 'SMS Active' },
           { id: 'deactivated', label: 'Deactivated' },
         ]}
-        activeTab={tab}
+        activeTab={smsFilter}
         onTabChange={(id) => {
-          setTab(id)
-          if (id === 'deactivated') handleFilterChange(true)
-          else handleFilterChange(false)
+          // Each tab maps to its own filter. All three used to collapse into a
+          // single boolean, so All and SMS Active ran the identical query.
+          handleFilterChange(id as CustomerSmsFilter)
         }}
       />
 
@@ -641,15 +665,36 @@ export default function CustomersClient({
         )}
       </Card>
 
-      {/* Delete confirmation */}
+      {/* Delete confirmation.
+          The copy has to describe both outcomes of deleteCustomer, because the
+          action picks between them on its own: a straight delete cascades far
+          wider than bookings, and a customer with a table, private or parking
+          booking cannot be deleted at all and is anonymised in place instead. */}
       <ConfirmDialog
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         title="Delete Customer"
         message={
-          deleteTarget
-            ? `Are you sure you want to delete ${deleteTarget.first_name}${deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? This will also delete all their bookings.`
-            : ''
+          deleteTarget ? (
+            // Spans, not paragraphs: ConfirmDialog renders `message` inside a <p>.
+            <>
+              <span className="block">
+                Delete {deleteTarget.first_name}
+                {deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? Where the record can be
+                removed, this permanently deletes it along with their event bookings, message history,
+                consent records, event check-ins, labels and loyalty membership.
+              </span>
+              <span className="mt-2 block">
+                A record tied to a table, private or parking booking, or to an SMS campaign, cannot be
+                removed. It is anonymised instead: the name becomes &quot;Deleted Customer&quot;, the
+                phone number and email are cleared, internal notes are wiped and every marketing opt-in
+                is switched off. Their bookings and message history stay.
+              </span>
+              <span className="mt-2 block font-medium">Either way, this cannot be undone.</span>
+            </>
+          ) : (
+            ''
+          )
         }
         confirmLabel="Delete"
         tone="danger"

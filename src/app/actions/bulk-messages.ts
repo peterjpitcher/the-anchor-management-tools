@@ -2,11 +2,54 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { sendBulkSMSDirect } from '@/app/actions/sms-bulk-direct'
 import { enqueueBulkSMSJob } from '@/app/actions/job-queue'
 import type { BulkRecipientFilters, BulkRecipient, BulkRecipientsPage, SendBulkResult } from '@/types/bulk-messages'
 
 const DIRECT_SEND_THRESHOLD = 100
+
+type BulkSendRequest = {
+  customerIds: string[]
+  message: string
+  eventId?: string
+  categoryId?: string
+}
+
+type BulkSendOutcome =
+  | { status: 'success'; details: Record<string, unknown> }
+  | { status: 'failure'; error: string }
+
+/**
+ * Bulk SMS has the widest blast radius of anything in the app: one click can
+ * text every customer on file, at real cost and under marketing consent rules.
+ * Nothing downstream recorded it (neither sendBulkSMSDirect nor enqueueBulkSMSJob
+ * writes an audit row), so there was no way to answer "who sent this, to whom,
+ * and what did it say" after the fact. Recipient ids are stored in full because
+ * the recipient list is the whole point of the record.
+ */
+async function logBulkSendAudit(
+  user: { id: string; email?: string },
+  request: BulkSendRequest,
+  outcome: BulkSendOutcome
+): Promise<void> {
+  await logAuditEvent({
+    user_id: user.id,
+    ...(user.email && { user_email: user.email }),
+    operation_type: 'send',
+    resource_type: 'bulk_message',
+    operation_status: outcome.status,
+    ...(outcome.status === 'failure' && { error_message: outcome.error }),
+    additional_info: {
+      recipientCount: request.customerIds.length,
+      recipientCustomerIds: request.customerIds,
+      message: request.message,
+      ...(request.eventId && { eventId: request.eventId }),
+      ...(request.categoryId && { categoryId: request.categoryId }),
+      ...(outcome.status === 'success' ? outcome.details : {}),
+    },
+  })
+}
 
 /**
  * Fetches bulk SMS recipients from the database using the get_bulk_sms_recipients RPC.
@@ -80,24 +123,57 @@ export async function sendBulkMessages(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
 
+  const auditUser = { id: user.id, ...(user.email && { email: user.email }) }
+  const request: BulkSendRequest = { customerIds, message, eventId, categoryId }
+
   const hasPermission = await checkUserPermission('messages', 'send_marketing', user.id)
-  if (!hasPermission) return { success: false, error: 'Insufficient permissions' }
+  if (!hasPermission) {
+    await logBulkSendAudit(auditUser, request, {
+      status: 'failure',
+      error: 'Insufficient permissions',
+    })
+    return { success: false, error: 'Insufficient permissions' }
+  }
 
   if (customerIds.length === 0) {
     return { success: false, error: 'No recipients provided' }
   }
 
   if (customerIds.length <= DIRECT_SEND_THRESHOLD) {
-    // Send directly for small batches — sendBulkSMSDirect handles its own auth/rate-limit checks
+    // Send directly for small batches. sendBulkSMSDirect handles its own
+    // auth/rate-limit checks.
     const result = await sendBulkSMSDirect(customerIds, message, eventId, categoryId)
 
-    if ('error' in result) {
+    if ('error' in result && result.error) {
+      await logBulkSendAudit(auditUser, request, { status: 'failure', error: result.error })
       return { success: false, error: result.error }
     }
 
+    // Report what actually happened. Hard-coding sent: customerIds.length told
+    // staff every recipient received the message even when sends failed, and
+    // swallowed the deliberate "do not retry, contact engineering" warning that
+    // is raised when outbound logging fails after messages may have gone out.
+    const sent = result.sent ?? 0
+    const failed = result.failed ?? 0
+
+    await logBulkSendAudit(auditUser, request, {
+      status: 'success',
+      details: {
+        route: 'direct',
+        sent,
+        failed,
+        ...(result.errors?.length && { errors: result.errors }),
+        ...(result.logFailure && { logFailure: true }),
+      },
+    })
+
     return {
       success: true,
-      sent: customerIds.length,
+      sent,
+      failed,
+      errors: result.errors,
+      logFailure: result.logFailure,
+      message: result.message,
       queued: false,
     }
   }
@@ -106,8 +182,17 @@ export async function sendBulkMessages(
   const result = await enqueueBulkSMSJob(customerIds, message, eventId, categoryId)
 
   if ('error' in result) {
-    return { success: false, error: result.error }
+    const error = result.error ?? 'Failed to queue bulk SMS'
+    await logBulkSendAudit(auditUser, request, { status: 'failure', error })
+    return { success: false, error }
   }
+
+  // Logged as queued, not sent: the job runner decides each recipient's outcome
+  // later, so claiming a delivered count here would be a guess.
+  await logBulkSendAudit(auditUser, request, {
+    status: 'success',
+    details: { route: 'queued' },
+  })
 
   return {
     success: true,

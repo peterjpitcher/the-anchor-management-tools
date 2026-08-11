@@ -39,8 +39,12 @@ export function createRateLimiter(config: RateLimitConfig) {
     }
   } = config
 
-  return async function rateLimit(req: NextRequest): Promise<NextResponse | null> {
-    const key = keyGenerator(req)
+  // `explicitKey` lets a caller count against something the request cannot supply on its own,
+  // e.g. a normalised phone number parsed out of the body. Existing callers pass only `req` and
+  // keep the IP-derived key. Note the store is shared across every limiter built here, so an
+  // explicit key must be namespaced by its caller to avoid colliding with another limiter's.
+  return async function rateLimit(req: NextRequest, explicitKey?: string): Promise<NextResponse | null> {
+    const key = explicitKey ?? keyGenerator(req)
     const now = Date.now()
     
     // Get or create rate limit data for this key

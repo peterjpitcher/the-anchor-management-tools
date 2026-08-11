@@ -293,13 +293,26 @@ export default function MessageTemplatesClient({ initialTemplates, canManage, in
   return (
     <PageLayout
       title="Message Templates"
-      subtitle="Manage SMS templates for automated messages"
+      subtitle="Reference copy only, not used when messages are sent"
       breadcrumbs={breadcrumbs}
       backButton={{ label: 'Back to Settings', href: '/settings' }}
       headerActions={headerActions}
     >
       <div className="space-y-6">
         {error && <Alert variant="error" title="Error" description={error} />}
+
+        {/*
+          Nothing in the sending code reads the message_templates table: every
+          SMS body is currently hard-coded in the send helpers. Editing here
+          therefore changes nothing that a customer receives, and staff had no
+          way of knowing that. Remove this notice when the send paths are wired
+          up to read these rows.
+        */}
+        <Alert
+          variant="warning"
+          title="Editing these does not change the messages customers receive"
+          description="Message wording is currently set in code. These templates are kept as reference copy only, so changes saved here have no effect on live sends. Ask a developer if you need the wording of an automated message changed."
+        />
 
         <Section>
           <Card>

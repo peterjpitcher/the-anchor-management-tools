@@ -31,4 +31,14 @@ export interface SendBulkResult {
   failed?: number
   queued?: boolean
   error?: string
+  /** Per-recipient failure reasons, when the send partially succeeded. */
+  errors?: Array<{ customerId: string; error: string }>
+  /**
+   * Set when the send aborted because outbound logging failed after messages may
+   * already have gone out. Retrying risks duplicate sends, so the UI must show
+   * this as a persistent warning rather than a success toast.
+   */
+  logFailure?: boolean
+  /** Operator-facing explanation to show alongside logFailure. */
+  message?: string
 }

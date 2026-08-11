@@ -100,9 +100,13 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  const [hasViewPermission, hasDocPermission] = await Promise.all([
+  // `employees.edit` is what gates financial details (NI number, bank details) in
+  // the employee record UI, see getEmployeeDetailData. The starter pack prints the
+  // NI number, so it has to honour the same gate or the PDF becomes a way around it.
+  const [hasViewPermission, hasDocPermission, hasFinancialPermission] = await Promise.all([
     checkUserPermission('employees', 'view'),
     checkUserPermission('employees', 'view_documents'),
+    checkUserPermission('employees', 'edit'),
   ])
 
   if (!hasViewPermission) {
@@ -122,22 +126,27 @@ export async function GET(
     return new NextResponse('Employee not found', { status: 404 })
   }
 
-  // Fetch related data in parallel
+  // Fetch related data in parallel. The financial row is not even read without
+  // the permission that gates it in the UI.
   const [
-    { data: financialDetails },
+    financialResult,
     { data: rightToWorkRaw },
   ] = await Promise.all([
-    supabase
-      .from('employee_financial_details')
-      .select('ni_number')
-      .eq('employee_id', employeeId)
-      .maybeSingle(),
+    hasFinancialPermission
+      ? supabase
+          .from('employee_financial_details')
+          .select('ni_number')
+          .eq('employee_id', employeeId)
+          .maybeSingle()
+      : Promise.resolve(null),
     supabase
       .from('employee_right_to_work')
       .select('document_type, verification_date, document_expiry_date, document_reference, check_method, verified_by_user_id, photo_storage_path')
       .eq('employee_id', employeeId)
       .maybeSingle(),
   ])
+
+  const financialDetails = financialResult?.data ?? null
 
   // Resolve verified_by user name if present
   let verifiedByName: string | null = null

@@ -21,6 +21,12 @@ export interface RefundDialogProps {
   totalPending: number
   hasPayPalCapture: boolean
   captureExpired: boolean
+  /**
+   * Called after a refund is accepted. router.refresh() below only re-renders
+   * the server components, so a screen that keeps its rows in client state has
+   * to be told to refetch or it goes on showing the pre-refund figures.
+   */
+  onRefunded?: () => void | Promise<void>
 }
 
 const methodOptions = [
@@ -40,6 +46,7 @@ export function RefundDialog({
   totalPending,
   hasPayPalCapture,
   captureExpired,
+  onRefunded,
 }: RefundDialogProps) {
   const router = useRouter()
   const remaining = Math.max(0, originalAmount - totalRefunded - totalPending)
@@ -92,6 +99,7 @@ export function RefundDialog({
 
       onOpenChange(false)
       router.refresh()
+      await onRefunded?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
     } finally {

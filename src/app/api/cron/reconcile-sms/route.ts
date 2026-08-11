@@ -6,6 +6,23 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { getErrorCode } from '@/lib/errors'
 
+/**
+ * How much of the backlog a single run will look at.
+ *
+ * Reconciliation is a safety net for Twilio status callbacks we never received,
+ * not an archive sweep. Twilio stops changing a message's status long before
+ * this cutoff, so an older row is permanently non-final and re-fetching it can
+ * only ever return the status it already has.
+ *
+ * That mattered: the queue is processed oldest-first with a per-run cap, and
+ * production had 105 messages over a month old (the oldest from July 2025) all
+ * sitting at 'sent'. They filled every slot of every run, so messages sent in
+ * the last few days, the ones that can still be resolved, were never reached.
+ * Bounding the window by age lets the queue drain instead of stalling.
+ */
+const RECONCILE_MAX_AGE_DAYS = 7
+const RECONCILE_BATCH_SIZE = 50
+
 function resolveIsoTimestamp(value: Date | string | null | undefined): string {
   if (!value) {
     return new Date().toISOString()
@@ -152,15 +169,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = createAdminClient()
-    // Find stuck messages
+    const reconcileCutoffIso = new Date(
+      Date.now() - RECONCILE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString()
+
+    // Find stuck messages inside the reconcilable window, oldest first.
     const { data: stuckMessages, error: fetchError } = await supabase
       .from('messages')
       .select('id, twilio_message_sid, status, twilio_status, created_at, direction, customer_id')
       .in('status', ['queued', 'sent'])
       .in('direction', ['outbound', 'outbound-api'])
       .not('twilio_message_sid', 'is', null)
+      .gte('created_at', reconcileCutoffIso)
       .order('created_at', { ascending: true })
-      .limit(50) // Limit per run to avoid timeout
+      .limit(RECONCILE_BATCH_SIZE) // Limit per run to avoid timeout
 
     if (fetchError) {
       logger.error('SMS reconciliation failed fetching stuck messages', {
@@ -169,11 +191,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
+    // Count what sits outside the window so the backlog stays visible in the
+    // cron logs rather than silently disappearing behind the age filter.
+    const { count: abandonedCount, error: abandonedError } = await supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['queued', 'sent'])
+      .in('direction', ['outbound', 'outbound-api'])
+      .not('twilio_message_sid', 'is', null)
+      .lt('created_at', reconcileCutoffIso)
+
+    if (abandonedError) {
+      logger.warn('SMS reconciliation failed counting messages past the reconcile window', {
+        metadata: { error: abandonedError.message }
+      })
+    }
+
+    const abandoned = abandonedCount ?? 0
+
     if (!stuckMessages || stuckMessages.length === 0) {
-      logger.info('SMS reconciliation found no stuck messages')
-      return NextResponse.json({ 
-        success: true, 
+      logger.info('SMS reconciliation found no stuck messages', {
+        metadata: { abandoned, reconcileCutoffIso }
+      })
+      return NextResponse.json({
+        success: true,
         message: 'No messages to reconcile',
+        abandoned,
         timestamp: new Date().toISOString()
       })
     }
@@ -184,7 +227,7 @@ export async function GET(request: NextRequest) {
     )
 
     logger.info('SMS reconciliation identified stuck messages', {
-      metadata: { count: messagesToReconcile.length }
+      metadata: { count: messagesToReconcile.length, abandoned, reconcileCutoffIso }
     })
 
     let updated = 0
@@ -384,6 +427,7 @@ export async function GET(request: NextRequest) {
       checked: messagesToReconcile.length,
       updated,
       errors,
+      abandoned,
       timestamp: new Date().toISOString()
     }
 
