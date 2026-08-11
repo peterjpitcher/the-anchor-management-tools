@@ -5,6 +5,7 @@ import { format, isPast, isSameDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
 import { compareEntries } from './sort'
+import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 
 export interface ScheduleCalendarListProps {
     entries: CalendarEntry[]
@@ -156,6 +157,18 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                 {entry.subtitle && (
                                                     <div className="text-xs text-gray-600">
                                                         {entry.subtitle}
+                                                    </div>
+                                                )}
+                                                {entryGaps(entry).length > 0 && (
+                                                    <div className="mt-1 flex flex-wrap gap-1">
+                                                        {entryGaps(entry).map((gap) => (
+                                                            <span
+                                                                key={gap}
+                                                                className="text-[10px] font-medium text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded"
+                                                            >
+                                                                {CONTENT_GAP_LABELS[gap]}
+                                                            </span>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </a>

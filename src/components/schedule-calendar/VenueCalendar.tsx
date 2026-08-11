@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from 'react'
+import { CalendarFilterBar } from './CalendarFilterBar'
+import { applyCalendarFilters, EMPTY_CALENDAR_FILTERS, type CalendarFilters } from './filters'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
@@ -35,6 +37,12 @@ export interface VenueCalendarEvent {
   time: string | null
   bookedSeatsCount?: number
   eventStatus?: string | null
+  /** Any artwork at all: hero, poster or thumbnail. Drives the "needs artwork" filter. */
+  hasImage?: boolean
+  /** A non-empty brief. Drives the "needs brief" filter. */
+  hasBrief?: boolean
+  /** A short or long description, used for listings and social copy. */
+  hasDescription?: boolean
 }
 
 export interface VenueCalendarBooking {
@@ -146,6 +154,9 @@ function buildEntries(
         category: null,
         heroImageUrl: null,
         posterImageUrl: null,
+        hasImage: event.hasImage ?? false,
+        hasBrief: event.hasBrief ?? false,
+        hasDescription: event.hasDescription ?? false,
         eventStatus: event.eventStatus ?? null,
         bookingUrl: null,
         checklist: { completed: 0, total: 0, overdueCount: 0, dueTodayCount: 0, nextTask: null, outstanding: [] },
@@ -426,6 +437,11 @@ export function VenueCalendar({
     [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings],
   )
 
+  // One filter model drives both the month grid and the list, so the two can
+  // never disagree about what is being shown.
+  const [filters, setFilters] = useState<CalendarFilters>(EMPTY_CALENDAR_FILTERS)
+  const visibleEntries = useMemo(() => applyCalendarFilters(entries, filters), [entries, filters])
+
   const legendKinds = useMemo<CalendarEntryKind[]>(() => {
     const kinds: CalendarEntryKind[] = []
     if (calendarNotes.length > 0) kinds.push('calendar_note')
@@ -454,8 +470,17 @@ export function VenueCalendar({
     <div className={className}>
       {header}
 
+      <CalendarFilterBar
+        className="mb-3"
+        filters={filters}
+        onChange={setFilters}
+        availableKinds={legendKinds}
+        shownCount={visibleEntries.length}
+        totalCount={entries.length}
+      />
+
       <ScheduleCalendar
-        entries={entries}
+        entries={visibleEntries}
         view={view}
         onViewChange={setView}
         canCreateCalendarNote={canCreateCalendarNote}

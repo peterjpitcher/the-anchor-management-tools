@@ -26,6 +26,19 @@ export type CalendarEntryStatus =
     | 'review_clicked'
     | null
 
+/**
+ * Which pieces of publishable content an event already has.
+ *
+ * Only events carry these. They drive the "missing artwork" and "missing brief"
+ * filters, so an entry with no flags (a private booking, a note) is simply never
+ * matched by a content filter rather than being treated as incomplete.
+ */
+export interface CalendarEntryContent {
+    hasImage: boolean
+    hasBrief: boolean
+    hasDescription: boolean
+}
+
 export interface CalendarEntry {
     id: string
     kind: CalendarEntryKind
@@ -39,6 +52,8 @@ export interface CalendarEntry {
     subtitle: string | null
     status: CalendarEntryStatus
     statusLabel: string | null
+    /** Events only. Undefined for every other kind. */
+    content?: CalendarEntryContent
     tooltipData: TooltipData
     onClickHref: string | null
 }
@@ -98,7 +113,8 @@ type TooltipData =
           status: string | null
       }
 
-export type ScheduleCalendarView = 'month' | 'week' | 'list'
+/** Week was retired: it was not used, and it is the one view a status or content badge does not fit in. */
+export type ScheduleCalendarView = 'month' | 'list'
 
 /**
  * Per-day operational figures shown as a small note under each day in the
