@@ -1,10 +1,36 @@
 import { formatDateTime } from '@/lib/dateUtils'
 import type { ParkingBooking } from '@/types/parking'
 
+/**
+ * Every column the builders below read off a booking.
+ *
+ * Callers pass a row straight from a Supabase query, so do NOT widen this to
+ * `ParkingBooking` and do NOT cast query results to it. Both hide the failure
+ * this type exists to catch: a query that omits a column a template reads, which
+ * ships as "Hi undefined, your parking from Invalid Date to Invalid Date
+ * (£0.00)" to a real customer. Left uncast, an incomplete select is a compile
+ * error at the call site instead.
+ */
+export type ParkingNotificationBooking = Pick<
+  ParkingBooking,
+  | 'id'
+  | 'reference'
+  | 'customer_id'
+  | 'customer_first_name'
+  | 'customer_last_name'
+  | 'customer_mobile'
+  | 'customer_email'
+  | 'vehicle_registration'
+  | 'start_at'
+  | 'end_at'
+  | 'calculated_price'
+  | 'override_price'
+>
+
 const CONTACT_NUMBER = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
 const MANAGER_EMAIL = 'manager@the-anchor.pub'
 
-export function buildPaymentRequestSms(booking: ParkingBooking, paymentUrl: string) {
+export function buildPaymentRequestSms(booking: ParkingNotificationBooking, paymentUrl: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const base = `The Anchor: Hi ${booking.customer_first_name}, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is reserved.`
   const linkPart = paymentUrl
@@ -13,7 +39,7 @@ export function buildPaymentRequestSms(booking: ParkingBooking, paymentUrl: stri
   return `${base}${linkPart} Need help? Call ${CONTACT_NUMBER}.`
 }
 
-function buildPaymentReminderSms(booking: ParkingBooking, paymentUrl?: string) {
+function buildPaymentReminderSms(booking: ParkingNotificationBooking, paymentUrl?: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const base = `The Anchor: Hi ${booking.customer_first_name}, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is still waiting for payment (£${amount.toFixed(2)}).`
   const linkPart = paymentUrl
@@ -23,7 +49,7 @@ function buildPaymentReminderSms(booking: ParkingBooking, paymentUrl?: string) {
 }
 
 export function buildPaymentReminderSmsForStage(
-  booking: ParkingBooking,
+  booking: ParkingNotificationBooking,
   stage: 'week_before_expiry' | 'day_before_expiry' | 'overdue',
   paymentUrl?: string
 ) {
@@ -32,18 +58,18 @@ export function buildPaymentReminderSmsForStage(
   const urlPart = paymentUrl ? ` Sort it here: ${paymentUrl}` : ` We'll text your payment link shortly.`
 
   if (stage === 'week_before_expiry') {
-    return `The Anchor: ${booking.customer_first_name}! Just a nudge — your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} needs paying (£${amount.toFixed(2)}).${urlPart}`
+    return `The Anchor: ${booking.customer_first_name}! Just a nudge, your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} needs paying (£${amount.toFixed(2)}).${urlPart}`
   }
 
   if (stage === 'day_before_expiry') {
-    return `The Anchor: ${booking.customer_first_name}! Your parking offer expires tomorrow — £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
+    return `The Anchor: ${booking.customer_first_name}! Your parking offer expires tomorrow, £${amount.toFixed(2)} for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}. Last chance:${urlPart}`
   }
 
   // overdue
   return `The Anchor: ${booking.customer_first_name}! Your parking offer has now expired for ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.${urlPart}`
 }
 
-function buildPaymentReminderManagerEmail(booking: ParkingBooking, paymentUrl?: string) {
+function buildPaymentReminderManagerEmail(booking: ParkingNotificationBooking, paymentUrl?: string) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const subject = `Parking booking pending payment – ${booking.reference}`
   const html = `
@@ -58,12 +84,12 @@ function buildPaymentReminderManagerEmail(booking: ParkingBooking, paymentUrl?: 
   return { subject, html, to: MANAGER_EMAIL }
 }
 
-export function buildPaymentConfirmationSms(booking: ParkingBooking) {
+export function buildPaymentConfirmationSms(booking: ParkingNotificationBooking) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   return `The Anchor: Hi ${booking.customer_first_name}, thanks for your payment. Your parking from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)} is now confirmed (£${amount.toFixed(2)}).`
 }
 
-export function buildPaymentConfirmationManagerEmail(booking: ParkingBooking) {
+export function buildPaymentConfirmationManagerEmail(booking: ParkingNotificationBooking) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const subject = `Parking payment received – ${booking.reference}`
   const html = `
@@ -76,23 +102,23 @@ export function buildPaymentConfirmationManagerEmail(booking: ParkingBooking) {
   return { subject, html, to: MANAGER_EMAIL }
 }
 
-function buildSessionStartSms(booking: ParkingBooking) {
+function buildSessionStartSms(booking: ParkingNotificationBooking) {
   return `The Anchor: Hi ${booking.customer_first_name}, your parking starts today from ${formatDateTime(booking.start_at)}. Registration ${booking.vehicle_registration}. See you soon!`
 }
 
-function buildSessionEndSms(booking: ParkingBooking) {
+function buildSessionEndSms(booking: ParkingNotificationBooking) {
   return `The Anchor: Hi ${booking.customer_first_name}, just a reminder your parking finishes today at ${formatDateTime(booking.end_at)}. Need extra time? Call ${CONTACT_NUMBER}.`
 }
 
-export function buildSessionThreeDayReminderSms(booking: ParkingBooking, type: 'start' | 'end') {
+export function buildSessionThreeDayReminderSms(booking: ParkingNotificationBooking, type: 'start' | 'end') {
   if (type === 'start') {
-    return `The Anchor: ${booking.customer_first_name}! Your parking kicks off on ${formatDateTime(booking.start_at)} — just checking you've got ${booking.vehicle_registration} ready to go!`
+    return `The Anchor: ${booking.customer_first_name}! Your parking kicks off on ${formatDateTime(booking.start_at)}, just checking you've got ${booking.vehicle_registration} ready to go!`
   }
 
-  return `The Anchor: ${booking.customer_first_name}! Heads up — your parking wraps up on ${formatDateTime(booking.end_at)}. Need to extend? Give us a shout on ${CONTACT_NUMBER}.`
+  return `The Anchor: ${booking.customer_first_name}! Heads up, your parking wraps up on ${formatDateTime(booking.end_at)}. Need to extend? Give us a shout on ${CONTACT_NUMBER}.`
 }
 
-function buildSessionManagerEmail(booking: ParkingBooking, type: 'start' | 'end') {
+function buildSessionManagerEmail(booking: ParkingNotificationBooking, type: 'start' | 'end') {
   const subject = type === 'start'
     ? `Parking starts today – ${booking.reference}`
     : `Parking ends today – ${booking.reference}`
