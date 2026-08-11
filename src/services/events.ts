@@ -282,13 +282,16 @@ export function getPublishValidationIssues(input: PublishValidationInput): Publi
   if (!hasValue(input.slug)) errors.push('URL slug')
   if (!hasValue(input.short_description)) errors.push('short description')
 
+  // An image is preferred but not required. The website already falls back to its
+  // generic what's-on photo (DEFAULT_EVENT_IMAGE), so a missing image is a content
+  // gap to chase, not a reason to keep a complete event off sale.
   const hasImage =
     hasValue(input.hero_image_url) ||
     hasValue(input.thumbnail_image_url) ||
     hasValue(input.poster_image_url)
 
   if (!hasImage) {
-    errors.push('event image')
+    warnings.push('No event image set, so the website will use its generic fallback image')
   }
 
   const pricing = normalizeEventPricingFields({
