@@ -133,8 +133,44 @@ describe('getPublishValidationIssues', () => {
 
     expect(issues.errors).toContain('URL slug')
     expect(issues.errors).toContain('short description')
-    expect(issues.errors).toContain('event image')
     expect(issues.errors).toContain('ticket price (or mark event as free)')
+  })
+
+  it('publishes an otherwise complete event that has no image', () => {
+    const issues = getPublishValidationIssues({
+      status: 'scheduled',
+      name: 'Quiz Night',
+      date: '2026-06-20',
+      time: '20:00',
+      slug: 'quiz-night-2026-06-20',
+      short_description: 'Weekly pub quiz with prizes.',
+      hero_image_url: '',
+      is_free: true,
+      price: 0,
+      booking_mode: 'table_bookings',
+    })
+
+    expect(issues.errors).toEqual([])
+    expect(issues.warnings).toContain(
+      'No event image set, so the website will use its generic fallback image'
+    )
+  })
+
+  it('does not warn when only the poster image is set', () => {
+    const issues = getPublishValidationIssues({
+      status: 'scheduled',
+      name: 'Quiz Night',
+      date: '2026-06-20',
+      time: '20:00',
+      slug: 'quiz-night-2026-06-20',
+      short_description: 'Weekly pub quiz with prizes.',
+      poster_image_url: 'https://example.com/poster.jpg',
+      is_free: true,
+      price: 0,
+      booking_mode: 'table_bookings',
+    })
+
+    expect(issues).toEqual({ errors: [], warnings: [] })
   })
 
   it('passes with complete publish-ready content', () => {
