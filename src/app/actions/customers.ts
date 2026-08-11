@@ -15,6 +15,63 @@ import { getUnreadMessageCounts } from './messageActions'
 import type { CustomerLabelAssignment } from './customer-labels'
 import { sendBulkSms } from '@/lib/sms/bulk'
 import { ConsentService } from '@/services/consent'
+import { generatePhoneVariants } from '@/lib/utils'
+
+// ---------------------------------------------------------------------------
+// Customer list filtering and search
+// ---------------------------------------------------------------------------
+
+/**
+ * sms_status has three values, not two. The list used to split on
+ * `!= 'opted_out'` versus `= 'opted_out'`, which put the 266 customers whose
+ * number Twilio deactivated into the "SMS Active" bucket and left the
+ * Deactivated tab showing only the 62 explicit opt-outs. Neither tab told the
+ * truth about who can actually be texted.
+ */
+const SMS_ACTIVE_STATUSES = ['active'] as const
+const SMS_DEACTIVATED_STATUSES = ['opted_out', 'sms_deactivated'] as const
+
+/**
+ * The list has three tabs, so it needs three filter states. It previously took a
+ * single boolean, and the All and SMS Active tabs both sent `false`, so "All"
+ * silently hid every deactivated and opted-out customer.
+ */
+export type CustomerSmsFilter = 'all' | 'active' | 'deactivated'
+
+/**
+ * PostgREST splits an .or() filter on commas and gives `(`, `)` and `.` meaning,
+ * so a raw search term was both a broken-query risk and a filter-injection one:
+ * typing a comma silently produced a malformed filter. Quoting the value and
+ * escaping what PostgREST treats as special inside quotes makes the term inert.
+ */
+function quoteOrFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+/**
+ * Search across name, email and phone.
+ *
+ * Numbers are stored E.164 (+447...), so a staff member typing a number the way
+ * a customer says it (07...) matched nothing at all. generatePhoneVariants is
+ * the same helper the rest of the app uses for phone matching.
+ */
+function buildCustomerSearchFilter(rawTerm: string): string {
+  const clauses = [
+    `first_name.ilike.${quoteOrFilterValue(`%${rawTerm}%`)}`,
+    `last_name.ilike.${quoteOrFilterValue(`%${rawTerm}%`)}`,
+    `email.ilike.${quoteOrFilterValue(`%${rawTerm}%`)}`,
+    `mobile_number.ilike.${quoteOrFilterValue(`%${rawTerm}%`)}`,
+  ]
+
+  // Only worth generating variants when the term looks like a phone number.
+  if (/[0-9]/.test(rawTerm) && rawTerm.replace(/[^0-9]/g, '').length >= 5) {
+    for (const variant of generatePhoneVariants(rawTerm)) {
+      clauses.push(`mobile_number.ilike.${quoteOrFilterValue(`%${variant}%`)}`)
+    }
+  }
+
+  return Array.from(new Set(clauses)).join(',')
+}
 
 // ---------------------------------------------------------------------------
 // Customer list query types
@@ -62,9 +119,9 @@ export async function getCustomerList(params: {
   page: number
   pageSize: number
   searchTerm: string
-  showDeactivated: boolean
+  smsFilter: CustomerSmsFilter
 }): Promise<CustomerListResult> {
-  const { page, pageSize, searchTerm, showDeactivated } = params
+  const { page, pageSize, searchTerm, smsFilter } = params
 
   const hasViewPermission = await checkUserPermission('customers', 'view')
   if (!hasViewPermission) {
@@ -90,32 +147,36 @@ export async function getCustomerList(params: {
   let smsActiveCountQuery = supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })
-    .neq('sms_status', 'opted_out')
+    .in('sms_status', SMS_ACTIVE_STATUSES)
 
   let smsDeactivatedCountQuery = supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })
-    .eq('sms_status', 'opted_out')
+    .in('sms_status', SMS_DEACTIVATED_STATUSES)
 
-  // Build the data query
+  // Build the data query. first_name alone is not a stable sort: names repeat,
+  // and PostgREST gives no guaranteed order within a tie, so rows could appear
+  // twice or not at all as you paged. id breaks the tie deterministically.
   let dataQuery = supabase
     .from('customers')
     .select(CUSTOMER_LIST_SELECT)
     .order('first_name', { ascending: true })
+    .order('last_name', { ascending: true })
+    .order('id', { ascending: true })
 
-  // Apply SMS filter
-  if (showDeactivated) {
-    countQuery = countQuery.eq('sms_status', 'opted_out')
-    dataQuery = dataQuery.eq('sms_status', 'opted_out')
-  } else {
-    countQuery = countQuery.neq('sms_status', 'opted_out')
-    dataQuery = dataQuery.neq('sms_status', 'opted_out')
+  // Apply SMS filter. 'all' deliberately applies none, so the All tab shows
+  // every customer rather than only the textable ones.
+  if (smsFilter === 'deactivated') {
+    countQuery = countQuery.in('sms_status', SMS_DEACTIVATED_STATUSES)
+    dataQuery = dataQuery.in('sms_status', SMS_DEACTIVATED_STATUSES)
+  } else if (smsFilter === 'active') {
+    countQuery = countQuery.in('sms_status', SMS_ACTIVE_STATUSES)
+    dataQuery = dataQuery.in('sms_status', SMS_ACTIVE_STATUSES)
   }
 
   // Apply search filter across name, phone, and email
   if (searchTerm.trim()) {
-    const term = `%${searchTerm.trim()}%`
-    const searchFilter = `first_name.ilike.${term},last_name.ilike.${term},mobile_number.ilike.${term},email.ilike.${term}`
+    const searchFilter = buildCustomerSearchFilter(searchTerm.trim())
     countQuery = countQuery.or(searchFilter)
     smsActiveCountQuery = smsActiveCountQuery.or(searchFilter)
     smsDeactivatedCountQuery = smsDeactivatedCountQuery.or(searchFilter)

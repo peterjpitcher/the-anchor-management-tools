@@ -21,6 +21,7 @@ import {
   deleteCustomer as deleteCustomerAction,
   importCustomers as importCustomersAction,
   getCustomerList,
+  type CustomerSmsFilter,
 } from '@/app/actions/customers'
 
 import {
@@ -75,7 +76,7 @@ export interface CustomersClientProps {
   initialPage: number
   initialPageSize: number
   initialSearch: string
-  initialShowDeactivated: boolean
+  initialSmsFilter: CustomerSmsFilter
   canManageCustomers: boolean
   canSendBulkMessages: boolean
 }
@@ -89,7 +90,7 @@ export default function CustomersClient({
   initialPage,
   initialPageSize,
   initialSearch,
-  initialShowDeactivated,
+  initialSmsFilter,
   canManageCustomers,
   canSendBulkMessages,
 }: CustomersClientProps) {
@@ -113,8 +114,7 @@ export default function CustomersClient({
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const [currentPage, setCurrentPage] = useState(initialPage)
   const [pageSize, setPageSize] = useState(initialPageSize)
-  const [showDeactivated, setShowDeactivated] = useState(initialShowDeactivated)
-  const [tab, setTab] = useState('all')
+  const [smsFilter, setSmsFilter] = useState<CustomerSmsFilter>(initialSmsFilter)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Client-side column sorting of the loaded page (list is paginated server-side,
@@ -131,7 +131,7 @@ export default function CustomersClient({
 
   // URL sync
   const pushParams = useCallback(
-    (updates: { page?: number; search?: string; deactivated?: boolean; size?: number }) => {
+    (updates: { page?: number; search?: string; deactivated?: boolean; sms?: CustomerSmsFilter; size?: number }) => {
       const params = new URLSearchParams(window.location.search)
       if (updates.page !== undefined) {
         if (updates.page <= 1) params.delete('page')
@@ -144,6 +144,13 @@ export default function CustomersClient({
       if (updates.deactivated !== undefined) {
         if (!updates.deactivated) params.delete('deactivated')
         else params.set('deactivated', '1')
+      }
+      if (updates.sms !== undefined) {
+        // The legacy ?deactivated=1 param is still read on load, but only one of
+        // the two should ever be in the URL at a time.
+        params.delete('deactivated')
+        if (updates.sms === 'all') params.delete('sms')
+        else params.set('sms', updates.sms)
       }
       if (updates.size !== undefined) {
         if (updates.size === 50) params.delete('size')
@@ -158,11 +165,11 @@ export default function CustomersClient({
 
   // Data fetching
   const fetchPage = useCallback(
-    async (opts: { page: number; size: number; search: string; deactivated: boolean }) => {
+    async (opts: { page: number; size: number; search: string; smsFilter: CustomerSmsFilter }) => {
       setIsFetching(true)
       try {
         const result = await getCustomerList({
-          page: opts.page, pageSize: opts.size, searchTerm: opts.search, showDeactivated: opts.deactivated,
+          page: opts.page, pageSize: opts.size, searchTerm: opts.search, smsFilter: opts.smsFilter,
         })
         setCustomers(result.customers)
         setTotalCount(result.totalCount)
@@ -184,8 +191,8 @@ export default function CustomersClient({
   const isFirstMount = useMemo(() => ({ value: true }), [])
   useEffect(() => {
     if (isFirstMount.value) { isFirstMount.value = false; return }
-    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, deactivated: showDeactivated })
-  }, [currentPage, fetchPage, isFirstMount, pageSize, searchTerm, showDeactivated])
+    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, smsFilter })
+  }, [currentPage, fetchPage, isFirstMount, pageSize, searchTerm, smsFilter])
 
   // Filter handlers
   const handleSearch = useCallback((term: string) => {
@@ -196,13 +203,13 @@ export default function CustomersClient({
     setCurrentPage(page); pushParams({ page })
   }, [pushParams])
 
-  const handleFilterChange = useCallback((deactivated: boolean) => {
-    setShowDeactivated(deactivated); setCurrentPage(1); pushParams({ deactivated, page: 1 })
+  const handleFilterChange = useCallback((next: CustomerSmsFilter) => {
+    setSmsFilter(next); setCurrentPage(1); pushParams({ sms: next, page: 1 })
   }, [pushParams])
 
   const refreshCurrentPage = useCallback(() => {
-    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, deactivated: showDeactivated })
-  }, [currentPage, fetchPage, pageSize, searchTerm, showDeactivated])
+    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, smsFilter })
+  }, [currentPage, fetchPage, pageSize, searchTerm, smsFilter])
 
   const totalPages = Math.ceil(totalCount / pageSize)
 
@@ -428,11 +435,11 @@ export default function CustomersClient({
           { id: 'active', label: 'SMS Active' },
           { id: 'deactivated', label: 'Deactivated' },
         ]}
-        activeTab={tab}
+        activeTab={smsFilter}
         onTabChange={(id) => {
-          setTab(id)
-          if (id === 'deactivated') handleFilterChange(true)
-          else handleFilterChange(false)
+          // Each tab maps to its own filter. All three used to collapse into a
+          // single boolean, so All and SMS Active ran the identical query.
+          handleFilterChange(id as CustomerSmsFilter)
         }}
       />
 
