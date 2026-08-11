@@ -69,6 +69,53 @@ describe('Parking action payment mutation guards', () => {
     })
   })
 
+  it('cancelling a paid booking does not mark it refunded, because no money has moved', async () => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      payment_status: 'paid',
+      cancelled_at: null,
+    })
+
+    const paymentLookupMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'pay-1', status: 'paid', metadata: {} },
+      error: null,
+    })
+    const paymentUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'pay-1' }, error: null }),
+        }),
+      }),
+    })
+
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            order: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({ maybeSingle: paymentLookupMaybeSingle }),
+            }),
+          }),
+        }),
+        update: paymentUpdate,
+      })),
+    })
+    mockedUpdateParkingBooking.mockResolvedValue({ id: 'booking-1' })
+
+    await updateParkingBookingStatus('booking-1', { status: 'cancelled' })
+
+    // The booking keeps payment_status 'paid' so the real refund remains
+    // available; deriving 'refunded' from a cancellation moved no money and
+    // locked staff out of issuing it.
+    const bookingUpdate = mockedUpdateParkingBooking.mock.calls[0][1]
+    expect(bookingUpdate.payment_status).toBeUndefined()
+
+    // ...and the payment row is not marked refunded either.
+    expect(paymentUpdate.mock.calls[0][0].status).toBeUndefined()
+    expect(paymentUpdate.mock.calls[0][0].refunded_at).toBeUndefined()
+    expect(paymentUpdate.mock.calls[0][0].metadata).toMatchObject({ cancelled_booking: true })
+  })
+
   it('fails updateParkingBookingStatus when cancellation payment update affects no rows', async () => {
     mockedGetParkingBooking.mockResolvedValue({
       id: 'booking-1',

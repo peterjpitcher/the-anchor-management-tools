@@ -114,7 +114,11 @@ export default function HealthStep({ token, initialData, onSuccess }: HealthStep
       <input
         type="checkbox"
         checked={data[id] as boolean}
-        onChange={(checked) => setData({ ...data, [id]: checked })}
+        // A raw checkbox hands the handler the change event, not a boolean. The
+        // parameter was named `checked` and written straight into state, so every
+        // health, allergy and disability flag was stored as a React
+        // SyntheticEvent instead of true or false.
+        onChange={(event) => setData({ ...data, [id]: event.target.checked })}
         className="mt-0.5 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
       />
       <span className="text-sm text-gray-700">{label}</span>
