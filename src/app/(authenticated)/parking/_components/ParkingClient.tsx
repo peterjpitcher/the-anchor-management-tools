@@ -346,7 +346,13 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       const result = await createParkingBooking(formData)
       if (result?.error) { toast.error(result.error); return }
       toast.success('Parking booking created successfully')
-      if (result?.paymentLink) toast.info('Payment link generated. Copy it from the booking details.')
+      if (result?.warning) {
+        // The booking saved but the customer cannot pay and has not been texted.
+        // This has to be loud, or nobody follows up and the booking expires.
+        toast.error(result.warning, { duration: 12000 })
+      } else if (result?.paymentLink) {
+        toast.info('Payment link generated. Copy it from the booking details.')
+      }
       setShowCreateModal(false)
       resetForm()
       const latest = await fetchBookings()

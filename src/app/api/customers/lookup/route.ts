@@ -74,10 +74,12 @@ function toLookupPayload(customer: CustomerLookupRow | null, normalizedPhone: st
 
 export async function GET(request: NextRequest) {
   return withApiAuth(async (_req, apiKey) => {
+    // This endpoint returns customer PII, so it needs the customer scope.
+    // read:events and create:bookings used to be enough, which meant a key
+    // issued only to list what is on at the pub could read the customer book.
+    // Both active website keys already hold read:customers.
     const hasLookupPermission =
-      apiKey.permissions.includes('*') ||
-      apiKey.permissions.includes('create:bookings') ||
-      apiKey.permissions.includes('read:events')
+      apiKey.permissions.includes('*') || apiKey.permissions.includes('read:customers')
 
     if (!hasLookupPermission) {
       return createErrorResponse('Insufficient permissions', 'FORBIDDEN', 403)

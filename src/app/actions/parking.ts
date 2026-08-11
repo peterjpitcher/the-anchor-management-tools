@@ -170,6 +170,7 @@ export async function createParkingBooking(formData: FormData) {
     })
 
     let paymentLink: string | undefined
+    let paymentWarning: string | undefined
     if (data.send_payment_link) {
       try {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
@@ -182,6 +183,11 @@ export async function createParkingBooking(formData: FormData) {
         await sendParkingPaymentRequest(booking, approveUrl, { client: adminClient })
       } catch (paymentError) {
         console.error('Failed to create parking payment order', paymentError)
+        // The booking exists but the customer has no way to pay and has not been
+        // texted. Swallowing this told staff the whole thing had worked, so
+        // nobody followed up and the booking quietly expired unpaid.
+        paymentWarning =
+          'Booking created, but the payment link could not be generated and no payment SMS was sent. Send the payment link manually from the booking.'
       }
     }
 
@@ -191,7 +197,8 @@ export async function createParkingBooking(formData: FormData) {
     return {
       success: true,
       booking,
-      paymentLink
+      paymentLink,
+      warning: paymentWarning
     }
   } catch (error) {
     console.error('Unexpected error creating parking booking', error)
@@ -473,9 +480,20 @@ export async function updateParkingBookingDetails(bookingId: string, formData: F
       monthlyRate: Number(rateRecord.monthly_rate) || 0,
     })
 
+    // Compare instants, not strings. PostgREST returns "2026-08-11T09:00:00+00:00"
+    // while the client sends "2026-08-11T09:00:00.000Z", so a string comparison
+    // reported every paid booking as price-affected and refused every edit,
+    // including ones that only corrected a customer's name.
+    const sameInstant = (a: string | null | undefined, b: string | null | undefined) => {
+      if (!a || !b) return a === b
+      const left = new Date(a).getTime()
+      const right = new Date(b).getTime()
+      return Number.isNaN(left) || Number.isNaN(right) ? a === b : left === right
+    }
+
     const priceAffectingChanged =
-      existing.start_at !== data.start_at ||
-      existing.end_at !== data.end_at ||
+      !sameInstant(existing.start_at, data.start_at) ||
+      !sameInstant(existing.end_at, data.end_at) ||
       Number(existing.override_price ?? 0) !== Number(data.override_price ?? 0)
 
     if (priceAffectingChanged && ['paid', 'refunded'].includes(existing.payment_status)) {
