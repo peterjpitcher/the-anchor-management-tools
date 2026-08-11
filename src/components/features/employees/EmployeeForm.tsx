@@ -181,10 +181,22 @@ export default function EmployeeForm({
       )}
 
       <div className="space-y-4">
-        {/* Desktop: Show all fields */}
-        {!isMobile && formSteps.map((step) => (
-          <div key={step.title} className="space-y-4">
-            <h4 className="font-medium text-gray-900 border-b pb-2">{step.title}</h4>
+        {/*
+          Every step stays mounted, on mobile as well as desktop, and inactive
+          steps are hidden with CSS. Rendering only the current step unmounted
+          the other inputs, so the submitted FormData held just that step's
+          fields and employeeSchema rejected every save on a narrow screen.
+        */}
+        {formSteps.map((step, stepIndex) => (
+          <div
+            key={step.title}
+            className={`space-y-4 ${isMobile && stepIndex !== currentStep ? 'hidden' : ''}`}
+            aria-hidden={isMobile && stepIndex !== currentStep}
+          >
+            {/* The mobile step indicator above already names the current step. */}
+            <h4 className={`font-medium text-gray-900 border-b pb-2 ${isMobile ? 'hidden' : ''}`}>
+              {step.title}
+            </h4>
             {step.fields.map((field) => (
               <div key={field.name} className="space-y-2 sm:grid sm:grid-cols-4 sm:items-start sm:gap-x-2 sm:space-y-0">
                 <label htmlFor={field.name} className="block text-sm sm:text-base font-medium text-gray-700 sm:col-span-1">
@@ -243,62 +255,6 @@ export default function EmployeeForm({
           </div>
         ))}
 
-        {/* Mobile: Show current step fields */}
-        {isMobile && currentStepData.fields.map((field) => (
-          <div key={field.name} className="space-y-2">
-            <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">
-              {field.label} {field.required && <span className="text-red-500">*</span>}
-            </label>
-            <div>
-                {field.type === 'textarea' ? (
-                  <Textarea
-                    id={field.name}
-                    name={field.name}
-                    rows={3}
-                    defaultValue={field.defaultValue || ''}
-                    error={!!state?.errors?.[field.name]}
-                  />
-                ) : field.type === 'checkbox' ? (
-                  <>
-                    <input type="hidden" name={field.name} value="false" />
-                    <Checkbox
-                      id={field.name}
-                      name={field.name}
-                      defaultChecked={field.defaultChecked}
-                      value="true"
-                      error={!!state?.errors?.[field.name]}
-                    />
-                  </>
-                ) : field.type === 'select' ? (
-                  <Select
-                    id={field.name}
-                    name={field.name}
-                    defaultValue={field.defaultValue || (field.name === 'status' ? 'Active' : '')}
-                  required={field.required}
-                  error={!!state?.errors?.[field.name]}
-                  options={field.options?.map(option => ({ label: option, value: option }))}
-                />
-              ) : (
-                <Input
-                  type={field.type}
-                  name={field.name}
-                  id={field.name}
-                  defaultValue={field.defaultValue || ''}
-                  required={field.required}
-                  error={!!state?.errors?.[field.name]}
-                />
-              )}
-              {field.hint && !state?.errors?.[field.name] && (
-                <p className="mt-1 text-xs text-gray-500">{field.hint}</p>
-              )}
-              {state?.errors?.[field.name] && (
-                <p className="mt-2 text-sm text-red-600" id={`${field.name}-error`}>
-                  {state.errors[field.name]}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
       </div>
 
       {state?.type === 'error' && !state.errors && (

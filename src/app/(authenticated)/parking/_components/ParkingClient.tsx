@@ -338,7 +338,9 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       formData.append('capacity_override', 'true')
       if (createForm.capacity_override_reason) formData.append('capacity_override_reason', createForm.capacity_override_reason)
     }
-    if (createForm.send_payment_link) formData.append('send_payment_link', 'true')
+    // Always sent. Omitting it when the switch was off let the server fall back
+    // to its default of true and text the customer regardless.
+    formData.append('send_payment_link', createForm.send_payment_link ? 'true' : 'false')
 
     startTransition(async () => {
       const result = await createParkingBooking(formData)

@@ -507,6 +507,30 @@ export class EmployeeService {
         throw new Error('Employee not found or failed to fetch old data.');
     }
 
+    // Revoke system access before removing the record. Deleting the employees
+    // row only cascades to child tables; it leaves the linked Supabase auth
+    // account and its user_roles grants untouched, so a deleted employee kept a
+    // working login with every permission they had. Same sequence as
+    // finalizeEmployeeSeparation, and roles come first because losing them is
+    // the hard security prerequisite.
+    if (employee.auth_user_id) {
+      const { error: rolesError } = await adminClient
+        .from('user_roles')
+        .delete()
+        .eq('user_id', employee.auth_user_id);
+
+      if (rolesError) {
+        console.error('[EmployeeService] CRITICAL: Failed to remove roles before delete:', rolesError);
+        throw new Error('Failed to remove system access, so the employee was not deleted. Please try again.');
+      }
+
+      const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(employee.auth_user_id);
+      if (authDeleteError) {
+        console.error('[EmployeeService] Failed to delete auth user before delete:', authDeleteError);
+        throw new Error('Failed to remove the login account, so the employee was not deleted. Please try again.');
+      }
+    }
+
     const { data: deletedEmployee, error } = await adminClient
       .from('employees')
       .delete()

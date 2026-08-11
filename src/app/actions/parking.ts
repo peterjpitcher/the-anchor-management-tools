@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
+import { formBooleanWithDefault } from '@/lib/forms/formBoolean'
 import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { revalidatePath, revalidateTag } from 'next/cache'
@@ -52,13 +53,12 @@ const CreateParkingBookingSchema = z.object({
     .optional()
     .transform((value) => value === true || value === 'true' || value === 'on'),
   capacity_override_reason: z.string().optional().transform((value) => value?.trim() || undefined),
-  send_payment_link: z
-    .union([z.string(), z.boolean()])
-    .optional()
-    .transform((value) => {
-      if (value == null) return true
-      return value === true || value === 'true' || value === 'on'
-    })
+  // The client now always sends this, as 'true' or 'false'. It previously only
+  // appended the field when the switch was on, and an absent value defaulted to
+  // true here, so turning "Send payment link now" off did nothing and the
+  // payment-request SMS went out anyway. The default is kept for older callers
+  // that omit the field entirely.
+  send_payment_link: formBooleanWithDefault(true)
 })
 
 const UpdateParkingBookingSchema = CreateParkingBookingSchema.omit({
@@ -508,22 +508,55 @@ export async function updateParkingBookingDetails(bookingId: string, formData: F
 
     if (existing.payment_status === 'pending') {
       const nextAmount = updated.override_price ?? updated.calculated_price ?? 0
-      const { error: paymentError } = await adminClient
+
+      // The pending row holds the PayPal approve_url the guest pay link depends
+      // on. Replacing metadata wholesale destroyed it, and because
+      // createParkingPaymentOrder reuses any pending row and returns
+      // metadata.approve_url || '', one edit broke the customer's pay link for
+      // good.
+      const { data: pendingPayments, error: pendingFetchError } = await adminClient
         .from('parking_booking_payments')
-        .update({
-          amount: nextAmount,
-          metadata: {
-            parking_booking_edited: true,
-            edited_at: new Date().toISOString(),
-            edited_by: user.id,
-          },
-        })
+        .select('id, amount, metadata')
         .eq('booking_id', bookingId)
         .eq('status', 'pending')
 
-      if (paymentError) {
-        console.error('Failed to update pending parking payment amount:', paymentError)
-        return { error: 'Booking updated but pending payment amount could not be updated' }
+      if (pendingFetchError) {
+        console.error('Failed to load pending parking payment:', pendingFetchError)
+        return { error: 'Booking updated but pending payment could not be read' }
+      }
+
+      for (const payment of pendingPayments ?? []) {
+        const existingMetadata = (payment.metadata ?? {}) as Record<string, unknown>
+        const amountChanged = Number(payment.amount) !== Number(nextAmount)
+
+        // A PayPal order is created for a fixed amount, so once the price
+        // changes the existing order is for the wrong sum. Expire it rather than
+        // let it be reused, and createParkingPaymentOrder will mint a fresh one
+        // at the new amount on the next payment request.
+        const { error: paymentError } = await adminClient
+          .from('parking_booking_payments')
+          .update({
+            amount: nextAmount,
+            ...(amountChanged ? { status: 'expired' as const } : {}),
+            metadata: {
+              ...existingMetadata,
+              parking_booking_edited: true,
+              edited_at: new Date().toISOString(),
+              edited_by: user.id,
+              ...(amountChanged
+                ? {
+                    superseded_reason: 'amount_changed_on_edit',
+                    superseded_amount: payment.amount,
+                  }
+                : {}),
+            },
+          })
+          .eq('id', payment.id)
+
+        if (paymentError) {
+          console.error('Failed to update pending parking payment amount:', paymentError)
+          return { error: 'Booking updated but pending payment amount could not be updated' }
+        }
       }
     }
 
@@ -602,9 +635,13 @@ export async function updateParkingBookingStatus(
       const currentPaymentStatus = existing.payment_status
       let nextPaymentStatus = updates.payment_status ?? currentPaymentStatus
 
-      if (currentPaymentStatus === 'paid') {
-        nextPaymentStatus = 'refunded'
-      } else if (currentPaymentStatus === 'pending') {
+      // Cancelling is not refunding. This used to rewrite a paid booking to
+      // 'refunded' without calling PayPal or writing a payment_refunds row, so
+      // the money never moved, and because the refund entry points only act on
+      // a paid booking, staff were then locked out of issuing the real refund.
+      // A cancelled booking stays 'paid' until an explicit refund is processed,
+      // which is also the honest signal that one is owed.
+      if (currentPaymentStatus === 'pending') {
         nextPaymentStatus = 'failed'
       }
 
@@ -642,30 +679,25 @@ export async function updateParkingBookingStatus(
           Object.assign(paymentUpdates, { status: 'failed' })
         }
 
-        if (nextPaymentStatus === 'refunded' && latestPayment.status === 'paid') {
-          Object.assign(paymentUpdates, { status: 'refunded', refunded_at: nowIso })
+        // Deliberately does not mark the payment row refunded. Only a real
+        // refund through processPayPalRefund may do that, and it also writes the
+        // payment_refunds row the refund history is built from. A paid booking
+        // that gets cancelled therefore keeps status 'paid', and the metadata
+        // stamp below is what records that a refund is owed.
+        const { data: updatedPayment, error: paymentUpdateError } = await adminClient
+          .from('parking_booking_payments')
+          .update(paymentUpdates)
+          .eq('id', latestPayment.id)
+          .select('id')
+          .maybeSingle()
+
+        if (paymentUpdateError) {
+          console.error('Failed to update parking payment during cancellation:', paymentUpdateError)
+          return { error: 'Failed to update booking payment status' }
         }
 
-        // Only persist when we actually modified the payment status.
-        if (
-          paymentUpdates.status === 'failed' ||
-          paymentUpdates.status === 'refunded'
-        ) {
-          const { data: updatedPayment, error: paymentUpdateError } = await adminClient
-            .from('parking_booking_payments')
-            .update(paymentUpdates)
-            .eq('id', latestPayment.id)
-            .select('id')
-            .maybeSingle()
-
-          if (paymentUpdateError) {
-            console.error('Failed to update parking payment during cancellation:', paymentUpdateError)
-            return { error: 'Failed to update booking payment status' }
-          }
-
-          if (!updatedPayment) {
-            return { error: 'Failed to update booking payment status' }
-          }
+        if (!updatedPayment) {
+          return { error: 'Failed to update booking payment status' }
         }
       }
     }
