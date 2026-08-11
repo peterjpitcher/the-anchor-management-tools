@@ -72,6 +72,10 @@ function buildRemainingShiftsText(input: SeparationStartedEmailInput): string | 
   ].join('\n');
 }
 
+// Emails carrying an onboarding or portal link are NOT copied to the shared
+// manager mailbox. Those links set the new starter's password, so anyone with
+// access to that mailbox could open the link first and take over the account.
+// Purely informational emails (separation, onboarding complete) still copy in.
 function buildWelcomeEmail(email: string, onboardingUrl: string) {
   const subject = 'Welcome to The Anchor -- Complete Your Profile';
   const text =
@@ -83,7 +87,7 @@ function buildWelcomeEmail(email: string, onboardingUrl: string) {
     `This link will expire in 7 days. If you have any questions, please contact your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
 
-  return { subject, text, cc: [MANAGER_EMAIL] };
+  return { subject, text };
 }
 
 function buildChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
@@ -95,7 +99,7 @@ function buildChaseEmail(email: string, onboardingUrl: string, dayNumber: number
     `If you have any questions or need help, please contact your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
 
-  return { subject, text, cc: [MANAGER_EMAIL] };
+  return { subject, text };
 }
 
 function buildOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
@@ -118,7 +122,7 @@ function buildPortalInviteEmail(email: string, onboardingUrl: string) {
     `This link will expire in 7 days. If you have any questions, please speak to your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
 
-  return { subject, text, cc: [MANAGER_EMAIL] };
+  return { subject, text };
 }
 
 export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) {
@@ -151,18 +155,18 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
 }
 
 export async function sendPortalInviteEmail(email: string, onboardingUrl: string) {
-  const { subject, text, cc } = buildPortalInviteEmail(email, onboardingUrl);
-  return sendEmail({ to: email, subject, text, cc });
+  const { subject, text } = buildPortalInviteEmail(email, onboardingUrl);
+  return sendEmail({ to: email, subject, text });
 }
 
 export async function sendWelcomeEmail(email: string, onboardingUrl: string) {
-  const { subject, text, cc } = buildWelcomeEmail(email, onboardingUrl);
-  return sendEmail({ to: email, subject, text, cc });
+  const { subject, text } = buildWelcomeEmail(email, onboardingUrl);
+  return sendEmail({ to: email, subject, text });
 }
 
 export async function sendChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
-  const { subject, text, cc } = buildChaseEmail(email, onboardingUrl, dayNumber);
-  return sendEmail({ to: email, subject, text, cc });
+  const { subject, text } = buildChaseEmail(email, onboardingUrl, dayNumber);
+  return sendEmail({ to: email, subject, text });
 }
 
 export async function sendOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {

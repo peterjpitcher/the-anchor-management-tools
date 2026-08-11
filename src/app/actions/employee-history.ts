@@ -19,12 +19,21 @@ export async function getEmployeeChangesSummary(employeeId: string, startDate?: 
       return { error: 'Unauthorized' }
     }
 
-    // Check permission
-    const { data: hasPermission } = await supabase.rpc('user_has_permission', {
+    // Check permission. The live signature is
+    // user_has_permission(p_user_id uuid, p_module_name text, p_action text);
+    // this call previously passed p_resource, which PostgREST could not resolve
+    // to any function, so every request failed and the discarded error left the
+    // panel permanently reporting "insufficient permissions".
+    const { data: hasPermission, error: permissionError } = await supabase.rpc('user_has_permission', {
       p_user_id: user.id,
-      p_resource: 'employees',
+      p_module_name: 'employees',
       p_action: 'view'
     })
+
+    if (permissionError) {
+      console.error('Error checking employee history permission:', permissionError)
+      return { error: 'Failed to check permissions' }
+    }
 
     if (!hasPermission) {
       return { error: 'Insufficient permissions to view employee history' }

@@ -110,8 +110,12 @@ function normalizeIntervals(bookings: BookingInterval[]): NormalizedInterval[] {
     .filter((value): value is NormalizedInterval => value !== null)
 }
 
+// Intervals are half-open: a booking occupies [start, end), so one that ends
+// exactly when a slot begins does not use that slot. The inclusive comparison
+// this replaces counted a booking ending at 14:00 against the 14:00 slot, which
+// reported spaces as taken that were free to sell.
 function overlaps(slotStart: number, slotEnd: number, interval: NormalizedInterval): boolean {
-  return interval.startMs <= slotEnd && interval.endMs >= slotStart
+  return interval.startMs < slotEnd && interval.endMs > slotStart
 }
 
 export function buildParkingAvailabilitySlots(

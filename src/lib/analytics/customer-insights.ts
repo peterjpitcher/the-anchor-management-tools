@@ -68,6 +68,7 @@ type MessagingHealthRow = {
   sms_opt_in: boolean | null
   consecutive_failures: number | string | null
   total_failures_30d: number | string | null
+  total_messages_sent: number | string | null
   delivery_rate: number | string | null
   messaging_status: string | null
   last_failure_type: string | null
@@ -313,9 +314,17 @@ function isSmsAtRisk(row: MessagingHealthRow): boolean {
     return true
   }
 
-  const deliveryRate = asNumber(row.delivery_rate)
-  if (deliveryRate > 0 && deliveryRate < 85) {
-    return true
+  // customer_messaging_health reports delivery_rate as 0 both for customers who
+  // have never been messaged and for customers whose every message failed. The
+  // old `deliveryRate > 0` guard was there to keep the never-messaged out, but it
+  // also dropped the total-failure group, which is the highest risk of all.
+  // Gate on having actually been messaged instead.
+  const messagesSent = asNumber(row.total_messages_sent)
+  if (messagesSent > 0) {
+    const deliveryRate = asNumber(row.delivery_rate)
+    if (deliveryRate < 85) {
+      return true
+    }
   }
 
   return false
@@ -785,7 +794,7 @@ export async function loadCustomerInsightsSnapshot(input: {
     fetchAllRows((from, to) =>
       supabase
         .from('customer_messaging_health')
-        .select('id, first_name, last_name, sms_opt_in, consecutive_failures, total_failures_30d, delivery_rate, messaging_status, last_failure_type')
+        .select('id, first_name, last_name, sms_opt_in, consecutive_failures, total_failures_30d, total_messages_sent, delivery_rate, messaging_status, last_failure_type')
         .range(from, to)
     ),
     fetchAllRows((from, to) =>

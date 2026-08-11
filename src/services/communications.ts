@@ -1,6 +1,7 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { ConsentService } from '@/services/consent'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 type CustomerSummary = {
@@ -42,6 +43,32 @@ export type InboxResult = {
 const RECENT_COMMUNICATION_FETCH_LIMIT = 250
 const UNREAD_COMMUNICATION_FETCH_LIMIT = 500
 
+/**
+ * Only the columns the inbox list actually renders.
+ *
+ * The inbox polls on a timer from every open tab, and select('*') dragged the
+ * whole view across the wire on each tick: body_html, the aggregated
+ * delivery_history jsonb, attachments, engagement and context, none of which the
+ * conversation list touches. Those three columns alone were over half the
+ * payload of a 250 row page.
+ */
+const INBOX_COLUMNS =
+  'id, customer_id, channel, direction, created_at, read_at, staff_read_at, has_attachments, subject, body_text'
+
+type InboxRow = Pick<
+  CustomerCommunication,
+  | 'id'
+  | 'customer_id'
+  | 'channel'
+  | 'direction'
+  | 'created_at'
+  | 'read_at'
+  | 'staff_read_at'
+  | 'has_attachments'
+  | 'subject'
+  | 'body_text'
+>
+
 function toError(error: unknown): Error {
   if (error instanceof Error) return error
   if (typeof error === 'object' && error && 'message' in error) {
@@ -50,7 +77,7 @@ function toError(error: unknown): Error {
   return new Error(String(error))
 }
 
-function isUnread(row: CustomerCommunication): boolean {
+function isUnread(row: InboxRow): boolean {
   if (row.direction !== 'inbound') return false
   if (row.channel === 'email') return !row.staff_read_at
   if (row.channel === 'sms' || row.channel === 'whatsapp') return !row.read_at
@@ -67,7 +94,7 @@ function rawCommunication(row: any): CustomerCommunication {
   } as CustomerCommunication
 }
 
-function buildLastMessage(row: CustomerCommunication): ConversationSummary['lastMessage'] {
+function buildLastMessage(row: InboxRow): ConversationSummary['lastMessage'] {
   return {
     id: row.id,
     body: row.body_text,
@@ -78,6 +105,184 @@ function buildLastMessage(row: CustomerCommunication): ConversationSummary['last
     read_at: row.read_at,
     staff_read_at: row.staff_read_at,
     has_attachments: row.has_attachments,
+  }
+}
+
+function inboxRow(row: any): InboxRow {
+  return { ...row, has_attachments: Boolean(row.has_attachments) } as InboxRow
+}
+
+/*
+ * Opt-out keywords, kept in step with the inbound handler in
+ * src/app/api/webhooks/twilio/route.ts. Deliberately duplicated rather than
+ * imported: this service pulls in the RBAC server actions, which have no place
+ * in a webhook's request path. If a third caller ever needs these, lift them
+ * into src/lib/sms/ and have both sides import from there.
+ *
+ * Two tiers, same as the webhook: a bare STOP silences everything, a marketing
+ * keyword stops event promotion only and leaves service messages intact.
+ */
+const STOP_KEYWORDS = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL']
+const MARKETING_STOP_KEYWORDS = ['NOEVENTS', 'NOPROMO', 'NOOFFERS']
+
+type OptOutScope = 'all' | 'marketing_only'
+
+function detectOptOutKeyword(
+  bodyText: string | null | undefined
+): { scope: OptOutScope; keyword: string } | null {
+  const upper = (bodyText ?? '').trim().toUpperCase()
+  if (!upper) return null
+
+  const matchesAny = (keywords: string[]) =>
+    keywords.some((keyword) => upper === keyword || upper.startsWith(`${keyword} `))
+
+  const keyword = upper.split(' ')[0]
+  if (matchesAny(MARKETING_STOP_KEYWORDS)) return { scope: 'marketing_only', keyword }
+  if (matchesAny(STOP_KEYWORDS)) return { scope: 'all', keyword }
+  return null
+}
+
+/**
+ * Apply an opt-out that arrived from a number we could not match to a customer.
+ *
+ * The inbound webhook can only honour STOP when it already knows who sent it. A
+ * STOP from an unrecognised number is parked in the holding queue instead, and
+ * nothing ever went back and applied it, so the venue carried on texting someone
+ * who had explicitly asked it to stop. Linking is the moment we learn who they
+ * are, so it is the moment the opt-out has to take effect.
+ *
+ * Every still-unmatched message from the same number on the same channel is
+ * checked, not just the one being linked: a customer who texts "STOP" and then
+ * "what time do you open?" would otherwise have their opt-out dropped whenever
+ * staff linked the newer message.
+ */
+async function honourOptOutFromHoldingQueue(
+  adminClient: any,
+  input: {
+    customerId: string
+    channel: string
+    fromAddress: string | null
+    bodyText: string | null
+    twilioMessageSid: string | null
+    unmatchedId: string
+  }
+): Promise<void> {
+  // STOP is an SMS and WhatsApp carrier convention. Email unsubscribes come
+  // through a different mechanism entirely, so there is nothing to honour here.
+  if (input.channel !== 'sms' && input.channel !== 'whatsapp') return
+
+  const bodies: Array<{ body: string | null; sid: string | null }> = [
+    { body: input.bodyText, sid: input.twilioMessageSid },
+  ]
+
+  if (input.fromAddress) {
+    const { data: siblings, error: siblingsError } = await (
+      adminClient.from('unmatched_communications') as any
+    )
+      .select('body_text, twilio_message_sid')
+      .eq('status', 'unmatched')
+      .eq('channel', input.channel)
+      .eq('from_address', input.fromAddress)
+      .neq('id', input.unmatchedId)
+
+    if (siblingsError) {
+      // Fail loudly. Quietly skipping the sweep would mean silently dropping an
+      // opt-out that is sitting in the queue right now.
+      throw new Error(
+        `Failed to check the holding queue for opt-outs from this number: ${siblingsError.message}`
+      )
+    }
+
+    for (const sibling of siblings ?? []) {
+      bodies.push({ body: sibling.body_text, sid: sibling.twilio_message_sid })
+    }
+  }
+
+  // A full STOP outranks a marketing-only keyword, so take the widest scope
+  // present rather than whichever message happens to be linked.
+  let strongest: { scope: OptOutScope; keyword: string; sid: string | null } | null = null
+  for (const candidate of bodies) {
+    const detected = detectOptOutKeyword(candidate.body)
+    if (!detected) continue
+    if (!strongest || (strongest.scope === 'marketing_only' && detected.scope === 'all')) {
+      strongest = { ...detected, sid: candidate.sid }
+    }
+  }
+
+  if (!strongest) return
+
+  const isWhatsApp = input.channel === 'whatsapp'
+  const marketingOnly = strongest.scope === 'marketing_only'
+  const optedOutAt = new Date().toISOString()
+
+  const optOutPayload = isWhatsApp
+    ? (marketingOnly
+        ? {
+            marketing_whatsapp_opt_in: false,
+            marketing_whatsapp_opted_out_at: optedOutAt,
+          }
+        : {
+            whatsapp_opt_in: false,
+            marketing_whatsapp_opt_in: false,
+            whatsapp_status: 'opted_out',
+            whatsapp_opted_out_at: optedOutAt,
+            marketing_whatsapp_opted_out_at: optedOutAt,
+          })
+    : (marketingOnly
+        ? {
+            marketing_sms_opt_in: false,
+            marketing_sms_opted_out_at: optedOutAt,
+          }
+        : {
+            sms_opt_in: false,
+            sms_status: 'opted_out',
+            marketing_sms_opt_in: false,
+            marketing_sms_opted_out_at: optedOutAt,
+          })
+
+  const { data: optedOutCustomer, error: optOutError } = await adminClient
+    .from('customers')
+    .update(optOutPayload)
+    .eq('id', input.customerId)
+    .select('id')
+    .maybeSingle()
+
+  if (optOutError) {
+    throw new Error(`Failed to apply opt-out from linked communication: ${optOutError.message}`)
+  }
+  if (!optedOutCustomer) {
+    throw new Error('Opt-out from linked communication affected no customer rows')
+  }
+
+  try {
+    await ConsentService.recordOptOut(
+      input.customerId,
+      isWhatsApp ? 'whatsapp' : 'sms',
+      isWhatsApp ? 'twilio_inbound_whatsapp' : 'twilio_inbound_sms',
+      {
+        captureMethod: 'inbound_keyword',
+        relatedEntityType: 'message',
+        metadata: {
+          keyword: strongest.keyword,
+          twilio_message_sid: strongest.sid,
+          channel: input.channel,
+          scope: strongest.scope,
+          linked_from_unmatched_id: input.unmatchedId,
+        },
+      },
+      marketingOnly ? ['marketing'] : ['service', 'marketing']
+    )
+  } catch (consentError) {
+    // The preference itself is already saved, which is what stops the messages.
+    // A missing audit row must not roll that back.
+    logger.error('Failed to write consent audit row for opt-out linked from holding queue', {
+      error: consentError instanceof Error ? consentError : new Error(String(consentError)),
+      metadata: {
+        customerId: input.customerId,
+        channel: input.channel,
+        unmatchedId: input.unmatchedId,
+      },
+    })
   }
 }
 
@@ -138,11 +343,11 @@ export class CommunicationsService {
 
     const [recentResult, unreadResult, unmatchedResult] = await Promise.all([
       (adminClient.from('customer_communications') as any)
-        .select('*')
+        .select(INBOX_COLUMNS)
         .order('created_at', { ascending: false })
         .limit(RECENT_COMMUNICATION_FETCH_LIMIT),
       (adminClient.from('customer_communications') as any)
-        .select('*')
+        .select(INBOX_COLUMNS)
         .or(unreadFilter)
         .order('created_at', { ascending: false })
         .limit(UNREAD_COMMUNICATION_FETCH_LIMIT),
@@ -166,8 +371,8 @@ export class CommunicationsService {
     }
 
     const rows = [
-      ...((unreadResult.data ?? []) as any[]).map(rawCommunication),
-      ...((recentResult.data ?? []) as any[]).map(rawCommunication),
+      ...((unreadResult.data ?? []) as any[]).map(inboxRow),
+      ...((recentResult.data ?? []) as any[]).map(inboxRow),
     ]
     const customerMap = await loadCustomers(adminClient, rows.map(row => row.customer_id))
     const conversations = new Map<string, ConversationSummary>()
@@ -300,67 +505,44 @@ export class CommunicationsService {
     }
   }
 
+  /**
+   * The exact inverse of markConversationRead.
+   *
+   * Opening a thread marks every inbound message and email in it read, but this
+   * used to restore only the single most recent inbound row, so the unread count
+   * never came back to what it was and the rest stayed read for good. It also
+   * resolved that row through the customer_communications view, whose ids are
+   * channel-prefixed and which also carries feedback rows that exist in neither
+   * table: the first feedback entry on a customer would send a feedback id into
+   * the messages table and make Mark unread fail outright for that customer.
+   *
+   * Operating on the same two tables, with the same filters and the opposite
+   * values, keeps the pair symmetrical and removes the view from the path.
+   */
   static async markConversationUnread(customerId: string) {
     await requireMessagesView()
     const adminClient = createAdminClient()
 
-    let data: any = null
-    let error: any = null
-
-    try {
-      const result = await (adminClient.from('customer_communications') as any)
-        .select('id, channel')
-        .eq('customer_id', customerId)
-        .eq('direction', 'inbound')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      data = result.data
-      error = result.error
-    } catch {
-      const fallback = await adminClient
-        .from('messages')
-        .select('id')
-        .eq('customer_id', customerId)
-        .eq('direction', 'inbound')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      data = fallback.data ? { id: `sms:${fallback.data.id}`, channel: 'sms' } : null
-      error = fallback.error
-    }
-
-    if (error) {
-      throw new Error(`Failed to find latest inbound communication: ${error.message}`)
-    }
-
-    if (!data?.id) {
-      return
-    }
-
-    const [channel, rawId] = String(data.id).split(':')
-    if (!rawId) {
-      return
-    }
-
-    const result = channel === 'email'
-      ? await (adminClient.from('email_messages') as any)
-        .update({ staff_read_at: null, status: 'received', updated_at: new Date().toISOString() })
-        .eq('id', rawId)
-        .select('id')
-        .maybeSingle()
-      : await adminClient
+    const [messagesResult, emailResult] = await Promise.all([
+      adminClient
         .from('messages')
         .update({ read_at: null })
-        .eq('id', rawId)
-        .select('id')
-        .maybeSingle()
+        .eq('customer_id', customerId)
+        .eq('direction', 'inbound')
+        .not('read_at', 'is', null),
+      (adminClient.from('email_messages') as any)
+        .update({ staff_read_at: null, status: 'received', updated_at: new Date().toISOString() })
+        .eq('customer_id', customerId)
+        .eq('direction', 'inbound')
+        .not('staff_read_at', 'is', null),
+    ])
 
-    if (result.error) {
-      throw new Error(`Failed to mark conversation as unread: ${result.error.message}`)
-    }
-    if (!result.data) {
-      throw new Error('Message not found')
+    if (messagesResult.error || emailResult.error) {
+      throw new Error(
+        messagesResult.error?.message ??
+          emailResult.error?.message ??
+          'Failed to mark conversation as unread'
+      )
     }
   }
 
@@ -410,6 +592,18 @@ export class CommunicationsService {
     if (!customer) {
       throw new Error('Customer not found')
     }
+
+    // Applied before anything is written. If honouring the opt-out fails, the
+    // whole link fails with nothing mutated and the row stays in the queue for a
+    // clean retry, rather than leaving a linked customer who is still opted in.
+    await honourOptOutFromHoldingQueue(adminClient, {
+      customerId,
+      channel: unmatched.channel,
+      fromAddress: unmatched.from_address ?? null,
+      bodyText: unmatched.body_text ?? null,
+      twilioMessageSid: unmatched.twilio_message_sid ?? null,
+      unmatchedId,
+    })
 
     const nowIso = new Date().toISOString()
     let linkedMessageId: string | null = null

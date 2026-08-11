@@ -38,6 +38,23 @@ function sanitizeLastName(lastName: string | undefined): string {
   return capitaliseName(trimmed);
 }
 
+/**
+ * Postgres puts the offending value in the error `details` of a unique
+ * violation, for example `Key (mobile_e164)=(+447700900123) already exists.`,
+ * so logging a raw Supabase error on this table writes a customer's phone
+ * number or email into the server log. Log the code and the constraint message
+ * only: they identify the failure without carrying the personal data.
+ */
+function describeDbError(error: { code?: string; message?: string } | null): {
+  code: string;
+  message: string;
+} {
+  return {
+    code: error?.code ?? 'unknown',
+    message: error?.message ?? 'Unknown database error'
+  };
+}
+
 function isDuplicateKeyError(error: { code?: string; message?: string } | null): boolean {
   return error?.code === '23505';
 }
@@ -124,14 +141,14 @@ async function anonymizeCustomerForDelete(
         continue;
       }
 
-      console.error('Customer anonymization error:', error);
+      console.error('Customer anonymization error:', describeDbError(error));
       throw new Error('Failed to delete customer');
     }
 
     throw new Error('Customer not found');
   }
 
-  console.error('Customer anonymization exhausted unique phone retries:', lastError);
+  console.error('Customer anonymization exhausted unique phone retries:', describeDbError(lastError));
   throw new Error('Failed to delete customer');
 }
 
@@ -237,7 +254,7 @@ export class CustomerService {
           throw new Error('A customer with this email already exists');
         }
       }
-      console.error('Customer creation error:', error);
+      console.error('Customer creation error:', describeDbError(error));
       throw new Error('Failed to create customer');
     }
 
@@ -298,7 +315,7 @@ export class CustomerService {
           throw new Error('A customer with this email already exists');
         }
       }
-      console.error('Customer update error:', error);
+      console.error('Customer update error:', describeDbError(error));
       throw new Error('Failed to update customer');
     }
     if (!customer) {
@@ -421,13 +438,18 @@ export class CustomerService {
       .rpc('import_customers_atomic', { p_customers: importPayload });
 
     if (importError) {
-      console.error('Batch customer import error:', importError);
+      console.error('Batch customer import error:', describeDbError(importError));
       throw new Error('Failed to import customers');
     }
 
     const result = importResult as { created?: Customer[]; skippedExisting?: number } | null;
     if (!result || !Array.isArray(result.created)) {
-      console.error('Batch customer import invalid RPC result:', importResult);
+      // The RPC payload is the imported customer rows, phone numbers and emails
+      // included, so log its shape rather than its contents.
+      console.error('Batch customer import invalid RPC result:', {
+        type: importResult === null ? 'null' : typeof importResult,
+        keys: importResult && typeof importResult === 'object' ? Object.keys(importResult) : []
+      });
       throw new Error('Failed to import customers');
     }
 

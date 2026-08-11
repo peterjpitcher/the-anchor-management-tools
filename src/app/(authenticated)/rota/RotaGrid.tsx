@@ -36,6 +36,7 @@ import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaSummary } from '@/lib/rota/summary';
+import type { OpeningExceptionTone, RotaOpeningException } from '@/lib/rota/opening-exceptions';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
 import { displayName } from '@/lib/employees/display-name';
 import ShiftDetailModal from './ShiftDetailModal';
@@ -64,6 +65,8 @@ interface RotaGridProps {
   canEditLeave: boolean;
   departments: Department[];
   dayInfo: Record<string, RotaDayInfo>;
+  /** Days in this week where opening hours differ from the regular week, keyed by ISO date. */
+  openingExceptions?: Record<string, RotaOpeningException>;
   periodSummary: RotaSummary | null;
   canViewSpend: boolean;
   canViewSalesTargets: boolean;
@@ -84,6 +87,13 @@ type CouldntWorkTarget = {
 };
 
 const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
+
+// Static class strings per tone, because Tailwind cannot see dynamically built names.
+const OPENING_EXCEPTION_STYLES: Record<OpeningExceptionTone, { chip: string; banner: string }> = {
+  danger: { chip: 'bg-danger-soft text-danger-fg', banner: 'border-danger/25 bg-danger-soft text-danger-fg' },
+  warning: { chip: 'bg-warning-soft text-warning-fg', banner: 'border-warning/25 bg-warning-soft text-warning-fg' },
+  info: { chip: 'bg-info-soft text-info-fg', banner: 'border-info/25 bg-info-soft text-info-fg' },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -583,6 +593,7 @@ export default function RotaGrid({
   canEditLeave,
   departments,
   dayInfo,
+  openingExceptions = {},
   periodSummary,
   canViewSpend,
   canViewSalesTargets,
@@ -952,6 +963,17 @@ export default function RotaGrid({
     periodSummary.weekTotals.wagePercent > periodSummary.weekTotals.targetPercent;
   const uncostedShiftCount = periodSummary?.weekTotals.uncostedShiftCount ?? 0;
 
+  // Only the days on screen, in day order, so the banner reads like the grid.
+  const weekOpeningExceptions = useMemo(
+    () => days.map(day => openingExceptions[day]).filter((entry): entry is RotaOpeningException => Boolean(entry)),
+    [days, openingExceptions],
+  );
+  const openingExceptionTone: OpeningExceptionTone = weekOpeningExceptions.some(entry => entry.tone === 'danger')
+    ? 'danger'
+    : weekOpeningExceptions.some(entry => entry.tone === 'warning')
+      ? 'warning'
+      : 'info';
+
   return (
     <div className="space-y-5">
       <DndContext
@@ -1094,6 +1116,27 @@ export default function RotaGrid({
                 )}
               </div>
 
+              {weekOpeningExceptions.length > 0 && (
+                <div className={`rounded-default border px-3 py-2 text-xs ${OPENING_EXCEPTION_STYLES[openingExceptionTone].banner}`}>
+                  <p className="font-semibold">
+                    Opening hours differ from the usual week on {weekOpeningExceptions.length} day
+                    {weekOpeningExceptions.length === 1 ? '' : 's'}. Check shifts still match.
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {weekOpeningExceptions.map(entry => (
+                      <li key={entry.date}>
+                        <span className="font-semibold">{formatDayHeader(entry.date)}</span>
+                        {': '}
+                        {entry.details.join(' ')}
+                        {entry.note ? (
+                          <span className="italic">{entry.details.length > 0 ? ' ' : ''}{entry.note}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {canViewSpend && uncostedShiftCount > 0 && (
                 <p className="rounded-default border border-warning/25 bg-warning-soft px-3 py-1.5 text-xs text-warning-fg">
                   {uncostedShiftCount} visible shift{uncostedShiftCount === 1 ? '' : 's'} could not be costed because the shift is open or missing a rate.
@@ -1145,6 +1188,45 @@ export default function RotaGrid({
                   ))}
                 </div>
               </div>
+
+              {/* Opening-hours exception strip. Only rendered in weeks that have
+                  one, so a normal week keeps the grid as short as it was. */}
+              {weekOpeningExceptions.length > 0 && (
+                <div className="flex border-b border-border bg-surface">
+                  <div className="sticky left-0 z-20 flex w-[260px] shrink-0 items-center border-r border-border bg-surface px-4 py-1">
+                    <span className="text-[10px] font-semibold uppercase text-text-subtle">Opening hours</span>
+                  </div>
+                  <div className="flex-1 grid grid-cols-7">
+                    {days.map(d => {
+                      const exception = openingExceptions[d];
+                      return (
+                        <div
+                          key={d}
+                          className={`min-h-[30px] border-r border-border px-2 py-1 last:border-r-0 ${isToday(d) ? 'bg-primary-soft/45' : ''}`}
+                        >
+                          {exception ? (
+                            <div className="space-y-0.5">
+                              {exception.chips.map((chip, i) => (
+                                <span
+                                  key={i}
+                                  className={`block truncate rounded-default px-1 py-px text-[10px] font-semibold leading-tight ${OPENING_EXCEPTION_STYLES[chip.tone].chip}`}
+                                >
+                                  {chip.label}
+                                </span>
+                              ))}
+                              {exception.note && (
+                                <p className="line-clamp-2 text-[10px] leading-tight text-text-muted" title={exception.note}>
+                                  {exception.note}
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Day info strip */}
               <div className="flex border-b border-border bg-surface">

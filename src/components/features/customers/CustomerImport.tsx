@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Papa from 'papaparse'
 import { DataTable } from '@/ds'
 import { CloudArrowUpIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Customer } from '@/types/database'
@@ -6,11 +7,23 @@ import { toast } from '@/ds'
 import { Button } from '@/ds'
 import { formatPhoneForStorage } from '@/lib/utils'
 
+/** What the parent actually managed to do with the rows we handed it. */
+export interface CustomerImportOutcome {
+  success: boolean
+  /** Customers written to the database */
+  created?: number
+  /** Rows the server refused (invalid, duplicate in file, or already on record) */
+  skipped?: number
+  error?: string
+}
+
 interface CustomerImportProps {
-  onImportComplete: (customers: Omit<Customer, 'id' | 'created_at'>[]) => Promise<void>
+  onImportComplete: (customers: Omit<Customer, 'id' | 'created_at'>[]) => Promise<CustomerImportOutcome>
   onCancel: () => void
   existingCustomers: Customer[]
 }
+
+const REQUIRED_HEADERS = ['first_name', 'mobile_number']
 
 interface ParsedCustomer {
   first_name: string
@@ -121,58 +134,74 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const input = event.target
+    const file = input.files?.[0]
     if (!file) return
 
-    if (file.type !== 'text/csv') {
+    // Browsers disagree about the MIME type of a .csv file: Excel on Windows
+    // reports application/vnd.ms-excel and some report nothing at all, so a
+    // strict text/csv check rejected perfectly valid files. Trust the extension.
+    if (!file.name.toLowerCase().endsWith('.csv')) {
       toast.error('Please upload a CSV file')
+      input.value = ''
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      const lines = text.split('\n').filter(line => line.trim() !== '')
-      if (lines.length <= 1) {
-        toast.error('CSV file is empty or contains only headers.')
-        return
-      }
-      const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''))
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: 'greedy',
+      // Headers are lower-cased so exports that title-case them (First_Name)
+      // still line up with the template.
+      transformHeader: (header) => header.trim().toLowerCase(),
+      transform: (value) => value.trim(),
+      complete: (results) => {
+        input.value = ''
 
-      const requiredHeaders = ['first_name', 'mobile_number']
-      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
-      if (missingHeaders.length > 0) {
-        toast.error(`Missing required headers: ${missingHeaders.join(', ')}`)
-        return
-      }
+        // A ragged row is a row-level problem: the preview already flags it as
+        // invalid, so only structural failures (unreadable quoting or delimiter)
+        // should reject the whole file.
+        const fatalErrors = results.errors.filter(error => error.type !== 'FieldMismatch')
+        if (fatalErrors.length > 0) {
+          toast.error(`Could not read that CSV: ${fatalErrors[0].message}`)
+          return
+        }
 
-      const fileCustomers: Partial<Customer>[] = []
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''))
-        const customerObj: Partial<Customer> = {}
-        headers.forEach((header, index) => {
-          if (header === 'first_name') customerObj.first_name = values[index]
-          if (header === 'last_name') customerObj.last_name = values[index]
-          if (header === 'email') customerObj.email = values[index]
-          if (header === 'mobile_number') customerObj.mobile_number = values[index]
+        const headers = results.meta.fields ?? []
+        const missingHeaders = REQUIRED_HEADERS.filter(h => !headers.includes(h))
+        if (missingHeaders.length > 0) {
+          toast.error(`Missing required headers: ${missingHeaders.join(', ')}`)
+          return
+        }
+
+        const rows = results.data.filter(row => Object.values(row).some(value => Boolean(value)))
+        if (rows.length === 0) {
+          toast.error('CSV file is empty or contains only headers.')
+          return
+        }
+
+        const fileCustomers: Partial<Customer>[] = rows.map(row => ({
+          first_name: row.first_name,
+          last_name: row.last_name,
+          email: row.email,
+          mobile_number: row.mobile_number,
+        }))
+
+        const validatedCustomers = fileCustomers.map(c => {
+          const { errors, customer } = validateCustomer(c, fileCustomers)
+          customer.errors = errors
+          customer.isValid = errors.length === 0
+          return customer
         })
-        fileCustomers.push(customerObj)
-      }
-      
-      const validatedCustomers = fileCustomers.map(c => {
-        const { errors, customer } = validateCustomer(c, fileCustomers)
-        customer.errors = errors
-        customer.isValid = errors.length === 0
-        return customer
-      })
 
-      setParsedData(validatedCustomers)
-      setIsPreviewMode(true)
-      // Reset file input
-      event.target.value = ''
-    }
-
-    reader.readAsText(file)
+        setParsedData(validatedCustomers)
+        setIsPreviewMode(true)
+      },
+      error: (error) => {
+        input.value = ''
+        console.error('Error reading CSV file:', error)
+        toast.error('Could not read that CSV file')
+      },
+    })
   }
 
   const handleImport = async () => {
@@ -191,8 +220,29 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
         email: email || undefined,
         mobile_number,
       }))
-      await onImportComplete(customersToImport)
-      toast.success('Customers imported successfully!')
+      const outcome = await onImportComplete(customersToImport)
+
+      if (!outcome.success) {
+        // Stay on the preview so the file can be corrected and retried.
+        toast.error(outcome.error || 'Failed to import customers')
+        return
+      }
+
+      const created = outcome.created ?? 0
+      // Rows we never sent (failed the preview checks) plus rows the server
+      // refused, so the message accounts for every row in the file.
+      const skipped = parsedData.length - validCustomers.length + (outcome.skipped ?? 0)
+
+      if (created === 0) {
+        toast.error(`No customers imported. All ${parsedData.length} rows were skipped.`)
+        return
+      }
+
+      if (skipped > 0) {
+        toast.success(`Imported ${created} of ${parsedData.length} rows, ${skipped} skipped.`)
+      } else {
+        toast.success(`Imported ${created} customer${created === 1 ? '' : 's'}.`)
+      }
     } catch (error) {
       console.error('Error importing customers:', error)
       toast.error('Failed to import customers')

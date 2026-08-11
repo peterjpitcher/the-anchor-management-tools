@@ -16,6 +16,7 @@ import {
   type SeparationShiftSummary,
 } from '@/lib/email/employee-invite-emails';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatPhoneForStorage } from '@/lib/utils';
 
 // This builds invite links that go out by email, so the fallback must resolve.
 // `manage.the-anchor.pub` does not; `management.orangejelly.co.uk` is the live domain.
@@ -563,40 +564,141 @@ export async function createEmployeeAccount(token: string, password: string): Pr
   return { success: true };
 }
 
+// Onboarding is employee-facing, so phone fields are optional, but a number that
+// is stored exactly as typed can never be found again: every phone search in the
+// app matches on E.164. This mirrors phoneNumberSchema in src/services/employees.ts,
+// which is what the manager forms already apply.
+const onboardingPhoneSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.union([
+    z.string().transform((value, ctx) => {
+      try {
+        return formatPhoneForStorage(value);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid phone number.',
+        });
+        return z.NEVER;
+      }
+    }),
+    z.null(),
+  ])
+).optional();
+
+// An onboarding link is a bearer token sent by email, so getOnboardingSnapshot
+// masks the NI number and bank account number rather than replaying them in full
+// to anyone who reopens it. A masked value coming back on save is therefore a
+// value the employee never saw: it must not be written over the real one.
+const MASK_CHARACTER = '•';
+
+/** Exactly what maskTail produces: mask characters, then the visible tail. */
+const MASKED_VALUE_PATTERN = /^•+[A-Za-z0-9]*$/;
+
+function maskTail(value: string | null | undefined, visibleTail: number): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  if (raw.length <= visibleTail) return MASK_CHARACTER.repeat(raw.length);
+  return `${MASK_CHARACTER.repeat(raw.length - visibleTail)}${raw.slice(-visibleTail)}`;
+}
+
+/**
+ * Optional financial field that applies the same rules as the manager edit form
+ * (FinancialDetailsSchema in src/services/employees.ts). Onboarding used to accept
+ * anything here, and the malformed records that produced were then rejected by the
+ * edit form, so a manager could not correct them.
+ *
+ * Resolves to `undefined` when the submitted value is still masked, which the save
+ * path reads as "leave the stored column alone".
+ */
+function onboardingFinancialField(options: {
+  normalise: (value: string) => string;
+  pattern: RegExp;
+  message: string;
+}) {
+  return z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((value, ctx): string | null | undefined => {
+      if (value === null || value === undefined) return null;
+
+      const trimmed = value.trim();
+      if (trimmed === '') return null;
+
+      // Only the exact shape maskTail emits counts as "unchanged": a run of mask
+      // characters followed by the visible tail, and nothing else. Accepting any
+      // value merely CONTAINING a mask character meant a half-edited entry like
+      // "••••5678" was silently dropped and the save still reported success, so
+      // the employee believed they had corrected a detail they had not.
+      if (MASKED_VALUE_PATTERN.test(trimmed)) return undefined;
+      if (trimmed.includes(MASK_CHARACTER)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Clear the field and type the full value, or leave it exactly as shown.',
+        });
+        return z.NEVER;
+      }
+
+      const normalised = options.normalise(trimmed);
+      if (!options.pattern.test(normalised)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: options.message });
+        return z.NEVER;
+      }
+      return normalised;
+    });
+}
+
 const PersonalSectionSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
   date_of_birth: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   post_code: z.string().optional().nullable(),
-  phone_number: z.string().optional().nullable(),
-  mobile_number: z.string().optional().nullable(),
+  phone_number: onboardingPhoneSchema,
+  mobile_number: onboardingPhoneSchema,
 });
 
 const EmergencyContactsSectionSchema = z.object({
   primary: z.object({
     name: z.string().min(1, 'Primary contact name is required'),
     relationship: z.string().optional().nullable(),
-    phone_number: z.string().optional().nullable(),
-    mobile_number: z.string().optional().nullable(),
+    phone_number: onboardingPhoneSchema,
+    mobile_number: onboardingPhoneSchema,
     address: z.string().optional().nullable(),
   }),
   secondary: z.object({
     name: z.string().optional().nullable(),
     relationship: z.string().optional().nullable(),
-    phone_number: z.string().optional().nullable(),
-    mobile_number: z.string().optional().nullable(),
+    phone_number: onboardingPhoneSchema,
+    mobile_number: onboardingPhoneSchema,
     address: z.string().optional().nullable(),
   }).optional(),
 });
 
 const FinancialSectionSchema = z.object({
-  ni_number: z.string().optional().nullable(),
+  ni_number: onboardingFinancialField({
+    normalise: (value) => value.replace(/\s+/g, '').toUpperCase(),
+    pattern: /^[A-Z]{2}\d{6}[A-Z]$/,
+    message: 'NI number must be in format: AA123456A',
+  }),
   bank_name: z.string().optional().nullable(),
   payee_name: z.string().optional().nullable(),
   branch_address: z.string().optional().nullable(),
-  bank_sort_code: z.string().optional().nullable(),
-  bank_account_number: z.string().optional().nullable(),
+  bank_sort_code: onboardingFinancialField({
+    normalise: (value) => {
+      const digits = value.replace(/\D/g, '');
+      return digits.length === 6
+        ? `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 6)}`
+        : value;
+    },
+    pattern: /^\d{2}-\d{2}-\d{2}$/,
+    message: 'Sort code must be 6 digits',
+  }),
+  bank_account_number: onboardingFinancialField({
+    normalise: (value) => value.replace(/\s+/g, ''),
+    pattern: /^\d{8}$/,
+    message: 'Account number must be exactly 8 digits',
+  }),
 });
 
 const HealthSectionSchema = z.object({
@@ -749,18 +851,25 @@ export async function saveOnboardingSection(
 
     } else if (section === 'financial') {
       const parsed = FinancialSectionSchema.parse(data);
+
+      const financialPayload: Record<string, string | null> = {
+        employee_id: employeeId,
+        bank_name: parsed.bank_name ?? null,
+        payee_name: parsed.payee_name ?? null,
+        branch_address: parsed.branch_address ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // A masked field parses to undefined, so it is left out of the upsert and
+      // the stored value survives. Anything else (including an explicit blank)
+      // is written as submitted.
+      if (parsed.ni_number !== undefined) financialPayload.ni_number = parsed.ni_number;
+      if (parsed.bank_sort_code !== undefined) financialPayload.bank_sort_code = parsed.bank_sort_code;
+      if (parsed.bank_account_number !== undefined) financialPayload.bank_account_number = parsed.bank_account_number;
+
       const { error } = await adminClient
         .from('employee_financial_details')
-        .upsert({
-          employee_id: employeeId,
-          ni_number: parsed.ni_number ?? null,
-          bank_name: parsed.bank_name ?? null,
-          payee_name: parsed.payee_name ?? null,
-          branch_address: parsed.branch_address ?? null,
-          bank_sort_code: parsed.bank_sort_code ?? null,
-          bank_account_number: parsed.bank_account_number ?? null,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'employee_id' });
+        .upsert(financialPayload, { onConflict: 'employee_id' });
 
       if (error) throw error;
       await auditOnboardingSensitiveSectionWrite(employeeId, validation.email, 'financial');
@@ -877,12 +986,15 @@ export async function getOnboardingSnapshot(token: string): Promise<
         secondary: toContact(secondaryContact),
       },
       financial: {
-        ni_number: financial?.ni_number ?? '',
+        // Masked, not replayed: whoever holds the invite link has not
+        // re-authenticated, so they only see enough to recognise their own
+        // details. Saving the mask back leaves the stored value untouched.
+        ni_number: maskTail(financial?.ni_number, 3),
         bank_name: financial?.bank_name ?? '',
         payee_name: financial?.payee_name ?? '',
         branch_address: financial?.branch_address ?? '',
         bank_sort_code: financial?.bank_sort_code ?? '',
-        bank_account_number: financial?.bank_account_number ?? '',
+        bank_account_number: maskTail(financial?.bank_account_number, 4),
       },
       health: {
         doctor_name: health?.doctor_name ?? '',

@@ -109,8 +109,12 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     countRows('messages', (query) =>
       query.eq('message_type', 'whatsapp').in('status', ['failed', 'undelivered']).gte('created_at', last24h)
     ),
+    // 'unmatched' is the only value the status CHECK constraint allows for a row
+    // still sitting in the holding queue (the others are linked, ignored and
+    // deleted). Filtering on 'pending' always counted zero, so this alert could
+    // never fire no matter how deep the queue got.
     countRows('unmatched_communications', (query) =>
-      query.eq('status', 'pending')
+      query.eq('status', 'unmatched')
     ),
     countRows('notification_deliveries', (query) =>
       query.eq('final_status', 'fallback_sent').gte('created_at', last24h)

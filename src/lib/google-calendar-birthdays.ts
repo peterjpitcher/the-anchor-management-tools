@@ -81,7 +81,10 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
     }
 
     const startDate = new Date(startYear, dob.getMonth(), dob.getDate());
-    const birthYear = dob.getFullYear();
+    // Google treats an all-day event's end date as exclusive, so a single-day
+    // event has to end on the following day. Using the start date gave an empty
+    // range. Date arithmetic here rolls month and year over on its own.
+    const endDate = new Date(startYear, dob.getMonth(), dob.getDate() + 1);
 
     // The shared ops calendar is read by the whole team, so the entry uses the
     // name they know. The event id above is derived from employee_id, not from
@@ -104,7 +107,7 @@ export async function syncBirthdayCalendarEvent(employee: EmployeeBirthday | Emp
         timeZone: 'Europe/London'
       },
       end: {
-        date: format(startDate, 'yyyy-MM-dd'),
+        date: format(endDate, 'yyyy-MM-dd'),
         timeZone: 'Europe/London'
       },
       recurrence: [

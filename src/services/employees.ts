@@ -20,6 +20,26 @@ export interface ExportOptions {
   statusFilter?: EmployeeStatus;
 }
 
+// The only employee columns that may appear in an export file, in the order they
+// are written. An allowlist rather than an exclusion list, so a column added to
+// the table later cannot leak into the file just because nobody remembered it.
+const EMPLOYEE_EXPORT_FIELDS: readonly string[] = [
+  'employee_id', 'first_name', 'last_name', 'email_address', 'job_title',
+  'phone_number', 'mobile_number', 'post_code',
+  'employment_start_date', 'first_shift_date', 'employment_end_date', 'status',
+  'date_of_birth', 'address', 'uniform_preference', 'keyholder_status'
+];
+
+function resolveExportFields(includeFields?: string[]): string[] {
+  if (!includeFields || includeFields.length === 0) {
+    return [...EMPLOYEE_EXPORT_FIELDS];
+  }
+  // A caller-supplied field list is still held to the allowlist: it arrives from
+  // the export dialog and must not be able to name a column such as the PIN hash.
+  const allowed = includeFields.filter((field) => EMPLOYEE_EXPORT_FIELDS.includes(field));
+  return allowed.length > 0 ? allowed : [...EMPLOYEE_EXPORT_FIELDS];
+}
+
 export interface EmployeeNoteWithAuthor extends EmployeeNote {
   author_name: string;
 }
@@ -151,6 +171,19 @@ export const noteSchema = z.object({
 });
 
 const ATTACHMENT_BUCKET_NAME = 'employee-attachments'; // Moved here for service scope
+
+// Columns on `employees` that must never leave the server. The timeclock PIN hash
+// is a credential, and `select('*')` hands it to every caller, so it has been
+// reaching the browser on the roster and the JSON export file.
+const SERVER_ONLY_EMPLOYEE_FIELDS = ['timeclock_pin_hash'] as const;
+
+function stripServerOnlyEmployeeFields<T extends object>(row: T): T {
+  const safeRow = { ...row } as Record<string, unknown>;
+  for (const field of SERVER_ONLY_EMPLOYEE_FIELDS) {
+    delete safeRow[field];
+  }
+  return safeRow as T;
+}
 
 function sanitizeEmployeeSearchTerm(value: string): string {
   return value
@@ -490,7 +523,64 @@ export class EmployeeService {
       }
     }
     
-    return { updatedEmployee, oldEmployee: oldEmployee };
+    // Callers feed both of these straight into the audit log, so the PIN hash is
+    // stripped here rather than relying on every caller to remember.
+    return {
+      updatedEmployee: stripServerOnlyEmployeeFields(updatedEmployee),
+      oldEmployee: stripServerOnlyEmployeeFields(oldEmployee),
+    };
+  }
+
+  /**
+   * Remove every file stored for an employee. Attachments and right-to-work
+   * documents are both written under an `<employee_id>/` prefix, so listing that
+   * prefix covers both. Best-effort and paged: storage list() caps each page, and
+   * a failure here must not resurrect an employee row that is already gone.
+   */
+  private static async deleteEmployeeStorageFiles(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string
+  ): Promise<void> {
+    const pageSize = 100;
+    // Deleted objects drop out of the listing, so each pass re-reads from the
+    // start. The cap only exists so an unexpected undeletable entry (a nested
+    // folder, say) cannot spin here forever.
+    const maxPasses = 50;
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const { data: entries, error: listError } = await adminClient.storage
+        .from(ATTACHMENT_BUCKET_NAME)
+        .list(employeeId, { limit: pageSize });
+
+      if (listError) {
+        console.error(`Failed to list stored files for employee '${employeeId}'. Manual cleanup may be needed.`, listError);
+        return;
+      }
+
+      // Entries with no id are folder placeholders, which remove() cannot delete.
+      const paths = (entries ?? [])
+        .filter((entry) => entry.id && entry.name)
+        .map((entry) => `${employeeId}/${entry.name}`);
+
+      if (paths.length === 0) {
+        return;
+      }
+
+      const { error: removeError } = await adminClient.storage
+        .from(ATTACHMENT_BUCKET_NAME)
+        .remove(paths);
+
+      if (removeError) {
+        console.error(`Failed to delete stored files for employee '${employeeId}'. Manual cleanup may be needed.`, removeError);
+        return;
+      }
+
+      if (paths.length < pageSize) {
+        return;
+      }
+    }
+
+    console.warn(`Stopped clearing storage for employee '${employeeId}' after ${maxPasses} passes. Manual cleanup may be needed.`);
   }
 
   static async deleteEmployee(employeeId: string) {
@@ -546,7 +636,13 @@ export class EmployeeService {
     if (!deletedEmployee) {
       throw new Error('Employee not found or failed to delete.');
     }
-    
+
+    // Deleting the employees row cascades to employee_attachments and
+    // employee_right_to_work, but the files themselves live in storage and were
+    // being left behind forever. Runs after the row delete so a storage failure
+    // cannot strand a half-deleted employee.
+    await EmployeeService.deleteEmployeeStorageFiles(adminClient, employeeId);
+
     // Delete birthday calendar events if employee had a date of birth
     if (employee?.date_of_birth) {
         try {
@@ -556,8 +652,9 @@ export class EmployeeService {
             // Don't fail the employee deletion if calendar sync fails
         }
     }
-    
-    return deletedEmployee; // Return deleted employee for audit logging
+
+    // Returned for audit logging, so the PIN hash must not travel with it.
+    return stripServerOnlyEmployeeFields(deletedEmployee);
   }
 
   static async getEmployeeList(): Promise<{ id: string; name: string; }[] | null> {
@@ -1061,7 +1158,7 @@ export class EmployeeService {
     const notes = await enrichNotesWithAuthors(notesResult.data ?? [], supabase);
 
     return {
-      employee,
+      employee: stripServerOnlyEmployeeFields(employee),
       financialDetails: financialResult.data ?? null,
       healthRecord: healthResult.data ?? null,
       notes,
@@ -1105,7 +1202,8 @@ export class EmployeeService {
     if (rightToWorkResult.error) console.error('[EmployeeService] right-to-work fetch failed for edit', rightToWorkResult.error);
 
     return {
-      employee,
+      // The edit page hands this straight to EmployeeForm, a client component.
+      employee: stripServerOnlyEmployeeFields(employee),
       financialDetails: financialResult.data ?? null,
       healthRecord: healthResult.data ?? null,
       rightToWork: rightToWorkResult.data ?? null
@@ -1230,8 +1328,10 @@ export class EmployeeService {
       }
     }
 
+    // The roster is rendered by a client component, so every row here is serialised
+    // into the browser payload for anyone holding only `employees:view`.
     const rosterEmployees: EmployeeRosterEmployee[] = employees.map((employee) => ({
-      ...employee,
+      ...stripServerOnlyEmployeeFields(employee),
       holiday_days_current_year: holidayCounts.get(employee.employee_id) ?? 0,
     }));
 
@@ -1279,15 +1379,8 @@ export class EmployeeService {
   }
 
   static generateCSV(employees: Employee[], includeFields?: string[]): string {
-    const defaultFields = [
-      'employee_id', 'first_name', 'last_name', 'email_address', 'job_title',
-      'phone_number', 'mobile_number', 'post_code',
-      'employment_start_date', 'first_shift_date', 'employment_end_date', 'status',
-      'date_of_birth', 'address', 'uniform_preference', 'keyholder_status'
-    ];
+    const fields = resolveExportFields(includeFields);
 
-    const fields = includeFields && includeFields.length > 0 ? includeFields : defaultFields;
-    
     const headers = fields.map(field => {
       return field
         .split('_')
@@ -1325,23 +1418,18 @@ export class EmployeeService {
   }
 
   static generateJSON(employees: Employee[], includeFields?: string[]): string {
-    if (!includeFields || includeFields.length === 0) {
-      const sanitized = employees.map(emp => {
-        const { created_at: _, ...rest } = emp;
-        return rest;
-      });
-      return JSON.stringify(sanitized, null, 2);
-    }
+    // Previously the default JSON export spread the whole row, so it shipped every
+    // column the table happened to have, timeclock_pin_hash included. Both formats
+    // now go through the same allowlist.
+    const fields = resolveExportFields(includeFields);
 
-    const filtered = employees.map(emp => {
-      const filtered: any = {};
-      for (const field of includeFields) {
-        if (field in emp) {
-          filtered[field] = (emp as any)[field];
-        }
+    const rows = employees.map(emp => {
+      const row: Record<string, unknown> = {};
+      for (const field of fields) {
+        row[field] = (emp as any)[field] ?? null;
       }
-      return filtered;
+      return row;
     });
-    return JSON.stringify(filtered, null, 2);
+    return JSON.stringify(rows, null, 2);
   }
 }

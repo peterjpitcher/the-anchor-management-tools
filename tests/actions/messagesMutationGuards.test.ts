@@ -59,33 +59,68 @@ describe('Message action mutation row-effect guards', () => {
     expect(mockedCreateAdminClient).not.toHaveBeenCalled()
   })
 
-  it('throws not-found when markConversationAsUnread latest-message update affects no rows', async () => {
-    const latestMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'message-1' },
-      error: null,
-    })
-    const latestLimit = vi.fn().mockReturnValue({ maybeSingle: latestMaybeSingle })
-    const latestOrder = vi.fn().mockReturnValue({ limit: latestLimit })
-    const latestEqDirection = vi.fn().mockReturnValue({ order: latestOrder })
-    const latestEqCustomer = vi.fn().mockReturnValue({ eq: latestEqDirection })
+  // Marking a conversation unread now restores EVERY inbound message and email
+  // for the customer, which is the mirror image of what opening the thread does.
+  // It previously restored only the most recent inbound row, resolved through the
+  // customer_communications view, so the unread count never came back and a
+  // customer whose latest inbound entry was feedback broke the action outright.
+  it('restores every inbound message and email, on both tables', async () => {
+    const calls: Array<{ table: string; values: Record<string, unknown>; filters: string[] }> = []
 
-    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+    const chainFor = (table: string, values: Record<string, unknown>) => {
+      const filters: string[] = []
+      calls.push({ table, values, filters })
+      const chain: Record<string, unknown> = {}
+      chain.eq = vi.fn((column: string) => {
+        filters.push(column)
+        return chain
+      })
+      chain.not = vi.fn((column: string) => {
+        filters.push(`not:${column}`)
+        return chain
+      })
+      chain.then = (resolve: (value: { error: null }) => unknown) => resolve({ error: null })
+      return chain
+    }
 
     mockedCreateAdminClient.mockReturnValue({
       from: vi.fn((table: string) => {
-        if (table !== 'messages') {
+        if (table !== 'messages' && table !== 'email_messages') {
           throw new Error(`Unexpected table: ${table}`)
         }
-
-        return {
-          select: vi.fn().mockReturnValue({ eq: latestEqCustomer }),
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
-        }
+        return { update: vi.fn((values: Record<string, unknown>) => chainFor(table, values)) }
       }),
     })
 
-    await expect(markConversationAsUnread('customer-1')).rejects.toThrow('Message not found')
+    await expect(markConversationAsUnread('customer-1')).resolves.not.toThrow()
+
+    expect(calls.map((c) => c.table).sort()).toEqual(['email_messages', 'messages'])
+    for (const call of calls) {
+      // Scoped to inbound rows for this customer that are actually read, so the
+      // update touches nothing it does not need to.
+      expect(call.filters.slice(0, 2)).toEqual(['customer_id', 'direction'])
+      expect(call.filters[2]).toMatch(/^not:/)
+    }
+    expect(calls.find((c) => c.table === 'messages')?.values).toMatchObject({ read_at: null })
+    expect(calls.find((c) => c.table === 'email_messages')?.values).toMatchObject({
+      staff_read_at: null,
+    })
+  })
+
+  it('surfaces a database failure rather than reporting the conversation unread', async () => {
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn(() => ({
+        update: vi.fn(() => {
+          const chain: Record<string, unknown> = {}
+          chain.eq = vi.fn(() => chain)
+          chain.not = vi.fn(() => chain)
+          chain.then = (resolve: (value: { error: { message: string } }) => unknown) =>
+            resolve({ error: { message: 'permission denied' } })
+          return chain
+        }),
+      })),
+    })
+
+    await expect(markConversationAsUnread('customer-1')).rejects.toThrow('permission denied')
   })
 })

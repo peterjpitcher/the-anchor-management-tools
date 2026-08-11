@@ -174,6 +174,9 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const [refundPaymentAmount, setRefundPaymentAmount] = useState(0)
   const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
   const [refundHasCapture, setRefundHasCapture] = useState(false)
+  // Bumped after a refund to remount RefundHistoryTable, which otherwise only
+  // refetches when the payment it is showing changes.
+  const [refundHistoryKey, setRefundHistoryKey] = useState(0)
 
   /* ---------- SectionNav ---------- */
   const [activeSection, setActiveSection] = useState('bookings')
@@ -290,27 +293,51 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     setShowEditModal(true)
   }
 
-  const openRefundForBooking = async (booking: ParkingBooking) => {
+  // Loads the captured payment behind a booking and what has already been
+  // refunded against it. Shared by row selection, the Refund button and the
+  // post-refund refresh so all three agree on the refundable balance.
+  // Returns an error message, or null on success.
+  const loadRefundSummary = async (bookingId: string): Promise<string | null> => {
     try {
       const { getParkingPaymentForRefund, getRefundHistory } = await import('@/app/actions/refundActions')
-      const paymentResult = await getParkingPaymentForRefund(booking.id)
+      const paymentResult = await getParkingPaymentForRefund(bookingId)
       if (paymentResult.error || !paymentResult.data) {
-        toast.error(paymentResult.error || 'No paid payment record found.')
-        return
+        setRefundPaymentId(null)
+        return paymentResult.error || 'No paid payment record found.'
       }
       setRefundPaymentId(paymentResult.data.paymentId)
       setRefundPaymentAmount(paymentResult.data.amount)
       setRefundHasCapture(paymentResult.data.hasCapture)
-      const result = await getRefundHistory('parking', paymentResult.data.paymentId)
-      if (result.data) {
-        const completed = result.data.filter((r: Record<string, unknown>) => r.status === 'completed').reduce((sum: number, r: Record<string, unknown>) => sum + Number(r.amount), 0)
-        const pending = result.data.filter((r: Record<string, unknown>) => r.status === 'pending').reduce((sum: number, r: Record<string, unknown>) => sum + Number(r.amount), 0)
-        setRefundTotals({ totalRefunded: completed, totalPending: pending })
-      }
-      setShowRefundDialog(true)
+
+      const history = await getRefundHistory('parking', paymentResult.data.paymentId)
+      const rows = (history.data ?? []) as Record<string, unknown>[]
+      const completed = rows.filter((r) => r.status === 'completed').reduce((sum, r) => sum + Number(r.amount), 0)
+      const pending = rows.filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount), 0)
+      setRefundTotals({ totalRefunded: completed, totalPending: pending })
+      return null
     } catch {
-      toast.error('Failed to load payment details for refund.')
+      return 'Failed to load payment details for refund.'
     }
+  }
+
+  const openRefundForBooking = async (booking: ParkingBooking) => {
+    const error = await loadRefundSummary(booking.id)
+    if (error) { toast.error(error); return }
+    setShowRefundDialog(true)
+  }
+
+  // A refund flips the booking to refunded and cancelled, and the bookings table
+  // lives in client state, so the dialog's router.refresh() leaves the row, the
+  // stats and the detail panel all still claiming the booking is paid.
+  const handleRefundProcessed = async () => {
+    const bookingId = selectedBooking?.id
+    const latest = await fetchBookings()
+    if (!bookingId) return
+    // The refunded booking may no longer match the active filters, in which case
+    // it has genuinely left the list and the detail panel closes with it.
+    setSelectedBooking(latest.find((b) => b.id === bookingId) ?? null)
+    await loadRefundSummary(bookingId)
+    setRefundHistoryKey((key) => key + 1)
   }
 
   const handleCreateBooking = (event: React.FormEvent<HTMLFormElement>) => {
@@ -505,16 +532,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     setSelectedBooking(booking)
     setRefundPaymentId(null)
     void loadNotifications(booking.id)
-    if (booking.payment_status === 'paid' && permissions.canRefund) {
-      import('@/app/actions/refundActions').then(({ getParkingPaymentForRefund }) =>
-        getParkingPaymentForRefund(booking.id).then((res) => {
-          if (res.data) {
-            setRefundPaymentId(res.data.paymentId)
-            setRefundPaymentAmount(res.data.amount)
-            setRefundHasCapture(res.data.hasCapture)
-          }
-        })
-      )
+    // 'refunded' is included so an already-refunded booking still shows its
+    // refund history instead of an empty panel.
+    if (permissions.canRefund && ['paid', 'refunded'].includes(booking.payment_status)) {
+      void loadRefundSummary(booking.id)
     }
   }
 
@@ -554,13 +575,15 @@ export default function ParkingClient({ permissions, initialError }: Props) {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px]">
           {/* Left: bookings table */}
           <Card>
-            <CardHeader title="Bookings" action={<Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>Refresh</Button>}>
-              <div className="flex flex-wrap items-center gap-3 mt-3">
-                <SearchInput placeholder="Reference or customer" value={search} onChange={setSearch} className="w-64" />
-                <Select options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
-                <Select options={paymentStatusOptions} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} />
-              </div>
-            </CardHeader>
+            <CardHeader title="Bookings" action={<Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>Refresh</Button>} />
+            {/* The filters get their own row. CardHeader lays its children out in
+                the same flex line as the title and the action, so passing them as
+                children squeezed them against the Refresh button and clipped them. */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-[var(--spacing-pad-card)] py-3">
+              <SearchInput placeholder="Reference or customer" value={search} onChange={setSearch} className="w-full sm:w-64" />
+              <Select options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />
+              <Select options={paymentStatusOptions} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} />
+            </div>
             <CardBody className="p-0">
               {loading && bookings.length === 0 ? (
                 <div className="flex items-center justify-center py-12"><Spinner size="md" /></div>
@@ -729,11 +752,11 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                   </CardBody>
                 </Card>
 
-                {selectedBooking.payment_status === 'paid' && refundPaymentId && (
+                {['paid', 'refunded'].includes(selectedBooking.payment_status) && refundPaymentId && (
                   <Card>
                     <CardHeader title="Refund History" />
                     <CardBody className="p-0">
-                      <RefundHistoryTable sourceType="parking" sourceId={refundPaymentId} />
+                      <RefundHistoryTable key={refundHistoryKey} sourceType="parking" sourceId={refundPaymentId} />
                     </CardBody>
                   </Card>
                 )}
@@ -1001,6 +1024,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
           totalPending={refundTotals.totalPending}
           hasPayPalCapture={refundHasCapture}
           captureExpired={false}
+          onRefunded={handleRefundProcessed}
         />
       )}
     </div>

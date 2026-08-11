@@ -326,6 +326,12 @@ export async function importMissedMessages(
     }
 
     if (customersToCreate.length > 0) {
+      // idx_customers_mobile_e164 was partial (WHERE mobile_e164 IS NOT NULL),
+      // which Postgres cannot infer from an ON CONFLICT column list, so this
+      // raised 42P10 and aborted the import. Migration
+      // 20260811110000_unpartial_upsert_indexes makes it a plain unique index,
+      // which is inferrable. Do NOT drop the target to work around it: PostgREST
+      // falls back to the primary key, so duplicates would be inserted silently.
       const { error: createError } = await admin
         .from('customers')
         .upsert(customersToCreate, {
@@ -445,6 +451,8 @@ export async function importMissedMessages(
     }
 
     if (messagesToInsert.length > 0) {
+      // Same partial-index problem as the customers upsert above, fixed by the
+      // same migration. Keep the explicit target for the same reason.
       const { data: insertedMessages, error: batchError } = await admin
         .from('messages')
         .upsert(messagesToInsert, {
