@@ -26,6 +26,7 @@ import {
 import { Icon } from '@/ds/icons'
 import { toast } from '@/ds'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { countSmsSegments, isGsm7, normaliseToGsm7 } from '@/lib/sms/gsm7'
 
 import {
   getConversationMessages,
@@ -38,9 +39,10 @@ import {
 import { sendSmsReply } from '@/app/actions/messageActions'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
-const REFRESH_INTERVAL = 15000
-const SMS_SEGMENT_LENGTH = 160
-const SMS_SEGMENT_LENGTH_UNICODE = 70
+// Each tick re-reads the whole conversation list plus the open thread. At 15s a
+// single tab left open all shift was hammering the inbox queries for no benefit:
+// staff act on messages in minutes, not seconds.
+const REFRESH_INTERVAL = 30000
 
 type ConversationFilter = 'all' | 'unread' | 'email' | 'sms' | 'whatsapp'
 
@@ -105,12 +107,18 @@ function channelLabel(channel: CommunicationChannel): string {
   }
 }
 
-function countSmsSegments(text: string): { chars: number; segments: number; isUnicode: boolean } {
-  const chars = text.length
-  if (chars === 0) return { chars: 0, segments: 0, isUnicode: false }
-  const isUnicode = /[^\x00-\x7F\u00A0\u00A3\u00A4\u00A5\u00A7\u00BF\u00C4-\u00C6\u00C9\u00D1\u00D6\u00D8\u00DC\u00DF\u00E0\u00E4-\u00E9\u00EC\u00F1\u00F2\u00F6\u00F8\u00F9\u00FC]/.test(text)
-  const limit = isUnicode ? SMS_SEGMENT_LENGTH_UNICODE : SMS_SEGMENT_LENGTH
-  return { chars, segments: Math.ceil(chars / limit), isUnicode }
+/**
+ * Cost preview for the composer.
+ *
+ * The send path normalises smart punctuation to GSM-7 and then measures the
+ * result with countSmsSegments, so this previews exactly the same string. The
+ * old length/160 formula ignored the shorter 153/67 character limits that apply
+ * once a message splits, so it under-reported segments and therefore cost.
+ */
+function describeSmsCost(text: string): { chars: number; segments: number; isUnicode: boolean } {
+  if (text.length === 0) return { chars: 0, segments: 0, isUnicode: false }
+  const body = normaliseToGsm7(text)
+  return { chars: body.length, segments: countSmsSegments(body), isUnicode: !isGsm7(body) }
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,6 +377,11 @@ export function MessagesClient() {
       const result = await sendSmsReply(selectedCustomerId, newMessage)
       if ('error' in result && result.error) {
         toast.error(result.error)
+      } else if ('suppressed' in result && result.suppressed) {
+        // Identical text to the same customer inside the dedupe window is not
+        // sent. Reporting this as "Message sent" left staff believing the
+        // customer had been replied to when nothing went out.
+        toast.error('Not sent: identical to a recent message. Change the wording and try again.')
       } else {
         toast.success('Message sent')
         setNewMessage('')
@@ -396,7 +409,7 @@ export function MessagesClient() {
     : undefined
   const customerName = selectedCustomer ? formatCustomerName(selectedCustomer) : ''
   const canReply = canSendMessages && selectedCustomer?.sms_opt_in !== false
-  const replySmsInfo = useMemo(() => countSmsSegments(newMessage), [newMessage])
+  const replySmsInfo = useMemo(() => describeSmsCost(newMessage), [newMessage])
 
   // Group messages by date
   const groupedMessages = messages.reduce<Record<string, CustomerCommunication[]>>((groups, message) => {
@@ -647,9 +660,18 @@ export function MessagesClient() {
 
 	                        {dateMessages.map((message, index) => {
 	                          const isOutbound = message.direction !== 'inbound'
+	                          const isFailed =
+	                            isOutbound &&
+	                            (message.status === 'failed' || message.status === 'undelivered')
+	                          // A failed message is always shown. Previously the status
+	                          // only rendered on the last message of a date group (or one
+	                          // followed by an inbound reply), so any failure followed by
+	                          // another outbound message the same day was invisible and
+	                          // staff believed the customer had been contacted.
 	                          const showStatus =
 	                            isOutbound &&
-	                            (index === dateMessages.length - 1 ||
+	                            (isFailed ||
+	                              index === dateMessages.length - 1 ||
 	                              (index < dateMessages.length - 1 && dateMessages[index + 1].direction === 'inbound'))
                             const messageText = message.body_text || message.subject || (message.has_attachments ? 'Attachment' : '')
 
@@ -677,9 +699,15 @@ export function MessagesClient() {
                                     {getMessageTime(message.created_at)}
                                   </span>
 	                                  {showStatus && message.status && (
-	                                    <span className="text-[11px] text-text-muted">
-	                                      {getStatusText(message.status) || message.status}
-	                                    </span>
+	                                    isFailed ? (
+	                                      <Badge tone="danger">
+	                                        {getStatusText(message.status) || message.status}
+	                                      </Badge>
+	                                    ) : (
+	                                      <span className="text-[11px] text-text-muted">
+	                                        {getStatusText(message.status) || message.status}
+	                                      </span>
+	                                    )
 	                                  )}
                                 </div>
                               </div>

@@ -117,7 +117,9 @@ export default function EmployeeStatusActions({ employeeId, status, canEdit }: E
       {/* Confirmation modals */}
       {showConfirm === 'separation' && (
         <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setShowConfirm(null)} />
+          {/* Opacity modifier, not bg-opacity-75: Tailwind v4 dropped the bg-opacity-*
+              utilities, so the old class rendered a solid grey sheet over the page. */}
+          <div className="fixed inset-0 bg-gray-500/75" onClick={() => setShowConfirm(null)} />
           <div className="flex min-h-full items-center justify-center p-4">
             <div className="relative w-full max-w-md rounded-lg bg-white shadow-xl p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Begin Separation</h3>
@@ -168,7 +170,7 @@ export default function EmployeeStatusActions({ employeeId, status, canEdit }: E
 
       {showConfirm === 'revoke' && (
         <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setShowConfirm(null)} />
+          <div className="fixed inset-0 bg-gray-500/75" onClick={() => setShowConfirm(null)} />
           <div className="flex min-h-full items-center justify-center p-4">
             <div className="relative w-full max-w-md rounded-lg bg-white shadow-xl p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Mark as Former & Revoke Access</h3>

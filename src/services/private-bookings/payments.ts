@@ -447,6 +447,10 @@ async function finalizeDepositPaymentWithClient(
   const updatePayload: Record<string, unknown> = {
     deposit_paid_date: new Date().toISOString(),
     deposit_payment_method: method,
+    // The hold has been honoured, so it no longer applies. Leaving a past
+    // hold_expiry on a paid booking is what let deleteDeposit hand a live
+    // booking back to the expire-holds cron with a deadline already gone.
+    hold_expiry: null,
     ...statusUpdate,
     updated_at: new Date().toISOString()
   }
@@ -702,7 +706,17 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
       p_recorded_by: performedByUserId ?? null,
     });
 
-  if (rpcError) throw new Error('Failed to record payment');
+  if (rpcError) {
+    // The RPC raises the reason staff need to act on ("Amount (x) exceeds
+    // remaining balance (y)", "Cannot record payment on a cancelled booking",
+    // "Permission denied: manage_deposits required"). Swallowing it left the
+    // till with a generic failure and no way to tell those cases apart.
+    logger.error('Failed to record balance payment', {
+      error: new Error(rpcError.message),
+      metadata: { bookingId, amount, method },
+    });
+    throw new Error(rpcError.message || 'Failed to record payment');
+  }
 
   const isFullyPaid = result.is_fully_paid as boolean;
 
@@ -1062,7 +1076,10 @@ export async function deleteDeposit(bookingId: string): Promise<{ statusReverted
     if (!countError && count === 0) {
       const { error: statusError } = await db
         .from('private_bookings')
-        .update({ status: 'draft' })
+        // Clear the hold deadline alongside the revert. A booking dropped back
+        // to draft with a hold_expiry already in the past is cancelled outright
+        // by the expire-holds cron the next morning.
+        .update({ status: 'draft', hold_expiry: null })
         .eq('id', bookingId)
       if (statusError) throw new Error(`Failed to revert booking status: ${statusError.message}`)
       statusReverted = true

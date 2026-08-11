@@ -302,6 +302,8 @@ function PaymentModal({
     if (result.success) {
       onSuccess();
       onClose();
+    } else {
+      toast.error(result.error ?? "Failed to record the payment.");
     }
     setIsSubmitting(false);
   };
@@ -1026,8 +1028,9 @@ function AddItemModal({
     e.preventDefault();
     setIsSubmitting(true);
 
+    const hasCustomPrice = customPrice.trim() !== "";
     let description = customDescription;
-    let unitPrice = parseFloat(customPrice) || 0;
+    let unitPrice = hasCustomPrice ? parseFloat(customPrice) || 0 : 0;
 
     if (itemType === "electricity") {
       // Electricity has fixed values
@@ -1050,7 +1053,16 @@ function AddItemModal({
         }
       } else if (itemType === "vendor" && "service_type" in selectedItem) {
         description = `${selectedItem.name} (${selectedItem.service_type})`;
-        unitPrice = 0; // Vendors don't have a fixed price in the schema
+        // The Unit Price field is required for vendor items, so only fall back to
+        // the vendor's typical rate when the user left it blank. Overwriting it
+        // with 0 here silently discarded the price they were made to type.
+        if (!hasCustomPrice) {
+          const typicalRate =
+            "typical_rate_normalized" in selectedItem
+              ? selectedItem.typical_rate_normalized
+              : undefined;
+          unitPrice = parseFloat(String(typicalRate ?? selectedItem.typical_rate ?? "")) || 0;
+        }
       }
     }
 
@@ -1096,6 +1108,8 @@ function AddItemModal({
       setCustomPrice("");
       setDiscountAmount("");
       setNotes("");
+    } else {
+      toast.error(result.error ?? "Failed to add the item.");
     }
 
     setIsSubmitting(false);
@@ -1389,6 +1403,8 @@ function DiscountModal({
     if (result.success) {
       onSuccess();
       onClose();
+    } else {
+      toast.error(result.error ?? "Failed to apply the discount.");
     }
     setIsSubmitting(false);
   };
@@ -2124,6 +2140,8 @@ export default function PrivateBookingDetailClient({
     const result = await deleteBookingItem(itemId);
     if (result.success) {
       refreshBooking();
+    } else {
+      toast.error(result.error ?? "Failed to delete the item.");
     }
     setDeleteConfirm(null);
   };

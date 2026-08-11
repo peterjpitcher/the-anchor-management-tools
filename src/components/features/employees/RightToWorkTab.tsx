@@ -13,7 +13,7 @@ import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
 import { ConfirmDialog, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
-import { formatDateInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { AlertCircle, CheckCircle, Clock, Upload, Eye, Download, Trash2 } from 'lucide-react'
 
 const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'List A', 'List B', 'Other'] as const
@@ -87,13 +87,21 @@ export default function RightToWorkTab({
     fetchPhotoUrl()
   }, [rightToWorkData?.photo_storage_path, canViewDocuments])
 
+  // Compared as London ISO dates: a raw Date built from a date-only column is
+  // UTC midnight, which flips the answer either side of midnight in production.
+  const expiryIsoDate = rightToWorkData?.document_expiry_date?.split('T')[0] ?? null
+
+  const isExpired = useMemo(() => {
+    if (!expiryIsoDate) return false
+    return expiryIsoDate < getTodayIsoDate()
+  }, [expiryIsoDate])
+
+  // Expiring soon means still valid but inside the 30-day warning window. An
+  // already-expired document is a different, harder problem and reads as expired.
   const isExpiringSoon = useMemo(() => {
-    if (!rightToWorkData?.document_expiry_date) return false
-    const expiryDate = new Date(rightToWorkData.document_expiry_date)
-    const threshold = new Date()
-    threshold.setDate(threshold.getDate() + 30)
-    return expiryDate <= threshold
-  }, [rightToWorkData?.document_expiry_date])
+    if (!expiryIsoDate || isExpired) return false
+    return expiryIsoDate <= getLocalIsoDateDaysAhead(30)
+  }, [expiryIsoDate, isExpired])
 
   const isFollowUpDue = useMemo(() => {
     if (!rightToWorkData?.follow_up_date) return false
@@ -201,6 +209,22 @@ export default function RightToWorkTab({
     <div className="space-y-6">
       {rightToWorkData && (
         <div className="space-y-3">
+          {isExpired && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="flex">
+                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">Document Expired</h3>
+                  <p className="mt-1 text-sm text-red-700">
+                    This document expired on{' '}
+                    {formatDateInLondon(rightToWorkData.document_expiry_date!)}.
+                    Obtain and record updated documentation now.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isExpiringSoon && (
             <div className="rounded-md bg-yellow-50 p-4">
               <div className="flex">
@@ -232,7 +256,7 @@ export default function RightToWorkTab({
             </div>
           )}
 
-          {rightToWorkData.document_type && !isExpiringSoon && !isFollowUpDue && (
+          {rightToWorkData.document_type && !isExpired && !isExpiringSoon && !isFollowUpDue && (
             <div className="rounded-md bg-green-50 p-4">
               <div className="flex">
                 <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />

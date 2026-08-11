@@ -72,12 +72,22 @@ function toLookupPayload(customer: CustomerLookupRow | null, normalizedPhone: st
   }
 }
 
+/**
+ * This endpoint answers with a customer's name, email and phone. createApiResponse
+ * marks every GET `public, max-age=60`, which is right for menus and events and
+ * wrong here: a shared cache would hold one customer's record and hand it to
+ * whoever asks next within the minute. Overridden per response.
+ */
+const NO_STORE = { 'Cache-Control': 'no-store' }
+
 export async function GET(request: NextRequest) {
   return withApiAuth(async (_req, apiKey) => {
+    // This endpoint returns customer PII, so it needs the customer scope.
+    // read:events and create:bookings used to be enough, which meant a key
+    // issued only to list what is on at the pub could read the customer book.
+    // Both active website keys already hold read:customers.
     const hasLookupPermission =
-      apiKey.permissions.includes('*') ||
-      apiKey.permissions.includes('create:bookings') ||
-      apiKey.permissions.includes('read:events')
+      apiKey.permissions.includes('*') || apiKey.permissions.includes('read:customers')
 
     if (!hasLookupPermission) {
       return createErrorResponse('Insufficient permissions', 'FORBIDDEN', 403)
@@ -140,7 +150,7 @@ export async function GET(request: NextRequest) {
 
     const canonicalCustomer = ((canonicalData || [])[0] || null) as CustomerLookupRow | null
     if (canonicalCustomer) {
-      return createApiResponse(toLookupPayload(canonicalCustomer, normalizedPhone))
+      return createApiResponse(toLookupPayload(canonicalCustomer, normalizedPhone), 200, NO_STORE)
     }
 
     const { data: legacyData, error: legacyError } = await supabase.from('customers')
@@ -155,7 +165,7 @@ export async function GET(request: NextRequest) {
 
     const legacyCustomer = ((legacyData || [])[0] || null) as CustomerLookupRow | null
     if (legacyCustomer) {
-      return createApiResponse(toLookupPayload(legacyCustomer, normalizedPhone))
+      return createApiResponse(toLookupPayload(legacyCustomer, normalizedPhone), 200, NO_STORE)
     }
 
     // Legacy fallback: recover known customer context from older private bookings.
@@ -173,7 +183,7 @@ export async function GET(request: NextRequest) {
 
     const privateBooking = ((privateBookingData || [])[0] || null) as PrivateBookingLookupRow | null
     if (!privateBooking) {
-      return createApiResponse(toLookupPayload(null, normalizedPhone))
+      return createApiResponse(toLookupPayload(null, normalizedPhone), 200, NO_STORE)
     }
 
     const parsedName = parseNameParts(privateBooking.customer_name)
@@ -186,7 +196,7 @@ export async function GET(request: NextRequest) {
 
     // If there is no usable identity data, keep this as unknown so we still ask for details.
     if (!hasIdentityData) {
-      return createApiResponse(toLookupPayload(null, normalizedPhone))
+      return createApiResponse(toLookupPayload(null, normalizedPhone), 200, NO_STORE)
     }
 
     const resolvedCustomerId = privateBooking.customer_id || null
@@ -200,7 +210,7 @@ export async function GET(request: NextRequest) {
       if (!resolvedError) {
         const resolvedCustomer = ((resolvedData || [])[0] || null) as CustomerLookupRow | null
         if (resolvedCustomer) {
-          return createApiResponse(toLookupPayload(resolvedCustomer, normalizedPhone))
+          return createApiResponse(toLookupPayload(resolvedCustomer, normalizedPhone), 200, NO_STORE)
         }
       }
     }

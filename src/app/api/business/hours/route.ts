@@ -119,6 +119,13 @@ export async function GET(_request: NextRequest) {
       opens: special.kitchen_opens,
       closes: special.kitchen_closes,
     } : null),
+    // A full-day closure was signalled by `status: 'closed'` alone. Public clients merge the
+    // special entry over the regular one for the day and then read `is_closed` off whichever
+    // wins, so on a day the pub is shut all day they read `undefined`, decided we were open,
+    // and rendered blank opening times instead of "Closed". Every other field here already
+    // mirrors the regularHours shape; this one was the gap. `status` is unchanged, so clients
+    // reading either signal stay correct.
+    is_closed: special.is_closed ?? false,
     is_kitchen_closed: special.is_kitchen_closed ?? false,
     status: special.is_closed ? 'closed' : 'modified',
     note: special.note,

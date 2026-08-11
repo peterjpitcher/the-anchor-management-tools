@@ -8,8 +8,14 @@ import { logger } from '@/lib/logger'
 /**
  * Staff event sheet (SOP §29): renders the internal run sheet for a booking.
  * Mirrors the contract route's auth pattern; requires private_bookings:view.
- * First generation moves event_sheet_status from not_generated → generated
- * and the generation is recorded in the booking's audit trail.
+ *
+ * Read-only. This route is reached by ordinary navigation (the "Staff event
+ * sheet" link opens it in a new tab), so a GET must not change data: any page
+ * a signed-in staff member visits could otherwise trigger the write simply by
+ * referencing this URL. Moving event_sheet_status to 'generated' and recording
+ * it in the booking audit trail now belongs to the explicit
+ * markEventSheetGenerated action, matching the split already applied to the
+ * contract route.
  */
 
 function toNumberOrNull(value: unknown): number | null {
@@ -144,35 +150,6 @@ export async function GET(request: NextRequest) {
     }
 
     const html = generateEventSheetHTML(data)
-
-    // First generation only: not_generated → generated (later states such as
-    // sent_to_staff / locked are managed elsewhere and never regress here).
-    const { error: statusError } = await admin
-      .from('private_bookings')
-      .update({ event_sheet_status: 'generated' })
-      .eq('id', bookingId)
-      .eq('event_sheet_status', 'not_generated')
-    if (statusError) {
-      logger.error('Failed to update event sheet status', {
-        error: new Error(statusError.message),
-        metadata: { bookingId },
-      })
-    }
-
-    const { error: auditError } = await admin.from('private_booking_audit').insert({
-      booking_id: bookingId,
-      action: 'event_sheet_generated',
-      performed_by: user.id,
-      metadata: {
-        ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
-      },
-    })
-    if (auditError) {
-      logger.error('Failed to audit event sheet generation', {
-        error: new Error(auditError.message),
-        metadata: { bookingId },
-      })
-    }
 
     return new NextResponse(html, {
       headers: {

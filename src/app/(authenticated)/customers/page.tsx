@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getCustomerList } from '@/app/actions/customers'
+import { getCustomerList, type CustomerSmsFilter } from '@/app/actions/customers'
 import CustomersClient from './_components/CustomersClient'
 
 const DEFAULT_PAGE_SIZE = 50
@@ -10,6 +10,7 @@ interface Props {
     page?: string
     search?: string
     deactivated?: string
+    sms?: string
     size?: string
   }>
 }
@@ -28,13 +29,19 @@ export default async function CustomersPage({ searchParams }: Props) {
   const page = Math.max(1, Number(resolved.page) || 1)
   const pageSize = Number(resolved.size) || DEFAULT_PAGE_SIZE
   const searchTerm = resolved.search ?? ''
-  const showDeactivated = resolved.deactivated === '1'
+  // `?deactivated=1` is kept so existing links and bookmarks still work.
+  const smsFilter: CustomerSmsFilter =
+    resolved.sms === 'active' || resolved.sms === 'deactivated'
+      ? resolved.sms
+      : resolved.deactivated === '1'
+        ? 'deactivated'
+        : 'all'
 
   const initialData = await getCustomerList({
     page,
     pageSize,
     searchTerm,
-    showDeactivated,
+    smsFilter,
   })
 
   return (
@@ -43,7 +50,7 @@ export default async function CustomersPage({ searchParams }: Props) {
       initialPage={page}
       initialPageSize={pageSize}
       initialSearch={searchTerm}
-      initialShowDeactivated={showDeactivated}
+      initialSmsFilter={smsFilter}
       canManageCustomers={canManage}
       canSendBulkMessages={canSendBulkMessages}
     />

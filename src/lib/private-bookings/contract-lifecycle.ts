@@ -42,6 +42,42 @@ export type GeneratedContract = {
 }
 
 /**
+ * Render the contract for viewing, with no side effects at all.
+ *
+ * Issuing a contract is a deliberate act: it mints a version, writes an audit
+ * row, stores an immutable snapshot and can stamp the waiver as sent. Opening
+ * the Contract tab is not that act, but it used to run the whole of
+ * generateContractDocument, so simply looking at a booking inflated its
+ * version. Nine bookings had reached 39 generation events and version 22 that
+ * way, which makes the version number meaningless as a record of what the
+ * customer was actually sent.
+ */
+export async function renderContractPreview(bookingId: string): Promise<GeneratedContract> {
+  const admin = createAdminClient()
+
+  const { data: booking, error } = await admin
+    .from('private_bookings')
+    .select(BOOKING_CONTRACT_SELECT)
+    .eq('id', bookingId)
+    .single()
+
+  if (error || !booking) {
+    throw new Error('Booking not found')
+  }
+
+  const version = Number((booking as { contract_version?: number | null }).contract_version ?? 0)
+
+  const html = generateContractHTML({
+    booking,
+    logoUrl: CONTRACT_LOGO_DATA_URI,
+    contractVersion: version,
+    companyDetails: CONTRACT_COMPANY_DETAILS,
+  })
+
+  return { html, version, booking }
+}
+
+/**
  * Load the booking, mint a new contract version (atomic RPC), audit the
  * generation, render the HTML and store an immutable snapshot in the
  * private-booking-documents bucket + private_booking_documents table.

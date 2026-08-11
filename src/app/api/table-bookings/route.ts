@@ -3,7 +3,8 @@ import { z } from 'zod'
 import {
   withApiAuth,
   createApiResponse,
-  createErrorResponse
+  createErrorResponse,
+  isApiKeyAuthenticated
 } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -36,10 +37,25 @@ import { createRateLimiter } from '@/lib/rate-limit'
 import { OptionalCommunicationConsentSchema } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 
+// Anonymous flood protection only. Every booking proxied by the brand site arrives from the
+// website's Vercel egress pool, so this bucket used to hold the WHOLE public site: after ten
+// bookings in an hour the eleventh guest was refused and could not book at all. Authenticated
+// callers are exempted below and limited per guest and per API key instead.
 const tableBookingIpLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: 'Too many booking requests from this address. Please try again later.'
+})
+
+// The per-guest limit that replaces the per-website one. Keyed on the normalised phone number,
+// which is the only guest identity AMS can see on a proxied booking: the website forwards no
+// client IP. Deliberately looser than the anonymous cap of 10, because a guest hunting for a
+// free slot can legitimately submit several times and have each one come back blocked, while
+// twenty attempts an hour from one number is nobody genuine.
+const TABLE_BOOKING_GUEST_MAX_PER_HOUR = 20
+const tableBookingGuestLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: TABLE_BOOKING_GUEST_MAX_PER_HOUR
 })
 
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
@@ -140,18 +156,29 @@ export async function OPTIONS(_request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  // IP-based rate limiting — first line of defence before any DB work
-  const ipRateLimitResponse = await tableBookingIpLimiter(request)
-  if (ipRateLimitResponse) {
-    return ipRateLimitResponse
+  // Resolved once and used for both gates below. It must be a real validation, not a test for
+  // the presence of an x-api-key header: nobody authenticates that header, so a header test
+  // would let any anonymous caller send `x-api-key: anything` and walk past both the IP limiter
+  // and Turnstile. withApiAuth re-validates and rejects the junk key, so the only thing an
+  // invalid key buys the caller now is the anonymous treatment it deserves.
+  const authenticated = await isApiKeyAuthenticated(request.headers)
+
+  // IP-based rate limiting, the first line of defence before any DB work, for anonymous callers.
+  // Authenticated callers are exempt: they arrive from a proxy's egress IPs, so one bucket
+  // covered every guest on the public site at once. Their budget is the per-key hourly limit
+  // enforced in withApiAuth (5,000/hour for the website key) plus the per-guest limit below.
+  if (!authenticated) {
+    const ipRateLimitResponse = await tableBookingIpLimiter(request)
+    if (ipRateLimitResponse) {
+      return ipRateLimitResponse
+    }
   }
 
-  // Turnstile CAPTCHA verification — only for direct browser requests.
+  // Turnstile CAPTCHA verification, only for direct browser requests.
   // API-key-authenticated requests (e.g. from the website proxy) skip Turnstile
   // because the website has its own Turnstile widget with a different secret key
   // and handles verification before proxying.
-  const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
-  if (!hasApiKey) {
+  if (!authenticated) {
     const turnstileToken = request.headers.get('x-turnstile-token')
     const clientIp = getClientIp(request)
     const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)
@@ -196,6 +223,20 @@ export async function POST(request: NextRequest) {
       })
     } catch {
       return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
+    }
+
+    // Per-guest cap, applied to every caller including the website proxy. The normalised phone
+    // is the only guest identity available here, and it is a better one than an IP anyway: it
+    // survives a changed network and it is the thing a flood would have to vary to do damage.
+    // The key is namespaced because every limiter built by createRateLimiter shares one store.
+    // In-memory and per instance, so this is a ceiling, not an exact count.
+    const guestLimitResponse = await tableBookingGuestLimiter(request, `tb-phone:${normalizedPhone}`)
+    if (guestLimitResponse) {
+      return createErrorResponse(
+        'Too many booking attempts for this phone number. Please try again later or call us on 01753 682707.',
+        'RATE_LIMIT_EXCEEDED',
+        429
+      )
     }
 
     const bookingTime = payload.time.length === 5 ? `${payload.time}:00` : payload.time

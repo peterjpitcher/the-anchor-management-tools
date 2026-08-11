@@ -318,6 +318,24 @@ export async function GET(
         icon: category.icon
       } : null,
       ...eventToSchema(event, sortedFaqs),
+      // Schema.org capacity names. The website reads ONLY these two for its
+      // scarcity and sold-out copy, so they have to carry the live snapshot.
+      // Placed after the eventToSchema spread so a future change there cannot
+      // clobber them. Left undefined (absent from the JSON, as before they were
+      // dropped) when the event has no capacity: emitting 0 would make every
+      // uncapped event read as sold out on the website.
+      // Both gated on the SAME condition: emitting remaining 0 without a maximum
+      // makes the website read an uncapped event as sold out.
+      ...(typeof event.capacity === 'number'
+        ? {
+            maximumAttendeeCapacity: event.capacity,
+            remainingAttendeeCapacity: isFull
+              ? 0
+              : typeof totalRemaining === 'number'
+                ? totalRemaining
+                : undefined,
+          }
+        : {}),
       custom_messages: customMessages,
       _meta: {
         lastUpdated,

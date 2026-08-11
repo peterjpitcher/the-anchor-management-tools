@@ -216,7 +216,9 @@ describe('sendBulkMessages', () => {
     vi.clearAllMocks()
     setAuthUser(MOCK_USER)
     vi.mocked(checkUserPermission).mockResolvedValue(true)
-    vi.mocked(sendBulkSMSDirect).mockResolvedValue({ success: true })
+    // A real direct send reports how many actually went out. sendBulkMessages
+    // used to ignore this and report every recipient as sent.
+    vi.mocked(sendBulkSMSDirect).mockResolvedValue({ success: true, sent: 1, failed: 0 })
     vi.mocked(enqueueBulkSMSJob).mockResolvedValue({ success: true, jobId: 'job-123' })
   })
 
@@ -263,6 +265,37 @@ describe('sendBulkMessages', () => {
     await sendBulkMessages(ids, 'Big send', 'evt-2')
     expect(enqueueBulkSMSJob).toHaveBeenCalledWith(ids, 'Big send', 'evt-2', undefined)
     expect(sendBulkSMSDirect).not.toHaveBeenCalled()
+  })
+
+  it('reports the real sent and failed counts rather than the recipient count', async () => {
+    vi.mocked(sendBulkSMSDirect).mockResolvedValue({
+      success: true,
+      sent: 2,
+      failed: 3,
+      errors: [{ customerId: 'cust-3', error: 'Invalid number' }],
+    })
+
+    const result = await sendBulkMessages(
+      ['cust-1', 'cust-2', 'cust-3', 'cust-4', 'cust-5'],
+      'Hello!'
+    )
+
+    expect(result).toMatchObject({ success: true, sent: 2, failed: 3 })
+    expect(result.errors).toEqual([{ customerId: 'cust-3', error: 'Invalid number' }])
+  })
+
+  it('passes through the do-not-retry warning when outbound logging failed', async () => {
+    vi.mocked(sendBulkSMSDirect).mockResolvedValue({
+      success: true,
+      logFailure: true,
+      code: 'logging_failed',
+      message: 'Do not retry; please refresh and contact engineering.',
+    })
+
+    const result = await sendBulkMessages(['cust-1'], 'Hello!')
+
+    expect(result.logFailure).toBe(true)
+    expect(result.message).toContain('Do not retry')
   })
 
   it('should return queued: false for direct send', async () => {

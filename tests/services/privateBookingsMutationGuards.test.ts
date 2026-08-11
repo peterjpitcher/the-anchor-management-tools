@@ -349,8 +349,10 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Item not found')
   })
 
-  // Updated: applyBookingDiscount now reads booking total_amount before
-  // applying fixed discounts. The mock must support both select and update.
+  // applyBookingDiscount caps a fixed discount against the customer-payable
+  // total. That total is now summed from private_booking_items, because
+  // private_bookings.total_amount is 0.00 on every production booking and the
+  // cap was therefore never applying.
   it('applyBookingDiscount throws not-found when update affects no rows', async () => {
     const fetchMaybeSingle = vi.fn().mockResolvedValue({
       data: { total_amount: 200 },
@@ -365,6 +367,14 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
+        if (table === 'private_booking_items') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [{ line_total: 200 }], error: null }),
+            }),
+          }
+        }
+
         if (table !== 'private_bookings') {
           throw new Error(`Unexpected table: ${table}`)
         }

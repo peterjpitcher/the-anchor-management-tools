@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { addMonths, addWeeks, subMonths, subWeeks, format } from 'date-fns'
+import { addMonths, subMonths, format } from 'date-fns'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { Button } from '@/ds'
 import { cn } from '@/lib/utils'
 import { ScheduleCalendarMonth } from './ScheduleCalendarMonth'
-import { ScheduleCalendarWeek } from './ScheduleCalendarWeek'
 import { ScheduleCalendarList } from './ScheduleCalendarList'
 import type { CalendarEntry, CalendarEntryKind, ScheduleCalendarView, ScheduleDailyOps } from './types'
 
@@ -44,11 +43,9 @@ export function ScheduleCalendar({
 
     function goPrev() {
         if (effectiveView === 'month') setAnchor((d) => subMonths(d, 1))
-        else if (effectiveView === 'week') setAnchor((d) => subWeeks(d, 1))
     }
     function goNext() {
         if (effectiveView === 'month') setAnchor((d) => addMonths(d, 1))
-        else if (effectiveView === 'week') setAnchor((d) => addWeeks(d, 1))
     }
     function goToday() {
         setAnchor(new Date())
@@ -69,17 +66,13 @@ export function ScheduleCalendar({
                         <Button size="sm" variant="ghost" type="button" onClick={goNext} aria-label="Next">
                             {'\u203A'}
                         </Button>
-                        <span className="ml-2 text-sm font-medium">
-                            {effectiveView === 'month'
-                                ? format(anchor, 'MMMM yyyy')
-                                : `Week of ${format(anchor, 'd MMM yyyy')}`}
-                        </span>
+                        <span className="ml-2 text-sm font-medium">{format(anchor, 'MMMM yyyy')}</span>
                     </div>
                 )}
                 <div className="flex-1" />
                 {!isMobile && (
                     <div className="flex bg-surface-hover rounded-md p-1 gap-1" role="group" aria-label="Calendar view">
-                        {(['month', 'week', 'list'] as ScheduleCalendarView[]).map((v) => (
+                        {(['month', 'list'] as ScheduleCalendarView[]).map((v) => (
                             <button
                                 key={v}
                                 type="button"
@@ -124,15 +117,6 @@ export function ScheduleCalendar({
                     renderTooltip={renderTooltip}
                 />
             )}
-            {effectiveView === 'week' && (
-                <ScheduleCalendarWeek
-                    entries={entries}
-                    anchor={anchor}
-                    firstDayOfWeek={firstDayOfWeek}
-                    onEntryClick={onEntryClick}
-                    renderTooltip={renderTooltip}
-                />
-            )}
             {effectiveView === 'list' && (
                 <ScheduleCalendarList entries={entries} onEntryClick={onEntryClick} hidePast={isMobile} dailyOps={dailyOps} />
             )}
@@ -140,7 +124,7 @@ export function ScheduleCalendar({
     )
 }
 
-function kindColor(k: CalendarEntryKind): string {
+export function kindColor(k: CalendarEntryKind): string {
     const map: Record<CalendarEntryKind, string> = {
         event: '#22c55e',
         private_booking: '#8b5cf6',
@@ -153,7 +137,7 @@ function kindColor(k: CalendarEntryKind): string {
     return map[k]
 }
 
-function kindLabel(k: CalendarEntryKind): string {
+export function kindLabel(k: CalendarEntryKind): string {
     const map: Record<CalendarEntryKind, string> = {
         event: 'Events',
         private_booking: 'Private bookings',

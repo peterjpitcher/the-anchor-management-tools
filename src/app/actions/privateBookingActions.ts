@@ -1506,9 +1506,13 @@ export async function rejectSms(smsId: string) {
 
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
+  // Gated on approve_sms. The previous pair, private_bookings.send and
+  // private_bookings.manage, does not exist in the permissions table, so this
+  // action and the Send Now button it backs were refused for every account
+  // including super_admin, and approved private-booking SMS could never be sent.
   const [{ data: { user } }, canSend, canManageSend] = await Promise.all([
     supabase.auth.getUser(),
-    checkUserPermission('private_bookings', 'send'),
+    checkUserPermission('private_bookings', 'approve_sms'),
     checkUserPermission('private_bookings', 'manage'),
   ])
 
@@ -1863,6 +1867,9 @@ export async function addBookingItem(data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   try {
     await PrivateBookingService.addBookingItem({
       booking_id: data.booking_id,
@@ -1877,6 +1884,34 @@ export async function addBookingItem(data: {
       discount_type: data.discount_type,
       notes: data.notes
     });
+
+    // Items drive the booking total and therefore the contract, so who added
+    // what has to be reconstructable. Audited against the booking because the
+    // service does not return the new item id.
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'create',
+        resource_type: 'private_booking_item',
+        resource_id: data.booking_id,
+        operation_status: 'success',
+        additional_info: {
+          action: 'add_booking_item',
+          booking_id: data.booking_id,
+          item_type: data.item_type,
+          description: data.description,
+          quantity: data.quantity,
+          unit_price: data.unit_price,
+          discount_type: data.discount_type,
+          discount_value: data.discount_value,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for addBookingItem', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId: data.booking_id },
+      })
+    }
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${data.booking_id}`)
@@ -1902,11 +1937,37 @@ export async function updateBookingItem(itemId: string, data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   try {
     const result = await PrivateBookingService.updateBookingItem(itemId, data);
 
     // Revalidate the booking pages
     const bookingId = result.bookingId;
+
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'private_booking_item',
+        resource_id: itemId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'update_booking_item',
+          booking_id: bookingId,
+          // Only the fields the caller actually sent are recorded, so the trail
+          // shows what was changed rather than the whole row.
+          changes: data,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for updateBookingItem', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId, itemId },
+      })
+    }
+
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
     revalidatePath(`/private-bookings/${bookingId}/items`)
@@ -1925,8 +1986,30 @@ export async function deleteBookingItem(itemId: string) {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   try {
     const result = await PrivateBookingService.deleteBookingItem(itemId);
+
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'delete',
+        resource_type: 'private_booking_item',
+        resource_id: itemId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'delete_booking_item',
+          booking_id: result.bookingId,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for deleteBookingItem', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId: result.bookingId, itemId },
+      })
+    }
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${result.bookingId}`)
@@ -1946,8 +2029,33 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
     return { error: 'You do not have permission to modify private bookings' }
   }
 
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   try {
     await PrivateBookingService.reorderBookingItems(bookingId, orderedIds);
+
+    try {
+      await logAuditEvent({
+        user_id: user?.id,
+        operation_type: 'update',
+        resource_type: 'private_booking_item',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: {
+          action: 'reorder_booking_items',
+          booking_id: bookingId,
+          // Order matters on the contract and the event sheet, so keep the
+          // sequence that was applied.
+          ordered_item_ids: orderedIds,
+        },
+      })
+    } catch (auditError) {
+      logger.error('Failed to log audit event for reorderBookingItems', {
+        error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+        metadata: { bookingId },
+      })
+    }
 
     revalidatePath('/private-bookings')
     revalidatePath(`/private-bookings/${bookingId}`)
@@ -2836,6 +2944,59 @@ export async function sendBookingContract(
     return { success: true, version }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error sending booking contract:', error, { bookingId })
+    return { error: getErrorMessage(error) }
+  }
+}
+
+/**
+ * Record that the staff event sheet has been issued for a booking (SOP §29).
+ *
+ * The event sheet route itself is read-only: opening the sheet is ordinary
+ * navigation and must not change data. This action is the deliberate step, so
+ * the status move and the audit entry only happen when a person asks for them.
+ * Later states (sent_to_staff / locked) are managed elsewhere and never regress
+ * here, hence the not_generated guard on the update.
+ */
+export async function markEventSheetGenerated(
+  bookingId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const canEdit = await checkUserPermission('private_bookings', 'edit')
+  if (!canEdit) {
+    return { error: 'You do not have permission to update private bookings' }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { error: statusError } = await admin
+      .from('private_bookings')
+      .update({ event_sheet_status: 'generated' })
+      .eq('id', bookingId)
+      .eq('event_sheet_status', 'not_generated')
+    if (statusError) {
+      throw new Error(statusError.message)
+    }
+
+    const { error: auditError } = await admin.from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: 'event_sheet_generated',
+      performed_by: user.id,
+    })
+    if (auditError) {
+      logger.error('Failed to audit event sheet generation', {
+        error: new Error(auditError.message),
+        metadata: { bookingId },
+      })
+    }
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    return { success: true }
+  } catch (error: unknown) {
+    logPrivateBookingActionError('Error marking event sheet as generated:', error, { bookingId })
     return { error: getErrorMessage(error) }
   }
 }

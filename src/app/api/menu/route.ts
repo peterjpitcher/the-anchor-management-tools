@@ -15,6 +15,11 @@ type PublicMenuCode = (typeof PUBLIC_MENU_CODES)[number];
 
 const DEFAULT_PUBLIC_MENU_CODE: PublicMenuCode = 'website_food';
 
+// Where a category with no menu_category_menus row for this menu is placed.
+// There is no menu-level position to honour, so it sorts last. Same sentinel
+// the dietary route uses for the same situation.
+const UNMAPPED_CATEGORY_SORT_ORDER = 999;
+
 function resolveMenuCode(request: Request): { code: PublicMenuCode } | { error: string } {
   let requested: string | null = null;
 
@@ -117,8 +122,18 @@ export async function GET(_request: NextRequest) {
     const today = getTodayIsoDate();
 
     (dishes || []).forEach(dish => {
-      const meta = categoryMeta.get(dish.category_code);
-      if (!meta) return;
+      // Fall back to the dish's own category when that category has no
+      // menu_category_menus row for this menu. Dropping the dish instead hid six
+      // active burger add-ons from the public menu for as long as the mapping row
+      // was missing: a gap in the join table is a data problem, not a reason to
+      // stop selling the food. The view already carries the category's id and
+      // name, so nothing is invented here.
+      const meta = categoryMeta.get(dish.category_code) ?? {
+        id: dish.category_id ?? dish.category_code,
+        name: dish.category_name || 'Other',
+        description: null,
+        sort_order: UNMAPPED_CATEGORY_SORT_ORDER,
+      };
 
       const availableFrom = toIsoDate(dish.available_from);
       const availableUntil = toIsoDate(dish.available_until);

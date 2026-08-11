@@ -874,7 +874,10 @@ export default function ItemsPage() {
                       <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                         <span>Qty: {item.quantity}</span>
                         <span>{formatMoney(item.unit_price)} each</span>
-                        {item.discount_value && (
+                        {/* Compare against 0 explicitly: a bare `item.discount_value &&`
+                            renders the number 0 for the many items stored with a zero
+                            discount, printing a stray "0" beside the price. */}
+                        {toNumber(item.discount_value) > 0 && (
                           <span className="text-green-600">
                             -{item.discount_type === 'percent' ? `${item.discount_value}%` : formatMoney(item.discount_value)}
                           </span>

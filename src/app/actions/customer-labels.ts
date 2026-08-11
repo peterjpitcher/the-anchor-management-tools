@@ -381,9 +381,11 @@ export async function getCustomerLabelAssignments(
   }
 }
 
-export async function applyLabelsRetroactively(): Promise<{ 
-  data?: { customer_id: string, applied_labels: string[] }[], 
-  error?: string 
+export async function applyLabelsRetroactively(): Promise<{
+  data?: { customer_id: string, applied_labels: string[] }[],
+  /** "New Customer" labels dropped because the customer is no longer new */
+  expiredNewCustomer?: number,
+  error?: string
 }> {
   try {
     const permission = await requireCustomerPermission('manage')
@@ -393,7 +395,10 @@ export async function applyLabelsRetroactively(): Promise<{
 
     const { user } = permission
 
-    const data = await CustomerLabelService.applyLabelsRetroactively();
+    // The underlying RPC returns void, so the service diffs the assignments
+    // table to report what actually changed. The audit entry used to record a
+    // hard-coded zero because it read `.length` off that void result.
+    const { applied, expiredNewCustomer } = await CustomerLabelService.applyLabelsRetroactively();
 
     // Log audit event
     await logAuditEvent({
@@ -403,14 +408,16 @@ export async function applyLabelsRetroactively(): Promise<{
       resource_type: 'customer_labels',
       resource_id: 'bulk',
       operation_status: 'success',
-      additional_info: { 
-        applied_badge: data?.length || 0,
+      additional_info: {
+        customers_labelled: applied.length,
+        labels_applied: applied.reduce((total, entry) => total + entry.applied_labels.length, 0),
+        new_customer_labels_expired: expiredNewCustomer,
         timestamp: new Date().toISOString()
       }
     })
 
     revalidatePath('/customers')
-    return { data }
+    return { data: applied, expiredNewCustomer }
   } catch (error) {
     console.error('Error applying labels retroactively:', error)
     return { error: 'Failed to apply labels retroactively' }

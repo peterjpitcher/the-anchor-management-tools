@@ -19,6 +19,7 @@ import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile';
 import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communications/web-enquiry';
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation';
 import { ConsentService } from '@/services/consent';
+import { isApiKeyAuthenticated } from '@/lib/api/auth';
 
 const BookingItemSchema = z.object({
     item_type: z.enum(['space', 'catering', 'vendor', 'other']),
@@ -101,9 +102,11 @@ export async function POST(request: NextRequest) {
             return rateLimitResponse;
         }
 
-        // Turnstile CAPTCHA verification — skip for API-key-authenticated requests
-        const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'));
-        if (!hasApiKey) {
+        // Turnstile CAPTCHA verification, skipped only for requests carrying an
+        // API key that actually validates. An unrecognised key is treated as
+        // anonymous and still has to pass the bot check.
+        const apiKeyAuthenticated = await isApiKeyAuthenticated(request.headers);
+        if (!apiKeyAuthenticated) {
             const turnstileToken = request.headers.get('x-turnstile-token');
             const clientIp = getClientIp(request);
             const turnstile = await verifyTurnstileToken(turnstileToken, clientIp);

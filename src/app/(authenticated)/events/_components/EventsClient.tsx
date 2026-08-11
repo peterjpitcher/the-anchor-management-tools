@@ -39,6 +39,25 @@ function getFilenameFromHeaders(headers: Headers): string | null {
   return filenameMatch?.[1] ?? null
 }
 
+function toCalendarEvent(e: Event): VenueCalendarEvent {
+  return {
+    id: e.id,
+    name: e.name,
+    date: e.date,
+    time: e.time,
+    bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
+    eventStatus: e.event_status,
+    // Content readiness, so the calendar can flag and filter what still needs
+    // artwork or copy before it can be published.
+    hasImage: Boolean(e.hero_image_url || e.poster_image_url || e.thumbnail_image_url),
+    hasBrief: Boolean(e.brief && e.brief.trim()),
+    hasDescription: Boolean(
+      (e.short_description && e.short_description.trim()) ||
+      (e.long_description && e.long_description.trim())
+    ),
+  }
+}
+
 interface EventsClientProps {
   initialEvents: Event[]
   initialPagination?: {
@@ -69,14 +88,7 @@ export default function EventsClient({
   const [view, setView] = useState<ViewMode>('calendar')
   const [events, setEvents] = useState<Event[]>(initialEvents)
   const [calendarEvents, setCalendarEvents] = useState<VenueCalendarEvent[]>(
-    () => (initialCalendarEvents ?? []).map(e => ({
-      id: e.id,
-      name: e.name,
-      date: e.date,
-      time: e.time,
-      bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
-      eventStatus: e.event_status,
-    }))
+    () => (initialCalendarEvents ?? []).map(toCalendarEvent)
   )
   const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>(initialCalendarBookings ?? [])
   const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>(initialCalendarNotes ?? [])
@@ -132,14 +144,7 @@ export default function EventsClient({
           listParkingBookings({ limit: 500 }),
         ])
         if (eventsResult.data) {
-          setCalendarEvents(eventsResult.data.map(e => ({
-            id: e.id,
-            name: e.name,
-            date: e.date,
-            time: e.time,
-            bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
-            eventStatus: e.event_status,
-          })))
+          setCalendarEvents(eventsResult.data.map(toCalendarEvent))
         }
         if ('data' in bookingsResult && bookingsResult.data) {
           setCalendarBookings(bookingsResult.data as VenueCalendarBooking[])
@@ -343,6 +348,7 @@ export default function EventsClient({
             calendarNotes={calendarNotes}
             parkingBookings={calendarParking}
             canCreateCalendarNote={canCreateCalendarNote}
+            showFilters
             onNoteCreated={fetchCalendarData}
           />
         )}

@@ -6,6 +6,7 @@ import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth,
 import { cn } from '@/lib/utils'
 import type { CalendarEntry } from './types'
 import { compareEntries } from './sort'
+import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 
 export interface ScheduleCalendarMonthProps {
     entries: CalendarEntry[]
@@ -250,6 +251,28 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
             </div>
             {entry.subtitle && (
                 <div className="text-text-muted text-[11px] leading-tight">{entry.subtitle}</div>
+            )}
+            {/*
+              Status and content gaps on the card itself. The month grid is
+              where the week is planned, so "is this confirmed" and "does this
+              still need artwork" have to be readable without opening anything.
+            */}
+            {(entry.statusLabel || entryGaps(entry).length > 0) && (
+                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                    {entry.statusLabel && (
+                        <span className="rounded bg-black/10 px-1 py-px text-[10px] font-semibold uppercase leading-tight tracking-wide">
+                            {entry.statusLabel}
+                        </span>
+                    )}
+                    {entryGaps(entry).map((gap) => (
+                        <span
+                            key={gap}
+                            className="rounded bg-amber-100 px-1 py-px text-[10px] font-medium leading-tight text-amber-800"
+                        >
+                            {CONTENT_GAP_LABELS[gap]}
+                        </span>
+                    ))}
+                </div>
             )}
             {entry.endsNextDay && (
                 <div className="text-text-muted text-[10px] leading-tight">+1 day</div>

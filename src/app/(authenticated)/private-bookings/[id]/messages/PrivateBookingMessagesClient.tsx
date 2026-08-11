@@ -185,7 +185,15 @@ export default function PrivateBookingMessagesClient({
       event_date: booking.event_date ? formatDateFull(booking.event_date) : '',
       event_type: booking.event_type || 'event',
       deposit_amount: booking.deposit_amount?.toFixed(2) || '0.00',
-      balance_due: (booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0).toFixed(2),
+      // What is still owed, not the whole booking total. Quoting the total here
+      // asked the customer again for everything they had already paid.
+      balance_due: (
+        booking.balance_remaining ??
+        booking.gross_total ??
+        booking.calculated_total ??
+        booking.total_amount ??
+        0
+      ).toFixed(2),
       balance_due_date: booking.balance_due_date ? formatDateFull(booking.balance_due_date) : '',
       start_time: booking.start_time ? formatTime12Hour(booking.start_time) : '',
       guest_count: booking.guest_count?.toString() || '',

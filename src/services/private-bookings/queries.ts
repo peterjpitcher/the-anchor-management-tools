@@ -530,9 +530,28 @@ export async function getBookingByIdForMessages(id: string): Promise<PrivateBook
     throw new Error(smsError.message || 'Failed to fetch booking messages');
   }
 
+  // The balance reminder SMS prefills {balance_due} from this. Without the
+  // payments subtracted it quoted the whole booking total, so every reminder
+  // asked the customer for money they had already paid.
+  // Summed the same way as balance_remaining on the list query above, so the
+  // messages screen and the list never disagree about what is owed.
+  const { data: payments, error: paymentsError } = await supabase
+    .from('private_booking_payments')
+    .select('amount')
+    .eq('booking_id', id);
+
+  if (paymentsError) {
+    logger.error('Error fetching private booking payments for messages:', { error: paymentsError instanceof Error ? paymentsError : new Error(String(paymentsError)) });
+    throw new Error(paymentsError.message || 'Failed to fetch booking payments');
+  }
+
+  const bookingTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount);
+  const paymentSum = (payments ?? []).reduce((sum, row) => sum + toNumber(row.amount), 0);
+
   return {
     ...(booking as PrivateBookingWithDetails),
     deposit_status: normalizeDepositStatus(booking),
+    balance_remaining: booking.final_payment_date ? 0 : Math.max(0, bookingTotal - paymentSum),
     sms_queue: smsQueue ?? [],
   };
 }

@@ -129,7 +129,10 @@ export default function BulkMessagesClient({
     const currentRequest = ++requestCounterRef.current
     setLoading(true)
     setError(null)
-    setSelectedKeys(new Set())
+    // Deliberately does NOT clear the selection. Clearing here wiped the
+    // selection on every page change, and because select-all only covers the
+    // rows on screen, a bulk send could never reach more than one page of
+    // recipients. Filter changes reset it separately, below.
 
     const filters = {
       ...buildFilters(),
@@ -159,6 +162,9 @@ export default function BulkMessagesClient({
       clearTimeout(debounceTimerRef.current)
     }
     debounceTimerRef.current = setTimeout(() => {
+      // A filter change means a different audience, so the previous selection
+      // is no longer meaningful. Paginating within one filter set keeps it.
+      setSelectedKeys(new Set())
       loadRecipients(1)
     }, DEBOUNCE_MS)
     return () => {
@@ -235,8 +241,29 @@ export default function BulkMessagesClient({
       return
     }
 
+    if (result.logFailure) {
+      // Messages may already have gone out but could not be logged, so a retry
+      // risks sending twice. This must not read as an ordinary success.
+      setError(
+        result.message ??
+          'Bulk SMS aborted after sends may have occurred, and outbound logging failed. Do not retry. Please refresh and contact engineering.'
+      )
+      toast.error('Send aborted, do not retry. See the message above.')
+      return
+    }
+
+    const failed = result.failed ?? 0
+
     if (result.queued) {
       toast.info(`${result.sent} messages queued for delivery`)
+    } else if (failed > 0) {
+      toast.error(`${result.sent} sent, ${failed} failed`)
+      setError(
+        `${failed} of ${(result.sent ?? 0) + failed} messages could not be sent.` +
+          (result.errors?.length
+            ? ` First failure: ${result.errors[0].error}`
+            : '')
+      )
     } else {
       toast.success(`${result.sent} messages sent successfully`)
     }
