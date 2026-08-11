@@ -125,6 +125,11 @@ export interface VenueCalendarProps {
   onNoteCreated?: () => void
   dailyOps?: ScheduleDailyOps
   header?: ReactNode
+  /**
+   * Show the filter bar above the calendar. Off by default: the dashboard
+   * calendar is a glance-at-today widget and does not want it.
+   */
+  showFilters?: boolean
   className?: string
 }
 
@@ -378,6 +383,7 @@ export function VenueCalendar({
   calendarNotes,
   parkingBookings,
   canCreateCalendarNote,
+  showFilters = false,
   onEmptyDayClick,
   onNoteCreated,
   dailyOps,
@@ -470,14 +476,16 @@ export function VenueCalendar({
     <div className={className}>
       {header}
 
-      <CalendarFilterBar
-        className="mb-3"
-        filters={filters}
-        onChange={setFilters}
-        availableKinds={legendKinds}
-        shownCount={visibleEntries.length}
-        totalCount={entries.length}
-      />
+      {showFilters && (
+        <CalendarFilterBar
+          className="mb-3"
+          filters={filters}
+          onChange={setFilters}
+          availableKinds={legendKinds}
+          shownCount={visibleEntries.length}
+          totalCount={entries.length}
+        />
+      )}
 
       <ScheduleCalendar
         entries={visibleEntries}
