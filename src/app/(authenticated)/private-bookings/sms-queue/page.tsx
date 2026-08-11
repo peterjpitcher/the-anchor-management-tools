@@ -88,7 +88,10 @@ export default async function SmsQueuePage() {
   const actions = new Set(permissionsResult.actions)
   const canViewQueue = actions.has('view_sms_queue') || actions.has('manage')
   const canApproveSms = actions.has('approve_sms') || actions.has('manage')
-  const canSendSms = actions.has('send') || actions.has('manage')
+  // approve_sms, not send: private_bookings.send does not exist in the
+  // permissions table, so this was false for every account and the Send Now
+  // button was permanently disabled.
+  const canSendSms = actions.has('approve_sms') || actions.has('manage')
 
   if (!canViewQueue) {
     redirect('/unauthorized')

@@ -447,6 +447,10 @@ async function finalizeDepositPaymentWithClient(
   const updatePayload: Record<string, unknown> = {
     deposit_paid_date: new Date().toISOString(),
     deposit_payment_method: method,
+    // The hold has been honoured, so it no longer applies. Leaving a past
+    // hold_expiry on a paid booking is what let deleteDeposit hand a live
+    // booking back to the expire-holds cron with a deadline already gone.
+    hold_expiry: null,
     ...statusUpdate,
     updated_at: new Date().toISOString()
   }
@@ -1062,7 +1066,10 @@ export async function deleteDeposit(bookingId: string): Promise<{ statusReverted
     if (!countError && count === 0) {
       const { error: statusError } = await db
         .from('private_bookings')
-        .update({ status: 'draft' })
+        // Clear the hold deadline alongside the revert. A booking dropped back
+        // to draft with a hold_expiry already in the past is cancelled outright
+        // by the expire-holds cron the next morning.
+        .update({ status: 'draft', hold_expiry: null })
         .eq('id', bookingId)
       if (statusError) throw new Error(`Failed to revert booking status: ${statusError.message}`)
       statusReverted = true

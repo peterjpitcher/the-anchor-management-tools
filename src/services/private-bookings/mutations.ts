@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPhoneForStorage } from '@/lib/utils';
-import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
+import { endOfLondonDayUtc, formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
 import { SmsQueueService } from '@/services/sms-queue';
 import { syncCalendarEvent, deleteCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
@@ -676,8 +676,11 @@ export async function createBooking(input: CreatePrivateBookingInput): Promise<a
   if (!requiresDeposit || input.date_tbd) {
     holdExpiryMoment = null;
   } else if (input.hold_expiry) {
-    // User manually specified a date
-    holdExpiryMoment = new Date(input.hold_expiry);
+    // User manually specified a date. A date-only deadline runs to the end of
+    // that London day: new Date('YYYY-MM-DD') is 00:00 UTC, so the expire-holds
+    // cron used to cancel the hold on the morning of the very day the customer
+    // was told they had until.
+    holdExpiryMoment = endOfLondonDayUtc(input.hold_expiry) ?? new Date(input.hold_expiry);
 
     if (!isShortNotice) {
       if (holdExpiryMoment.getTime() > dueMoment.getTime()) {

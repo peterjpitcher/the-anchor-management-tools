@@ -282,6 +282,21 @@ export function startOfLondonDayUtc(now: Date = new Date()): Date {
   return midnightUtc
 }
 
+/**
+ * The last instant of a London calendar day, as a UTC Date.
+ *
+ * Use this for date-only deadlines a customer has been told about. `new
+ * Date('2026-08-20')` is 00:00 UTC, which means a deadline "of 20 August"
+ * actually expires at the very start of the 20th (and at 01:00 on the 19th
+ * during BST), so a nightly job cancels it on the morning of the day the
+ * customer was promised.
+ */
+export function endOfLondonDayUtc(date: string | Date): Date | null {
+  const isoDate = typeof date === 'string' ? date.slice(0, 10) : toLocalIsoDate(date)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null
+  return parseLondonDateTimeLocal(`${isoDate}T23:59:59`)
+}
+
 export function formatDateWithTimeForSms(date: string | Date, time?: string | null): string {
   const formattedDate = formatDateInLondon(date, {
     weekday: 'long',
