@@ -5,6 +5,10 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(),
+}))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
@@ -14,10 +18,12 @@ vi.mock('@/app/actions/audit', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { changePassword, exportProfileData, removeAvatar, updateProfile, uploadAvatar } from '@/app/actions/profile'
 
 const mockedCreateClient = createClient as unknown as Mock
+const mockedCreateAdminClient = createAdminClient as unknown as Mock
 const mockedLogAuditEvent = logAuditEvent as unknown as Mock
 const validPngBytes = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -384,7 +390,7 @@ describe('Profile action mutation guards', () => {
       error: null,
     })
 
-    mockedCreateClient.mockResolvedValue({
+    const supabaseMock = {
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: {
@@ -415,7 +421,12 @@ describe('Profile action mutation guards', () => {
 
         throw new Error(`Unexpected table: ${table}`)
       }),
-    })
+    }
+    mockedCreateClient.mockResolvedValue(supabaseMock)
+    // customers and messages are read through the service-role client: the
+    // export is scoped to the caller's own record, so it must not require
+    // customers:view or messages:view.
+    mockedCreateAdminClient.mockReturnValue(supabaseMock)
 
     const result = await exportProfileData()
 
@@ -447,7 +458,7 @@ describe('Profile action mutation guards', () => {
       error: { message: 'messages unavailable' },
     })
 
-    mockedCreateClient.mockResolvedValue({
+    const supabaseMock = {
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: {
@@ -478,7 +489,12 @@ describe('Profile action mutation guards', () => {
 
         throw new Error(`Unexpected table: ${table}`)
       }),
-    })
+    }
+    mockedCreateClient.mockResolvedValue(supabaseMock)
+    // customers and messages are read through the service-role client: the
+    // export is scoped to the caller's own record, so it must not require
+    // customers:view or messages:view.
+    mockedCreateAdminClient.mockReturnValue(supabaseMock)
 
     const result = await exportProfileData()
 
