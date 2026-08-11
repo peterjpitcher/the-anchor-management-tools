@@ -2,6 +2,63 @@
 
 Read-only discovery run on 2026-08-11 against `main`. No files were changed and no fixes were applied.
 
+## Status
+
+Last updated 2026-08-11, on branch `fix/section-discovery-sweep`.
+
+**P001 to P040 are done.** That is every critical and every high. The remaining
+160 items (P041 onward) are the medium and low tiers, which are a triage list
+rather than proven defects, so read the caveat below before working them.
+
+| Tier | Total | Fixed | Remaining |
+|---|---|---|---|
+| Critical | 7 | 7 | 0 |
+| High | 33 | 33 | 0 |
+| Medium | 74 | 0 | 74 |
+| Low | 86 | 0 | 86 |
+
+Commits, oldest first:
+
+| Commit | Covers |
+|---|---|
+| `0b7083b8` | Parking reminder SMS sending "undefined" and "Invalid Date" (P005, P006) |
+| `757d72ac` | Employee PII RLS and storage bucket, anonymous EXECUTE and public reads (P001 to P004, P007, P022, P036, P037, P039, P040) |
+| `3d15f500` | Private bookings, 8 highs (P028 to P035) plus the SMS queue permission (P038) |
+| `9b5f087f` | Messages and customers, 8 highs (P012, P013, P015 to P020) |
+| `f59997b0` | Employees and parking, 7 highs (P008 to P011, P023 to P026) |
+| `b60b49e2` | Message and parking read RLS (P021, P027) |
+
+### Not applied yet
+
+Three migrations are written and committed but **not applied to production**:
+
+- `20260811100000_employee_pii_rls_lockdown.sql`
+- `20260811100100_revoke_anon_execute_and_public_reads.sql`
+- `20260811100200_messages_parking_read_rls.sql`
+
+`supabase db push` will not run until the migration history is repaired:
+production holds `20260809145018_email_unsubscribe_tokens` while the local file
+is `20260809130000_email_unsubscribe_tokens`. Same migration, different
+timestamp, applied through the MCP tool rather than the CLI. This predates this
+work.
+
+### Still open, needs a decision
+
+**P014, `pending_bookings`.** Policy `anon_read_pending_bookings` is
+`USING (true)` for the anon role, so any anonymous caller can read all 48 rows
+including every booking token and mobile number. The linked
+`anon_read_customers_for_bookings` policy on `customers` then exposes those
+customers' rows too. Nothing in this repo reads the table, and nothing in it is
+newer than 31 December 2025, so it is almost certainly read by the-anchor.pub
+website with the anon key. Left out of the migrations deliberately: dropping the
+policy is the right security answer but could break a flow in the other repo.
+
+**P019, message templates.** `/settings/message-templates` is full CRUD over a
+table no sending path reads; every SMS body is hard-coded. A warning notice was
+added so staff cannot believe they are editing live copy, but the underlying
+choice remains: wire the send helpers to read the table, or remove the screen
+and its nav link. Both are product decisions.
+
 ## How this was produced
 
 - 15 finder agents: each of the 5 sections swept independently through 3 lenses (correctness and data integrity; security, permissions and privacy; UX, dead code and performance).
