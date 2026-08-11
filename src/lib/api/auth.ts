@@ -247,6 +247,22 @@ export function createErrorResponse(
   );
 }
 
+/**
+ * True only when the request carries an API key that actually validates.
+ *
+ * Public endpoints use this to decide whether to skip the Turnstile bot check.
+ * Testing for the mere presence of an x-api-key or authorization header is not
+ * enough: neither header is authenticated by anyone, so any anonymous caller
+ * could defeat the CAPTCHA by sending "x-api-key: anything".
+ */
+export async function isApiKeyAuthenticated(headersList: Headers): Promise<boolean> {
+  const apiKey = extractApiKey(headersList);
+  if (!apiKey) {
+    return false;
+  }
+  return (await validateApiKey(apiKey)) !== null;
+}
+
 function extractApiKey(headersList: Headers): string | null {
   const xApiKey = headersList.get('x-api-key')?.trim();
   if (xApiKey) {

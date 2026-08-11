@@ -1506,9 +1506,13 @@ export async function rejectSms(smsId: string) {
 
 export async function sendApprovedSms(smsId: string) {
   const supabase = await createClient()
+  // Gated on approve_sms. The previous pair, private_bookings.send and
+  // private_bookings.manage, does not exist in the permissions table, so this
+  // action and the Send Now button it backs were refused for every account
+  // including super_admin, and approved private-booking SMS could never be sent.
   const [{ data: { user } }, canSend, canManageSend] = await Promise.all([
     supabase.auth.getUser(),
-    checkUserPermission('private_bookings', 'send'),
+    checkUserPermission('private_bookings', 'approve_sms'),
     checkUserPermission('private_bookings', 'manage'),
   ])
 
