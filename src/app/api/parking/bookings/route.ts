@@ -77,6 +77,95 @@ type ParkingBookingSmsMeta = {
   logFailure: boolean
 }
 
+function replayedParkingBookingId(response: unknown): string | null {
+  const data = (response as { data?: { booking_id?: unknown } } | null)?.data
+  const bookingId = data?.booking_id
+  return typeof bookingId === 'string' && bookingId.length > 0 ? bookingId : null
+}
+
+/**
+ * Can the booking behind a stored idempotency response still be paid for?
+ *
+ * The website derives its Idempotency-Key from the booking details alone (dates, phone,
+ * registration, consent), so a guest re-submitting the same booking presents the same key for
+ * the whole 24-hour TTL. Website bookings only get a 30-minute payment window; once it lapses
+ * the notifications cron marks the booking expired and the PayPal return handler refuses to
+ * capture against it. Replaying that booking id therefore handed the guest a dead booking and a
+ * stale approval URL, and every retry returned the same dead booking: a permanent dead end.
+ *
+ * Treat a booking that can no longer be paid for as a cache miss so a fresh one is created,
+ * while still suppressing genuine duplicates of a booking that is alive.
+ */
+async function isParkingBookingStillPayable(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('parking_bookings')
+    .select('id, status, payment_due_at')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (error) {
+    // We cannot prove the booking is dead, and replaying is the safe failure: it never
+    // double-books or double-charges. Fall back to the previous behaviour.
+    logger.warn('Failed to re-read parking booking behind replayed idempotency key', {
+      metadata: { bookingId, error: error.message }
+    })
+    return true
+  }
+
+  // Row is gone (deleted or purged), so there is no duplicate to suppress.
+  if (!data) {
+    return false
+  }
+
+  if (data.status === 'expired' || data.status === 'cancelled') {
+    return false
+  }
+
+  // Only a booking still awaiting payment can time out. A confirmed, paid or completed booking
+  // keeps a payment_due_at in the past and must still be replayed, or a double submit after
+  // payment would create a second booking.
+  if (data.status === 'pending_payment') {
+    const dueAtMs = data.payment_due_at ? Date.parse(data.payment_due_at) : Number.NaN
+    // A missing or lapsed due date is terminal either way: the cron expires a lapsed one, and
+    // createParkingPaymentOrder refuses to build an order without a payment_due_at at all.
+    if (!Number.isFinite(dueAtMs) || dueAtMs <= Date.now()) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * Delete the stored idempotency record, but only while it still points at the dead booking.
+ *
+ * A plain delete by key would let a second concurrent retry wipe the claim, or the finished
+ * response, of the retry that got there first, and both would then create a booking. Matching on
+ * the booking id makes the delete a no-op once another request has replaced the record with its
+ * own processing claim (which carries no data.booking_id) or with a freshly created booking (a
+ * different one). The re-claim that follows then reports in_progress or replay, as it should.
+ */
+async function clearDeadParkingIdempotencyRecord(
+  supabase: ReturnType<typeof createAdminClient>,
+  key: string,
+  requestHash: string,
+  deadBookingId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('idempotency_keys')
+    .delete()
+    .eq('key', key)
+    .eq('request_hash', requestHash)
+    .filter('response->data->>booking_id', 'eq', deadBookingId)
+
+  if (error) {
+    throw error
+  }
+}
+
 export async function POST(request: NextRequest) {
   return withApiAuth(async (req, apiKey) => {
     try {
@@ -119,7 +208,36 @@ export async function POST(request: NextRequest) {
       let skipClaimRelease = false
 
       if (idempotencyKey) {
-        const lookup = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+        let lookup = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+
+        if (lookup.state === 'replay') {
+          const bookingId = replayedParkingBookingId(lookup.response)
+
+          // No booking id means the stored response is not a booking we can check, so keep the
+          // previous behaviour rather than risk creating a duplicate.
+          if (!bookingId || (await isParkingBookingStillPayable(supabase, bookingId))) {
+            return createApiResponse(lookup.response, 201)
+          }
+
+          // Drop the dead record and take the key afresh so this request books again. The stored
+          // request_hash must equal ours, or claimIdempotencyKey would have said 'conflict'. A
+          // failure here throws to the outer handler and the guest retries, which is honest: we
+          // could not process the request.
+          logger.info('Replacing parking idempotency record for an unpayable booking', {
+            metadata: { idempotencyKey, bookingId }
+          })
+          await clearDeadParkingIdempotencyRecord(supabase, idempotencyKey, requestHash, bookingId)
+
+          // Re-claim rather than simply carrying on, so two concurrent retries of the same dead
+          // booking cannot both create one. Whatever the re-claim says is now authoritative.
+          lookup = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+
+          if (lookup.state === 'replay') {
+            // Lost the race: another retry already created the fresh booking. It was made
+            // seconds ago, so it is inside its payment window. Return it.
+            return createApiResponse(lookup.response, 201)
+          }
+        }
 
         if (lookup.state === 'conflict') {
           return createErrorResponse(
@@ -127,10 +245,6 @@ export async function POST(request: NextRequest) {
             'IDEMPOTENCY_KEY_CONFLICT',
             409
           )
-        }
-
-        if (lookup.state === 'replay') {
-          return createApiResponse(lookup.response, 201)
         }
 
         if (lookup.state === 'in_progress') {
