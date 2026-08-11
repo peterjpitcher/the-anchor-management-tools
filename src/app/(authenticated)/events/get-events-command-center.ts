@@ -11,6 +11,14 @@ export type EventOverview = {
     category: { id: string; name: string; color: string } | null
     heroImageUrl: string | null
     posterImageUrl: string | null
+    /**
+     * Publishable-content flags, used by the calendar's "needs artwork/brief"
+     * filters. Optional so callers that only need scheduling data can omit them;
+     * hasImage falls back to the image URLs above when it is not supplied.
+     */
+    hasImage?: boolean
+    hasBrief?: boolean
+    hasDescription?: boolean
     eventStatus: string | null
     bookingUrl: string | null
     checklist: {

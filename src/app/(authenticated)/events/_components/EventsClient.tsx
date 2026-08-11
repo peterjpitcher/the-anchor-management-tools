@@ -139,6 +139,14 @@ export default function EventsClient({
             time: e.time,
             bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
             eventStatus: e.event_status,
+            // Content readiness, so the calendar can flag and filter what still
+            // needs artwork or copy before it can be published.
+            hasImage: Boolean(e.hero_image_url || e.poster_image_url || e.thumbnail_image_url),
+            hasBrief: Boolean(e.brief && e.brief.trim()),
+            hasDescription: Boolean(
+              (e.short_description && e.short_description.trim()) ||
+              (e.long_description && e.long_description.trim())
+            ),
           })))
         }
         if ('data' in bookingsResult && bookingsResult.data) {
