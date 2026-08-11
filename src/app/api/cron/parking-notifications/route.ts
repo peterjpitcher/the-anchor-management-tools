@@ -5,6 +5,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import {
   buildPaymentReminderSmsForStage,
   buildSessionThreeDayReminderSms,
+  type ParkingNotificationBooking,
 } from '@/lib/parking/notifications'
 import { logParkingNotification } from '@/lib/parking/repository'
 import { updateParkingBookingById } from '@/lib/parking/booking-updates'
@@ -492,7 +493,9 @@ async function processPendingPaymentLifecycle(
 ) {
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
-    .select('id, customer_id, customer_mobile, customer_email, payment_due_at, expires_at, unpaid_day_before_sms_sent, unpaid_week_before_sms_sent')
+    .select(
+      'id, reference, customer_id, customer_first_name, customer_last_name, customer_mobile, customer_email, vehicle_registration, start_at, end_at, calculated_price, override_price, payment_due_at, expires_at, unpaid_day_before_sms_sent, unpaid_week_before_sms_sent'
+    )
     .eq('status', 'pending_payment')
     .eq('payment_status', 'pending')
     .not('payment_due_at', 'is', null)
@@ -511,7 +514,7 @@ async function processPendingPaymentLifecycle(
   let errors = 0
   let skipped = 0
 
-  for (const booking of bookings as ParkingBooking[]) {
+  for (const booking of bookings) {
     const dueAt = new Date(booking.payment_due_at || booking.expires_at || '')
     if (Number.isNaN(dueAt.getTime())) {
       skipped += 1
@@ -673,7 +676,9 @@ async function processPaidSessionReminders(
 ) {
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
-    .select('id, customer_id, customer_mobile, customer_email, start_at, end_at, paid_start_three_day_sms_sent, paid_end_three_day_sms_sent')
+    .select(
+      'id, reference, customer_id, customer_first_name, customer_last_name, customer_mobile, customer_email, vehicle_registration, start_at, end_at, calculated_price, override_price, paid_start_three_day_sms_sent, paid_end_three_day_sms_sent'
+    )
     .eq('status', 'confirmed')
     .eq('payment_status', 'paid')
 
@@ -691,7 +696,7 @@ async function processPaidSessionReminders(
   let errors = 0
   let skipped = 0
 
-  for (const booking of bookings as ParkingBooking[]) {
+  for (const booking of bookings) {
     const startAt = new Date(booking.start_at)
     const endAt = new Date(booking.end_at)
 
@@ -824,7 +829,7 @@ async function processPaidSessionReminders(
 
 async function sendParkingReminderSms(params: {
   supabase: ReturnType<typeof createAdminClient>
-  booking: ParkingBooking
+  booking: ParkingNotificationBooking
   eventType: 'payment_reminder' | 'session_start' | 'session_end'
   templateKey: string
   smsBody: string
