@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from './audit'
 import { revalidatePath } from 'next/cache'
 
@@ -221,8 +222,15 @@ export async function exportProfileData() {
   const emails = uniqueExportEmails([profile.email, user.email])
   let customerIds: string[] = []
 
+  // Scoped entirely to the signed-in user's own email addresses, so this is a
+  // subject-access export rather than a staff view. It runs through the
+  // service-role client because authorisation here is "this is my data", not
+  // customers:view or messages:view: staff-portal and FOH accounts hold neither
+  // permission and must still be able to export their own record.
+  const selfScoped = createAdminClient()
+
   if (emails.length > 0) {
-    const { data: customers, error: customersError } = await supabase
+    const { data: customers, error: customersError } = await selfScoped
       .from('customers')
       .select('id')
       .in('email', emails)
@@ -238,7 +246,7 @@ export async function exportProfileData() {
   let messages: unknown[] = []
 
   if (customerIds.length > 0) {
-    const { data: messageRows, error: messagesError } = await supabase
+    const { data: messageRows, error: messagesError } = await selfScoped
       .from('messages')
       .select('*')
       .in('customer_id', customerIds)
