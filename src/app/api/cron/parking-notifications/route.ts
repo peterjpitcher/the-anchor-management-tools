@@ -494,7 +494,7 @@ async function processPendingPaymentLifecycle(
   const { data: bookings, error } = await supabase
     .from('parking_bookings')
     .select(
-      'id, reference, customer_id, customer_first_name, customer_last_name, customer_mobile, customer_email, vehicle_registration, start_at, end_at, calculated_price, override_price, payment_due_at, expires_at, unpaid_day_before_sms_sent, unpaid_week_before_sms_sent'
+      'id, reference, customer_id, customer_first_name, customer_last_name, customer_mobile, customer_email, vehicle_registration, start_at, end_at, calculated_price, override_price, payment_due_at, expires_at, created_at, unpaid_day_before_sms_sent, unpaid_week_before_sms_sent'
     )
     .eq('status', 'pending_payment')
     .eq('payment_status', 'pending')
@@ -540,6 +540,21 @@ async function processPendingPaymentLifecycle(
         expired += 1
       }
 
+      continue
+    }
+
+    // Website bookings are given a 30-minute payment window instead of the
+    // 7-day staff offer (see src/app/api/parking/bookings/route.ts), and they
+    // pay inline, which is why the booking API deliberately sends them no
+    // payment-request SMS. The reminder ladder below only makes sense for the
+    // 7-day offer: on a 30-minute window the day-before message fires on the
+    // very next cron run and tells the customer their offer "expires tomorrow"
+    // when it dies in minutes. Bookings whose whole window is a day or less get
+    // no reminder; they are simply expired above when the window closes.
+    const createdAtMs = Date.parse(booking.created_at || '')
+    const offerWindowMs = Number.isFinite(createdAtMs) ? dueAt.getTime() - createdAtMs : null
+    if (offerWindowMs !== null && offerWindowMs <= DAY_MS) {
+      skipped += 1
       continue
     }
 

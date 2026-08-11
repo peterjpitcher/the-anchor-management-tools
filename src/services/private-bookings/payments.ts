@@ -706,7 +706,17 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
       p_recorded_by: performedByUserId ?? null,
     });
 
-  if (rpcError) throw new Error('Failed to record payment');
+  if (rpcError) {
+    // The RPC raises the reason staff need to act on ("Amount (x) exceeds
+    // remaining balance (y)", "Cannot record payment on a cancelled booking",
+    // "Permission denied: manage_deposits required"). Swallowing it left the
+    // till with a generic failure and no way to tell those cases apart.
+    logger.error('Failed to record balance payment', {
+      error: new Error(rpcError.message),
+      metadata: { bookingId, amount, method },
+    });
+    throw new Error(rpcError.message || 'Failed to record payment');
+  }
 
   const isFullyPaid = result.is_fully_paid as boolean;
 

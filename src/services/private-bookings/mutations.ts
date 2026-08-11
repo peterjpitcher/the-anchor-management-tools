@@ -1724,20 +1724,31 @@ export async function applyBookingDiscount(
 
   const supabase = await createClient();
 
-  // For fixed discounts, validate against booking total
+  // For fixed discounts, validate against the figure the discount is actually
+  // deducted from: the net line-item subtotal. `private_bookings.total_amount`
+  // is 0.00 on every live booking (the item lines are the source of truth), so
+  // the old check against it never fired. The view's calculated_total and
+  // gross_total are no good here either: both already have the *current*
+  // discount applied (and gross_total adds VAT), so validating against them
+  // would reject a legitimate replacement discount.
   if (data.discount_type === 'fixed') {
-    const { data: booking, error: fetchError } = await supabase
-      .from('private_bookings')
-      .select('total_amount')
-      .eq('id', bookingId)
-      .maybeSingle();
+    const { data: itemRows, error: itemsError } = await supabase
+      .from('private_booking_items')
+      .select('line_total')
+      .eq('booking_id', bookingId);
 
-    if (fetchError || !booking) {
-      throw new Error('Booking not found');
+    if (itemsError) {
+      logger.error('Error loading booking items for discount validation:', { error: itemsError instanceof Error ? itemsError : new Error(String(itemsError)) });
+      throw new Error(itemsError.message || 'Failed to validate discount against the booking total');
     }
 
-    const totalAmount = toNumber(booking.total_amount, 0);
-    if (totalAmount > 0 && data.discount_amount > totalAmount) {
+    const itemsSubtotal = (itemRows ?? []).reduce(
+      (sum, row) => sum + toNumber(row.line_total, 0),
+      0
+    );
+    // A booking with no priced items yet still allows a discount to be recorded
+    // (staff often set it before the items are entered).
+    if (itemsSubtotal > 0 && data.discount_amount > itemsSubtotal) {
       throw new Error('Fixed discount cannot exceed the booking total');
     }
   }

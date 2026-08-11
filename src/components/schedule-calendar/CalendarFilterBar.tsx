@@ -114,21 +114,36 @@ export function CalendarFilterBar({
                 >
                     Hide cancelled
                 </Chip>
+                <Chip
+                    active={filters.showCancelledPrivateHire}
+                    onClick={() =>
+                        onChange({
+                            ...filters,
+                            showCancelledPrivateHire: !filters.showCancelledPrivateHire,
+                        })
+                    }
+                >
+                    Show cancelled private hire
+                </Chip>
             </div>
 
-            {active && (
+            {(active || shownCount !== totalCount) && (
                 <div className="flex flex-wrap items-center gap-3 border-t border-border pt-2">
+                    {/* Shown even with no filter selected, so the cancelled private hire
+                        hidden by default is never dropped without a trace. */}
                     <span className="text-xs text-text-muted">
                         Showing {shownCount} of {totalCount}
                     </span>
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        type="button"
-                        onClick={() => onChange(EMPTY_CALENDAR_FILTERS)}
-                    >
-                        Clear filters
-                    </Button>
+                    {active && (
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            type="button"
+                            onClick={() => onChange(EMPTY_CALENDAR_FILTERS)}
+                        >
+                            Clear filters
+                        </Button>
+                    )}
                 </div>
             )}
         </div>

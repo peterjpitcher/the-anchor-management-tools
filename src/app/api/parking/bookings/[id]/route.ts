@@ -19,7 +19,14 @@ export async function GET(request: Request) {
         return createErrorResponse('Parking booking not found', 'NOT_FOUND', 404)
       }
 
-      return createApiResponse({ success: true, data: booking })
+      // This payload is one customer's name, mobile, email and vehicle. The
+      // shared default for GETs is 'public, max-age=60', which lets any shared
+      // cache or proxy keep it and hand it to whoever asks next, and the default
+      // 'Vary: Origin' does not separate one API key's response from another's.
+      return createApiResponse({ success: true, data: booking }, 200, {
+        'Cache-Control': 'private, no-store',
+        Vary: 'Origin, X-API-Key, Authorization',
+      })
     } catch (error) {
       console.error('Error fetching parking booking via API:', error)
       return createErrorResponse('Failed to fetch parking booking', 'INTERNAL_ERROR', 500)

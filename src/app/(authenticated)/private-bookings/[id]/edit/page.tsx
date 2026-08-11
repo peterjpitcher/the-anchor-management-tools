@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useRef, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
 import { getPrivateBooking, updatePrivateBooking } from '@/app/actions/privateBookingActions'
@@ -17,6 +17,7 @@ import { Textarea } from '@/ds'
 import { Checkbox } from '@/ds'
 import { FormGroup } from '@/ds'
 import { Alert } from '@/ds'
+import { ConfirmDialog } from '@/ds'
 import { LinkButton } from '@/ds'
 import { Spinner } from '@/ds'
 import { toast } from '@/ds'
@@ -82,6 +83,13 @@ export default function EditPrivateBookingPage({
   // SOP §12: changing the deposit below the £250 standard needs a recorded
   // GM reason; £0 needs an explicit GM waiver plus reason.
   const [depositAmountDraft, setDepositAmountDraft] = useState<string | null>(null)
+  // Saving with the status set to Cancelled cancels the booking for real: it
+  // texts the customer, drops the calendar entry and kills any queued SMS.
+  // Nothing here previously asked, so the confirmation below is the gate.
+  const [statusValue, setStatusValue] = useState('draft')
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const cancelConfirmedRef = useRef(false)
 
   useEffect(() => {
     async function loadBooking() {
@@ -95,6 +103,7 @@ export default function EditPrivateBookingPage({
         }
         setBooking(result.data)
         // Initialize form fields
+        setStatusValue(result.data.status || 'draft')
         setCustomerFirstName(result.data.customer_first_name || result.data.customer_name?.split(' ')[0] || '')
         setCustomerLastName(result.data.customer_last_name || result.data.customer_name?.split(' ').slice(1).join(' ') || '')
         setContactPhone(result.data.contact_phone || '')
@@ -217,6 +226,10 @@ export default function EditPrivateBookingPage({
 
   const subtitle = `${customerLabel} - ${booking && booking.event_date ? formatDateFull(booking.event_date) : 'Date TBD'}`
 
+  // Saving with the status switched to Cancelled is a real cancellation, not a
+  // field edit, so it needs naming before it happens.
+  const isCancelling = statusValue === 'cancelled' && booking.status !== 'cancelled'
+
   return (
     <PageLayout
       title="Edit Private Booking"
@@ -231,7 +244,21 @@ export default function EditPrivateBookingPage({
             </Alert>
           )}
 
-          <form action={formAction} className="space-y-6">
+          <form
+            ref={formRef}
+            action={formAction}
+            className="space-y-6"
+            onSubmit={(event) => {
+              // First submit of a cancellation opens the confirmation; the
+              // dialog re-submits with the ref set so the save actually runs.
+              if (isCancelling && !cancelConfirmedRef.current) {
+                event.preventDefault()
+                setShowCancelConfirm(true)
+                return
+              }
+              cancelConfirmedRef.current = false
+            }}
+          >
           {dateTbd && <input type="hidden" name="date_tbd" value="true" />}
           <input type="hidden" name="default_country_code" value="44" />
           {/* Customer Information */}
@@ -321,14 +348,15 @@ export default function EditPrivateBookingPage({
                 />
               </FormGroup>
 
-                <FormGroup 
+                <FormGroup
                   label="Booking Status"
-                  help="Changing to Confirmed will queue a confirmation SMS"
+                  help="Confirming, completing or cancelling all text the customer when you save"
                 >
                   <Select
                     name="status"
                     id="status"
-                    defaultValue={booking.status || 'draft'}
+                    value={statusValue}
+                    onChange={(e) => setStatusValue(e.target.value)}
                     options={STATUS_OPTIONS[booking.status] || []}
                   />
                 </FormGroup>
@@ -618,6 +646,20 @@ export default function EditPrivateBookingPage({
         </form>
       </Card>
       </div>
+
+      <ConfirmDialog
+        open={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={() => {
+          cancelConfirmedRef.current = true
+          formRef.current?.requestSubmit()
+        }}
+        title="Cancel this booking?"
+        message="Saving with the status set to Cancelled cancels the booking: the customer is sent a cancellation text, the diary entry is removed and any messages still queued for them are dropped. This cannot be undone from here."
+        confirmLabel="Cancel booking and text the customer"
+        cancelLabel="Keep booking"
+        tone="danger"
+      />
     </PageLayout>
   )
 }

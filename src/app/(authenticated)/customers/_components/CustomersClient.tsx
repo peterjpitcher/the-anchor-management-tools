@@ -11,6 +11,7 @@ const CustomerImport = dynamic(
   () => import('@/components/features/customers/CustomerImport').then(mod => mod.CustomerImport),
   { ssr: false }
 )
+import type { CustomerImportOutcome } from '@/components/features/customers/CustomerImport'
 import { CustomerName } from '@/components/features/customers/CustomerName'
 import { CustomerLabelDisplay } from '@/components/features/customers/CustomerLabelDisplay'
 import type { CustomerLabelAssignment } from '@/app/actions/customer-labels'
@@ -275,9 +276,14 @@ export default function CustomersClient({
     } finally { setDeleteTarget(null) }
   }, [deleteTarget, refreshCurrentPage])
 
+  // Returns the outcome rather than toasting it: CustomerImport owns the import
+  // UI and reports the real result, so reporting here as well would double up
+  // and, previously, claim success even when nothing was written.
   const handleImportCustomers = useCallback(
-    async (customersData: Omit<Customer, 'id' | 'created_at'>[]) => {
-      if (!canManageCustomers) { toast.error('You do not have permission.'); return }
+    async (customersData: Omit<Customer, 'id' | 'created_at'>[]): Promise<CustomerImportOutcome> => {
+      if (!canManageCustomers) {
+        return { success: false, error: 'You do not have permission to import customers.' }
+      }
       try {
         const result = await importCustomersAction(
           customersData.map(c => ({
@@ -285,14 +291,18 @@ export default function CustomersClient({
           }))
         )
         if ('error' in result && result.error) {
-          toast.error(typeof result.error === 'string' ? result.error : 'Failed to import customers'); return
+          return { success: false, error: typeof result.error === 'string' ? result.error : 'Failed to import customers' }
         }
-        if (!('success' in result) || !result.success) { toast.error('Failed to import customers'); return }
+        if (!('success' in result) || !result.success) {
+          return { success: false, error: 'Failed to import customers' }
+        }
         const skippedTotal = (result.skippedInvalid ?? 0) + (result.skippedDuplicateInFile ?? 0) + (result.skippedExisting ?? 0)
-        let msg = `Imported ${result.created ?? 0} customers`
-        if (skippedTotal > 0) msg += ` (${skippedTotal} skipped)`
-        toast.success(msg); setShowImport(false); refreshCurrentPage()
-      } catch { toast.error('Failed to import customers') }
+        setShowImport(false)
+        refreshCurrentPage()
+        return { success: true, created: result.created ?? 0, skipped: skippedTotal }
+      } catch {
+        return { success: false, error: 'Failed to import customers' }
+      }
     },
     [canManageCustomers, refreshCurrentPage]
   )
@@ -409,14 +419,21 @@ export default function CustomersClient({
         subtitle={`${totalCount.toLocaleString()} customers`}
         className="mb-0"
         actions={
-          canManageCustomers ? (
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
-              <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
-                Add customer
-              </Button>
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {/* Insights is the only way into the win-back campaign, and it needs
+                nothing more than customers.view, so it sits outside the manage gate. */}
+            <Link href="/customers/insights">
+              <Button variant="secondary" size="sm">Insights</Button>
+            </Link>
+            {canManageCustomers && (
+              <>
+                <Button variant="secondary" size="sm" onClick={openImportCustomers}>Import</Button>
+                <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={openCreateCustomer}>
+                  Add customer
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -648,15 +665,36 @@ export default function CustomersClient({
         )}
       </Card>
 
-      {/* Delete confirmation */}
+      {/* Delete confirmation.
+          The copy has to describe both outcomes of deleteCustomer, because the
+          action picks between them on its own: a straight delete cascades far
+          wider than bookings, and a customer with a table, private or parking
+          booking cannot be deleted at all and is anonymised in place instead. */}
       <ConfirmDialog
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         title="Delete Customer"
         message={
-          deleteTarget
-            ? `Are you sure you want to delete ${deleteTarget.first_name}${deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? This will also delete all their bookings.`
-            : ''
+          deleteTarget ? (
+            // Spans, not paragraphs: ConfirmDialog renders `message` inside a <p>.
+            <>
+              <span className="block">
+                Delete {deleteTarget.first_name}
+                {deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? Where the record can be
+                removed, this permanently deletes it along with their event bookings, message history,
+                consent records, event check-ins, labels and loyalty membership.
+              </span>
+              <span className="mt-2 block">
+                A record tied to a table, private or parking booking, or to an SMS campaign, cannot be
+                removed. It is anonymised instead: the name becomes &quot;Deleted Customer&quot;, the
+                phone number and email are cleared, internal notes are wiped and every marketing opt-in
+                is switched off. Their bookings and message history stay.
+              </span>
+              <span className="mt-2 block font-medium">Either way, this cannot be undone.</span>
+            </>
+          ) : (
+            ''
+          )
         }
         confirmLabel="Delete"
         tone="danger"

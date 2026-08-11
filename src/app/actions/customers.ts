@@ -587,9 +587,10 @@ export interface WinBackCampaignResult {
 
 /**
  * Manual bulk-SMS win-back campaign.
- * Finds customers who opted in to SMS, have a mobile number, and whose most
- * recent booking (per `customer_scores.last_booking_date`) is older than
- * `inactiveSinceMonths` months ago. Sends the supplied message via the shared
+ * Finds customers who opted in to SMS and to marketing SMS, are not blocked by
+ * `sms_status`, have a mobile number, and whose most recent booking (per
+ * `customer_scores.last_booking_date`) is older than `inactiveSinceMonths`
+ * months ago. Sends the supplied message via the shared
  * `sendBulkSms` helper so every send passes through the full safety pipeline
  * (opt-in enforcement, quiet hours, rate limits, deduplication).
  *
@@ -642,8 +643,8 @@ export async function sendWinBackCampaign(
     const admin = createAdminClient()
 
     // Find customers who:
-    //   1. Have sms_opt_in = true
-    //   2. Have a non-null mobile_number
+    //   1. Pass every consent check sendBulkSms applies (see the filter below)
+    //   2. Have a usable mobile number
     //   3. Have a customer_scores row with last_booking_date older than the cutoff
     //      (or have a score row with null last_booking_date, meaning they have never booked)
     // We join via customer_scores to avoid a slow full-table subquery on private_bookings.
@@ -658,7 +659,9 @@ export async function sendWinBackCampaign(
           first_name,
           mobile_number,
           mobile_e164,
-          sms_opt_in
+          sms_opt_in,
+          marketing_sms_opt_in,
+          sms_status
         )
       `
       )
@@ -669,9 +672,21 @@ export async function sendWinBackCampaign(
       return { error: 'Failed to fetch inactive customers' }
     }
 
-    // Filter to only opted-in customers with a usable phone number
+    // Apply exactly the consent checks sendBulkSms applies, so the dry-run count
+    // staff see is the number of people who will actually be messaged. Before
+    // this, the preview only checked sms_opt_in and a phone number, while the
+    // send also demands marketing consent and an active sms_status, so the
+    // preview overstated the audience.
     type ScoreRow = NonNullable<typeof scoreRows>[number]
-    type CustomerRelation = { id: string; first_name: string; mobile_number: string | null; mobile_e164: string | null; sms_opt_in: boolean | null }
+    type CustomerRelation = {
+      id: string
+      first_name: string
+      mobile_number: string | null
+      mobile_e164: string | null
+      sms_opt_in: boolean | null
+      marketing_sms_opt_in: boolean | null
+      sms_status: string | null
+    }
 
     const eligible = (scoreRows ?? []).filter((row: ScoreRow) => {
       const customer = Array.isArray(row.customer)
@@ -679,6 +694,10 @@ export async function sendWinBackCampaign(
         : (row.customer as CustomerRelation | undefined)
       if (!customer) return false
       if (customer.sms_opt_in !== true) return false
+      if (customer.marketing_sms_opt_in !== true) return false
+      // sms_status is nullable on older rows; only an explicit non-active value blocks.
+      const smsStatus = customer.sms_status ?? null
+      if (smsStatus !== null && smsStatus !== 'active') return false
       const phone = customer.mobile_e164?.trim() || customer.mobile_number?.trim()
       return Boolean(phone)
     })

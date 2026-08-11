@@ -59,11 +59,15 @@ describe('buildParkingAvailabilitySlots', () => {
       remaining: 0,
       capacity: 2
     })
+    // A booking that ends at 10:00 does not occupy the 10:00 slot. Intervals are
+    // half-open, so the space it vacates is immediately sellable. This used to
+    // read reserved 3 / remaining -1, which blocked genuine back-to-back
+    // bookings by reporting the car park as oversubscribed.
     expect(slots[1]).toMatchObject({
       start_at: '2025-11-01T10:00:00.000Z',
       end_at: '2025-11-01T11:00:00.000Z',
-      reserved: 3,
-      remaining: -1,
+      reserved: 2,
+      remaining: 0,
       capacity: 2
     })
     expect(slots[2]).toMatchObject({

@@ -145,7 +145,15 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
             {/* Messages for this date */}
             {dateMessages.map((message, index) => {
               const isInbound = message.direction === 'inbound'
+              const isFailed =
+                !isInbound && (message.status === 'failed' || message.status === 'undelivered')
+              // A failed message is always shown. The status previously rendered
+              // only on the last message of a date group (or one followed by an
+              // inbound reply), so a failure followed by another outbound message
+              // the same day was invisible and staff believed the customer had
+              // been contacted.
               const showStatus = !isInbound && (
+                isFailed ||
                 index === dateMessages.length - 1 ||
                 (index < dateMessages.length - 1 && dateMessages[index + 1].direction === 'inbound')
               )
@@ -176,9 +184,15 @@ export function MessageThread({ messages, customerId, canReply, onMessageSent }:
                           {getMessageTime(message.created_at)}
                         </span>
                         {showStatus && message.status && (
-                          <span className="ml-2 text-xs sm:text-sm text-gray-500">
-                            • {getStatusText(message.status) || message.status}
-                          </span>
+                          isFailed ? (
+                            <Badge tone="danger" className="ml-2">
+                              {getStatusText(message.status) || message.status}
+                            </Badge>
+                          ) : (
+                            <span className="ml-2 text-xs sm:text-sm text-gray-500">
+                              • {getStatusText(message.status) || message.status}
+                            </span>
+                          )
                         )}
                       </div>
                     </div>
