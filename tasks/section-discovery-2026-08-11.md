@@ -4,79 +4,64 @@ Read-only discovery run on 2026-08-11 against `main`. No files were changed and 
 
 ## Status
 
-Last updated 2026-08-11, on branch `fix/section-discovery-sweep`, 11 commits.
-Full pipeline green throughout: 4,747 tests pass, type-check clean, lint clean at
-zero warnings.
+Branch `fix/section-discovery-sweep`, 16 commits. Pipeline green: 4,774 tests,
+clean type-check, clean lint at zero warnings, successful production build.
 
-**Every critical and every high is fixed (P001 to P040).** Roughly a fifth of the
-medium tier is done. The low tier has not been started.
+**All 7 criticals, all 33 highs and the whole medium tier are done.** The low
+tier was deliberately cut to the five items with real consequences, as agreed.
 
-| Tier | Total | Fixed | Remaining |
-|---|---|---|---|
-| Critical | 7 | 7 | 0 |
-| High | 33 | 33 | 0 |
-| Medium | 74 | 13 | 61 |
-| Low | 86 | 0 | 86 |
+| Tier | Total | Done | Deliberately closed | Remaining |
+|---|---|---|---|---|
+| Critical | 7 | 7 | 0 | 0 |
+| High | 33 | 33 | 0 | 0 |
+| Medium | 74 | 73 | 1 | 0 |
+| Low | 86 | 5 | 81 | 0 |
 
-Commits, oldest first:
+### Database migrations: APPLIED to production
 
-| Commit | Covers |
-|---|---|
-| `0b7083b8` | Parking reminder SMS sending "undefined" and "Invalid Date" |
-| `757d72ac` | Employee PII RLS and storage bucket, anonymous EXECUTE and public reads |
-| `3d15f500` | Private bookings, 8 highs plus the SMS queue permission |
-| `9b5f087f` | Messages and customers, 8 highs |
-| `f59997b0` | Employees and parking, 7 highs |
-| `b60b49e2` | Message and parking read RLS |
-| `f234e05d` | This status document |
-| `6622f5cb` | Customers list tabs, search and pagination |
-| `29237c1d` | Events calendar filtering, status and content chips, week view retired |
-| `3bbe92f8` | Events filter bar made opt-in, one shared event mapper |
-| `b3a58975` | Parking and customers medium defects |
+All six are live. Verified afterwards: zero wide-open policies remain across the
+39 checked, no SECURITY DEFINER function is anonymously executable, and anon can
+read none of the 48 pending_bookings rows.
 
-### Mediums fixed so far
+- `20260811100000` employee PII RLS and the attachments bucket
+- `20260811100100` anonymous EXECUTE and public reads
+- `20260811100200` message and parking read RLS
+- `20260811110000` unpartial the two upsert indexes
+- `20260811110100` message templates, SMS queue, customer scores, pending bookings
+- `20260811110200` messages INSERT
 
-Customer list tabs (All hid 328 of 1,049 customers), the SMS Active count
-(266 deactivated customers counted as active), phone search (a UK number typed
-as 07... matched nothing), PostgREST filter injection through the search box,
-non-deterministic list pagination, the customer lookup API scope, the customer
-message-history permission, the paid-parking edit guard (no paid booking could
-be edited at all), the swallowed parking payment-link failure, and refunded
-parking bookings still occupying a space.
+Migration history drift was repaired first: production held
+`20260809145018_email_unsubscribe_tokens` while the local file was
+`20260809130000`. `db push` runs cleanly again.
 
-### Deliberately not changed
+### Decisions taken
 
-**FOH customer search.** Reported as exposing the customer database without a
-customers permission. It requires a two-character query, caps at 20 results and
-returns only name and phone, and FOH accounts hold no customers permission by
-design, so gating it on customers:view would break seating for no real gain.
+**pending_bookings** was scoped rather than dropped. Nothing in this repo reads
+the table, so it is the website using the anon key, and dropping the policy could
+break a live booking flow not visible from here. It now exposes only bookings
+still in flight: zero of the 48 today.
 
-### Not applied yet
+**Message templates** kept, with the notice. The screen is now permission-gated
+in the database too. Wiring the send helpers to read it remains an open product
+choice, not a defect.
 
-Three migrations are written and committed but **not applied to production**:
+**FOH customer search** closed as not-a-defect. It needs a two-character query,
+caps at 20 results and returns only a name and phone, and gating it would stop
+FOH seating people.
 
-- `20260811100000_employee_pii_rls_lockdown.sql`
-- `20260811100100_revoke_anon_execute_and_public_reads.sql`
-- `20260811100200_messages_parking_read_rls.sql`
+**81 low-tier items closed** as cosmetic or dead-code tidying. The five kept were
+the timeclock PIN in audit logs and exports, phone numbers in server logs,
+back-to-back parking bookings being blocked, and an unthrottled PayPal order
+endpoint.
 
-`supabase db push` will not run until the migration history is repaired:
-production holds `20260809145018_email_unsubscribe_tokens` while the local file
-is `20260809130000_email_unsubscribe_tokens`. This predates the work.
+### Corrections the reviewers caught
 
-### Still open, needs a decision
-
-**pending_bookings.** Policy `anon_read_pending_bookings` is `USING (true)` for
-anon, so any anonymous caller can read all 48 rows including booking tokens and
-mobile numbers, and the linked `anon_read_customers_for_bookings` policy then
-exposes those customers' rows. Nothing in this repo reads the table and nothing
-in it is newer than 31 December 2025, so it is almost certainly read by the
-the-anchor.pub website. Left out of the migrations because dropping it could
-break a flow in the other repo.
-
-**Message templates.** `/settings/message-templates` is full CRUD over a table no
-sending path reads. A warning notice was added so staff cannot believe they are
-editing live copy, but the real choice remains: wire the send helpers to read the
-table, or remove the screen and its nav link.
+The review agents raised 54 problems against the build agents' work and caught
+one overclaimed fix. The material ones: an ON CONFLICT change that would have
+silently inserted duplicate customers and messages, GDPR erasure leaving health
+data and 1,147 rows of booking notes behind, an erasure write that would have
+collided with a unique index and aborted, and a masked-field check loose enough
+to silently discard a half-edited bank detail while reporting success.
 
 ## How this was produced
 
