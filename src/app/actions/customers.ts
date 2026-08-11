@@ -308,11 +308,20 @@ export async function updateCustomer(id: string, formData: FormData) {
       (formData.get('default_country_code') as string | null)?.trim() || undefined
 
     const serviceSmsPreference = formData.get('sms_opt_in')
+
+    // An absent email key means "not edited"; a key present but blank means the
+    // user cleared it. Collapsing both to undefined made updateCustomer skip the
+    // field, so clearing an address left the old one in place while the UI
+    // reported success.
+    const rawEmail = formData.get('email')
+    const emailWasSubmitted = rawEmail !== null
+    const submittedEmail = typeof rawEmail === 'string' ? rawEmail.trim() : ''
+
     const rawData = {
       first_name: (formData.get('first_name') as string | null)?.trim() || undefined,
       last_name: (formData.get('last_name') as string | null)?.trim() || undefined,
       mobile_number: (formData.get('mobile_number') as string | null)?.trim() || undefined,
-      email: (formData.get('email') as string | null)?.trim() || undefined,
+      email: submittedEmail || undefined,
       sms_opt_in: false
     }
 
@@ -330,6 +339,9 @@ export async function updateCustomer(id: string, formData: FormData) {
 
     const customer = await CustomerService.updateCustomer(id, {
       ...validationResult.data,
+      // An empty string reaches sanitizeEmail and becomes NULL, which is how a
+      // cleared address is actually removed.
+      email: emailWasSubmitted ? submittedEmail : validationResult.data.email,
       sms_opt_in: undefined,
       mobile_number: validationResult.data.mobile_number!,
       default_country_code: defaultCountryCode

@@ -153,12 +153,18 @@ export class MessageService {
       };
     }
     
-    return { 
-      success: true, 
+    return {
+      success: true,
       messageSid: result.sid,
       status: result.status,
       code: smsCode,
       logFailure: smsLogFailure,
+      // The reply dedupe key is a hash of the body, so sending the same text to
+      // the same customer twice inside the idempotency window is suppressed and
+      // no SMS goes out. Dropping this flag here made the inbox report "Message
+      // sent" for a message the customer never received.
+      suppressed: result.suppressed === true,
+      suppressionReason: result.suppressionReason,
     };
   }
 
