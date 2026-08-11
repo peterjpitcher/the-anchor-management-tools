@@ -137,8 +137,14 @@ export async function getCustomerSmsStats(customerId: string) {
 }
 
 export async function getCustomerMessages(customerId: string) {
-  const hasPermission = await checkUserPermission('customers', 'view');
-  if (!hasPermission) {
+  // This returns the customer's full SMS history, which is message data, so it
+  // needs the messages scope as well as the customer one. customers:view alone
+  // let an account with no messages permission read every conversation.
+  const [canViewCustomer, canViewMessages] = await Promise.all([
+    checkUserPermission('customers', 'view'),
+    checkUserPermission('messages', 'view'),
+  ]);
+  if (!canViewCustomer || !canViewMessages) {
     return { error: 'Insufficient permissions' };
   }
 

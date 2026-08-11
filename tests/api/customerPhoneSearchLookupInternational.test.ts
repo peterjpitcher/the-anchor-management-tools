@@ -14,7 +14,7 @@ vi.mock('@/lib/api/auth', () => ({
       handler: (request: Request, apiKey: { id: string; permissions: string[] }) => Promise<Response>,
       _permissions: string[],
       request: Request
-    ) => handler(request, { id: 'api-key-1', permissions: ['create:bookings'] })
+    ) => handler(request, { id: 'api-key-1', permissions: ['read:customers'] })
   ),
   createApiResponse: vi.fn((data: unknown, status = 200) =>
     Response.json({ success: true, data }, { status })

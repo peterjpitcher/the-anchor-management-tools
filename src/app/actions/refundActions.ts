@@ -264,7 +264,18 @@ async function updateRefundStatus(
         .maybeSingle()
 
       if (paymentRow?.booking_id) {
-        await db.from('parking_bookings').update({ payment_status: 'refunded' }).eq('id', paymentRow.booking_id)
+        // Cancel the booking as well as marking it refunded. Capacity counts
+        // bookings in 'pending_payment' and 'confirmed', so a fully refunded
+        // booking left as 'confirmed' went on occupying a space nobody had paid
+        // for, and the car park could not be resold to that slot.
+        await db
+          .from('parking_bookings')
+          .update({
+            payment_status: 'refunded',
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+          })
+          .eq('id', paymentRow.booking_id)
       }
     }
   }
