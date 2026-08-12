@@ -518,8 +518,10 @@ array containing three entries, not from their order.
 ### 8.4 Dead code cleared
 
 - `src/app/api/events/[id]/route.ts:300-302` falls back to `event.image_url`, a
-  column that does not exist on the live table. Removed.
-- `src/types/api.ts:56` declares the same non-existent column. Removed.
+  column that does not exist on the live `events` table. Removed.
+- The `image_url` at `src/types/api.ts:56` is **not** the same thing. Discovery
+  called it a second reference to the non-existent column; it is actually a menu
+  dish field, and dishes really do have `image_url`. Left alone.
 
 ---
 
@@ -579,9 +581,20 @@ image no longer removes a storage object the event does not own, both paths clea
 the reference before touching storage, and categories have their own delete action
 with reference checking. Independent of everything below and safe to deploy alone.
 
-**Phase 1 - database and storage.** Migration 1 (5.2) plus the two RPCs. Purely
-additive, every legacy value retained, safe to apply before any code deploy. No
-user-visible change.
+**Phase 1 - database and storage. Written, verified, NOT applied.** Migration 1
+(5.2) plus the two RPCs, in
+`supabase/migrations/20260812100000_event_image_variants.sql`. Purely additive,
+every legacy value retained, safe to apply before any code deploy.
+
+Verified by running it against a throwaway PostgreSQL 17 cluster seeded with the
+shapes production actually contains, then asserting the dedupe keeps the row the
+event points at, gallery rows survive, the unique index is genuinely partial, a
+print poster never reaches `poster_image_url`, square still writes all three
+legacy columns, an inherited category image reports nothing to delete, and unknown
+variants and missing events are rejected. Confirmed re-runnable.
+
+**It has not been pushed to production.** Applying it needs the owner's explicit
+go-ahead.
 
 **Phase 2 - AMS panel.** Shared variant config, the three upload actions,
 `EventImagePanel`, signed direct upload, ownership handling, the drawer
@@ -594,7 +607,22 @@ to the list route, `image` array de-duplicated and square-first, dead `image_url
 references removed. Verified as no-visual-change: `image[0]` is still the square.
 
 **Phase 4 - website.** `lib/api/events.ts` gains the new optional fields. Named
-resolvers replace the single context-free helper:
+resolvers replace the single context-free helper.
+
+Two corrections found while building this phase, both from checking `main`
+rather than the working tree:
+
+- **The social-image route does not exist in production.**
+  `app/events/[id]/social-image/route.ts` and `lib/event-image.ts` live only on
+  unmerged fix branches, not on `main`, which is what deploys. So there is no
+  blur-composite workaround to retire and no 1200x1200 metadata mismatch to fix.
+  `lib/event-image.ts` is created fresh by this phase. Whoever merges those fix
+  branches will need to reconcile the two versions.
+- **Phase 4 is based on `main`, not on the current working branch.** The website
+  working tree sits on unmerged seasonal work. Basing there would have coupled
+  this change to it and broken the independently-deployable rule.
+
+Resolvers by surface:
 
 | Resolver | Prefers | Consumers |
 |---|---|---|
@@ -603,13 +631,13 @@ resolvers replace the single context-free helper:
 | `getEventSocialImage` | `socialImageUrl`, then square | `events/[id]/social-image/route.ts` |
 
 `lib/event-image.ts` stops preferring `posterImageUrl` first, which is only correct
-today by accident.
+today by accident: the moment `poster_image_url` meant what its name says, the
+website would have served a print-resolution poster on every page and every social
+crawl.
 
-The social route **transforms** the approved asset to 1200x630 with sharp and
-serves it as JPEG, so the declared `opengraph-image` metadata stays truthful.
-Version 1 said "serve it directly", which would have made the declared 1200x1200
-JPEG a lie for a 1920x1005 PNG. The existing blur-composite fallback is kept for
-events that have only a square.
+Link previews use `getEventSocialImage`. The social-image transform described in
+version 2 is not part of this phase, because the route it referred to is not in
+production (see above).
 
 **Phase 5 - cleanup, after the rollback window.** Drop `hero`, `thumbnail` and
 `poster` from the CHECK constraint, drop the dedupe backup table, and remove
