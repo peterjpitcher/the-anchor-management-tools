@@ -5,6 +5,7 @@ import {
   EVENT_IMAGE_VARIANT_ORDER,
   aspectRatioMatches,
   buildEventImageStoragePath,
+  buildVariantPrompt,
   describeAspectRatio,
   formatBytes,
   isEventImageVariant,
@@ -151,6 +152,47 @@ describe('storage path handling', () => {
 
   it('never produces an empty file name', () => {
     expect(sanitiseFileName('!!!')).toBe('unnamed')
+  })
+})
+
+describe('buildVariantPrompt', () => {
+  const prompt = buildVariantPrompt()
+
+  it('asks for every variant except the square, which is the source image', () => {
+    expect(prompt).not.toContain('Square (source image)')
+    for (const variant of EVENT_IMAGE_VARIANT_ORDER.filter((v) => v !== 'square')) {
+      expect(prompt).toContain(EVENT_IMAGE_VARIANTS[variant].promptLabel)
+    }
+  })
+
+  it('quotes the exact dimensions the upload validates against', () => {
+    // The whole point of generating this: a hardcoded prompt would eventually
+    // ask for a size the tile then refuses.
+    for (const variant of EVENT_IMAGE_VARIANT_ORDER.filter((v) => v !== 'square')) {
+      const { targetWidth, targetHeight } = EVENT_IMAGE_VARIANTS[variant]
+      expect(prompt).toContain(`${targetWidth} x ${targetHeight} px`)
+    }
+  })
+
+  it('names the story, landscape and cover sizes the owner asked for', () => {
+    expect(prompt).toContain('Instagram story: 9:16, 1080 x 1920 px')
+    expect(prompt).toContain('Landscape: 16:9, 1920 x 1080 px')
+    expect(prompt).toContain('Facebook event cover / link preview: 1.91:1, 1920 x 1005 px')
+  })
+
+  it('flags the print poster as 300 dpi, and nothing else', () => {
+    expect(prompt).toContain('2480 x 3508 px at 300 dpi')
+    expect(prompt.match(/300 dpi/g)).toHaveLength(1)
+  })
+
+  it('tells the tool to re-compose rather than stretch', () => {
+    expect(prompt.toLowerCase()).toContain('re-compose')
+    expect(prompt.toLowerCase()).toContain('inside the frame')
+  })
+
+  it('is plain text that survives a copy and paste', () => {
+    expect(prompt).not.toMatch(/<[^>]+>/)
+    expect(prompt.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(4)
   })
 })
 
