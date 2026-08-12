@@ -1,7 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { ArrowDownTrayIcon, DocumentIcon, PhotoIcon, TrashIcon } from '@heroicons/react/24/outline'
+import {
+  ArrowDownTrayIcon,
+  CheckIcon,
+  ClipboardDocumentIcon,
+  DocumentIcon,
+  PhotoIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { ConfirmDialog } from '@/ds'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
@@ -13,6 +20,7 @@ import {
 import {
   EVENT_IMAGE_VARIANTS,
   EVENT_IMAGE_VARIANT_ORDER,
+  buildVariantPrompt,
   formatBytes,
   type EventImageVariant,
 } from '@/lib/events/imageVariants'
@@ -76,6 +84,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
   const [pendingReplace, setPendingReplace] = useState<
     { variant: EventImageVariant; queued: QueuedFile } | null
   >(null)
+  const [dragOver, setDragOver] = useState<EventImageVariant | null>(null)
   const inputRefs = useRef<Partial<Record<EventImageVariant, HTMLInputElement | null>>>({})
   const inFlight = useRef(0)
 
@@ -323,6 +332,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
         </p>
       )}
 
+      <VariantPromptBox />
+
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {EVENT_IMAGE_VARIANT_ORDER.map((variant) => {
           const config = EVENT_IMAGE_VARIANTS[variant]
@@ -335,13 +347,44 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           return (
             <div
               key={variant}
-              className="flex flex-col rounded-lg border border-gray-200 p-3"
+              // Drag and drop is an enhancement on top of the file input below,
+              // never the only way in, so keyboard users are unaffected.
+              onDragOver={(e) => {
+                if (tile.uploading) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'copy'
+                setDragOver(variant)
+              }}
+              onDragLeave={(e) => {
+                // Ignore the events fired while crossing the tile's own children.
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                setDragOver((current) => (current === variant ? null : current))
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOver(null)
+                if (tile.uploading) return
+                const file = e.dataTransfer.files?.[0]
+                if (file) void startUpload(variant, file)
+              }}
+              className={`flex h-full flex-col rounded-lg border p-3 transition-colors ${
+                dragOver === variant
+                  ? 'border-green-500 border-dashed bg-green-50'
+                  : 'border-gray-200'
+              }`}
             >
               <p className="text-sm font-medium text-gray-900">{config.label}</p>
               <p className="mt-0.5 text-xs text-gray-500">{config.helpText}</p>
 
+              {/* Fixed-height well so every tile lines up, with the preview inside
+                  it at the variant's true shape. Seeing that a story is tall and a
+                  cover is wide is the point; ragged tile heights are not.
+                  The height is deliberately low enough that even the 1.91:1 cover
+                  fits the tile without being clamped, otherwise landscape and
+                  social render as the same shape and the cue is lost. */}
+              <div className="mt-2 flex h-20 w-full items-center justify-center">
               <div
-                className="relative mt-2 w-full overflow-hidden rounded-md bg-gray-50"
+                className="relative h-full max-w-full overflow-hidden rounded-md bg-gray-50"
                 style={{ aspectRatio: `${config.targetWidth} / ${config.targetHeight}` }}
               >
                 {previewUrl && !isPdf && (
@@ -360,8 +403,14 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   </div>
                 )}
                 {!previewUrl && !isPdf && (
-                  <div className="flex h-full w-full items-center justify-center">
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
                     <PhotoIcon className="h-8 w-8 text-gray-300" aria-hidden="true" />
+                    <span className="text-xs text-gray-400">Drop a file here</span>
+                  </div>
+                )}
+                {dragOver === variant && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-green-50/90 text-xs font-medium text-green-800">
+                    Drop
                   </div>
                 )}
                 {tile.uploading && (
@@ -369,6 +418,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     Uploading...
                   </div>
                 )}
+              </div>
               </div>
 
               <div className="mt-2 min-h-[1.25rem] text-xs" aria-live="polite">
@@ -386,7 +436,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                 )}
               </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              {/* mt-auto keeps the controls on the tile's bottom edge, so they
+                  line up across a row whatever shape the preview above is. */}
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
                 <label
                   htmlFor={inputId}
                   className="inline-flex min-h-[44px] cursor-pointer items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -470,13 +522,66 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
   )
 }
 
+/**
+ * Make the square first, then paste this into an image tool to get the other
+ * four back at the right sizes. The text is generated from the variant config,
+ * so the dimensions here are the same ones the upload validates against.
+ */
+function VariantPromptBox() {
+  const [copied, setCopied] = useState(false)
+  const prompt = buildVariantPrompt()
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard access can be refused, so leave the text on screen to copy by hand.
+      toast.error('Could not copy. Select the text below and copy it manually.')
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-gray-800">Prompt for the other sizes</p>
+          <p className="text-xs text-gray-500">
+            Made the square already? Copy this into your image tool with it attached.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={copy}
+          className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        >
+          {copied ? (
+            <CheckIcon className="h-4 w-4 text-green-600" aria-hidden="true" />
+          ) : (
+            <ClipboardDocumentIcon className="h-4 w-4" aria-hidden="true" />
+          )}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 text-xs leading-relaxed text-gray-600">
+        {prompt}
+      </pre>
+      <span aria-live="polite" className="sr-only">
+        {copied ? 'Prompt copied to clipboard' : ''}
+      </span>
+    </div>
+  )
+}
+
 function PanelHeading() {
   return (
     <div>
       <p className="text-sm font-medium text-gray-700 sm:text-base">Event artwork</p>
       <p className="text-sm text-gray-500">
-        The square, landscape and social images appear on the website. The story and
-        A4 poster are kept here for you to download.
+        Drag a file onto a tile, or click it to browse. The square, landscape and
+        social images appear on the website. The story and A4 poster are kept here
+        for you to download.
       </p>
     </div>
   )
