@@ -39,39 +39,44 @@ export function SquareImageUpload({
     }
   }, [currentImageUrl, selectedFile])
 
-  // Handle file selection and preview
+  // Choosing a file uploads it. There is no second step: the old two-step flow
+  // discarded the chosen file without warning if the form was closed.
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      // Validate file type
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-      if (!allowedTypes.includes(file.type)) {
-        toast.error('Please select a valid image file (JPEG, PNG, or WebP)')
-        e.target.value = ''
-        return
-      }
+    if (!file) return
 
-      // Validate file size (10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('File size must be less than 10MB')
-        e.target.value = ''
-        return
-      }
-
-      setSelectedFile(file)
-
-      // Create preview
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string)
-      }
-      reader.readAsDataURL(file)
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please select a valid image file (JPEG, PNG, or WebP)')
+      e.target.value = ''
+      return
     }
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be less than 10MB')
+      e.target.value = ''
+      return
+    }
+
+    setSelectedFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    e.target.value = ''
+    void handleUpload(file)
   }
 
   // Handle upload
-  const handleUpload = async () => {
-    if (!selectedFile) return
+  const handleUpload = async (file?: File) => {
+    const fileToUpload = file ?? selectedFile
+    if (!fileToUpload) return
 
     // Don't allow upload for new entities
     if (entityId === 'new') {
@@ -84,11 +89,15 @@ export function SquareImageUpload({
       const formData = new FormData()
       formData.append(entityType === 'event' ? 'event_id' : 'category_id', entityId)
       formData.append('image_type', 'hero') // Use 'hero' as the single image type
-      formData.append('image_file', selectedFile)
+      formData.append('image_file', fileToUpload)
 
       const result = await uploadEventImage({ type: 'idle' }, formData)
-      
+
       if (result.type === 'error') {
+        // Put the tile back exactly as it was, rather than leaving a preview of
+        // a file that was never stored.
+        setPreviewUrl(currentImageUrl || null)
+        setSelectedFile(null)
         toast.error(result.message || 'Failed to upload image')
       } else if (result.type === 'success' && result.imageUrl) {
         toast.success('Image uploaded successfully')
@@ -182,10 +191,10 @@ export function SquareImageUpload({
           </div>
         )}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-0 sm:space-x-4">
-          <label className={`relative ${entityId === 'new' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500`}>
+          <label className={`relative ${entityId === 'new' || isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500`}>
             <span className="inline-flex items-center px-4 py-3 sm:py-2 border border-gray-300 rounded-md shadow-sm text-base sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 min-h-[44px] touch-manipulation">
               <PhotoIcon className="h-5 w-5 mr-2" />
-              Choose Image
+              {isUploading ? 'Uploading...' : previewUrl ? 'Replace Image' : 'Choose Image'}
             </span>
             <input
               ref={fileInputRef}
@@ -193,28 +202,16 @@ export function SquareImageUpload({
               accept="image/jpeg,image/jpg,image/png,image/webp"
               onChange={handleFileSelect}
               className="sr-only"
-              disabled={entityId === 'new'}
+              disabled={entityId === 'new' || isUploading}
             />
           </label>
-
-          {selectedFile && (
-            <Button 
-              type="button" 
-              size="sm"
-              onClick={handleUpload}
-              disabled={isUploading}
-              className="w-full sm:w-auto"
-            >
-              {isUploading ? 'Uploading...' : 'Upload'}
-            </Button>
-          )}
         </div>
-        
-        {selectedFile && !previewUrl && (
-          <p className="text-sm text-gray-500">
-            Selected: {selectedFile.name}
-          </p>
-        )}
+
+        <p className="text-sm text-gray-500" aria-live="polite">
+          {isUploading
+            ? 'Uploading...'
+            : 'The image uploads as soon as you choose it.'}
+        </p>
       </div>
 
       <ConfirmDialog
