@@ -2,6 +2,7 @@
 import { format } from 'date-fns';
 import { resolveEventPriceAmount } from '@/lib/events/pricing';
 import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils';
+import { buildEventImageList } from '@/lib/api/eventImageFields';
 
 export interface SchemaEvent {
   '@type': 'Event';
@@ -224,13 +225,11 @@ export function eventToSchema(event: any, faqs?: any[]): SchemaEvent {
       ? SCHEMA_AVAILABILITY.SOLD_OUT
       : SCHEMA_AVAILABILITY.IN_STOCK
   
-  // Build image array from multiple image fields
-  const images: string[] = []
-  if (event.hero_image_url) images.push(event.hero_image_url)
-  if (event.thumbnail_image_url) images.push(event.thumbnail_image_url)
-  if (event.poster_image_url) images.push(event.poster_image_url)
-  if (event.gallery_image_urls?.length > 0) images.push(...event.gallery_image_urls)
-  
+  // Distinct ratios, square first. hero, thumbnail and poster all hold the same
+  // square, so pushing all three published one URL three times.
+  const images = buildEventImageList(event)
+
+
   // Build video array
   const videos: string[] = []
   if (event.promo_video_url) videos.push(event.promo_video_url)
