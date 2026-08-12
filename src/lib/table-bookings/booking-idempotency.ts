@@ -27,6 +27,44 @@ export type TableBookingIdempotencyFields = {
   booking_period_id?: string | null
   booking_period_answer?: boolean | null
   communication_consent?: CommunicationConsentPayload
+  /** What each seat is eating. Order is the seat order and is significant. */
+  preorder?: TableBookingIdempotencyPreorderEntry[] | null
+}
+
+export type TableBookingIdempotencyPreorderEntry = {
+  guest_name?: string | null
+  dietary_note?: string | null
+  starter_menu_item_id?: string | null
+  dessert_menu_item_id?: string | null
+  main_menu_item_id?: string | null
+  addon_menu_item_ids?: string[] | null
+}
+
+/**
+ * Canonical form of the pre-order for hashing.
+ *
+ * Seat ORDER is preserved, because position is the seat: moving the vegan main
+ * from seat 1 to seat 4 is a different order and must not replay. Add-on ids are
+ * sorted, because ticking the cheeseboard before or after the pudding is the
+ * same order.
+ *
+ * Returns undefined for an absent or empty pre-order so the stable serialiser
+ * drops the key entirely, and a client that never sends one produces
+ * byte-for-byte the hash it produced before the field existed.
+ */
+function preorderHashPayload(
+  entries: TableBookingIdempotencyPreorderEntry[] | null | undefined
+): unknown[] | undefined {
+  if (!entries || entries.length === 0) return undefined
+
+  return entries.map((entry) => ({
+    guest_name: entry.guest_name || null,
+    dietary_note: entry.dietary_note || null,
+    starter_menu_item_id: entry.starter_menu_item_id || null,
+    main_menu_item_id: entry.main_menu_item_id || null,
+    dessert_menu_item_id: entry.dessert_menu_item_id || null,
+    addon_menu_item_ids: [...new Set(entry.addon_menu_item_ids ?? [])].sort()
+  }))
 }
 
 /**
@@ -67,6 +105,11 @@ export function computeTableBookingRequestHash(fields: TableBookingIdempotencyFi
     booking_period_answer: typeof fields.booking_period_answer === 'boolean'
       ? fields.booking_period_answer
       : undefined,
+    // Changing what a guest is eating is a different booking, so a retry that
+    // corrects a dish must conflict rather than replay a response that recorded
+    // the old choice. Same undefined-when-absent trick as the fields above, so a
+    // client that sends no pre-order hashes exactly as it did before this field.
+    preorder: preorderHashPayload(fields.preorder),
     communication_consent: consentHashPayload(fields.communication_consent)
   })
 }

@@ -30,6 +30,7 @@ import {
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -102,7 +103,34 @@ const CreateTableBookingSchema = z.object({
   requires_accessible_table: z.boolean().optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   skip_customer_sms: z.boolean().optional(),
-  communication_consent: OptionalCommunicationConsentSchema
+  communication_consent: OptionalCommunicationConsentSchema,
+  // What each seat is eating, for a booking on a period that requires a pre-order.
+  //
+  // Position is the seat: the first entry is seat 1. There is no seat number in
+  // the payload on purpose, because the seats do not exist until the booking
+  // does, so a client-supplied ordinal could only ever be a guess at what the
+  // database is about to create.
+  //
+  // Every id is checked against THIS booking's own period before it is written
+  // (see loadMenuItemsForSnapshot), so nothing here can attach last year's menu
+  // or another season's dish to a booking. Sending more entries than the party
+  // size is rejected rather than truncated: silently dropping the last guest's
+  // dinner is how someone goes hungry on the night.
+  preorder: z
+    .array(
+      z.object({
+        guest_name: z.string().trim().max(100).optional(),
+        // Staff and kitchen only. Never emailed, never logged, never put in a digest.
+        dietary_note: z.string().trim().max(200).optional(),
+        starter_menu_item_id: z.string().uuid().nullish(),
+        main_menu_item_id: z.string().uuid().nullish(),
+        dessert_menu_item_id: z.string().uuid().nullish(),
+        // Whole set, not a patch: whatever is absent is not ordered.
+        addon_menu_item_ids: z.array(z.string().uuid()).max(10).optional()
+      })
+    )
+    .max(20)
+    .optional()
 })
 
 type TableBookingResponseData = {
@@ -132,6 +160,101 @@ type TableBookingResponseData = {
   // is short) and whether the booking holds an outside table instead of indoor.
   high_chairs_granted: number | null
   is_outside_seating: boolean | null
+  /**
+   * The fate of the pre-order, when one was sent. Null when none was.
+   *
+   * Reported rather than thrown because the booking is already committed by the
+   * time the seats are written: failing the request here would tell the guest
+   * their booking failed when it did not, and they would book again. The caller
+   * gets the truth instead, so it can confirm the table and say plainly that the
+   * meal choices did not save.
+   */
+  preorder: {
+    requested_covers: number
+    saved_covers: number
+    saved: boolean
+    error: string | null
+  } | null
+}
+
+type PreorderEntry = NonNullable<z.infer<typeof CreateTableBookingSchema>['preorder']>[number]
+
+type PreorderPersistResult = NonNullable<TableBookingResponseData['preorder']>
+
+/**
+ * Write the guests' meal choices onto a booking that has just been created.
+ *
+ * The seats do not exist yet: `preorder_sync_covers` creates one per head, and
+ * the submitted entries are then matched to them in order, so entry 0 is seat 1.
+ *
+ * Never throws. The booking is already committed by the time this runs, so the
+ * only useful thing to do with a failure is report it and let the caller tell
+ * the guest their table is booked but their choices are not.
+ */
+async function persistPreorderSafe(
+  supabase: ReturnType<typeof createAdminClient>,
+  tableBookingId: string,
+  entries: PreorderEntry[]
+): Promise<PreorderPersistResult> {
+  const result: PreorderPersistResult = {
+    requested_covers: entries.length,
+    saved_covers: 0,
+    saved: false,
+    error: null
+  }
+
+  try {
+    await syncPreorderCovers(supabase, tableBookingId)
+
+    const { data: coverRows, error: coversError } = await supabase
+      .from('booking_preorder_covers')
+      .select('id, ordinal')
+      .eq('table_booking_id', tableBookingId)
+      .order('ordinal', { ascending: true })
+
+    if (coversError) throw coversError
+
+    const covers = (coverRows ?? []) as Array<{ id: string; ordinal: number }>
+    if (covers.length < entries.length) {
+      // Refuse the whole thing rather than write the seats that do fit. A
+      // partial write looks complete to the kitchen while a guest has no dinner.
+      throw new Error('The booking has fewer seats than the meal choices sent.')
+    }
+
+    for (const [index, entry] of entries.entries()) {
+      await savePreorderCover(supabase, {
+        coverId: covers[index].id,
+        guestName: entry.guest_name ?? null,
+        dietaryNote: entry.dietary_note ?? null,
+        // Every course is named on every seat so that an omitted course is
+        // stored as "not having one" rather than left at whatever a retry of
+        // this request wrote a moment earlier.
+        selections: [
+          { course: 'starter', menuItemId: entry.starter_menu_item_id ?? null },
+          { course: 'main', menuItemId: entry.main_menu_item_id ?? null },
+          { course: 'dessert', menuItemId: entry.dessert_menu_item_id ?? null }
+        ],
+        addonMenuItemIds: entry.addon_menu_item_ids ?? []
+      })
+      result.saved_covers += 1
+    }
+
+    result.saved = true
+  } catch (error) {
+    result.error = error instanceof Error ? error.message : String(error)
+    // Seat names and dietary notes are staff-and-kitchen only, so the log
+    // carries counts and the message, never the entries themselves.
+    logger.warn('Failed to persist pre-order on public table booking', {
+      metadata: {
+        tableBookingId,
+        requestedCovers: result.requested_covers,
+        savedCovers: result.saved_covers,
+        error: result.error
+      }
+    })
+  }
+
+  return result
 }
 
 async function recordTableBookingAnalyticsSafe(
@@ -262,7 +385,8 @@ export async function POST(request: NextRequest) {
       // the hash only when actually supplied, so a client that never sends them produces
       // byte-for-byte the hash this route produced before the fields existed.
       booking_period_id: payload.booking_period_id,
-      booking_period_answer: payload.booking_period_answer
+      booking_period_answer: payload.booking_period_answer,
+      preorder: payload.preorder
     })
 
     const supabase = createAdminClient()
@@ -415,6 +539,32 @@ export async function POST(request: NextRequest) {
       // Sunday lunch pre-order persistence has been removed from the public
       // booking path. New public bookings never use the legacy `sunday_lunch`
       // booking type, so legacy pre-order line items are ignored.
+
+      // Seasonal pre-order. Only ever attempted on a booking that actually
+      // exists and that the database attached to a period: without a period
+      // there is no menu to choose from, and every dish id is validated against
+      // that period before anything is written.
+      let preorderResult: PreorderPersistResult | null = null
+      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0) {
+        const entries = payload.preorder ?? []
+
+        if (entries.length > payload.party_size) {
+          // Caught before touching the database. Truncating instead would seat
+          // fewer dinners than guests and look like a complete pre-order.
+          preorderResult = {
+            requested_covers: entries.length,
+            saved_covers: 0,
+            saved: false,
+            error: 'More meal choices were sent than there are guests on the booking.'
+          }
+        } else {
+          preorderResult = await persistPreorderSafe(
+            supabase,
+            bookingResult.table_booking_id,
+            entries
+          )
+        }
+      }
 
       const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
@@ -681,6 +831,7 @@ export async function POST(request: NextRequest) {
             typeof bookingResult.is_outside_seating === 'boolean'
               ? bookingResult.is_outside_seating
               : null,
+          preorder: preorderResult,
         } satisfies TableBookingResponseData,
         meta: {
           status_code: responseStatus,
