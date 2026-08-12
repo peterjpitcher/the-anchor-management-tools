@@ -11,6 +11,37 @@ const BUCKET_NAME = 'event-images'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
 
+const PUBLIC_URL_MARKER = `/storage/v1/object/public/${BUCKET_NAME}/`
+
+/** Recover the bucket-relative storage path from a public URL, or null if it is not ours. */
+function storagePathFromPublicUrl(imageUrl: string | null | undefined): string | null {
+  if (!imageUrl) return null
+  const markerAt = imageUrl.indexOf(PUBLIC_URL_MARKER)
+  if (markerAt === -1) return null
+  const rawPath = imageUrl.slice(markerAt + PUBLIC_URL_MARKER.length).split('?')[0]
+  if (!rawPath) return null
+  try {
+    return decodeURIComponent(rawPath)
+  } catch {
+    return rawPath
+  }
+}
+
+/**
+ * An entity owns a storage object only when the object sits in that entity's own
+ * folder. New events inherit `event_categories.default_image_url` verbatim, so an
+ * event's image URL frequently points at a category-owned object that the category
+ * and every other event in that category also use. Deleting by URL alone would take
+ * the file out from under all of them.
+ */
+function ownsStorageObject(
+  storagePath: string | null,
+  folder: 'events' | 'categories',
+  entityId: string
+): boolean {
+  return Boolean(storagePath && storagePath.startsWith(`${folder}/${entityId}/`))
+}
+
 // Schema for image upload
 const uploadImageSchema = z.object({
   event_id: z.string().uuid().optional(), // Optional for categories
@@ -252,81 +283,12 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
     const authClient = await createClient()
     const supabase = createAdminClient()
 
-    // First, try to find the image in event_images table by URL
-    const { data: images, error: imagesError } = await supabase
-      .from('event_images')
-      .select('*')
-      .eq('event_id', entityId)
+    const storagePath = storagePathFromPublicUrl(imageUrl)
+    const eventOwnsFile = ownsStorageObject(storagePath, 'events', entityId)
 
-    if (imagesError) {
-      console.error('Failed to load event images for delete:', imagesError)
-      return { error: 'Failed to load event images.' }
-    }
-
-    // Find the image that matches the URL
-    let imageToDelete = null
-    if (images && images.length > 0) {
-      for (const img of images) {
-        const { data: { publicUrl } } = supabase.storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(img.storage_path)
-
-        if (publicUrl === imageUrl) {
-          imageToDelete = img
-          break
-        }
-      }
-    }
-
-    // If we found the image in event_images, delete it from storage
-    if (imageToDelete) {
-      const { data: deletedImage, error: deleteImageError } = await supabase
-        .from('event_images')
-        .delete()
-        .eq('id', imageToDelete.id)
-        .select('*')
-        .maybeSingle()
-
-      if (deleteImageError) {
-        console.error('Failed to delete event image metadata:', deleteImageError)
-        return { error: 'Failed to delete event image metadata.' }
-      }
-      if (!deletedImage) {
-        return { error: 'Image not found.' }
-      }
-
-      const { error: storageError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .remove([imageToDelete.storage_path])
-
-      if (storageError) {
-        console.error('Storage deletion error:', storageError)
-
-        const { error: rollbackError } = await supabase.from('event_images').insert({
-          id: deletedImage.id,
-          event_id: deletedImage.event_id,
-          storage_path: deletedImage.storage_path,
-          file_name: deletedImage.file_name,
-          mime_type: deletedImage.mime_type,
-          file_size_bytes: deletedImage.file_size_bytes,
-          image_type: deletedImage.image_type,
-          alt_text: deletedImage.alt_text,
-          caption: deletedImage.caption,
-          display_order: deletedImage.display_order,
-          uploaded_by: deletedImage.uploaded_by,
-          created_at: deletedImage.created_at,
-          updated_at: deletedImage.updated_at,
-        })
-
-        if (rollbackError) {
-          console.error('Failed to rollback event image metadata after storage delete failure:', rollbackError)
-        }
-
-        return { error: 'Failed to remove image from storage.' }
-      }
-    }
-
-    // Always update the event to remove the image URL
+    // Clear the reference BEFORE touching storage. If this fails, nothing has been
+    // destroyed and the image is still live. The reverse order could leave the
+    // website holding a URL to a file that no longer exists.
     const { data: updatedEvent, error: updateError } = await supabase
       .from('events')
       .update({
@@ -346,6 +308,31 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
       return { error: 'Event not found.' }
     }
 
+    // Only ever remove a file this event actually owns. An inherited category image
+    // is shared with the category itself and with every other event in it, so
+    // removing it here would blank the image on all of them.
+    if (eventOwnsFile && storagePath) {
+      const { error: metadataError } = await supabase
+        .from('event_images')
+        .delete()
+        .eq('event_id', entityId)
+        .eq('storage_path', storagePath)
+
+      if (metadataError) {
+        console.error('Failed to delete event image metadata:', metadataError)
+      }
+
+      const { error: storageError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .remove([storagePath])
+
+      // The reference is already gone, so the user's delete has succeeded. A failure
+      // here only leaves an unreachable file behind, which is the safe failure mode.
+      if (storageError) {
+        console.error('Failed to remove event image from storage:', storageError)
+      }
+    }
+
     // Log audit event
     const { data: { user } } = await authClient.auth.getUser()
     if (user) {
@@ -358,16 +345,105 @@ export async function deleteEventImage(imageUrl: string, entityId: string) {
         operation_status: 'success',
         old_values: {
           imageUrl: imageUrl
+        },
+        additional_info: {
+          storagePath,
+          // false means the file was inherited from the category and was left in place
+          storageObjectRemoved: eventOwnsFile
         }
       })
     }
 
     revalidatePath(`/events/${entityId}`)
     revalidatePath(`/events/${entityId}/edit`)
-    
+
     return { success: true }
   } catch (error) {
     console.error('Unexpected error in deleteEventImage:', error)
+    return { error: 'An unexpected error occurred.' }
+  }
+}
+
+/**
+ * Clear a category's default image.
+ *
+ * Categories were previously routed through `deleteEventImage`, which looks the id
+ * up in `events` and so always failed with "Event not found". Beyond that, a
+ * category object is genuinely shared: events copy `default_image_url` verbatim at
+ * creation, so the file can only be removed once nothing else points at it.
+ */
+export async function deleteCategoryImage(imageUrl: string, categoryId: string) {
+  try {
+    const hasPermission = await checkUserPermission('events', 'edit')
+    if (!hasPermission) {
+      return { error: 'Insufficient permissions to delete category images.' }
+    }
+
+    const authClient = await createClient()
+    const supabase = createAdminClient()
+
+    const storagePath = storagePathFromPublicUrl(imageUrl)
+    const categoryOwnsFile = ownsStorageObject(storagePath, 'categories', categoryId)
+
+    // Clear the reference first, for the same reason as the event path above.
+    const { data: updatedCategory, error: updateError } = await supabase
+      .from('event_categories')
+      .update({ default_image_url: null })
+      .eq('id', categoryId)
+      .select('id')
+      .maybeSingle()
+
+    if (updateError) {
+      console.error('Failed to clear image URL from category:', updateError)
+      return { error: 'Failed to remove image from category.' }
+    }
+    if (!updatedCategory) {
+      return { error: 'Category not found.' }
+    }
+
+    if (categoryOwnsFile && storagePath) {
+      // Events that inherited this image still render it. Removing the file would
+      // blank every one of them, so it stays until the last reference is gone.
+      const { count: referencingEvents, error: countError } = await supabase
+        .from('events')
+        .select('id', { count: 'exact', head: true })
+        .or(
+          `hero_image_url.eq.${imageUrl},thumbnail_image_url.eq.${imageUrl},poster_image_url.eq.${imageUrl}`
+        )
+
+      if (countError) {
+        // Unable to prove the file is unused, so leave it alone.
+        console.error('Failed to count events referencing category image:', countError)
+      } else if ((referencingEvents ?? 0) === 0) {
+        const { error: storageError } = await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([storagePath])
+
+        if (storageError) {
+          console.error('Failed to remove category image from storage:', storageError)
+        }
+      }
+    }
+
+    const { data: { user } } = await authClient.auth.getUser()
+    if (user) {
+      await logAuditEvent({
+        user_id: user.id,
+        user_email: user.email!,
+        operation_type: 'delete',
+        resource_type: 'event_category',
+        resource_id: categoryId,
+        operation_status: 'success',
+        old_values: { imageUrl },
+        additional_info: { storagePath }
+      })
+    }
+
+    revalidatePath('/settings/event-categories')
+
+    return { success: true }
+  } catch (error) {
+    console.error('Unexpected error in deleteCategoryImage:', error)
     return { error: 'An unexpected error occurred.' }
   }
 }

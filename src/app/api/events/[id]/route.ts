@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
+import { buildEventImageFields } from '@/lib/api/eventImageFields';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { EVENT_MARKETING_CHANNEL_MAP, isEventMarketingQrChannel, type EventMarketingChannelKey } from '@/lib/event-marketing-links';
@@ -296,17 +297,19 @@ export async function GET(
       longDescription: event.long_description,
       metaTitle: event.meta_title,
       metaDescription: event.meta_description,
-      // Map hero_image_url to all image fields for backwards compatibility
-      heroImageUrl: event.hero_image_url || event.image_url,
-      thumbnailImageUrl: event.thumbnail_image_url || event.hero_image_url || event.image_url,
-      posterImageUrl: event.poster_image_url || event.hero_image_url || event.image_url,
+      // The legacy three keep their present values. squareImageUrl is the same
+      // value under an honest name; landscape and social are new. Story and
+      // print poster URLs are deliberately never emitted.
+      // The old `|| event.image_url` fallbacks referenced a column that does not
+      // exist on this table, so they always read undefined.
+      ...buildEventImageFields(event),
       galleryImages:
         Array.isArray(event.gallery_image_urls) && event.gallery_image_urls.length > 0
           ? event.gallery_image_urls
           : event.hero_image_url
             ? [event.hero_image_url]
             : [],
-      imageUrl: event.hero_image_url || event.image_url, // Single image field for compatibility
+      imageUrl: event.hero_image_url ?? null, // Single image field for compatibility
       promoVideoUrl: event.promo_video_url,
       highlightVideos: event.highlight_video_urls || [],
       lastEntryTime: event.last_entry_time,

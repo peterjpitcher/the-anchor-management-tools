@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useRef, useTransition } from 'react'
 import {
   Drawer, Button, Input, Select, Textarea, DateTimePicker,
   Checkbox, Spinner, toast, Switch,
@@ -13,7 +13,7 @@ import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keyw
 import { KeywordStrategyCard } from '@/components/features/events/KeywordStrategyCard'
 import { FaqEditor } from '@/components/features/events/FaqEditor'
 import { SeoHealthIndicator } from '@/components/features/events/SeoHealthIndicator'
-import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
+import { EventImagePanel, type EventImagePanelHandle } from './EventImagePanel'
 import type { Event } from '@/types/database'
 import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
@@ -112,6 +112,12 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
   // ── Image ──
   const [heroImageUrl, setHeroImageUrl] = useState('')
+  // Set once a new event has been created, so the drawer can switch to edit mode
+  // in place and upload whatever artwork was queued before it existed.
+  const [createdEventId, setCreatedEventId] = useState<string | null>(null)
+  const [queuedImageCount, setQueuedImageCount] = useState(0)
+  const imagePanelRef = useRef<EventImagePanelHandle>(null)
+  const activeEventId = event?.id ?? createdEventId
 
   // ── SEO & content ──
   const [slug, setSlug] = useState('')
@@ -245,6 +251,25 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       setFaqsModified(false)
     }
   }, [event])
+
+  // A fresh open must not inherit the id of the event created last time round.
+  useEffect(() => {
+    if (!open) {
+      setCreatedEventId(null)
+      setQueuedImageCount(0)
+    }
+  }, [open])
+
+  // Queued files exist only in memory, so a reload would discard them silently.
+  useEffect(() => {
+    if (queuedImageCount === 0) return
+    function warn(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [queuedImageCount])
 
   // Auto-calculate duration when start/end time changes
   useEffect(() => {
@@ -410,16 +435,43 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         formData.set('faqs', JSON.stringify(faqs.filter(f => f.question && f.answer)))
       }
 
-      const result = isEdit
-        ? await updateEvent(event.id, formData)
+      const targetId = activeEventId
+      const result = targetId
+        ? await updateEvent(targetId, formData)
         : await createEvent(formData)
 
       if ('error' in result && result.error) {
         toast.error(result.error)
-      } else {
-        toast.success(isEdit ? 'Event updated' : 'Event created')
-        onSave()
+        return
       }
+
+      const newEventId =
+        !targetId && 'data' in result ? (result.data as { id?: string } | undefined)?.id ?? null : null
+
+      toast.success(targetId ? 'Event updated' : 'Event created')
+
+      // Refresh the list behind the drawer either way.
+      onSave()
+
+      // Artwork chosen before the event existed has nowhere to go until now. The
+      // drawer stays open and switches to edit mode so the uploads have a UI to
+      // report into, rather than being discarded when it unmounts.
+      if (newEventId) {
+        setCreatedEventId(newEventId)
+        if (imagePanelRef.current?.hasQueuedFiles()) {
+          const failures = await imagePanelRef.current.flushQueue(newEventId)
+          if (failures > 0) {
+            toast.error(
+              `${failures} image${failures === 1 ? '' : 's'} did not upload. Try again from the tile.`
+            )
+            return
+          }
+        }
+        onClose()
+        return
+      }
+
+      if (targetId) onClose()
     })
   }
 
@@ -555,10 +607,23 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
     }
   }
 
+  // Queued artwork lives in component state only, so closing the drawer or
+  // reloading the page loses it. There was no guard here at all before.
+  function requestClose() {
+    if (queuedImageCount > 0) {
+      const noun = queuedImageCount === 1 ? 'image' : 'images'
+      const confirmed = window.confirm(
+        `${queuedImageCount} ${noun} ${queuedImageCount === 1 ? 'has' : 'have'} not been uploaded yet. Close and lose ${queuedImageCount === 1 ? 'it' : 'them'}?`
+      )
+      if (!confirmed) return
+    }
+    onClose()
+  }
+
   return (
     <Drawer
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       title={isEdit ? 'Edit Event' : 'New Event'}
       width="640px"
     >
@@ -619,14 +684,11 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 placeholder="Unlimited"
               />
             )}
-            <SquareImageUpload
-              entityId={event?.id || 'new'}
-              entityType="event"
-              currentImageUrl={heroImageUrl || null}
-              label="Event Image"
-              helpText="Upload a square image (recommended: 1080x1080px)"
-              onImageUploaded={(url) => setHeroImageUrl(url)}
-              onImageDeleted={() => setHeroImageUrl('')}
+            <EventImagePanel
+              ref={imagePanelRef}
+              eventId={activeEventId}
+              onQueueChange={setQueuedImageCount}
+              onSquareChange={(url) => setHeroImageUrl(url ?? '')}
             />
             <Textarea
               label="Event Brief"
@@ -968,7 +1030,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
 
         {/* ── Footer actions ── */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
-          <Button variant="ghost" onClick={onClose} disabled={isPending}>
+          <Button variant="ghost" onClick={requestClose} disabled={isPending}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleSave} loading={isPending}>
