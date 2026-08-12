@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withApiAuth, createApiResponse, createErrorResponse, createCorsPreflightResponse } from '@/lib/api/auth';
 import { eventToSchema } from '@/lib/api/schema';
+import { buildEventImageFields } from '@/lib/api/eventImageFields';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { resolveStatusFilters } from '@/lib/events/status-filters';
 import { buildEventSearchOrFilter } from '@/lib/events/api-search';
@@ -253,6 +254,10 @@ export async function GET(_request: NextRequest) {
         secondary_keywords: event.secondary_keywords || [],
         local_seo_keywords: event.local_seo_keywords || [],
         image_alt_text: event.image_alt_text || null,
+        // The list route emitted no camelCase image field at all, which is why
+        // the website's list pages fall back to image[0]. Added here so both
+        // routes carry the same contract.
+        ...buildEventImageFields(event),
         social_copy_whatsapp: event.social_copy_whatsapp || null,
         previous_event_summary: event.previous_event_summary || null,
         attendance_note: event.attendance_note || null,
