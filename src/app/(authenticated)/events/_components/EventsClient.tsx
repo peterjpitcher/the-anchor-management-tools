@@ -218,8 +218,9 @@ export default function EventsClient({
     setActiveEvent(null)
   }, [])
 
+  // Refresh only. The drawer closes itself, because after creating an event it
+  // has to stay open long enough to upload any artwork queued beforehand.
   const handleSave = useCallback(() => {
-    handleDrawerClose()
     if (view === 'calendar') {
       fetchCalendarData()
     } else if (view === 'board') {
@@ -227,7 +228,7 @@ export default function EventsClient({
     } else {
       fetchEvents(pagination.currentPage, filters)
     }
-  }, [handleDrawerClose, view, fetchCalendarData, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
+  }, [view, fetchCalendarData, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
 
   const handleDeleteSelected = useCallback(() => {
     startTransition(async () => {
