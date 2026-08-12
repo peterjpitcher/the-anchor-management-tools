@@ -26,6 +26,12 @@ type CacheColumn =
 export interface EventImageVariantConfig {
   key: EventImageVariant
   label: string
+  /**
+   * How the variant is named in the copyable prompt. Spelled out more than the
+   * tile label, because an image tool reading "Story" has no idea what shape
+   * that is, whereas "Instagram story" is unambiguous.
+   */
+  promptLabel: string
   /** Shown under the tile so staff know what to export from Canva. */
   helpText: string
   /** width / height. Used for the tolerance check and the preview box. */
@@ -49,6 +55,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
   square: {
     key: 'square',
     label: 'Square',
+    promptLabel: 'Square (source image)',
     helpText: '1:1, 1080x1080. Event cards, listings and feed posts.',
     aspectRatio: 1,
     aspectLabel: '1:1',
@@ -62,6 +69,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
   landscape: {
     key: 'landscape',
     label: 'Landscape',
+    promptLabel: 'Landscape',
     helpText: '16:9, 1920x1080. The hero image on the event page.',
     aspectRatio: 16 / 9,
     aspectLabel: '16:9',
@@ -75,6 +83,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
   social: {
     key: 'social',
     label: 'Social / Facebook cover',
+    promptLabel: 'Facebook event cover / link preview',
     helpText: '1.91:1, 1920x1005. Facebook event cover and link previews.',
     aspectRatio: 1.91,
     aspectLabel: '1.91:1',
@@ -88,6 +97,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
   story: {
     key: 'story',
     label: 'Story',
+    promptLabel: 'Instagram story',
     helpText: '9:16, 1080x1920. Stories and reels. Not used on the website.',
     aspectRatio: 9 / 16,
     aspectLabel: '9:16',
@@ -101,6 +111,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
   print_poster: {
     key: 'print_poster',
     label: 'A4 poster (print)',
+    promptLabel: 'A4 poster for print',
     helpText: 'A4 at 300dpi, 2480x3508, or a PDF. For printing only.',
     aspectRatio: 2480 / 3508,
     aspectLabel: 'A4 portrait',
@@ -124,6 +135,32 @@ export const EVENT_IMAGE_VARIANT_ORDER: readonly EventImageVariant[] = [
 
 export function isEventImageVariant(value: unknown): value is EventImageVariant {
   return typeof value === 'string' && value in EVENT_IMAGE_VARIANTS
+}
+
+/**
+ * The prompt staff copy into an image tool once the square artwork exists, to
+ * get the other four variants back at the sizes the tiles actually accept.
+ *
+ * Generated from the config rather than written out, so the numbers here can
+ * never drift from the ones the upload validates against. The square is left
+ * out because it is the image being handed over.
+ */
+export function buildVariantPrompt(): string {
+  const sizes = EVENT_IMAGE_VARIANT_ORDER.filter((key) => key !== 'square').map((key) => {
+    const variant = EVENT_IMAGE_VARIANTS[key]
+    const dpi = key === 'print_poster' ? ' at 300 dpi' : ''
+    return `- ${variant.promptLabel}: ${variant.aspectLabel}, ${variant.targetWidth} x ${variant.targetHeight} px${dpi}`
+  })
+
+  return [
+    'Please recreate the attached image at each of the sizes below, keeping the same artwork, colours, typography and mood so they read as one set.',
+    '',
+    'Re-compose each one for its shape rather than stretching or cropping the original. Keep the subject and every piece of text comfortably inside the frame, and give portrait and landscape versions room to breathe instead of squashing the square layout into them.',
+    '',
+    ...sizes,
+    '',
+    'Return each one as a separate JPG or PNG at exactly the pixel dimensions listed.',
+  ].join('\n')
 }
 
 /**
