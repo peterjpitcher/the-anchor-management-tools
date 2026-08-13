@@ -21,6 +21,7 @@ const RESERVED_TOP_LEVEL_ROUTES = new Set([
   'employees',
   'events',
   'invoices',
+  'marketing',
   'menu-management',
   'messages',
   'performers',
