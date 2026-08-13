@@ -247,6 +247,36 @@ describe('findActivePromoContext', () => {
 
     expect(result).toBeNull()
   })
+
+  // Regression: this used to order by reply_window_expires_at, which holds the
+  // event's start time. With two windows open a reply booked whichever event
+  // started last rather than the one we had just texted about, so someone who
+  // was told "music bingo is tomorrow" got booked onto a quiz six days later.
+  it('picks the most recently sent promo, not the latest-starting event', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    await findActivePromoContext(PHONE)
+
+    expect(db.order).toHaveBeenCalledWith('created_at', { ascending: false })
+    expect(db.order).not.toHaveBeenCalledWith(
+      'reply_window_expires_at',
+      expect.anything()
+    )
+  })
+
+  // The still-open filter has to stay. Once the newest event has started, a late
+  // reply should fall through to the next event they were told about that is
+  // still bookable, rather than booking something that already happened.
+  it('still only considers windows that are open', async () => {
+    const db = buildDbMock()
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    await findActivePromoContext(PHONE)
+
+    expect(db.gt).toHaveBeenCalledWith('reply_window_expires_at', expect.any(String))
+    expect(db.eq).toHaveBeenCalledWith('booking_created', false)
+  })
 })
 
 // ---------------------------------------------------------------------------
