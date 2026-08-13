@@ -3,7 +3,7 @@ import { Client } from '@microsoft/microsoft-graph-client';
 import { ClientSecretCredential } from '@azure/identity';
 import { getErrorMessage } from '@/lib/errors';
 import { Resend } from 'resend';
-import { isEmailSuppressed, recordEmailMessage } from '@/lib/email/logging';
+import { getEmailSuppressionStatus, recordEmailMessage } from '@/lib/email/logging';
 
 export interface EmailOptions {
   to: string;
@@ -40,6 +40,21 @@ export interface EmailOptions {
    * Gmail's one-click requirement and reads as a half-implemented opt-out.
    */
   unsubscribeUrl?: string;
+  /** Marketing linkage, written onto the email_messages row so webhook events can be traced back. */
+  businessContactId?: string | null;
+  marketingCampaignId?: string | null;
+  marketingRecipientId?: string | null;
+  /**
+   * What to do when the suppression list cannot be read.
+   *
+   * 'fail_open' (the default, and the existing behaviour) sends anyway. A database wobble
+   * must not stop a booking confirmation.
+   *
+   * 'fail_closed' refuses to send. Marketing carries the opposite risk: mailing an address
+   * that bounced or complained is worse than mailing it late, so the marketing sender uses
+   * this and retries once the check is available again.
+   */
+  suppressionMode?: 'fail_open' | 'fail_closed';
 }
 
 export interface EmailAttachment {
@@ -49,7 +64,22 @@ export interface EmailAttachment {
 }
 
 type EmailProvider = 'graph' | 'resend';
-type EmailSendResult = { success: boolean; error?: string; messageId?: string };
+type EmailSendResult = {
+  success: boolean;
+  error?: string;
+  /** The provider's own id (Resend/Graph). Not a local row id. */
+  messageId?: string;
+  /**
+   * The uuid of the `email_messages` row for this send, when one was written.
+   *
+   * Callers that need to join a send back to its delivery events must use this, not
+   * `messageId`. A send can succeed with this null if logging failed, which is a real state
+   * a bulk sender has to handle: the recipient got the email, so retrying would duplicate it.
+   */
+  emailMessageId?: string | null;
+  /** True when the suppression list could not be read and the send was refused because of it. */
+  suppressionCheckUnavailable?: boolean;
+};
 
 let cachedResendClient: Resend | null = null;
 
@@ -109,6 +139,9 @@ async function recordEmailOutcome(
     parkingBookingId: options.parkingBookingId ?? null,
     invoiceId: options.invoiceId ?? null,
     quoteId: options.quoteId ?? null,
+    businessContactId: options.businessContactId ?? null,
+    marketingCampaignId: options.marketingCampaignId ?? null,
+    marketingRecipientId: options.marketingRecipientId ?? null,
   });
 
   if (options.requireLog === true && !rowId) {
@@ -122,7 +155,19 @@ async function recordEmailOutcome(
  * Send a general email using the configured provider.
  */
 export async function sendEmail(options: EmailOptions): Promise<EmailSendResult> {
-  if (await isEmailSuppressed(options.to)) {
+  const suppressionStatus = await getEmailSuppressionStatus(options.to);
+
+  // Only marketing opts into failing closed. Everything else keeps the original behaviour of
+  // sending when the list cannot be read.
+  if (suppressionStatus === 'unavailable' && options.suppressionMode === 'fail_closed') {
+    return {
+      success: false,
+      error: 'Suppression list could not be checked',
+      suppressionCheckUnavailable: true,
+    };
+  }
+
+  if (suppressionStatus === 'suppressed') {
     const error = 'Recipient email address is suppressed';
     try {
       await recordEmailOutcome(options, {
@@ -228,8 +273,9 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       };
     }
 
+    let emailMessageId: string | null = null;
     try {
-      await recordEmailOutcome(options, {
+      emailMessageId = await recordEmailOutcome(options, {
         status: 'sent',
         fromAddress,
         messageId: data?.id ?? null,
@@ -239,12 +285,16 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
         success: false,
         error: logError instanceof Error ? logError.message : 'Email logging failed',
         messageId: data?.id,
+        emailMessageId: null,
       }
     }
 
+    // emailMessageId can be null here when logging failed without requireLog set. The email
+    // HAS been sent, so a caller that retries on a null id would send it twice.
     return {
       success: true,
       messageId: data?.id,
+      emailMessageId,
     };
   } catch (error: unknown) {
     console.error('Error sending email:', error);
@@ -357,8 +407,9 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
         saveToSentItems: true
       });
 
+    let emailMessageId: string | null = null;
     try {
-      await recordEmailOutcome(options, {
+      emailMessageId = await recordEmailOutcome(options, {
         status: 'sent',
         fromAddress: senderEmail,
         messageId: response?.id ?? null,
@@ -368,12 +419,14 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
         success: false,
         error: logError instanceof Error ? logError.message : 'Email logging failed',
         messageId: response?.id,
+        emailMessageId: null,
       }
     }
 
     return {
       success: true,
-      messageId: response?.id
+      messageId: response?.id,
+      emailMessageId,
     };
   } catch (error: unknown) {
     console.error('Error sending email:', error);

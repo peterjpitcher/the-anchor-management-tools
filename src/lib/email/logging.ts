@@ -36,10 +36,53 @@ export type RecordEmailMessageParams = {
   quoteId?: string | null
   direction?: 'inbound' | 'outbound'
   receivedAt?: string | null
+  businessContactId?: string | null
+  marketingCampaignId?: string | null
+  marketingRecipientId?: string | null
 }
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase()
+}
+
+/**
+ * Three-state suppression check.
+ *
+ * `isEmailSuppressed` below deliberately fails open: a database wobble must not stop a
+ * booking confirmation going out. Marketing needs the opposite, because sending to a
+ * bounced or complained address is worse than sending late. This variant reports
+ * 'unavailable' instead of guessing, so the caller can decide which risk it is carrying.
+ */
+export type EmailSuppressionStatus = 'suppressed' | 'clear' | 'unavailable'
+
+export async function getEmailSuppressionStatus(email: string): Promise<EmailSuppressionStatus> {
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) {
+    return 'clear'
+  }
+
+  try {
+    const client = createAdminClient()
+    const { data, error } = await (client.from('email_suppressions') as any)
+      .select('email')
+      .eq('email', normalizedEmail)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('Email suppression lookup failed', {
+        metadata: { email: normalizedEmail, error: error.message },
+      })
+      return 'unavailable'
+    }
+
+    return data ? 'suppressed' : 'clear'
+  } catch (error) {
+    logger.warn('Email suppression lookup unavailable', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { email: normalizedEmail },
+    })
+    return 'unavailable'
+  }
 }
 
 export async function isEmailSuppressed(email: string): Promise<boolean> {
@@ -100,6 +143,9 @@ export async function recordEmailMessage(params: RecordEmailMessageParams): Prom
       invoice_id: params.invoiceId ?? null,
       quote_id: params.quoteId ?? null,
       received_at: params.receivedAt ?? null,
+      business_contact_id: params.businessContactId ?? null,
+      marketing_campaign_id: params.marketingCampaignId ?? null,
+      marketing_recipient_id: params.marketingRecipientId ?? null,
       updated_at: nowIso,
     }
 
@@ -113,10 +159,15 @@ export async function recordEmailMessage(params: RecordEmailMessageParams): Prom
       insertPayload.failed_at = nowIso
     }
 
-    const { data, error } = await (client.from('email_messages') as any)
-      .insert(insertPayload)
-      .select('id')
-      .maybeSingle()
+    // When the provider gave us an id, key on it. A retried send that the provider
+    // deduplicated returns the same id, and this turns that into the same log row rather
+    // than a second one claiming a second delivery.
+    const table = (client.from('email_messages') as any)
+    const query = params.resendMessageId
+      ? table.upsert(insertPayload, { onConflict: 'resend_message_id' })
+      : table.insert(insertPayload)
+
+    const { data, error } = await query.select('id').maybeSingle()
 
     if (error) {
       logger.warn('Failed to record email message', {

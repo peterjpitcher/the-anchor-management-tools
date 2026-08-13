@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -320,6 +321,132 @@ function suppressionReason(type: string): 'bounce' | 'complaint' | 'suppression'
     return 'suppression'
   }
   return null
+}
+
+/**
+ * How firmly a marketing status blocks a send.
+ *
+ * An objection outranks a delivery failure, and an explicit unsubscribe outranks a
+ * complaint, so a later bounce can never quietly rewrite a contact who already said stop.
+ * Only a strictly stronger state is written.
+ */
+const CONTACT_MARKETING_STATUS_RANK: Record<string, number> = {
+  subscribed: 0,
+  bounced: 1,
+  complained: 2,
+  unsubscribed: 3,
+}
+
+/**
+ * Mirror a bounce or complaint onto the business contact behind the message.
+ *
+ * The contact link on `email_messages` is the reliable route, because an address edited
+ * after the send would no longer match. Matching on the address is only a fallback for
+ * older rows that predate the link.
+ *
+ * Deliberately never throws. The suppression row above has already done the job that stops
+ * the mail; failing the whole webhook here would only make Resend replay an event we have
+ * mostly processed.
+ */
+async function syncBusinessContactDeliveryFailure(
+  adminClient: any,
+  eventType: 'email.bounced' | 'email.complained',
+  recipient: string,
+  businessContactId: string | null,
+) {
+  const nextStatus = eventType === 'email.bounced' ? 'bounced' : 'complained'
+  const reason = eventType === 'email.bounced' ? 'bounce' : 'complaint'
+
+  try {
+    const query = (adminClient.from('business_contacts') as any).select('id, email, marketing_status')
+    const { data: contact, error: loadError } = businessContactId
+      ? await query.eq('id', businessContactId).maybeSingle()
+      : await query.eq('email', recipient).maybeSingle()
+
+    if (loadError) {
+      logger.warn('Failed to load business contact for Resend delivery failure', {
+        metadata: { businessContactId, email: recipient, type: eventType, error: loadError.message },
+      })
+      return
+    }
+
+    // No contact means this was guest or transactional mail. Nothing about the B2B list
+    // should change, and no do-not-contact row should be created for an address that was
+    // never on it.
+    if (!contact) return
+
+    const currentRank = CONTACT_MARKETING_STATUS_RANK[contact.marketing_status] ?? 0
+    if ((CONTACT_MARKETING_STATUS_RANK[nextStatus] ?? 0) > currentRank) {
+      const { error: updateError } = await (adminClient.from('business_contacts') as any)
+        .update({ marketing_status: nextStatus, updated_at: new Date().toISOString() })
+        .eq('id', contact.id)
+
+      if (updateError) {
+        logger.warn('Failed to update business contact marketing status from Resend webhook', {
+          metadata: { contactId: contact.id, type: eventType, error: updateError.message },
+        })
+      }
+    }
+
+    const email = String(contact.email ?? recipient).trim().toLowerCase()
+    if (!email) return
+
+    // Insert only if absent. If a row is already there the person has objected or failed
+    // before, and a bounce must not overwrite the stronger reason already recorded.
+    const { error: dncError } = await (adminClient.from('marketing_do_not_contact') as any)
+      .upsert(
+        {
+          email_normalised: email,
+          email_hash: createHash('sha256').update(email).digest('hex'),
+          reason,
+          source: 'resend_webhook',
+        },
+        { onConflict: 'email_normalised', ignoreDuplicates: true }
+      )
+
+    if (dncError) {
+      logger.warn('Failed to record marketing do-not-contact from Resend webhook', {
+        metadata: { email, reason, error: dncError.message },
+      })
+    }
+  } catch (error) {
+    logger.warn('Business contact delivery failure sync failed', {
+      metadata: { businessContactId, email: recipient, type: eventType, error: getErrorMessage(error) },
+    })
+  }
+}
+
+/**
+ * Park an event that matched no local message.
+ *
+ * Without this the event is marked processed and the delivery record is gone for good,
+ * which for a marketing send means losing the only evidence of what happened to it. The
+ * webhook still returns 200: Resend replaying it would not make the row appear.
+ */
+async function quarantineUnmatchedEvent(
+  adminClient: any,
+  event: ResendEmailEvent,
+  emailId: string,
+  recipient: string | null,
+) {
+  try {
+    const { error } = await (adminClient.from('email_webhook_unmatched') as any).insert({
+      provider_message_id: emailId,
+      event_type: event.type,
+      to_address: recipient,
+      payload: event,
+    })
+
+    if (error) {
+      logger.warn('Failed to quarantine unmatched Resend webhook event', {
+        metadata: { emailId, type: event.type, error: error.message },
+      })
+    }
+  } catch (error) {
+    logger.warn('Failed to quarantine unmatched Resend webhook event', {
+      metadata: { emailId, type: event.type, error: getErrorMessage(error) },
+    })
+  }
 }
 
 function isEmailStatusProgression(currentStatus: string | null | undefined, nextStatus: string): boolean {
@@ -650,8 +777,10 @@ export async function POST(request: Request) {
       updatePayload.error = errorFromEvent(event)
     }
 
+    const recipient = event.data?.to?.[0]?.trim().toLowerCase() || null
+
     const { data: existingMessage, error: loadMessageError } = await (adminClient.from('email_messages') as any)
-      .select('id, status, customer_id')
+      .select('id, status, customer_id, business_contact_id')
       .eq('resend_message_id', emailId)
       .maybeSingle()
 
@@ -668,9 +797,11 @@ export async function POST(request: Request) {
     }
 
     const updateQuery = (adminClient.from('email_messages') as any).update(updatePayload)
-    const { error: updateError } = existingMessage?.id
-      ? await updateQuery.eq('id', existingMessage.id)
-      : await updateQuery.eq('resend_message_id', emailId)
+    // `.select` so we can tell "updated" from "matched nothing". Without it a status for a
+    // message we never logged looks identical to a successful update.
+    const { data: updatedMessages, error: updateError } = existingMessage?.id
+      ? await updateQuery.eq('id', existingMessage.id).select('id')
+      : await updateQuery.eq('resend_message_id', emailId).select('id')
 
     if (updateError) {
       logger.warn('Failed to update email message from Resend webhook', {
@@ -679,7 +810,10 @@ export async function POST(request: Request) {
       throw new Error('Failed to update email message from Resend webhook')
     }
 
-    const recipient = event.data?.to?.[0]?.trim().toLowerCase() || null
+    if ((updatedMessages ?? []).length === 0) {
+      await quarantineUnmatchedEvent(adminClient, event, emailId, recipient)
+    }
+
     const reason = suppressionReason(event.type)
     if (reason && recipient) {
       const { error: suppressionError } = await (adminClient.from('email_suppressions') as any)
@@ -696,6 +830,15 @@ export async function POST(request: Request) {
         })
         throw new Error('Failed to upsert email suppression from Resend webhook')
       }
+    }
+
+    if (recipient && (event.type === 'email.bounced' || event.type === 'email.complained')) {
+      await syncBusinessContactDeliveryFailure(
+        adminClient,
+        event.type,
+        recipient,
+        existingMessage?.business_contact_id ?? null,
+      )
     }
 
     await updateCustomerEmailHealth(adminClient, event, recipient, existingMessage?.customer_id ?? null)
