@@ -123,6 +123,29 @@ Two things to know about the handover itself:
    `note_bar` appears in the catalogue with no fixture of its own. Ask the designer to split
    them; until then a `pull_quote` carries placeholder notice copy and should not be used.
 
+## Live state as at 2026-08-13
+
+Deployed to production (main `b6d3a86c`, then `67c60a98`). The feature is live and inert:
+
+| | |
+|---|---|
+| Kill switch (`marketing_settings.sends_enabled`) | **off** |
+| `MARKETING_EMAIL_FROM_ADDRESS` in Vercel | **not set**, so the cron returns `not_configured` and does nothing |
+| Contacts loaded | 160, **all `pending_review`**, 5 flagged as free-mail for review |
+| Contacts eligible to receive anything | **0** |
+| Campaigns | 0 |
+
+Three independent things therefore have to change before a single email can go out:
+the address must be configured, contacts must be marked eligible by a person, and the
+kill switch must be turned on. That is deliberate.
+
+Verified in production after deploy: `/marketing`, `/marketing/contacts` and
+`/marketing/settings` redirect to login; `/api/cron/marketing-campaigns` returns 401 without
+the cron secret; `/api/unsubscribe` serves its confirmation page. `anon` and `authenticated`
+hold no privileges on any new table or function.
+
+To undo the contact import: `DELETE FROM business_contacts;` (nothing references them yet).
+
 ## Known gaps
 
 - **Concurrency is not proven in CI.** Row locking, `SKIP LOCKED`, the cross-campaign frequency
