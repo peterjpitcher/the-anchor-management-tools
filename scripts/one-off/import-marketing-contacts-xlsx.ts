@@ -15,7 +15,14 @@
  * consent needed) or a sole trader (consent or a full soft opt-in needed).
  */
 
+import path from 'node:path'
+
+import dotenv from 'dotenv'
 import ExcelJS from 'exceljs'
+
+// Loaded before the service is imported, because the admin client reads the service-role key
+// at module load and a bare tsx run does not pick up .env.local on its own.
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
 import { importContacts } from '@/services/marketing-contacts'
 
