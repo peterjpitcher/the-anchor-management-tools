@@ -199,6 +199,18 @@ export function parseSeatCount(body: string): number | null {
 /**
  * Find the most recent active promo context for a phone number.
  * Returns null when no matching active window exists.
+ *
+ * Ordered by created_at, i.e. the event we texted them about most recently.
+ * It used to order by reply_window_expires_at, but that column holds the
+ * event's start time, so with two windows open the reply booked whichever
+ * event started furthest in the future rather than the one just advertised.
+ * That put a customer on a quiz six days out 44 minutes after we texted her
+ * about music bingo the following night.
+ *
+ * The still-open filter below stays: once the newest event has started, a late
+ * reply correctly falls through to the next event they were told about that is
+ * still bookable. So do not "fix" this further by closing a phone's other open
+ * windows when a promo goes out, that would silence those legitimate replies.
  */
 export async function findActivePromoContext(phoneNumber: string): Promise<PromoContextRow | null> {
   try {
@@ -209,7 +221,7 @@ export async function findActivePromoContext(phoneNumber: string): Promise<Promo
       .eq('phone_number', phoneNumber)
       .eq('booking_created', false)
       .gt('reply_window_expires_at', new Date().toISOString())
-      .order('reply_window_expires_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
