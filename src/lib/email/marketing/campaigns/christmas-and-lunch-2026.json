@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "title": "Christmas bookings are open at The Anchor",
+  "preheader": "Christmas dinner 10 November to 20 December, and lunch is back from midday, Tuesday to Friday.",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://YOUR-HOST/hero-christmas-table.jpg",
+          "alt": "A table laid for Christmas dinner at The Anchor",
+          "width": 600,
+          "height": 340
+        },
+        "placeholder_label": "Image slot 1 · 1200 × 680",
+        "placeholder_caption": "Christmas table laid up",
+        "kicker": "Christmas 2026 · bookings open",
+        "headline": "Christmas at The Anchor is open for bookings",
+        "body": [
+          "We serve Christmas dinner from 10 November to 20 December 2026. A village pub rather than a hotel function room, so your group gets its own table and its own evening. Never a shared sitting with strangers.",
+          "Everyone picks their own courses, so nobody is tied to what the rest of the table is having."
+        ],
+        "cta_label": "Start your Christmas booking",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Dates",
+            "value": "10 November to 20 December 2026"
+          },
+          {
+            "label": "Sittings",
+            "value": "Tuesday to Saturday, plus Sunday 1pm to 6pm. No Mondays"
+          },
+          {
+            "label": "Group size",
+            "value": "6 guests or more. Over 20 becomes private hire"
+          },
+          {
+            "label": "Deposit",
+            "value": "£10 per person, taken off your bill"
+          }
+        ]
+      }
+    },
+    {
+      "type": "price_tiles",
+      "data": {
+        "tiles": [
+          {
+            "label": "1 course",
+            "price": "£23",
+            "note": "from, per person"
+          },
+          {
+            "label": "2 courses",
+            "price": "£33.95",
+            "note": "from, per person"
+          },
+          {
+            "label": "3 courses",
+            "price": "£36.95",
+            "note": "from, per person"
+          }
+        ],
+        "footnote": "Every adult gets a glass of prosecco, swappable for orange juice. Weekday and weekend prices differ, and pre-orders come to us 7 days before your date. Festive buffets are available for 30 guests or more."
+      }
+    },
+    {
+      "type": "deadline_bar",
+      "data": {
+        "text": "December Fridays and Saturdays go first.",
+        "link_label": "Lock in your date today",
+        "link_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "divider_rule",
+      "data": {}
+    },
+    {
+      "type": "section_intro",
+      "data": {
+        "kicker": "From 1 September 2026",
+        "heading": "We are open from lunchtime again",
+        "body": "Lunch is back on the menu. From Tuesday 1 September we are serving from midday, so a proper sit-down lunch is seven minutes from Terminal 5 again."
+      }
+    },
+    {
+      "type": "image_full",
+      "data": {
+        "image": {
+          "src": "https://YOUR-HOST/lunch-daytime.jpg",
+          "alt": "Lunch served at The Anchor near Heathrow",
+          "width": 600,
+          "height": 260
+        },
+        "placeholder_label": "Image slot 2 · 1200 × 520",
+        "placeholder_caption": "Daytime lunch on the table"
+      }
+    },
+    {
+      "type": "hours_table",
+      "data": {
+        "heading": "Kitchen hours, Tuesday to Friday",
+        "rows": [
+          {
+            "label": "Lunch",
+            "time": "12pm to 3pm"
+          },
+          {
+            "label": "Dinner",
+            "time": "4pm to 9pm"
+          }
+        ],
+        "note": "The kitchen is closed on Mondays."
+      }
+    },
+    {
+      "type": "cta_outline",
+      "data": {
+        "label": "See the food menu",
+        "url": "https://www.the-anchor.pub/food-menu"
+      }
+    },
+    {
+      "type": "amenity_grid",
+      "data": {
+        "items": [
+          {
+            "highlight": "7 minutes",
+            "text": "from Heathrow Terminal 5"
+          },
+          {
+            "highlight": "8 minutes",
+            "text": "from Staines-upon-Thames"
+          },
+          {
+            "highlight": "Around 20",
+            "text": "free parking spaces on site"
+          },
+          {
+            "highlight": "Outside",
+            "text": "the ULEZ boundary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Talk to us",
+        "body": "Tell us your date and rough numbers and we will come back to you within 24 hours.",
+        "cta_label": "Send an enquiry",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties#enquiry",
+        "reassurance_items": [
+          "No commitment, just a conversation",
+          "We reply within 24 hours"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "signoff_ps",
+      "data": {
+        "signoff": "See you at the bar,",
+        "signature": "The Anchor team",
+        "ps_body": "Pre-orders are due 7 days before your date, so the earlier it is locked in, the easier it is on everyone.",
+        "ps_link_label": "Lock in your date →",
+        "ps_link_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you enquired about a booking or an event with us.",
+        "year": "2026"
+      }
+    }
+  ]
+}

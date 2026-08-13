@@ -1,0 +1,254 @@
+{
+  "generatedFrom": {
+    "campaign": {
+      "file": "docs/design/email-handover/anchor-christmas-and-lunch.html",
+      "sha256": "c8f87ea9a0206cde011ea1bfb6a7b0b4b76e4014d39f7f4a524da6f8abe70706"
+    },
+    "blocks": {
+      "file": "docs/design/email-handover/anchor-email-blocks.html",
+      "sha256": "f1aff528124d538d4a16b5bb5678ffbe5d4f7eebedc8506731be6b9b42af988a"
+    }
+  },
+  "campaign": [
+    {
+      "name": "shell_head",
+      "startOffset": 0,
+      "endOffset": 2278,
+      "sha256": "2ed33c889577d090acd201c88fd124d20e7a09fd9c40266c2f1991f92e58e8f0",
+      "fixture": "shell_head.html"
+    },
+    {
+      "name": "masthead_green",
+      "startOffset": 2278,
+      "endOffset": 2962,
+      "sha256": "55854f19974cd579c064fe08bb263b289a0920955326ee4b27a76defc54f3174",
+      "fixture": "masthead_green.html"
+    },
+    {
+      "name": "hero_image",
+      "startOffset": 2962,
+      "endOffset": 5712,
+      "sha256": "63f297109914e9574fcf5a84ee96626abf5b3ddbf06d25283342f9a551ad922b",
+      "fixture": "hero_image.html"
+    },
+    {
+      "name": "fact_strip",
+      "startOffset": 5712,
+      "endOffset": 8065,
+      "sha256": "03b8309307b8bdef9a1875dbffd416763e2342abb0c70f482938b4643d2bf854",
+      "fixture": "fact_strip.html"
+    },
+    {
+      "name": "price_tiles",
+      "startOffset": 8065,
+      "endOffset": 11346,
+      "sha256": "a49ea4dcdda442e2c93abfa7af90b261ee2f58a29ed843421b5e01c093b3cafe",
+      "fixture": "price_tiles.html"
+    },
+    {
+      "name": "deadline_bar_campaign",
+      "startOffset": 11346,
+      "endOffset": 11747,
+      "sha256": "6cc2e9660d590d8c6788606b5839b1838430f13c159ff0d32478321c9812b5c2",
+      "fixture": "deadline_bar_campaign.html"
+    },
+    {
+      "name": "divider_rule",
+      "startOffset": 11747,
+      "endOffset": 12121,
+      "sha256": "5731bb362133cfccbed882eacc8d7d8b9eb7382c8504b55c14164bd31e1e12cb",
+      "fixture": "divider_rule.html"
+    },
+    {
+      "name": "section_intro",
+      "startOffset": 12121,
+      "endOffset": 13112,
+      "sha256": "434a41ac30cab3977405bc1ee6cf836897066039a56a0072b77422d83e337197",
+      "fixture": "section_intro.html"
+    },
+    {
+      "name": "image_full",
+      "startOffset": 13112,
+      "endOffset": 13865,
+      "sha256": "4ba69f56448c7c62baf95cc8fa84311755dc89d78a8ea0cc8e3d7dd82f1f7e2d",
+      "fixture": "image_full.html"
+    },
+    {
+      "name": "hours_table",
+      "startOffset": 13865,
+      "endOffset": 15482,
+      "sha256": "2240cb4cc6e89c9679a53dc555f37cc5c3f215eea3f2b0824d57e81869b9ba89",
+      "fixture": "hours_table.html"
+    },
+    {
+      "name": "cta_outline",
+      "startOffset": 15482,
+      "endOffset": 16059,
+      "sha256": "4c784d43b0da4c888661cdad83689dda5c950bbbf00e0d83480fcdd3bcf10027",
+      "fixture": "cta_outline.html"
+    },
+    {
+      "name": "amenity_grid",
+      "startOffset": 16059,
+      "endOffset": 17493,
+      "sha256": "c6d2bce4ab190aacc83547a7fd6ce01834624ab0f9012985a2e5e353fbc0775a",
+      "fixture": "amenity_grid.html"
+    },
+    {
+      "name": "closing_panel_dark",
+      "startOffset": 17493,
+      "endOffset": 19235,
+      "sha256": "92c423866130f5356a0c24d4fe78877722494adbaa2b444020cb856e13cfe2e9",
+      "fixture": "closing_panel_dark.html"
+    },
+    {
+      "name": "signoff_ps_campaign",
+      "startOffset": 19235,
+      "endOffset": 20172,
+      "sha256": "3e54155ae90a231a211c7a34183cb89d8ddf3b5c131686c1beec78e40399919f",
+      "fixture": "signoff_ps_campaign.html"
+    },
+    {
+      "name": "footer",
+      "startOffset": 20172,
+      "endOffset": 21621,
+      "sha256": "1a22214fef725fb8613826b2c2ce2170c21c1121c5db77afd354cddef4d2e9ce",
+      "fixture": "footer.html"
+    },
+    {
+      "name": "shell_foot",
+      "startOffset": 21621,
+      "endOffset": 21681,
+      "sha256": "6c98a3ef90f9459cf7d94b7ad67f93c0d9f6959d7ea2ac8f45d82298e1ac8f36",
+      "fixture": "shell_foot.html"
+    }
+  ],
+  "library": [
+    {
+      "name": "masthead_cream",
+      "startOffset": 2043,
+      "endOffset": 3028,
+      "sha256": "8dd8aa85a112678ba1f65268b8b5bb2419abf6a6ff16687c6a21c1c0a52f9518",
+      "fixture": "lib_masthead_cream.html"
+    },
+    {
+      "name": "hero_framed",
+      "startOffset": 3098,
+      "endOffset": 4855,
+      "sha256": "3b1dbf24b3315e168d98db6268720e94e7aa914682ea5bc75bf56d456a853a64",
+      "fixture": "lib_hero_framed.html"
+    },
+    {
+      "name": "feature_card",
+      "startOffset": 4925,
+      "endOffset": 6650,
+      "sha256": "18746402dd638709695ea25fb8d907cdbe3dc94d5f465cee693e7f397e7c9e10",
+      "fixture": "lib_feature_card.html"
+    },
+    {
+      "name": "two_up_cards",
+      "startOffset": 6720,
+      "endOffset": 9250,
+      "sha256": "1686e44436663a95a857211cae14b148fe96642d799e10fdc9a0bacb50643fbe",
+      "fixture": "lib_two_up_cards.html"
+    },
+    {
+      "name": "event_row",
+      "startOffset": 9320,
+      "endOffset": 11238,
+      "sha256": "21ea7fe22429075563da02b904a2c1c6a2b111f82779bd6a58a01b5a22095940",
+      "fixture": "lib_event_row.html"
+    },
+    {
+      "name": "pull_quote",
+      "startOffset": 11308,
+      "endOffset": 12624,
+      "sha256": "b1858ee5c22742b8db3ae92da66d18170ffbbfc4b64af29e7f13b58da95fa72e",
+      "fixture": "lib_pull_quote.html"
+    },
+    {
+      "name": "text_block",
+      "startOffset": 12694,
+      "endOffset": 16051,
+      "sha256": "2bd5566d489ca48c3d55ce4c5468aa242adb8164144348d0118a0a5c7d40a15d",
+      "fixture": "lib_text_block.html"
+    },
+    {
+      "name": "deadline_bar",
+      "startOffset": 16121,
+      "endOffset": 16788,
+      "sha256": "742cb5a4c9c0e9f12dcb8340d12af93935a7b111166e799df3d7a6a9d2cad7f9",
+      "fixture": "lib_deadline_bar.html"
+    },
+    {
+      "name": "menu_list",
+      "startOffset": 16858,
+      "endOffset": 19874,
+      "sha256": "32f03235ca1728f30b9836cbb4345a66a359b9a247a3a398e5f86e0db663826a",
+      "fixture": "lib_menu_list.html"
+    },
+    {
+      "name": "steps",
+      "startOffset": 19944,
+      "endOffset": 23239,
+      "sha256": "daef86f40aac7599cb1a3707ff1ac766cee3b9192c1c1e6c401dbd803aa763ea",
+      "fixture": "lib_steps.html"
+    },
+    {
+      "name": "media_row",
+      "startOffset": 23309,
+      "endOffset": 25089,
+      "sha256": "eefd349f20e472eff04fc6b2ae76757084f490e7033b9340973f3ffc5e7966e1",
+      "fixture": "lib_media_row.html"
+    },
+    {
+      "name": "review",
+      "startOffset": 25159,
+      "endOffset": 26475,
+      "sha256": "de0159aaaf1c95f8368f0dcc3a723f571c71141201e9d984416265666e66d34b",
+      "fixture": "lib_review.html"
+    },
+    {
+      "name": "whats_on_list",
+      "startOffset": 26545,
+      "endOffset": 30220,
+      "sha256": "c6f5112facf84e9c21b7c199696929eff70d0e7f87c4dc258489e5af3a677409",
+      "fixture": "lib_whats_on_list.html"
+    },
+    {
+      "name": "offer_panel",
+      "startOffset": 30290,
+      "endOffset": 31789,
+      "sha256": "1c771c56531ff8841cdd52fd084697faba194acbf306e46395d21929eb8566ce",
+      "fixture": "lib_offer_panel.html"
+    },
+    {
+      "name": "faq_rows",
+      "startOffset": 31859,
+      "endOffset": 33549,
+      "sha256": "1a50edc6fb178922f51cc7c0b517a7ae82b21662da57dcbb70784df5c328a088",
+      "fixture": "lib_faq_rows.html"
+    },
+    {
+      "name": "reassurance_row",
+      "startOffset": 33619,
+      "endOffset": 34405,
+      "sha256": "0cc907d74a11ba88f56f9318da01551ff99197fea62415e817a3f428d4415c02",
+      "fixture": "lib_reassurance_row.html"
+    },
+    {
+      "name": "signoff_ps",
+      "startOffset": 34475,
+      "endOffset": 35675,
+      "sha256": "2c3dc73e2269e02b6c0f660e50c2714d301fdb141ca0b5aaf780675d3e7ad3a5",
+      "fixture": "lib_signoff_ps.html"
+    },
+    {
+      "name": "footer_dark",
+      "startOffset": 35745,
+      "endOffset": 37440,
+      "sha256": "855637305d0402e1c6515e187dddc0c61caa1082dc379e2f650484bc46e11914",
+      "fixture": "lib_footer_dark.html"
+    }
+  ]
+}
