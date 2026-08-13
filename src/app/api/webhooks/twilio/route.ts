@@ -9,6 +9,7 @@ import { formatPhoneForStorage } from '@/lib/utils';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { getErrorMessage } from '@/lib/errors';
 import { handleReplyToBook } from '@/lib/sms/reply-to-book';
+import { detectOptOut } from '@/lib/sms/opt-out-keywords';
 import { sendSMS } from '@/lib/twilio';
 import { getTwilioWebhookValidationUrl } from '@/lib/twilio-webhook';
 import {
@@ -700,15 +701,16 @@ async function handleInboundSMS(
     // Both tiers stamp the *_opted_out_at column. That timestamp is what
     // distinguishes "said no" from "never asked", and the soft opt-in audience in
     // get_cross_promo_audience keys off it, so it must always be written.
-    const stopKeywords = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL'];
-    const marketingStopKeywords = ['NOEVENTS', 'NOPROMO', 'NOOFFERS'];
-    const messageUpper = messageBody.toUpperCase();
-    const matchesAny = (keywords: string[]) =>
-      keywords.some(keyword => messageUpper === keyword || messageUpper.startsWith(keyword + ' '));
-    const isMarketingOnlyOptOut = matchesAny(marketingStopKeywords);
-    const isOptOut = isMarketingOnlyOptOut || matchesAny(stopKeywords);
+    // Keywords and matching live in src/lib/sms/opt-out-keywords.ts so this path
+    // and the holding-queue linker in src/services/communications.ts cannot drift.
+    // The matcher tolerates spacing and punctuation: "No events" used to miss,
+    // and the customer got an auto-reply asking how many seats she wanted.
+    const optOut = detectOptOut(messageBody);
+    const isMarketingOnlyOptOut = optOut?.scope === 'marketing_only';
+    const isOptOut = optOut !== null;
 
-    if (isOptOut) {
+    // Branch on optOut rather than isOptOut so it narrows to non-null below.
+    if (optOut) {
       const optedOutAt = new Date().toISOString();
       const optOutPayload = isWhatsApp
         ? (isMarketingOnlyOptOut
@@ -763,7 +765,7 @@ async function handleInboundSMS(
             captureMethod: 'inbound_keyword',
             relatedEntityType: 'message',
             metadata: {
-              keyword: messageUpper.split(' ')[0],
+              keyword: optOut.keyword,
               twilio_message_sid: messageSid,
               channel,
               scope: isMarketingOnlyOptOut ? 'marketing_only' : 'all',
@@ -788,7 +790,7 @@ async function handleInboundSMS(
           eventType: isWhatsApp ? 'whatsapp_opted_out' : 'sms_opted_out',
           metadata: {
             source: isWhatsApp ? 'twilio_whatsapp_inbound_stop' : 'twilio_inbound_stop',
-            keyword: messageUpper.split(' ')[0],
+            keyword: optOut.keyword,
             scope: isMarketingOnlyOptOut ? 'marketing_only' : 'all'
           }
         }, isWhatsApp ? 'whatsapp_inbound_opt_out' : 'inbound_opt_out')

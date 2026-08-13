@@ -2,6 +2,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { ConsentService } from '@/services/consent'
+import { detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 type CustomerSummary = {
@@ -113,34 +114,11 @@ function inboxRow(row: any): InboxRow {
 }
 
 /*
- * Opt-out keywords, kept in step with the inbound handler in
- * src/app/api/webhooks/twilio/route.ts. Deliberately duplicated rather than
- * imported: this service pulls in the RBAC server actions, which have no place
- * in a webhook's request path. If a third caller ever needs these, lift them
- * into src/lib/sms/ and have both sides import from there.
- *
- * Two tiers, same as the webhook: a bare STOP silences everything, a marketing
- * keyword stops event promotion only and leaves service messages intact.
+ * Opt-out keywords and matching now live in src/lib/sms/opt-out-keywords.ts, so
+ * this path and the inbound webhook cannot drift apart. That module imports
+ * nothing, which is what keeps the webhook's request path clear of the RBAC
+ * server actions this service pulls in.
  */
-const STOP_KEYWORDS = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL']
-const MARKETING_STOP_KEYWORDS = ['NOEVENTS', 'NOPROMO', 'NOOFFERS']
-
-type OptOutScope = 'all' | 'marketing_only'
-
-function detectOptOutKeyword(
-  bodyText: string | null | undefined
-): { scope: OptOutScope; keyword: string } | null {
-  const upper = (bodyText ?? '').trim().toUpperCase()
-  if (!upper) return null
-
-  const matchesAny = (keywords: string[]) =>
-    keywords.some((keyword) => upper === keyword || upper.startsWith(`${keyword} `))
-
-  const keyword = upper.split(' ')[0]
-  if (matchesAny(MARKETING_STOP_KEYWORDS)) return { scope: 'marketing_only', keyword }
-  if (matchesAny(STOP_KEYWORDS)) return { scope: 'all', keyword }
-  return null
-}
 
 /**
  * Apply an opt-out that arrived from a number we could not match to a customer.
@@ -202,7 +180,7 @@ async function honourOptOutFromHoldingQueue(
   // present rather than whichever message happens to be linked.
   let strongest: { scope: OptOutScope; keyword: string; sid: string | null } | null = null
   for (const candidate of bodies) {
-    const detected = detectOptOutKeyword(candidate.body)
+    const detected = detectOptOut(candidate.body)
     if (!detected) continue
     if (!strongest || (strongest.scope === 'marketing_only' && detected.scope === 'all')) {
       strongest = { ...detected, sid: candidate.sid }
