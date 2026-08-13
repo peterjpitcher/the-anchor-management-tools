@@ -42,6 +42,9 @@ function mockAdminClient(options?: { suppressed?: boolean }) {
   const emailLogMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'email-log-1' }, error: null })
   const emailLogSelect = vi.fn().mockReturnValue({ maybeSingle: emailLogMaybeSingle })
   const emailLogInsert = vi.fn().mockReturnValue({ select: emailLogSelect })
+  // A send that carries a provider id is logged with upsert rather than insert, so a retry
+  // the provider deduplicated maps back onto the same row instead of claiming a second send.
+  const emailLogUpsert = vi.fn().mockReturnValue({ select: emailLogSelect })
 
   createAdminClient.mockReturnValue({
     from: vi.fn((table: string) => {
@@ -49,13 +52,13 @@ function mockAdminClient(options?: { suppressed?: boolean }) {
         return { select: suppressionSelect }
       }
       if (table === 'email_messages') {
-        return { insert: emailLogInsert }
+        return { insert: emailLogInsert, upsert: emailLogUpsert }
       }
       throw new Error(`Unexpected table: ${table}`)
     }),
   })
 
-  return { emailLogInsert }
+  return { emailLogInsert, emailLogUpsert }
 }
 
 describe('sendEmail Resend provider', () => {
@@ -75,7 +78,7 @@ describe('sendEmail Resend provider', () => {
   })
 
   it('maps the existing email options contract to Resend and returns the message id', async () => {
-    const { emailLogInsert } = mockAdminClient()
+    const { emailLogUpsert } = mockAdminClient()
     resendSend.mockResolvedValue({
       data: { id: 'resend-email-1' },
       error: null,
@@ -100,7 +103,7 @@ describe('sendEmail Resend provider', () => {
       tableBookingId: 'table-booking-1',
     })
 
-    expect(result).toEqual({ success: true, messageId: 'resend-email-1' })
+    expect(result).toEqual({ success: true, messageId: 'resend-email-1', emailMessageId: 'email-log-1' })
     expect(resendSend).toHaveBeenCalledWith(expect.objectContaining({
       from: 'The Anchor <noreply@auth.orangejelly.co.uk>',
       to: 'guest@example.com',
@@ -117,14 +120,17 @@ describe('sendEmail Resend provider', () => {
         },
       ],
     }))
-    expect(emailLogInsert).toHaveBeenCalledWith(expect.objectContaining({
-      customer_id: 'customer-1',
-      to_address: 'guest@example.com',
-      resend_message_id: 'resend-email-1',
-      status: 'sent',
-      comm_type: 'table_booking_confirmed',
-      table_booking_id: 'table-booking-1',
-    }))
+    expect(emailLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer_id: 'customer-1',
+        to_address: 'guest@example.com',
+        resend_message_id: 'resend-email-1',
+        status: 'sent',
+        comm_type: 'table_booking_confirmed',
+        table_booking_id: 'table-booking-1',
+      }),
+      { onConflict: 'resend_message_id' },
+    )
   })
 
   it('uses Resend automatically when Resend credentials are configured', async () => {
@@ -142,7 +148,7 @@ describe('sendEmail Resend provider', () => {
       text: 'Hello',
     })
 
-    expect(result).toEqual({ success: true, messageId: 'resend-email-auto' })
+    expect(result).toEqual({ success: true, messageId: 'resend-email-auto', emailMessageId: 'email-log-1' })
     expect(resendSend).toHaveBeenCalledWith(expect.objectContaining({
       from: 'The Anchor <noreply@auth.orangejelly.co.uk>',
       to: 'guest@example.com',
@@ -182,7 +188,7 @@ describe('sendEmail Resend provider', () => {
       idempotencyKey: 'checklist:outbox-1',
     })
 
-    expect(result).toEqual({ success: true, messageId: 'resend-email-idempotent' })
+    expect(result).toEqual({ success: true, messageId: 'resend-email-idempotent', emailMessageId: 'email-log-1' })
     expect(resendSend).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'manager@example.com',

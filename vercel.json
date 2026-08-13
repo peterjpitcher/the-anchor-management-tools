@@ -280,6 +280,10 @@
     {
       "path": "/api/cron/preorder-reports",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/marketing-campaigns",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

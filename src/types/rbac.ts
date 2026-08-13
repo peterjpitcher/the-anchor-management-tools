@@ -62,6 +62,9 @@ export type ModuleName =
   | 'mgd'
   | 'checklists'
   | 'vouchers'
+  // B2B marketing email. Deliberately its own module rather than reusing
+  // messages.send_marketing, which means bulk SMS and keeps that meaning.
+  | 'marketing'
 ;
 
 export type ActionType = 
