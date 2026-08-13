@@ -51,26 +51,35 @@ describe('detectOptOut', () => {
     })
   })
 
-  // Known, pre-existing, deliberately left alone. A leading carrier keyword has
-  // always triggered a full opt-out, so "Cancel my table for Saturday" silences
-  // someone who plainly still wants us to text them back. It has happened once
-  // in the whole message history (July 2025) and that customer stayed opted in,
-  // so it is a latent bug rather than a live one. Narrowing the carrier keywords
-  // to exact matches is a consent change and needs its own decision, so it is
-  // pinned here rather than quietly altered alongside the "No events" fix.
-  describe('known gap: a leading carrier keyword still opts out in full', () => {
+  // CANCEL and END are ordinary English in a pub, so they only count as the
+  // whole message. Carriers only require the bare keyword to be honoured, and
+  // treating "Cancel my table for Saturday" as a full opt-out silenced the
+  // booking confirmations of someone who was mid-conversation with us.
+  describe('CANCEL and END only count as the whole message', () => {
+    it.each([
+      ['CANCEL'],
+      ['cancel'],
+      ['Cancel.'],
+      ['END'],
+      ['end'],
+    ])('%j on its own is still a full opt-out', (body) => {
+      expect(detectOptOut(body)?.scope).toBe('all')
+    })
+
     it.each([
       ['Cancel my table for Saturday please'],
+      ['Cancel my 4 please'],
+      ['Can you cancel our booking'],
       ['End of the night is fine'],
-    ])('%j currently reads as a full opt-out', (body) => {
-      expect(detectOptOut(body)?.scope).toBe('all')
+      ['endive salad'],
+    ])('%j is not an opt-out', (body) => {
+      expect(detectOptOut(body)).toBeNull()
     })
   })
 
   describe('messages that must not opt anyone out', () => {
     it.each([
       ['Can I cancel my booking?'],
-      ['endive salad'],
       ['4'],
       ['4 please'],
       ['Two seats please if available'],
