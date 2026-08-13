@@ -17,7 +17,25 @@
  * invites still gets the confirmation for a table they book next week.
  */
 
-export const STOP_KEYWORDS = ['STOP', 'UNSUBSCRIBE', 'QUIT', 'CANCEL', 'END', 'STOPALL'] as const
+/**
+ * Full-opt-out keywords that carry no other meaning in a reply to a pub, so they
+ * are honoured even when the customer keeps typing: "STOP MESSAGING ME!!" is a
+ * real production message and unmistakably means stop.
+ */
+const STOP_KEYWORDS_LEADING_OK = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'QUIT'] as const
+
+/**
+ * Full-opt-out keywords that are also ordinary English, so they only count when
+ * they are the entire message.
+ *
+ * "Cancel my table for Saturday" is a service request from someone who very much
+ * wants us to text them back, and treating it as a full opt-out silenced their
+ * booking confirmations too. Carriers only require the bare keyword to be
+ * honoured, which the whole-message rule still does.
+ */
+const STOP_KEYWORDS_EXACT_ONLY = ['CANCEL', 'END'] as const
+
+export const STOP_KEYWORDS = [...STOP_KEYWORDS_LEADING_OK, ...STOP_KEYWORDS_EXACT_ONLY] as const
 export const MARKETING_STOP_KEYWORDS = ['NOEVENTS', 'NOPROMO', 'NOOFFERS'] as const
 
 export type OptOutScope = 'all' | 'marketing_only'
@@ -40,25 +58,22 @@ function compact(text: string): string {
 /**
  * Does this message read as the given opt-out keyword?
  *
- * Three shapes count, and no others:
+ * Whole-message match always counts, and it is the fix that matters for the
+ * marketing keywords: a customer replied "No events" and the old exact-match
+ * rule missed it because of the space, so she got an auto-reply asking how many
+ * seats she wanted and had to guess the exact spelling before we stopped texting
+ * her. Compacting also covers "no-events", "No Events." and "noevents".
  *
- *   1. The whole message compacts to the keyword. This is the fix that matters:
- *      a customer replied "No events" and the old exact-match rule missed it
- *      because of the space, so she got an auto-reply asking how many seats she
- *      wanted and had to guess the exact spelling before we stopped texting her.
- *      Also covers "no-events", "No Events." and "noevents".
- *   2. The first word is the keyword. Preserves the old prefix behaviour for
- *      real replies like "STOP MESSAGING ME!!".
- *   3. The first two words compact to the keyword, for "no events please".
+ * `allowLeading` additionally accepts the keyword as the opening word or opening
+ * two words, for keywords that mean nothing else in a reply to a pub.
  *
- * What is deliberately NOT matched is the keyword appearing anywhere in a longer
- * compacted string. "END" would then swallow "ENDIVE", and "CANCEL" would
- * swallow "cancel my table for Saturday", which is a service request from
- * someone who very much still wants us to text them back.
+ * What is never matched is the keyword appearing anywhere inside a longer
+ * compacted string. That would let "END" swallow "ENDIVE".
  */
-function messageMeansKeyword(words: string[], keyword: string): boolean {
+function messageMeansKeyword(words: string[], keyword: string, allowLeading: boolean): boolean {
   if (words.length === 0) return false
   if (compact(words.join(' ')) === keyword) return true
+  if (!allowLeading) return false
   if (compact(words[0]) === keyword) return true
   if (words.length >= 2 && compact(words.slice(0, 2).join(' ')) === keyword) return true
   return false
@@ -72,11 +87,16 @@ export function detectOptOut(bodyText: string | null | undefined): OptOutDetecti
   const words = (bodyText ?? '').trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return null
 
-  const marketing = MARKETING_STOP_KEYWORDS.find((k) => messageMeansKeyword(words, k))
+  // Marketing keywords are compound words with no everyday meaning, so a leading
+  // match is safe and catches "no events please".
+  const marketing = MARKETING_STOP_KEYWORDS.find((k) => messageMeansKeyword(words, k, true))
   if (marketing) return { scope: 'marketing_only', keyword: marketing }
 
-  const stop = STOP_KEYWORDS.find((k) => messageMeansKeyword(words, k))
-  if (stop) return { scope: 'all', keyword: stop }
+  const leadingStop = STOP_KEYWORDS_LEADING_OK.find((k) => messageMeansKeyword(words, k, true))
+  if (leadingStop) return { scope: 'all', keyword: leadingStop }
+
+  const exactStop = STOP_KEYWORDS_EXACT_ONLY.find((k) => messageMeansKeyword(words, k, false))
+  if (exactStop) return { scope: 'all', keyword: exactStop }
 
   return null
 }
