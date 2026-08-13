@@ -82,10 +82,56 @@ export async function getOrCreateUnsubscribeUrl(
   }
 }
 
-export type UnsubscribeLookup = { ok: true; customerId: string } | { ok: false }
+/**
+ * This business contact's unsubscribe URL.
+ *
+ * Same token scheme and the same reasoning as the customer version above. A token belongs
+ * to exactly one subject, enforced by a CHECK constraint on the table, so a contact and a
+ * customer can never share one.
+ */
+export async function getOrCreateContactUnsubscribeUrl(
+  supabase: SupabaseClient<any, 'public', any>,
+  businessContactId: string,
+  appBaseUrl?: string
+): Promise<string | null> {
+  try {
+    const { data: existing } = await supabase
+      .from('email_unsubscribe_tokens')
+      .select('token')
+      .eq('business_contact_id', businessContactId)
+      .maybeSingle()
+
+    if (existing?.token) {
+      return buildUnsubscribeUrl(existing.token as string, appBaseUrl)
+    }
+
+    const rawToken = generateToken()
+    const { error } = await supabase
+      .from('email_unsubscribe_tokens')
+      .insert({ token: rawToken, business_contact_id: businessContactId })
+
+    if (error) {
+      const { data: raced } = await supabase
+        .from('email_unsubscribe_tokens')
+        .select('token')
+        .eq('business_contact_id', businessContactId)
+        .maybeSingle()
+      return raced?.token ? buildUnsubscribeUrl(raced.token as string, appBaseUrl) : null
+    }
+
+    return buildUnsubscribeUrl(rawToken, appBaseUrl)
+  } catch {
+    return null
+  }
+}
+
+export type UnsubscribeLookup =
+  | { ok: true; subjectType: 'customer'; customerId: string; businessContactId: null }
+  | { ok: true; subjectType: 'business_contact'; customerId: null; businessContactId: string }
+  | { ok: false }
 
 /**
- * Resolve a raw token to its customer.
+ * Resolve a raw token to its subject, which is either a customer or a business contact.
  *
  * Says nothing about why a token failed. Somebody probing tokens learns the same from
  * every miss, and a guest sees the same page either way.
@@ -100,12 +146,31 @@ export async function lookupUnsubscribeToken(
 
   const { data, error } = await supabase
     .from('email_unsubscribe_tokens')
-    .select('customer_id')
+    .select('customer_id, business_contact_id')
     .eq('token', rawToken)
     .maybeSingle()
 
-  if (error || !data?.customer_id) return { ok: false }
-  return { ok: true, customerId: data.customer_id as string }
+  if (error || !data) return { ok: false }
+
+  if (data.customer_id) {
+    return {
+      ok: true,
+      subjectType: 'customer',
+      customerId: data.customer_id as string,
+      businessContactId: null,
+    }
+  }
+
+  if (data.business_contact_id) {
+    return {
+      ok: true,
+      subjectType: 'business_contact',
+      customerId: null,
+      businessContactId: data.business_contact_id as string,
+    }
+  }
+
+  return { ok: false }
 }
 
 /** Best-effort usage stamp. Never blocks the opt-out itself. */

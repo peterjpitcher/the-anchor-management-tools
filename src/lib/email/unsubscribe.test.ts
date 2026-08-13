@@ -100,7 +100,12 @@ describe('lookupUnsubscribeToken', () => {
     const rows: Row[] = [{ token: 'real-token-aaaaaaaaaaaaaaaaaaaaaaaa', customer_id: 'cust-9' }]
     await expect(
       lookupUnsubscribeToken(fakeSupabase(rows), 'real-token-aaaaaaaaaaaaaaaaaaaaaaaa')
-    ).resolves.toEqual({ ok: true, customerId: 'cust-9' })
+    ).resolves.toEqual({
+      ok: true,
+      subjectType: 'customer',
+      customerId: 'cust-9',
+      businessContactId: null,
+    })
   })
 
   it('rejects an unknown token without saying why', async () => {

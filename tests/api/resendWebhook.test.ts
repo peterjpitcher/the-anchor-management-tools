@@ -76,7 +76,8 @@ describe('Resend webhook route', () => {
     })
     const messageSelectEq = vi.fn().mockReturnValue({ maybeSingle: messageSelectMaybeSingle })
     const messageSelect = vi.fn().mockReturnValue({ eq: messageSelectEq })
-    const messageUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const messageUpdateSelect = vi.fn().mockResolvedValue({ data: [{ id: 'email-message-1' }], error: null })
+    const messageUpdateEq = vi.fn().mockReturnValue({ select: messageUpdateSelect })
     const messageUpdate = vi.fn().mockReturnValue({ eq: messageUpdateEq })
     const webhookLogInsert = vi.fn().mockResolvedValue({ error: null })
     const webhookLogFinishContains = vi.fn().mockResolvedValue({ error: null })
@@ -114,6 +115,20 @@ describe('Resend webhook route', () => {
             select: customerSelect,
             update: customerUpdate,
           }
+        }
+        if (table === 'business_contacts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+            }),
+            update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+          }
+        }
+        if (table === 'marketing_do_not_contact') {
+          return { upsert: vi.fn().mockResolvedValue({ error: null }), insert: vi.fn().mockResolvedValue({ error: null }) }
+        }
+        if (table === 'email_webhook_unmatched') {
+          return { insert: vi.fn().mockResolvedValue({ error: null }) }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -188,6 +203,20 @@ describe('Resend webhook route', () => {
         if (table === 'email_messages') {
           emailMessagesFrom()
         }
+        if (table === 'business_contacts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+            }),
+            update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+          }
+        }
+        if (table === 'marketing_do_not_contact') {
+          return { upsert: vi.fn().mockResolvedValue({ error: null }), insert: vi.fn().mockResolvedValue({ error: null }) }
+        }
+        if (table === 'email_webhook_unmatched') {
+          return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        }
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
@@ -225,7 +254,8 @@ describe('Resend webhook route', () => {
     })
     const messageSelectEq = vi.fn().mockReturnValue({ maybeSingle: messageSelectMaybeSingle })
     const messageSelect = vi.fn().mockReturnValue({ eq: messageSelectEq })
-    const messageUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const messageUpdateSelect = vi.fn().mockResolvedValue({ data: [{ id: 'email-message-1' }], error: null })
+    const messageUpdateEq = vi.fn().mockReturnValue({ select: messageUpdateSelect })
     const messageUpdate = vi.fn().mockReturnValue({ eq: messageUpdateEq })
     const customerSelectMaybeSingle = vi.fn().mockResolvedValue({
       data: { id: 'customer-1', email_delivery_failures: 1 },
@@ -252,6 +282,20 @@ describe('Resend webhook route', () => {
         }
         if (table === 'customers') {
           return { select: customerSelect, update: customerUpdate }
+        }
+        if (table === 'business_contacts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+            }),
+            update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+          }
+        }
+        if (table === 'marketing_do_not_contact') {
+          return { upsert: vi.fn().mockResolvedValue({ error: null }), insert: vi.fn().mockResolvedValue({ error: null }) }
+        }
+        if (table === 'email_webhook_unmatched') {
+          return { insert: vi.fn().mockResolvedValue({ error: null }) }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
