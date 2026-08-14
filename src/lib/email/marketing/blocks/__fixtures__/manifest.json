@@ -163,8 +163,15 @@
       "name": "pull_quote",
       "startOffset": 11308,
       "endOffset": 12624,
-      "sha256": "b1858ee5c22742b8db3ae92da66d18170ffbbfc4b64af29e7f13b58da95fa72e",
+      "sha256": "887e7743f1ae807ae1251205ecb03afc83b5b0497aae5cac792f98d222c65a0f",
       "fixture": "lib_pull_quote.html"
+    },
+    {
+      "name": "note_bar",
+      "startOffset": 11308,
+      "endOffset": 12624,
+      "sha256": "892e581c45f78efa18b14948721648954f8323da50d73fec5a46e4d346185cc7",
+      "fixture": "lib_note_bar.html"
     },
     {
       "name": "text_block",

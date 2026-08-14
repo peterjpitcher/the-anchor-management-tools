@@ -108,6 +108,45 @@ function extractCampaign(source: string): ExtractedSlice[] {
   return slices
 }
 
+/**
+ * The designer's `pull_quote` marker wraps TWO blocks: the sand quote panel and the small
+ * white note bar. `note_bar` is a separate entry in their own catalogue, so this is a missing
+ * pair of markers rather than a design decision.
+ *
+ * Left bundled, every pull quote would ship the note bar's placeholder copy ("A single-line
+ * notice bar for a rule, a deadline or a closure") into a real send. Splitting here keeps both
+ * blocks usable without waiting on a re-export. The split is proven the same way as the
+ * campaign slices: the two halves must reassemble into the original byte for byte.
+ */
+function splitPullQuote(slice: ExtractedSlice): ExtractedSlice[] {
+  const openTag = slice.html.slice(0, slice.html.indexOf('<tr'))
+  const closeTag = '</tbody></table>'
+
+  if (!openTag || !slice.html.endsWith(closeTag)) {
+    throw new Error('pull_quote fixture is not shaped as expected; cannot split note_bar out of it')
+  }
+
+  const inner = slice.html.slice(openTag.length, slice.html.length - closeTag.length)
+  const boundary = inner.indexOf('<tr', 1)
+  if (boundary < 0) {
+    throw new Error('pull_quote fixture has only one row; expected the note bar to follow the quote')
+  }
+
+  const quoteRows = inner.slice(0, boundary)
+  const noteRows = inner.slice(boundary)
+
+  if (openTag + quoteRows + noteRows + closeTag !== slice.html) {
+    throw new Error('pull_quote split does not reassemble into the original fixture')
+  }
+
+  const rebuild = (rows: string) => `${openTag}${rows}${closeTag}`
+
+  return [
+    { ...slice, name: 'pull_quote', html: rebuild(quoteRows), sha256: sha256(rebuild(quoteRows)) },
+    { ...slice, name: 'note_bar', html: rebuild(noteRows), sha256: sha256(rebuild(noteRows)) },
+  ]
+}
+
 function extractMarkedBlocks(source: string): ExtractedSlice[] {
   const pattern = /<!-- BLOCK: ([a-z_]+) -->([\s\S]*?)<!-- \/BLOCK: \1 -->/g
   const slices: ExtractedSlice[] = []
@@ -116,13 +155,19 @@ function extractMarkedBlocks(source: string): ExtractedSlice[] {
   while ((match = pattern.exec(source)) !== null) {
     // Keep the inner markup only; the markers themselves are not part of the block.
     const html = match[2].replace(/^\n/, '').replace(/\n$/, '')
-    slices.push({
+    const slice: ExtractedSlice = {
       name: match[1],
       html,
       startOffset: match.index,
       endOffset: match.index + match[0].length,
       sha256: sha256(html),
-    })
+    }
+
+    if (slice.name === 'pull_quote') {
+      slices.push(...splitPullQuote(slice))
+    } else {
+      slices.push(slice)
+    }
   }
 
   // Coverage check: no <table outside a marked block, so nothing structural was missed.
