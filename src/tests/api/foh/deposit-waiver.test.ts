@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock auth and Supabase before importing the route
 vi.mock('@/lib/foh/api-auth', () => ({
-  requireFohPermission: vi.fn()
+  requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-04-05')
 }))
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn().mockResolvedValue({
@@ -13,6 +14,10 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { POST } from '@/app/api/foh/bookings/route'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+} from '@/lib/foh/booking-client-contract'
 
 // The real PermissionCheckResult ok:true branch has no `response` field.
 // We use `as unknown as` casts to avoid coupling the test to internal types.
@@ -25,8 +30,11 @@ type MockOkResult = {
 function makeRequest(body: object) {
   return new Request('http://localhost/api/foh/bookings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    headers: {
+      'Content-Type': 'application/json',
+      [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+    },
+    body: JSON.stringify({ customer_mode: 'selected', ...body })
   }) as unknown as import('next/server').NextRequest
 }
 

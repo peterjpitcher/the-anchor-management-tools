@@ -25,6 +25,7 @@ import {
   formatEventOptionDateTime,
   formatEventPaymentMode,
   formatGbp,
+  getLondonDateIso,
 } from '../utils'
 
 export type CreateForm = {
@@ -242,6 +243,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             <input
               type="date"
               required
+              min={createMode === 'walk_in' ? getLondonDateIso() : undefined}
+              max={createMode === 'walk_in' ? getLondonDateIso() : undefined}
               value={createForm.booking_date}
               onChange={(event) => onSetCreateForm((current) => ({ ...current, booking_date: event.target.value }))}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"

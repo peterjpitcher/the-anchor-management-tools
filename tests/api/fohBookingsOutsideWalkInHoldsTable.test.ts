@@ -18,6 +18,7 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-02-16'),
 }))
 
 vi.mock('@/lib/sms/customers', () => ({
@@ -40,6 +41,10 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
 import { POST } from '@/app/api/foh/bookings/route'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+} from '@/lib/foh/booking-client-contract'
 
 function makeThenable(result: any) {
   const builder: any = {
@@ -78,17 +83,18 @@ function buildSupabase(options: { syncError?: { message: string } } = {}) {
     }
     return Promise.resolve({ data: null, error: null })
   })
+  const tableBookingInsert = vi.fn(() =>
+    makeThenable({
+      data: { id: 'tb-outside-1', booking_reference: 'TB-OUTSIDE' },
+      error: null,
+    })
+  )
 
   const supabase = {
     from: vi.fn((table: string) => {
       if (table === 'table_bookings') {
         return {
-          insert: vi.fn(() =>
-            makeThenable({
-              data: { id: 'tb-outside-1', booking_reference: 'TB-OUTSIDE' },
-              error: null,
-            })
-          ),
+          insert: tableBookingInsert,
           select: vi.fn(() => makeThenable({ data: [], error: null })),
           update: vi.fn(() => makeThenable({ data: null, error: null })),
           delete: vi.fn(() => makeThenable({ data: null, error: null })),
@@ -99,17 +105,21 @@ function buildSupabase(options: { syncError?: { message: string } } = {}) {
     rpc,
   }
 
-  return { supabase, rpc }
+  return { supabase, rpc, tableBookingInsert }
 }
 
-function outsideWalkInRequest() {
+function outsideWalkInRequest(date = '2026-02-16') {
   const request = new Request('http://localhost/api/foh/bookings', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+    },
     body: JSON.stringify({
+      customer_mode: 'phone',
       phone: '+447700900222',
       walk_in: true,
-      date: '2026-02-16',
+      date,
       time: '12:00',
       party_size: 4,
       purpose: 'drinks',
@@ -185,6 +195,23 @@ describe('FOH outside walk-in override', () => {
     )
   })
 
+  it('rejects a future walk-in before the override path', async () => {
+    const { supabase, tableBookingInsert } = buildSupabase()
+    ;(requireFohPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      userId: 'user-1',
+      supabase,
+    })
+
+    const response = await POST(outsideWalkInRequest('2026-02-17') as any)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringMatching(/use add booking/i),
+    })
+    expect(tableBookingInsert).not.toHaveBeenCalled()
+  })
+
   it('leaves an indoor walk-in alone', async () => {
     const { rpc } = buildSupabase()
     const supabase = {
@@ -225,8 +252,12 @@ describe('FOH outside walk-in override', () => {
 
     const request = new Request('http://localhost/api/foh/bookings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+      },
       body: JSON.stringify({
+        customer_mode: 'phone',
         phone: '+447700900333',
         walk_in: true,
         date: '2026-02-16',

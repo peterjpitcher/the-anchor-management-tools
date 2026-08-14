@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-01-01'),
 }))
 
 vi.mock('@/lib/events/manage-booking', () => ({
@@ -52,6 +53,10 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { sendSMS } from '@/lib/twilio'
 import { sendManagerTableBookingCreatedEmailIfAllowed } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/event-bookings/route'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+} from '@/lib/foh/booking-client-contract'
 
 describe('FOH event booking route SMS safety meta', () => {
   beforeEach(() => {
@@ -132,8 +137,12 @@ describe('FOH event booking route SMS safety meta', () => {
 
     const request = new NextRequest('http://localhost/api/foh/event-bookings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+      },
       body: JSON.stringify({
+        customer_mode: 'selected',
         event_id: eventId,
         customer_id: customerId,
         seats: 2,
@@ -240,8 +249,12 @@ describe('FOH event booking route SMS safety meta', () => {
 
     const request = new NextRequest('http://localhost/api/foh/event-bookings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+      },
       body: JSON.stringify({
+        customer_mode: 'selected',
         event_id: eventId,
         customer_id: customerId,
         seats: 2,
@@ -339,8 +352,12 @@ describe('FOH event booking route SMS safety meta', () => {
 
     const request = new NextRequest('http://localhost/api/foh/event-bookings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+      },
       body: JSON.stringify({
+        customer_mode: 'selected',
         event_id: eventId,
         customer_id: customerId,
         seats: 2,
@@ -462,8 +479,12 @@ describe('FOH event booking route SMS safety meta', () => {
 
     const request = new NextRequest('http://localhost/api/foh/event-bookings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+      },
       body: JSON.stringify({
+        customer_mode: 'selected',
         event_id: eventId,
         customer_id: customerId,
         seats: 2,
@@ -602,8 +623,12 @@ describe('FOH event booking route SMS safety meta', () => {
 
     const request = new NextRequest('http://localhost/api/foh/event-bookings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+      },
       body: JSON.stringify({
+        customer_mode: 'selected',
         event_id: eventId,
         customer_id: customerId,
         seats: 2,

@@ -11,6 +11,7 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-02-16'),
 }))
 
 vi.mock('@/lib/sms/customers', () => ({
@@ -33,6 +34,10 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
 import { POST } from '@/app/api/foh/bookings/route'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+} from '@/lib/foh/booking-client-contract'
 
 function makeThenable(result: any) {
   const builder: any = {
@@ -169,8 +174,10 @@ describe('FOH bookings walk-in override cleanup guards', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
       },
       body: JSON.stringify({
+        customer_mode: 'phone',
         phone: '+447700900111',
         walk_in: true,
         date: '2026-02-16',

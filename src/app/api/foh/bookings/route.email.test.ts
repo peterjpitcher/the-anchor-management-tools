@@ -3,9 +3,14 @@ import { NextRequest } from 'next/server'
 import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+} from '@/lib/foh/booking-client-contract'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-08-01'),
 }))
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -47,11 +52,14 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
 
 const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111'
 
-const makeRequest = (body: unknown) =>
+const makeRequest = (body: Record<string, unknown>) =>
   new NextRequest('http://localhost/api/foh/bookings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+    },
+    body: JSON.stringify({ customer_mode: 'phone', ...body }),
   })
 
 // Minimal chainable Supabase query-builder mock (mirrors route.test.ts).

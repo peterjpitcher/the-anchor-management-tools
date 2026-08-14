@@ -55,3 +55,29 @@ and the queue UI checked in a browser (render, selection, empty state).
 
 Pill values at the time of writing: menu 121, table bookings 27, private
 bookings 13, checklists 55, rota 4, invoices 4, receipts 1, feedback 1.
+
+# FOH selected-customer walk-in hardening
+
+## Tasks
+
+- [x] Require the current FOH booking client contract and reject stale screens
+- [x] Carry explicit selected/phone/anonymous customer intent to both booking APIs
+- [x] Refresh long-lived FOH screens when the deployed version changes
+- [x] Reject non-today walk-ins and direct staff to create a normal booking
+- [x] Add regression tests for identity, stale clients, refresh checks and seating
+- [x] Verify focused tests, typecheck and lint; confirm the branch is `main`
+
+## Review
+
+The faulty booking came from an old FOH screen that did not send the selected
+customer id. Current FOH requests now state whether the operator selected a
+customer, entered a phone number, or intentionally chose an anonymous walk-in.
+The APIs reject stale clients instead of silently creating a Walk-in customer,
+and long-lived FOH screens reload after a deployment when it is safe to do so.
+
+Non-today walk-ins are rejected by the screen and both APIs, including the manual
+override path. Staff are told to use Add booking instead. Verified on `main`:
+80 focused FOH tests and all 5,121 project tests pass;
+typecheck, lint and diff checks are clean. The production build compiled and
+typechecked, but its final page-data step could not be checked while the live
+development server was writing to the same `.next` directory.
