@@ -19,6 +19,7 @@ import { mastheadCream } from './blocks/masthead_cream'
 import { mastheadGreen } from './blocks/masthead_green'
 import { mediaRow } from './blocks/media_row'
 import { menuList } from './blocks/menu_list'
+import { noteBar } from './blocks/note_bar'
 import { offerPanel } from './blocks/offer_panel'
 import { priceTiles } from './blocks/price_tiles'
 import { pullQuote } from './blocks/pull_quote'
@@ -53,6 +54,7 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   masthead_green: mastheadGreen,
   media_row: mediaRow,
   menu_list: menuList,
+  note_bar: noteBar,
   offer_panel: offerPanel,
   price_tiles: priceTiles,
   pull_quote: pullQuote,
