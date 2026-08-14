@@ -37,6 +37,14 @@ interface ParsedRow {
   tags: string[]
   sourceDetail: string
   notes?: string
+  distanceNote?: string
+  cluster?: string
+  staffEstimate?: string
+  roomFit?: string
+  roomFitNote?: string
+  angle?: string
+  openingLine?: string
+  sendTiming?: string
 }
 
 /** "Freight & cargo" becomes "freight-cargo", so tags are safe to use as audience filters. */
@@ -94,6 +102,14 @@ async function main(): Promise<void> {
   const segmentColumn = columnFor('segment')
   const groupColumn = columnFor('group')
   const notesColumn = columnFor('notes from source')
+  const distanceColumn = columnFor('distance')
+  const clusterColumn = columnFor('cluster')
+  const staffColumn = columnFor('staff')
+  const roomFitColumn = columnFor('fits our room')
+  const roomFitNoteColumn = columnFor('what that means')
+  const angleColumn = columnFor('your angle')
+  const openingLineColumn = columnFor('opening line')
+  const sendTimingColumn = columnFor('when to send')
 
   const rows: ParsedRow[] = []
 
@@ -113,14 +129,25 @@ async function main(): Promise<void> {
       .map(slugifyTag)
       .filter(Boolean)
 
+    const optional = (column: number | undefined): string | undefined =>
+      column ? cellText(row, column) || undefined : undefined
+
     rows.push({
       rowNumber: index,
       email,
-      contactName: contactColumn ? cellText(row, contactColumn) || undefined : undefined,
+      contactName: optional(contactColumn),
       companyName: company || undefined,
       tags,
       sourceDetail: SOURCE_LABEL,
-      notes: notesColumn ? cellText(row, notesColumn) || undefined : undefined,
+      notes: optional(notesColumn),
+      distanceNote: optional(distanceColumn),
+      cluster: optional(clusterColumn),
+      staffEstimate: optional(staffColumn),
+      roomFit: optional(roomFitColumn),
+      roomFitNote: optional(roomFitNoteColumn),
+      angle: optional(angleColumn),
+      openingLine: optional(openingLineColumn),
+      sendTiming: optional(sendTimingColumn),
     })
   }
 
@@ -140,10 +167,13 @@ async function main(): Promise<void> {
     return
   }
 
-  const result = await importContacts({ rows, filename: SOURCE_LABEL }, null)
+  // Refreshes the researched context on contacts already loaded, without touching anybody's
+  // eligibility decision or consent state.
+  const result = await importContacts({ rows, filename: SOURCE_LABEL, updateExisting: true }, null)
 
   console.warn('\nImport complete.')
   console.warn(`  imported:        ${result.imported}`)
+  console.warn(`  updated:         ${result.updated}`)
   console.warn(`  skipped:         ${result.skipped}`)
   console.warn(`  flagged freemail:${result.flaggedFreemail}`)
   console.warn(`  batch id:        ${result.batchId}`)
