@@ -2,9 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+  FOH_CLIENT_OUTDATED_CODE,
+} from '@/lib/foh/booking-client-contract'
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-08-01'),
 }))
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -51,7 +57,21 @@ vi.mock('@/lib/table-bookings/bookings', () => ({
 const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111'
 const NEW_WALKIN_ID = '22222222-2222-4222-8222-222222222222'
 
-const makeRequest = (body: unknown) =>
+const makeRequest = (body: Record<string, unknown>) => {
+  const customerMode = body.customer_mode ?? (
+    body.customer_id ? 'selected' : body.phone ? 'phone' : 'anonymous'
+  )
+  return new NextRequest('http://localhost/api/foh/bookings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
+    },
+    body: JSON.stringify({ customer_mode: customerMode, ...body }),
+  })
+}
+
+const makeOutdatedRequest = (body: Record<string, unknown>) =>
   new NextRequest('http://localhost/api/foh/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -96,10 +116,15 @@ function createSupabaseMock(options: {
     user_roles: { data: options.roleRows ?? null, error: null },
   }
   const fromResults = { ...defaults, ...(options.fromResults ?? {}) }
+  const builders: Record<string, Array<ReturnType<typeof makeBuilder>>> = {}
 
-  const from = vi.fn((table: string) => makeBuilder(fromResults[table] ?? { data: null, error: null }))
+  const from = vi.fn((table: string) => {
+    const builder = makeBuilder(fromResults[table] ?? { data: null, error: null })
+    builders[table] = [...(builders[table] || []), builder]
+    return builder
+  })
 
-  return { from, rpc }
+  return { from, rpc, builders }
 }
 
 function mockAuthSuccess(dbMock: Record<string, unknown>) {
@@ -113,6 +138,73 @@ function mockAuthSuccess(dbMock: Record<string, unknown>) {
 describe('POST /api/foh/bookings — kitchen pacing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('rejects an outdated FOH screen before it can create an anonymous booking', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeOutdatedRequest({
+        walk_in: true,
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(409)
+    await expect(res.json()).resolves.toMatchObject({
+      code: FOH_CLIENT_OUTDATED_CODE,
+      refresh_required: true,
+    })
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+
+  it('keeps a selected customer on a walk-in booking', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        walk_in: true,
+        date: '2026-08-01',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(db.rpc).toHaveBeenCalledWith(
+      'create_table_booking_staff_v06',
+      expect.objectContaining({ p_customer_id: CUSTOMER_ID }),
+    )
+  })
+
+  it('rejects a future table walk-in and tells staff to create a booking', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        walk_in: true,
+        date: '2026-08-02',
+        time: '18:00',
+        party_size: 2,
+        purpose: 'food',
+      }),
+    )
+
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringMatching(/use add booking/i),
+    })
+    expect(db.rpc).not.toHaveBeenCalled()
+    expect(db.builders.table_bookings).toBeUndefined()
   })
 
   it('passes p_bypass_pacing: true to the RPC for a walk-in', async () => {

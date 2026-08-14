@@ -24,6 +24,12 @@ import {
 import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '../types'
 import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 import { isChristmasPurpose } from '@/lib/table-bookings/christmas'
+import {
+  FOH_CLIENT_OUTDATED_CODE,
+  getFohBookingClientHeaders,
+  type FohBookingCustomerMode,
+} from '@/lib/foh/booking-client-contract'
+import { WALK_IN_TODAY_ONLY_MESSAGE } from '@/lib/foh/walk-in'
 
 /**
  * The seasonal period covering the chosen booking date, as the staff route
@@ -447,7 +453,9 @@ export function useFohCreateBooking(input: {
     const isWalkIn = createMode === 'walk_in'
     const isManagement = createMode === 'management'
     const bookingDate = createForm.booking_date
+    const isSameDayWalkIn = isWalkIn && bookingDate === getLondonDateKey(clockNow)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(bookingDate)) { setErrorMessage('Please pick a valid booking date'); return }
+    if (isWalkIn && !isSameDayWalkIn) { setErrorMessage(WALK_IN_TODAY_ONLY_MESSAGE); return }
 
     const effectiveBookingTime = isWalkIn
       ? suggestWalkInTime({ serviceDateIso: bookingDate, now: new Date(), serviceWindow: schedule?.service_window, timelineStartMin: timeline.startMin, timelineEndMin: timeline.endMin, purpose: createForm.purpose === 'drinks' ? 'drinks' : 'food' })
@@ -465,6 +473,11 @@ export function useFohCreateBooking(input: {
     const walkInNameParts = splitName(createForm.customer_name)
     const firstName = createForm.first_name.trim() || (isWalkIn ? walkInNameParts.firstName : undefined)
     const lastName = createForm.last_name.trim() || (isWalkIn ? walkInNameParts.lastName : undefined)
+    const customerMode: FohBookingCustomerMode = selectedCustomer
+      ? 'selected'
+      : createForm.phone.trim()
+        ? 'phone'
+        : 'anonymous'
     if (!isWalkIn && !isManagement && !selectedCustomer && !firstName) {
       setErrorMessage('Enter a first name for the new customer'); return
     }
@@ -476,8 +489,9 @@ export function useFohCreateBooking(input: {
       setSubmittingBooking(true)
       try {
         const response = await fetch('/api/foh/event-bookings', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: getFohBookingClientHeaders(),
           body: JSON.stringify({
+            customer_mode: customerMode,
             customer_id: selectedCustomer?.id || undefined, phone: createForm.phone.trim() || undefined,
             email: createForm.email.trim() || undefined,
             first_name: firstName, last_name: lastName, walk_in: isWalkIn || undefined,
@@ -490,6 +504,10 @@ export function useFohCreateBooking(input: {
           })
         })
         const payload = (await response.json()) as FohCreateEventBookingResponse
+        if (response.status === 409 && payload.code === FOH_CLIENT_OUTDATED_CODE) {
+          window.location.reload()
+          throw new Error(payload.error || 'The FOH screen was updated. Reloading now.')
+        }
         if (!response.ok) throw new Error(payload.error || 'Failed to create event booking')
         if (!payload.success || !payload.data) throw new Error('Failed to create event booking')
         if (payload.data.state === 'blocked') { setErrorMessage(mapFohEventBlockedReason(payload.data.reason)); return }
@@ -518,7 +536,7 @@ export function useFohCreateBooking(input: {
         const eventName = payload.data.event_name
         const forEvent = eventName ? ` for ${eventName}` : ''
         const tableSentence = tableName
-          ? isWalkIn
+          ? isSameDayWalkIn
             ? ` Sat on ${tableName}.`
             : ` They are on ${tableName}.`
           : ''
@@ -526,7 +544,7 @@ export function useFohCreateBooking(input: {
         const headline =
           payload.data.state === 'pending_payment'
             ? `${who} has ${seats} ${seatWord} held${forEvent}, waiting on payment.`
-            : isWalkIn
+            : isSameDayWalkIn
               ? `${who} is in${forEvent} with ${seats} ${seatWord}.`
               : `${who} is booked in${forEvent} with ${seats} ${seatWord}.`
 
@@ -565,8 +583,9 @@ export function useFohCreateBooking(input: {
     setSubmittingBooking(true)
     try {
       const response = await fetch('/api/foh/bookings', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: getFohBookingClientHeaders(),
         body: JSON.stringify({
+          customer_mode: customerMode,
           customer_id: selectedCustomer?.id || undefined,
           phone: isManagement ? undefined : createForm.phone.trim() || undefined,
           email: isManagement ? undefined : createForm.email.trim() || undefined,
@@ -589,11 +608,15 @@ export function useFohCreateBooking(input: {
         })
       })
       const payload = (await response.json()) as FohCreateBookingResponse
+      if (response.status === 409 && payload.code === FOH_CLIENT_OUTDATED_CODE) {
+        window.location.reload()
+        throw new Error(payload.error || 'The FOH screen was updated. Reloading now.')
+      }
       if (!response.ok) throw new Error(payload.error || 'Failed to create booking')
       if (!payload.success || !payload.data) throw new Error('Failed to create booking')
       if (payload.data.state === 'blocked') { setErrorMessage(mapFohBlockedReason(payload.data.blocked_reason, payload.data.reason)); return }
       const bookingRef = payload.data.booking_reference || payload.data.table_booking_id || 'booking'
-      const outcome = payload.data.state === 'pending_payment' ? 'reserved and awaiting deposit payment' : isWalkIn ? 'created, confirmed and seated' : 'created and confirmed'
+      const outcome = payload.data.state === 'pending_payment' ? 'reserved and awaiting deposit payment' : isSameDayWalkIn ? 'created, confirmed and seated' : 'created and confirmed'
       let tableText = payload.data.table_name ? ` on ${payload.data.table_name}` : ''
       let walkInTableMoveText = ''
       if (isWalkIn && walkInTargetTable?.id && payload.data.table_booking_id) {

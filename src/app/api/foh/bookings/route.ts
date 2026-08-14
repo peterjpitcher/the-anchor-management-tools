@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { randomBytes } from 'crypto'
 import { fromZonedTime } from 'date-fns-tz'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
@@ -33,11 +33,22 @@ import {
   toStoredBookingPurpose,
 } from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+import {
+  FOH_BOOKING_CLIENT_HEADER,
+  FOH_CLIENT_OUTDATED_CODE,
+  isCurrentFohBookingClient,
+} from '@/lib/foh/booking-client-contract'
+import {
+  isFohWalkInDateAllowed,
+  shouldSeatFohWalkIn,
+  WALK_IN_TODAY_ONLY_MESSAGE,
+} from '@/lib/foh/walk-in'
 
 /** Booking purposes the FOH create endpoint accepts. */
 type FohBookingPurpose = 'food' | 'drinks' | 'christmas'
 
 const CreateFohTableBookingSchema = z.object({
+  customer_mode: z.enum(['selected', 'phone', 'anonymous']),
   customer_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32).optional(),
   email: z.string().trim().email().max(255).optional(),
@@ -78,6 +89,34 @@ const CreateFohTableBookingSchema = z.object({
   bypass_pacing: z.boolean().optional(),
   is_venue_event: z.boolean().optional().default(false)
 }).superRefine((value, context) => {
+  if (value.customer_mode === 'selected' && !value.customer_id) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'The selected customer was not included. Refresh and try again.'
+    })
+  }
+
+  if (value.customer_mode === 'phone' && !value.phone) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'The customer phone number was not included. Refresh and try again.'
+    })
+  }
+
+  if (value.customer_mode === 'anonymous' && value.walk_in !== true) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Anonymous customers are only allowed for walk-ins'
+    })
+  }
+
+  if (value.customer_id && value.customer_mode !== 'selected') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Selected customer details are inconsistent. Refresh and try again.'
+    })
+  }
+
   if (!value.customer_id && !value.phone && value.walk_in !== true && value.management_override !== true) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -868,6 +907,17 @@ export async function POST(request: NextRequest) {
     return auth.response
   }
 
+  if (!isCurrentFohBookingClient(request.headers.get(FOH_BOOKING_CLIENT_HEADER))) {
+    return NextResponse.json(
+      {
+        error: 'This FOH screen is out of date. Refresh it, then create the booking again.',
+        code: FOH_CLIENT_OUTDATED_CODE,
+        refresh_required: true,
+      },
+      { status: 409 },
+    )
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -887,6 +937,20 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = parsed.data
+  const todayIso = getLondonDateIso()
+  if (!isFohWalkInDateAllowed({
+    walkIn: payload.walk_in === true,
+    bookingDate: payload.date,
+    todayIso,
+  })) {
+    return NextResponse.json({ error: WALK_IN_TODAY_ONLY_MESSAGE }, { status: 400 })
+  }
+
+  const shouldSeatNow = shouldSeatFohWalkIn({
+    walkIn: payload.walk_in === true,
+    bookingDate: payload.date,
+    todayIso,
+  })
 
   // Management override: verify caller is super_admin, then bypass all booking rules.
   if (payload.management_override === true) {
@@ -1360,6 +1424,7 @@ export async function POST(request: NextRequest) {
       bookingResult = await createManualWalkInBookingOverride({
         supabase: auth.supabase,
         customerId,
+        seatNow: shouldSeatNow,
         payload: {
           date: payload.date,
           time: bookingTime,
@@ -1571,7 +1636,7 @@ export async function POST(request: NextRequest) {
   // If waive_deposit is true, booking is already confirmed via RPC — fall through to SMS
 
   if (
-    payload.walk_in === true &&
+    shouldSeatNow &&
     bookingResult.table_booking_id &&
     bookingResult.state === 'confirmed'
   ) {

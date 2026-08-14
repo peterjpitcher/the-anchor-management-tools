@@ -108,6 +108,8 @@ export type FohCreateBookingResponse = {
     sunday_preorder_reason?: string | null
   }
   error?: string
+  code?: string
+  refresh_required?: boolean
 }
 
 export type FohCreateEventBookingResponse = {
@@ -130,6 +132,8 @@ export type FohCreateEventBookingResponse = {
     table_name: string | null
   }
   error?: string
+  code?: string
+  refresh_required?: boolean
 }
 
 export type FohEventOption = {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireFohPermission } from '@/lib/foh/api-auth'
+import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -12,8 +12,19 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
+import {
+  FOH_BOOKING_CLIENT_HEADER,
+  FOH_CLIENT_OUTDATED_CODE,
+  isCurrentFohBookingClient,
+} from '@/lib/foh/booking-client-contract'
+import {
+  isFohWalkInDateAllowed,
+  shouldSeatFohWalkIn,
+  WALK_IN_TODAY_ONLY_MESSAGE,
+} from '@/lib/foh/walk-in'
 
 const CreateFohEventBookingSchema = z.object({
+  customer_mode: z.enum(['selected', 'phone', 'anonymous']),
   customer_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32).optional(),
   email: z.string().trim().email().max(255).optional(),
@@ -29,6 +40,34 @@ const CreateFohEventBookingSchema = z.object({
   ),
   seating_preference: z.enum(['seated', 'standing']).optional()
 }).superRefine((value, context) => {
+  if (value.customer_mode === 'selected' && !value.customer_id) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'The selected customer was not included. Refresh and try again.'
+    })
+  }
+
+  if (value.customer_mode === 'phone' && !value.phone) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'The customer phone number was not included. Refresh and try again.'
+    })
+  }
+
+  if (value.customer_mode === 'anonymous' && value.walk_in !== true) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Anonymous customers are only allowed for walk-ins'
+    })
+  }
+
+  if (value.customer_id && value.customer_mode !== 'selected') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Selected customer details are inconsistent. Refresh and try again.'
+    })
+  }
+
   if (!value.customer_id && !value.phone && value.walk_in !== true) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -199,6 +238,17 @@ export async function POST(request: NextRequest) {
     return auth.response
   }
 
+  if (!isCurrentFohBookingClient(request.headers.get(FOH_BOOKING_CLIENT_HEADER))) {
+    return NextResponse.json(
+      {
+        error: 'This FOH screen is out of date. Refresh it, then create the booking again.',
+        code: FOH_CLIENT_OUTDATED_CODE,
+        refresh_required: true,
+      },
+      { status: 409 },
+    )
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -230,6 +280,15 @@ export async function POST(request: NextRequest) {
 
   if (!eventRow) {
     return NextResponse.json({ error: 'Selected event could not be found' }, { status: 404 })
+  }
+
+  const todayIso = getLondonDateIso()
+  if (!isFohWalkInDateAllowed({
+    walkIn: payload.walk_in === true,
+    bookingDate: eventRow.date || '',
+    todayIso,
+  })) {
+    return NextResponse.json({ error: WALK_IN_TODAY_ONLY_MESSAGE }, { status: 400 })
   }
 
   if (
@@ -434,7 +493,11 @@ export async function POST(request: NextRequest) {
 
   // ── Walk-in: auto-mark table booking as seated ──────────────────────────────
   if (
-    payload.walk_in === true &&
+    shouldSeatFohWalkIn({
+      walkIn: payload.walk_in === true,
+      bookingDate: eventRow.date,
+      todayIso,
+    }) &&
     resolvedState === 'confirmed' &&
     tableBookingId
   ) {

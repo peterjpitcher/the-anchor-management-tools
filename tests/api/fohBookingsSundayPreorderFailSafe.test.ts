@@ -11,6 +11,7 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/lib/foh/api-auth', () => ({
   requireFohPermission: vi.fn(),
+  getLondonDateIso: vi.fn(() => '2026-06-28'),
 }))
 
 vi.mock('@/lib/sms/customers', () => ({
@@ -40,6 +41,10 @@ import {
   sendTableBookingCreatedSmsIfAllowed,
 } from '@/lib/table-bookings/bookings'
 import { POST } from '@/app/api/foh/bookings/route'
+import {
+  FOH_BOOKING_CLIENT_CONTRACT,
+  FOH_BOOKING_CLIENT_HEADER,
+} from '@/lib/foh/booking-client-contract'
 
 describe('FOH bookings retired Sunday preorder guards', () => {
   beforeEach(() => {
@@ -91,8 +96,10 @@ describe('FOH bookings retired Sunday preorder guards', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
       },
       body: JSON.stringify({
+        customer_mode: 'phone',
         phone: '+447700900111',
         first_name: 'Pat',
         last_name: 'Guest',
@@ -161,8 +168,10 @@ describe('FOH bookings retired Sunday preorder guards', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        [FOH_BOOKING_CLIENT_HEADER]: FOH_BOOKING_CLIENT_CONTRACT,
       },
       body: JSON.stringify({
+        customer_mode: 'phone',
         phone: '+447700900222',
         first_name: 'Pat',
         last_name: 'Guest',

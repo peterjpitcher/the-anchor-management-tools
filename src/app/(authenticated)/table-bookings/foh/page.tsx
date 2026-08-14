@@ -11,6 +11,7 @@ import Image from 'next/image'
 import FohClockWidget from './FohClockWidget'
 import { LinkButton } from '@/ds'
 import { ChecklistMidShiftPrompt } from '@/app/(authenticated)/checklists/_components/ChecklistMidShiftPrompt'
+import { getDeploymentVersion } from '@/lib/foh/deployment-version'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 
@@ -126,6 +127,7 @@ export default async function TableBookingsFohPage() {
     >
       <FohScheduleClient
         initialDate={getLondonDateIso()}
+        deploymentVersion={getDeploymentVersion()}
         canEdit={canEdit}
         isSuperAdmin={isSuperAdmin}
         canWaiveDeposit={canWaiveDeposit}

@@ -25,6 +25,7 @@ import {
 import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
 import { useFohCreateBooking } from './hooks/useFohCreateBooking'
+import { useFohDeploymentRefresh } from './hooks/useFohDeploymentRefresh'
 import { useFohDrag } from './useFohDrag'
 
 import { FohHeader } from './components/FohHeader'
@@ -37,12 +38,14 @@ import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
 
 export function FohScheduleClient({
   initialDate,
+  deploymentVersion,
   canEdit,
   isSuperAdmin = false,
   styleVariant = 'default',
   canWaiveDeposit = false
 }: {
   initialDate: string
+  deploymentVersion: string
   canEdit: boolean
   isSuperAdmin?: boolean
   styleVariant?: FohStyleVariant
@@ -175,6 +178,11 @@ export function FohScheduleClient({
     || createBooking.isCreateModalOpen || selectedBookingContext || showCancelBookingConfirmation
     || partySizeEditOpen || walkoutModalOpen
   )
+
+  useFohDeploymentRefresh({
+    currentVersion: deploymentVersion,
+    pauseReload: hasActiveFohWork,
+  })
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
