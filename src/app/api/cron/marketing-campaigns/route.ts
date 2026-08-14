@@ -388,6 +388,9 @@ async function handle(request: NextRequest) {
           rendered = renderMarketingEmail(campaign.content, {
             unsubscribeUrl,
             linkMap: campaign.linkMap,
+            // One short link serves the whole audience, so this parameter is the only thing
+            // that tells a click apart from every other recipient's.
+            recipientRef: row.id,
             utm: {
               source: MARKETING_UTM_SOURCE,
               medium: MARKETING_UTM_MEDIUM,

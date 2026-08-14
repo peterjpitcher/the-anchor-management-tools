@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { ActionType } from '@/types/rbac'
 import type {
   MarketingCampaign,
+  MarketingCampaignLinkPerformance,
   MarketingCampaignStats,
   MarketingSettings,
 } from '@/types/marketing'
@@ -24,6 +25,7 @@ import {
   cancelCampaign,
   createCampaign,
   getCampaign,
+  getCampaignLinkPerformance,
   getCampaignStats,
   getSettings,
   listCampaigns,
@@ -190,6 +192,29 @@ export async function getMarketingCampaignStats(
   } catch (error) {
     console.error('Failed to load marketing campaign stats:', error)
     return { error: failureMessage(error, 'Failed to load campaign results') }
+  }
+}
+
+/**
+ * Clicks per destination, so it is visible which call to action carried the campaign.
+ *
+ * Returns an empty list rather than an error when a campaign has no short links: a draft has
+ * none yet, and that is a normal state rather than a failure.
+ */
+export async function getMarketingCampaignLinkPerformance(
+  id: string,
+): Promise<ActionResult<MarketingCampaignLinkPerformance[]>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    const campaignId = z.string().uuid().safeParse(id)
+    if (!campaignId.success) return { error: 'Invalid campaign id' }
+
+    return { success: true, data: await getCampaignLinkPerformance(campaignId.data) }
+  } catch (error) {
+    console.error('Failed to load marketing campaign link performance:', error)
+    return { error: failureMessage(error, 'Failed to load link performance') }
   }
 }
 

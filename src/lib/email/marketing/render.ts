@@ -66,6 +66,14 @@ export interface DeliveryContext {
   /** Original destination URL to campaign short link, provisioned when the campaign was scheduled. */
   linkMap?: Record<string, string>
   utm?: { source: string; medium: string; campaign: string }
+  /**
+   * This send's recipient row id, added to short links as `utm_content`.
+   *
+   * One short link serves the whole audience, so without this a click tells us the campaign
+   * and nothing else. The redirect route forwards the parameter to the destination and
+   * records it on the click, which is what makes a click attributable to a person.
+   */
+  recipientRef?: string
 }
 
 /** Absolute URLs in href attributes, ignoring mailto and tel. */
@@ -89,6 +97,33 @@ function applyUtm(url: string, utm: DeliveryContext['utm']): string {
   return fragment ? `${tagged}#${fragment}` : tagged
 }
 
+/**
+ * Stamps the recipient onto a campaign short link.
+ *
+ * Only ever applied to a URL that came out of the link map. An unmapped destination goes to
+ * the venue site directly, where a recipient id in the query string would leak into the
+ * site's own analytics without buying us anything, and a third-party link is not ours to
+ * rewrite at all.
+ *
+ * Built with `URL` so it composes with a short link that already carries a query string, and
+ * skipped when `utm_content` is already present so a second pass over the same HTML cannot
+ * stack a duplicate.
+ */
+function withRecipientRef(url: string, recipientRef: string | undefined): string {
+  if (!recipientRef) return url
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.has('utm_content')) return url
+    parsed.searchParams.set('utm_content', recipientRef)
+    return parsed.toString()
+  } catch {
+    // An unparseable short URL is still a working link, so send it as it is rather than lose
+    // the click over an attribution nicety.
+    return url
+  }
+}
+
 /** Delivery stage. Substitutes the unsubscribe URL and rewrites campaign links. */
 export function applyDeliveryTransforms(html: string, context: DeliveryContext): string {
   if (!context.unsubscribeUrl) {
@@ -104,7 +139,10 @@ export function applyDeliveryTransforms(html: string, context: DeliveryContext):
 
     const decoded = rawUrl.replace(/&amp;/g, '&')
     const mapped = context.linkMap?.[decoded]
-    if (mapped) return `href="${mapped.replace(/&/g, '&amp;')}"`
+    if (mapped) {
+      const tracked = withRecipientRef(mapped, context.recipientRef)
+      return `href="${tracked.replace(/&/g, '&amp;')}"`
+    }
 
     const tagged = applyUtm(decoded, context.utm)
     return `href="${tagged.replace(/&/g, '&amp;')}"`

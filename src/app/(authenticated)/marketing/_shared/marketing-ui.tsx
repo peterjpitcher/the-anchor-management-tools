@@ -153,6 +153,17 @@ export function formatPercent(rate: number | null | undefined): string {
   return percent % 1 === 0 ? `${percent}%` : `${percent.toFixed(1)}%`
 }
 
+/**
+ * Money, or an honest blank.
+ *
+ * Null is not zero. No booking event records an amount today, so a conversion figure of GBP
+ * 0.00 would be a claim we cannot support; "Not recorded" says exactly what we know.
+ */
+export function formatGbp(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Not recorded'
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
+}
+
 /** A count alongside its share of a total, for table cells like "412 (86.4%)". */
 export function formatCountWithRate(count: number, rate: number | null | undefined): string {
   return `${count} (${formatPercent(rate)})`
