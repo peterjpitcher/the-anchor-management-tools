@@ -171,6 +171,74 @@ describe('the link map', () => {
   })
 })
 
+describe('per-recipient click attribution', () => {
+  /**
+   * One short link serves the whole audience, so `utm_content` is the only thing separating
+   * one person's click from everybody else's. It belongs on the short URL and nowhere else:
+   * on the unsubscribe link it would be pointless, and on somebody else's domain it would be
+   * both useless and a good way to have a link rewritten in transit.
+   */
+  const SHORT_URL = 'https://l.the-anchor.pub/mk1'
+  const RECIPIENT_ID = 'b7f4c2d1-0a9e-4c3b-8f21-6d5e4a3b2c10'
+
+  const linkMap = { 'https://www.the-anchor.pub/food-menu': SHORT_URL }
+  const context = {
+    unsubscribeUrl: UNSUBSCRIBE_URL,
+    linkMap,
+    utm: UTM,
+    recipientRef: RECIPIENT_ID,
+  }
+
+  const delivered = applyDeliveryTransforms(renderCampaignHtml(campaign), context)
+
+  it('tags the short link with the recipient, which is what makes a click identifiable', () => {
+    expect(delivered).toContain(`href="${SHORT_URL}?utm_content=${RECIPIENT_ID}"`)
+  })
+
+  it('leaves an unmapped venue link on plain UTM tagging, with no recipient id in it', () => {
+    // Sending a recipient id straight to the site would leak it into the site's own analytics
+    // without buying us anything, since only the redirector records clicks.
+    expect(delivered).toContain('https://www.the-anchor.pub/christmas-parties?utm_source=anchor')
+    expect(delivered).not.toContain(`the-anchor.pub/christmas-parties?utm_source=anchor&amp;utm_content`)
+    expect(countOccurrences(delivered, 'utm_content=')).toBe(1)
+  })
+
+  it('never touches the unsubscribe link, which has to keep working unaided', () => {
+    expect(delivered).toContain(`href="${UNSUBSCRIBE_URL}"`)
+    expect(delivered).not.toContain(`${UNSUBSCRIBE_URL}&amp;utm_content`)
+  })
+
+  it.each([
+    ['Facebook', 'https://www.facebook.com/theanchorpubsm/'],
+    ['Instagram', 'https://www.instagram.com/theanchor.pub/'],
+    ['WhatsApp', 'https://wa.me/441753682707'],
+  ])('leaves the %s link exactly as the designer wrote it', (_name, url) => {
+    expect(delivered).toContain(`href="${url}"`)
+  })
+
+  it('composes with a short link that already carries a query string', () => {
+    const withQuery = applyDeliveryTransforms(renderCampaignHtml(campaign), {
+      ...context,
+      linkMap: { 'https://www.the-anchor.pub/food-menu': `${SHORT_URL}?src=lunch` },
+    })
+    expect(withQuery).toContain(`href="${SHORT_URL}?src=lunch&amp;utm_content=${RECIPIENT_ID}"`)
+  })
+
+  it('is idempotent, so a retried send does not stack a second recipient id', () => {
+    const twice = applyDeliveryTransforms(delivered, context)
+    expect(twice).toBe(delivered)
+    expect(countOccurrences(twice, 'utm_content=')).toBe(1)
+  })
+
+  it('changes nothing when no recipient is supplied, so a test send stays as it was', () => {
+    const { recipientRef: _recipientRef, ...anonymous } = context
+    const withoutRecipient = applyDeliveryTransforms(renderCampaignHtml(campaign), anonymous)
+
+    expect(withoutRecipient).toContain(`href="${SHORT_URL}"`)
+    expect(withoutRecipient).not.toContain('utm_content=')
+  })
+})
+
 describe('the size guard', () => {
   function oversizedCampaign(): MarketingContent {
     const paragraph = 'Long copy that a well meaning marketer kept pasting in. '.repeat(10).slice(0, 590)

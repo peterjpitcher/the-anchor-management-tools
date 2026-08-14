@@ -86,6 +86,32 @@ is invisible to every audience. The Contacts page shows how many are waiting.
 | Stats look low | Open tracking is off by design (see below). Delivered and clicked are real; opened will be zero |
 | A bounce did not update a contact | Check `email_webhook_unmatched` for parked events |
 
+## How engagement and conversion are measured
+
+The chain from an email to a booking is first-party end to end, and most of it already
+existed before this feature.
+
+```
+email link
+  -> l.the-anchor.pub short link  (one per campaign destination, utm_source/medium/campaign
+     baked into the destination, utm_content=<recipient id> added per recipient)
+  -> redirect handler             writes short_link_clicks, now including utm_content
+  -> the-anchor.pub               captures utm_* and short_code into first-party storage
+  -> booking or enquiry           website forwards the attribution to AMS
+  -> analytics_events.metadata    carries utm_campaign, utm_content, short_code
+```
+
+So:
+
+- **Clicks per campaign** come from `short_link_clicks` joined through `short_links.metadata`.
+- **Clicks per contact** come from `short_link_clicks.utm_content`, which holds the
+  `marketing_campaign_recipients` id. The redirect already forwarded that value to the
+  website; it simply was not being stored on the click until now.
+- **Conversions** come from `analytics_events` where `metadata->>'utm_campaign'` matches the
+  campaign. That path was already live: real bookings carry it today.
+
+Bots are excluded from click counts (`device_type <> 'bot'`).
+
 ## Open tracking is deliberately off
 
 Resend configures open and click tracking per domain, and marketing sends from
@@ -94,9 +120,14 @@ Enabling tracking there would have changed the behaviour of that mail too, inclu
 links in authentication emails. So the feature does not depend on it. Clicks are measured with
 our own short links instead.
 
+This is not a theoretical risk. In the ninety days to 2026-08-14, 937 of 1,108 outbound
+emails went through Resend on that domain, including booking confirmations. Turning tracking
+on would have started rewriting links inside all of them.
+
 To get open tracking later, set up a dedicated marketing subdomain (for example
 `news.the-anchor.pub`), verify it in Resend with tracking enabled, and point
-`MARKETING_EMAIL_FROM_ADDRESS` at it. Nothing else needs to change.
+`MARKETING_EMAIL_FROM_ADDRESS` at it. Nothing else needs to change: no code, no schema. It is
+a DNS job plus one environment variable.
 
 ## Rendering, and why the fidelity tests are strict
 

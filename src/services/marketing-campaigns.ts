@@ -1,6 +1,19 @@
 import { createHash } from 'crypto'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
+import {
+  fetchCampaignLinks,
+  fetchClicksByRecipientIds,
+  fetchClicksForLinks,
+  fetchConversionsByUtmCampaign,
+  fetchEnquiryConversionsByUtmCampaign,
+  isHumanClick,
+  summariseClicksByRecipient,
+} from '@/lib/email/marketing/attribution'
+import { provisionCampaignLinks } from '@/lib/email/marketing/links'
+import { collectDestinationUrls } from '@/lib/email/marketing/render'
+import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import {
   marketingContentSchema,
   validateMarketingContent,
@@ -14,6 +27,8 @@ import {
   mapMarketingSettings,
   type MarketingAudience,
   type MarketingCampaign,
+  type MarketingCampaignEngagement,
+  type MarketingCampaignLinkPerformance,
   type MarketingCampaignRecipientWithEngagement,
   type MarketingCampaignStats,
   type MarketingCampaignStatus,
@@ -372,12 +387,48 @@ export interface ScheduleCampaignResult {
 }
 
 /**
+ * Short links for everything this campaign points at, or an empty map.
+ *
+ * Never throws. Click tracking is a reporting nicety and scheduling a send is not: an empty
+ * or partial map renders the original URLs with plain UTM tagging, which still lands the
+ * visitor on the right page and still shows up in site analytics, just without per-recipient
+ * click attribution. Refusing to schedule over a redirector problem would trade a real send
+ * for a report.
+ */
+async function provisionLinkMap(
+  campaignId: string,
+  utmCampaign: string,
+  content: MarketingContent,
+): Promise<Record<string, string>> {
+  try {
+    const { linkMap, failures } = await provisionCampaignLinks({
+      campaignId,
+      utmCampaign,
+      destinations: collectDestinationUrls(content),
+    })
+
+    if (failures.length > 0) {
+      logger.error('Some campaign links could not be shortened, so they send untracked', {
+        metadata: { campaignId, failures },
+      })
+    }
+
+    return linkMap
+  } catch (error) {
+    logger.error('Campaign short link provisioning failed, scheduling with plain UTM tagging', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { campaignId },
+    })
+    return {}
+  }
+}
+
+/**
  * Freezes a draft and books it in.
  *
- * Three things are locked at this moment and none of them can be re-derived later: the
- * content hash, the recipient count a human approved, and the send time. Short-link
- * provisioning fills `link_map` in a separate step, so it is left empty here rather than
- * guessed at.
+ * Four things are locked at this moment and none of them can be re-derived later: the content
+ * hash, the recipient count a human approved, the send time, and the short links every
+ * click will be counted through.
  */
 export async function scheduleCampaign(
   id: string,
@@ -411,6 +462,7 @@ export async function scheduleCampaign(
   }
 
   const now = new Date().toISOString()
+  const linkMap = await provisionLinkMap(id, existing.utmCampaign ?? id, content)
 
   const { data, error } = await supabase
     .from('marketing_campaigns')
@@ -421,9 +473,7 @@ export async function scheduleCampaign(
       scheduled_by: userId,
       approved_recipient_count: preview.eligibleCount,
       content_hash: computeContentHash(content),
-      // Short links are provisioned separately. An empty map renders the original URLs, which
-      // is correct but untracked, never broken.
-      link_map: {},
+      link_map: linkMap,
     })
     .eq('id', id)
     .eq('status', 'draft')
@@ -553,9 +603,77 @@ async function fetchEngagement(
 }
 
 /**
+ * The UTM campaign value that actually lands on every link in this email.
+ *
+ * `provisionLinkMap` is called with `existing.utmCampaign ?? id`, so a campaign nobody gave a
+ * UTM name to is tagged with its own id. Reporting has to read the same fallback, otherwise
+ * those campaigns would report zero conversions while producing them.
+ */
+export function campaignUtmValue(campaign: Pick<MarketingCampaign, 'id' | 'utmCampaign'>): string {
+  return campaign.utmCampaign ?? campaign.id
+}
+
+/**
+ * Clicks and conversions for a campaign, measured through our own redirector and our own
+ * analytics.
+ *
+ * Denominators, stated once:
+ *   - `clicks` counts CLICK ROWS, not people. Bots are excluded; a click we could not classify
+ *     still counts. One person clicking three links produces three.
+ *   - `uniqueClickers` counts DISTINCT RECIPIENTS OF THIS CAMPAIGN. A click is only counted if
+ *     its `utm_content` matches a recipient row on this campaign, so a stray click on a shared
+ *     link cannot inflate it. Compare it against `sent`, not against `recipients`.
+ *   - `conversions.bookings` counts ANALYTICS EVENTS, which is bookings rather than people,
+ *     matched on the campaign's UTM value. Attribution is last-touch and as generous as the
+ *     website's own: any booking still carrying our campaign tag counts, whenever it happened.
+ *   - `conversions.enquiries` counts MARKETING CONVERSION ROWS on the same UTM value, which is
+ *     the enquiry forms the website cannot turn into a booking. Kept separate from bookings
+ *     because a campaign that produced twenty questions did not fill twenty tables, and the
+ *     first B2B campaign's main call to action is an enquiry form rather than a booking one.
+ */
+async function fetchCampaignEngagement(
+  supabase: AdminClient,
+  campaign: MarketingCampaign,
+  recipientIds: Set<string>,
+): Promise<MarketingCampaignEngagement> {
+  const links = await fetchCampaignLinks(supabase, campaign.id)
+  const clickRows = await fetchClicksForLinks(
+    supabase,
+    links.map((link) => link.id),
+  )
+
+  let clicks = 0
+  const clickers = new Set<string>()
+
+  for (const row of clickRows) {
+    if (!isHumanClick(row.device_type)) continue
+    clicks += 1
+    if (row.utm_content && recipientIds.has(row.utm_content)) clickers.add(row.utm_content)
+  }
+
+  const utmCampaign = campaignUtmValue(campaign)
+  const [bookings, enquiries] = await Promise.all([
+    fetchConversionsByUtmCampaign(supabase, utmCampaign),
+    fetchEnquiryConversionsByUtmCampaign(supabase, utmCampaign),
+  ])
+
+  return {
+    clicks,
+    uniqueClickers: clickers.size,
+    conversions: {
+      bookings: bookings.count,
+      enquiries: enquiries.count,
+      total: bookings.count + enquiries.count,
+    },
+    // Only bookings carry an amount, so the enquiry side never feeds this.
+    conversionValue: bookings.value,
+  }
+}
+
+/**
  * Campaign results.
  *
- * Every engagement metric is counted from a TIMESTAMP column, never from `email_messages
+ * Every provider-side metric is counted from a TIMESTAMP column, never from `email_messages
  * .status`. The webhook promotes that status forwards (delivered, then opened, then clicked),
  * so counting statuses would report a campaign where everyone clicked as having zero
  * deliveries and zero opens.
@@ -563,19 +681,25 @@ async function fetchEngagement(
  * Rates use `sent` as the denominator throughout: a skipped or failed row never reached an
  * inbox, so including it would depress every figure and make a clean send look like a poor
  * one.
+ *
+ * `engagement` is the separate, first-party half of the picture and does not feed the rates.
+ * Its own denominators are documented on `fetchCampaignEngagement`.
  */
 export async function getCampaignStats(id: string): Promise<MarketingCampaignStats> {
   const supabase = createAdminClient()
+  const campaign = await requireCampaign(id)
 
   const recipients = await fetchAllPages<{
+    id: string
     status: MarketingRecipientStatus
     skip_reason: string | null
     email_message_id: string | null
   }>((from, to) =>
     supabase
       .from('marketing_campaign_recipients')
-      .select('status, skip_reason, email_message_id')
+      .select('id, status, skip_reason, email_message_id')
       .eq('campaign_id', id)
+      .order('id', { ascending: true })
       .range(from, to),
   )
 
@@ -603,7 +727,7 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
     if (row.email_message_id) messageIds.push(row.email_message_id)
   }
 
-  const engagement = await fetchEngagement(supabase, messageIds)
+  const messageEngagement = await fetchEngagement(supabase, messageIds)
 
   let delivered = 0
   let opened = 0
@@ -611,7 +735,7 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
   let bounced = 0
   let complained = 0
 
-  for (const row of engagement.values()) {
+  for (const row of messageEngagement.values()) {
     if (row.delivered_at) delivered += 1
     if (row.opened_at) opened += 1
     if (row.clicked_at) clicked += 1
@@ -626,6 +750,12 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
 
   if (unsubscribeError) throw new Error(unsubscribeError.message)
   const unsubscribed = unsubscribeCount ?? 0
+
+  const engagement = await fetchCampaignEngagement(
+    supabase,
+    campaign,
+    new Set(recipients.map((row) => row.id)),
+  )
 
   return {
     campaignId: id,
@@ -653,7 +783,75 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
       complaintRate: rate(complained, sent),
       unsubscribeRate: rate(unsubscribed, sent),
     },
+
+    engagement,
   }
+}
+
+/**
+ * Which call to action actually worked.
+ *
+ * One row per destination the campaign points at. `clicks` counts click rows on that link with
+ * bots removed; `uniqueClickers` counts distinct recipients of this campaign who clicked that
+ * particular link, so the two columns answer "how much traffic" and "how many people" without
+ * pretending to be the same number.
+ *
+ * `originalUrl` is what the person writing the email typed, taken from the link's metadata.
+ * The stored destination has the UTM parameters baked in, which is noise on a results table.
+ */
+export async function getCampaignLinkPerformance(
+  campaignId: string,
+): Promise<MarketingCampaignLinkPerformance[]> {
+  const supabase = createAdminClient()
+
+  const links = await fetchCampaignLinks(supabase, campaignId)
+  if (links.length === 0) return []
+
+  const recipientIds = new Set(
+    (
+      await fetchAllPages<{ id: string }>((from, to) =>
+        supabase
+          .from('marketing_campaign_recipients')
+          .select('id')
+          .eq('campaign_id', campaignId)
+          .order('id', { ascending: true })
+          .range(from, to),
+      )
+    ).map((row) => row.id),
+  )
+
+  const clickRows = await fetchClicksForLinks(
+    supabase,
+    links.map((link) => link.id),
+  )
+
+  const clicksByLink = new Map<string, { clicks: number; clickers: Set<string> }>()
+  for (const row of clickRows) {
+    if (!row.short_link_id || !isHumanClick(row.device_type)) continue
+
+    const current = clicksByLink.get(row.short_link_id) ?? { clicks: 0, clickers: new Set<string>() }
+    current.clicks += 1
+    if (row.utm_content && recipientIds.has(row.utm_content)) current.clickers.add(row.utm_content)
+    clicksByLink.set(row.short_link_id, current)
+  }
+
+  return links
+    .map((link) => {
+      const counts = clicksByLink.get(link.id)
+      const originalUrl =
+        typeof link.metadata?.original_url === 'string'
+          ? link.metadata.original_url
+          : link.destination_url ?? ''
+
+      return {
+        originalUrl,
+        shortCode: link.short_code,
+        shortUrl: buildShortLinkUrl(link.short_code),
+        clicks: counts?.clicks ?? 0,
+        uniqueClickers: counts?.clickers.size ?? 0,
+      }
+    })
+    .sort((a, b) => b.clicks - a.clicks || a.originalUrl.localeCompare(b.originalUrl))
 }
 
 export interface ListRecipientsOptions {
@@ -698,10 +896,26 @@ export async function listRecipients(
       .filter((messageId): messageId is string => messageId != null),
   )
 
+  // One extra query for the whole page, keyed on the recipient ids the email carried in
+  // `utm_content`. Asking per row would be up to 200 round trips for one table.
+  const clicksByRecipient = summariseClicksByRecipient(
+    await fetchClicksByRecipientIds(
+      supabase,
+      recipients.map((recipient) => recipient.id),
+    ),
+  )
+
   return {
     recipients: recipients.map((recipient) => {
       const row = recipient.emailMessageId ? engagement.get(recipient.emailMessageId) : undefined
-      return { ...recipient, engagement: row ? mapMarketingRecipientEngagement(row) : null }
+      const clicks = clicksByRecipient.get(recipient.id)
+
+      return {
+        ...recipient,
+        engagement: row ? mapMarketingRecipientEngagement(row) : null,
+        clickCount: clicks?.clickCount ?? 0,
+        lastClickedAt: clicks?.lastClickedAt ?? null,
+      }
     }),
     total: count ?? 0,
   }

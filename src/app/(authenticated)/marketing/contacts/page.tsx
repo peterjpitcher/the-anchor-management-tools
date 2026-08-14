@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   listBusinessContacts,
+  listBusinessContactsWithEngagement,
+  listMarketingClusters,
   listMarketingTags,
 } from '@/app/actions/marketing-contacts'
 import { Alert, PageLayout } from '@/ds'
@@ -41,6 +43,7 @@ export default async function MarketingContactsPage({
   const params = await searchParams
   const search = firstValue(params.search).trim()
   const tag = firstValue(params.tag).trim()
+  const cluster = firstValue(params.cluster).trim()
   const eligibilityRaw = firstValue(params.eligibility).trim() as EligibilityStatus
   const statusRaw = firstValue(params.status).trim() as MarketingStatus
   const eligibility = ELIGIBILITY_VALUES.includes(eligibilityRaw) ? eligibilityRaw : undefined
@@ -48,16 +51,18 @@ export default async function MarketingContactsPage({
   const pageNumber = Number.parseInt(firstValue(params.page), 10)
   const page = Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : 1
 
-  const [listResult, tagsResult, pendingResult] = await Promise.all([
-    listBusinessContacts({
+  const [listResult, tagsResult, clustersResult, pendingResult] = await Promise.all([
+    listBusinessContactsWithEngagement({
       search: search || undefined,
       tags: tag ? [tag] : undefined,
+      cluster: cluster || undefined,
       eligibility,
       status,
       page,
       pageSize: PAGE_SIZE,
     }),
     listMarketingTags(),
+    listMarketingClusters(),
     // Only the total matters here, so ask for the smallest page the action allows.
     listBusinessContacts({ eligibility: 'pending_review', page: 1, pageSize: 1 }),
   ])
@@ -78,8 +83,15 @@ export default async function MarketingContactsPage({
       initialTotal={listResult.data.total}
       initialPage={page}
       pageSize={PAGE_SIZE}
-      initialFilters={{ search, tag, eligibility: eligibility ?? '', status: status ?? '' }}
+      initialFilters={{
+        search,
+        tag,
+        cluster,
+        eligibility: eligibility ?? '',
+        status: status ?? '',
+      }}
       tags={tagsResult.data ?? []}
+      clusters={clustersResult.data ?? []}
       pendingReviewCount={pendingResult.data?.total ?? 0}
       canEdit={canEdit}
       canCreate={canCreate}

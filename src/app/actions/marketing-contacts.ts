@@ -11,21 +11,28 @@ import type { ActionType } from '@/types/rbac'
 import type {
   AudiencePreview,
   BusinessContact,
+  BusinessContactEngagement,
+  MarketingClusterCount,
   MarketingTagCount,
 } from '@/types/marketing'
 import {
   createContact,
   getContact,
+  getContactEngagement,
   importContacts,
+  listClusters,
   listContacts,
+  listContactsWithEngagement,
   listTags,
   previewAudience,
   resubscribeContact,
   setEligibility,
+  setEligibilityBulk,
   unsubscribeContact,
   updateContact,
   type ImportContactsResult,
   type ListContactsResult,
+  type ListContactsWithClicksResult,
 } from '@/services/marketing-contacts'
 
 /**
@@ -78,6 +85,7 @@ const listSchema = z.object({
   tags: tagsSchema.optional(),
   status: z.enum(['subscribed', 'unsubscribed', 'bounced', 'complained']).optional(),
   eligibility: z.enum(['pending_review', 'eligible', 'excluded']).optional(),
+  cluster: z.string().trim().max(120).optional(),
   page: z.number().int().min(1).optional(),
   pageSize: z.number().int().min(1).max(200).optional(),
 })
@@ -166,6 +174,59 @@ export async function getBusinessContact(id: string): Promise<ActionResult<Busin
   } catch (error) {
     console.error('Failed to load business contact:', error)
     return { error: failureMessage(error, 'Failed to load contact') }
+  }
+}
+
+/**
+ * The contacts list plus a lifetime click count on every row.
+ *
+ * A separate action from `listBusinessContacts` rather than a flag on it, because it costs two
+ * more queries and not every caller wants to pay for a column it will not show.
+ */
+export async function listBusinessContactsWithEngagement(
+  input: unknown,
+): Promise<ActionResult<ListContactsWithClicksResult>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    const parsed = listSchema.safeParse(input ?? {})
+    if (!parsed.success) return { error: parsed.error.errors[0]?.message ?? 'Invalid filters' }
+
+    return { success: true, data: await listContactsWithEngagement(parsed.data) }
+  } catch (error) {
+    console.error('Failed to list business contacts with engagement:', error)
+    return { error: failureMessage(error, 'Failed to load contacts') }
+  }
+}
+
+/** Lifetime clicks, deliveries, bounces and conversions for one contact. */
+export async function getBusinessContactEngagement(
+  id: string,
+): Promise<ActionResult<BusinessContactEngagement>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    const contactId = z.string().uuid().safeParse(id)
+    if (!contactId.success) return { error: 'Invalid contact id' }
+
+    return { success: true, data: await getContactEngagement(contactId.data) }
+  } catch (error) {
+    console.error('Failed to load business contact engagement:', error)
+    return { error: failureMessage(error, 'Failed to load engagement') }
+  }
+}
+
+export async function listMarketingClusters(): Promise<ActionResult<MarketingClusterCount[]>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    return { success: true, data: await listClusters() }
+  } catch (error) {
+    console.error('Failed to list marketing clusters:', error)
+    return { error: failureMessage(error, 'Failed to load clusters') }
   }
 }
 
@@ -301,6 +362,56 @@ export async function setContactEligibility(
   } catch (error) {
     console.error('Failed to set contact eligibility:', error)
     return { error: failureMessage(error, 'Failed to set eligibility') }
+  }
+}
+
+/**
+ * Applies one eligibility decision to a set of contacts.
+ *
+ * Capped at 200 per call so a mis-click cannot rewrite the whole list in one request, and so
+ * the audit entry stays legible.
+ */
+export async function setContactEligibilityBulk(
+  ids: unknown,
+  input: unknown,
+): Promise<ActionResult<{ updated: number; failures: Array<{ id: string; error: string }> }>> {
+  try {
+    const context = await authorise('edit')
+    if ('error' in context) return { error: context.error }
+
+    const parsedIds = z.array(z.string().uuid()).min(1).max(200).safeParse(ids)
+    if (!parsedIds.success) {
+      return { error: 'Select between 1 and 200 contacts' }
+    }
+
+    const parsed = eligibilitySchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.errors[0]?.message ?? 'Invalid eligibility details' }
+    }
+
+    const result = await setEligibilityBulk(parsedIds.data, parsed.data, context.user.id)
+
+    await logAuditEvent({
+      user_id: context.user.id,
+      operation_type: 'update',
+      resource_type: 'marketing_contact',
+      operation_status: result.failures.length ? 'failure' : 'success',
+      additional_info: {
+        bulk: true,
+        requested: parsedIds.data.length,
+        updated: result.updated,
+        failed: result.failures.length,
+        eligibility_status: parsed.data.eligibilityStatus,
+        subscriber_type: parsed.data.subscriberType ?? null,
+        marketing_basis: parsed.data.marketingBasis ?? null,
+      },
+    })
+
+    revalidatePath('/marketing/contacts')
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('Failed to set eligibility in bulk:', error)
+    return { error: failureMessage(error, 'Failed to update eligibility') }
   }
 }
 

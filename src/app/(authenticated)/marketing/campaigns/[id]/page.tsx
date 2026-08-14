@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   getMarketingCampaign,
+  getMarketingCampaignLinkPerformance,
   getMarketingCampaignStats,
   listMarketingCampaignRecipients,
 } from '@/app/actions/marketing-campaigns'
@@ -41,10 +42,11 @@ export default async function MarketingCampaignDetailPage({
   const pageNumber = Number.parseInt(firstValue(query.page), 10)
   const page = Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : 1
 
-  const [campaignResult, statsResult, recipientsResult] = await Promise.all([
+  const [campaignResult, statsResult, recipientsResult, linksResult] = await Promise.all([
     getMarketingCampaign(id),
     getMarketingCampaignStats(id),
     listMarketingCampaignRecipients(id, { page, pageSize: RECIPIENTS_PAGE_SIZE }),
+    getMarketingCampaignLinkPerformance(id),
   ])
 
   if (campaignResult.error || !campaignResult.data) {
@@ -86,6 +88,8 @@ export default async function MarketingCampaignDetailPage({
       recipientsPage={page}
       recipientsPageSize={RECIPIENTS_PAGE_SIZE}
       recipientsError={recipientsResult.error ?? null}
+      linkPerformance={linksResult.data ?? []}
+      linkPerformanceError={linksResult.error ?? null}
       previewHtml={previewHtml}
       previewError={previewError}
       canSend={canSend}

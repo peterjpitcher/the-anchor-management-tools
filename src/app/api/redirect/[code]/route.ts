@@ -456,6 +456,9 @@ export async function GET(
           utm_source: requestUtmParams.utm_source || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_source'),
           utm_medium: requestUtmParams.utm_medium || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_medium'),
           utm_campaign: requestUtmParams.utm_campaign || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_campaign'),
+          // Marketing email puts the campaign-recipient id here, so a click can be traced back
+          // to one contact. It was already forwarded to the destination; now it is kept.
+          utm_content: requestUtmParams.utm_content || readTrackingParamFromUrl(finalRedirectDestinationUrl, 'utm_content'),
         }
         const ipAddress = extractClientIp(request)
 
@@ -473,6 +476,7 @@ export async function GET(
           utm_source: utmParams.utm_source,
           utm_medium: utmParams.utm_medium,
           utm_campaign: utmParams.utm_campaign,
+          utm_content: utmParams.utm_content,
           request_host: normalizeRequestHost(request.headers.get('host')),
           metadata: resolvedViaAlias ? { alias_code: shortCode } : {}
         }
@@ -481,11 +485,13 @@ export async function GET(
           .from('short_link_clicks')
           .insert(clickPayload)
         if (clickInsertError) {
+          // 42703 covers either newer column being absent on an older database. Losing the
+          // click entirely would be worse than losing one field of it.
           if (!isMissingRequestHostColumn(clickInsertError)) {
             throw clickInsertError
           }
 
-          const { request_host: _requestHost, ...fallbackPayload } = clickPayload
+          const { request_host: _requestHost, utm_content: _utmContent, ...fallbackPayload } = clickPayload
           const { error: fallbackClickInsertError } = await supabase
             .from('short_link_clicks')
             .insert(fallbackPayload)

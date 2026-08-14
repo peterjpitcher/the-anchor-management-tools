@@ -151,6 +151,17 @@ export interface BusinessContact {
   /** Review hint only. A free-mail domain never gates a send on its own. */
   isFreemail: boolean
 
+  // Researched context from the curated source list. Prose, not typed values: "Staff (est)"
+  // holds things like "~2000 at LHR", so none of these are safe to coerce.
+  distanceNote: string | null
+  cluster: string | null
+  staffEstimate: string | null
+  roomFit: string | null
+  roomFitNote: string | null
+  angle: string | null
+  openingLine: string | null
+  sendTiming: string | null
+
   marketingStatus: MarketingStatus
   unsubscribedAt: string | null
   resubscribedAt: string | null
@@ -245,6 +256,13 @@ export interface MarketingRecipientEngagement {
 
 export interface MarketingCampaignRecipientWithEngagement extends MarketingCampaignRecipient {
   engagement: MarketingRecipientEngagement | null
+  /**
+   * Clicks on our own short links carrying this recipient's id in `utm_content`, bots removed.
+   * Counts clicks rather than flagging one, so a contact who came back three times is visibly
+   * more interested than one who glanced once.
+   */
+  clickCount: number
+  lastClickedAt: string | null
 }
 
 export interface MarketingSettings {
@@ -324,6 +342,59 @@ export interface MarketingCampaignWithSummary extends MarketingCampaign {
   summary: MarketingCampaignSummary
 }
 
+/**
+ * What the campaign actually caused, measured first-party.
+ *
+ * Nothing here comes from the email provider. Clicks are rows in `short_link_clicks` on links
+ * we minted ourselves, and conversions are bookings the brand website attributed back to the
+ * campaign. The provider's own open and click counts sit alongside these on
+ * `MarketingCampaignStats` and answer a different question: it says THAT someone engaged, this
+ * says WHICH call to action they took and whether it produced a booking.
+ */
+export interface MarketingCampaignEngagement {
+  /** Human clicks on this campaign's short links. Bot clicks are excluded. */
+  clicks: number
+  /** Distinct recipients of THIS campaign who clicked, identified by `utm_content`. */
+  uniqueClickers: number
+  /** What the campaign actually produced, split by kind so the two are never conflated. */
+  conversions: MarketingCampaignConversions
+  /**
+   * Money attached to those bookings, or null when none of them carried an amount. Null is
+   * not zero: it means we cannot say, and showing GBP 0.00 would be a claim we cannot support.
+   *
+   * Enquiries carry no amount and never contribute to this.
+   */
+  conversionValue: number | null
+}
+
+/**
+ * Conversions split by source, because a booking and an enquiry are not the same result.
+ *
+ * A booking is confirmed business already on the diary and comes from `analytics_events`.
+ * An enquiry is a business asking a question and comes from `marketing_conversions`. Adding
+ * them into one number would let a campaign that produced twenty questions and no bookings
+ * read exactly like one that filled twenty tables, so `total` is offered alongside the two
+ * parts rather than instead of them.
+ */
+export interface MarketingCampaignConversions {
+  /** Bookings still carrying this campaign's UTM value, from our own booking records. */
+  bookings: number
+  /** Enquiries recorded against this campaign, from the website's enquiry forms. */
+  enquiries: number
+  /** Convenience sum of the two above. */
+  total: number
+}
+
+/** Per-destination click performance, so it is visible which call to action worked. */
+export interface MarketingCampaignLinkPerformance {
+  /** Where the link actually sends people, before short-linking. */
+  originalUrl: string
+  shortCode: string
+  shortUrl: string
+  clicks: number
+  uniqueClickers: number
+}
+
 export interface MarketingCampaignStats {
   campaignId: string
   recipients: number
@@ -355,6 +426,37 @@ export interface MarketingCampaignStats {
     complaintRate: number
     unsubscribeRate: number
   }
+
+  engagement: MarketingCampaignEngagement
+}
+
+/**
+ * Everything one contact has done across every campaign they have ever been sent.
+ *
+ * The counts are lifetime, not per campaign, because the question this answers is whether a
+ * contact is worth keeping on the list at all.
+ */
+export interface BusinessContactEngagement {
+  contactId: string
+  /** Campaigns where an email actually went out to them, not campaigns they were queued for. */
+  campaignsSent: number
+  delivered: number
+  bounced: number
+  clicks: number
+  lastClickedAt: string | null
+  /** Split the same way as a campaign's, so a booking is never mistaken for a question. */
+  conversions: MarketingCampaignConversions
+  lastConversionAt: string | null
+}
+
+/** A contact plus the one engagement signal cheap enough to show on every row of a list. */
+export interface BusinessContactWithClicks extends BusinessContact {
+  clicks: number
+}
+
+export interface MarketingClusterCount {
+  cluster: string
+  count: number
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +492,14 @@ export function mapBusinessContact(row: DbRow): BusinessContact {
     eligibilityReviewedAt: row.eligibility_reviewed_at ?? null,
     eligibilityNote: row.eligibility_note ?? null,
     isFreemail: row.is_freemail === true,
+    distanceNote: row.distance_note ?? null,
+    cluster: row.cluster ?? null,
+    staffEstimate: row.staff_estimate ?? null,
+    roomFit: row.room_fit ?? null,
+    roomFitNote: row.room_fit_note ?? null,
+    angle: row.angle ?? null,
+    openingLine: row.opening_line ?? null,
+    sendTiming: row.send_timing ?? null,
 
     marketingStatus: row.marketing_status,
     unsubscribedAt: row.unsubscribed_at ?? null,

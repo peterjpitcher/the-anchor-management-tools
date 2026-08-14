@@ -1,15 +1,25 @@
 import { createHash } from 'crypto'
 
+import {
+  fetchClicksByRecipientIds,
+  fetchConversionsByRecipientIds,
+  fetchEnquiryConversionsByRecipientIds,
+  summariseClicksByRecipient,
+} from '@/lib/email/marketing/attribution'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   mapBusinessContact,
   type AudiencePreview,
   type BusinessContact,
+  type BusinessContactEngagement,
+  type BusinessContactWithClicks,
   type DoNotContactReason,
   type EligibilityStatus,
   type MarketingBasis,
+  type MarketingClusterCount,
   type MarketingImportDecision,
   type MarketingImportRowResult,
+  type MarketingRecipientStatus,
   type MarketingStatus,
   type MarketingTagCount,
   type SubscriberType,
@@ -150,12 +160,19 @@ export interface ListContactsOptions {
   tags?: string[]
   status?: MarketingStatus
   eligibility?: EligibilityStatus
+  /** Walkable grouping from the curated list, used to plan a morning of visits. */
+  cluster?: string
   page?: number
   pageSize?: number
 }
 
 export interface ListContactsResult {
   contacts: BusinessContact[]
+  total: number
+}
+
+export interface ListContactsWithClicksResult {
+  contacts: BusinessContactWithClicks[]
   total: number
 }
 
@@ -180,6 +197,11 @@ export async function listContacts(options: ListContactsOptions = {}): Promise<L
   if (options.status) query = query.eq('marketing_status', options.status)
   if (options.eligibility) query = query.eq('eligibility_status', options.eligibility)
 
+  // Matched exactly rather than fuzzily. Clusters come from the curated spreadsheet as a
+  // closed set of labels, so an exact match is what the filter dropdown offers.
+  const cluster = emptyToNull(options.cluster)
+  if (cluster) query = query.eq('cluster', cluster)
+
   const { data, error, count } = await query
     .order('created_at', { ascending: false })
     .range(from, from + pageSize - 1)
@@ -187,6 +209,213 @@ export async function listContacts(options: ListContactsOptions = {}): Promise<L
   if (error) throw new Error(error.message)
 
   return { contacts: (data ?? []).map(mapBusinessContact), total: count ?? 0 }
+}
+
+/**
+ * The same list, plus a lifetime click count on every row.
+ *
+ * Two extra queries for the whole page, never one per contact: the recipient rows for these
+ * contacts, then the clicks carrying those recipient ids. Clicks are keyed on the recipient id
+ * rather than the contact id, because that is what the email put in the URL, so the hop through
+ * `marketing_campaign_recipients` is unavoidable.
+ */
+export async function listContactsWithEngagement(
+  options: ListContactsOptions = {},
+): Promise<ListContactsWithClicksResult> {
+  const supabase = createAdminClient()
+  const { contacts, total } = await listContacts(options)
+
+  if (contacts.length === 0) return { contacts: [], total }
+
+  const recipients = await fetchRecipientsForContacts(
+    supabase,
+    contacts.map((contact) => contact.id),
+  )
+
+  const clickCountByRecipient = summariseClicksByRecipient(
+    await fetchClicksByRecipientIds(
+      supabase,
+      recipients.map((recipient) => recipient.id),
+    ),
+  )
+
+  const clicksByContact = new Map<string, number>()
+  for (const recipient of recipients) {
+    const clicks = clickCountByRecipient.get(recipient.id)?.clickCount ?? 0
+    if (clicks === 0) continue
+    clicksByContact.set(recipient.contact_id, (clicksByContact.get(recipient.contact_id) ?? 0) + clicks)
+  }
+
+  return {
+    contacts: contacts.map((contact) => ({
+      ...contact,
+      clicks: clicksByContact.get(contact.id) ?? 0,
+    })),
+    total,
+  }
+}
+
+/**
+ * Clusters that actually exist, with how many contacts are in each.
+ *
+ * Only a quarter of the list has one, so offering every conceivable label would be a dropdown
+ * of dead ends. Reading the column and counting here matches how `listTags` works, and keeps
+ * both filters honest about what they will actually return.
+ */
+export async function listClusters(): Promise<MarketingClusterCount[]> {
+  const supabase = createAdminClient()
+
+  const rows = await fetchAllPages<{ cluster: string | null }>((from, to) =>
+    supabase.from('business_contacts').select('cluster').not('cluster', 'is', null).range(from, to),
+  )
+
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const cluster = row.cluster?.trim()
+    if (!cluster) continue
+    counts.set(cluster, (counts.get(cluster) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .map(([cluster, count]) => ({ cluster, count }))
+    .sort((a, b) => b.count - a.count || a.cluster.localeCompare(b.cluster))
+}
+
+/**
+ * Everything one contact has done, across every campaign they have ever been sent.
+ *
+ * Denominators, stated once:
+ *   - `campaignsSent` counts recipient rows with status 'sent'. A contact queued for a campaign
+ *     that has not gone out yet, or skipped by the frequency cap, is not counted: the question
+ *     is what they have been shown, not what was planned.
+ *   - `delivered` and `bounced` are counted from TIMESTAMP columns on the linked
+ *     `email_messages` rows, never from that table's status, because the webhook promotes the
+ *     status forwards and a delivered-then-clicked message would otherwise vanish from the
+ *     delivered count.
+ *   - `clicks` counts click rows, bots removed, so one person clicking three links gives three.
+ *   - `conversions` counts analytics events carrying one of this contact's recipient ids in
+ *     `utm_content`, which is bookings rather than people.
+ *
+ * Opens are left out deliberately. Apple Mail and Gmail prefetch tracking pixels, so an open
+ * is a weak signal at the best of times and a badly misleading one when it is the headline
+ * number on a single contact. Clicks are what this summary leads with.
+ */
+export async function getContactEngagement(contactId: string): Promise<BusinessContactEngagement> {
+  const supabase = createAdminClient()
+
+  const recipients = await fetchRecipientsForContacts(supabase, [contactId])
+  const recipientIds = recipients.map((recipient) => recipient.id)
+
+  const empty: BusinessContactEngagement = {
+    contactId,
+    campaignsSent: 0,
+    delivered: 0,
+    bounced: 0,
+    clicks: 0,
+    lastClickedAt: null,
+    conversions: { bookings: 0, enquiries: 0, total: 0 },
+    lastConversionAt: null,
+  }
+
+  if (recipientIds.length === 0) return empty
+
+  const messageIds = recipients
+    .map((recipient) => recipient.email_message_id)
+    .filter((messageId): messageId is string => messageId != null)
+
+  let delivered = 0
+  let bounced = 0
+
+  for (const part of chunk(messageIds, IN_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from('email_messages')
+      .select('delivered_at, bounced_at')
+      .in('id', part)
+
+    if (error) throw new Error(error.message)
+
+    for (const row of (data ?? []) as Array<{ delivered_at: string | null; bounced_at: string | null }>) {
+      if (row.delivered_at) delivered += 1
+      if (row.bounced_at) bounced += 1
+    }
+  }
+
+  const clickRows = await fetchClicksByRecipientIds(supabase, recipientIds)
+  const clickSummary = summariseClicksByRecipient(clickRows)
+
+  let clicks = 0
+  let lastClickedAt: string | null = null
+  for (const summary of clickSummary.values()) {
+    clicks += summary.clickCount
+    if (summary.lastClickedAt && (!lastClickedAt || summary.lastClickedAt > lastClickedAt)) {
+      lastClickedAt = summary.lastClickedAt
+    }
+  }
+
+  // Bookings and enquiries live in different tables and are counted separately, because a
+  // business that asked about Christmas has not booked anything yet and should not read as
+  // though it has.
+  const [bookings, enquiries] = await Promise.all([
+    fetchConversionsByRecipientIds(supabase, recipientIds),
+    fetchEnquiryConversionsByRecipientIds(supabase, recipientIds),
+  ])
+
+  const lastConversionAt =
+    [bookings.lastAt, enquiries.lastAt]
+      .filter((value): value is string => value != null)
+      .sort()
+      .pop() ?? null
+
+  return {
+    contactId,
+    campaignsSent: recipients.filter((recipient) => recipient.status === 'sent').length,
+    delivered,
+    bounced,
+    clicks,
+    lastClickedAt,
+    conversions: {
+      bookings: bookings.count,
+      enquiries: enquiries.count,
+      total: bookings.count + enquiries.count,
+    },
+    lastConversionAt,
+  }
+}
+
+interface ContactRecipientRow {
+  id: string
+  contact_id: string
+  status: MarketingRecipientStatus
+  email_message_id: string | null
+}
+
+/**
+ * Recipient rows for a set of contacts.
+ *
+ * Fetched on its own rather than embedded from `email_messages`. There are now two foreign
+ * keys between those two tables, so a PostgREST embed is ambiguous and would break the moment
+ * someone touched either side. Two queries and a join in memory cannot.
+ */
+async function fetchRecipientsForContacts(
+  supabase: AdminClient,
+  contactIds: string[],
+): Promise<ContactRecipientRow[]> {
+  if (contactIds.length === 0) return []
+
+  const out: ContactRecipientRow[] = []
+  for (const part of chunk(contactIds, IN_CHUNK_SIZE)) {
+    const rows = await fetchAllPages<ContactRecipientRow>((from, to) =>
+      supabase
+        .from('marketing_campaign_recipients')
+        .select('id, contact_id, status, email_message_id')
+        .in('contact_id', part)
+        .order('id', { ascending: true })
+        .range(from, to),
+    )
+    out.push(...rows)
+  }
+
+  return out
 }
 
 export async function getContact(id: string): Promise<BusinessContact | null> {
@@ -512,6 +741,38 @@ export async function setEligibility(
   return mapBusinessContact(data)
 }
 
+/**
+ * Applies one eligibility decision to many contacts at once.
+ *
+ * The list was imported in one go and is reviewed the same way: a segment of freight firms is
+ * one judgement about corporate subscribers, not forty identical ones. Reviewing them
+ * individually is the thing most likely to stall a launch, and a stalled review is what leads
+ * to somebody marking the whole list eligible without reading it.
+ *
+ * Each contact still goes through setEligibility, so the same evidence rules apply to every
+ * row and each keeps its own reviewer and timestamp. Failures are collected rather than
+ * thrown, so one bad row cannot silently discard the rest of the batch.
+ */
+export async function setEligibilityBulk(
+  ids: string[],
+  input: EligibilityInput,
+  userId: string,
+): Promise<{ updated: number; failures: Array<{ id: string; error: string }> }> {
+  const failures: Array<{ id: string; error: string }> = []
+  let updated = 0
+
+  for (const id of ids) {
+    try {
+      await setEligibility(id, input, userId)
+      updated++
+    } catch (error) {
+      failures.push({ id, error: error instanceof Error ? error.message : 'Unknown error' })
+    }
+  }
+
+  return { updated, failures }
+}
+
 export interface UnsubscribeInput {
   reason: DoNotContactReason
   campaignId?: string | null
@@ -639,16 +900,35 @@ export interface ImportContactRow {
   tags?: string[]
   sourceDetail?: string | null
   notes?: string | null
+  /** Researched context from the curated list. Prose, not typed values. */
+  distanceNote?: string | null
+  cluster?: string | null
+  staffEstimate?: string | null
+  roomFit?: string | null
+  roomFitNote?: string | null
+  angle?: string | null
+  openingLine?: string | null
+  sendTiming?: string | null
 }
 
 export interface ImportContactsInput {
   rows: ImportContactRow[]
   filename?: string | null
+  /**
+   * Refresh the researched context on contacts that are already in the list.
+   *
+   * Only descriptive fields move: company, name, tags and the enrichment. Eligibility,
+   * marketing status and consent are never touched, so re-importing a corrected spreadsheet
+   * cannot resurrect somebody who unsubscribed or undo a reviewer's decision.
+   */
+  updateExisting?: boolean
 }
 
 export interface ImportContactsResult {
   batchId: string
   imported: number
+  /** Existing contacts whose researched context was refreshed. */
+  updated: number
   skipped: number
   flaggedFreemail: number
   rows: MarketingImportRowResult[]
@@ -745,10 +1025,15 @@ export async function importContacts(
       : new Set<string>()
 
   const toInsert: PendingImport[] = []
+  const toUpdate: Array<{ id: string; item: PendingImport }> = []
   for (const item of pending) {
     const existingId = existingByEmail.get(item.email)
     if (existingId) {
-      record(item.row.rowNumber, item.email, 'skipped_duplicate', 'Already in the contact list', existingId)
+      if (input.updateExisting) {
+        toUpdate.push({ id: existingId, item })
+      } else {
+        record(item.row.rowNumber, item.email, 'skipped_duplicate', 'Already in the contact list', existingId)
+      }
       continue
     }
 
@@ -761,6 +1046,39 @@ export async function importContacts(
   }
 
   let flaggedFreemail = 0
+  let updatedCount = 0
+  for (const { id, item } of toUpdate) {
+    const { error } = await supabase
+      .from('business_contacts')
+      .update({
+        contact_name: emptyToNull(item.row.contactName),
+        first_name: emptyToNull(item.row.firstName),
+        company_name: emptyToNull(item.row.companyName),
+        job_title: emptyToNull(item.row.jobTitle),
+        tags: cleanTags(item.row.tags),
+        source_detail: emptyToNull(item.row.sourceDetail ?? input.filename ?? null),
+        notes: emptyToNull(item.row.notes),
+        distance_note: emptyToNull(item.row.distanceNote),
+        cluster: emptyToNull(item.row.cluster),
+        staff_estimate: emptyToNull(item.row.staffEstimate),
+        room_fit: emptyToNull(item.row.roomFit),
+        room_fit_note: emptyToNull(item.row.roomFitNote),
+        angle: emptyToNull(item.row.angle),
+        opening_line: emptyToNull(item.row.openingLine),
+        send_timing: emptyToNull(item.row.sendTiming),
+        is_freemail: isFreemailAddress(item.email),
+      })
+      .eq('id', id)
+
+    if (error) {
+      record(item.row.rowNumber, item.email, 'skipped_invalid', `Could not update: ${error.message}`, id)
+      continue
+    }
+
+    updatedCount += 1
+    record(item.row.rowNumber, item.email, 'updated', 'Refreshed from the source list', id)
+  }
+
   const rowNumberByEmail = new Map(toInsert.map((item) => [item.email, item.row.rowNumber]))
 
   if (toInsert.length > 0) {
@@ -778,6 +1096,14 @@ export async function importContacts(
         source: 'csv_import',
         source_detail: emptyToNull(item.row.sourceDetail ?? input.filename ?? null),
         notes: emptyToNull(item.row.notes),
+        distance_note: emptyToNull(item.row.distanceNote),
+        cluster: emptyToNull(item.row.cluster),
+        staff_estimate: emptyToNull(item.row.staffEstimate),
+        room_fit: emptyToNull(item.row.roomFit),
+        room_fit_note: emptyToNull(item.row.roomFitNote),
+        angle: emptyToNull(item.row.angle),
+        opening_line: emptyToNull(item.row.openingLine),
+        send_timing: emptyToNull(item.row.sendTiming),
         is_freemail: freemail,
         created_by: userId,
       }
@@ -825,5 +1151,5 @@ export async function importContacts(
 
   if (countError) throw new Error(countError.message)
 
-  return { batchId, imported, skipped, flaggedFreemail, rows: results }
+  return { batchId, imported, updated: updatedCount, skipped, flaggedFreemail, rows: results }
 }

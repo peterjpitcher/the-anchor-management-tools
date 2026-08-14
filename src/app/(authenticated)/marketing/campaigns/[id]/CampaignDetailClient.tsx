@@ -35,6 +35,7 @@ import {
 import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 import type {
   MarketingCampaign,
+  MarketingCampaignLinkPerformance,
   MarketingCampaignRecipientWithEngagement,
   MarketingCampaignStats,
 } from '@/types/marketing'
@@ -45,6 +46,7 @@ import {
   RecipientStatusBadge,
   SKIP_REASON_LABELS,
   formatDateTimeInLondon,
+  formatGbp,
   formatPercent,
   skipReasonLabel,
 } from '../../_shared/marketing-ui'
@@ -67,9 +69,17 @@ interface CampaignDetailClientProps {
   recipientsPage: number
   recipientsPageSize: number
   recipientsError: string | null
+  linkPerformance: MarketingCampaignLinkPerformance[]
+  linkPerformanceError: string | null
   previewHtml: string | null
   previewError: string | null
   canSend: boolean
+}
+
+/** A share of a total, or nothing at all when there is no total to divide by. */
+function shareOf(count: number, total: number): string | undefined {
+  if (total <= 0) return undefined
+  return formatPercent(count / total)
 }
 
 export function CampaignDetailClient({
@@ -81,6 +91,8 @@ export function CampaignDetailClient({
   recipientsPage,
   recipientsPageSize,
   recipientsError,
+  linkPerformance,
+  linkPerformanceError,
   previewHtml,
   previewError,
   canSend,
@@ -273,17 +285,13 @@ export function CampaignDetailClient({
             />
             <Stat
               label="Opened"
-              value={stats.opened > 0 ? stats.opened : 'Not tracked'}
-              hint={
-                stats.opened > 0
-                  ? formatPercent(stats.rates.openRate)
-                  : 'Open tracking is off on this sending domain'
-              }
+              value={stats.opened}
+              hint={`${formatPercent(stats.rates.openRate)} approximate, mail apps can prefetch images`}
             />
             <Stat
               label="Clicked"
               value={stats.clicked}
-              hint={formatPercent(stats.rates.clickRate)}
+              hint={`${formatPercent(stats.rates.clickRate)} reported by the email provider`}
             />
             <Stat
               label="Unsubscribed"
@@ -293,6 +301,102 @@ export function CampaignDetailClient({
             <Stat label="Failed" value={stats.failed} />
             <Stat label="Needs review" value={stats.needsReview} />
           </div>
+        )}
+
+        {stats && (
+          <Card>
+            <CardHeader
+              title="Engagement"
+              subtitle="Counted through our own short links and our own booking records, so these say which call to action worked and whether it turned into business"
+            />
+            <CardBody>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                <Stat
+                  label="Link clicks"
+                  value={stats.engagement.clicks}
+                  hint="Every click on a campaign link, bots removed"
+                />
+                <Stat
+                  label="People who clicked"
+                  value={stats.engagement.uniqueClickers}
+                  hint={
+                    shareOf(stats.engagement.uniqueClickers, stats.sent) ?? 'Nothing sent yet'
+                  }
+                />
+                <Stat
+                  label="Bookings"
+                  value={stats.engagement.conversions.bookings}
+                  hint="Bookings still carrying this campaign's tag"
+                />
+                {/* Shown separately from bookings: a question is not a filled table, and the
+                    Christmas call to action produces questions rather than bookings. */}
+                <Stat
+                  label="Enquiries"
+                  value={stats.engagement.conversions.enquiries}
+                  hint="Enquiry forms completed carrying this campaign's tag"
+                />
+                <Stat
+                  label="Booking value"
+                  value={formatGbp(stats.engagement.conversionValue)}
+                  hint={
+                    stats.engagement.conversionValue === null
+                      ? 'Bookings do not record an amount yet'
+                      : 'Total across the bookings above'
+                  }
+                />
+              </div>
+
+              <p className="mt-4 text-sm text-text-muted">
+                Opens and the click figure above come from the email provider. These come from
+                our own redirector, so they can be traced from one contact through to the
+                booking they made. The two will not match exactly, and that is expected.
+              </p>
+
+              {linkPerformanceError ? (
+                <div className="mt-4">
+                  <Alert tone="warning" title="Could not load the link figures">
+                    {linkPerformanceError}
+                  </Alert>
+                </div>
+              ) : linkPerformance.length === 0 ? (
+                <div className="mt-4">
+                  <Empty
+                    icon="document"
+                    title="No tracked links yet"
+                    description="Short links are created when the campaign is scheduled. Until then there is nothing to count."
+                  />
+                </div>
+              ) : (
+                <div className="mt-4 overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Where it points</TableHead>
+                        <TableHead align="right">Clicks</TableHead>
+                        <TableHead align="right">People</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {linkPerformance.map((link) => (
+                        <TableRow key={link.shortCode}>
+                          <TableCell>
+                            <div className="min-w-0">
+                              <span className="break-all text-text">{link.originalUrl}</span>
+                              <div className="text-xs text-text-muted break-all">
+                                {link.shortUrl}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell align="right">{link.clicks}</TableCell>
+                          <TableCell align="right">{link.uniqueClickers}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardBody>
+          </Card>
         )}
 
         {stats && stats.skipped > 0 && (
@@ -365,6 +469,7 @@ export function CampaignDetailClient({
                         <TableHead>Delivered</TableHead>
                         <TableHead>Opened</TableHead>
                         <TableHead>Clicked</TableHead>
+                        <TableHead align="right">Clicks</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -412,6 +517,20 @@ export function CampaignDetailClient({
                           <TableCell>
                             {recipient.engagement?.clickedAt ? (
                               <Badge tone="success">Yes</Badge>
+                            ) : (
+                              <span className="text-text-muted">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell align="right">
+                            {recipient.clickCount > 0 ? (
+                              <div className="min-w-0">
+                                <span className="text-text">{recipient.clickCount}</span>
+                                {recipient.lastClickedAt && (
+                                  <div className="text-xs text-text-muted">
+                                    {formatDateTimeInLondon(recipient.lastClickedAt)}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-text-muted">-</span>
                             )}

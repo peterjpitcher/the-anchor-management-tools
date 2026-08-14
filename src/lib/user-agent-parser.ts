@@ -101,6 +101,7 @@ export function parseQueryParams(url: string): {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+  utm_content?: string;
 } {
   try {
     const urlObj = new URL(url);
@@ -108,6 +109,9 @@ export function parseQueryParams(url: string): {
       utm_source: urlObj.searchParams.get('utm_source') || undefined,
       utm_medium: urlObj.searchParams.get('utm_medium') || undefined,
       utm_campaign: urlObj.searchParams.get('utm_campaign') || undefined,
+      // Marketing email carries the campaign-recipient id here, so a click can be traced
+      // back to one contact.
+      utm_content: urlObj.searchParams.get('utm_content') || undefined,
     };
   } catch {
     return {};
