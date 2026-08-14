@@ -83,7 +83,7 @@ is invisible to every audience. The Contacts page shows how many are waiting.
 | Campaign scheduled but nothing sending | Kill switch off, outside the send window, or `RESEND_API_KEY` / `MARKETING_EMAIL_FROM_ADDRESS` unset. The cron response says which |
 | Recipients stuck `skipped` | `skip_reason` on the row: `not_eligible`, `unsubscribed`, `do_not_contact`, `frequency_cap`, `suppressed`, `campaign_cancelled` |
 | Rows in `needs_review` | The provider accepted the email but the local log row was not written, or a lease expired past the provider's 24-hour idempotency window. These are deliberately NOT retried automatically, because retrying could send a second copy. Decide per row |
-| Stats look low | Open tracking is off by design (see below). Delivered and clicked are real; opened will be zero |
+| Opens look implausibly high | Apple Mail Privacy Protection and Gmail's image proxy fetch the tracking pixel whether or not a human looked. Treat opens as approximate and judge engagement on clicks |
 | A bounce did not update a contact | Check `email_webhook_unmatched` for parked events |
 
 ## How engagement and conversion are measured
@@ -112,22 +112,26 @@ So:
 
 Bots are excluded from click counts (`device_type <> 'bot'`).
 
-## Open tracking is deliberately off
+## Open tracking, and the domain it depends on
 
-Resend configures open and click tracking per domain, and marketing sends from
-`noreply@auth.orangejelly.co.uk`, which also carries transactional and authentication email.
-Enabling tracking there would have changed the behaviour of that mail too, including rewriting
-links in authentication emails. So the feature does not depend on it. Clicks are measured with
-our own short links instead.
+Enabled on 2026-08-14 at the owner's instruction, after checking the actual state rather than
+assuming it. The sending domain `auth.orangejelly.co.uk` already had CLICK tracking switched
+on and verified, so links in every email from it were already being rewritten. Only OPEN
+tracking was off; it is now on.
 
-This is not a theoretical risk. In the ninety days to 2026-08-14, 937 of 1,108 outbound
-emails went through Resend on that domain, including booking confirmations. Turning tracking
-on would have started rewriting links inside all of them.
+Know what that means before changing it back or forward:
 
-To get open tracking later, set up a dedicated marketing subdomain (for example
-`news.the-anchor.pub`), verify it in Resend with tracking enabled, and point
-`MARKETING_EMAIL_FROM_ADDRESS` at it. Nothing else needs to change: no code, no schema. It is
-a DNS job plus one environment variable.
+- That domain also carries transactional and authentication email. In the ninety days to
+  2026-08-14, 937 of 1,108 outbound emails went through it, booking confirmations included.
+  Anything toggled here affects all of them, because Resend configures tracking per DOMAIN,
+  not per message.
+- Opens are a weak signal. Apple Mail Privacy Protection and Gmail's image proxy fetch the
+  pixel whether or not anybody looked, so open rates run high. Clicks are the honest number,
+  which is why the first-party short-link measurement below is kept as well.
+
+To separate marketing reputation and tracking from transactional mail later, verify a
+dedicated subdomain (for example `news.the-anchor.pub`) in Resend and point
+`MARKETING_EMAIL_FROM_ADDRESS` at it. No code or schema changes: a DNS job and one variable.
 
 ## Rendering, and why the fidelity tests are strict
 
@@ -153,6 +157,59 @@ Two things to know about the handover itself:
 2. `lib_pull_quote.html` contains the `note_bar` strip bundled inside it, which is why
    `note_bar` appears in the catalogue with no fixture of its own. Ask the designer to split
    them; until then a `pull_quote` carries placeholder notice copy and should not be used.
+
+## Deliberate deviations from the handover
+
+What we send differs from the designer's file in exactly two places. Both are applied to the
+**fixture** before the byte-for-byte comparison, in `__tests__/goldContrast.ts` and in the
+footer override in `campaign.fidelity.test.ts`, so each change is explicitly permitted and any
+third difference still fails the test. Do not widen those substitutions to make a failure go
+away, and do not "fix" either of these back.
+
+### 1. White text on gold, with a darker gold behind it
+
+The owner asked for white text on any gold background. The handover says the opposite in as
+many words, that charcoal on gold is deliberate because "white on gold fails contrast", and on
+the golds the designer used that is measurably correct:
+
+| gold | white text | charcoal text |
+|---|---|---|
+| `#a57626` (button and deadline-bar fill) | 4.02:1, large text only | 4.33:1, large text only |
+| `#c9a020` (bright gold on the dark panels) | **2.46:1, fails** | 7.07:1, passes |
+| `#8b6914` (Gold dark, already in the palette) | **5.09:1, passes AA** | 3.42:1 |
+
+The instruction can only be met legibly by darkening the fill, so every gold surface that
+carries text now uses `#8b6914` with `#ffffff`. `#8b6914` is not a new colour: the handover
+already documents it as the gold that passes AA, and it is what the gold kicker text on cream
+has always been. Five surfaces changed:
+
+| Block | Surface | Fill before | Fill after | Text before | Text after |
+|---|---|---|---|---|---|
+| `deadline_bar` | the whole strip, and its inline link | `#a57626` | `#8b6914` | `#1a1a1a` | `#ffffff` |
+| `hero_image` | primary button | `#a57626` | `#8b6914` | `#1a1a1a` | `#ffffff` |
+| `text_block` | primary button | `#a57626` | `#8b6914` | `#1a1a1a` | `#ffffff` |
+| `hero_framed` | button on the green field | `#c9a020` | `#8b6914` | `#1a1a1a` | `#ffffff` |
+| `closing_panel_dark` | button on the dark panel | `#c9a020` | `#8b6914` | `#1a1a1a` | `#ffffff` |
+
+The deadline bar's link keeps its underline, because on a solid fill the underline is the only
+thing still marking it as a link once it is the same colour as the sentence around it.
+
+Gold used as anything other than a fill behind text is untouched and must stay that way: the
+3px card top borders, the dashed offer rule, the left rule on `note_bar`, the hairlines, the
+star glyphs in `review`, the bullet glyphs, the gold kicker text on cream, and the `#c9a020`
+script lines, ticks and links on the dark panels. None of those is text on gold, and several
+of them fail if moved.
+
+`findCharcoalOnGold` in the same helper enforces this from the other direction: it fails the
+suite if any gold fill reappears in one of the designer's lighter golds, or if charcoal shows
+up on a gold fill again. That is what stops a future edit quietly undoing this.
+
+### 2. Footer reason-for-contact copy
+
+The designer's footer line claims every recipient enquired about a booking with us. Most of a
+prospecting list has not, so the shipped copy says more than the original. The fidelity test
+compares using the designer's own value, which lets the shipped wording move independently
+without weakening the check that the renderer reproduces the markup.
 
 ## Live state as at 2026-08-13
 

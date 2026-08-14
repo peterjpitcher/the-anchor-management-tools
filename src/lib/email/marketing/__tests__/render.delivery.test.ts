@@ -282,6 +282,9 @@ describe('collectDestinationUrls', () => {
   it('returns our own destinations, deduped and sorted, ready to provision short links from', () => {
     // Called once at schedule time so rendering never has to reach the database mid-send.
     expect(collectDestinationUrls(campaign)).toEqual([
+      'https://wa.me/441753682707',
+      'https://www.facebook.com/theanchorpubsm/',
+      'https://www.instagram.com/theanchor.pub/',
       'https://www.the-anchor.pub',
       'https://www.the-anchor.pub/christmas-parties',
       'https://www.the-anchor.pub/christmas-parties#enquiry',
@@ -295,8 +298,20 @@ describe('collectDestinationUrls', () => {
     expect(urls.some((url) => url.includes(UNSUBSCRIBE_TOKEN))).toBe(false)
   })
 
-  it('leaves third-party destinations out, since we cannot track clicks we do not own', () => {
+  it('includes the venue\'s own WhatsApp and social links, so they are not the only untracked calls to action', () => {
     const urls = collectDestinationUrls(campaign)
-    expect(urls.filter((url) => !/^https:\/\/www\.the-anchor\.pub/.test(url))).toEqual([])
+    expect(urls).toContain('https://wa.me/441753682707')
+    expect(urls).toContain('https://www.facebook.com/theanchorpubsm/')
+  })
+
+  it('never offers a tel: link for shortening, because a browser hop breaks tap to call', () => {
+    const urls = collectDestinationUrls(campaign)
+    expect(urls.some((url) => url.startsWith('tel:'))).toBe(false)
+  })
+
+  it('leaves genuinely third-party destinations out, since the redirector allowlist is an open-redirect guard', () => {
+    const urls = collectDestinationUrls(campaign)
+    const ours = /^https:\/\/(www\.the-anchor\.pub|wa\.me|www\.facebook\.com|www\.instagram\.com)/
+    expect(urls.filter((url) => !ours.test(url))).toEqual([])
   })
 })

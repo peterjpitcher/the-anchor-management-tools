@@ -11,8 +11,12 @@ import { defineBlock } from './types'
  * where the hesitation actually happens, and finally offers a human alternative for people
  * who would rather ring or message than fill anything in.
  *
- * The button uses the gold-on-dark fill (#c9a020) with charcoal text, because white on gold
- * fails contrast.
+ * Colour deviation from the handover. The designer filled this button with the bright
+ * gold-on-dark #c9a020 and set the label in charcoal, because white on that gold measures
+ * only 2.46:1 and fails badly. The owner asked for white text on every gold fill, so the fill
+ * darkens to the palette's #8b6914 where white reaches 5.09:1 and passes AA. The gold used
+ * around it as text, meaning the script line, the ticks and the phone and WhatsApp links,
+ * stays at #c9a020: that is gold ON dark, not text on gold, and it reads at 7.07:1 already.
  */
 
 const LINK_STYLE = 'color:#c9a020;text-decoration:none;font-weight:600'
@@ -58,7 +62,7 @@ export const closingPanelDark = defineBlock<ClosingPanelDarkData>({
 <tr><td bgcolor="#0c1d11" style="background-color:#0c1d11;padding:38px 32px 34px" align="center">
 <div style="font-family:'Clicker Script','Segoe Script','Brush Script MT',cursive;font-size:32px;line-height:38px;color:#c9a020;padding-bottom:6px">${escapeEmailText(data.script_line)}</div>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#f0e6c6;padding-bottom:22px">${escapeEmailText(data.body)}</div>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr><td align="center" bgcolor="#c9a020" style="background-color:#c9a020;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 34px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#1a1a1a;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr><td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 34px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:21px;color:#7a8b7f;padding-top:14px">${reassurance}</div>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:24px;color:#f0e6c6;padding-top:22px">Or call <a href="${escapeEmailUrl(data.phone_url)}" style="${LINK_STYLE}">${escapeEmailText(data.phone_label)}</a>, or send us a <a href="${escapeEmailUrl(data.whatsapp_url)}" style="${LINK_STYLE}">${escapeEmailText(data.whatsapp_label)}</a> on the same number</div>
 </td></tr>

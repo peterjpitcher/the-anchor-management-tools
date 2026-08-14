@@ -31,6 +31,10 @@ type ResendEmailEvent = {
     failed?: { reason?: string }
     suppressed?: { message?: string; type?: string }
     bounce?: { message?: string; type?: string; subType?: string }
+    // Present on email.clicked. Carries the exact URL, which is the only way to tell which
+    // call to action a recipient wanted, and the only coverage we get for links that are
+    // deliberately not routed through our own redirector.
+    click?: { link?: string; ipAddress?: string; userAgent?: string; timestamp?: string }
     [key: string]: unknown
   }
 }
@@ -104,6 +108,52 @@ function mapStatus(type: string): string | null {
       return 'suppressed'
     default:
       return null
+  }
+}
+
+/**
+ * Records exactly which link was clicked.
+ *
+ * `email_messages.clicked_at` is a single timestamp, so it only ever showed the FIRST click
+ * on an email. The provider's event carries the URL, which was being discarded, so a
+ * recipient clicking three different calls to action produced one timestamp and no way to
+ * tell which one they wanted.
+ *
+ * This also covers the links our own redirector deliberately does not rewrite: the phone
+ * number, WhatsApp and the social links. Shortening a `tel:` link would put a browser hop in
+ * front of tapping to call, so the provider's event is the right source for those.
+ *
+ * Never throws. A lost analytics row must not make the provider replay an otherwise
+ * processed event.
+ */
+async function recordEmailLinkClick(
+  adminClient: ReturnType<typeof createAdminClient>,
+  event: ResendEmailEvent,
+  emailId: string | null,
+  emailMessageId: string | null
+): Promise<void> {
+  const link = event.data?.click?.link
+  if (typeof link !== 'string' || !link.trim()) return
+
+  try {
+    const { error } = await (adminClient.from('email_link_clicks') as any).insert({
+      email_message_id: emailMessageId,
+      provider_message_id: emailId,
+      link_url: link.trim().slice(0, 2048),
+      clicked_at: resolveEventTime(event),
+      ip_address: event.data?.click?.ipAddress ?? null,
+      user_agent: event.data?.click?.userAgent ?? null,
+    })
+
+    if (error) {
+      logger.warn('Failed to record an email link click', {
+        metadata: { emailId, error: error.message },
+      })
+    }
+  } catch (error) {
+    logger.warn('Email link click logging unavailable', {
+      metadata: { emailId, error: error instanceof Error ? error.message : String(error) },
+    })
   }
 }
 
@@ -812,6 +862,11 @@ export async function POST(request: Request) {
 
     if ((updatedMessages ?? []).length === 0) {
       await quarantineUnmatchedEvent(adminClient, event, emailId, recipient)
+    }
+
+    if (event.type === 'email.clicked') {
+      const resolvedMessageId = existingMessage?.id ?? (updatedMessages ?? [])[0]?.id ?? null
+      await recordEmailLinkClick(adminClient, event, emailId, resolvedMessageId)
     }
 
     const reason = suppressionReason(event.type)

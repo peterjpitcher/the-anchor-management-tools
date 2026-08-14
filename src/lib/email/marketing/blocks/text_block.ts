@@ -34,7 +34,11 @@ function buttonCell(button: TextBlockButton): string {
   const label = escapeEmailText(button.label)
 
   if (button.variant === 'primary') {
-    return `<td align="center" bgcolor="#a57626" style="background-color:#a57626;border-radius:999px"><a href="${href}" style="display:block;padding:14px 28px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px;color:#1a1a1a;text-decoration:none">${label}</a></td>`
+    // Colour deviation from the handover. The owner asked for white text on every gold fill.
+    // White on the designer's #a57626 measures 4.02:1, which only clears AA for large text and
+    // this label is 15px, so the fill darkens to the palette's #8b6914 where white reaches
+    // 5.09:1 and passes AA. The ghost variant below keeps #8b6914 as gold text on cream.
+    return `<td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${href}" style="display:block;padding:14px 28px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${label}</a></td>`
   }
 
   if (button.variant === 'outline') {

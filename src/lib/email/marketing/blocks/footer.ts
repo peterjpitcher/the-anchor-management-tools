@@ -30,9 +30,17 @@ export const footerSchema = z.object({
 
 export type FooterData = z.infer<typeof footerSchema>
 
-/** Truthful default for business contacts, whether or not they have dealt with us before. */
+/**
+ * Default for business contacts.
+ *
+ * Covers both halves of the list truthfully: the people who have actually enquired, and the
+ * researched neighbours who have not. Saying only the first would be false for most of a
+ * prospecting campaign, and saying only the second would be odd for someone who booked with
+ * us last year.
+ */
 export const B2B_REASON_FOR_CONTACT =
-  'You are receiving this because we contacted you in your business capacity.'
+  'You are receiving this because you enquired about a booking or an event with us, ' +
+  'or because you may be close to us and we thought this information would be helpful to you.'
 
 export const footer = defineBlock<FooterData>({
   type: 'footer',

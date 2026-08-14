@@ -8,6 +8,15 @@ const DEFAULT_ALLOWED_SHORT_LINK_DESTINATION_HOSTS = [
   'localhost',
   '127.0.0.1',
   '::1',
+  // The venue's own presence on other platforms. Listed so marketing email can route these
+  // through the redirector and measure them, rather than leaving the WhatsApp and social
+  // links as the only untracked calls to action in a campaign. Narrow by design: this list
+  // is an open-redirect guard, so only hosts the venue actually publishes belong here.
+  'wa.me',
+  'facebook.com',
+  'www.facebook.com',
+  'instagram.com',
+  'www.instagram.com',
 ]
 
 function normalizeHost(hostname: string): string {
