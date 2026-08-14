@@ -16,6 +16,12 @@ import { defineBlock } from './types'
  * src, alt and dimensions, so the swap to the real photo is a matter of deleting the
  * placeholder row and uncommenting the one above it once the file is on a host. Until then
  * `placeholder_label` and `placeholder_caption` brief whoever is sourcing the shot.
+ *
+ * Colour deviation from the handover. The owner asked for white text on every gold fill.
+ * White on the designer's button gold #a57626 measures 4.02:1, which only clears AA for large
+ * text, so the button fill darkens to the palette's #8b6914 where white reaches 5.09:1 and
+ * passes AA. The kicker and the placeholder caption keep #8b6914 as gold text on cream, which
+ * is what that value was already in the palette for.
  */
 
 const heroImageImageSchema = z.object({
@@ -76,7 +82,7 @@ ${data.body
   .join('\n')}
 
 <tr><td bgcolor="#faf8f3" align="left" style="background-color:#faf8f3;padding:26px 32px 34px">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" bgcolor="#a57626" style="background-color:#a57626;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#1a1a1a;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
 </td></tr>
 `,
   text: (data) =>

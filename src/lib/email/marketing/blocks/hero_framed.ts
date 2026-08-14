@@ -8,6 +8,11 @@ import { defineBlock } from './types'
  *
  * Use this when there is no good image. A weak photograph costs more trust than it buys,
  * so the frame carries the opening instead.
+ *
+ * Colour deviation from the handover. The owner asked for white text on every gold fill.
+ * White on the designer's button gold #c9a020 measures 2.46:1 and fails, so the button fill
+ * darkens to the palette's #8b6914 where white reaches 5.09:1 and passes AA. The kicker and
+ * the rule-frame keep #c9a020: they are gold ON the deep green field, not text on gold.
  */
 
 export const heroFramedSchema = z.object({
@@ -38,7 +43,7 @@ export const heroFramed = defineBlock<HeroFramedData>({
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:#c9a020;padding-bottom:14px">${escapeEmailText(data.kicker)}</div>
 <div style="font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:36px;line-height:42px;letter-spacing:-0.02em;color:#f0e6c6;padding-bottom:14px">${escapeEmailText(data.headline)}</div>
 <div style="font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:26px;color:#f0e6c6;padding-bottom:24px">${escapeEmailText(data.body)}</div>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr><td align="center" bgcolor="#c9a020" style="background-color:#c9a020;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:14px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#1a1a1a;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr><td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:14px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
 </td></tr></tbody></table></td></tr>
 </tbody></table>`,
   text: (data) =>

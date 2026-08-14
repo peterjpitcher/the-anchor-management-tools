@@ -79,6 +79,20 @@ export interface DeliveryContext {
 /** Absolute URLs in href attributes, ignoring mailto and tel. */
 const HREF_PATTERN = /href="(https?:\/\/[^"]+)"/g
 
+/**
+ * Hosts a campaign link may be routed through our own redirector.
+ *
+ * The venue's own site plus the places it actually publishes, so the WhatsApp and social
+ * buttons are measured rather than being the only untracked calls to action in a campaign.
+ * It deliberately does not include arbitrary third parties: the redirector's allowlist is an
+ * open-redirect guard and this has to stay inside it.
+ *
+ * `tel:` is absent on purpose. Routing a phone number through an HTTP redirect puts a browser
+ * hop in front of tapping to call and breaks it outright on some clients, so those clicks are
+ * measured from the provider's own click event instead.
+ */
+const TRACKABLE_HOST = /^https?:\/\/((www\.)?the-anchor\.pub|wa\.me|(www\.)?facebook\.com|(www\.)?instagram\.com)(\/|$|\?)/i
+
 function applyUtm(url: string, utm: DeliveryContext['utm']): string {
   if (!utm) return url
 
@@ -194,7 +208,7 @@ export function collectDestinationUrls(content: MarketingContent): string[] {
   for (const match of html.matchAll(HREF_PATTERN)) {
     const url = match[1].replace(/&amp;/g, '&')
     if (url.includes(UNSUBSCRIBE_TOKEN)) continue
-    if (/^https?:\/\/(www\.)?the-anchor\.pub/i.test(url)) urls.add(url)
+    if (TRACKABLE_HOST.test(url)) urls.add(url)
   }
 
   return [...urls].sort()

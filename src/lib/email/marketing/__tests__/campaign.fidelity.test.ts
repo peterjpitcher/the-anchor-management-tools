@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import { marketingContentSchema } from '../registry'
 import { renderCampaignHtml } from '../render'
+import { applyGoldContrastChange, findCharcoalOnGold } from './goldContrast'
 
 /**
  * The block tests prove each piece is a faithful transcription. This proves the pieces go
@@ -58,13 +59,41 @@ function sha256(file: string): string {
   return createHash('sha256').update(readFileSync(file)).digest('hex')
 }
 
-const campaignContent = marketingContentSchema.parse(JSON.parse(readFileSync(CAMPAIGN_JSON, 'utf8')))
+/**
+ * The wording the designer shipped in the footer of the handover file.
+ *
+ * The campaign we actually send deliberately says more than this, because the original line
+ * claims every recipient enquired with us and most of a prospecting list has not. This test
+ * is about whether the RENDERER reproduces the designer's markup, so it compares using the
+ * designer's own value and lets the shipped copy move on independently.
+ */
+const HANDOVER_REASON_FOR_CONTACT =
+  'You are receiving this because you enquired about a booking or an event with us.'
+
+const shippedContent = marketingContentSchema.parse(JSON.parse(readFileSync(CAMPAIGN_JSON, 'utf8')))
+
+const campaignContent = {
+  ...shippedContent,
+  blocks: shippedContent.blocks.map((block) =>
+    block.type === 'footer'
+      ? { ...block, data: { ...block.data, reason_for_contact: HANDOVER_REASON_FOR_CONTACT } }
+      : block,
+  ),
+}
 
 describe('renderCampaignHtml, against the designer\'s own file', () => {
   it('rebuilds the Christmas campaign byte for byte, so what ships is what was signed off', () => {
-    const expected = readFileSync(HANDOVER_CAMPAIGN, 'utf8')
+    // Two documented departures, and only two. The footer copy above, because the designer's
+    // line claims every recipient enquired with us, and the gold surfaces below, because the
+    // owner asked for white text on gold. Both are applied to the designer's file rather than
+    // relaxed in the comparison, so any third difference still fails this test.
+    const expected = applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8'))
     const rendered = renderCampaignHtml(campaignContent)
     expect(rendered, firstDifference(rendered, expected)).toBe(expected)
+  })
+
+  it('puts white on every gold fill, so no charcoal-on-gold can creep back into a send', () => {
+    expect(findCharcoalOnGold(renderCampaignHtml(campaignContent))).toEqual([])
   })
 
   it('is pure, so the same content renders identically twice with no clock or database in it', () => {

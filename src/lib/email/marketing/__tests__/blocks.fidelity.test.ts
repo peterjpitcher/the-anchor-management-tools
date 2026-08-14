@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { BLOCK_REGISTRY } from '../registry'
+import {
+  applyGoldContrastChange,
+  findCharcoalOnGold,
+  goldContrastSubstitutionSources,
+} from './goldContrast'
 
 /**
  * This is the load-bearing test of the whole rendering layer.
@@ -17,12 +22,21 @@ import { BLOCK_REGISTRY } from '../registry'
  *
  * The suite is driven off `BLOCK_REGISTRY` rather than a hand-written list, so a block added
  * next month is covered the moment it is registered and nobody has to remember this file.
+ *
+ * One change is allowed through. The owner asked for white text on gold, which the designer
+ * had deliberately avoided, so `applyGoldContrastChange` rewrites exactly those surfaces in
+ * the fixture before the comparison. See `goldContrast.ts` for the contrast numbers and why
+ * the fill had to darken. Everything else still fails on a single character.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = path.join(HERE, '..', 'blocks', '__fixtures__')
 
 function readFixture(name: string): string {
+  return applyGoldContrastChange(readFileSync(path.join(FIXTURE_DIR, name), 'utf8'))
+}
+
+function readRawFixture(name: string): string {
   return readFileSync(path.join(FIXTURE_DIR, name), 'utf8')
 }
 
@@ -74,6 +88,23 @@ describe('the block registry itself', () => {
   it('keys every block by its own type, because campaign JSON looks blocks up by that key', () => {
     const mismatched = entries.filter(([key, module]) => key !== module.type).map(([key]) => key)
     expect(mismatched).toEqual([])
+  })
+})
+
+describe('the one allowed deviation from the handover', () => {
+  it('still matches real markup with every literal, so no rule is silently doing nothing', () => {
+    // A substitution that stops matching is a substitution that has quietly stopped protecting
+    // anything, and worse, it means the fixture moved underneath us. Fail loudly instead.
+    const fixtures = cases.map(([, module]) => readRawFixture(module.fixture)).join('\n')
+    const unused = goldContrastSubstitutionSources().filter((source) => !fixtures.includes(source))
+    expect(unused, 'These substitutions no longer match any fixture').toEqual([])
+  })
+
+  it('leaves no charcoal on gold anywhere in the rendered blocks, which was the whole ask', () => {
+    const offenders = cases.flatMap(([key, module]) =>
+      findCharcoalOnGold(module.render(module.sample)).map((offence) => `${key}: ${offence}`),
+    )
+    expect(offenders).toEqual([])
   })
 })
 

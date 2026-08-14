@@ -144,12 +144,14 @@ describe('provisionCampaignLinks', () => {
     const { linkMap, failures } = await provisionCampaignLinks({
       campaignId: CAMPAIGN_ID,
       utmCampaign: 'christmas-2026',
-      destinations: ['https://www.facebook.com/theanchorpubsm/', 'https://www.the-anchor.pub/food-menu'],
+      // Facebook is now an allowed destination (it is the venue's own page), so this uses a
+      // genuinely foreign host to prove one bad destination cannot sink the whole schedule.
+      destinations: ['https://example.com/not-ours', 'https://www.the-anchor.pub/food-menu'],
     })
 
     expect(Object.keys(linkMap)).toEqual(['https://www.the-anchor.pub/food-menu'])
     expect(failures).toHaveLength(1)
-    expect(failures[0].url).toBe('https://www.facebook.com/theanchorpubsm/')
+    expect(failures[0].url).toBe('https://example.com/not-ours')
     expect(failures[0].error).toMatch(/approved Anchor or Orange Jelly domains/i)
   })
 
