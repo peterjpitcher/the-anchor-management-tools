@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "title": "Christmas at The Anchor, and a favour to ask",
+  "preheader": "Christmas dinner with the people you actually like, plus what is on through December.",
+  "blocks": [
+    { "type": "masthead_green", "data": {} },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+          "alt": "A Christmas dinner at The Anchor: roast beef, a Yorkshire pudding, pigs in blankets, stuffing, roast potatoes, mash, peas and sprouts",
+          "width": 600,
+          "height": 340
+        },
+        "placeholder_label": "Hero photo · 1200 × 680",
+        "placeholder_caption": "Christmas table laid up, warm low light",
+        "kicker": "Christmas 2026 · bookings open",
+        "headline": "Christmas dinner with the people you actually like",
+        "body": [
+          "Christmas dinner is on from 10 November to 20 December. Friends, family, or the group you always mean to see more of, round one table with everyone picking their own courses.",
+          "It is the same kitchen and the same faces you get the rest of the year, just with better trimmings and a lot more tinsel."
+        ],
+        "cta_label": "Book your Christmas dinner",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "What comes with it",
+        "body": [
+          "Every adult gets a glass of prosecco, swappable for orange juice. Dinner comes with pigs in blankets, stuffing, Yorkshire pudding, roast potatoes, mash, peas and sprouts."
+        ],
+        "list_items": [
+          "Everyone picks their own courses, so vegetarian guests are not an afterthought",
+          "Six guests or more, any day except Monday, when the kitchen is closed",
+          "£10 per person deposit, taken straight off your bill"
+        ],
+        "buttons": [
+          { "label": "Book your Christmas dinner", "url": "https://www.the-anchor.pub/christmas-parties", "variant": "primary" }
+        ]
+      }
+    },
+    {
+      "type": "section_intro",
+      "data": {
+        "kicker": "A favour, if we may",
+        "heading": "Does your work Christmas do need a home?",
+        "body": "If you are the one organising it, or you know who is, please put us in the running. We are a small family-run pub and a work party booked here genuinely makes our December. It would mean the world to us."
+      }
+    },
+    {
+      "type": "cta_outline",
+      "data": {
+        "label": "Send it to whoever organises yours",
+        "url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "section_intro",
+      "data": {
+        "kicker": "Also on",
+        "heading": "Festive nights out",
+        "body": "Four of them between now and Christmas, and every one is a good excuse to get people together. Booking is open on all of them."
+      }
+    },
+    {
+      "type": "whats_on_list",
+      "data": {
+        "kicker": "November and December",
+        "heading": "What is coming up",
+        "events": [
+          {
+            "date": "20",
+            "month": "Nov",
+            "title": "Tasting Night",
+            "detail": "A premium tasting night with dinner provided, 7pm. The theme and the products are still under wraps, so watch this space.",
+            "url": "https://www.the-anchor.pub/events/tasting-night-2026-11-20"
+          },
+          {
+            "date": "02",
+            "month": "Dec",
+            "title": "Tinsel & Trivia Quiz Night",
+            "detail": "£3 cash entry, 7pm. Lively rounds with a festive nod, and dinner beforehand if you fancy it.",
+            "url": "https://www.the-anchor.pub/events/quiz-night-2026-12-02"
+          },
+          {
+            "date": "11",
+            "month": "Dec",
+            "title": "Sleigh My Name: Festive Music Bingo",
+            "detail": "£5, 7pm. Two themed rounds with Nikki hosting, and it gets loud in the best way.",
+            "url": "https://www.the-anchor.pub/events/christmas-music-bingo-sleigh-my-name-festive-music-bingo-2026-12-11"
+          },
+          {
+            "date": "16",
+            "month": "Dec",
+            "title": "Christmas Jackpot Cash Bingo",
+            "detail": "£10 cash books, 10 games, 7pm, with a rollover Snowball waiting to go.",
+            "url": "https://www.the-anchor.pub/events/cash-bingo-2026-12-16"
+          }
+        ],
+        "all_events_url": "https://www.the-anchor.pub/whats-on"
+      }
+    },
+    {
+      "type": "pull_quote",
+      "data": {
+        "script_line": "One of the best yet",
+        "body": "We want this Christmas to be the best one this village has had in a long time, and honestly, we cannot do that part on our own. Come and be part of it."
+      }
+    },
+    {
+      "type": "amenity_grid",
+      "data": {
+        "items": [
+          { "highlight": "Free", "text": "parking on site, around 20 spaces" },
+          { "highlight": "Outside", "text": "the ULEZ boundary" },
+          { "highlight": "7 minutes", "text": "from Heathrow Terminal 5" },
+          { "highlight": "Since 1751", "text": "and still a village pub" }
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Come and see us",
+        "body": "Book a table, book the works do, or just come in for a pint and tell us what you fancy this year. We would rather hear from you than not.",
+        "cta_label": "Book your Christmas dinner",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties",
+        "reassurance_items": ["Six guests or more", "We reply within 24 hours"],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "signoff_ps",
+      "data": {
+        "signoff": "See you at the bar,",
+        "signature": "The Anchor team",
+        "ps_body": "If you only do one thing with this email, pass the work party bit on to whoever organises yours. That is the one that really helps us.",
+        "ps_link_label": "Send them here →",
+        "ps_link_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before. If you would rather not hear about what is on, one tap below stops it.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}
