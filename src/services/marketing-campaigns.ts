@@ -26,6 +26,7 @@ import {
   mapMarketingRecipientEngagement,
   mapMarketingSettings,
   type MarketingAudience,
+  type MarketingAudienceType,
   type MarketingCampaign,
   type MarketingCampaignEngagement,
   type MarketingCampaignLinkPerformance,
@@ -295,6 +296,8 @@ export interface CampaignInput {
   subject: string
   preheader: string
   content: unknown
+  /** Which list this goes to. Defaults to business, which is what the column has always done. */
+  audienceType?: MarketingAudienceType
   audience?: MarketingAudience
   utmCampaign?: string | null
 }
@@ -318,6 +321,7 @@ export async function createCampaign(
       subject: input.subject.trim(),
       preheader: input.preheader.trim(),
       content,
+      audience_type: input.audienceType ?? 'business',
       audience: audienceToDb(audience),
       utm_campaign: emptyToNull(input.utmCampaign),
       status: 'draft',
