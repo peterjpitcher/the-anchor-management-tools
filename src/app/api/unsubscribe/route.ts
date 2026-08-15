@@ -127,7 +127,7 @@ function confirmPage(rawToken: string, campaignRecipientId: string | null): Next
  */
 async function resolveUnsubscribeCampaignId(
   supabase: ReturnType<typeof createAdminClient>,
-  contactId: string,
+  subject: { column: 'contact_id' | 'customer_id'; id: string },
   campaignRecipientId: string | null,
   fallbackCampaignId: string | null
 ): Promise<string | null> {
@@ -137,13 +137,13 @@ async function resolveUnsubscribeCampaignId(
 
   try {
     const { data } = await (supabase.from('marketing_campaign_recipients') as any)
-      .select('campaign_id, contact_id, status')
+      .select('campaign_id, contact_id, customer_id, status')
       .eq('id', campaignRecipientId)
       .maybeSingle()
 
-    // Must be this contact's row, and must be one we actually sent. Anything else is
+    // Must be this subject's row, and must be one we actually sent. Anything else is
     // either a stale link or somebody guessing, and neither should rewrite attribution.
-    if (data && data.contact_id === contactId && data.status === 'sent' && data.campaign_id) {
+    if (data && data[subject.column] === subject.id && data.status === 'sent' && data.campaign_id) {
       return data.campaign_id as string
     }
   } catch {
@@ -151,6 +151,45 @@ async function resolveUnsubscribeCampaignId(
   }
 
   return fallbackCampaignId
+}
+
+/**
+ * Notes which campaign a guest was reading when they opted out.
+ *
+ * Runs after `recordOptOut`, never instead of it, and every failure is swallowed. The opt-out
+ * is the thing that legally matters and it has already been recorded by this point; losing a
+ * reporting field is not a reason to show somebody an error and leave them believing they are
+ * still subscribed.
+ *
+ * Written only when the field is still empty, so a second tap on an older email cannot
+ * reattribute an objection that has already been made.
+ */
+async function recordCustomerUnsubscribeCampaign(
+  supabase: ReturnType<typeof createAdminClient>,
+  customerId: string,
+  campaignRecipientId: string | null
+): Promise<void> {
+  try {
+    const campaignId = await resolveUnsubscribeCampaignId(
+      supabase,
+      { column: 'customer_id', id: customerId },
+      campaignRecipientId,
+      null
+    )
+    if (!campaignId) return
+
+    await (supabase.from('customers') as any)
+      .update({ marketing_unsubscribe_campaign_id: campaignId })
+      .eq('id', customerId)
+      .is('marketing_unsubscribe_campaign_id', null)
+  } catch (error) {
+    logger.warn('Could not attribute a guest unsubscribe to its campaign', {
+      metadata: {
+        customerId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+  }
 }
 
 async function unsubscribeBusinessContact(
@@ -170,7 +209,7 @@ async function unsubscribeBusinessContact(
   const nowIso = new Date().toISOString()
   const campaignId = await resolveUnsubscribeCampaignId(
     supabase,
-    businessContactId,
+    { column: 'contact_id', id: businessContactId },
     campaignRecipientId,
     (contact.last_marketing_campaign_id as string | null) ?? null
   )
@@ -263,6 +302,8 @@ async function unsubscribe(
         },
         ['marketing']
       )
+
+      await recordCustomerUnsubscribeCampaign(supabase, lookup.customerId, campaignRecipientId)
     }
 
     await recordUnsubscribeUse(supabase, rawToken)

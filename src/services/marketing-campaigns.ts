@@ -434,6 +434,116 @@ async function provisionLinkMap(
  * hash, the recipient count a human approved, the send time, and the short links every
  * click will be counted through.
  */
+/**
+ * Refuses a send time that the frequency cap would quietly eat.
+ *
+ * The cap lives on the contact row, not the recipient row, so it works ACROSS campaigns: if
+ * the same list was emailed inside the cap window, every recipient of the second campaign is
+ * skipped with `frequency_cap` and that campaign finishes as `completed` having reached
+ * nobody. There is no error, no failure, and the only clue is a skip count you have to go
+ * looking for.
+ *
+ * This nearly happened for real. A guest campaign was scheduled, then a second guest campaign
+ * was scheduled six days earlier, which would have silently emptied the first. Catching it at
+ * schedule time costs one query; catching it afterwards is not possible, because by then the
+ * send has been marked complete and the moment has passed.
+ *
+ * Only same-audience campaigns collide, because the two lists keep their own timestamps.
+ */
+export interface NeighbouringCampaign {
+  name: string
+  scheduledFor: string
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * The judgement half, kept pure so it can be tested without a database.
+ *
+ * Returns the message to refuse with, or null if the slot is safe. `hourCycle` rather than
+ * `hour12`, because en-GB with `hour12` renders noon as "0pm" on Node 20.
+ */
+export function describeFrequencyCapCollision(
+  capDays: number,
+  when: Date,
+  neighbours: NeighbouringCampaign[],
+): string | null {
+  if (capDays <= 0 || neighbours.length === 0) return null
+
+  const capMs = capDays * DAY_MS
+  const inWindow = neighbours
+    .map((n) => ({ ...n, at: new Date(n.scheduledFor) }))
+    .filter((n) => !Number.isNaN(n.at.getTime()))
+    .filter((n) => Math.abs(when.getTime() - n.at.getTime()) < capMs)
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+
+  const clash = inWindow[0]
+  if (!clash) return null
+
+  const fmt = (date: Date) =>
+    date.toLocaleString('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h12',
+    })
+
+  const gapDays = Math.abs(when.getTime() - clash.at.getTime()) / DAY_MS
+
+  return (
+    `That send would be swallowed by the ${capDays}-day frequency cap. ` +
+    `"${clash.name}" goes to the same list at ${fmt(clash.at)}, which is ${gapDays.toFixed(1)} days away, ` +
+    `so whichever lands second would skip every recipient and finish having reached nobody. ` +
+    `Schedule this from ${fmt(new Date(clash.at.getTime() + capMs))} onwards, or move the other campaign.`
+  )
+}
+
+async function assertNoFrequencyCapCollision(
+  supabase: AdminClient,
+  campaign: MarketingCampaign,
+  when: Date,
+): Promise<void> {
+  const { data: settingsRow, error: settingsError } = await supabase
+    .from('marketing_settings')
+    .select('frequency_cap_days')
+    .limit(1)
+    .maybeSingle()
+
+  if (settingsError) throw new Error(settingsError.message)
+
+  const capDays = settingsRow?.frequency_cap_days ?? 0
+  if (capDays <= 0) return
+
+  const capMs = capDays * DAY_MS
+
+  const { data: neighbours, error } = await supabase
+    .from('marketing_campaigns')
+    .select('id, name, scheduled_for')
+    .eq('audience_type', campaign.audienceType)
+    .neq('id', campaign.id)
+    .in('status', ['scheduled', 'sending', 'completed'])
+    .not('scheduled_for', 'is', null)
+    .gte('scheduled_for', new Date(when.getTime() - capMs).toISOString())
+    .lte('scheduled_for', new Date(when.getTime() + capMs).toISOString())
+    .order('scheduled_for')
+
+  if (error) throw new Error(error.message)
+
+  const message = describeFrequencyCapCollision(
+    capDays,
+    when,
+    (neighbours ?? []).map((row) => ({
+      name: String((row as { name: string }).name),
+      scheduledFor: String((row as { scheduled_for: string }).scheduled_for),
+    })),
+  )
+
+  if (message) throw new Error(message)
+}
+
 export async function scheduleCampaign(
   id: string,
   scheduledFor: string,
@@ -465,6 +575,8 @@ export async function scheduleCampaign(
   if (preview.eligibleCount === 0) {
     throw new Error('This audience matches nobody, so there is nothing to schedule')
   }
+
+  await assertNoFrequencyCapCollision(supabase, existing, when)
 
   const now = new Date().toISOString()
   const linkMap = await provisionLinkMap(id, existing.utmCampaign ?? id, content)
@@ -748,10 +860,18 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
     if (row.complained_at) complained += 1
   }
 
+  // Counted from whichever list this campaign went to. Reading only business_contacts, as
+  // this did, pinned every guest campaign's unsubscribe rate to 0.0% however many people
+  // actually opted out, which reads as evidence that nobody minded.
+  const unsubscribeSource =
+    campaign.audienceType === 'customer'
+      ? { table: 'customers' as const, column: 'marketing_unsubscribe_campaign_id' }
+      : { table: 'business_contacts' as const, column: 'unsubscribe_campaign_id' }
+
   const { count: unsubscribeCount, error: unsubscribeError } = await supabase
-    .from('business_contacts')
+    .from(unsubscribeSource.table)
     .select('id', { count: 'exact', head: true })
-    .eq('unsubscribe_campaign_id', id)
+    .eq(unsubscribeSource.column, id)
 
   if (unsubscribeError) throw new Error(unsubscribeError.message)
   const unsubscribed = unsubscribeCount ?? 0
