@@ -106,6 +106,11 @@ const NEVER_SHORTENED = /\/privacy-policy(\/|$|\?)/i
 function applyUtm(url: string, utm: DeliveryContext['utm']): string {
   if (!utm) return url
 
+  // Same reasoning as not shortening it: campaign parameters would file a reader of the
+  // privacy notice as campaign traffic, which is still counting somebody exercising a data
+  // right. It goes out as a plain link.
+  if (NEVER_SHORTENED.test(url)) return url
+
   // Only our own site gets tagged. Rewriting a social or third-party link is both rude and
   // useless, since we cannot read the other end's analytics anyway.
   if (!/^https?:\/\/(www\.)?the-anchor\.pub/i.test(url)) return url
