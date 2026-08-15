@@ -194,6 +194,9 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Nested rather than ANDed with a purpose test: PostgreSQL does not guarantee
+  -- short-circuit evaluation of AND, so a combined condition can still call the
+  -- predicate for a drinks booking.
   IF public.table_booking_within_service_window_v06(
        NEW.booking_date,
        NEW.booking_time,
