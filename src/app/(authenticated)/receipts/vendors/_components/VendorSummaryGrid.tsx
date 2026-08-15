@@ -17,7 +17,6 @@ import {
   type ReceiptVendorReviewItem,
   type ReceiptVendorReviewStatus,
   type ReceiptVendorMonthTransaction,
-  type ReceiptVendorSummary,
   type ReceiptVendorWatchlistItem,
 } from '@/app/actions/receipts'
 import { Alert, Button, Card, Drawer, Spinner } from '@/ds'
@@ -80,9 +79,9 @@ function formatHistoryDate(value: string) {
 }
 
 function signalTone(signal: ReceiptVendorCostSignal | { severity: 'medium' | 'high'; direction: 'spike' | 'drop' | 'new' | 'resumed' }) {
-  if (signal.severity === 'high') return 'bg-rose-50 text-rose-700 border-rose-100'
-  if (signal.direction === 'drop') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
-  return 'bg-amber-50 text-amber-700 border-amber-100'
+  if (signal.severity === 'high') return 'bg-danger-soft text-danger-fg border-border'
+  if (signal.direction === 'drop') return 'bg-success-soft text-success-fg border-border'
+  return 'bg-warning-soft text-warning-fg border-border'
 }
 
 const statusLabels: Record<ReceiptVendorMonthTransaction['status'], string> = {
@@ -94,15 +93,14 @@ const statusLabels: Record<ReceiptVendorMonthTransaction['status'], string> = {
 }
 
 const statusTone: Record<ReceiptVendorMonthTransaction['status'], string> = {
-  pending: 'bg-amber-100 text-amber-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  auto_completed: 'bg-blue-100 text-blue-700',
-  no_receipt_required: 'bg-gray-200 text-gray-700',
-  cant_find: 'bg-rose-100 text-rose-700',
+  pending: 'bg-warning-soft text-warning-fg',
+  completed: 'bg-success-soft text-success-fg',
+  auto_completed: 'bg-info-soft text-info-fg',
+  no_receipt_required: 'bg-surface-hover text-text',
+  cant_find: 'bg-danger-soft text-danger-fg',
 }
 
 type VendorSummaryGridProps = {
-  vendors: ReceiptVendorSummary[]
   initialWatchlist: ReceiptVendorWatchlistItem[]
   initialReviews?: ReceiptVendorReviewItem[]
 }
@@ -115,7 +113,7 @@ function reviewKey(vendorLabel: string, comparison: ReceiptVendorMovementCompari
   return `${normalizeVendorKey(vendorLabel)}|${comparison}|${monthStart}`
 }
 
-export default function VendorSummaryGrid({ vendors, initialWatchlist, initialReviews = [] }: VendorSummaryGridProps) {
+export default function VendorSummaryGrid({ initialWatchlist, initialReviews = [] }: VendorSummaryGridProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null)
   const [detail, setDetail] = useState<ReceiptVendorDetail | null>(null)
@@ -139,8 +137,6 @@ export default function VendorSummaryGrid({ vendors, initialWatchlist, initialRe
   })
   const [updatingReview, setUpdatingReview] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
-
-  if (!vendors.length) return null
 
   async function openVendorDetail(vendorLabel: string) {
     setSelectedVendor(vendorLabel)
@@ -317,13 +313,13 @@ function SegmentedControl({
   onChange: (value: string) => void
 }) {
   return (
-    <div className="inline-flex rounded-md border border-gray-200 bg-white p-1">
+    <div className="inline-flex rounded-md border border-border bg-surface p-1">
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           onClick={() => onChange(option.value)}
-          className={`rounded px-3 py-1.5 text-xs font-semibold transition ${value === option.value ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+          className={`rounded px-3 py-1.5 text-xs font-semibold transition ${value === option.value ? 'bg-primary text-primary-fg' : 'text-text-muted hover:bg-surface-2'}`}
         >
           {option.label}
         </button>
@@ -362,12 +358,12 @@ function MovementMetric({
   tone?: 'neutral' | 'up' | 'down' | 'attention'
 }) {
   const toneClass = tone === 'up'
-    ? 'border-rose-100 bg-rose-50 text-rose-800'
+    ? 'border-border bg-danger-soft text-danger-fg'
     : tone === 'down'
-      ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
+      ? 'border-border bg-success-soft text-success-fg'
       : tone === 'attention'
-        ? 'border-amber-100 bg-amber-50 text-amber-800'
-        : 'border-gray-200 bg-white text-gray-900'
+        ? 'border-border bg-warning-soft text-warning-fg'
+        : 'border-border bg-surface text-text-strong'
 
   return (
     <div className={`rounded-lg border p-4 ${toneClass}`}>
@@ -386,12 +382,12 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
   const maxDelta = rows.reduce((max, movement) => Math.max(max, Math.abs(movement.delta ?? 0)), 0)
 
   if (!rows.length) {
-    return <p className="text-sm text-gray-500">No movement is available for this comparison.</p>
+    return <p className="text-sm text-text-muted">No movement is available for this comparison.</p>
   }
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+      <div className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
         <span>Vendor</span>
         <div className="grid grid-cols-2 text-center"><span>Down</span><span>Up</span></div>
         <span className="text-right">Movement</span>
@@ -401,15 +397,15 @@ function DivergingMovementChart({ movements }: { movements: ReceiptVendorMovemen
         const width = maxDelta > 0 ? Math.max((Math.abs(delta) / maxDelta) * 50, 2) : 0
         return (
           <div key={movement.vendorLabel} className="grid grid-cols-[minmax(7rem,11rem)_1fr_5rem] items-center gap-3">
-            <span className="truncate text-xs font-medium text-gray-700" title={movement.vendorLabel}>{movement.vendorLabel}</span>
-            <div className="relative h-5 rounded bg-gray-50">
-              <div className="absolute inset-y-0 left-1/2 w-px bg-gray-300" />
+            <span className="truncate text-xs font-medium text-text" title={movement.vendorLabel}>{movement.vendorLabel}</span>
+            <div className="relative h-5 rounded bg-surface-2">
+              <div className="absolute inset-y-0 left-1/2 w-px bg-border-strong" />
               <div
                 className={`absolute inset-y-1 rounded ${delta > 0 ? 'left-1/2 bg-rose-500' : 'right-1/2 bg-emerald-500'}`}
                 style={{ width: `${width}%` }}
               />
             </div>
-            <span className={`text-right text-xs font-semibold tabular-nums ${delta > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+            <span className={`text-right text-xs font-semibold tabular-nums ${delta > 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
               {formatSignedCurrency(delta)}
             </span>
           </div>
@@ -534,8 +530,8 @@ function VendorMovementPanel({
       <Card>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-gray-900">Spend movement overview</h3>
-          <p className="mt-1 text-sm text-gray-500">{periodLabel}. Uses complete months only.</p>
+          <h3 className="text-lg font-semibold text-text-strong">Spend movement overview</h3>
+          <p className="mt-1 text-sm text-text-muted">{periodLabel}. Uses complete months only.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl
@@ -551,7 +547,7 @@ function VendorMovementPanel({
       </div>
 
       {isLoading ? (
-        <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+        <div className="mt-4 flex items-center gap-2 text-sm text-text-muted">
           <Spinner className="h-4 w-4" />
           Loading vendor movement...
         </div>
@@ -568,7 +564,7 @@ function VendorMovementPanel({
           <MovementMetric label="Needs attention" value={summary.attentionCount.toLocaleString('en-GB')} detail="Material movements not closed" tone="attention" />
         </div>
       ) : (
-        <p className="mt-4 text-sm text-gray-500">No vendor movement found for this view.</p>
+        <p className="mt-4 text-sm text-text-muted">No vendor movement found for this view.</p>
       )}
       </Card>
 
@@ -577,12 +573,12 @@ function VendorMovementPanel({
           <Card>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Biggest movements</h3>
-                <p className="mt-1 text-xs text-gray-500">Top vendors ranked by absolute pound movement.</p>
+                <h3 className="text-base font-semibold text-text-strong">Biggest movements</h3>
+                <p className="mt-1 text-xs text-text-muted">Top vendors ranked by absolute pound movement.</p>
               </div>
               <div className="hidden items-center gap-4 text-xs sm:flex">
-                <span className="inline-flex items-center gap-1 text-emerald-700"><ArrowTrendingDownIcon className="h-4 w-4" /> Spend down</span>
-                <span className="inline-flex items-center gap-1 text-rose-700"><ArrowTrendingUpIcon className="h-4 w-4" /> Spend up</span>
+                <span className="inline-flex items-center gap-1 text-success-fg"><ArrowTrendingDownIcon className="h-4 w-4" /> Spend down</span>
+                <span className="inline-flex items-center gap-1 text-danger-fg"><ArrowTrendingUpIcon className="h-4 w-4" /> Spend up</span>
               </div>
             </div>
             <div className="mt-5"><DivergingMovementChart movements={state.movements} /></div>
@@ -595,7 +591,7 @@ function VendorMovementPanel({
                   key={option.value}
                   type="button"
                   onClick={() => setView(option.value)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${view === option.value ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${view === option.value ? 'bg-primary text-primary-fg' : 'bg-surface-2 text-text-muted hover:bg-surface-hover'}`}
                 >
                   {option.label}
                 </button>
@@ -607,8 +603,8 @@ function VendorMovementPanel({
             {displayedMovements.length ? (
               <>
                 <div className="mt-4 hidden overflow-x-auto md:block">
-                  <table className="min-w-full divide-y divide-gray-200 text-xs">
-                    <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
+                  <table className="min-w-full divide-y divide-border text-xs">
+                    <thead className="bg-surface-2 text-left font-semibold uppercase tracking-wide text-text-muted">
                       <tr>
                         <th scope="col" className="px-3 py-2">Vendor</th>
                         <th scope="col" className="px-3 py-2 text-right">{currentLabel}</th>
@@ -618,7 +614,7 @@ function VendorMovementPanel({
                         <th scope="col" className="px-3 py-2 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-gray-700">
+                    <tbody className="divide-y divide-border text-text">
                       {displayedMovements.map((movement) => {
                         const watched = Boolean(watchedVendors[normalizeVendorKey(movement.vendorLabel)])
                         const status = movementReviewStatus(movement, reviews)
@@ -626,15 +622,15 @@ function VendorMovementPanel({
                         return (
                           <tr key={`${movement.vendorLabel}-${movement.comparison}`}>
                             <td className="max-w-[15rem] px-3 py-3">
-                              <div className="truncate font-semibold text-gray-900" title={movement.vendorLabel}>{movement.vendorLabel}</div>
+                              <div className="truncate font-semibold text-text-strong" title={movement.vendorLabel}>{movement.vendorLabel}</div>
                               <div className="mt-1 flex items-center gap-2">
                                 {movement.signal && <span className={`inline-flex rounded-full border px-2 py-0.5 font-medium capitalize ${signalTone(movement.signal)}`}>{movement.signal.direction}</span>}
-                                <span className="text-gray-400">{movement.latestTransactionCount.toLocaleString('en-GB')} transactions</span>
+                                <span className="text-text-subtle">{movement.latestTransactionCount.toLocaleString('en-GB')} transactions</span>
                               </div>
                             </td>
-                            <td className="px-3 py-3 text-right font-medium tabular-nums text-gray-900">{formatCurrency(movement.latestOutgoing)}</td>
-                            <td className="px-3 py-3 text-right tabular-nums text-gray-600">{movement.baselineOutgoing === null ? 'No baseline' : formatCurrency(movement.baselineOutgoing)}</td>
-                            <td className={`px-3 py-3 text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-rose-700' : (movement.delta ?? 0) < 0 ? 'text-emerald-700' : 'text-gray-600'}`}>
+                            <td className="px-3 py-3 text-right font-medium tabular-nums text-text-strong">{formatCurrency(movement.latestOutgoing)}</td>
+                            <td className="px-3 py-3 text-right tabular-nums text-text-muted">{movement.baselineOutgoing === null ? 'No baseline' : formatCurrency(movement.baselineOutgoing)}</td>
+                            <td className={`px-3 py-3 text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-danger-fg' : (movement.delta ?? 0) < 0 ? 'text-success-fg' : 'text-text-muted'}`}>
                               <div>{formatSignedCurrency(movement.delta)}</div>
                               <div className="mt-1 text-[11px] font-medium opacity-75">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</div>
                             </td>
@@ -643,7 +639,7 @@ function VendorMovementPanel({
                                 value={status}
                                 disabled={!movement.latestMonthStart || updatingReview === key}
                                 onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
-                                className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700"
+                                className="rounded-md border border-border bg-surface px-2 py-1.5 text-xs font-medium text-text"
                                 aria-label={`Review status for ${movement.vendorLabel}`}
                               >
                                 {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -655,12 +651,12 @@ function VendorMovementPanel({
                                   type="button"
                                   disabled={updatingWatchVendor === movement.vendorLabel}
                                   onClick={() => onToggleWatched(movement.vendorLabel, !watched)}
-                                  className={`rounded p-1.5 ${watched ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:bg-gray-100 hover:text-amber-600'}`}
+                                  className={`rounded p-1.5 ${watched ? 'bg-warning-soft text-warning-fg' : 'text-text-subtle hover:bg-surface-2 hover:text-warning-fg'}`}
                                   aria-label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}
                                 >
                                   <StarIcon className="h-4 w-4" />
                                 </button>
-                                <button type="button" className="font-semibold text-blue-700 hover:text-blue-900" onClick={() => onViewDetails(movement.vendorLabel)}>View details</button>
+                                <button type="button" className="font-semibold text-info-fg hover:text-info-fg" onClick={() => onViewDetails(movement.vendorLabel)}>View details</button>
                               </div>
                             </td>
                           </tr>
@@ -676,13 +672,13 @@ function VendorMovementPanel({
                     const status = movementReviewStatus(movement, reviews)
                     const key = movement.latestMonthStart ? reviewKey(movement.vendorLabel, movement.comparison, movement.latestMonthStart) : ''
                     return (
-                      <div key={`${movement.vendorLabel}-${movement.comparison}-mobile`} className="rounded-lg border border-gray-200 p-3">
+                      <div key={`${movement.vendorLabel}-${movement.comparison}-mobile`} className="rounded-lg border border-border p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="truncate font-semibold text-gray-900">{movement.vendorLabel}</p>
-                            <p className="mt-1 text-xs text-gray-500">{formatCurrency(movement.latestOutgoing)} vs {movement.baselineOutgoing === null ? 'no baseline' : formatCurrency(movement.baselineOutgoing)}</p>
+                            <p className="truncate font-semibold text-text-strong">{movement.vendorLabel}</p>
+                            <p className="mt-1 text-xs text-text-muted">{formatCurrency(movement.latestOutgoing)} vs {movement.baselineOutgoing === null ? 'no baseline' : formatCurrency(movement.baselineOutgoing)}</p>
                           </div>
-                          <div className={`text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                          <div className={`text-right font-semibold tabular-nums ${(movement.delta ?? 0) > 0 ? 'text-danger-fg' : 'text-success-fg'}`}>
                             <p>{formatSignedCurrency(movement.delta)}</p>
                             <p className="text-xs">{movement.baselineOutgoing === 0 && movement.latestOutgoing > 0 ? 'New' : formatSignedPercent(movement.percentageChange)}</p>
                           </div>
@@ -692,13 +688,13 @@ function VendorMovementPanel({
                             value={status}
                             disabled={!movement.latestMonthStart || updatingReview === key}
                             onChange={(event) => onUpdateReview(movement, event.target.value as ReceiptVendorReviewStatus)}
-                            className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-2 text-xs font-medium text-gray-700"
+                            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-2 text-xs font-medium text-text"
                             aria-label={`Review status for ${movement.vendorLabel}`}
                           >
                             {Object.entries(reviewStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                           </select>
-                          <button type="button" onClick={() => onToggleWatched(movement.vendorLabel, !watched)} className={`rounded-md p-2 ${watched ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`} aria-label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}><StarIcon className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => onViewDetails(movement.vendorLabel)} className="rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white">Details</button>
+                          <button type="button" onClick={() => onToggleWatched(movement.vendorLabel, !watched)} className={`rounded-md p-2 ${watched ? 'bg-warning-soft text-warning-fg' : 'bg-surface-2 text-text-muted'}`} aria-label={`${watched ? 'Stop watching' : 'Watch'} ${movement.vendorLabel}`}><StarIcon className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => onViewDetails(movement.vendorLabel)} className="rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-fg">Details</button>
                         </div>
                       </div>
                     )
@@ -706,9 +702,9 @@ function VendorMovementPanel({
                 </div>
               </>
             ) : (
-              <div className="mt-6 rounded-lg bg-gray-50 p-6 text-center">
-                {view === 'attention' ? <CheckCircleIcon className="mx-auto h-8 w-8 text-emerald-500" /> : <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-gray-400" />}
-                <p className="mt-2 text-sm font-medium text-gray-700">No vendors in this view.</p>
+              <div className="mt-6 rounded-lg bg-surface-2 p-6 text-center">
+                {view === 'attention' ? <CheckCircleIcon className="mx-auto h-8 w-8 text-success" /> : <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-text-subtle" />}
+                <p className="mt-2 text-sm font-medium text-text">No vendors in this view.</p>
               </div>
             )}
           </Card>
@@ -748,7 +744,7 @@ function VendorDetailDrawer({
   return (
     <Drawer open={open} onClose={onClose} title={vendorLabel} width="min(760px, 100vw)">
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-2 text-sm text-text-muted">
           <Spinner className="h-4 w-4" />
           Loading vendor details...
         </div>
@@ -779,7 +775,7 @@ function VendorDetailDrawer({
 
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-sm font-semibold text-gray-900">AI summary</h4>
+              <h4 className="text-sm font-semibold text-text-strong">AI summary</h4>
               <Button
                 type="button"
                 size="sm"
@@ -810,13 +806,13 @@ function VendorDetailDrawer({
             )}
 
             {aiState?.review && (
-              <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              <div className="rounded-md border border-border bg-info-soft p-3 text-sm text-info-fg">
                 <p>{aiState.review.overview}</p>
                 {aiState.review.reviewItems.map((item) => (
-                  <div key={`${item.vendorLabel}-${item.direction}`} className="mt-3 border-t border-blue-100 pt-3">
+                  <div key={`${item.vendorLabel}-${item.direction}`} className="mt-3 border-t border-border pt-3">
                     <p className="font-semibold">{item.direction} · {item.severity}</p>
                     <p className="mt-1">{item.reason}</p>
-                    <p className="mt-1 text-xs text-blue-800">{item.suggestedReview}</p>
+                    <p className="mt-1 text-xs text-info-fg">{item.suggestedReview}</p>
                   </div>
                 ))}
               </div>
@@ -824,30 +820,30 @@ function VendorDetailDrawer({
           </section>
 
           <section className="space-y-3">
-            <h4 className="text-sm font-semibold text-gray-900">Monthly movement</h4>
+            <h4 className="text-sm font-semibold text-text-strong">Monthly movement</h4>
             <MonthlyMovementTable months={detail.movementMonths} />
           </section>
 
           <section className="space-y-3">
-            <h4 className="text-sm font-semibold text-gray-900">Expense breakdown</h4>
+            <h4 className="text-sm font-semibold text-text-strong">Expense breakdown</h4>
             {detail.categoryBreakdown.length ? (
               <div className="space-y-2">
                 {detail.categoryBreakdown.map((category) => (
-                  <div key={category.expenseCategory} className="flex items-center justify-between gap-3 rounded-md bg-gray-50 px-3 py-2 text-sm">
-                    <span className="min-w-0 truncate text-gray-700">{category.expenseCategory}</span>
-                    <span className="shrink-0 font-semibold tabular-nums text-gray-900">{formatCurrency(category.totalOutgoing)}</span>
+                  <div key={category.expenseCategory} className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate text-text">{category.expenseCategory}</span>
+                    <span className="shrink-0 font-semibold tabular-nums text-text-strong">{formatCurrency(category.totalOutgoing)}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No outgoing expense categories found for this vendor.</p>
+              <p className="text-sm text-text-muted">No outgoing expense categories found for this vendor.</p>
             )}
           </section>
 
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h4 className="text-sm font-semibold text-gray-900">Full transaction history</h4>
-              <span className="text-xs text-gray-500">
+              <h4 className="text-sm font-semibold text-text-strong">Full transaction history</h4>
+              <span className="text-xs text-text-muted">
                 {detail.historyStartDate && detail.historyEndDate
                   ? `${detail.historyTransactionCount.toLocaleString('en-GB')} transactions · ${formatHistoryDate(detail.historyStartDate)} - ${formatHistoryDate(detail.historyEndDate)}`
                   : `${detail.historyTransactionCount.toLocaleString('en-GB')} transactions`}
@@ -865,13 +861,13 @@ function MonthlyMovementTable({ months }: { months: ReceiptVendorDetail['movemen
   const rows = [...months].reverse()
 
   if (!rows.length) {
-    return <p className="text-sm text-gray-500">No monthly movement found.</p>
+    return <p className="text-sm text-text-muted">No monthly movement found.</p>
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 text-xs">
-        <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
+      <table className="min-w-full divide-y divide-border text-xs">
+        <thead className="bg-surface-2 text-left font-semibold uppercase tracking-wide text-text-muted">
           <tr>
             <th scope="col" className="px-2 py-2">Month</th>
             <th scope="col" className="px-2 py-2 text-right">Spend</th>
@@ -882,22 +878,22 @@ function MonthlyMovementTable({ months }: { months: ReceiptVendorDetail['movemen
             <th scope="col" className="px-2 py-2 text-right">YoY %</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 text-gray-700">
+        <tbody className="divide-y divide-border text-text">
           {rows.map((month) => (
             <tr key={month.monthStart}>
-              <td className="whitespace-nowrap px-2 py-2 text-gray-600">{formatMonth(month.monthStart)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(month.totalOutgoing)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-700">{month.transactionCount.toLocaleString('en-GB')}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+              <td className="whitespace-nowrap px-2 py-2 text-text-muted">{formatMonth(month.monthStart)}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(month.totalOutgoing)}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-text">{month.transactionCount.toLocaleString('en-GB')}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
                 {month.momBaselineAvailable ? formatSignedCurrency(month.momDelta) : 'No prior month'}
               </td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
                 {month.momBaselineAvailable ? formatSignedPercent(month.momPercentageChange) : '-'}
               </td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
                 {month.yoyBaselineAvailable ? formatSignedCurrency(month.yoyDelta) : 'No prior year'}
               </td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">
                 {month.yoyBaselineAvailable ? formatSignedPercent(month.yoyPercentageChange) : '-'}
               </td>
             </tr>
@@ -916,13 +912,13 @@ function TransactionTable({
   includeYear?: boolean
 }) {
   if (!transactions.length) {
-    return <p className="text-sm text-gray-500">No individual transactions matched this vendor.</p>
+    return <p className="text-sm text-text-muted">No individual transactions matched this vendor.</p>
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 text-xs">
-        <thead className="bg-gray-100 text-left font-semibold uppercase tracking-wide text-gray-500">
+      <table className="min-w-full divide-y divide-border text-xs">
+        <thead className="bg-surface-2 text-left font-semibold uppercase tracking-wide text-text-muted">
           <tr>
             <th scope="col" className="px-2 py-2">Date</th>
             <th scope="col" className="px-2 py-2">Details</th>
@@ -932,18 +928,18 @@ function TransactionTable({
             <th scope="col" className="px-2 py-2">Status</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 text-gray-700">
+        <tbody className="divide-y divide-border text-text">
           {transactions.map((transaction) => (
             <tr key={transaction.id}>
-              <td className="whitespace-nowrap px-2 py-2 text-gray-600">
+              <td className="whitespace-nowrap px-2 py-2 text-text-muted">
                 {includeYear ? formatHistoryDate(transaction.transaction_date) : formatDate(transaction.transaction_date)}
               </td>
-              <td className="max-w-[14rem] truncate px-2 py-2 text-gray-900" title={transaction.details ?? undefined}>
+              <td className="max-w-[14rem] truncate px-2 py-2 text-text-strong" title={transaction.details ?? undefined}>
                 {transaction.details || '-'}
               </td>
-              <td className="px-2 py-2 text-gray-500">{transaction.transaction_type || '-'}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(transaction.amount_out)}</td>
-              <td className="px-2 py-2 text-right tabular-nums text-gray-900">{formatCurrency(transaction.amount_in)}</td>
+              <td className="px-2 py-2 text-text-muted">{transaction.transaction_type || '-'}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(transaction.amount_out)}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-text-strong">{formatCurrency(transaction.amount_in)}</td>
               <td className="px-2 py-2">
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${statusTone[transaction.status]}`}>
                   {statusLabels[transaction.status]}
@@ -969,8 +965,8 @@ function Metric({
   subtle?: boolean
 }) {
   const toneClasses: Record<typeof tone, string> = {
-    spend: 'bg-rose-50 text-rose-700',
-    neutral: subtle ? 'bg-gray-50 text-gray-500' : 'bg-gray-100 text-gray-700',
+    spend: 'bg-danger-soft text-danger-fg',
+    neutral: subtle ? 'bg-surface-2 text-text-muted' : 'bg-surface-2 text-text',
   }
 
   return (

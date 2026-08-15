@@ -372,13 +372,13 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-            <p className="text-sm text-gray-500">Fine-tune which transactions are grouped before you approve them.</p>
+            <h2 className="text-lg font-semibold text-text-strong">Filters</h2>
+            <p className="text-sm text-text-muted">Fine-tune which transactions are grouped before you approve them.</p>
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           <div>
-            <label className="text-sm font-medium text-gray-700">Statuses</label>
+            <label className="text-sm font-medium text-text">Statuses</label>
             <div className="mt-2 flex flex-wrap gap-3">
               {statusOrder.map((status) => (
                 <Checkbox
@@ -391,7 +391,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Group limit</label>
+            <label className="text-sm font-medium text-text">Group limit</label>
             <Select
               className="mt-2"
               value={String(localLimit)}
@@ -403,7 +403,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Scope</label>
+            <label className="text-sm font-medium text-text">Scope</label>
             <div className="mt-2">
               <Checkbox
                 label="Only show transactions missing vendor and expense tags"
@@ -418,15 +418,15 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                 onChange={(checked) => handleFuzzyToggle(checked)}
               />
             </div>
-            <p className="mt-2 text-xs text-gray-500">Currently reviewing: {statusesLabel || 'pending transactions'}.</p>
+            <p className="mt-2 text-xs text-text-muted">Currently reviewing: {statusesLabel || 'pending transactions'}.</p>
           </div>
         </div>
       </Card>
 
       {initialData.groups.length === 0 ? (
         <Card>
-          <div className="flex items-center gap-3 text-sm text-gray-600">
-            <ClockIcon className="h-5 w-5 text-gray-400" />
+          <div className="flex items-center gap-3 text-sm text-text-muted">
+            <ClockIcon className="h-5 w-5 text-text-subtle" />
             Nothing to review with your current filters. Adjust the filters above or import more transactions.
           </div>
         </Card>
@@ -447,8 +447,8 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
               <Card key={group.details}>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
                   <div className="space-y-1">
-                    <h3 className="text-base font-semibold text-gray-900">{group.details}</h3>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <h3 className="text-base font-semibold text-text-strong">{group.details}</h3>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
                       <span className="inline-flex items-center gap-1"><UsersIcon className="h-4 w-4" /> {group.transactionCount} transactions</span>
                       <span className="inline-flex items-center gap-1"><BuildingStorefrontIcon className="h-4 w-4" /> {group.needsVendorCount} need vendor</span>
                       <span className="inline-flex items-center gap-1"><BuildingStorefrontIcon className="h-4 w-4" /> {group.needsExpenseCount} need expense</span>
@@ -471,7 +471,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">Vendor</label>
+                      <label className="text-sm font-medium text-text">Vendor</label>
                       <div className="flex items-center gap-3">
                         <Checkbox
                           aria-label={`Apply vendor suggestion for ${group.details}`}
@@ -487,11 +487,11 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         />
                       </div>
                       {suggestion.vendorName && (
-                        <p className="text-xs text-gray-500 inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-blue-500" /> {suggestion.vendorName}{suggestion.reasoning ? ` — ${suggestion.reasoning}` : ''}</p>
+                        <p className="text-xs text-text-muted inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-info" /> {suggestion.vendorName}{suggestion.reasoning ? `: ${suggestion.reasoning}` : ''}</p>
                       )}
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">Expense category</label>
+                      <label className="text-sm font-medium text-text">Expense category</label>
                       <div className="flex items-center gap-3">
                         <Checkbox
                           aria-label={`Apply expense category suggestion for ${group.details}`}
@@ -513,29 +513,29 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         />
                       </div>
                       {suggestion.expenseCategory && (
-                        <p className="text-xs text-gray-500 inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-blue-500" /> {suggestion.expenseCategory}</p>
+                        <p className="text-xs text-text-muted inline-flex items-center gap-1"><SparklesIcon className="h-4 w-4 text-info" /> {suggestion.expenseCategory}</p>
                       )}
                     </div>
                   </div>
 
                   {sample && (
-                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                      <p className="font-medium text-gray-700">Sample transaction</p>
+                    <div className="rounded-md border border-border bg-surface-2 p-3 text-xs text-text-muted">
+                      <p className="font-medium text-text">Sample transaction</p>
                       <div className="mt-2 grid gap-2 sm:grid-cols-3">
                         <div>
-                          <span className="font-medium text-gray-700">Date:</span> {formatDate(sample.transactionDate)}
+                          <span className="font-medium text-text">Date:</span> {formatDate(sample.transactionDate)}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">Amount:</span> {formatCurrency(sample.amountOut && sample.amountOut > 0 ? sample.amountOut : sample.amountIn ?? 0)}
+                          <span className="font-medium text-text">Amount:</span> {formatCurrency(sample.amountOut && sample.amountOut > 0 ? sample.amountOut : sample.amountIn ?? 0)}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">Current vendor:</span> {sample.vendorName ?? '—'}
+                          <span className="font-medium text-text">Current vendor:</span> {sample.vendorName ?? 'Not set'}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">Current expense:</span> {sample.expenseCategory ?? '—'}
+                          <span className="font-medium text-text">Current expense:</span> {sample.expenseCategory ?? 'Not set'}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">Source:</span> {sample.vendorSource ?? sample.expenseCategorySource ?? '—'}
+                          <span className="font-medium text-text">Source:</span> {sample.vendorSource ?? sample.expenseCategorySource ?? 'Not set'}
                         </div>
                       </div>
                     </div>
@@ -558,7 +558,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                     </Button>
                   </div>
                   {localFuzzyGrouping && (
-                    <p className="text-xs text-amber-700">
+                    <p className="text-xs text-warning-fg">
                       Fuzzy mode is on: &ldquo;Apply classification&rdquo; will only update transactions whose description matches exactly &ldquo;{group.details}&rdquo;.
                     </p>
                   )}
@@ -587,14 +587,14 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                   </div>
 
                   {activeRuleGroup === group.details && ruleDraft && (
-                    <div className="mt-4 space-y-3 rounded-md border border-emerald-100 bg-emerald-50 p-4">
-                      <div className="flex items-center gap-2 text-sm font-medium text-emerald-900">
+                    <div className="mt-4 space-y-3 rounded-md border border-border bg-success-soft p-4">
+                      <div className="flex items-center gap-2 text-sm font-medium text-success-fg">
                         <RocketLaunchIcon className="h-5 w-5" />
                         Create automation rule
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         <div>
-                          <label className="text-xs font-medium text-emerald-900">Rule name</label>
+                          <label className="text-xs font-medium text-success-fg">Rule name</label>
                           <Input
                             className="mt-1"
                             value={ruleDraft.name}
@@ -608,7 +608,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-emerald-900">Match keywords</label>
+                          <label className="text-xs font-medium text-success-fg">Match keywords</label>
                           <Input
                             className="mt-1"
                             value={ruleDraft.matchDescription}
@@ -622,7 +622,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-emerald-900">Direction</label>
+                          <label className="text-xs font-medium text-success-fg">Direction</label>
                           <Select
                             className="mt-1"
                             value={ruleDraft.direction}
@@ -640,7 +640,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-emerald-900">Auto status</label>
+                          <label className="text-xs font-medium text-success-fg">Auto status</label>
                           <Select
                             className="mt-1"
                             value={ruleDraft.autoStatus}
@@ -693,7 +693,7 @@ export default function ReceiptBulkReviewClient({ initialData, initialFilters }:
                         >
                           {isCreatingForGroup && <Spinner className="mr-2 h-4 w-4" />}Save rule
                         </Button>
-                        <p className="text-xs text-emerald-900">We&rsquo;ll still ask before running this rule retroactively so you stay in control.</p>
+                        <p className="text-xs text-success-fg">We&rsquo;ll still ask before running this rule retroactively so you stay in control.</p>
                       </div>
                     </div>
                   )}

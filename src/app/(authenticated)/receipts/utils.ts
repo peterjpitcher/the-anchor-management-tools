@@ -9,11 +9,11 @@ export const statusLabels: Record<ReceiptTransaction['status'], string> = {
 }
 
 export const statusToneClasses: Record<ReceiptTransaction['status'], string> = {
-  pending: 'bg-amber-100 text-amber-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  auto_completed: 'bg-blue-100 text-blue-700',
-  no_receipt_required: 'bg-gray-200 text-gray-700',
-  cant_find: 'bg-rose-100 text-rose-700',
+  pending: 'bg-warning-soft text-warning-fg',
+  completed: 'bg-success-soft text-success-fg',
+  auto_completed: 'bg-info-soft text-info-fg',
+  no_receipt_required: 'bg-surface-hover text-text',
+  cant_find: 'bg-danger-soft text-danger-fg',
 }
 
 export function formatCurrency(value: number | null) {

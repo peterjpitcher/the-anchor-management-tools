@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Button, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
+import { Button, ConfirmDialog, Input, SearchInput, Select, Card, Badge, Spinner } from '@/ds'
 import { Accordion } from '@/ds'
 import {
   toggleReceiptRule,
@@ -87,13 +87,13 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
       {tokens.map((token, index) => (
         <span
           key={index}
-          className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-200"
+          className="inline-flex items-center rounded-full bg-info-soft px-2 py-0.5 text-xs font-medium text-info-fg border border-border"
         >
           {token}
         </span>
       ))}
       {hasEmpty && (
-        <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-200">
+        <span className="inline-flex items-center rounded-full bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger-fg border border-border">
           empty token — remove double commas
         </span>
       )}
@@ -103,7 +103,7 @@ function MatchDescriptionTokenPreview({ value }: { value: string }) {
 
 function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
   return (
-    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 space-y-2">
+    <div className="rounded-md border border-border bg-info-soft p-3 text-xs text-info-fg space-y-2">
       <p className="font-semibold">Rule preview (sample of up to 2000 transactions)</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <span>Total matching</span><span className="font-medium">{preview.totalMatching}</span>
@@ -114,9 +114,9 @@ function RulePreviewPanel({ preview }: { preview: RulePreviewResult }) {
       </div>
       {preview.overlappingRules.length > 0 && (
         <div>
-          <p className="font-medium text-amber-700">Overlapping rules:</p>
+          <p className="font-medium text-warning-fg">Overlapping rules:</p>
           {preview.overlappingRules.map((r) => (
-            <p key={r.id} className="text-amber-700">
+            <p key={r.id} className="text-warning-fg">
               {r.name} — {r.overlapCount} overlap{r.overlapCount !== 1 ? 's' : ''}
             </p>
           ))}
@@ -156,6 +156,7 @@ export function ReceiptRules({
   const [editMatchDescription, setEditMatchDescription] = useState('')
   const [rulePreview, setRulePreview] = useState<RulePreviewResult | null>(null)
   const [isPreviewVisible, setIsPreviewVisible] = useState(false)
+  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null)
   const newRuleFormRef = useRef<HTMLFormElement | null>(null)
 
   // Suggestions: server count + paging. Seed the loaded page from props; fetch more pages
@@ -366,7 +367,7 @@ export function ReceiptRules({
 
   async function handleRuleDelete(ruleId: string) {
     if (!canManageReceipts) return
-    if (!confirm('Deactivate this rule?')) return
+    setDeleteRuleId(null)
     setActiveRuleId(ruleId)
     startRuleTransition(async () => {
       const result = await deleteReceiptRule(ruleId)
@@ -470,12 +471,12 @@ export function ReceiptRules({
       <div className="flex items-start justify-between gap-4 p-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-gray-900">Automation rules</h2>
+            <h2 className="text-lg font-semibold text-text-strong">Automation rules</h2>
             {pendingSuggestion && <Badge tone="success">Suggestion</Badge>}
             {suggestionsTotal > 0 && <Badge tone="success">{suggestionsTotal} pending suggestions</Badge>}
             {ruleConflicts.length > 0 && <Badge tone="warning">{ruleConflicts.length} conflicts</Badge>}
           </div>
-          <p className="text-sm text-gray-500">Automatically tick off known transactions (e.g. card settlements).</p>
+          <p className="text-sm text-text-muted">Automatically tick off known transactions (e.g. card settlements).</p>
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -493,15 +494,15 @@ export function ReceiptRules({
 
       {isSectionOpen && (
         <>
-          <div className="border-t border-gray-200" />
+          <div className="border-t border-border" />
           <div className="p-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
-                <h3 className="text-md font-semibold text-gray-900 mb-3">New rule</h3>
+                <h3 className="text-md font-semibold text-text-strong mb-3">New rule</h3>
                 {pendingSuggestion && (
-                  <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                  <div className="mb-3 rounded-md border border-border bg-success-soft p-3 text-xs text-success-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-emerald-800">
+                      <p className="font-medium text-success-fg">
                         Suggestion ready for {pendingSuggestion.setVendorName ?? pendingSuggestion.setExpenseCategory}
                       </p>
                       <div className="flex items-center gap-2">
@@ -521,14 +522,14 @@ export function ReceiptRules({
                   </div>
                 )}
                 {suggestionsTotal > 0 && (
-                  <div className="mb-3 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <div className="mb-3 space-y-2 rounded-md border border-border bg-warning-soft p-3 text-xs text-warning-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-semibold">System suggestions ({suggestionsTotal})</p>
                       {canGovernRules && suggestions.length > 0 && (
-                        <label className="flex items-center gap-1.5 text-amber-900">
+                        <label className="flex items-center gap-1.5 text-warning-fg">
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-amber-300"
+                            className="h-4 w-4 rounded border-border"
                             checked={allSuggestionsSelected}
                             onChange={toggleSelectAllSuggestions}
                             disabled={isSuggestionsPending}
@@ -540,8 +541,8 @@ export function ReceiptRules({
                     </div>
 
                     {canGovernRules && selectedSuggestionIds.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-100 px-2 py-1.5">
-                        <span className="font-medium text-amber-900">{selectedSuggestionIds.length} selected</span>
+                      <div className="flex flex-wrap items-center gap-2 rounded-md bg-warning-soft px-2 py-1.5">
+                        <span className="font-medium text-warning-fg">{selectedSuggestionIds.length} selected</span>
                         <Button
                           size="sm"
                           variant="secondary"
@@ -574,19 +575,19 @@ export function ReceiptRules({
                       const aiConfidence = suggestionAiConfidence(suggestion)
                       const previewCount = suggestionPreviewCount(suggestion)
                       return (
-                        <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0">
+                        <div key={suggestion.id} className="flex flex-wrap items-start justify-between gap-2 border-t border-border pt-2 first:border-t-0 first:pt-0">
                           <div className="flex min-w-0 items-start gap-2">
                             {canGovernRules && (
                               <input
                                 type="checkbox"
-                                className="mt-0.5 h-4 w-4 rounded border-amber-300"
+                                className="mt-0.5 h-4 w-4 rounded border-border"
                                 checked={selectedSuggestionIds.includes(suggestion.id)}
                                 onChange={() => toggleSuggestionSelected(suggestion.id)}
                                 aria-label={`Select suggestion ${suggestion.suggested_name}`}
                               />
                             )}
                             <div className="min-w-0">
-                              <p className="font-medium text-amber-900">{suggestion.suggested_name}</p>
+                              <p className="font-medium text-warning-fg">{suggestion.suggested_name}</p>
                               <p>
                                 Match {suggestion.match_description ?? 'rule evidence'}; set {suggestion.set_vendor_name ?? suggestion.set_expense_category ?? 'classification'}.
                               </p>
@@ -630,7 +631,7 @@ export function ReceiptRules({
                     })}
 
                     {totalSuggestionPages > 1 && (
-                      <div className="flex items-center justify-between gap-2 border-t border-amber-200 pt-2">
+                      <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -639,7 +640,7 @@ export function ReceiptRules({
                         >
                           Previous
                         </Button>
-                        <span className="text-amber-900">
+                        <span className="text-warning-fg">
                           {isSuggestionsPending ? 'Loading…' : `Page ${suggestionPage} of ${totalSuggestionPages}`}
                         </span>
                         <Button
@@ -659,9 +660,9 @@ export function ReceiptRules({
                   </div>
                 )}
                 {retroPrompt && (
-                  <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+                  <div className="mb-3 rounded-md border border-border bg-info-soft p-3 text-xs text-info-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-blue-800">
+                      <p className="font-medium text-info-fg">
                         Run rule “{retroPrompt.name}” on {retroScope === 'all' ? 'all transactions' : 'pending transactions'}?
                       </p>
                       <Select
@@ -708,8 +709,8 @@ export function ReceiptRules({
                           label: kindLabels[option],
                         }))} />
                       </div>
-                      <label className="flex items-center gap-2 text-xs text-gray-600">
-                        <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-gray-300" />
+                      <label className="flex items-center gap-2 text-xs text-text-muted">
+                        <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-border-strong" />
                         Mark reviewed
                       </label>
                     </div>
@@ -721,7 +722,7 @@ export function ReceiptRules({
                       value={newMatchDescription}
                       onChange={(e) => { setNewMatchDescription(e.target.value); setIsPreviewVisible(false) }}
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-text-muted">
                       Matches transactions if ANY of these words appear in the description (comma-separated)
                     </p>
                     <MatchDescriptionTokenPreview value={newMatchDescription} />
@@ -774,7 +775,7 @@ export function ReceiptRules({
                 />
 
                 <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-text-muted">
                     {ruleSearch.trim()
                       ? <>Showing {filteredRules.length} of {rules.length} rules</>
                       : <>{rules.length} rules</>}
@@ -800,9 +801,9 @@ export function ReceiptRules({
                 </div>
 
                 {rules.length === 0 ? (
-                  <p className="text-sm text-gray-500">No automation rules yet. Start by adding keywords for things like card settlements.</p>
+                  <p className="text-sm text-text-muted">No automation rules yet. Start by adding keywords for things like card settlements.</p>
                 ) : filteredRules.length === 0 ? (
-                  <p className="text-sm text-gray-500">No rules match &quot;{ruleSearch.trim()}&quot;.</p>
+                  <p className="text-sm text-text-muted">No rules match &quot;{ruleSearch.trim()}&quot;.</p>
                 ) : (
                   <Accordion
                     multiple
@@ -814,8 +815,8 @@ export function ReceiptRules({
                       key: rule.id,
                       title: (
                         <>
-                          <span className="block truncate text-sm font-semibold text-gray-900">{rule.name}</span>
-                          <span className="mt-0.5 block truncate text-xs font-normal text-gray-500">
+                          <span className="block truncate text-sm font-semibold text-text-strong">{rule.name}</span>
+                          <span className="mt-0.5 block truncate text-xs font-normal text-text-muted">
                             {rule.description ?? `Matches: ${rule.match_description ?? 'any'}`}
                           </span>
                         </>
@@ -893,7 +894,7 @@ export function ReceiptRules({
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRuleDelete(rule.id)}
+                              onClick={() => setDeleteRuleId(rule.id)}
                               disabled={(isRulePending && activeRuleId === rule.id) || !canManageReceipts}
                             >
                               Deactivate
@@ -912,8 +913,8 @@ export function ReceiptRules({
                                       label: kindLabels[option],
                                     }))} />
                                   </div>
-                                  <label className="flex items-center gap-2 text-xs text-gray-600">
-                                    <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-gray-300" defaultChecked={Boolean(rule.reviewed_at)} />
+                                  <label className="flex items-center gap-2 text-xs text-text-muted">
+                                    <input type="checkbox" name="reviewed" className="h-4 w-4 rounded border-border-strong" defaultChecked={Boolean(rule.reviewed_at)} />
                                     Mark reviewed
                                   </label>
                                 </div>
@@ -945,7 +946,7 @@ export function ReceiptRules({
                               </Button>
                             </form>
                           ) : (
-                            <div className="space-y-1 text-xs text-gray-500">
+                            <div className="space-y-1 text-xs text-text-muted">
                               <p>Priority: {rule.priority ?? 1000}</p>
                               <p>Kind: {formatRuleKind(rule.kind)}</p>
                               <p>Direction: {rule.match_direction}</p>
@@ -955,7 +956,7 @@ export function ReceiptRules({
                               {rule.set_vendor_name && <p>Sets vendor: {rule.set_vendor_name}</p>}
                               {rule.set_expense_category && <p>Sets expense: {rule.set_expense_category}</p>}
                               {conflictsByRule.get(rule.id)?.map((conflict) => (
-                                <p key={conflict.id} className="text-amber-700">
+                                <p key={conflict.id} className="text-warning-fg">
                                   Conflict warning: overlaps {conflict.overlap_count} sampled transaction{conflict.overlap_count === 1 ? '' : 's'}.
                                 </p>
                               ))}
@@ -971,6 +972,16 @@ export function ReceiptRules({
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteRuleId)}
+        onClose={() => setDeleteRuleId(null)}
+        onConfirm={() => deleteRuleId ? handleRuleDelete(deleteRuleId) : undefined}
+        title="Deactivate rule"
+        message="This rule will stop matching new transactions. Transactions it has already classified are left as they are."
+        confirmLabel="Deactivate"
+        tone="danger"
+      />
     </Card>
   )
 }

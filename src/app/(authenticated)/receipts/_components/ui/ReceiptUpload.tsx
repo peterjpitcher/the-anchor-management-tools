@@ -58,7 +58,7 @@ export function ReceiptUpload({ lastImport }: ReceiptUploadProps) {
 
   if (!canManageReceipts) {
     return (
-      <Card className="md:col-span-3">
+      <Card>
         <CardHeader title="Upload bank statement" subtitle="You have view-only access. Ask a receipts manager to upload statements." />
       </Card>
     )

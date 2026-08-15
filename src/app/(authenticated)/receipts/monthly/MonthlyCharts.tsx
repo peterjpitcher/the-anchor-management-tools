@@ -51,9 +51,9 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
   return (
     <Card
       variant="bordered"
-      header={<h3 className="text-base font-semibold text-gray-900">Income vs spending (last 12 months)</h3>}
+      header={<h3 className="text-base font-semibold text-text-strong">Income vs spending (last 12 months)</h3>}
     >
-      <div className="mb-4 flex items-center gap-4 text-sm text-gray-600">
+      <div className="mb-4 flex items-center gap-4 text-sm text-text-muted">
         <LegendSwatch className="bg-emerald-500" label="Income" />
         <LegendSwatch className="bg-rose-500" label="Spending" />
       </div>
@@ -66,7 +66,7 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
 
             return (
               <div key={point.monthStart} className="flex flex-col items-center gap-2 text-xs">
-                <div className="flex h-64 w-16 items-end justify-center gap-1 rounded-md bg-emerald-50/20 p-2">
+                <div className="flex h-64 w-16 items-end justify-center gap-1 rounded-md bg-success-soft/20 p-2">
                   <Bar
                     heightPercent={incomeHeight}
                     colorClass="bg-emerald-500"
@@ -80,7 +80,7 @@ export function MonthlyCharts({ data }: { data: MonthlyChartPoint[] }) {
                     ariaLabel={`${monthLabel} spending ${currencyFormatter.format(point.outgoing)}`}
                   />
                 </div>
-                <span className="text-center font-medium text-gray-700">{monthLabel}</span>
+                <span className="text-center font-medium text-text">{monthLabel}</span>
               </div>
             );
           })}
@@ -110,7 +110,7 @@ function Bar({
       style={{ height: `${clampedHeight}%` }}
       aria-label={ariaLabel}
     >
-      <span className="absolute -top-6 text-[11px] font-semibold text-gray-700">
+      <span className="absolute -top-6 text-[11px] font-semibold text-text">
         {formattedValue}
       </span>
     </div>
@@ -163,23 +163,23 @@ export function StackedBreakdownChart({
   legendLabels.forEach((label, index) => {
     colorMap.set(label, palette[index % palette.length]);
   });
-  colorMap.set('Other', palette[palette.length - 1] ?? 'bg-gray-300');
+  colorMap.set('Other', palette[palette.length - 1] ?? 'bg-border-strong');
 
   const hasValues = ordered.some((point) => point.segments.some((segment) => segment.amount > 0));
 
   return (
     <Card
       variant="bordered"
-      header={<h3 className="text-base font-semibold text-gray-900">{title}</h3>}
+      header={<h3 className="text-base font-semibold text-text-strong">{title}</h3>}
       className="h-full"
     >
       {!hasValues ? (
         <EmptyState title="No data available" description={emptyDescription} />
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
             {legendLabels.map((label) => (
-              <LegendSwatch key={label} className={colorMap.get(label) ?? 'bg-gray-300'} label={label} />
+              <LegendSwatch key={label} className={colorMap.get(label) ?? 'bg-border-strong'} label={label} />
             ))}
           </div>
 
@@ -190,21 +190,21 @@ export function StackedBreakdownChart({
 
               return (
                 <div key={point.monthStart} className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-gray-600">
+                  <div className="flex items-center justify-between text-xs text-text-muted">
                     <span>{monthLabel}</span>
-                    <span className="font-medium text-gray-800">{currencyFormatter.format(total)}</span>
+                    <span className="font-medium text-text">{currencyFormatter.format(total)}</span>
                   </div>
                   {total === 0 ? (
-                    <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-gray-200 text-xs text-gray-400">
+                    <div className="flex h-10 items-center justify-center rounded-lg border border-dashed border-border text-xs text-text-subtle">
                       No activity recorded
                     </div>
                   ) : (
-                    <div className="flex h-10 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                    <div className="flex h-10 overflow-hidden rounded-lg border border-border bg-surface">
                       {point.segments
                         .filter((segment) => segment.amount > 0)
                         .map((segment) => {
                           const width = (segment.amount / total) * 100;
-                          const colorClass = colorMap.get(segment.label) ?? 'bg-gray-300';
+                          const colorClass = colorMap.get(segment.label) ?? 'bg-border-strong';
                           const label = `${segment.label} · ${currencyFormatter.format(segment.amount)}`;
 
                           return (
