@@ -15,6 +15,7 @@ import {
   type BusinessContactWithClicks,
   type DoNotContactReason,
   type EligibilityStatus,
+  type MarketingAudienceType,
   type MarketingBasis,
   type MarketingClusterCount,
   type MarketingImportDecision,
@@ -510,6 +511,8 @@ async function fetchSuppressedEmails(supabase: AdminClient): Promise<Set<string>
 export interface PreviewAudienceOptions {
   includeTags?: string[]
   excludeTags?: string[]
+  /** Which list to count. Tags only apply to business contacts; guests have no tags. */
+  audienceType?: MarketingAudienceType
 }
 
 /**
@@ -526,6 +529,33 @@ export interface PreviewAudienceOptions {
  */
 export async function previewAudience(options: PreviewAudienceOptions = {}): Promise<AudiencePreview> {
   const supabase = createAdminClient()
+
+  // Guests are counted in the database, by a function that copies the promote RPC's own
+  // predicates. Counting them here instead would mean fetching every customer and every
+  // booking just to answer "how many", and would give the preview a second, drifting
+  // definition of who is eligible.
+  if (options.audienceType === 'customer') {
+    const { data, error } = await supabase.rpc('preview_customer_marketing_audience').single()
+    if (error) throw error
+
+    const row = data as {
+      eligible_count: number
+      not_eligible_count: number
+      unsubscribed_count: number
+      do_not_contact_count: number
+      suppressed_count: number
+    }
+
+    return {
+      eligibleCount: row.eligible_count,
+      excludedCounts: {
+        notEligible: row.not_eligible_count,
+        unsubscribed: row.unsubscribed_count,
+        doNotContact: row.do_not_contact_count,
+        suppressed: row.suppressed_count,
+      },
+    }
+  }
 
   const includeTags = cleanTags(options.includeTags)
   const excludeTags = cleanTags(options.excludeTags)

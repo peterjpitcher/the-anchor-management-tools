@@ -101,6 +101,7 @@
         "body": "We would love this to be the best Christmas the village has had in years, and it is the people who walk through the door who make it one."
       }
     },
+    { "type": "divider_rule", "data": {} },
     {
       "type": "section_intro",
       "data": {
