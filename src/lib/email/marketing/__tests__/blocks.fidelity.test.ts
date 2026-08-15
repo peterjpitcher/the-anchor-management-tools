@@ -6,6 +6,11 @@ import { describe, expect, it } from 'vitest'
 
 import { BLOCK_REGISTRY } from '../registry'
 import {
+  applyButtonCentring,
+  buttonAlignmentSubstitutionSources,
+  findLeftAlignedButtonRows,
+} from './buttonAlignment'
+import {
   applyGoldContrastChange,
   findCharcoalOnGold,
   goldContrastSubstitutionSources,
@@ -33,7 +38,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = path.join(HERE, '..', 'blocks', '__fixtures__')
 
 function readFixture(name: string): string {
-  return applyGoldContrastChange(readFileSync(path.join(FIXTURE_DIR, name), 'utf8'))
+  return applyButtonCentring(applyGoldContrastChange(readFileSync(path.join(FIXTURE_DIR, name), 'utf8')))
 }
 
 function readRawFixture(name: string): string {
@@ -78,6 +83,24 @@ function firstDifference(rendered: string, fixture: string): string {
 
 const entries = Object.entries(BLOCK_REGISTRY)
 const cases = entries.map(([key, module]) => [key, module] as const)
+
+describe('the button centring deviation', () => {
+  it('still matches real fixtures, so a stale rule cannot protect a surface that has moved', () => {
+    const allFixtures = Object.values(BLOCK_REGISTRY)
+      .map((block) => readFileSync(path.join(FIXTURE_DIR, block.fixture), 'utf8'))
+      .join('\n')
+
+    for (const { block, from } of buttonAlignmentSubstitutionSources()) {
+      expect(allFixtures, `centring rule for ${block} no longer matches any fixture`).toContain(from)
+    }
+  })
+
+  it('leaves no button still aligned left, so the fix cannot be faked by widening a rule', () => {
+    for (const block of Object.values(BLOCK_REGISTRY)) {
+      expect(findLeftAlignedButtonRows(block.render(block.sample)), block.type).toEqual([])
+    }
+  })
+})
 
 describe('the block registry itself', () => {
   it('holds at least one block, so an empty registry cannot make this whole file vacuous', () => {

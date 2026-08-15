@@ -93,7 +93,7 @@ export const textBlock = defineBlock<TextBlockData>({
 
     if (data.buttons?.length) {
       rows.push(
-        `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:24px 32px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr>`,
+        `<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:24px 32px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;margin:0 auto"><tbody><tr>`,
       )
       data.buttons.forEach((button, index) => {
         if (index > 0) {
