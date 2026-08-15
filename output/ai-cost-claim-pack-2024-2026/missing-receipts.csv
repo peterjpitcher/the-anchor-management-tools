@@ -1,0 +1,52 @@
+Transaction date,Claim vendor,Bank details,Amount GBP,App status,Transaction ID
+2024-01-11,OpenAI,Card Purchase CHATGPT SUBSCRIPTION 50108328335,18.94,no_receipt_required,afda9085-e710-46b0-8b87-363cb68ce139
+2024-02-13,OpenAI,Card Purchase CHATGPT SUBSCRIPTION 50108328335,19.09,no_receipt_required,5f7c7b05-4837-4649-aba4-0dfbcdb2bcbc
+2024-03-12,OpenAI,Card Purchase CHATGPT SUBSCRIPTION 50108328335,18.78,no_receipt_required,d3091dc6-3bb2-45e1-aba7-6ce897498fb7
+2024-04-11,OpenAI,Card Purchase CHATGPT SUBSCRIPTION 50108328335,19.03,no_receipt_required,d82fdfbc-3aba-45e4-af37-f6991e7c16b6
+2024-05-13,OpenAI,Card Purchase CHATGPT SUBSCRIPTION 50108328335,19.26,no_receipt_required,c589ac74-0146-4dfe-ba0c-37f0270defe7
+2024-06-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.88,no_receipt_required,8f82b65c-b82d-4a25-8d28-648228dfe4a2
+2024-07-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.77,no_receipt_required,db059490-515e-4b35-a1ea-77272d676346
+2024-08-06,ClaudeAI,Card Purchase CLAUDE.AI SUBSCRIPTION,18.00,no_receipt_required,7a3137ae-acdd-4126-9630-bee36263af1a
+2024-08-13,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.95,no_receipt_required,43cce57c-5f4e-4c23-8a4b-d06c0287557e
+2024-09-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.29,no_receipt_required,270d0f1f-34a5-4ae8-864b-cfcb4497363d
+2024-10-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.38,no_receipt_required,1dfe9304-40b1-4736-9c46-f489119559f0
+2024-11-12,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.61,no_receipt_required,8e8accd4-9c9c-469d-a674-c03583c79930
+2024-12-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.86,no_receipt_required,c426bc98-e29f-418c-a2a0-e456286f7be0
+2025-01-13,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,19.48,no_receipt_required,a47807d5-edd3-479b-aab0-dfc00ee54124
+2025-02-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,19.38,no_receipt_required,228294cd-d897-45e6-83a5-dcbde0cf5e71
+2025-03-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.65,no_receipt_required,4933619c-d45c-4ae7-a92d-abb14cd806c6
+2025-03-18,Cursor,Card Purchase CURSOR AI POWERED IDE,15.49,no_receipt_required,334d14e1-3732-499b-b235-312073b98ad0
+2025-03-25,Cursor,Card Purchase CURSOR USAGE MID MAR 50151679371,15.52,no_receipt_required,dddf3ea6-4b73-49f2-915d-d3c3ca043461
+2025-03-27,Cursor,Card Purchase CURSOR USAGE MID MAR 50151679371,15.52,no_receipt_required,58b687f0-6143-43a2-8438-7a17ce09c798
+2025-04-07,Cursor,Card Purchase CURSOR USAGE MAR 50151679371,15.04,no_receipt_required,543494b4-3c99-47ea-9e08-37c3d23dc993
+2025-04-10,Cursor,Card Purchase CURSOR USAGE MID APR 50151679371,15.72,no_receipt_required,644ede2e-f374-4ec7-8d99-e6ca55620db4
+2025-04-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.89,no_receipt_required,a9ebd6e0-cc01-4cb3-9b69-c8bb92fd4fb1
+2025-04-22,Cursor,Card Purchase CURSOR AI POWERED IDE 50151679371,15.20,no_receipt_required,eb0179b5-a66b-4fae-befb-c319efc8e983
+2025-04-29,Supabase,Card Purchase SUPABASE,18.84,no_receipt_required,40d4a992-8ea8-4d74-849a-cc43a6996adb
+2025-05-07,Cursor,Card Purchase CURSOR USAGE APR 50151679371,5.14,no_receipt_required,d37120eb-a7cb-4871-8b44-4562e4ac6457
+2025-05-08,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.11,no_receipt_required,b51c685f-7b29-4ac9-8e00-181a05774d6a
+2025-05-13,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.14,no_receipt_required,174bacb3-bba8-45f7-8039-f6ff71d2e61f
+2025-05-13,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.17,no_receipt_required,1d8c7584-38d2-49fc-962e-7ffe24deb7b2
+2025-05-13,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.14,no_receipt_required,6b6994ca-150d-4f12-98e6-be4668825b32
+2025-05-13,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,18.13,no_receipt_required,6edaa429-dc91-4733-9aae-e80aee0dd920
+2025-05-13,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.15,no_receipt_required,e265f7b5-06ad-4949-ad79-164ba314daff
+2025-05-13,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.14,no_receipt_required,e76ecea0-0656-4429-a36f-fc69c6acfa97
+2025-05-14,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.25,no_receipt_required,3553ab87-5a84-4cd4-a5fd-4c4093857379
+2025-05-14,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.14,no_receipt_required,694a851a-609a-464b-b3d2-4fe752b86470
+2025-05-14,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.16,no_receipt_required,c17d2921-4e70-4281-94d5-5d02216b2282
+2025-05-15,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.22,no_receipt_required,12ccfee8-283e-45a6-8aa0-b36d9e8a4fdd
+2025-05-15,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.24,no_receipt_required,5fd525c5-2a6b-458a-bbc3-5e8094a16793
+2025-05-16,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.21,no_receipt_required,df441c4e-3566-4f05-aa24-19548c0f1f32
+2025-05-19,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.07,no_receipt_required,8ed7e274-e2d0-4212-a423-0ccccfd9977f
+2025-05-19,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,15.09,no_receipt_required,d8782d26-6f22-49c8-aaaa-b2891e5c79ff
+2025-05-20,Cursor,Card Purchase CURSOR AI POWERED IDE 50151679371,15.09,no_receipt_required,c2d751f0-cfe0-4211-9dfc-b4b41a548523
+2025-05-28,Supabase,Card Purchase SUPABASE 50128374530,19.44,no_receipt_required,99243850-5b0a-49f2-9feb-33059fa52331
+2025-05-30,Cursor,Card Purchase CURSOR USAGE MID MAY 50151679371,74.17,no_receipt_required,eabd714e-2b77-48f1-8ba8-95796b19c45b
+2025-06-10,Cursor,Card Purchase CURSOR USAGE MAY 50151679371,52.80,no_receipt_required,437fe81f-cb11-45e9-995b-21f42596971c
+2025-06-11,OpenAI,Card Purchase OPENAI CHATGPT SUBSCR 50108328335,17.77,no_receipt_required,c0f86a5e-8b26-4c68-99f9-d022d973dc84
+2025-06-11,Cursor,Card Purchase CURSOR USAGE MID JUN 50151679371,74.07,no_receipt_required,cbe4748f-b910-4bb3-9d42-7f25fcb6a9f0
+2025-06-17,Cursor,Card Purchase CURSOR USAGE MID JUN 50151679371,74.22,no_receipt_required,bb16eb1e-0bab-446a-95d4-f144f3d5b0f4
+2025-06-18,Cursor,Card Purchase CURSOR AI POWERED IDE 50151679371,14.80,no_receipt_required,7a297daa-5788-41c7-92fe-99263ba131eb
+2025-06-30,Supabase,Card Purchase SUPABASE 50128374530,18.40,no_receipt_required,60dccfc2-d4a8-463b-9310-66db680a0c7c
+2025-10-27,Supabase,Card Purchase SUPABASE 50128374530,18.79,completed,4e8ac3cd-0e07-458b-b915-865ee301b69d
+2026-03-30,Supabase,Card Purchase SUPABASE 50128374530,53.91,completed,f7b2d1ad-1c07-4e33-9498-a87f95f084f4
