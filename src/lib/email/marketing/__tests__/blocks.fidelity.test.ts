@@ -10,6 +10,7 @@ import {
   buttonAlignmentSubstitutionSources,
   findLeftAlignedButtonRows,
 } from './buttonAlignment'
+import { applyEventLinkLabel, findPassiveEventLinks } from './eventLinkLabel'
 import {
   applyGoldContrastChange,
   findCharcoalOnGold,
@@ -38,7 +39,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = path.join(HERE, '..', 'blocks', '__fixtures__')
 
 function readFixture(name: string): string {
-  return applyButtonCentring(applyGoldContrastChange(readFileSync(path.join(FIXTURE_DIR, name), 'utf8')))
+  return applyEventLinkLabel(applyButtonCentring(applyGoldContrastChange(readFileSync(path.join(FIXTURE_DIR, name), 'utf8'))))
 }
 
 function readRawFixture(name: string): string {
