@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { BusinessHoursManager } from './BusinessHoursManager'
+import { WeeklyScheduleClient } from './WeeklyScheduleClient'
 import { SpecialHoursClientWrapper } from './SpecialHoursClientWrapper' // Import the new client wrapper
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
@@ -9,6 +9,7 @@ import {
   getBusinessHours,
   getSpecialHours,
   getServiceStatusOverrides,
+  listHoursVersions,
 } from '@/app/actions/business-hours'
 import { Alert } from '@/ds'
 
@@ -29,6 +30,10 @@ export default async function BusinessHoursPage() {
     getServiceStatusOverrides('sunday_lunch'),
     getSpecialHours(),
   ])
+
+  const versionsResult = await listHoursVersions()
+  const versions = versionsResult.data ?? []
+  const activeVersion = versions.find((v) => v.isActive) ?? null
 
   const businessHours = businessHoursResult.data ?? []
   const businessHoursError = businessHoursResult.error
@@ -52,9 +57,11 @@ export default async function BusinessHoursPage() {
                 </Alert>
               </div>
             ) : (
-              <BusinessHoursManager
+              <WeeklyScheduleClient
                 canManage={canManage}
-                initialHours={businessHours}
+                versions={versions}
+                activeVersionId={activeVersion?.id ?? null}
+                activeRows={businessHours}
               />
             )}
           </Card>

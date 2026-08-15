@@ -8,6 +8,8 @@ import type { BusinessHours, SpecialHours, ServiceStatus, ServiceStatusOverride 
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { BusinessHoursService } from '@/services/business-hours'
 import { getErrorMessage } from '@/lib/errors';
+import { getActiveVersion, getVersionRows, listVersions } from '@/lib/business-hours/effective'
+import { getTodayIsoDate, isValidIsoDate, shiftIsoDate } from '@/lib/dateUtils'
 
 type SettingsManagePermissionResult =
   | { error: string }
@@ -346,6 +348,267 @@ export async function deleteSpecialHours(id: string) {
     return { success: true }
   } catch (error: unknown) {
     console.error('Error deleting special hours:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled opening-hours versions
+//
+// A version is a dated set of seven weekday rows. Drafts are invisible to
+// resolution, so a schedule can be prepared and checked before it affects any
+// booking. Publishing is a single transactional RPC that refuses an incomplete
+// week.
+// ---------------------------------------------------------------------------
+
+export interface HoursVersionSummary {
+  id: string
+  effectiveFrom: string
+  status: 'draft' | 'published' | 'withdrawn'
+  label: string | null
+  isBaseline: boolean
+  /** True for the version currently governing today. */
+  isActive: boolean
+  publishedAt: string | null
+}
+
+export async function listHoursVersions(): Promise<{ data?: HoursVersionSummary[]; error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) return { error: permission.error }
+
+    const today = getTodayIsoDate()
+    const [versions, active] = await Promise.all([
+      listVersions(permission.admin),
+      getActiveVersion(today, permission.admin),
+    ])
+
+    return {
+      data: versions.map(v => ({
+        id: v.id,
+        effectiveFrom: v.effective_from,
+        status: v.status,
+        label: v.label,
+        isBaseline: v.is_baseline,
+        isActive: v.id === active?.id,
+        publishedAt: v.published_at,
+      })),
+    }
+  } catch (error: unknown) {
+    console.error('Error listing opening-hours versions:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+export async function getHoursVersionRows(
+  versionId: string,
+): Promise<{ data?: BusinessHours[]; error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) return { error: permission.error }
+    return { data: await getVersionRows(versionId, permission.admin) }
+  } catch (error: unknown) {
+    console.error('Error loading opening-hours version:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+/**
+ * Start a scheduled change. The draft is cloned from the version in force the day
+ * BEFORE it starts, not from today's, so a later change cannot silently revert an
+ * earlier one that has already been scheduled.
+ */
+export async function createScheduledHoursVersion(
+  effectiveFrom: string,
+  label?: string,
+): Promise<{ data?: { id: string }; error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) return { error: permission.error }
+    const { user, admin } = permission
+
+    if (!isValidIsoDate(effectiveFrom)) {
+      return { error: 'Choose a real date in YYYY-MM-DD form.' }
+    }
+    if (effectiveFrom <= getTodayIsoDate()) {
+      return { error: 'A scheduled change has to start on a future date. To change today, edit the current hours.' }
+    }
+
+    const { data: clash } = await admin
+      .from('business_hours_versions')
+      .select('id')
+      .eq('effective_from', effectiveFrom)
+      .neq('status', 'withdrawn')
+      .maybeSingle()
+    if (clash) {
+      return { error: 'There is already a schedule starting on that date. Edit that one instead of creating a second.' }
+    }
+
+    const dayBefore = shiftIsoDate(effectiveFrom, -1)
+    if (!dayBefore) return { error: 'Choose a real date in YYYY-MM-DD form.' }
+    const source = await getActiveVersion(dayBefore, admin)
+    if (!source) {
+      return { error: 'Could not work out which hours apply the day before that date.' }
+    }
+    const sourceRows = await getVersionRows(source.id, admin)
+    if (sourceRows.length !== 7) {
+      return { error: 'The schedule it would be based on is incomplete, so it cannot be copied.' }
+    }
+
+    const { data: created, error: createError } = await admin
+      .from('business_hours_versions')
+      .insert({
+        effective_from: effectiveFrom,
+        status: 'draft',
+        label: label?.trim() || null,
+        created_by: user.id,
+      })
+      .select('id')
+      .single()
+    if (createError) throw createError
+
+    const { error: rowsError } = await admin.from('business_hours').insert(
+      sourceRows.map(row => ({
+        version_id: created.id,
+        day_of_week: row.day_of_week,
+        opens: row.opens,
+        closes: row.closes,
+        kitchen_opens: row.kitchen_opens,
+        kitchen_closes: row.kitchen_closes,
+        is_closed: row.is_closed,
+        is_kitchen_closed: row.is_kitchen_closed,
+        schedule_config: row.schedule_config,
+      })),
+    )
+    if (rowsError) {
+      // Leave no half-built draft behind for someone to publish by accident.
+      await admin.from('business_hours_versions').delete().eq('id', created.id)
+      throw rowsError
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'create',
+      resource_type: 'settings',
+      resource_id: `business_hours_version:${created.id}`,
+      operation_status: 'success',
+      new_values: { effective_from: effectiveFrom, copied_from: source.effective_from },
+    })
+
+    revalidatePath('/settings/business-hours')
+    return { data: { id: created.id } }
+  } catch (error: unknown) {
+    console.error('Error creating scheduled hours version:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+export async function saveHoursVersionDraft(
+  versionId: string,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) return { error: permission.error }
+    const { user, admin } = permission
+
+    const { data: version } = await admin
+      .from('business_hours_versions')
+      .select('id, status')
+      .eq('id', versionId)
+      .maybeSingle()
+    if (!version) return { error: 'That schedule no longer exists.' }
+    if (version.status !== 'draft') {
+      return { error: 'Only a draft can be edited. Published hours are changed by scheduling a new version.' }
+    }
+
+    const result = await BusinessHoursService.updateVersionRows(versionId, formData)
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'settings',
+      resource_id: `business_hours_version:${versionId}`,
+      operation_status: 'success',
+      new_values: { updated_days: result.updatedCount },
+    })
+
+    revalidatePath('/settings/business-hours')
+    return { success: true }
+  } catch (error: unknown) {
+    console.error('Error saving scheduled hours draft:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+export async function publishHoursVersion(
+  versionId: string,
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) return { error: permission.error }
+    const { user, admin } = permission
+
+    const { error } = await admin.rpc('publish_business_hours_version', {
+      p_version_id: versionId,
+      p_actor: user.id,
+    })
+    if (error) return { error: error.message }
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'settings',
+      resource_id: `business_hours_version:${versionId}`,
+      operation_status: 'success',
+      new_values: { status: 'published' },
+    })
+
+    revalidatePath('/settings/business-hours')
+    revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
+    return { success: true }
+  } catch (error: unknown) {
+    console.error('Error publishing hours version:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+export async function withdrawHoursVersion(
+  versionId: string,
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const permission = await requireSettingsManagePermission()
+    if ('error' in permission) return { error: permission.error }
+    const { user, admin } = permission
+
+    // The database refuses to withdraw a version whose date has passed, so this
+    // does not need to re-check it: the guard is where the mutation happens.
+    const { error } = await admin
+      .from('business_hours_versions')
+      .update({ status: 'withdrawn' })
+      .eq('id', versionId)
+    if (error) return { error: error.message }
+
+    await logAuditEvent({
+      user_id: user.id,
+      ...(user.email && { user_email: user.email }),
+      operation_type: 'update',
+      resource_type: 'settings',
+      resource_id: `business_hours_version:${versionId}`,
+      operation_status: 'success',
+      new_values: { status: 'withdrawn' },
+    })
+
+    revalidatePath('/settings/business-hours')
+    revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
+    return { success: true }
+  } catch (error: unknown) {
+    console.error('Error withdrawing hours version:', error)
     return { error: getErrorMessage(error) }
   }
 }
