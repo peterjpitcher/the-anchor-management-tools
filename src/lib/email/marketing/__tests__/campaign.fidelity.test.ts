@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import { marketingContentSchema } from '../registry'
 import { renderCampaignHtml } from '../render'
+import { applyEventLinkLabel } from './eventLinkLabel'
 import { applyButtonCentring, findLeftAlignedButtonRows } from './buttonAlignment'
 import { applyGoldContrastChange, findCharcoalOnGold } from './goldContrast'
 
@@ -88,7 +89,7 @@ describe('renderCampaignHtml, against the designer\'s own file', () => {
     // line claims every recipient enquired with us, and the gold surfaces below, because the
     // owner asked for white text on gold. Both are applied to the designer's file rather than
     // relaxed in the comparison, so any third difference still fails this test.
-    const expected = applyButtonCentring(applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8')))
+    const expected = applyEventLinkLabel(applyButtonCentring(applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8'))))
     const rendered = renderCampaignHtml(campaignContent)
     expect(rendered, firstDifference(rendered, expected)).toBe(expected)
   })
