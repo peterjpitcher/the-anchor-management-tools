@@ -27,8 +27,13 @@ export async function GET(request: Request) {
     })
   }
 
-  // The upcoming business day is today's London calendar date (business day D runs
-  // D 06:00 -> D+1 06:00; at 04:00-05:00 we are just before D 06:00).
+  // Generate the upcoming London calendar day's instances before or at its
+  // business-day boundary.
+  //
+  // This is deliberately the plain calendar date, NOT currentBusinessDate(). The
+  // run happens at 04:00-05:00 London, before the boundary, so the current
+  // business date is still yesterday. Using it here would regenerate the day that
+  // is ending instead of preparing the one about to start.
   const businessDate = formatInTimeZone(nowUtc, TIMEZONE, 'yyyy-MM-dd')
 
   const generate = await jobQueue.enqueue(

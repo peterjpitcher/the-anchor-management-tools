@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { format, subDays } from 'date-fns'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { currentBusinessDate } from '@/lib/checklists/settings'
 import { buildEventChecklist, type EventChecklistStatusRecord } from '@/lib/event-checklist'
 
 /**
@@ -60,7 +61,12 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
   // rows through the cookie client. Counting them with `supabase` would have
   // shown a permanently empty badge rather than an error.
   const admin = createAdminClient()
+  // Two different "todays" on purpose. Events and event todos use the plain
+  // London calendar date. Pub checklists use the business date, which does not
+  // roll over until 05:00, so the badge keeps counting last night's open closing
+  // tasks while they are still completable.
   const todayIso = getTodayIsoDate()
+  const checklistBusinessDate = await currentBusinessDate()
 
   const [
     eventsResult,
@@ -135,7 +141,7 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
       .select('*', { count: 'exact', head: true })
       .eq('state', 'pending')
       .is('completed_at', null)
-      .lte('business_date', todayIso),
+      .lte('business_date', checklistBusinessDate),
 
     // Feedback: the inbox's own open states, matching OPEN_STATUSES in
     // src/app/actions/feedback.ts

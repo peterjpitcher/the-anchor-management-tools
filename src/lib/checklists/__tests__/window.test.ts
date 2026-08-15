@@ -19,13 +19,21 @@ describe('expandInstants (spec 5.3)', () => {
     if (!('opensAt' in r)) throw new Error('expected a window')
     expect(r.opensAt.toISOString()).toBe('2026-01-15T16:00:00.000Z')
   })
-  it('close past the 06:00 business-day end is invalid', () => {
+  it('close past the default business-day end is invalid', () => {
     expect(expandInstants('2026-07-17', '16:00', '07:00')).toEqual({ error: 'invalid_hours' })
   })
-  it('close exactly on the 06:00 business-day boundary is valid', () => {
-    const r = expandInstants('2026-07-17', '16:00', '06:00')
+  it('close exactly on the default 05:00 boundary is valid', () => {
+    const r = expandInstants('2026-07-17', '16:00', '05:00')
     if (!('opensAt' in r)) throw new Error('expected a window')
-    expect(r.closesAt.toISOString()).toBe('2026-07-18T05:00:00.000Z') // 06:00 next day BST
+    expect(r.closesAt.toISOString()).toBe('2026-07-18T04:00:00.000Z') // 05:00 next day BST
+  })
+  it('a 06:00 close is now invalid: the default boundary moved from 6 to 5', () => {
+    expect(expandInstants('2026-07-17', '16:00', '06:00')).toEqual({ error: 'invalid_hours' })
+  })
+  it('still honours an explicit start hour, so the setting stays authoritative', () => {
+    const r = expandInstants('2026-07-17', '16:00', '06:00', 6)
+    if (!('opensAt' in r)) throw new Error('expected a window')
+    expect(r.closesAt.toISOString()).toBe('2026-07-18T05:00:00.000Z')
   })
   it('handles HH:MM:SS input by normalising to HH:MM', () => {
     const r = expandInstants('2026-07-17', '16:00:00', '22:00:00')
@@ -39,5 +47,10 @@ describe('businessDayBounds', () => {
     const { start, end } = businessDayBounds('2026-07-17', 6)
     expect(start.toISOString()).toBe('2026-07-17T05:00:00.000Z')
     expect(end.toISOString()).toBe('2026-07-18T05:00:00.000Z')
+  })
+  it('05:00 London to 05:00 next day (BST), the new default', () => {
+    const { start, end } = businessDayBounds('2026-07-17', 5)
+    expect(start.toISOString()).toBe('2026-07-17T04:00:00.000Z')
+    expect(end.toISOString()).toBe('2026-07-18T04:00:00.000Z')
   })
 })

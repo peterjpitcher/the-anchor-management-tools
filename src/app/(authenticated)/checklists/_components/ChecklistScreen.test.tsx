@@ -16,6 +16,7 @@ vi.mock('@/app/actions/checklists', () => ({
 
 const initial: TodayChecklistResult = {
   businessDate: '2026-07-22',
+  businessDayStartHour: 5,
   moduleEnabled: true,
   generationStatus: 'complete',
   groups: [

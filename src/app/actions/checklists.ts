@@ -1,23 +1,21 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { formatInTimeZone } from 'date-fns-tz'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { getOpenSessions } from './timeclock'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getChecklistSettings } from '@/lib/checklists/settings'
+import { currentBusinessDate, getChecklistSettings } from '@/lib/checklists/settings'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { buildValueBreachEmail } from '@/lib/checklists/value-breach-email'
 import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
 
-const TZ = 'Europe/London'
-
-function todayBusinessDate(): string {
-  return formatInTimeZone(new Date(), TZ, 'yyyy-MM-dd')
-}
+// The business date comes from currentBusinessDate(), which honours
+// checklist_settings.business_day_start_hour. This file used to compute a plain
+// London calendar date, so the staff screen rolled over at midnight while the
+// engine still held the night's closing tasks live until 05:00.
 
 export interface ChecklistTaskView {
   id: string
@@ -53,6 +51,8 @@ export interface ChecklistGroupView {
 
 export interface TodayChecklistResult {
   businessDate: string
+  /** The configured boundary hour, so the screen can roll itself over on time. */
+  businessDayStartHour: number
   moduleEnabled: boolean
   generationStatus: 'complete' | 'running' | 'failed' | 'skipped_closed' | 'none'
   groups: ChecklistGroupView[]
@@ -65,10 +65,18 @@ export async function getTodayChecklist(
   const canView = await checkUserPermission('checklists', 'view')
   if (!canView) return { error: 'Insufficient permissions' }
 
-  const businessDate = date ?? todayBusinessDate()
+  const businessDate = date ?? (await currentBusinessDate())
   const settings = await getChecklistSettings()
   if (!settings.moduleEnabled) {
-    return { data: { businessDate, moduleEnabled: false, generationStatus: 'none', groups: [] } }
+    return {
+      data: {
+        businessDate,
+        businessDayStartHour: settings.businessDayStartHour,
+        moduleEnabled: false,
+        generationStatus: 'none',
+        groups: [],
+      },
+    }
   }
 
   const db = createAdminClient()
@@ -146,7 +154,15 @@ export async function getTodayChecklist(
   }
 
   const groups = Array.from(groupMap.values()).sort((a, b) => a.sortOrder - b.sortOrder)
-  return { data: { businessDate, moduleEnabled: true, generationStatus, groups } }
+  return {
+    data: {
+      businessDate,
+      businessDayStartHour: settings.businessDayStartHour,
+      moduleEnabled: true,
+      generationStatus,
+      groups,
+    },
+  }
 }
 
 export async function completeChecklistInstance(input: {
@@ -395,7 +411,7 @@ export async function getDueChecklistPrompts(): Promise<{ data?: DuePrompt[]; er
 
   const db = createAdminClient()
   const nowIso = new Date().toISOString()
-  const businessDate = todayBusinessDate()
+  const businessDate = await currentBusinessDate()
   const { data, error } = await db
     .from('checklist_task_instances')
     .select('id, title_snapshot, slot, due_at')

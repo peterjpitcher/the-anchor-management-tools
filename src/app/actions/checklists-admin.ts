@@ -13,7 +13,7 @@ import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { currentBusinessDate } from '@/lib/checklists/settings'
 import { runGenerateDay } from '@/lib/checklists/jobs/generate'
 import type { Anchor, Freq, ScheduleKind } from '@/lib/checklists/types'
 
@@ -814,7 +814,7 @@ export async function regenerateToday(): Promise<{ success?: boolean; error?: st
     const gate = await requireManage()
     if ('error' in gate) return { error: gate.error }
 
-    const businessDate = getTodayIsoDate()
+    const businessDate = await currentBusinessDate()
     // Run generation inline (not via the queue) so the manual button gets a real, synchronous
     // result instead of a fire-and-forget job the screen cannot see finish. The reconcile is
     // idempotent, so running it on demand alongside the scheduled cron is safe.
