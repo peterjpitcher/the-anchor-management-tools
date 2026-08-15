@@ -605,8 +605,26 @@ async function reconcileWaiverStatus(bookingId: string, performedByUserId?: stri
 // ---------------------------------------------------------------------------
 
  
-export async function createBooking(input: CreatePrivateBookingInput): Promise<any> {
-  const supabase = await createClient();
+export interface CreateBookingOptions {
+  /**
+   * The Supabase client the booking transaction runs on. Defaults to the
+   * cookie-session client, which is right for staff acting inside the app.
+   *
+   * An API-key caller has no session, so under the session client every
+   * private_bookings policy refuses the insert (they are all scoped to
+   * authenticated users) and the RPC fails. That was the bug that silently
+   * kept website Christmas enquiries out of /private-bookings until
+   * 15 August 2026: the external route now passes the service-role admin
+   * client here instead.
+   */
+  client?: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>;
+}
+
+export async function createBooking(
+  input: CreatePrivateBookingInput,
+  options?: CreateBookingOptions
+): Promise<any> {
+  const supabase = options?.client ?? await createClient();
 
   // 1. Prepare Data
   const finalEventDate = input.event_date || toLocalIsoDate(new Date());
