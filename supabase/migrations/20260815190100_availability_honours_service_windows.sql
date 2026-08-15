@@ -27,6 +27,18 @@
 --     14:15, 14:30, 16:00, 16:15, 16:30, dropping 14:45 to 15:45
 --   * drinks were untouched, 39 slots either way
 
+-- The predicate must already exist. check_table_availability_v06 swallows every
+-- error and returns zero slots, so injecting a call to a missing function would
+-- not fail loudly: the website would simply stop showing any availability, with
+-- nothing in the logs. Refuse to inject unless the target is there.
+DO $$
+BEGIN
+  IF to_regprocedure('public.table_booking_within_service_window_v06(date, time without time zone, text, boolean)') IS NULL THEN
+    RAISE EXCEPTION
+      'table_booking_within_service_window_v06 does not exist. Apply 20260815190000 first: injecting a call to a missing function would silently empty availability rather than erroring.';
+  END IF;
+END $$;
+
 DO $outer$
 DECLARE
   v_def text;
