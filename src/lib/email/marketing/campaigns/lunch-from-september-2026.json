@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "title": "We're open for lunch from Tuesday 1 September",
+  "preheader": "Tuesday to Friday, doors at 12 and the kitchen on from 12 to 3. Free parking, two minutes off the M25.",
+  "blocks": [
+    { "type": "masthead_green", "data": {} },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://www.the-anchor.pub/images/our-pub/the-anchor-dining-room-garden-view.jpg",
+          "alt": "The dining room at The Anchor, laid up for lunch and looking out over the garden",
+          "width": 600,
+          "height": 340
+        },
+        "placeholder_label": "Lunch photo · 1200 × 680",
+        "placeholder_caption": "Dining room laid up, daylight",
+        "kicker": "From Tuesday 1 September",
+        "headline": "Lunch is on, Tuesday to Friday",
+        "body": [
+          "We are opening our doors at midday from Tuesday to Friday, with the kitchen on for lunch between 12 and 3. Come and take an hour back: a proper plate of food, a pint or a coffee, and nobody hurrying you along."
+        ],
+        "cta_label": "See the food menu",
+        "cta_url": "https://www.the-anchor.pub/food-menu"
+      }
+    },
+    {
+      "type": "hours_table",
+      "data": {
+        "heading": "Tuesday to Friday, from 1 September",
+        "rows": [
+          { "label": "Doors open", "time": "12pm, four hours earlier than now" },
+          { "label": "Lunch", "time": "12pm to 3pm" },
+          { "label": "Dinner", "time": "4pm to 9pm, just as it is now" }
+        ],
+        "note": "Saturday and Sunday are not changing. On Mondays the bar opens at 4pm and the kitchen is closed."
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "There is more coming",
+        "body": [
+          "We are building a set of dishes made for the middle of the day, and working on some lunchtime deals to go with them. Both will land over the next few weeks, and you will hear about them here first.",
+          "In the meantime the full menu is on from midday, so there is plenty to get stuck into."
+        ],
+        "buttons": [
+          { "label": "See the food menu", "url": "https://www.the-anchor.pub/food-menu", "variant": "primary" },
+          { "label": "Book a table", "url": "https://www.the-anchor.pub/book-table", "variant": "outline" }
+        ]
+      }
+    },
+    {
+      "type": "amenity_grid",
+      "data": {
+        "items": [
+          { "highlight": "2 minutes", "text": "from the M25 at Junction 14" },
+          { "highlight": "7 minutes", "text": "from Heathrow Terminal 5" },
+          { "highlight": "Free", "text": "parking for everyone, right outside" },
+          { "highlight": "Free", "text": "fast WiFi if you need to get something done" }
+        ]
+      }
+    },
+    { "type": "divider_rule", "data": {} },
+    {
+      "type": "section_intro",
+      "data": {
+        "kicker": "Why we are doing it",
+        "heading": "A village pub should be open when the village needs it",
+        "body": "We have stood on this corner since 1751, and being shut at lunchtime never sat right. So from September we are not."
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Come and see us",
+        "body": "Book a table for lunch, or simply walk in. From Tuesday 1 September there will be somebody here from midday.",
+        "cta_label": "Book a table",
+        "cta_url": "https://www.the-anchor.pub/book-table",
+        "reassurance_items": ["Walk-ins welcome", "Free parking on site"],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "signoff_ps",
+      "data": {
+        "signoff": "See you at lunchtime,",
+        "signature": "The Anchor team",
+        "ps_body": "Tell us what you would like to see on the lunch menu. We are still putting it together, and we would far rather hear it from you than guess.",
+        "ps_link_label": "Book a table →",
+        "ps_link_url": "https://www.the-anchor.pub/book-table"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, and we thought you would want to know our hours are changing.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}
