@@ -27,7 +27,10 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { sendEmail } from '@/lib/email/emailService'
-import { getOrCreateContactUnsubscribeUrl } from '@/lib/email/unsubscribe'
+import {
+  getOrCreateContactUnsubscribeUrl,
+  getOrCreateUnsubscribeUrl,
+} from '@/lib/email/unsubscribe'
 import {
   getMarketingConfig,
   isMarketingHardDisabled,
@@ -67,7 +70,8 @@ const MAX_BATCH_SIZE = 200
 interface ClaimedRecipient {
   id: string
   campaign_id: string
-  contact_id: string
+  contact_id: string | null
+  customer_id: string | null
   email: string
 }
 
@@ -365,7 +369,19 @@ async function handle(request: NextRequest) {
         // 4c. No working opt-out, no send. The soft opt-in basis the whole programme stands
         // on holds only while every message carries one, so this is a hard stop rather than
         // a degraded send.
-        const baseUnsubscribeUrl = await getOrCreateContactUnsubscribeUrl(supabase, row.contact_id)
+        // A recipient is one population or the other, enforced by a CHECK constraint. Each
+        // has its own durable unsubscribe token, so the guest path uses the customer token
+        // that already existed for booking confirmations rather than minting a second one.
+        const subjectId = row.customer_id ?? row.contact_id
+        if (!subjectId) {
+          await releaseClaim(supabase, row.id, 'terminal', 'Recipient has neither a contact nor a customer', 0)
+          result.failed++
+          continue
+        }
+
+        const baseUnsubscribeUrl = row.customer_id
+          ? await getOrCreateUnsubscribeUrl(supabase, row.customer_id)
+          : await getOrCreateContactUnsubscribeUrl(supabase, row.contact_id as string)
         if (!baseUnsubscribeUrl) {
           await releaseClaim(
             supabase,
@@ -414,10 +430,10 @@ async function handle(request: NextRequest) {
           from: config.from,
           replyTo: config.replyTo,
           suppressionMode: 'fail_closed',
-          idempotencyKey: `marketing:${row.campaign_id}:${row.contact_id}`,
+          idempotencyKey: `marketing:${row.campaign_id}:${subjectId}`,
           commType: 'marketing_campaign',
-          customerId: null,
           businessContactId: row.contact_id,
+          customerId: row.customer_id,
           marketingCampaignId: row.campaign_id,
           marketingRecipientId: row.id,
           unsubscribeUrl,
