@@ -109,6 +109,7 @@ export default function EventsClient({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeEvent, setActiveEvent] = useState<Event | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [isBuildingQrPack, setIsBuildingQrPack] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const fetchEvents = useCallback(
@@ -246,6 +247,57 @@ export default function EventsClient({
     })
   }, [selectedIds, fetchEvents, pagination.currentPage, filters])
 
+  const handleExportQrPack = useCallback(async () => {
+    const startDate = filters.dateFrom
+    const endDate = filters.dateTo
+
+    if (!startDate || !endDate) {
+      toast.error('Select a start and end date first.')
+      return
+    }
+    if (startDate > endDate) {
+      toast.error('Start date must be before the end date.')
+      return
+    }
+
+    setIsBuildingQrPack(true)
+    // A pack of 28 codes per event takes a while, and a silent button for a
+    // minute reads as broken. The id lets the result replace this rather than
+    // stack under it.
+    toast.loading('Building the QR pack. This can take a minute.', { id: 'qr-pack' })
+
+    try {
+      const response = await fetch('/api/events/qr-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate, endDate }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        const detail = Array.isArray(payload?.events) ? ` ${payload.events.join(', ')}` : ''
+        throw new Error(`${payload?.error ?? 'Could not build the QR pack.'}${detail}`)
+      }
+
+      const blob = await response.blob()
+      const filename =
+        getFilenameFromHeaders(response.headers) ?? `anchor-qr-pack-${startDate}-to-${endDate}.zip`
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('QR pack downloaded.', { id: 'qr-pack' })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not build the QR pack.', { id: 'qr-pack' })
+    } finally {
+      setIsBuildingQrPack(false)
+    }
+  }, [filters.dateFrom, filters.dateTo])
+
   const handleExportDateRange = useCallback(async () => {
     const startDate = filters.dateFrom
     const endDate = filters.dateTo
@@ -325,6 +377,8 @@ export default function EventsClient({
           categories={categories}
           onExportDateRange={handleExportDateRange}
           isExporting={isExporting}
+          onExportQrPack={handleExportQrPack}
+          isBuildingQrPack={isBuildingQrPack}
         />
       )}
 

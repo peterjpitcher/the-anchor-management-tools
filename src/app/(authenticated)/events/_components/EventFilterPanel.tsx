@@ -17,6 +17,8 @@ interface EventFilterPanelProps {
   onFilterChange: (filters: EventFilters) => void
   categories: EventCategory[]
   onExportDateRange?: () => void
+  onExportQrPack?: () => void
+  isBuildingQrPack?: boolean
   isExporting?: boolean
 }
 
@@ -34,6 +36,8 @@ export function EventFilterPanel({
   onFilterChange,
   categories,
   onExportDateRange,
+  onExportQrPack,
+  isBuildingQrPack,
   isExporting = false,
 }: EventFilterPanelProps) {
   const categoryOptions = [
@@ -100,6 +104,21 @@ export function EventFilterPanel({
           onClick={onExportDateRange}
         >
           Export CSV
+        </Button>
+      )}
+
+      {onExportQrPack && (
+        <Button
+          type="button"
+          variant="secondary"
+          fullWidth
+          className="sm:w-auto"
+          icon={<Icon name="download" size={16} />}
+          loading={isBuildingQrPack}
+          aria-busy={isBuildingQrPack || undefined}
+          onClick={onExportQrPack}
+        >
+          QR pack for designer
         </Button>
       )}
     </div>
