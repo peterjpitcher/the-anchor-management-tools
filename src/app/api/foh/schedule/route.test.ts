@@ -34,7 +34,10 @@ function createSupabaseMock(fromResults: FromResults) {
   const defaults: FromResults = {
     tables: { data: [], error: null },
     table_bookings: { data: [], error: null },
-    business_hours: { data: null, error: null },
+    // The weekly hours now come from the effective-dated resolver RPC rather than
+    // a business_hours table read, so the key below feeds `rpc`, not `from`. It
+    // returns a set, hence an array.
+    business_hours_for_date: { data: [], error: null },
     special_hours: { data: null, error: null },
     table_areas: { data: [], error: null },
     events: { data: [], error: null },
@@ -47,7 +50,8 @@ function createSupabaseMock(fromResults: FromResults) {
   }
   const merged = { ...defaults, ...fromResults }
   const from = vi.fn((table: string) => makeBuilder(merged[table] ?? { data: null, error: null }))
-  return { from }
+  const rpc = vi.fn(async (fn: string) => merged[fn] ?? { data: null, error: null })
+  return { from, rpc }
 }
 
 function mockAuthSuccess(dbMock: Record<string, unknown>) {
