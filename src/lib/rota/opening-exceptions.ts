@@ -230,19 +230,32 @@ export function describeOpeningException(
 /**
  * Keys the exceptions by ISO date so the grid can look a day up directly.
  */
+/**
+ * Look up the regular row for a date by weekday alone.
+ *
+ * Only correct while a single set of weekly hours exists, which is why
+ * buildOpeningExceptions takes a lookup rather than an array: production passes
+ * a version-aware one, because the same weekday can have different hours either
+ * side of a scheduled change.
+ */
+export function byWeekday(
+  regularRows: RegularHoursRow[],
+): (isoDate: string) => RegularHoursRow | undefined {
+  const byDay = new Map(regularRows.map(row => [row.day_of_week, row]));
+  // Parse as UTC: London is UTC+1 in summer and a local parse on a UTC server
+  // lands on the previous day, which would pick the wrong weekday row.
+  return isoDate => byDay.get(new Date(`${isoDate}T00:00:00Z`).getUTCDay());
+}
+
 export function buildOpeningExceptions(
   specialRows: SpecialHoursRow[],
-  regularRows: RegularHoursRow[],
+  regularForDate: (isoDate: string) => RegularHoursRow | undefined,
 ): Record<string, RotaOpeningException> {
-  const regularByDay = new Map(regularRows.map(row => [row.day_of_week, row]));
   const result: Record<string, RotaOpeningException> = {};
 
   for (const row of specialRows) {
     if (!row.date) continue;
-    // Parse as UTC: London is UTC+1 in summer and a local parse on a UTC server
-    // lands on the previous day, which would pick the wrong weekday row.
-    const weekday = new Date(`${row.date}T00:00:00Z`).getUTCDay();
-    const exception = describeOpeningException(row, regularByDay.get(weekday));
+    const exception = describeOpeningException(row, regularForDate(row.date));
     if (exception) result[row.date] = exception;
   }
 

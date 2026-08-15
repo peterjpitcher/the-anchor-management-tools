@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getActiveVersion } from '@/lib/business-hours/effective';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
@@ -12,10 +13,18 @@ export async function GET(_request: NextRequest) {
     // This endpoint can be public for SEO purposes
     const supabase = createAdminClient();
     
-    // Get regular hours
+    // Get regular hours for the version in force today. Selecting the whole table
+    // would mix versions together once a future schedule has been published.
+    const activeVersion = await getActiveVersion(getTodayIsoDate(), supabase);
+    if (!activeVersion) {
+      console.error('No published business-hours version covers today');
+      return createErrorResponse('Failed to fetch business hours', 'DATABASE_ERROR', 500);
+    }
+
     const { data: regularHours, error: hoursError } = await supabase
       .from('business_hours')
       .select('*')
+      .eq('version_id', activeVersion.id)
       .order('day_of_week', { ascending: true });
 
     if (hoursError) {

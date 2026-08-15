@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildOpeningExceptions,
+  byWeekday,
   describeOpeningException,
   type RegularHoursRow,
   type SpecialHoursRow,
@@ -153,7 +154,7 @@ describe('buildOpeningExceptions', () => {
     // Saturday and compare against the wrong regular row.
     const result = buildOpeningExceptions(
       [special({ date: '2026-07-05', opens: '12:00:00', closes: '22:00:00', kitchen_opens: '13:00:00', kitchen_closes: '16:00:00' })],
-      REGULAR,
+      byWeekday(REGULAR),
     );
 
     expect(result['2026-07-05'].chips).toEqual([{ label: 'Kitchen 1pm-4pm', tone: 'warning' }]);
@@ -165,7 +166,7 @@ describe('buildOpeningExceptions', () => {
         special({ date: '2026-03-22', opens: '12:00:00', closes: '22:00:00', kitchen_opens: '13:00:00', kitchen_closes: '18:00:00' }),
         special({ date: '2026-03-28', opens: '12:00:00', closes: '22:00:00', is_kitchen_closed: true }),
       ],
-      REGULAR,
+      byWeekday(REGULAR),
     );
 
     expect(Object.keys(result)).toEqual(['2026-03-28']);

@@ -13,14 +13,6 @@ function normalizeClock(value: unknown): string | null {
   return trimmed.slice(0, 5)
 }
 
-function toDayOfWeek(dateIso: string): number {
-  const parsed = new Date(`${dateIso}T12:00:00Z`)
-  if (!Number.isFinite(parsed.getTime())) {
-    return 0
-  }
-  return parsed.getUTCDay()
-}
-
 function buildGuestName(customer: any): string | null {
   if (!customer) return null
 
@@ -235,7 +227,6 @@ export async function GET(request: NextRequest) {
 
   const dateParam = request.nextUrl.searchParams.get('date')
   const date = dateParam && isIsoDate(dateParam) ? dateParam : getLondonDateIso()
-  const dayOfWeek = toDayOfWeek(date)
 
   const { supabase } = auth
 
@@ -245,10 +236,9 @@ export async function GET(request: NextRequest) {
       .order('table_number', { ascending: true, nullsFirst: false })
       .order('name', { ascending: true, nullsFirst: false }),
     loadScheduleBookingRows(supabase, date),
-    supabase.from('business_hours')
-      .select('opens, closes, is_closed, kitchen_opens, kitchen_closes, is_kitchen_closed')
-      .eq('day_of_week', dayOfWeek)
-      .maybeSingle(),
+    // Effective-dated: a day_of_week lookup returns an arbitrary row once more
+    // than one version of the weekly hours exists.
+    supabase.rpc('business_hours_for_date', { p_date: date }),
     supabase.from('special_hours')
       .select('opens, closes, is_closed, kitchen_opens, kitchen_closes, is_kitchen_closed')
       .eq('date', date)
@@ -290,7 +280,8 @@ export async function GET(request: NextRequest) {
 
   if (!businessHoursResult.error && !specialHoursResult.error) {
     const specialHours = (specialHoursResult.data || null) as any
-    const businessHours = (businessHoursResult.data || null) as any
+    // The resolver returns a set, so take the single row it yields.
+    const businessHours = (((businessHoursResult.data || []) as any[])[0] || null) as any
     const isClosed = Boolean(
       specialHours
         ? specialHours.is_closed

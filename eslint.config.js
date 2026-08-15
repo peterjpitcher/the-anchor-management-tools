@@ -25,6 +25,32 @@ module.exports = [
     },
   },
   {
+    // Opening hours are effective-dated: several versions of the weekly schedule
+    // can exist at once, so `.from('business_hours')` filtered only by day_of_week
+    // returns an arbitrary row. Every reader must go through the resolver, which
+    // is the whole point of src/lib/business-hours/.
+    //
+    // The exceptions below all scope their query with .eq('version_id', ...), so
+    // they are already version-correct.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/lib/business-hours/**',
+      'src/services/business-hours.ts',
+      'src/app/api/business/hours/route.ts',
+      'src/app/api/business-hours/route.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='from'][arguments.0.value='business_hours']",
+          message:
+            "Do not read business_hours directly. Opening hours are effective-dated, so a day_of_week lookup picks an arbitrary version. Use business_hours_for_date(date) or the helpers in @/lib/business-hours/effective.",
+        },
+      ],
+    },
+  },
+  {
     files: ['src/components/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [

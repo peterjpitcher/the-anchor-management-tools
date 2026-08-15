@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getBusinessHoursForDates } from '@/lib/business-hours/effective';
 import {
   buildOpeningExceptions,
   type RegularHoursRow,
@@ -21,27 +22,36 @@ export async function getRotaOpeningExceptions(
 ): Promise<Record<string, RotaOpeningException>> {
   const supabase = createAdminClient();
 
-  const [specialResult, regularResult] = await Promise.all([
-    supabase
-      .from('special_hours')
-      .select('date, opens, closes, kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed, note')
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: true }),
-    supabase
-      .from('business_hours')
-      .select('day_of_week, opens, closes, kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed'),
-  ]);
+  const specialResult = await supabase
+    .from('special_hours')
+    .select('date, opens, closes, kitchen_opens, kitchen_closes, is_closed, is_kitchen_closed, note')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date', { ascending: true });
 
   // Opening hours are context, not the rota itself, so a failure here must not
   // take the planner down with it.
-  if (specialResult.error || regularResult.error) {
-    console.error('Failed to load rota opening exceptions:', specialResult.error ?? regularResult.error);
+  if (specialResult.error) {
+    console.error('Failed to load rota opening exceptions:', specialResult.error);
     return {};
   }
 
-  return buildOpeningExceptions(
-    (specialResult.data ?? []) as SpecialHoursRow[],
-    (regularResult.data ?? []) as RegularHoursRow[],
-  );
+  const specialRows = (specialResult.data ?? []) as SpecialHoursRow[];
+  if (specialRows.length === 0) return {};
+
+  // Only the dates that actually have an override need a baseline to compare
+  // against, and the whole set resolves in two queries rather than one per date.
+  let regularForDate: (isoDate: string) => RegularHoursRow | undefined;
+  try {
+    const resolved = await getBusinessHoursForDates(
+      specialRows.map(row => row.date).filter(Boolean),
+      supabase,
+    );
+    regularForDate = isoDate => resolved.get(isoDate) as RegularHoursRow | undefined;
+  } catch (error) {
+    console.error('Failed to resolve regular hours for rota exceptions:', error);
+    return {};
+  }
+
+  return buildOpeningExceptions(specialRows, regularForDate);
 }

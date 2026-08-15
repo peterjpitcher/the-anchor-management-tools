@@ -1408,6 +1408,7 @@ export type Database = {
           opens: string | null
           schedule_config: Json | null
           updated_at: string | null
+          version_id: string
         }
         Insert: {
           closes?: string | null
@@ -1421,6 +1422,7 @@ export type Database = {
           opens?: string | null
           schedule_config?: Json | null
           updated_at?: string | null
+          version_id?: string
         }
         Update: {
           closes?: string | null
@@ -1434,8 +1436,68 @@ export type Database = {
           opens?: string | null
           schedule_config?: Json | null
           updated_at?: string | null
+          version_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "business_hours_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "business_hours_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_hours_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          id: string
+          is_baseline: boolean
+          label: string | null
+          published_at: string | null
+          published_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          id?: string
+          is_baseline?: boolean
+          label?: string | null
+          published_at?: string | null
+          published_by?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          is_baseline?: boolean
+          label?: string | null
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_hours_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_hours_versions_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       calendar_note_google_sync_queue: {
         Row: {
@@ -18975,6 +19037,29 @@ export type Database = {
         Args: { p_period_id: string }
         Returns: boolean
       }
+      business_hours_for_date: {
+        Args: { p_date: string }
+        Returns: {
+          closes: string | null
+          created_at: string | null
+          day_of_week: number
+          id: string
+          is_closed: boolean | null
+          is_kitchen_closed: boolean | null
+          kitchen_closes: string | null
+          kitchen_opens: string | null
+          opens: string | null
+          schedule_config: Json | null
+          updated_at: string | null
+          version_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "business_hours"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       calculate_event_points: {
         Args: {
           p_base_points: number
@@ -20921,6 +21006,15 @@ export type Database = {
       table_booking_settings_keys: {
         Args: { p_section: string }
         Returns: string[]
+      }
+      table_booking_within_service_window_v06: {
+        Args: {
+          p_booking_date: string
+          p_booking_purpose?: string
+          p_booking_time: string
+          p_sunday_lunch?: boolean
+        }
+        Returns: boolean
       }
       table_is_held: {
         Args: {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getActiveVersion } from '@/lib/business-hours/effective'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { format, addDays, startOfDay } from 'date-fns'
 import { toZonedTime } from 'date-fns-tz'
 
@@ -16,9 +18,17 @@ export async function GET(_request: NextRequest) {
   try {
     const supabase = createAdminClient()
 
+    // The version in force today, not every row: selecting the whole table would
+    // mix versions together once a future schedule has been published.
+    const activeVersion = await getActiveVersion(getTodayIsoDate(), supabase)
+    if (!activeVersion) {
+      return NextResponse.json({ error: 'Failed to fetch business hours' }, { status: 500 })
+    }
+
     const { data: businessHours, error: hoursError } = await supabase
       .from('business_hours')
       .select('day_of_week, opens, closes, kitchen_opens, kitchen_closes, is_closed')
+      .eq('version_id', activeVersion.id)
       .order('day_of_week', { ascending: true })
 
     if (hoursError) {

@@ -55,15 +55,11 @@ export function coalesceTradingWindow(
 export async function resolveTradingWindow(businessDate: string): Promise<TradingWindow> {
   const db = createAdminClient()
 
-  // UTC getUTCDay so the weekday is derived from the date string alone, never local time.
-  const dayOfWeek = new Date(`${businessDate}T00:00:00Z`).getUTCDay()
-
+  // The weekly row comes from the effective-dated resolver rather than a
+  // day_of_week lookup: once more than one version of the hours exists, selecting
+  // on the weekday alone returns an arbitrary one.
   const [businessRes, specialRes] = await Promise.all([
-    db
-      .from('business_hours')
-      .select('opens, closes, is_closed')
-      .eq('day_of_week', dayOfWeek)
-      .maybeSingle(),
+    db.rpc('business_hours_for_date', { p_date: businessDate }),
     db
       .from('special_hours')
       .select('opens, closes, is_closed')
@@ -75,7 +71,7 @@ export async function resolveTradingWindow(businessDate: string): Promise<Tradin
     return { resolved: false, reason: 'query_error' }
   }
 
-  const business = (businessRes.data as HoursRow | null) ?? null
+  const business = ((businessRes.data ?? []) as HoursRow[])[0] ?? null
   const special = (specialRes.data as HoursRow | null) ?? null
   return coalesceTradingWindow(special, business)
 }

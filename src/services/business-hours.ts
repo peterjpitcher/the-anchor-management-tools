@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import type { BusinessHours, SpecialHours, ServiceStatus, ServiceStatusOverride } from '@/types/business-hours';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { getActiveVersion } from '@/lib/business-hours/effective';
 
 // Helper to validate time format
 const timeSchema = z.preprocess(
@@ -201,20 +202,23 @@ export async function getKitchenWindowForDate(
   date: string,
   supabase: ReturnType<typeof createAdminClient> = createAdminClient()
 ): Promise<KitchenWindow | null> {
-  const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
-
-  const [{ data: businessRow }, { data: specialRow }] = await Promise.all([
-    supabase
-      .from('business_hours')
-      .select('kitchen_opens, kitchen_closes, is_kitchen_closed, is_closed')
-      .eq('day_of_week', dayOfWeek)
-      .maybeSingle(),
+  // Effective-dated: a day_of_week lookup returns an arbitrary row once more than
+  // one version of the weekly hours exists.
+  const [{ data: businessRows }, { data: specialRow }] = await Promise.all([
+    supabase.rpc('business_hours_for_date', { p_date: date }),
     supabase
       .from('special_hours')
       .select('kitchen_opens, kitchen_closes, is_kitchen_closed, is_closed')
       .eq('date', date)
       .maybeSingle(),
   ]);
+
+  const businessRow = ((businessRows ?? []) as {
+    kitchen_opens: string | null
+    kitchen_closes: string | null
+    is_kitchen_closed: boolean | null
+    is_closed: boolean | null
+  }[])[0] ?? null;
 
   if (!businessRow && !specialRow) {
     return null;
@@ -248,27 +252,47 @@ export async function getKitchenWindowForDate(
 }
 
 export class BusinessHoursService {
+  /**
+   * The seven rows of the version in force today. Callers that render "our
+   * opening hours" want this; callers that ask about a specific date must use
+   * getBusinessHoursForDate instead.
+   */
   static async getBusinessHours(): Promise<BusinessHours[]> {
     const supabase = createAdminClient();
+    const active = await getActiveVersion(getTodayIsoDate(), supabase);
+    if (!active) return [];
+
     const { data, error } = await supabase
       .from('business_hours')
       .select('*')
+      .eq('version_id', active.id)
       .order('day_of_week', { ascending: true });
 
     if (error) throw new Error('Failed to fetch business hours');
     return (data || []) as BusinessHours[];
   }
 
-  static async getBusinessHoursByDay(dayOfWeek: number): Promise<BusinessHours | null> {
-    const supabase = await createClient();
+  /**
+   * The row for one weekday, as at `onDate`. The date matters now: the same
+   * weekday can have different hours either side of a scheduled change.
+   */
+  static async getBusinessHoursByDay(
+    dayOfWeek: number,
+    onDate: string = getTodayIsoDate(),
+  ): Promise<BusinessHours | null> {
+    const supabase = createAdminClient();
+    const active = await getActiveVersion(onDate, supabase);
+    if (!active) return null;
+
     const { data, error } = await supabase
       .from('business_hours')
       .select('*')
+      .eq('version_id', active.id)
       .eq('day_of_week', dayOfWeek)
-      .single();
+      .maybeSingle();
 
     if (error) throw new Error('Failed to fetch business hours');
-    return data;
+    return (data as BusinessHours | null) ?? null;
   }
 
   static async updateBusinessHours(formData: FormData) {
@@ -311,9 +335,25 @@ export class BusinessHoursService {
     }));
 
     const supabase = createAdminClient();
+
+    // Write against the version in force today, explicitly. Two reasons this is
+    // not the old blanket upsert on day_of_week:
+    //   * once a future version exists, day_of_week alone matches several rows;
+    //   * setting version_id here means the column's transitional default can be
+    //     dropped in the contract step.
+    // The conflict target stays (version_id, day_of_week), which is the key that
+    // survives that step.
+    const activeVersion = await getActiveVersion(getTodayIsoDate(), supabase);
+    if (!activeVersion) {
+      throw new Error('No published opening-hours version covers today, so there is nothing to update.');
+    }
+
     const { error } = await supabase
       .from('business_hours')
-      .upsert(updatedData, { onConflict: 'day_of_week' });
+      .upsert(
+        updatedData.map((row) => ({ ...row, version_id: activeVersion.id })),
+        { onConflict: 'version_id,day_of_week' },
+      );
 
     if (error) throw saveError(error, 'Failed to update business hours');
 
@@ -769,32 +809,10 @@ export class BusinessHoursService {
     return deletedRows[0];
   }
 
-  static async isSiteOpen(siteId: string, date: string): Promise<boolean> {
-    const supabase = await createClient();
-    const dayOfWeek = new Date(date).getDay(); // 0-6
-
-    // 1. Check special hours
-    const { data: special } = await supabase
-      .from('special_hours')
-      .select('is_closed')
-      .eq('date', date)
-      .maybeSingle();
-
-    if (special) {
-      return !special.is_closed;
-    }
-
-    // 2. Check regular hours
-    const { data: regular } = await supabase
-      .from('business_hours')
-      .select('is_closed')
-      .eq('day_of_week', dayOfWeek)
-      .maybeSingle();
-
-    if (regular) {
-      return !regular.is_closed;
-    }
-
-    return false; // Default closed if no info? Or open? Assuming closed safe default.
-  }
+  // isSiteOpen was removed here. It had no callers: missing-cashups replaced its
+  // per-date use with a batch fetch, and nothing else referenced it. It also
+  // carried two faults that would have had to be fixed to keep it, a
+  // local-timezone `new Date(date).getDay()` and a day_of_week lookup that
+  // returns an arbitrary row once the hours are versioned. Deleting was cheaper
+  // and safer than porting dead code.
 }
