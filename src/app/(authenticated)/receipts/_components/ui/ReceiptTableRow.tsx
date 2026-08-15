@@ -41,8 +41,8 @@ const expenseCategoryOptions = receiptExpenseCategorySchema.options
 export function SourceBadge({ sourceType }: { sourceType: ReceiptTransaction['source_type'] }) {
   const isAmex = sourceType === 'amex'
   const className = isAmex
-    ? 'bg-blue-50 text-blue-700 border-blue-100'
-    : 'bg-gray-100 text-gray-600 border-gray-200'
+    ? 'bg-info-soft text-info-fg border-border'
+    : 'bg-surface-2 text-text-muted border-border'
   return (
     <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${className}`}>
       {isAmex ? 'Amex' : 'Bank'}
@@ -57,11 +57,11 @@ function ClassificationBadge({ source }: { source?: ReceiptClassificationSource 
     rule: 'Rule',
   }
   const colors: Record<string, string> = {
-    ai: 'bg-blue-50 text-blue-700 border-blue-100',
+    ai: 'bg-info-soft text-info-fg border-border',
     rule: 'bg-purple-50 text-purple-700 border-purple-100',
   }
   return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${colors[source] ?? 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${colors[source] ?? 'bg-surface-2 text-text-muted'}`}>
       {labels[source] ?? source}
     </span>
   )
@@ -289,7 +289,7 @@ export function ReceiptTableRow({
     <tr
       className={`align-top transition-[filter] hover:brightness-95 ${
         heatColour
-          ? '[&_.text-text-muted]:!text-slate-900 [&_.text-text-subtle]:!text-slate-800'
+          ? '[&_.text-text-muted]:!text-text-strong [&_.text-text-subtle]:!text-text'
           : ''
       }`}
       style={heatColour ? { backgroundColor: heatColour } : undefined}
@@ -337,12 +337,14 @@ export function ReceiptTableRow({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
+            {/* `||` not `??`: a blank vendor string still needs the prompt, and
+                those are exactly the rows the "Missing vendor" filter surfaces. */}
             <button type="button" className="text-left text-sm font-medium text-text-strong hover:text-primary" onClick={() => startEditing('vendor')} disabled={!canManageReceipts}>
-              {transaction.vendor_name ?? <span className="text-text-subtle font-normal">Add vendor</span>}
+              {transaction.vendor_name || <span className="text-text-subtle font-normal">Add vendor</span>}
             </button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.vendor_source} />
-              {transaction.vendor_source === 'ai' && <SparklesIcon className="h-3 w-3 text-blue-500" />}
+              {transaction.vendor_source === 'ai' && <SparklesIcon className="h-3 w-3 text-info" />}
             </div>
           </div>
         )}
@@ -364,11 +366,11 @@ export function ReceiptTableRow({
         ) : (
           <div className="flex flex-col gap-1">
             <button type="button" className="text-left text-sm font-medium text-text-strong hover:text-primary" onClick={() => startEditing('expense')} disabled={!canManageReceipts}>
-              {transaction.expense_category ?? <span className="text-text-subtle font-normal">Add category</span>}
+              {transaction.expense_category || <span className="text-text-subtle font-normal">Add category</span>}
             </button>
             <div className="flex items-center gap-2">
               <ClassificationBadge source={transaction.expense_category_source} />
-              {transaction.expense_category_source === 'ai' && <SparklesIcon className="h-3 w-3 text-blue-500" />}
+              {transaction.expense_category_source === 'ai' && <SparklesIcon className="h-3 w-3 text-info" />}
             </div>
           </div>
         )}
@@ -389,7 +391,7 @@ export function ReceiptTableRow({
         {transaction.files.map(f => (
           <div key={f.id} className="flex items-center gap-2 mb-1">
             <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-primary hover:underline text-xs truncate max-w-[100px]">{f.file_name || 'View'}</button>
-            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-red-500 text-xs px-1 hover:bg-red-50 rounded" disabled={isPending}>×</button>
+            <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger text-xs px-1 hover:bg-danger-soft rounded" disabled={isPending}>×</button>
           </div>
         ))}
         {transaction.files.length > 0 && (
@@ -414,7 +416,7 @@ export function ReceiptTableRow({
               value={noteDraft}
               onChange={e => setNoteDraft(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && saveNote()}
-              className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+              className="w-full rounded-md border border-border-strong px-2 py-1 text-sm"
               disabled={isPending}
             />
             <div className="flex gap-1">
@@ -432,7 +434,9 @@ export function ReceiptTableRow({
             ) : (
               <span className="text-xs text-text-subtle italic">No notes</span>
             )}
-            <button type="button" onClick={startNoteEdit} className="invisible group-hover:visible text-xs text-text-muted flex items-center gap-1 hover:text-primary" disabled={!canManageReceipts}>
+            {/* Always visible: this table is used on an iPad, where there is no
+                hover and a hover-only control is simply unreachable. */}
+            <button type="button" onClick={startNoteEdit} className="text-xs text-text-muted flex items-center gap-1 hover:text-primary" disabled={!canManageReceipts}>
               <PencilSquareIcon className="h-3 w-3" /> Edit
             </button>
           </div>
@@ -481,7 +485,7 @@ export function ReceiptTableRow({
               variant="secondary"
               size="sm"
               onClick={() => handleStatusUpdate('cant_find')}
-              className="border border-rose-200 text-rose-700 hover:bg-rose-50"
+              className="border border-border text-danger-fg hover:bg-danger-soft"
               disabled={isPending || !canManageReceipts}
               title="Mark as missing"
             >

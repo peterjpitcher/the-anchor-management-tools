@@ -104,7 +104,7 @@ export default async function ReceiptsMonthlyPage() {
         <EmptyState
           title="No receipt data yet"
           description="Upload a bank statement to start tracking monthly trends."
-          action={<Link href="/receipts" className="text-emerald-600 hover:text-emerald-500">Go to receipts workspace</Link>}
+          action={<Link href="/receipts" className="text-success-fg hover:text-primary">Go to receipts workspace</Link>}
         />
       </ReceiptsPageChrome>
     )
@@ -262,10 +262,10 @@ export default async function ReceiptsMonthlyPage() {
           <InsightsFeed items={insightItems} />
         </div>
 
-        <Card variant="bordered" className="hidden md:block" header={<h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>}>
+        <Card variant="bordered" className="hidden md:block" header={<h2 className="text-lg font-semibold text-text-strong">Monthly breakdown</h2>}>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead className="bg-surface-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-3">Month</th>
                   <th scope="col" className="px-4 py-3 text-right">Income</th>
@@ -276,7 +276,7 @@ export default async function ReceiptsMonthlyPage() {
                   <th scope="col" className="px-4 py-3">Top outgoing vendors</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
+              <tbody className="divide-y divide-border text-sm text-text">
                 {months.map((month) => {
                   const monthLabel = formatMonthLabel(month.monthStart)
                   const totalMonthReceipts = RECEIPT_STATUSES.reduce(
@@ -290,15 +290,15 @@ export default async function ReceiptsMonthlyPage() {
 
                   return (
                     <tr key={month.monthStart}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{monthLabel}</td>
+                      <td className="px-4 py-3 font-medium text-text-strong">{monthLabel}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(month.totalIncome)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(month.totalOutgoing)}</td>
-                      <td className={`px-4 py-3 text-right tabular-nums ${month.netCash >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <td className={`px-4 py-3 text-right tabular-nums ${month.netCash >= 0 ? 'text-success-fg' : 'text-danger-fg'}`}>
                         {formatCurrency(month.netCash)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {percentFormatter.format(automationRate)}
-                        <span className="ml-1 text-xs text-gray-500">({automatedMonthReceipts}/{totalMonthReceipts})</span>
+                        <span className="ml-1 text-xs text-text-muted">({automatedMonthReceipts}/{totalMonthReceipts})</span>
                       </td>
                       <td className="px-4 py-3">
                         <TopList items={month.incomeBreakdown.slice(0, 3)} emptyLabel="No income recorded" badgeTone="income" />
@@ -316,7 +316,7 @@ export default async function ReceiptsMonthlyPage() {
 
         {/* Mobile: one card per month (below 768px) */}
         <div className="space-y-3 md:hidden">
-          <h2 className="text-lg font-semibold text-gray-900">Monthly breakdown</h2>
+          <h2 className="text-lg font-semibold text-text-strong">Monthly breakdown</h2>
           {months.map((month) => {
             const monthLabel = formatMonthLabel(month.monthStart)
             const totalMonthReceipts = RECEIPT_STATUSES.reduce(
@@ -330,36 +330,36 @@ export default async function ReceiptsMonthlyPage() {
             return (
               <Card key={month.monthStart} variant="bordered">
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-900">{monthLabel}</h3>
+                  <h3 className="text-sm font-semibold text-text-strong">{monthLabel}</h3>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                     <div>
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Income</dt>
-                      <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatCurrency(month.totalIncome)}</dd>
+                      <dt className="text-xs uppercase tracking-wide text-text-muted">Income</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-text-strong">{formatCurrency(month.totalIncome)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Outgoings</dt>
-                      <dd className="mt-0.5 font-medium tabular-nums text-gray-900">{formatCurrency(month.totalOutgoing)}</dd>
+                      <dt className="text-xs uppercase tracking-wide text-text-muted">Outgoings</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-text-strong">{formatCurrency(month.totalOutgoing)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Net cash</dt>
-                      <dd className={`mt-0.5 font-medium tabular-nums ${month.netCash >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <dt className="text-xs uppercase tracking-wide text-text-muted">Net cash</dt>
+                      <dd className={`mt-0.5 font-medium tabular-nums ${month.netCash >= 0 ? 'text-success-fg' : 'text-danger-fg'}`}>
                         {formatCurrency(month.netCash)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs uppercase tracking-wide text-gray-500">Automation</dt>
-                      <dd className="mt-0.5 font-medium tabular-nums text-gray-900">
+                      <dt className="text-xs uppercase tracking-wide text-text-muted">Automation</dt>
+                      <dd className="mt-0.5 font-medium tabular-nums text-text-strong">
                         {percentFormatter.format(automationRate)}
-                        <span className="ml-1 text-xs font-normal text-gray-500">({automatedMonthReceipts}/{totalMonthReceipts})</span>
+                        <span className="ml-1 text-xs font-normal text-text-muted">({automatedMonthReceipts}/{totalMonthReceipts})</span>
                       </dd>
                     </div>
                   </dl>
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Top income sources</p>
+                  <div className="border-t border-border pt-3">
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Top income sources</p>
                     <TopList items={month.incomeBreakdown.slice(0, 3)} emptyLabel="No income recorded" badgeTone="income" />
                   </div>
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Top outgoing vendors</p>
+                  <div className="border-t border-border pt-3">
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Top outgoing vendors</p>
                     <TopList items={month.topOutgoing.slice(0, 3)} emptyLabel="No outgoings recorded" badgeTone="spend" />
                   </div>
                 </div>
@@ -389,20 +389,20 @@ function StatCard({
 }) {
   const toneClasses =
     tone === 'positive'
-      ? 'border-emerald-100 bg-emerald-50/40'
+      ? 'border-border bg-success-soft/40'
       : tone === 'negative'
-        ? 'border-rose-100 bg-rose-50/40'
-        : 'border-gray-100 bg-gray-50/40'
+        ? 'border-border bg-danger-soft/40'
+        : 'border-border bg-surface-2/40'
 
   return (
     <Card variant="bordered" className={`h-full ${toneClasses}`}>
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">{label}</p>
-        <p className="text-3xl font-semibold text-gray-900">{value}</p>
+        <p className="text-sm text-text-muted">{label}</p>
+        <p className="text-3xl font-semibold text-text-strong">{value}</p>
         {(delta !== undefined || deltaPercent !== undefined) && (
           <ChangePill delta={delta} percent={deltaPercent} />
         )}
-        {footnote && <p className="text-xs text-gray-500">{footnote}</p>}
+        {footnote && <p className="text-xs text-text-muted">{footnote}</p>}
       </div>
     </Card>
   )
@@ -416,10 +416,10 @@ function ChangePill({ delta, percent }: { delta?: number; percent?: number }) {
   const tone = delta !== undefined && delta > 0 ? 'negative' : delta !== undefined && delta < 0 ? 'positive' : 'neutral'
   const toneClasses =
     tone === 'positive'
-      ? 'bg-emerald-100 text-emerald-700'
+      ? 'bg-success-soft text-success-fg'
       : tone === 'negative'
-        ? 'bg-rose-100 text-rose-700'
-        : 'bg-gray-100 text-gray-600'
+        ? 'bg-danger-soft text-danger-fg'
+        : 'bg-surface-2 text-text-muted'
 
   const parts: string[] = []
   if (delta !== undefined && delta !== 0) {
@@ -450,7 +450,7 @@ function InsightsFeed({
     <Card
       variant="bordered"
       className="h-full"
-      header={<h3 className="text-base font-semibold text-gray-900">What changed this month</h3>}
+      header={<h3 className="text-base font-semibold text-text-strong">What changed this month</h3>}
     >
       {items.length === 0 ? (
         <EmptyState title="Steady month" description="No significant changes detected. Keep an eye on receipts for any anomalies." />
@@ -459,22 +459,22 @@ function InsightsFeed({
           {items.map((item, index) => {
             const badgeTone =
               item.tone === 'positive'
-                ? 'bg-emerald-100 text-emerald-700'
+                ? 'bg-success-soft text-success-fg'
                 : item.tone === 'negative'
-                  ? 'bg-rose-100 text-rose-700'
-                  : 'bg-gray-100 text-gray-600'
+                  ? 'bg-danger-soft text-danger-fg'
+                  : 'bg-surface-2 text-text-muted'
             const badgeLabel =
               item.tone === 'positive' ? 'Opportunity' : item.tone === 'negative' ? 'Alert' : 'Watchlist'
 
             return (
-              <li key={`${item.title}-${index}`} className="rounded-lg border border-gray-200 bg-white/60 p-3">
+              <li key={`${item.title}-${index}`} className="rounded-lg border border-border bg-surface/60 p-3">
                 <div className="mb-1 flex items-center gap-2">
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeTone}`}>
                     {badgeLabel}
                   </span>
-                  <span className="text-sm font-semibold text-gray-800">{item.title}</span>
+                  <span className="text-sm font-semibold text-text">{item.title}</span>
                 </div>
-                <p className="text-xs text-gray-600">{item.detail}</p>
+                <p className="text-xs text-text-muted">{item.detail}</p>
               </li>
             )
           })}
@@ -494,17 +494,17 @@ function TopList({
   badgeTone: 'income' | 'spend'
 }) {
   if (!items.length) {
-    return <p className="text-xs text-gray-400">{emptyLabel}</p>
+    return <p className="text-xs text-text-subtle">{emptyLabel}</p>
   }
 
   const badgeStyles =
-    badgeTone === 'income' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+    badgeTone === 'income' ? 'bg-success-soft text-success-fg' : 'bg-danger-soft text-danger-fg'
 
   return (
     <div className="space-y-1">
       {items.map((item) => (
         <div key={item.label} className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm font-medium text-gray-900" title={item.label}>{item.label}</span>
+          <span className="truncate text-sm font-medium text-text-strong" title={item.label}>{item.label}</span>
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeStyles}`}>{formatCurrencyCompact(item.amount)}</span>
         </div>
       ))}

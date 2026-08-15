@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { PageHeader, SectionNav } from '@/ds'
+import { checkUserPermission } from '@/app/actions/rbac'
 import { getReceiptsActiveId, getReceiptsNavItems } from '../receiptsNavItems'
 
 type ReceiptNavView =
@@ -26,13 +27,17 @@ type ReceiptsPageChromeProps = {
   children: ReactNode
 }
 
-export function ReceiptsPageChrome({
+export async function ReceiptsPageChrome({
   title,
   subtitle,
   navState,
   actions,
   children,
 }: ReceiptsPageChromeProps) {
+  // Bulk classification redirects to /unauthorized without `receipts:manage`,
+  // so a view-only user should never be shown the tab in the first place.
+  const canManage = await checkUserPermission('receipts', 'manage')
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -42,7 +47,7 @@ export function ReceiptsPageChrome({
         actions={actions}
         className="mb-0"
       />
-      <SectionNav items={getReceiptsNavItems()} activeId={getReceiptsActiveId(navState)} />
+      <SectionNav items={getReceiptsNavItems({ canManage })} activeId={getReceiptsActiveId(navState)} />
       {children}
     </div>
   )

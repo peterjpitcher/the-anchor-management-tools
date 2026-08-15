@@ -1,8 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useEffect, ChangeEvent, type Dispatch, type SetStateAction } from 'react'
-import { toast } from 'react-hot-toast'
+import { useState, useEffect, ChangeEvent, type Dispatch, type SetStateAction } from 'react'
 import {
   type ReceiptWorkspaceData,
   type ReceiptWorkspaceFilters,
@@ -16,7 +15,6 @@ import { ReceiptFilters } from './ui/ReceiptFilters'
 import { ReceiptList } from './ui/ReceiptList'
 import { ReceiptRules } from './ui/ReceiptRules'
 import { ReceiptReclassify } from './ui/ReceiptReclassify'
-import { usePermissions } from '@/contexts/PermissionContext'
 import { Button, Card, CardBody } from '@/ds'
 
 interface ReceiptsClientProps {
@@ -71,8 +69,6 @@ function updateSummaryForStatusChange(
 export default function ReceiptsClient({ initialData, canExport = false, canGovernRules = false, availableCardMembers, initialFilters }: ReceiptsClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { hasPermission } = usePermissions()
-  const canManageReceipts = hasPermission('receipts', 'manage')
 
   const { rules, knownVendors, availableMonths, pagination } = initialData
   const [transactions, setTransactions] = useState(initialData.transactions)
@@ -211,7 +207,7 @@ export default function ReceiptsClient({ initialData, canExport = false, canGove
         <Card>
           <CardBody>
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-text-muted">
                 Page {pagination.page} of {totalPages} <span className="hidden sm:inline">({pagination.total} items)</span>
               </p>
               <div className="flex gap-2">

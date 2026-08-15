@@ -1,5 +1,4 @@
-import { getReceiptVendorReviews, getReceiptVendorSummary, getReceiptVendorWatchlist } from '@/app/actions/receipts'
-import { Card } from '@/ds'
+import { getReceiptVendorReviews, getReceiptVendorWatchlist } from '@/app/actions/receipts'
 import VendorSummaryGrid from './_components/VendorSummaryGrid'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -13,8 +12,9 @@ export default async function ReceiptsVendorsPage() {
     redirect('/unauthorized')
   }
 
-  const [vendors, watchlist, reviews] = await Promise.all([
-    getReceiptVendorSummary(12),
+  // The movement panel loads its own data client-side, so the 12 month vendor
+  // summary that used to be fetched here was paid for and then thrown away.
+  const [watchlist, reviews] = await Promise.all([
     getReceiptVendorWatchlist(),
     getReceiptVendorReviews(),
   ])
@@ -25,13 +25,7 @@ export default async function ReceiptsVendorsPage() {
       subtitle="See which suppliers are rising in cost and where spend is stable."
       navState={{ view: 'vendors' }}
     >
-      {vendors.length === 0 ? (
-        <Card variant="bordered">
-          <p className="text-sm text-gray-500">No vendor data available yet. Import statements to see trends.</p>
-        </Card>
-      ) : (
-        <VendorSummaryGrid vendors={vendors} initialWatchlist={watchlist} initialReviews={reviews} />
-      )}
+      <VendorSummaryGrid initialWatchlist={watchlist} initialReviews={reviews} />
     </ReceiptsPageChrome>
   )
 }

@@ -225,43 +225,43 @@ export function ReceiptMobileCard({
 
   return (
     <div
-      className={`rounded-xl border border-gray-300 p-2 shadow-sm ${
+      className={`rounded-xl border border-border bg-surface p-2 shadow-sm ${
         heatColour
-          ? '[&_.text-gray-400]:!text-slate-800 [&_.text-gray-500]:!text-slate-900 [&_.text-gray-600]:!text-slate-900'
+          ? '[&_.text-text-subtle]:!text-text [&_.text-text-muted]:!text-text-strong'
           : ''
       }`}
-      style={{ backgroundColor: heatColour ?? 'white' }}
+      style={heatColour ? { backgroundColor: heatColour } : undefined}
     >
         <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
             <div className="min-w-0 space-y-0.5">
-                <p className="text-[11px] text-gray-500">
+                <p className="text-[11px] text-text-muted">
                 {formatDate(transaction.transaction_date)}
                 {transaction.transaction_type ? ` · ${transaction.transaction_type}` : ''}
                 </p>
                 <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold leading-snug text-gray-900">{transaction.details}</h3>
+                    <h3 className="text-sm font-semibold leading-snug text-text-strong">{transaction.details}</h3>
                     <SourceBadge sourceType={transaction.source_type} />
                 </div>
                 {transaction.source_type === 'amex' && transaction.card_member && (
-                <p className="text-[11px] text-gray-500">{transaction.card_member}</p>
+                <p className="text-[11px] text-text-muted">{transaction.card_member}</p>
                 )}
                 {transaction.rule_applied_id && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success-fg">
                     <ArrowPathIcon className="h-3.5 w-3.5" /> Auto rule
                 </span>
                 )}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-0.5 text-right text-[11px]">
                 {transaction.amount_out != null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger-fg">
                     Out
-                    <span className="font-semibold text-gray-900">{formatCurrency(transaction.amount_out)}</span>
+                    <span className="font-semibold text-text-strong">{formatCurrency(transaction.amount_out)}</span>
                 </span>
                 )}
                 {transaction.amount_in != null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 font-medium text-success-fg">
                     In
-                    <span className="font-semibold text-gray-900">{formatCurrency(transaction.amount_in)}</span>
+                    <span className="font-semibold text-text-strong">{formatCurrency(transaction.amount_in)}</span>
                 </span>
                 )}
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${statusToneClasses[transaction.status]}`}>
@@ -270,9 +270,9 @@ export function ReceiptMobileCard({
             </div>
         </div>
         
-        <div className="mt-1.5 grid w-full grid-cols-[auto,1fr] items-center gap-x-2 gap-y-2 text-xs text-gray-500">
+        <div className="mt-1.5 grid w-full grid-cols-[auto,1fr] items-center gap-x-2 gap-y-2 text-xs text-text-muted">
             <span className="font-semibold uppercase tracking-wide leading-none self-start mt-1">Vendor</span>
-            <div className="text-sm leading-tight text-gray-900">
+            <div className="text-sm leading-tight text-text-strong">
                 {editingField === 'vendor' ? (
                     <div className="flex flex-col gap-2 mt-1">
                         {isCustomVendor ? (
@@ -293,15 +293,15 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={() => startEditing('vendor')} className="text-left hover:text-emerald-600" disabled={!canManageReceipts}>
-                        {transaction.vendor_name || <span className="text-gray-400">Add vendor</span>}
-                        {transaction.vendor_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-blue-500" />}
+                    <button type="button" onClick={() => startEditing('vendor')} className="text-left hover:text-success-fg" disabled={!canManageReceipts}>
+                        {transaction.vendor_name || <span className="text-text-subtle">Add vendor</span>}
+                        {transaction.vendor_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-info" />}
                     </button>
                 )}
             </div>
 
             <span className="font-semibold uppercase tracking-wide leading-none self-start mt-1">Expense</span>
-            <div className="text-sm leading-tight text-gray-900">
+            <div className="text-sm leading-tight text-text-strong">
                  {editingField === 'expense' ? (
                     <div className="flex flex-col gap-2 mt-1">
                         <Select autoFocus value={classificationDraft} onChange={e => setClassificationDraft(e.target.value)} disabled={isPending} options={[
@@ -314,15 +314,15 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={() => startEditing('expense')} className="text-left hover:text-emerald-600" disabled={!canManageReceipts}>
-                        {transaction.expense_category || <span className="text-gray-400">Add category</span>}
-                         {transaction.expense_category_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-blue-500" />}
+                    <button type="button" onClick={() => startEditing('expense')} className="text-left hover:text-success-fg" disabled={!canManageReceipts}>
+                        {transaction.expense_category || <span className="text-text-subtle">Add category</span>}
+                         {transaction.expense_category_source === 'ai' && <SparklesIcon className="inline h-3 w-3 ml-1 text-info" />}
                     </button>
                 )}
             </div>
 
             <span className="font-semibold uppercase tracking-wide leading-none self-start mt-1">Notes</span>
-            <div className="text-sm leading-tight text-gray-900">
+            <div className="text-sm leading-tight text-text-strong">
                  {isEditingNote ? (
                     <div className="flex flex-col gap-2 mt-1">
                         <Input value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder="Note" disabled={isPending} />
@@ -332,29 +332,32 @@ export function ReceiptMobileCard({
                         </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={startNoteEdit} className="text-left hover:text-emerald-600 w-full" disabled={!canManageReceipts}>
-                        {transaction.notes ? transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes : <span className="text-gray-400 italic">Add note</span>}
-                        <PencilSquareIcon className="inline h-3 w-3 ml-1 text-gray-400" />
+                    <button type="button" onClick={startNoteEdit} className="text-left hover:text-success-fg w-full" disabled={!canManageReceipts}>
+                        {transaction.notes ? transaction.notes.split(' — ').slice(1).join(' — ') || transaction.notes : <span className="text-text-subtle italic">Add note</span>}
+                        <PencilSquareIcon className="inline h-3 w-3 ml-1 text-text-subtle" />
                     </button>
                 )}
             </div>
         </div>
         
-        <div className="mt-2 border-t border-gray-100 pt-2 flex flex-wrap gap-2">
+        <div className="mt-2 border-t border-border pt-2 flex flex-wrap gap-2">
              <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isPending || !canManageReceipts}>Upload</Button>
              <input type="file" className="hidden" ref={fileInputRef} accept={RECEIPT_UPLOAD_ACCEPT} onChange={handleUpload} />
 
              {transaction.files.map(f => (
-                 <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 bg-white text-[11px]">
-                     <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-emerald-700 truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
-                     <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-red-500 ml-1">×</button>
+                 <div key={f.id} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 bg-surface text-[11px]">
+                     <button type="button" onClick={() => handleReceiptDownload(f.id)} className="text-success-fg truncate max-w-[80px]">{f.file_name || 'Receipt'}</button>
+                     <button type="button" onClick={() => setDeleteFileId(f.id)} className="text-danger ml-1">×</button>
                  </div>
              ))}
 
              <div className="ml-auto flex gap-1">
+                 {/* Gate on "not already this status", matching the desktop row.
+                     Gating on `=== 'pending'` meant a completed row could be
+                     skipped on desktop but not here. */}
                  {transaction.status !== 'completed' && <Button variant="primary" size="sm" onClick={() => handleStatusUpdate('completed')} disabled={isPending || !canManageReceipts}>Done</Button>}
-                 {transaction.status === 'pending' && <Button variant="secondary" size="sm" onClick={() => handleStatusUpdate('no_receipt_required')} disabled={isPending || !canManageReceipts}>Skip</Button>}
-                 {transaction.status === 'pending' && <Button variant="secondary" size="sm" onClick={() => handleStatusUpdate('cant_find')} className="border border-rose-200 text-rose-700" disabled={isPending || !canManageReceipts}>Missing</Button>}
+                 {transaction.status !== 'no_receipt_required' && <Button variant="secondary" size="sm" onClick={() => handleStatusUpdate('no_receipt_required')} disabled={isPending || !canManageReceipts}>Skip</Button>}
+                 {transaction.status !== 'cant_find' && <Button variant="secondary" size="sm" onClick={() => handleStatusUpdate('cant_find')} className="border border-border text-danger-fg" disabled={isPending || !canManageReceipts}>Missing</Button>}
                  {transaction.status !== 'pending' && <Button variant="ghost" size="sm" onClick={() => handleStatusUpdate('pending')} disabled={isPending || !canManageReceipts}>Reopen</Button>}
              </div>
         </div>

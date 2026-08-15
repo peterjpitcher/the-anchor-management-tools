@@ -26,8 +26,13 @@ export function getReceiptsActiveId(state: ReceiptNavState): string {
   return view
 }
 
-export function getReceiptsNavItems() {
-  return [
+type ReceiptsNavOptions = {
+  /** Bulk classification requires `receipts:manage`; the page redirects without it. */
+  canManage?: boolean
+}
+
+export function getReceiptsNavItems({ canManage = true }: ReceiptsNavOptions = {}) {
+  const items = [
     {
       id: 'workspace',
       label: 'Workspace',
@@ -45,7 +50,8 @@ export function getReceiptsNavItems() {
     },
     {
       id: 'pnl',
-      label: 'P&L',
+      // Matches the page title, which reads "Business Health".
+      label: 'Business health',
       href: '/receipts/pnl',
     },
     {
@@ -64,9 +70,13 @@ export function getReceiptsNavItems() {
       href: '/receipts?needsExpense=1',
     },
     {
+      // Distinct from "Needs expense": that filters the workspace list, this
+      // is the vendor-level summary of where the gaps are.
       id: 'missing-expense',
-      label: 'Missing expense',
+      label: 'Expense gaps',
       href: '/receipts/missing-expense',
     },
   ]
+
+  return canManage ? items : items.filter((item) => item.id !== 'bulk')
 }

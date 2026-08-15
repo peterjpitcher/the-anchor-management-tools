@@ -123,7 +123,9 @@ export function ReceiptList({
     <Card>
       <CardHeader title="Transactions" subtitle="Tick off receipts as you collect them and keep the finance trail tidy." />
       <CardBody className="p-0">
-        <div className="w-full p-[var(--spacing-pad-card)] sm:hidden">
+        {/* Card list runs to lg, so the sort control must too. It used to stop
+            at sm, leaving tablets with cards and no way to sort them. */}
+        <div className="w-full p-[var(--spacing-pad-card)] lg:hidden">
           <label htmlFor="mobile-receipts-sort" className="text-xs font-medium text-text-muted">Sort</label>
           <Select
             id="mobile-receipts-sort"
@@ -195,19 +197,19 @@ export function ReceiptList({
               <thead className="bg-surface-2 text-left text-xs font-medium uppercase tracking-wider text-text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2">
-                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'transaction_date' ? 'text-primary' : ''}`} onClick={() => onSort('transaction_date')}>
-                      Date {currentSortBy === 'transaction_date' && (currentSortDirection === 'asc' ? '↑' : '↓')}
-                    </button>
+                    <SortHeaderButton column="transaction_date" label="Date" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
                   </th>
                   <th scope="col" className="px-4 py-2">
-                    <button type="button" className={`flex items-center gap-1 ${currentSortBy === 'details' ? 'text-primary' : ''}`} onClick={() => onSort('details')}>
-                      Details {currentSortBy === 'details' && (currentSortDirection === 'asc' ? '↑' : '↓')}
-                    </button>
+                    <SortHeaderButton column="details" label="Details" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
                   </th>
                   <th scope="col" className="px-4 py-2">Vendor</th>
                   <th scope="col" className="px-4 py-2">Expense type</th>
-                  <th scope="col" className="px-4 py-2 text-right">In</th>
-                  <th scope="col" className="px-4 py-2 text-right">Out</th>
+                  <th scope="col" className="px-4 py-2 text-right">
+                    <SortHeaderButton column="amount_in" label="In" align="right" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
+                  </th>
+                  <th scope="col" className="px-4 py-2 text-right">
+                    <SortHeaderButton column="amount_out" label="Out" align="right" currentSortBy={currentSortBy} currentSortDirection={currentSortDirection} onSort={onSort} />
+                  </th>
                   <th scope="col" className="px-4 py-2">Status</th>
                   <th scope="col" className="px-4 py-2">Receipts</th>
                   <th scope="col" className="px-4 py-2">Notes</th>
@@ -270,6 +272,34 @@ export function ReceiptList({
         </div>
       </CardBody>
     </Card>
+  )
+}
+
+function SortHeaderButton({
+  column,
+  label,
+  align = 'left',
+  currentSortBy,
+  currentSortDirection,
+  onSort,
+}: {
+  column: SortColumn
+  label: string
+  align?: 'left' | 'right'
+  currentSortBy: SortColumn
+  currentSortDirection: 'asc' | 'desc'
+  onSort: (column: SortColumn) => void
+}) {
+  const isActive = currentSortBy === column
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      aria-label={`Sort by ${label}`}
+      className={`flex w-full items-center gap-1 uppercase tracking-wider ${align === 'right' ? 'justify-end' : ''} ${isActive ? 'text-primary' : 'hover:text-text'}`}
+    >
+      {label} {isActive && (currentSortDirection === 'asc' ? '↑' : '↓')}
+    </button>
   )
 }
 

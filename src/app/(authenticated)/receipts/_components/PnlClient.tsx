@@ -43,16 +43,16 @@ function buildInitialEditableMap(
 }
 
 function varianceClass(value: number | null, invert = false) {
-  if (value === null || Math.abs(value) < 0.01) return 'bg-slate-100 text-slate-700'
+  if (value === null || Math.abs(value) < 0.01) return 'bg-surface-2 text-text'
   const favourable = invert ? value <= 0 : value >= 0
-  return favourable ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+  return favourable ? 'bg-success-soft text-success-fg' : 'bg-danger-soft text-danger-fg'
 }
 
 function healthClass(status: string) {
-  if (status === 'on_track') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  if (status === 'watch') return 'border-amber-200 bg-amber-50 text-amber-800'
-  if (status === 'off_track') return 'border-rose-200 bg-rose-50 text-rose-800'
-  return 'border-slate-200 bg-slate-50 text-slate-800'
+  if (status === 'on_track') return 'border-border bg-success-soft text-success-fg'
+  if (status === 'watch') return 'border-border bg-warning-soft text-warning-fg'
+  if (status === 'off_track') return 'border-border bg-danger-soft text-danger-fg'
+  return 'border-border bg-surface-2 text-text'
 }
 
 function formatDate(value: string) {
@@ -62,25 +62,25 @@ function formatDate(value: string) {
 
 function MetricCard({ row, invertVariance = false }: { row: PnlReportRow; invertVariance?: boolean }) {
   return (
-    <div className="rounded-md border border-gray-200 bg-white p-3">
+    <div className="rounded-md border border-border bg-surface p-3">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900">{row.label}</h3>
+        <h3 className="text-sm font-semibold text-text-strong">{row.label}</h3>
         <span className={clsx('shrink-0 rounded px-2 py-0.5 text-xs font-semibold', varianceClass(row.variance, invertVariance))}>
           {formatPnlMetricValue(row.variance, row.format)}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
         <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">Actual</p>
-          <p className="font-semibold text-gray-900">{formatPnlMetricValue(row.actual, row.format)}</p>
+          <p className="text-xs uppercase tracking-wide text-text-muted">Actual</p>
+          <p className="font-semibold text-text-strong">{formatPnlMetricValue(row.actual, row.format)}</p>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">GK target</p>
-          <p className="font-semibold text-gray-900">{formatPnlMetricValue(row.timeframeTarget, row.format)}</p>
+          <p className="text-xs uppercase tracking-wide text-text-muted">GK target</p>
+          <p className="font-semibold text-text-strong">{formatPnlMetricValue(row.timeframeTarget, row.format)}</p>
         </div>
       </div>
       {row.detailLines.length > 0 && (
-        <div className="mt-3 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
+        <div className="mt-3 space-y-1 border-t border-border pt-2 text-xs text-text-muted">
           {row.detailLines.map((line) => <p key={line}>{line}</p>)}
         </div>
       )}
@@ -279,7 +279,7 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm font-medium text-gray-700" htmlFor="pnl-timeframe">View timeframe</label>
+          <label className="text-sm font-medium text-text" htmlFor="pnl-timeframe">View timeframe</label>
           <Select
             id="pnl-timeframe"
             value={selectedTimeframe}
@@ -340,9 +340,9 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
         {summaryCards.map((item) => (
           <Card key={item.label}>
             <CardBody>
-              <p className="text-xs uppercase tracking-wide text-gray-500">{item.label}</p>
-              <p className="mt-2 text-2xl font-bold text-gray-950">{formatPnlMetricValue(item.value)}</p>
-              <div className="mt-3 space-y-1 text-sm text-gray-700">
+              <p className="text-xs uppercase tracking-wide text-text-muted">{item.label}</p>
+              <p className="mt-2 text-2xl font-bold text-text-strong">{formatPnlMetricValue(item.value)}</p>
+              <div className="mt-3 space-y-1 text-sm text-text">
                 <div className="flex justify-between gap-2">
                   <span>{item.targetLabel}</span>
                   <span className="font-semibold">{formatPnlMetricValue(item.target)}</span>
@@ -366,25 +366,25 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {salesSection?.rows.map((row) => <MetricCard key={row.key} row={row} />)}
             </div>
-            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm">
+            <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
               <div className="grid gap-2 sm:grid-cols-4">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Sales days</p>
-                  <p className="font-semibold text-gray-900">{selectedCashupSummary.sessionCount}</p>
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Sales days</p>
+                  <p className="font-semibold text-text-strong">{selectedCashupSummary.sessionCount}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Latest sales day</p>
-                  <p className="font-semibold text-gray-900">
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Latest sales day</p>
+                  <p className="font-semibold text-text-strong">
                     {selectedCashupSummary.latestSessionDate ? formatDate(selectedCashupSummary.latestSessionDate) : 'None'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Missing splits</p>
-                  <p className="font-semibold text-gray-900">{selectedCashupSummary.missingSplitCount}</p>
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Missing splits</p>
+                  <p className="font-semibold text-text-strong">{selectedCashupSummary.missingSplitCount}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Unallocated</p>
-                  <p className="font-semibold text-gray-900">{formatPnlMetricValue(selectedCashupSummary.unallocatedSales)}</p>
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Unallocated</p>
+                  <p className="font-semibold text-text-strong">{formatPnlMetricValue(selectedCashupSummary.unallocatedSales)}</p>
                 </div>
               </div>
             </div>
@@ -396,24 +396,24 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
           <CardBody>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">Assessment</dt>
-                <dd className="font-medium text-gray-900">{formatDate(benchmark.assessmentDate)}</dd>
+                <dt className="text-text-muted">Assessment</dt>
+                <dd className="font-medium text-text-strong">{formatDate(benchmark.assessmentDate)}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">Report date</dt>
-                <dd className="font-medium text-gray-900">{formatDate(benchmark.reportDate)}</dd>
+                <dt className="text-text-muted">Report date</dt>
+                <dd className="font-medium text-text-strong">{formatDate(benchmark.reportDate)}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">Proposal</dt>
-                <dd className="font-medium text-gray-900">{benchmark.proposalId}</dd>
+                <dt className="text-text-muted">Proposal</dt>
+                <dd className="font-medium text-text-strong">{benchmark.proposalId}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">Agreement</dt>
-                <dd className="text-right font-medium text-gray-900">{benchmark.agreementType}</dd>
+                <dt className="text-text-muted">Agreement</dt>
+                <dd className="text-right font-medium text-text-strong">{benchmark.agreementType}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">Reason</dt>
-                <dd className="text-right font-medium text-gray-900">{benchmark.agreementReason}</dd>
+                <dt className="text-text-muted">Reason</dt>
+                <dd className="text-right font-medium text-text-strong">{benchmark.agreementReason}</dd>
               </div>
             </dl>
           </CardBody>
@@ -491,11 +491,11 @@ export default function PnlClient({ initialData, canExport = false, canManage = 
         </CardBody>
       </Card>
 
-      <details className="rounded-md border border-gray-200 bg-white">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-900">
+      <details className="rounded-md border border-border bg-surface">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-text-strong">
           Greene King benchmark target values
         </summary>
-        <div className="border-t border-gray-100 p-4">
+        <div className="border-t border-border p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {initialData.metrics.map((metric) => (
               <div key={metric.key}>

@@ -31,7 +31,7 @@ export function ReceiptStats({ summary }: ReceiptStatsProps) {
           These could not be retried automatically. Use the re-queue button to retry classification.
         </Alert>
       )}
-      <div className="hidden md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-6">
         <Stat label="OpenAI spend" value={formatCurrencyStrict(summary.openAICost)} hint={aiSpendHint(summary.openAICost, summary.aiUsageBreakdown)} />
         <Stat label="Pending" value={summary.totals.pending} hint={formatCount(summary.totals.pending)} />
         <Stat label="Completed" value={summary.totals.completed} hint={formatCount(summary.totals.completed)} />
