@@ -295,6 +295,67 @@ export class BusinessHoursService {
     return (data as BusinessHours | null) ?? null;
   }
 
+  /**
+   * Parse the seven-day form into rows, applying the closed-day nulling rules.
+   * Shared by the live editor and the scheduled-version editor so the two cannot
+   * validate differently.
+   */
+  private static parseWeekForm(formData: FormData) {
+    const updates = [];
+    for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek++) {
+      const dayData = {
+        day_of_week: dayOfWeek,
+        opens: formData.get(`opens_${dayOfWeek}`) as string || '',
+        closes: formData.get(`closes_${dayOfWeek}`) as string || '',
+        kitchen_opens: formData.get(`kitchen_opens_${dayOfWeek}`) as string || '',
+        kitchen_closes: formData.get(`kitchen_closes_${dayOfWeek}`) as string || '',
+        is_closed: formData.get(`is_closed_${dayOfWeek}`) === 'true',
+        is_kitchen_closed: formData.get(`is_kitchen_closed_${dayOfWeek}`) === 'true',
+        schedule_config: formData.get(`schedule_config_${dayOfWeek}`)
+          ? JSON.parse(formData.get(`schedule_config_${dayOfWeek}`) as string)
+          : undefined,
+      };
+
+      const validationResult = businessHoursSchema.safeParse(dayData);
+      if (!validationResult.success) {
+        throw new Error(`Invalid data for ${
+          ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]
+        }: ${validationResult.error.errors[0]?.message || 'Unknown error'}`);
+      }
+
+      updates.push(validationResult.data);
+    }
+
+    return updates.map((update) => ({
+      ...update,
+      opens: update.is_closed ? null : update.opens,
+      closes: update.is_closed ? null : update.closes,
+      kitchen_opens: update.is_closed || update.is_kitchen_closed ? null : update.kitchen_opens,
+      kitchen_closes: update.is_closed || update.is_kitchen_closed ? null : update.kitchen_closes,
+      is_kitchen_closed: update.is_closed ? true : update.is_kitchen_closed,
+      updated_at: new Date().toISOString(),
+    }));
+  }
+
+  /** Write the seven rows of a draft version. Never touches a published one. */
+  static async updateVersionRows(versionId: string, formData: FormData) {
+    const rows = BusinessHoursService.parseWeekForm(formData);
+    const supabase = createAdminClient();
+
+    const { error } = await supabase
+      .from('business_hours')
+      .upsert(
+        rows.map((row) => ({ ...row, version_id: versionId })),
+        { onConflict: 'version_id,day_of_week' },
+      );
+
+    if (error) throw saveError(error, 'Failed to save the scheduled hours');
+
+    // A draft affects no dates yet, so there is nothing to regenerate. Slots are
+    // rebuilt when it is published.
+    return { success: true, updatedCount: rows.length };
+  }
+
   static async updateBusinessHours(formData: FormData) {
     const updates = [];
     for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek++) {

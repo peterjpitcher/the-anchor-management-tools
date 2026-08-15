@@ -36,6 +36,7 @@ module.exports = [
     ignores: [
       'src/lib/business-hours/**',
       'src/services/business-hours.ts',
+      'src/app/actions/business-hours.ts',
       'src/app/api/business/hours/route.ts',
       'src/app/api/business-hours/route.ts',
     ],

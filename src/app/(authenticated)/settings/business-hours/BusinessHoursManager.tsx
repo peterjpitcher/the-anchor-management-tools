@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { updateBusinessHours } from '@/app/actions/business-hours'
+import { saveHoursVersionDraft, updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
 import { Button } from '@/ds'
 import { Input } from '@/ds'
@@ -13,9 +13,24 @@ import toast from 'react-hot-toast'
 interface BusinessHoursManagerProps {
   canManage: boolean
   initialHours: BusinessHours[]
+  /**
+   * When set, the grid is editing a draft schedule rather than the live hours, so
+   * the save goes to that draft and nothing customer-facing moves.
+   */
+  draftVersionId?: string | null
+  /** A published version cannot be edited in place: schedule a new one instead. */
+  readOnly?: boolean
+  onSaved?: () => void
 }
 
-export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursManagerProps) {
+export function BusinessHoursManager({
+  canManage,
+  initialHours,
+  draftVersionId = null,
+  readOnly = false,
+  onSaved,
+}: BusinessHoursManagerProps) {
+  const editable = canManage && !readOnly
   const sanitizedInitialHours = useMemo(
     () =>
       initialHours.map((hour) => ({
@@ -33,7 +48,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
   }, [sanitizedInitialHours])
 
   const handleTimeChange = (dayOfWeek: number, field: keyof BusinessHours, value: string | boolean) => {
-    if (!canManage) return
+    if (!editable) return
 
     setHours(prevHours =>
       prevHours.map((h) => {
@@ -71,7 +86,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
   }
 
   const handleKitchenTimeChange = (dayOfWeek: number, field: keyof BusinessHours, value: string) => {
-    if (!canManage) return
+    if (!editable) return
 
     setHours((prev) =>
       prev.map((h) =>
@@ -87,7 +102,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
   }
 
   const handleSundayLunchTimeChange = (field: 'starts_at' | 'ends_at', value: string) => {
-    if (!canManage) return
+    if (!editable) return
     const sundayIndex = 0 // Sunday is 0
     
     setHours(prev => prev.map(h => {
@@ -128,8 +143,12 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!canManage) {
-      toast.error('You do not have permission to update business hours.')
+    if (!editable) {
+      toast.error(
+        readOnly
+          ? 'Published hours cannot be edited. Schedule a change instead.'
+          : 'You do not have permission to update business hours.',
+      )
       return
     }
 
@@ -147,14 +166,17 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
       formData.append(`schedule_config_${dayHours.day_of_week}`, JSON.stringify(dayHours.schedule_config || []))
     })
 
-    const result = await updateBusinessHours(formData)
-    
+    const result = draftVersionId
+      ? await saveHoursVersionDraft(draftVersionId, formData)
+      : await updateBusinessHours(formData)
+
     if (result.error) {
       toast.error(result.error)
     } else {
-      toast.success('Business hours updated successfully')
+      toast.success(draftVersionId ? 'Draft saved' : 'Business hours updated successfully')
+      onSaved?.()
     }
-    
+
     setIsSaving(false)
   }
 
@@ -178,7 +200,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
             <Checkbox
               checked={h.is_closed}
               onChange={(checked) => handleTimeChange(h.day_of_week, 'is_closed', checked)}
-              disabled={!canManage}
+              disabled={!editable}
             />
           ) },
           { key: 'kclosed', header: 'Kitchen Closed', cell: (h: any) => (
@@ -186,7 +208,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
             <Checkbox
               checked={h.is_kitchen_closed || h.is_closed}
               onChange={(checked) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', checked)}
-              disabled={!canManage}
+              disabled={!editable}
             />
             )
           ) },
@@ -195,7 +217,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               type="time"
               value={h.opens || ''}
               onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
-              disabled={!canManage || h.is_closed}
+              disabled={!editable || h.is_closed}
               fullWidth
             />
           ) },
@@ -204,7 +226,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               type="time"
               value={h.closes || ''}
               onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
-              disabled={!canManage || h.is_closed}
+              disabled={!editable || h.is_closed}
               fullWidth
             />
           ) },
@@ -213,7 +235,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               type="time"
               value={h.kitchen_opens || ''}
               onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
-              disabled={!canManage || h.is_closed || h.is_kitchen_closed}
+              disabled={!editable || h.is_closed || h.is_kitchen_closed}
               fullWidth
             />
           ) },
@@ -222,7 +244,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
               type="time"
               value={h.kitchen_closes || ''}
               onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
-              disabled={!canManage || h.is_closed || h.is_kitchen_closed}
+              disabled={!editable || h.is_closed || h.is_kitchen_closed}
               fullWidth
             />
           ) },
@@ -232,7 +254,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                 type="time"
                 value={getSundayLunchTime(h, 'starts_at')}
                 onChange={(e) => handleSundayLunchTimeChange('starts_at', e.target.value)}
-                disabled={!canManage || h.is_closed}
+                disabled={!editable || h.is_closed}
                 fullWidth
                 placeholder="-"
               />
@@ -244,7 +266,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                 type="time"
                 value={getSundayLunchTime(h, 'ends_at')}
                 onChange={(e) => handleSundayLunchTimeChange('ends_at', e.target.value)}
-                disabled={!canManage || h.is_closed}
+                disabled={!editable || h.is_closed}
                 fullWidth
                 placeholder="-"
               />
@@ -259,7 +281,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                 label="Closed"
                 checked={h.is_closed}
                 onChange={(checked) => handleTimeChange(h.day_of_week, 'is_closed', checked)}
-                disabled={!canManage}
+                disabled={!editable}
               />
             </div>
             <div className="mb-3">
@@ -267,7 +289,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                 label="Kitchen closed"
                 checked={h.is_kitchen_closed || h.is_closed}
                 onChange={(checked) => handleTimeChange(h.day_of_week, 'is_kitchen_closed', checked)}
-                disabled={!canManage}
+                disabled={!editable}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -277,7 +299,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                   type="time"
                   value={h.opens || ''}
                   onChange={(e) => handleTimeChange(h.day_of_week, 'opens', e.target.value)}
-                  disabled={!canManage || h.is_closed}
+                  disabled={!editable || h.is_closed}
                   fullWidth
                 />
               </div>
@@ -287,7 +309,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                   type="time"
                   value={h.closes || ''}
                   onChange={(e) => handleTimeChange(h.day_of_week, 'closes', e.target.value)}
-                  disabled={!canManage || h.is_closed}
+                  disabled={!editable || h.is_closed}
                   fullWidth
                 />
               </div>
@@ -297,7 +319,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                   type="time"
                   value={h.kitchen_opens || ''}
                   onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_opens', e.target.value)}
-                  disabled={!canManage || h.is_closed || h.is_kitchen_closed}
+                  disabled={!editable || h.is_closed || h.is_kitchen_closed}
                   fullWidth
                 />
               </div>
@@ -307,7 +329,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
                   type="time"
                   value={h.kitchen_closes || ''}
                   onChange={(e) => handleKitchenTimeChange(h.day_of_week, 'kitchen_closes', e.target.value)}
-                  disabled={!canManage || h.is_closed || h.is_kitchen_closed}
+                  disabled={!editable || h.is_closed || h.is_kitchen_closed}
                   fullWidth
                 />
               </div>
@@ -317,7 +339,7 @@ export function BusinessHoursManager({ canManage, initialHours }: BusinessHoursM
       />
 
       <div className="flex justify-end pt-4">
-        <Button type="submit" loading={isSaving} fullWidth={false} disabled={!canManage || isSaving}>
+        <Button type="submit" loading={isSaving} fullWidth={false} disabled={!editable || isSaving}>
           {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>
