@@ -92,6 +92,7 @@ export async function updateBusinessHours(formData: FormData) {
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
 
     return { success: true }
   } catch (error: unknown) {
@@ -164,6 +165,7 @@ async function createServiceStatusOverride(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
 
     return { success: true, data }
   } catch (error: unknown) {
@@ -201,6 +203,7 @@ async function deleteServiceStatusOverride(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
 
     return { success: true }
   } catch (error: unknown) {
@@ -235,6 +238,7 @@ async function updateServiceStatus(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
 
     return { success: true, data: updated }
   } catch (error: unknown) {
@@ -283,6 +287,7 @@ export async function createSpecialHours(formData: FormData) {
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
     
     return { success: true, data: createdRecords }
   } catch (error: unknown) {
@@ -314,6 +319,7 @@ export async function updateSpecialHours(id: string, formData: FormData) {
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
     
     return { success: true, data: updated }
   } catch (error: unknown) {
@@ -344,6 +350,7 @@ export async function deleteSpecialHours(id: string) {
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
     
     return { success: true }
   } catch (error: unknown) {
@@ -570,6 +577,7 @@ export async function publishHoursVersion(
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
     revalidatePath('/api/business-hours')
+    revalidatePath('/api/business-hours')
     return { success: true }
   } catch (error: unknown) {
     console.error('Error publishing hours version:', error)
@@ -605,6 +613,7 @@ export async function withdrawHoursVersion(
 
     revalidatePath('/settings/business-hours')
     revalidatePath('/api/business/hours')
+    revalidatePath('/api/business-hours')
     revalidatePath('/api/business-hours')
     return { success: true }
   } catch (error: unknown) {

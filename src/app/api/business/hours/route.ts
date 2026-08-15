@@ -1,23 +1,33 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getActiveVersion } from '@/lib/business-hours/effective';
+import { getActiveVersion, getBusinessHoursForDates, listVersions } from '@/lib/business-hours/effective';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils';
+import { getTodayIsoDate, getLocalIsoDateDaysAhead, isValidIsoDate } from '@/lib/dateUtils';
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // This endpoint can be public for SEO purposes
     const supabase = createAdminClient();
-    
-    // Get regular hours for the version in force today. Selecting the whole table
-    // would mix versions together once a future schedule has been published.
-    const activeVersion = await getActiveVersion(getTodayIsoDate(), supabase);
+
+    // `?date=` asks "what are the hours on this date". Without it the answer is
+    // "today", which is what every existing caller means. The SHAPE is identical
+    // either way: a seven-day regularHours object, resolved to the version in
+    // force on that date. The website needs this because a customer can book up
+    // to twelve months out, and until now it read every future date off this
+    // week's hours.
+    const requestedDate = request.nextUrl.searchParams.get('date');
+    if (requestedDate !== null && !isValidIsoDate(requestedDate)) {
+      return createErrorResponse('date must be a real calendar date in YYYY-MM-DD form', 'VALIDATION_ERROR', 400);
+    }
+    const effectiveDate = requestedDate ?? getTodayIsoDate();
+
+    const activeVersion = await getActiveVersion(effectiveDate, supabase);
     if (!activeVersion) {
-      console.error('No published business-hours version covers today');
+      console.error('No published business-hours version covers', effectiveDate);
       return createErrorResponse('Failed to fetch business hours', 'DATABASE_ERROR', 500);
     }
 
@@ -272,17 +282,66 @@ export async function GET(_request: NextRequest) {
     })) || [],
   };
 
-  // Generate upcoming week overview
+  // Published schedules whose start date has not yet arrived, with their hours,
+  // so a consumer can show the change in advance without a second round trip.
+  const allVersions = await listVersions(supabase);
+  const futureVersions = allVersions
+    .filter((v) => v.status === 'published' && v.effective_from > effectiveDate)
+    .sort((a, b) => a.effective_from.localeCompare(b.effective_from));
+
+  const upcomingVersions = await Promise.all(
+    futureVersions.map(async (version) => {
+      const { data: versionRows } = await supabase
+        .from('business_hours')
+        .select('*')
+        .eq('version_id', version.id)
+        .order('day_of_week', { ascending: true });
+
+      return {
+        effectiveFrom: version.effective_from,
+        label: version.label,
+        hours: (versionRows ?? []).reduce((acc: any, hour: any) => {
+          acc[DAY_NAMES[hour.day_of_week]] = {
+            opens: hour.opens,
+            closes: hour.closes,
+            kitchen: hour.is_kitchen_closed
+              ? null
+              : hour.kitchen_opens && hour.kitchen_closes
+                ? { opens: hour.kitchen_opens, closes: hour.kitchen_closes }
+                : null,
+            is_closed: hour.is_closed,
+            is_kitchen_closed: hour.is_kitchen_closed,
+            schedule_config: hour.schedule_config || [],
+          };
+          return acc;
+        }, {}),
+      };
+    }),
+  );
+
+  // Generate upcoming week overview.
+  //
+  // Resolved per date, not off `regularHours`: a week that spans a scheduled
+  // change has different hours on either side of it, and reading them all from
+  // one version would show the wrong ones for half the week.
+  const upcomingDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const checkDate = new Date(nowInLondon);
+    checkDate.setDate(checkDate.getDate() + i);
+    upcomingDates.push(format(checkDate, 'yyyy-MM-dd'));
+  }
+  const upcomingResolved = await getBusinessHoursForDates(upcomingDates, supabase);
+
   const upcomingWeek = [];
   for (let i = 0; i < 7; i++) {
     const checkDate = new Date(nowInLondon);
     checkDate.setDate(checkDate.getDate() + i);
-    const checkDateStr = format(checkDate, 'yyyy-MM-dd');
+    const checkDateStr = upcomingDates[i];
     const checkDayOfWeek = checkDate.getDay();
     const checkDayName = DAY_NAMES[checkDayOfWeek];
-    
+
     const specialDay = specialHours?.find(s => s.date === checkDateStr);
-    const regularDay = regularHours?.find(h => h.day_of_week === checkDayOfWeek);
+    const regularDay = upcomingResolved.get(checkDateStr);
     
     upcomingWeek.push({
       date: checkDateStr,
@@ -475,14 +534,18 @@ export async function GET(_request: NextRequest) {
       planning: {
         nextClosure,
         nextModifiedHours: nextModified,
+        // Was a hardcoded placeholder. Now the real scheduled changes, so the
+        // website can say "our hours change on 1 September" instead of nothing.
         seasonalChanges: {
-          summerHours: {
-            active: false,
-            period: 'June-August',
-            changes: 'Garden open until 23:00',
-          },
+          upcoming: upcomingVersions.map((v) => ({
+            effectiveFrom: v.effectiveFrom,
+            label: v.label,
+          })),
         },
       },
+      // Every published change that has not yet started, oldest first. An array
+      // rather than a single field: more than one can be scheduled at a time.
+      upcomingVersions,
       integration: {
         eventsApi: '/api/events',
         lastUpdated: new Date().toISOString(),
