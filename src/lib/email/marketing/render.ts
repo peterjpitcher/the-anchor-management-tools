@@ -93,6 +93,16 @@ const HREF_PATTERN = /href="(https?:\/\/[^"]+)"/g
  */
 const TRACKABLE_HOST = /^https?:\/\/((www\.)?the-anchor\.pub|wa\.me|(www\.)?facebook\.com|(www\.)?instagram\.com)(\/|$|\?)/i
 
+/**
+ * Links that must never be routed through the redirector, beyond the unsubscribe URL.
+ *
+ * The privacy notice is a standing transparency obligation rather than a campaign link. It
+ * has to keep resolving long after the redirector has been forgotten about, and counting who
+ * reads it would mean tracking somebody exercising a data right, which is not a number worth
+ * having.
+ */
+const NEVER_SHORTENED = /\/privacy-policy(\/|$|\?)/i
+
 function applyUtm(url: string, utm: DeliveryContext['utm']): string {
   if (!utm) return url
 
@@ -208,6 +218,7 @@ export function collectDestinationUrls(content: MarketingContent): string[] {
   for (const match of html.matchAll(HREF_PATTERN)) {
     const url = match[1].replace(/&amp;/g, '&')
     if (url.includes(UNSUBSCRIBE_TOKEN)) continue
+    if (NEVER_SHORTENED.test(url)) continue
     if (TRACKABLE_HOST.test(url)) urls.add(url)
   }
 
