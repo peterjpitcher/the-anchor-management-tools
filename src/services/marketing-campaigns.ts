@@ -453,6 +453,7 @@ export async function scheduleCampaign(
   const content = parseCampaignContent(existing.content)
 
   const preview = await previewAudience({
+    audienceType: existing.audienceType,
     includeTags: existing.audience.includeTags,
     excludeTags: existing.audience.excludeTags,
   })

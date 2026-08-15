@@ -32,6 +32,15 @@ export type EligibilityStatus = 'pending_review' | 'eligible' | 'excluded'
 
 export type MarketingStatus = 'subscribed' | 'unsubscribed' | 'bounced' | 'complained'
 
+/**
+ * Which list a campaign sends to.
+ *
+ * Not a cosmetic label: business contacts rely on legitimate interest, guests on consent or a
+ * prior booking, so the two have genuinely different eligibility rules at both preview and
+ * send time. See `promote_due_marketing_campaigns()`.
+ */
+export type MarketingAudienceType = 'business' | 'customer'
+
 export type MarketingCampaignStatus =
   | 'draft'
   | 'scheduled'
@@ -194,6 +203,8 @@ export interface MarketingCampaign {
   rendererVersion: string
   contentHash: string | null
 
+  /** Which list this goes to. Decides eligibility rules, not just who is picked. */
+  audienceType: MarketingAudienceType
   audience: MarketingAudience
   audienceVersion: number
   approvedRecipientCount: number | null
@@ -541,6 +552,7 @@ export function mapMarketingCampaign(row: DbRow): MarketingCampaign {
     rendererVersion: row.renderer_version,
     contentHash: row.content_hash ?? null,
 
+    audienceType: row.audience_type === 'customer' ? 'customer' : 'business',
     audience: mapMarketingAudience(row.audience),
     audienceVersion: row.audience_version,
     approvedRecipientCount: row.approved_recipient_count ?? null,
