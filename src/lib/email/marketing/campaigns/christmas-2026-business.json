@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "title": "Christmas at The Anchor, from small team dinners to big company parties",
-  "preheader": "Six round a table or two hundred standing, and your own evening either way.",
+  "preheader": "Six round a table or two hundred standing, and a team that will look after you.",
   "blocks": [
     {
       "type": "masthead_green",
@@ -22,7 +22,7 @@
         "headline": "From six round a table to the whole company",
         "body": [
           "Whether it is a small team dinner or the big company party, we would like to get everyone celebrating this Christmas. Christmas dinner runs from 10 November to 20 December, from £23 a head.",
-          "We are a family-run village pub rather than a chain working through a Christmas template. Your group gets its own table and its own evening, never a shared sitting with another company."
+          "We are a family-run village pub rather than a chain working through a Christmas template. You get people who know your booking, remember what you asked for, and want your team to have a proper night out."
         ],
         "cta_label": "Check your date and get a quote",
         "cta_url": "https://www.the-anchor.pub/christmas-parties"
@@ -147,8 +147,8 @@
             "answer": "Yes, and you can set a spending limit on it. Just tell us when you book."
           },
           {
-            "question": "Will we be sharing with another company?",
-            "answer": "No, never. Your group gets its own table and its own evening."
+            "question": "Can you handle dietary requirements?",
+            "answer": "Yes. Tell us per guest when you book, allergies included, and we confirm what the kitchen can do for your date."
           },
           {
             "question": "How do we collect everyone's meal choices?",
