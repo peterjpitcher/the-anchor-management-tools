@@ -590,13 +590,18 @@ export class ShortLinkService {
     const destinationUrl = withUtmContent(data.destination_url || parent.destination_url, utmContent);
     assertAllowedShortLinkDestination(destinationUrl);
     const metadata = {
+      // Caller metadata first, so it cannot overwrite the fields below. It used
+      // to be spread last, which meant a caller could clear `utm_variant` and
+      // turn a variant into something indistinguishable from the canonical link
+      // for its event and channel. A uniqueness guard keyed on that marker would
+      // then either block a legitimate variant or miss a real duplicate.
+      ...(data.metadata || {}),
       ...(parent.metadata?.event_id ? { event_id: parent.metadata.event_id } : {}),
       channel: 'meta_ads',
       parent_link_id: parent.id,
       parent_short_code: parent.short_code,
       utm_variant: true,
       utm_content: utmContent,
-      ...(data.metadata || {}),
     };
 
     const { data: existingRows, error: existingError } = await supabase
