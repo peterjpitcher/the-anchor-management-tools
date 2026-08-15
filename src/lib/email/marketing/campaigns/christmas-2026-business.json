@@ -3,11 +3,19 @@
   "title": "Christmas at The Anchor, from small team dinners to big company parties",
   "preheader": "Six round a table or two hundred standing, and your own evening either way.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "hero_image",
       "data": {
-        "image": { "src": "", "alt": "A table laid for Christmas dinner at The Anchor", "width": 600, "height": 340 },
+        "image": {
+          "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+          "alt": "A Christmas dinner at The Anchor: roast beef, a Yorkshire pudding, pigs in blankets, stuffing, roast potatoes, mash, peas and sprouts",
+          "width": 600,
+          "height": 340
+        },
         "placeholder_label": "Hero photo · 1200 × 680",
         "placeholder_caption": "Christmas table laid up, warm low light",
         "kicker": "Christmas 2026 · bookings open",
@@ -24,10 +32,22 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Dates", "value": "10 November to 20 December 2026, the 20th included" },
-          { "label": "Days", "value": "Tuesday to Saturday, plus Sunday 1pm to 6pm. Never Mondays" },
-          { "label": "Group size", "value": "6 guests or more, up to 60 seated or 200 standing" },
-          { "label": "Deposit", "value": "£10 per person, taken off your bill" }
+          {
+            "label": "Dates",
+            "value": "10 November to 20 December 2026, the 20th included"
+          },
+          {
+            "label": "Days",
+            "value": "Tuesday to Saturday, plus Sunday 1pm to 6pm. Never Mondays"
+          },
+          {
+            "label": "Group size",
+            "value": "6 guests or more, up to 60 seated or 200 standing"
+          },
+          {
+            "label": "Deposit",
+            "value": "£10 per person, taken off your bill"
+          }
         ]
       }
     },
@@ -51,11 +71,18 @@
           "A Christmas quiz runs through the season, and a DJ can be arranged on request"
         ],
         "buttons": [
-          { "label": "See the Christmas menu", "url": "https://www.the-anchor.pub/christmas-parties", "variant": "primary" }
+          {
+            "label": "See the Christmas menu",
+            "url": "https://www.the-anchor.pub/christmas-parties",
+            "variant": "primary"
+          }
         ]
       }
     },
-    { "type": "divider_rule", "data": {} },
+    {
+      "type": "divider_rule",
+      "data": {}
+    },
     {
       "type": "section_intro",
       "data": {
@@ -69,12 +96,22 @@
       "data": {
         "cards": [
           {
-            "image": { "src": "", "alt": "A small team sitting down to Christmas dinner at The Anchor", "width": 520, "height": 360 },
+            "image": {
+              "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/team-dinner-card.jpg",
+              "alt": "A long table laid for a Christmas dinner, with candles, crackers and a lit tree behind",
+              "width": 520,
+              "height": 360
+            },
             "heading": "A team dinner",
             "body": "From six guests up. Each person picks one, two or three courses for themselves, and chooses their dishes in advance."
           },
           {
-            "image": { "src": "", "alt": "The Anchor set up for a large standing Christmas party", "width": 520, "height": 360 },
+            "image": {
+              "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/festive-buffet-card.jpg",
+              "alt": "A festive buffet laid out on a long table, with quiches, sausage rolls, meats, cheeses and salad",
+              "width": 520,
+              "height": 360
+            },
             "heading": "The whole company",
             "body": "Up to 60 seated or 200 standing. Take a private space, add a festive buffet, or put the Christmas quiz on for them."
           }
@@ -131,7 +168,10 @@
         "body": "Tell us your date and rough numbers and we will come back to you within 24 hours. We need at least 24 hours notice, so there are no same-day Christmas bookings.",
         "cta_label": "Check your date and get a quote",
         "cta_url": "https://www.the-anchor.pub/christmas-parties",
-        "reassurance_items": ["No commitment, just a conversation", "We reply within 24 hours"],
+        "reassurance_items": [
+          "No commitment, just a conversation",
+          "We reply within 24 hours"
+        ],
         "phone_label": "01753 682707",
         "phone_url": "tel:+441753682707",
         "whatsapp_label": "WhatsApp",
