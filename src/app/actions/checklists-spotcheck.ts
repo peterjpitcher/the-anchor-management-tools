@@ -13,7 +13,7 @@ import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { currentBusinessDate } from '@/lib/checklists/settings'
 import { resolveCloser } from '@/lib/checklists/accountability'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
 import { displayName } from '@/lib/employees/display-name'
@@ -84,9 +84,12 @@ function daysBetween(a: string, b: string): number {
   return Math.round((db - da) / 86_400_000)
 }
 
-/** Resolve/clamp the window: default rolling 30 days, hard cap 92 (spec 9.4). */
-function resolveWindow(from?: string, to?: string): { from: string; to: string } {
-  const toDate = isIso(to) ? to : getTodayIsoDate()
+/**
+ * Resolve/clamp the window: default rolling 30 days, hard cap 92 (spec 9.4).
+ * `defaultTo` is the current business date, passed in because this helper is sync.
+ */
+function resolveWindow(from: string | undefined, to: string | undefined, defaultTo: string): { from: string; to: string } {
+  const toDate = isIso(to) ? to : defaultTo
   let fromDate = isIso(from) ? from : addDays(toDate, -(DEFAULT_RANGE_DAYS - 1))
   if (daysBetween(fromDate, toDate) < 0) fromDate = toDate
   if (daysBetween(fromDate, toDate) > MAX_RANGE_DAYS - 1) {
@@ -202,7 +205,7 @@ export async function getSpotChecksForToday(
     const gate = await requireManage()
     if ('error' in gate) return { error: gate.error }
 
-    const businessDate = isIso(date) ? date : getTodayIsoDate()
+    const businessDate = isIso(date) ? date : await currentBusinessDate()
     const settings = await getChecklistSettings()
     const db = createAdminClient()
 
@@ -372,7 +375,7 @@ export async function getChecklistProblems(
     const gate = await requireSuperAdmin()
     if ('error' in gate) return { error: gate.error }
 
-    const window = resolveWindow(from, to)
+    const window = resolveWindow(from, to, await currentBusinessDate())
     const db = createAdminClient()
 
     // 1. Missed instances (grouped by the date's closer; floating -> Venue).

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alert, Card, CardHeader, CardBody } from '@/ds'
+import { msUntilNextBoundary } from '@/lib/checklists/business-day'
 import { getAttributionCandidates } from '@/app/actions/checklists'
 import type { TodayChecklistResult, AttributionCandidate } from '@/app/actions/checklists'
 import { AttributionPicker, type Identity } from './AttributionPicker'
@@ -28,8 +29,12 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
   const [candidatesLoading, setCandidatesLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [showDone, setShowDone] = useState(false)
+  const [busyTaskIds, setBusyTaskIds] = useState<Set<string>>(() => new Set())
+  const [boundaryReached, setBoundaryReached] = useState(false)
+  const [rolledOver, setRolledOver] = useState(false)
 
   const businessDate = initial?.businessDate
+  const startHour = initial?.businessDayStartHour
   // Department can vary per group. We seed the picker with the first group's
   // department: getAttributionCandidates returns every active employee, only the
   // clocked-in/rostered ordering is department-specific.
@@ -104,6 +109,55 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
     setPickerOpen(true)
   }, [])
 
+  // Roll the screen over at the business-day boundary.
+  //
+  // These iPads live on the bar and are rarely reloaded by hand. Without this the
+  // fix would only move the stale-screen problem from midnight to 5am: at 05:01
+  // the server has a new day's list and the tab is still showing last night's.
+  const handleBusyChange = useCallback((taskId: string, busy: boolean) => {
+    setBusyTaskIds(prev => {
+      if (busy === prev.has(taskId)) return prev
+      const next = new Set(prev)
+      if (busy) next.add(taskId)
+      else next.delete(taskId)
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!startHour) return
+    const delay = msUntilNextBoundary(new Date(), startHour)
+    // A second's grace so the server has certainly crossed the boundary too.
+    const timer = setTimeout(() => setBoundaryReached(true), delay + 1000)
+    return () => clearTimeout(timer)
+  }, [startHour, businessDate])
+
+  useEffect(() => {
+    if (!boundaryReached) return
+    // Never yank the page out from under a tick that is still saving. If a write
+    // hangs (lost signal on the bar wifi), give up waiting after 30 seconds
+    // rather than stranding the screen on yesterday indefinitely.
+    if (busyTaskIds.size === 0) {
+      setBoundaryReached(false)
+      setRolledOver(true)
+      refresh()
+      return
+    }
+    const giveUp = setTimeout(() => {
+      setBoundaryReached(false)
+      setRolledOver(true)
+      refresh()
+    }, 30_000)
+    return () => clearTimeout(giveUp)
+  }, [boundaryReached, busyTaskIds, refresh])
+
+  // Clear the notice once the new day's data has actually landed.
+  useEffect(() => {
+    if (!rolledOver) return
+    const clear = setTimeout(() => setRolledOver(false), 15_000)
+    return () => clearTimeout(clear)
+  }, [rolledOver, businessDate])
+
   if (error) {
     return (
       <Alert variant="danger" title="Could not load the checklist">
@@ -147,6 +201,17 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
     // Same shell as the FOH vouchers screen: centred, capped at max-w-3xl, with
     // a row of count tiles at the top. Both are iPad screens used mid-shift.
     <div className="mx-auto w-full max-w-3xl space-y-4">
+      {/* Announced rather than shown as a toast: the screen may have been
+          unattended for hours, so whoever picks it up next needs to see that the
+          list moved on rather than wonder where last night's tasks went. */}
+      <div aria-live="polite" role="status" className="sr-only">
+        {rolledOver ? 'Moved on to today’s checklist.' : ''}
+      </div>
+      {rolledOver && (
+        <Alert variant="info" title="Moved on to today&rsquo;s checklist">
+          Last night&rsquo;s list has closed. This is today&rsquo;s.
+        </Alert>
+      )}
       {allTasks.length > 0 && (
         <dl className="grid grid-cols-3 gap-2 sm:gap-3">
           <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
@@ -225,6 +290,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
                 identity={identity}
                 onChanged={refresh}
                 onNeedIdentity={needIdentity}
+                onBusyChange={handleBusyChange}
               />
             ))}
           </CardBody>

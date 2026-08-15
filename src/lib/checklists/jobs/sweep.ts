@@ -5,11 +5,9 @@
 //       ended lock, so their timeliness can no longer change.
 // Service-role admin client (checklist_* is deny-all under RLS).
 
-import { formatInTimeZone } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { businessDateOf } from '@/lib/checklists/business-day'
 import { getChecklistSettings } from '@/lib/checklists/settings'
-
-const TZ = 'Europe/London'
 
 export async function runSweep(): Promise<Record<string, unknown>> {
   const db = createAdminClient()
@@ -28,13 +26,12 @@ export async function runSweep(): Promise<Record<string, unknown>> {
 
   // (b) Lock resolved rows of business days that have fully ended.
   //
-  // The current business date is the London calendar date of (now - businessDayStartHour
-  // hours). The sweep cron runs about 04:00-05:00 London, BEFORE the 06:00 business-day
-  // boundary, so a plain "London date of now" would lock the previous business day while its
-  // tasks are still completable. Shifting back by the start hour keeps a day open until it has
-  // truly ended, and we only lock rows strictly before the current business date.
-  const shifted = new Date(now.getTime() - settings.businessDayStartHour * 60 * 60 * 1000)
-  const currentBusinessDate = formatInTimeZone(shifted, TZ, 'yyyy-MM-dd')
+  // The sweep cron runs about 04:00-05:00 London, BEFORE the business-day boundary, so a
+  // plain "London date of now" would lock the previous business day while its tasks are
+  // still completable. The shared helper resolves the day from the London wall clock, so we
+  // only lock rows strictly before the current business date. This used to subtract the
+  // start hour from the instant, which was wrong on both clock-change mornings.
+  const currentBusinessDate = businessDateOf(now, settings.businessDayStartHour)
 
   const { data: lockedRows, error: lockedErr } = await db
     .from('checklist_task_instances')

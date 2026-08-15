@@ -14,8 +14,9 @@
 // All reads/writes use the service-role admin client (checklist_* is deny-all under RLS).
 
 import { addDays, format, parseISO } from 'date-fns'
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
+import { fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { businessDateOf } from '@/lib/checklists/business-day'
 import { getChecklistSettings, type ChecklistSettings } from '@/lib/checklists/settings'
 import { resolveTradingWindow } from '@/lib/checklists/trading-window'
 import { expandInstants } from '@/lib/checklists/window'
@@ -57,15 +58,9 @@ function addOneDay(iso: string): string {
   return format(addDays(parseISO(iso), 1), 'yyyy-MM-dd')
 }
 
-/**
- * The business date an instant belongs to: the London calendar date of the instant shifted
- * back by the business-day start hour (a completion at 02:00 belongs to the prior business
- * day). Matches the spec 4 worked example (grace 06:00 Thu 9th gives miss date the 9th).
- */
-function businessDateOfInstant(instant: Date, startHour: number): string {
-  const shifted = new Date(instant.getTime() - startHour * 60 * 60 * 1000)
-  return formatInTimeZone(shifted, TZ, 'yyyy-MM-dd')
-}
+// The business date an instant belongs to now comes from the shared helper. The
+// local implementation subtracted `startHour` elapsed hours from the instant,
+// which is wrong on both clock-change mornings. See src/lib/checklists/business-day.ts.
 
 /** Record the run as failed and alert Peter (spec 5.4 step 2, spec 10). */
 async function failRun(
@@ -238,9 +233,9 @@ export async function runGenerateDay(
           dueDate: lr.business_date as string,
           state: lr.state as InstanceState,
           completedDate: lr.completed_at
-            ? businessDateOfInstant(new Date(lr.completed_at as string), settings.businessDayStartHour)
+            ? businessDateOf(new Date(lr.completed_at as string), settings.businessDayStartHour)
             : null,
-          graceDate: businessDateOfInstant(
+          graceDate: businessDateOf(
             new Date(lr.grace_until as string),
             settings.businessDayStartHour,
           ),

@@ -3,6 +3,7 @@
 // client because the checklist_* tables are deny-all under RLS; the anon client sees nothing.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { businessDateOf } from '@/lib/checklists/business-day'
 
 /** camelCase view of the checklist_settings columns (spec 3.8). */
 export interface ChecklistSettings {
@@ -49,4 +50,16 @@ export async function getChecklistSettings(): Promise<ChecklistSettings> {
     promptsEnabled: data.prompts_enabled,
     emailsEnabled: data.emails_enabled,
   }
+}
+
+/**
+ * The checklist business date right now, using the configured boundary.
+ *
+ * Server-only: it reads checklist_settings through the admin client. The pure
+ * date maths lives in ./business-day.ts so the staff screen can import that
+ * without pulling the admin client into the browser bundle.
+ */
+export async function currentBusinessDate(): Promise<string> {
+  const settings = await getChecklistSettings()
+  return businessDateOf(new Date(), settings.businessDayStartHour)
 }

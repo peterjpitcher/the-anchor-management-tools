@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Badge, Field, Input, Textarea, Alert } from '@/ds'
 import { Icon } from '@/ds/icons'
 import toast from 'react-hot-toast'
@@ -29,15 +29,33 @@ interface TaskRowProps {
   identity: Identity | null
   onChanged: () => void
   onNeedIdentity: () => void
+  /**
+   * Raised whenever this row starts or finishes writing. The screen tracks these
+   * by task id so the 5am rollover cannot refresh the page out from under a tick
+   * that is still in flight. Keyed rather than counted so a repeated report
+   * cannot drift the total.
+   */
+  onBusyChange?: (taskId: string, busy: boolean) => void
 }
 
-export function TaskRow({ task, identity, onChanged, onNeedIdentity }: TaskRowProps) {
+export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChange }: TaskRowProps) {
   const [value, setValue] = useState('')
   const [notes, setNotes] = useState('')
   const [showNotes, setShowNotes] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [showSkipReason, setShowSkipReason] = useState(false)
   const [skipReason, setSkipReason] = useState('')
+
+  // Every write path in this component goes through `submitting`, so mirroring it
+  // is enough to tell the screen whether this row is busy. Reporting false on
+  // unmount stops a row that disappears mid-write from pinning the counter above
+  // zero and blocking the rollover for good.
+  useEffect(() => {
+    onBusyChange?.(task.id, submitting)
+    return () => {
+      if (submitting) onBusyChange?.(task.id, false)
+    }
+  }, [submitting, task.id, onBusyChange])
 
   const isActionable = task.state === 'pending' && !task.locked
 

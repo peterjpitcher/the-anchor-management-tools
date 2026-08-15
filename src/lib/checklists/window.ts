@@ -9,7 +9,10 @@ import { fromZonedTime } from 'date-fns-tz'
 import type { WindowInstants } from '@/lib/checklists/types'
 
 const TZ = 'Europe/London'
-const DEFAULT_BUSINESS_DAY_START_HOUR = 6
+// Fallback only: the real value lives in checklist_settings.business_day_start_hour.
+// Kept aligned with CLOSING_GRACE_END_HOUR below so a settings read failure cannot
+// reintroduce the dead hour between closing grace ending and the day flipping.
+const DEFAULT_BUSINESS_DAY_START_HOUR = 5
 
 /** Trim an 'HH:MM' or 'HH:MM:SS' string down to 'HH:MM'. */
 function normaliseTime(value: string): string {
@@ -46,9 +49,11 @@ export function businessDayBounds(
  *
  * The default grace (60 minutes) put the cutoff an hour after close, so a
  * 22:00 close expired at 23:00 and a night that ran late lost its closing
- * checks to `missed` while staff were still locking up. Five leaves an hour
- * before the 06:00 business-day boundary, so a late close can never spill into
- * the next day's checklist.
+ * checks to `missed` while staff were still locking up.
+ *
+ * This now matches the business-day boundary rather than sitting an hour before
+ * it. When the boundary was 06:00 there was a dead hour from 05:00, where the
+ * night's closing tasks were locked but the new day's were not yet shown.
  */
 export const CLOSING_GRACE_END_HOUR = 5
 
