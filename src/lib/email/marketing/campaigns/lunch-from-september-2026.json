@@ -3,7 +3,10 @@
   "title": "We're open for lunch from Tuesday 1 September",
   "preheader": "Tuesday to Friday, doors at 12 and the kitchen on from 12 to 3. Free parking, two minutes off the M25.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "hero_image",
       "data": {
@@ -29,9 +32,18 @@
       "data": {
         "heading": "Tuesday to Friday, from 1 September",
         "rows": [
-          { "label": "Doors open", "time": "12pm, four hours earlier than now" },
-          { "label": "Lunch", "time": "12pm to 3pm" },
-          { "label": "Dinner", "time": "4pm to 9pm, just as it is now" }
+          {
+            "label": "Doors open",
+            "time": "12pm, four hours earlier than now"
+          },
+          {
+            "label": "Lunch",
+            "time": "12pm to 3pm, last orders 2.30pm"
+          },
+          {
+            "label": "Dinner",
+            "time": "4pm to 9pm, last orders 8.30pm"
+          }
         ],
         "note": "Saturday and Sunday are not changing. On Mondays the bar opens at 4pm and the kitchen is closed."
       }
@@ -41,12 +53,20 @@
       "data": {
         "heading": "There is more coming",
         "body": [
-          "We are building a set of dishes made for the middle of the day, and working on some lunchtime deals to go with them. Both will land over the next few weeks, and you will hear about them here first.",
+          "We are putting together a set of dishes made for the middle of the day, and some lunchtime deals to go with them. Both are on their way, and you will find the details in the pub at lunchtimes as they land.",
           "In the meantime the full menu is on from midday, so there is plenty to get stuck into."
         ],
         "buttons": [
-          { "label": "See the food menu", "url": "https://www.the-anchor.pub/food-menu", "variant": "primary" },
-          { "label": "Book a table", "url": "https://www.the-anchor.pub/book-table", "variant": "outline" }
+          {
+            "label": "See the food menu",
+            "url": "https://www.the-anchor.pub/food-menu",
+            "variant": "primary"
+          },
+          {
+            "label": "Book a table",
+            "url": "https://www.the-anchor.pub/book-table",
+            "variant": "outline"
+          }
         ]
       }
     },
@@ -54,14 +74,29 @@
       "type": "amenity_grid",
       "data": {
         "items": [
-          { "highlight": "2 minutes", "text": "from the M25 at Junction 14" },
-          { "highlight": "7 minutes", "text": "from Heathrow Terminal 5" },
-          { "highlight": "Free", "text": "parking for everyone, right outside" },
-          { "highlight": "Free", "text": "fast WiFi if you need to get something done" }
+          {
+            "highlight": "2 minutes",
+            "text": "from the M25 at Junction 14"
+          },
+          {
+            "highlight": "7 minutes",
+            "text": "from Heathrow Terminal 5"
+          },
+          {
+            "highlight": "Free",
+            "text": "parking for everyone, right outside"
+          },
+          {
+            "highlight": "Free",
+            "text": "fast WiFi if you need to get something done"
+          }
         ]
       }
     },
-    { "type": "divider_rule", "data": {} },
+    {
+      "type": "divider_rule",
+      "data": {}
+    },
     {
       "type": "section_intro",
       "data": {
@@ -77,7 +112,10 @@
         "body": "Book a table for lunch, or simply walk in. From Tuesday 1 September there will be somebody here from midday.",
         "cta_label": "Book a table",
         "cta_url": "https://www.the-anchor.pub/book-table",
-        "reassurance_items": ["Walk-ins welcome", "Free parking on site"],
+        "reassurance_items": [
+          "Walk-ins welcome",
+          "Free parking on site"
+        ],
         "phone_label": "01753 682707",
         "phone_url": "tel:+441753682707",
         "whatsapp_label": "WhatsApp",
