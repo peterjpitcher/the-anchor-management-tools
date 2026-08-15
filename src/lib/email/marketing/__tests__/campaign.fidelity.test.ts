@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import { marketingContentSchema } from '../registry'
 import { renderCampaignHtml } from '../render'
+import { applyButtonCentring, findLeftAlignedButtonRows } from './buttonAlignment'
 import { applyGoldContrastChange, findCharcoalOnGold } from './goldContrast'
 
 /**
@@ -87,13 +88,14 @@ describe('renderCampaignHtml, against the designer\'s own file', () => {
     // line claims every recipient enquired with us, and the gold surfaces below, because the
     // owner asked for white text on gold. Both are applied to the designer's file rather than
     // relaxed in the comparison, so any third difference still fails this test.
-    const expected = applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8'))
+    const expected = applyButtonCentring(applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8')))
     const rendered = renderCampaignHtml(campaignContent)
     expect(rendered, firstDifference(rendered, expected)).toBe(expected)
   })
 
   it('puts white on every gold fill, so no charcoal-on-gold can creep back into a send', () => {
     expect(findCharcoalOnGold(renderCampaignHtml(campaignContent))).toEqual([])
+    expect(findLeftAlignedButtonRows(renderCampaignHtml(campaignContent))).toEqual([])
   })
 
   it('is pure, so the same content renders identically twice with no clock or database in it', () => {

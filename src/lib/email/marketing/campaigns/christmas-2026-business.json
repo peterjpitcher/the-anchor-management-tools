@@ -80,10 +80,6 @@
       }
     },
     {
-      "type": "divider_rule",
-      "data": {}
-    },
-    {
       "type": "section_intro",
       "data": {
         "kicker": "Whatever the size",

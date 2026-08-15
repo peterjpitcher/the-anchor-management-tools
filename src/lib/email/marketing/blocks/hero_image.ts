@@ -102,7 +102,7 @@ ${data.body
   )
   .join('\n')}
 
-<tr><td bgcolor="#faf8f3" align="left" style="background-color:#faf8f3;padding:26px 32px 34px">
+<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:26px 32px 34px">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate"><tbody><tr><td align="center" bgcolor="#8b6914" style="background-color:#8b6914;border-radius:999px"><a href="${escapeEmailUrl(data.cta_url)}" style="display:block;padding:15px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:20px;color:#ffffff;text-decoration:none">${escapeEmailText(data.cta_label)}</a></td></tr></tbody></table>
 </td></tr>
 `,
