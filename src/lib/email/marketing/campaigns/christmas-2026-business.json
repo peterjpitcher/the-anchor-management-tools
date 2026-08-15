@@ -21,11 +21,34 @@
         "kicker": "Christmas 2026 · bookings open",
         "headline": "From six round a table to the whole company",
         "body": [
-          "Whether it is a small team dinner or the big company party, we would like to get everyone celebrating this Christmas. Christmas dinner runs from 10 November to 20 December, from £23 a head.",
+          "Whether it is a small team dinner or the big company party, we would like to get everyone celebrating this Christmas. Christmas dinner runs from 10 November to 20 December.",
           "We are a family-run village pub rather than a chain working through a Christmas template. You get people who know your booking, remember what you asked for, and want your team to have a proper night out."
         ],
         "cta_label": "Check your date and get a quote",
         "cta_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "price_tiles",
+      "data": {
+        "tiles": [
+          {
+            "label": "1 course",
+            "price": "£23",
+            "note": "turkey, or £24 pork, £25 beef"
+          },
+          {
+            "label": "2 courses",
+            "price": "£33.95",
+            "note": "Tue to Thu · £36.95 Fri, Sat"
+          },
+          {
+            "label": "3 courses",
+            "price": "£36.95",
+            "note": "Tue to Thu · £39.95 Fri, Sat"
+          }
+        ],
+        "footnote": "A glass of prosecco is included on the 2 and 3 course menus, swappable for orange juice. Christmas dinner comes with pigs in blankets, stuffing, Yorkshire pudding, roast potatoes, mash, peas and sprouts. Festive buffets are available for 30 guests or more."
       }
     },
     {
@@ -63,7 +86,7 @@
       "data": {
         "heading": "What your team gets",
         "body": [
-          "Go for two or three courses and every adult gets a glass of prosecco, swappable for orange juice. Christmas dinner comes with pigs in blankets, stuffing, Yorkshire pudding, roast potatoes, mash, peas and sprouts."
+          "Everyone picks their own courses, so nobody is tied to what the rest of the table is having."
         ],
         "list_items": [
           "Everyone picks their own courses, so vegetarian guests are not an afterthought",
