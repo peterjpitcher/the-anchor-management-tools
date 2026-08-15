@@ -25,7 +25,8 @@ import { defineBlock } from './types'
  */
 
 const heroImageImageSchema = z.object({
-  src: z.string().min(1),
+  /** Empty means no photo yet, and the designer's placeholder panel renders instead. */
+  src: z.string(),
   alt: z.string().min(1).max(160),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -44,13 +45,36 @@ export const heroImageSchema = z.object({
 
 export type HeroImageData = z.infer<typeof heroImageSchema>
 
+
+/**
+ * The photo, or the designer's placeholder panel when there is no photo yet.
+ *
+ * The handover ships the real <img> row commented out above a sand placeholder, because the
+ * photographs were not hosted when it was drawn. Reproducing that literally meant a supplied
+ * photo was silently ignored and every send carried the placeholder, so the switch is now on
+ * whether a URL is actually present. An empty src still reproduces the handover file exactly,
+ * which is what the fidelity test pins.
+ */
+function imageRow(data: HeroImageData): string {
+  if (data.image.src.trim()) {
+    return `<tr><td style="padding:0;font-size:0;line-height:0"><img src="${escapeEmailUrl(data.image.src)}" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>`
+  }
+
+  return `<!-- IMAGE SLOT: replace this whole row with the row below once the photo is hosted
+<tr><td style="padding:0;font-size:0;line-height:0"><img src="https://YOUR-HOST/hero-christmas-table.jpg" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>
+-->
+<tr><td align="center" valign="middle" height="${data.image.height}" style="height:${data.image.height}px;background-color:#f5e6d3;border-bottom:1px solid #e2dccf;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;line-height:20px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.placeholder_label)}<br>${escapeEmailText(data.placeholder_caption)}</td></tr>`
+}
+
 export const heroImage = defineBlock<HeroImageData>({
   type: 'hero_image',
   fixture: 'hero_image.html',
   schema: heroImageSchema,
   sample: {
     image: {
-      src: 'https://YOUR-HOST/hero-christmas-table.jpg',
+      // Empty on purpose: this sample is what the fidelity test compares against the handover
+      // file, and the handover shipped the placeholder because the photo was not hosted yet.
+      src: '',
       alt: 'A table laid for Christmas dinner at The Anchor',
       width: 600,
       height: 340,
@@ -67,10 +91,7 @@ export const heroImage = defineBlock<HeroImageData>({
     cta_url: 'https://www.the-anchor.pub/christmas-parties',
   },
   render: (data) => `
-<!-- IMAGE SLOT: replace this whole row with the row below once the photo is hosted
-<tr><td style="padding:0;font-size:0;line-height:0"><img src="${escapeEmailUrl(data.image.src)}" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>
--->
-<tr><td align="center" valign="middle" height="${data.image.height}" style="height:${data.image.height}px;background-color:#f5e6d3;border-bottom:1px solid #e2dccf;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;line-height:20px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.placeholder_label)}<br>${escapeEmailText(data.placeholder_caption)}</td></tr>
+${imageRow(data)}
 
 <tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:40px 32px 8px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;mso-line-height-rule:exactly;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>
 <tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:10px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:38px;font-weight:400;line-height:44px;mso-line-height-rule:exactly;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.headline)}</td></tr>

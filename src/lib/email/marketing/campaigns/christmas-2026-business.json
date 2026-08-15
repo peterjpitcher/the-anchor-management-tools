@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "title": "Christmas bookings are open at The Anchor",
+  "preheader": "Your own table, everyone picks their own courses, and free parking on the door.",
+  "blocks": [
+    { "type": "masthead_green", "data": {} },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": { "src": "", "alt": "A table laid for Christmas dinner at The Anchor", "width": 600, "height": 340 },
+        "placeholder_label": "Hero photo · 1200 × 680",
+        "placeholder_caption": "Christmas table laid up, warm low light",
+        "kicker": "Christmas 2026 · bookings open",
+        "headline": "Your team's Christmas, not a shared party night",
+        "body": [
+          "We serve Christmas dinner from 10 November to 20 December. Your group gets its own table and its own evening, never a shared sitting with another company.",
+          "Everyone picks their own courses too, so nobody is stuck with whatever the table agreed back in October."
+        ],
+        "cta_label": "Start your Christmas booking",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          { "label": "Dates", "value": "10 November to 20 December 2026" },
+          { "label": "Sittings", "value": "Tuesday to Saturday, plus Sunday 1pm to 6pm. Never Mondays" },
+          { "label": "Group size", "value": "6 guests or more. Over 20 becomes a private hire" },
+          { "label": "Deposit", "value": "£10 per person, taken off your bill" }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "What your team gets",
+        "body": [
+          "Every adult gets a glass of prosecco, swappable for orange juice. Christmas dinner comes with pigs in blankets, stuffing, Yorkshire pudding, roast potatoes, mash, peas and sprouts."
+        ],
+        "list_items": [
+          "Everyone picks their own courses, rather than one choice the whole table commits to",
+          "Pre-orders reach us 7 days before, so you are not chasing people on the day",
+          "A Christmas quiz runs through the season, and a DJ can be arranged if you want one"
+        ],
+        "buttons": [
+          { "label": "See the Christmas menu", "url": "https://www.the-anchor.pub/christmas-parties", "variant": "primary" }
+        ]
+      }
+    },
+    { "type": "divider_rule", "data": {} },
+    {
+      "type": "section_intro",
+      "data": {
+        "kicker": "Depending on numbers",
+        "heading": "Two ways to do it",
+        "body": "Smaller teams book a table like any other booking. Larger ones become a private hire, which means the space is yours and we plan it with you."
+      }
+    },
+    {
+      "type": "two_up_cards",
+      "data": {
+        "cards": [
+          {
+            "image": { "src": "", "alt": "A team sitting down to Christmas dinner at The Anchor", "width": 520, "height": 360 },
+            "heading": "Six to twenty",
+            "body": "Book a table and the evening is yours. Six guests is the minimum for the Christmas menu."
+          },
+          {
+            "image": { "src": "", "alt": "The Anchor set up for a standing Christmas party", "width": 520, "height": 360 },
+            "heading": "Over twenty",
+            "body": "That becomes a private hire. Up to 60 seated, or 200 standing if you would rather people mingled."
+          }
+        ]
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "Thirty or more, standing?",
+        "body": "The festive buffets are built for exactly that, and thirty guests is the minimum on all of them."
+      }
+    },
+    {
+      "type": "deadline_bar",
+      "data": {
+        "text": "December Fridays and Saturdays go first.",
+        "link_label": "Get your date held",
+        "link_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "faq_rows",
+      "data": {
+        "heading": "Asked a lot",
+        "items": [
+          {
+            "question": "Will we be sat with another company?",
+            "answer": "No. Your group gets its own table and its own evening. We do not run shared party nights."
+          },
+          {
+            "question": "Can people choose their own meals?",
+            "answer": "Yes. Every guest picks their own courses, so the vegetarian is not an afterthought."
+          },
+          {
+            "question": "How far ahead do you need everyone's choices?",
+            "answer": "Seven days before your date, for the two and three course menus."
+          },
+          {
+            "question": "What about parking and getting home?",
+            "answer": "Around 20 free spaces on site, we sit outside the ULEZ, and we are seven minutes from Terminal 5 and eight from Staines."
+          }
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Talk to us",
+        "body": "Tell us your date and rough numbers and we will come back to you within 24 hours.",
+        "cta_label": "Start your Christmas booking",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties",
+        "reassurance_items": ["No commitment, just a conversation", "We reply within 24 hours"],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "signoff_ps",
+      "data": {
+        "signoff": "See you at the bar,",
+        "signature": "The Anchor team",
+        "ps_body": "Pre-orders are due seven days before your date, so the earlier it is in the diary, the less chasing you end up doing.",
+        "ps_link_label": "Get your date held →",
+        "ps_link_url": "https://www.the-anchor.pub/christmas-parties"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you enquired about a booking or an event with us, or because you may be close to us and we thought this information would be helpful to you.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}
