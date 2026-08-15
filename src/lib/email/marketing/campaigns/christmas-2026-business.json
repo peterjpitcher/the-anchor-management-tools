@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "title": "Christmas bookings are open at The Anchor",
-  "preheader": "Your own table, everyone picks their own courses, and free parking on the door.",
+  "title": "Christmas at The Anchor, from small team dinners to big company parties",
+  "preheader": "Six round a table or two hundred standing, and your own evening either way.",
   "blocks": [
     { "type": "masthead_green", "data": {} },
     {
@@ -11,12 +11,12 @@
         "placeholder_label": "Hero photo · 1200 × 680",
         "placeholder_caption": "Christmas table laid up, warm low light",
         "kicker": "Christmas 2026 · bookings open",
-        "headline": "Your team's Christmas, not a shared party night",
+        "headline": "From six round a table to the whole company",
         "body": [
-          "We serve Christmas dinner from 10 November to 20 December. Your group gets its own table and its own evening, never a shared sitting with another company.",
-          "Everyone picks their own courses too, so nobody is stuck with whatever the table agreed back in October."
+          "Whether it is a small team dinner or the big company party, we would like to get everyone celebrating this Christmas. Christmas dinner runs from 10 November to 20 December, from £23 a head.",
+          "We are a family-run village pub rather than a chain working through a Christmas template. Your group gets its own table and its own evening, never a shared sitting with another company."
         ],
-        "cta_label": "Start your Christmas booking",
+        "cta_label": "Check your date and get a quote",
         "cta_url": "https://www.the-anchor.pub/christmas-parties"
       }
     },
@@ -24,11 +24,18 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Dates", "value": "10 November to 20 December 2026" },
-          { "label": "Sittings", "value": "Tuesday to Saturday, plus Sunday 1pm to 6pm. Never Mondays" },
-          { "label": "Group size", "value": "6 guests or more. Over 20 becomes a private hire" },
+          { "label": "Dates", "value": "10 November to 20 December 2026, the 20th included" },
+          { "label": "Days", "value": "Tuesday to Saturday, plus Sunday 1pm to 6pm. Never Mondays" },
+          { "label": "Group size", "value": "6 guests or more, up to 60 seated or 200 standing" },
           { "label": "Deposit", "value": "£10 per person, taken off your bill" }
         ]
+      }
+    },
+    {
+      "type": "pull_quote",
+      "data": {
+        "script_line": "We actually care",
+        "body": "The Anchor has served Stanwell Moor since 1751, and it is still run by a family rather than a head office. Your Christmas is not a template to us."
       }
     },
     {
@@ -39,9 +46,9 @@
           "Every adult gets a glass of prosecco, swappable for orange juice. Christmas dinner comes with pigs in blankets, stuffing, Yorkshire pudding, roast potatoes, mash, peas and sprouts."
         ],
         "list_items": [
-          "Everyone picks their own courses, rather than one choice the whole table commits to",
-          "Pre-orders reach us 7 days before, so you are not chasing people on the day",
-          "A Christmas quiz runs through the season, and a DJ can be arranged if you want one"
+          "Everyone picks their own courses, so the vegetarian is not an afterthought",
+          "Choices are made per guest as you book and go straight to the kitchen",
+          "A Christmas quiz runs through the season, and a DJ can be arranged on request"
         ],
         "buttons": [
           { "label": "See the Christmas menu", "url": "https://www.the-anchor.pub/christmas-parties", "variant": "primary" }
@@ -52,9 +59,9 @@
     {
       "type": "section_intro",
       "data": {
-        "kicker": "Depending on numbers",
+        "kicker": "Whatever the size",
         "heading": "Two ways to do it",
-        "body": "Smaller teams book a table like any other booking. Larger ones become a private hire, which means the space is yours and we plan it with you."
+        "body": "Small teams book the sit-down Christmas menu. Bigger groups become a private hire, where the space is yours and we plan it around you."
       }
     },
     {
@@ -62,14 +69,14 @@
       "data": {
         "cards": [
           {
-            "image": { "src": "", "alt": "A team sitting down to Christmas dinner at The Anchor", "width": 520, "height": 360 },
-            "heading": "Six to twenty",
-            "body": "Book a table and the evening is yours. Six guests is the minimum for the Christmas menu."
+            "image": { "src": "", "alt": "A small team sitting down to Christmas dinner at The Anchor", "width": 520, "height": 360 },
+            "heading": "A team dinner",
+            "body": "From six guests up. Each person picks one, two or three courses for themselves, and chooses their dishes in advance."
           },
           {
-            "image": { "src": "", "alt": "The Anchor set up for a standing Christmas party", "width": 520, "height": 360 },
-            "heading": "Over twenty",
-            "body": "That becomes a private hire. Up to 60 seated, or 200 standing if you would rather people mingled."
+            "image": { "src": "", "alt": "The Anchor set up for a large standing Christmas party", "width": 520, "height": 360 },
+            "heading": "The whole company",
+            "body": "Up to 60 seated or 200 standing. Take a private space, add a festive buffet, or put the Christmas quiz on for them."
           }
         ]
       }
@@ -77,8 +84,8 @@
     {
       "type": "note_bar",
       "data": {
-        "label": "Thirty or more, standing?",
-        "body": "The festive buffets are built for exactly that, and thirty guests is the minimum on all of them."
+        "label": "Thinking buffet?",
+        "body": "The festive buffets are built for standing parties, and thirty guests is the minimum on all of them."
       }
     },
     {
@@ -92,23 +99,27 @@
     {
       "type": "faq_rows",
       "data": {
-        "heading": "Asked a lot",
+        "heading": "Organising this for work? The short answers",
         "items": [
           {
-            "question": "Will we be sat with another company?",
-            "answer": "No. Your group gets its own table and its own evening. We do not run shared party nights."
+            "question": "Can we get a VAT invoice?",
+            "answer": "Yes, for corporate bookings, so expenses are straightforward."
           },
           {
-            "question": "Can people choose their own meals?",
-            "answer": "Yes. Every guest picks their own courses, so the vegetarian is not an afterthought."
+            "question": "Can we run a company bar tab?",
+            "answer": "Yes, and you can set a spending limit on it. Just tell us when you book."
           },
           {
-            "question": "How far ahead do you need everyone's choices?",
-            "answer": "Seven days before your date, for the two and three course menus."
+            "question": "Will we be sharing with another company?",
+            "answer": "No, never. Your group gets its own table and its own evening."
           },
           {
-            "question": "What about parking and getting home?",
-            "answer": "Around 20 free spaces on site, we sit outside the ULEZ, and we are seven minutes from Terminal 5 and eight from Staines."
+            "question": "How do we collect everyone's meal choices?",
+            "answer": "You pick them per guest as you book, and they reach the kitchen directly. They are due seven days before your date for the two and three course menus."
+          },
+          {
+            "question": "What about parking and getting there?",
+            "answer": "Around 20 free spaces on site, outside the ULEZ, seven minutes from Terminal 5 and eight from Staines."
           }
         ]
       }
@@ -117,8 +128,8 @@
       "type": "closing_panel_dark",
       "data": {
         "script_line": "Talk to us",
-        "body": "Tell us your date and rough numbers and we will come back to you within 24 hours.",
-        "cta_label": "Start your Christmas booking",
+        "body": "Tell us your date and rough numbers and we will come back to you within 24 hours. We need at least 24 hours notice, so there are no same-day Christmas bookings.",
+        "cta_label": "Check your date and get a quote",
         "cta_url": "https://www.the-anchor.pub/christmas-parties",
         "reassurance_items": ["No commitment, just a conversation", "We reply within 24 hours"],
         "phone_label": "01753 682707",
@@ -132,7 +143,7 @@
       "data": {
         "signoff": "See you at the bar,",
         "signature": "The Anchor team",
-        "ps_body": "Pre-orders are due seven days before your date, so the earlier it is in the diary, the less chasing you end up doing.",
+        "ps_body": "Choices are due seven days before your date for the two and three course menus, so the earlier it is in the diary, the less chasing you end up doing.",
         "ps_link_label": "Get your date held →",
         "ps_link_url": "https://www.the-anchor.pub/christmas-parties"
       }
