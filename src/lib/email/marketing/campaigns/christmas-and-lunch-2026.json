@@ -11,7 +11,7 @@
       "type": "hero_image",
       "data": {
         "image": {
-          "src": "https://YOUR-HOST/hero-christmas-table.jpg",
+          "src": "",
           "alt": "A table laid for Christmas dinner at The Anchor",
           "width": 600,
           "height": 340
@@ -98,7 +98,7 @@
       "type": "image_full",
       "data": {
         "image": {
-          "src": "https://YOUR-HOST/lunch-daytime.jpg",
+          "src": "",
           "alt": "Lunch served at The Anchor near Heathrow",
           "width": 600,
           "height": 260
