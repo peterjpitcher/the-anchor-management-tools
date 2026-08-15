@@ -142,7 +142,11 @@ export async function POST(request: NextRequest) {
           date_tbd: false,
         };
 
-        const booking = await PrivateBookingService.createBooking(input);
+        // The admin client, not the default session client: this route is
+        // authenticated by API key, so there is no user session and RLS would
+        // refuse the insert. This exact omission silently diverted every
+        // website Christmas enquiry to the email fallback until 15 August 2026.
+        const booking = await PrivateBookingService.createBooking(input, { client: supabase });
         createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
 
         try {
