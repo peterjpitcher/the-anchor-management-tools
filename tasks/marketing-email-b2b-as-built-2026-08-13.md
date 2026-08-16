@@ -1,4 +1,8 @@
 # B2B marketing email: as built
+> **This describes the B2B build as at 2026-08-13.** Guest (customer) campaigns, the
+> frequency-cap collision guard, audience drift and the rescheduling flow all came later
+> and are not in here. For how to actually run the thing, read
+> `marketing-email-runbook.md` first.
 
 Date: 2026-08-13
 Supersedes: `marketing-email-b2b-implementation-plan-2026-08-13.md` (the pre-review plan)
