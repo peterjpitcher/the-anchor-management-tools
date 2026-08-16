@@ -25,6 +25,7 @@ import {
   cancelCampaign,
   createCampaign,
   getCampaign,
+  getCampaignAudienceDrift,
   getCampaignLinkPerformance,
   getCampaignStats,
   getSettings,
@@ -36,6 +37,7 @@ import {
   scheduleCampaign,
   updateCampaign,
   updateSettings,
+  type CampaignAudienceDrift,
   type ListCampaignsResult,
   type ListRecipientsResult,
 } from '@/services/marketing-campaigns'
@@ -201,6 +203,26 @@ export async function getMarketingCampaignStats(
  * Returns an empty list rather than an error when a campaign has no short links: a draft has
  * none yet, and that is a normal state rather than a failure.
  */
+/**
+ * The gap between the approved audience and the live one.
+ *
+ * Only meaningful while a campaign is scheduled: a draft has nothing approved yet, and once
+ * sending has begun the recipient rows are fixed and the stats tell the real story.
+ */
+export async function getMarketingCampaignAudienceDrift(
+  id: string,
+): Promise<ActionResult<CampaignAudienceDrift>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    return { success: true, data: await getCampaignAudienceDrift(id) }
+  } catch (error) {
+    console.error('Failed to load marketing campaign audience drift:', error)
+    return { error: failureMessage(error, 'Failed to check the audience') }
+  }
+}
+
 export async function getMarketingCampaignLinkPerformance(
   id: string,
 ): Promise<ActionResult<MarketingCampaignLinkPerformance[]>> {
