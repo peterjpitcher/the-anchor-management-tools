@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { saveHoursVersionDraft, updateBusinessHours } from '@/app/actions/business-hours'
 import { BusinessHours, DAY_NAMES } from '@/types/business-hours'
 import { Button } from '@/ds'
+import { FoodServiceEditor } from './FoodServiceEditor'
+import { validateServiceWindows, readServiceWindows } from '@/lib/business-hours/service-windows'
 import { Input } from '@/ds'
 import { Checkbox } from '@/ds'
 import { Card } from '@/ds'
@@ -101,6 +103,11 @@ export function BusinessHoursManager({
     )
   }
 
+  const handleScheduleChange = (dayOfWeek: number, schedule: BusinessHours['schedule_config']) => {
+    if (!editable) return
+    setHours(prev => prev.map(h => (h.day_of_week === dayOfWeek ? { ...h, schedule_config: schedule } : h)))
+  }
+
   const handleSundayLunchTimeChange = (field: 'starts_at' | 'ends_at', value: string) => {
     if (!editable) return
     const sundayIndex = 0 // Sunday is 0
@@ -149,6 +156,17 @@ export function BusinessHoursManager({
           ? 'Published hours cannot be edited. Schedule a change instead.'
           : 'You do not have permission to update business hours.',
       )
+      return
+    }
+
+    const badDay = hours.find(
+      h =>
+        !h.is_closed &&
+        !h.is_kitchen_closed &&
+        validateServiceWindows(readServiceWindows(h.schedule_config), h.kitchen_opens, h.kitchen_closes).length > 0,
+    )
+    if (badDay) {
+      toast.error('Fix the food service times highlighted below before saving.')
       return
     }
 
@@ -337,6 +355,8 @@ export function BusinessHoursManager({
           </Card>
         )}
       />
+
+      <FoodServiceEditor hours={hours} editable={editable} onChange={handleScheduleChange} />
 
       <div className="flex justify-end pt-4">
         <Button type="submit" loading={isSaving} fullWidth={false} disabled={!editable || isSaving}>
