@@ -187,7 +187,7 @@
       "type": "footer_dark",
       "data": {
         "unsubscribe_url": "%%unsubscribe%%",
-        "reason_for_contact": "You are receiving this because you enquired about a booking or an event with us, or because you may be close to us and we thought this information would be helpful to you.",
+        "reason_for_contact": "You are receiving this because you enquired about a booking or an event with us.",
         "year": "2026"
       }
     }
