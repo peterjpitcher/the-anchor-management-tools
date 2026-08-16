@@ -10,6 +10,7 @@ vi.mock('@/lib/api/auth', () => ({
     ) => handler(request)
   ),
   createApiResponse: vi.fn((data: unknown, status = 200) => Response.json(data, { status })),
+  getApiKeyAuthState: vi.fn().mockResolvedValue('authenticated'),
   createErrorResponse: vi.fn((error: string, code: string, status = 400) =>
     Response.json(
       {

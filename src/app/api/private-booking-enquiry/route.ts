@@ -20,7 +20,7 @@ import { recordPrivateBookingWebEnquiryCommunication } from '@/lib/communication
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { ConsentService } from '@/services/consent'
 import { parseLondonDateTimeLocal } from '@/lib/dateUtils'
-import { isApiKeyAuthenticated } from '@/lib/api/auth'
+import { getApiKeyAuthState } from '@/lib/api/auth'
 
 const EnquirySchema = z.object({
   phone: z.string().min(5),
@@ -127,8 +127,12 @@ export async function POST(request: NextRequest) {
     // Turnstile CAPTCHA verification, skipped only for requests carrying an API
     // key that actually validates. An unrecognised key is treated as anonymous
     // and still has to pass the bot check.
-    const apiKeyAuthenticated = await isApiKeyAuthenticated(request.headers)
-    if (!apiKeyAuthenticated) {
+    //
+    // A key we could not check at all is a third case: that is our outage, not
+    // a bot, and the caller has no widget to solve. It falls through to
+    // withApiAuth, which reports 503 rather than blaming their bot check.
+    const authState = await getApiKeyAuthState(request.headers)
+    if (authState === 'anonymous') {
       const turnstileToken = request.headers.get('x-turnstile-token')
       const clientIp = getClientIp(request)
       const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)

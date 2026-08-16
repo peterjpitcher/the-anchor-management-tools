@@ -42,6 +42,7 @@ vi.mock('@/lib/api/auth', () => ({
   // The table-bookings route now checks whether the API key actually validates
   // before skipping the bot check, so the mock has to provide it.
   isApiKeyAuthenticated: vi.fn().mockResolvedValue(true),
+  getApiKeyAuthState: vi.fn().mockResolvedValue('authenticated'),
   withApiAuth: vi.fn(
     async (handler: (request: Request) => Promise<Response>, _permissions: string[], request: Request) =>
       handler(request),
