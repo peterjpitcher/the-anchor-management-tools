@@ -33,6 +33,7 @@ import {
   sendMarketingTestEmail,
 } from '@/app/actions/marketing-campaigns'
 import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
+import type { CampaignAudienceDrift } from '@/services/marketing-campaigns'
 import type {
   MarketingCampaign,
   MarketingCampaignLinkPerformance,
@@ -62,6 +63,8 @@ function skipReasonText(reason: string): string {
 
 interface CampaignDetailClientProps {
   campaign: MarketingCampaign
+  /** Present only while scheduled: how far the live audience has moved since approval. */
+  audienceDrift: CampaignAudienceDrift | null
   stats: MarketingCampaignStats | null
   statsError: string | null
   recipients: MarketingCampaignRecipientWithEngagement[]
@@ -84,6 +87,7 @@ function shareOf(count: number, total: number): string | undefined {
 
 export function CampaignDetailClient({
   campaign,
+  audienceDrift,
   stats,
   statsError,
   recipients,
@@ -256,6 +260,19 @@ export function CampaignDetailClient({
                 <div className="flex gap-2">
                   <dt className="text-text-muted">Approved for</dt>
                   <dd className="text-text">{campaign.approvedRecipientCount} contacts</dd>
+                </div>
+              )}
+              {audienceDrift && audienceDrift.delta !== 0 && (
+                <div className="flex gap-2">
+                  <dt className="text-text-muted">Will actually send to</dt>
+                  <dd className="text-warning-fg font-medium">
+                    {audienceDrift.live} contacts
+                    <span className="text-text-muted font-normal">
+                      {' '}
+                      ({audienceDrift.delta > 0 ? '+' : ''}
+                      {audienceDrift.delta} since approval)
+                    </span>
+                  </dd>
                 </div>
               )}
             </dl>

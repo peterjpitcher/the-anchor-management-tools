@@ -603,6 +603,45 @@ export async function scheduleCampaign(
   return { campaign: mapMarketingCampaign(data), approvedRecipientCount: preview.eligibleCount }
 }
 
+export interface CampaignAudienceDrift {
+  /** What a human signed off when the campaign was scheduled. */
+  approved: number | null
+  /** What the same rules select right now, which is what the send will actually use. */
+  live: number
+  /** live minus approved, so positive means more people than were approved. */
+  delta: number
+}
+
+/**
+ * How far the audience has moved since somebody approved it.
+ *
+ * `approved_recipient_count` reads like a control but is only a record: recipients are chosen
+ * by `promote_due_marketing_campaigns()` at the moment the campaign falls due, against live
+ * eligibility, so anybody added or unsubscribed in between changes who actually receives it.
+ * A contact added the night before a send goes out without passing back through approval, and
+ * nothing on screen says so.
+ *
+ * Freezing the audience instead would be the wrong fix here: a contact added on Saturday
+ * getting Monday's email is the behaviour the owner wants. What was missing was being able to
+ * see it, so this reports the gap rather than closing it.
+ */
+export async function getCampaignAudienceDrift(id: string): Promise<CampaignAudienceDrift> {
+  const campaign = await requireCampaign(id)
+
+  const preview = await previewAudience({
+    audienceType: campaign.audienceType,
+    includeTags: campaign.audience.includeTags,
+    excludeTags: campaign.audience.excludeTags,
+  })
+
+  const approved = campaign.approvedRecipientCount
+  return {
+    approved,
+    live: preview.eligibleCount,
+    delta: approved === null ? 0 : preview.eligibleCount - approved,
+  }
+}
+
 export async function pauseCampaign(id: string, userId: string): Promise<MarketingCampaign> {
   const supabase = createAdminClient()
 

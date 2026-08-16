@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   getMarketingCampaign,
+  getMarketingCampaignAudienceDrift,
   getMarketingCampaignLinkPerformance,
   getMarketingCampaignStats,
   listMarketingCampaignRecipients,
@@ -61,6 +62,14 @@ export default async function MarketingCampaignDetailPage({
 
   const campaign = campaignResult.data
 
+  // Only while scheduled. A draft has nothing approved to compare against, and once sending
+  // starts the recipient rows are fixed, so the stats are the honest source from then on.
+  // Fetched after the campaign rather than alongside it because it needs the audience type.
+  const audienceDrift =
+    campaign.status === 'scheduled'
+      ? (await getMarketingCampaignAudienceDrift(id)).data ?? null
+      : null
+
   // Rendered on the server so the renderer, which is server-only, never reaches the browser.
   // The schema is parsed rather than trusted: content that predates a renderer change can be
   // stored and still fail to render, and a blank preview is better than a crashed page.
@@ -81,6 +90,7 @@ export default async function MarketingCampaignDetailPage({
   return (
     <CampaignDetailClient
       campaign={campaign}
+      audienceDrift={audienceDrift}
       stats={statsResult.data ?? null}
       statsError={statsResult.error ?? null}
       recipients={recipientsResult.data?.recipients ?? []}
