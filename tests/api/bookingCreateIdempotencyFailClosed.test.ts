@@ -11,6 +11,7 @@ vi.mock('@/lib/api/auth', () => ({
   // These cases exercise an API-key-authenticated request, which is the one
   // case allowed to skip the Turnstile bot check.
   isApiKeyAuthenticated: vi.fn().mockResolvedValue(true),
+  getApiKeyAuthState: vi.fn().mockResolvedValue('authenticated'),
 }))
 
 vi.mock('@/lib/api/idempotency', () => ({
