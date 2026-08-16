@@ -69,7 +69,10 @@ describe('Settings read-only behaviour', () => {
       <BusinessHoursManager canManage={false} initialHours={mockHours} />,
     )
 
-    await screen.findByText('Monday')
+    // Monday now appears twice: once in the grid, once in the food service
+    // editor below it. Both must be read-only, which the assertions below check
+    // across every input on the page.
+    await screen.findAllByText('Monday')
 
     const timeInputs = container.querySelectorAll('input[type="time"]')
     expect(timeInputs.length).toBeGreaterThan(0)
