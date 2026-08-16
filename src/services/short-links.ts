@@ -734,8 +734,15 @@ export class ShortLinkService {
 
     const shortCode = (result as Record<string, unknown>)?.short_code as string;
 
-    // Set parent_link_id and name on the new variant
-    await supabase
+    // Set parent_link_id and name on the new variant. This goes through the
+    // admin client like every other write in this service: it was the last
+    // path writing short_links with the cookie client, and it only got through
+    // RLS via the `created_by IS NULL` arm of "Users can update own short
+    // links", which covers 97.5% of rows. Keeping it here would mean leaving
+    // UPDATE granted to `authenticated`, letting any signed-in user repoint
+    // almost any link straight through PostgREST, bypassing the
+    // checkUserPermission('short_links', 'manage') check in the server action.
+    await createAdminClient()
       .from('short_links')
       .update({ parent_link_id: parentId, name: variantName, ...(createdBy ? { created_by: createdBy } : {}) })
       .eq('short_code', shortCode);
