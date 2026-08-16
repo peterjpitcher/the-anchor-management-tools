@@ -167,7 +167,7 @@
       "type": "footer",
       "data": {
         "unsubscribe_url": "%%unsubscribe%%",
-        "reason_for_contact": "You are receiving this because you have booked with us before, or because you told us you were happy to hear from us. Our list goes back a long way, so that may have been a while ago.",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
         "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
         "year": "2026"
       }
