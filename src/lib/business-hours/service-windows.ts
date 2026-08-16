@@ -166,3 +166,33 @@ export function readServiceWindows(existing: ScheduleConfigItem[] | null): Servi
     }))
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
 }
+
+/**
+ * Why a day would produce no bookable times at all.
+ *
+ * The reason this exists: Halloween was saved as "open 12:00, close 00:00" and
+ * the website then offered nothing for that date, silently. Nobody could have
+ * known from the settings screen, because the times looked perfectly sensible.
+ * A save that quietly closes a trading day should be impossible to make by
+ * accident, so this runs before the write and the screen explains it.
+ *
+ * Returns null when the day is fine.
+ */
+export function describeUnbookableDay(input: {
+  opens: string | null
+  closes: string | null
+  isClosed: boolean
+}): string | null {
+  if (input.isClosed) return null
+
+  const open = input.opens ? toMinutes(toClock(input.opens)) : null
+  const close = input.closes ? toMinutes(toClock(input.closes)) : null
+
+  if (open === null || close === null) {
+    return 'Set an opening and a closing time, or mark the venue closed. Without both, no times can be offered.'
+  }
+  if (open === close) {
+    return 'The opening and closing times are the same, so the venue would be open for zero minutes and no times could be booked. Mark it closed instead.'
+  }
+  return null
+}

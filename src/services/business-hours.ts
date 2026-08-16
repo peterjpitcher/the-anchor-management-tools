@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { BusinessHours, SpecialHours, ServiceStatus, ServiceStatusOverride } from '@/types/business-hours';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { getActiveVersion } from '@/lib/business-hours/effective';
+import { describeUnbookableDay } from '@/lib/business-hours/service-windows';
 
 // Helper to validate time format
 const timeSchema = z.preprocess(
@@ -732,6 +733,16 @@ export class BusinessHoursService {
     if (!validationResult.success) throw new Error(validationResult.error.errors[0].message);
 
     const validatedData = validationResult.data;
+
+    // Refuse a combination that would leave the day with no bookable times at
+    // all. A save like that looks fine on this screen and quietly closes the
+    // booking page for that date.
+    const unbookable = describeUnbookableDay({
+      opens: validatedData.opens,
+      closes: validatedData.closes,
+      isClosed: validatedData.is_closed,
+    });
+    if (unbookable) throw new Error(unbookable);
     const effectiveIsKitchenClosed = validatedData.is_closed ? true : validatedData.is_kitchen_closed;
     const basePayload = {
       opens: validatedData.is_closed ? null : validatedData.opens,
@@ -807,6 +818,16 @@ export class BusinessHoursService {
     if (!validationResult.success) throw new Error(validationResult.error.errors[0].message);
 
     const validatedData = validationResult.data;
+
+    // Refuse a combination that would leave the day with no bookable times at
+    // all. A save like that looks fine on this screen and quietly closes the
+    // booking page for that date.
+    const unbookable = describeUnbookableDay({
+      opens: validatedData.opens,
+      closes: validatedData.closes,
+      isClosed: validatedData.is_closed,
+    });
+    if (unbookable) throw new Error(unbookable);
     const effectiveIsKitchenClosed = validatedData.is_closed ? true : validatedData.is_kitchen_closed;
     const payload = {
       ...validatedData,
