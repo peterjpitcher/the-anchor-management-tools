@@ -10,6 +10,10 @@ import { Alert } from '@/ds'
 import { Send } from 'lucide-react'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
+import {
+  buildDefaultInvoiceEmailBody,
+  buildDefaultInvoiceEmailSubject,
+} from '@/lib/invoices/email-drafts'
 
 interface EmailInvoiceModalProps {
   invoice: InvoiceWithDetails
@@ -22,30 +26,39 @@ export function EmailInvoiceModal({ invoice, isOpen, onClose, onSuccess }: Email
   const supabase = useSupabase()
   const [toEmails, setToEmails] = useState('')
   const [ccEmails, setCcEmails] = useState('')
-  const [subject, setSubject] = useState(`Invoice ${invoice.invoice_number} from Orange Jelly Limited`)
-  const [body, setBody] = useState(
-    `Hi ${invoice.vendor?.contact_name || invoice.vendor?.name || 'there'},
-
-I hope you're doing well!
-
-Please find attached invoice ${invoice.invoice_number} with the following details:
-
-Amount Due: £${invoice.total_amount.toFixed(2)}
-Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
-
-${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!
-
-Many thanks,
-Peter Pitcher
-Orange Jelly Limited
-07995087315
-
-P.S. The invoice is attached as a PDF for easy viewing and printing.`
-  )
+  const [subject, setSubject] = useState(() => buildDefaultInvoiceEmailSubject(invoice))
+  const [body, setBody] = useState(() => buildDefaultInvoiceEmailBody(invoice))
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const vendorId = invoice.vendor?.id
+
+  /**
+   * The modal is rendered with an `isOpen` prop rather than being mounted on
+   * demand, so it lives for the whole page and a `useState` initialiser runs
+   * exactly once. That meant the draft text kept whatever the invoice totalled
+   * when the page first loaded: reissue or edit an invoice, hit Email without
+   * reloading, and the body quoted the OLD amount to the client while the
+   * attached PDF showed the new one.
+   *
+   * Rebuilding whenever the dialog opens, and whenever a figure the text quotes
+   * changes, keeps the body honest. Edits made while it is open survive, because
+   * none of these dependencies move until the invoice itself does.
+   */
+  useEffect(() => {
+    if (!isOpen) return
+    setSubject(buildDefaultInvoiceEmailSubject(invoice))
+    setBody(buildDefaultInvoiceEmailBody(invoice))
+  }, [
+    isOpen,
+    invoice.id,
+    invoice.invoice_number,
+    invoice.total_amount,
+    invoice.due_date,
+    invoice.notes,
+    invoice.vendor?.contact_name,
+    invoice.vendor?.name,
+  ])
 
   // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
