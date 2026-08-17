@@ -24,11 +24,13 @@ import {
   listContacts,
   listContactsWithEngagement,
   listTags,
+  hashEmail,
   previewAudience,
   resubscribeContact,
   setEligibility,
   setEligibilityBulk,
   unsubscribeContact,
+  unsubscribeEmailAddressFromMarketing,
   updateContact,
   type ImportContactsResult,
   type ListContactsResult,
@@ -117,6 +119,8 @@ const unsubscribeSchema = z.object({
   campaignId: z.string().uuid().nullable().optional(),
   source: z.string().trim().min(1).max(100),
 })
+
+const unsubscribeEmailAddressSchema = z.string().trim().toLowerCase().email().max(320)
 
 const audienceSchema = z.object({
   includeTags: tagsSchema.optional(),
@@ -449,6 +453,43 @@ export async function unsubscribeBusinessContact(
   } catch (error) {
     console.error('Failed to unsubscribe business contact:', error)
     return { error: failureMessage(error, 'Failed to unsubscribe the contact') }
+  }
+}
+
+export async function unsubscribeMarketingEmailAddress(
+  input: unknown,
+): Promise<ActionResult<Awaited<ReturnType<typeof unsubscribeEmailAddressFromMarketing>>>> {
+  try {
+    const context = await authorise('edit')
+    if ('error' in context) return { error: context.error }
+
+    const parsed = unsubscribeEmailAddressSchema.safeParse(input)
+    if (!parsed.success) return { error: 'Enter a valid email address' }
+
+    const result = await unsubscribeEmailAddressFromMarketing(parsed.data, context.user.id)
+
+    await logAuditEvent({
+      user_id: context.user.id,
+      user_email: context.user.email,
+      operation_type: 'update',
+      resource_type: 'marketing_contact',
+      resource_id: hashEmail(parsed.data),
+      operation_status: 'success',
+      additional_info: {
+        change: 'unsubscribe_by_email',
+        customer_matches: result.customerMatches,
+        business_contact_matches: result.businessContactMatches,
+        newly_unsubscribed: result.newlyUnsubscribed,
+        already_unsubscribed: result.alreadyUnsubscribed,
+        address_blocked: result.addressBlocked,
+      },
+    })
+
+    revalidateContacts()
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('Failed to unsubscribe marketing email address:', error)
+    return { error: failureMessage(error, 'Failed to unsubscribe the email address') }
   }
 }
 
