@@ -1,5 +1,6 @@
 'use server'
 
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { format, subDays } from 'date-fns'
@@ -45,22 +46,27 @@ const EMPTY_COUNTS: OutstandingCounts = {
   feedback: 0,
 }
 
-export async function getOutstandingCounts(): Promise<OutstandingCounts> {
-  const supabase = await createClient()
-
-  // Two of the tables below are readable only by the service role, so they need
-  // the admin client. That bypasses RLS, so establish there is a signed-in user
-  // first and return zeros otherwise. Every caller is authenticated staff chrome.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return EMPTY_COUNTS
-
-  // `checklist_task_instances` has a service_role-only policy and
-  // `review_feedback` has RLS on with no policies at all, so both return zero
-  // rows through the cookie client. Counting them with `supabase` would have
-  // shown a permanently empty badge rather than an error.
-  const admin = createAdminClient()
+/**
+ * Every count here is read with the admin client, not the cookie client.
+ *
+ * Three of these tables are unreadable by the `authenticated` role:
+ * `checklist_task_instances` has a service_role-only policy, `review_feedback`
+ * has RLS on with no policies at all, and `receipt_transactions` has only a
+ * `auth.role() = 'service_role'` policy. Counting any of them through the cookie
+ * client returns 0 rather than an error, so the badge just sits at zero and looks
+ * like there is no work to do. That is exactly what had happened to Receipts: the
+ * pill read 0 while 76 receipts sat pending.
+ *
+ * Reading them all as the service role is safe because a badge is only ever
+ * rendered on a nav item the user can already see. `filterNavGroupsForPermissions`
+ * in src/ds/shell/SidebarNav.tsx drops any item whose `permission` the user lacks,
+ * and the badge goes with it, so a global count is never shown to someone without
+ * access to the page behind it.
+ *
+ * Kept free of cookies and headers on purpose so the whole thing can be cached.
+ */
+async function computeOutstandingCounts(): Promise<OutstandingCounts> {
+  const db = createAdminClient()
   // Two different "todays" on purpose. Events and event todos use the plain
   // London calendar date. Pub checklists use the business date, which does not
   // roll over until 05:00, so the badge keeps counting last night's open closing
@@ -82,71 +88,64 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
     feedbackOpenResult
   ] = await Promise.all([
     // Events: upcoming events used for checklist todo count
-    supabase
-      .from('events')
+    db.from('events')
       .select('id, name, date')
       .gte('date', todayIso),
 
     // Menu Management
-    supabase.rpc('get_menu_outstanding_count'),
+    db.rpc('get_menu_outstanding_count'),
 
     // Private Bookings: draft bookings
-    supabase
-      .from('private_bookings')
-      .select('*', { count: 'exact', head: true })
+    db.from('private_bookings')
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'draft'),
 
     // Private Bookings: pending SMS approvals
-    supabase
-      .from('private_booking_sms_queue')
-      .select('*', { count: 'exact', head: true })
+    db.from('private_booking_sms_queue')
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
 
     // Invoices: only the ones needing staff work. `sent` and `partially_paid`
     // are waiting on the customer to pay, so counting them meant the pill could
     // never reach zero. Drafts need finishing and sending; overdue need chasing.
-    supabase
-      .from('invoices')
-      .select('*', { count: 'exact', head: true })
+    db.from('invoices')
+      .select('id', { count: 'exact', head: true })
       .in('status', ['draft', 'overdue'])
       .is('deleted_at', null),
 
     // Receipts: pending
-    supabase
-      .from('receipt_transactions')
-      .select('*', { count: 'exact', head: true })
+    db.from('receipt_transactions')
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
 
     // Cashing Up: draft sessions
-    supabase
-      .from('cashup_sessions')
-      .select('*', { count: 'exact', head: true })
+    db.from('cashup_sessions')
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'draft'),
 
     // Cashing Up: last 7 days coverage
-    supabase
-      .from('cashup_sessions')
+    db.from('cashup_sessions')
       .select('session_date')
       .gte('session_date', format(subDays(new Date(), 7), 'yyyy-MM-dd'))
       .lte('session_date', format(subDays(new Date(), 1), 'yyyy-MM-dd')),
 
     // Rota: leave requests waiting on a manager decision
-    supabase.from('leave_requests')
-      .select('*', { count: 'exact', head: true })
+    db.from('leave_requests')
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
 
     // Checklists: tasks still open and already due. Anything already recorded
     // as `missed` is excluded: that outcome is settled and cannot be worked off.
-    admin.from('checklist_task_instances')
-      .select('*', { count: 'exact', head: true })
+    db.from('checklist_task_instances')
+      .select('id', { count: 'exact', head: true })
       .eq('state', 'pending')
       .is('completed_at', null)
       .lte('business_date', checklistBusinessDate),
 
     // Feedback: the inbox's own open states, matching OPEN_STATUSES in
     // src/app/actions/feedback.ts
-    admin.from('review_feedback')
-      .select('*', { count: 'exact', head: true })
+    db.from('review_feedback')
+      .select('id', { count: 'exact', head: true })
       .in('status', ['new', 'in_progress'])
   ])
 
@@ -154,8 +153,7 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
   const events = eventsResult.data ?? []
   if (events.length > 0) {
     const eventIds = events.map((event) => event.id)
-    const checklistStatusesResult = await supabase
-      .from('event_checklist_statuses')
+    const checklistStatusesResult = await db.from('event_checklist_statuses')
       .select('event_id, task_key, completed_at')
       .in('event_id', eventIds)
 
@@ -218,4 +216,35 @@ export async function getOutstandingCounts(): Promise<OutstandingCounts> {
     checklists: checklistsCount,
     feedback: feedbackCount
   }
+}
+
+/**
+ * Every open tab polls /api/outstanding-counts once a minute, and each poll used to
+ * run twelve uncached queries. On production that had reached roughly 740,000 calls
+ * per counter, around nine million queries in total, which was the single largest
+ * consumer of database time. The queries themselves are cheap; the volume is what
+ * saturated the server and inflated everything else running alongside it.
+ *
+ * The counts are identical for every member of staff, so one cache entry serves all
+ * of them: concurrent tabs collapse onto a single computation instead of each paying
+ * for its own. 30 seconds is half the client's own poll interval, so a badge is never
+ * more than one poll behind, and mutations already fan out revalidateTag('dashboard')
+ * from 25 action files, which clears this too the moment someone changes anything.
+ */
+const getCachedOutstandingCounts = unstable_cache(
+  computeOutstandingCounts,
+  ['outstanding-counts'],
+  { revalidate: 30, tags: ['dashboard', 'outstanding-counts'] }
+)
+
+export async function getOutstandingCounts(): Promise<OutstandingCounts> {
+  // The auth gate stays outside the cache: it reads cookies, which unstable_cache
+  // forbids, and it must run per request rather than once per cache window.
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return EMPTY_COUNTS
+
+  return getCachedOutstandingCounts()
 }
