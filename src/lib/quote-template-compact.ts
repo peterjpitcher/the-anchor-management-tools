@@ -142,7 +142,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     }
     
     .logo {
-      max-width: 150px;
+      max-width: 90px;
       height: auto;
       margin-bottom: 5px;
     }

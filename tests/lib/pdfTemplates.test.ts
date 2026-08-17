@@ -126,15 +126,6 @@ describe('the two templates agree on shared styling', () => {
       ])
     )
 
-  /**
-   * `.logo` already differs and is left alone deliberately: the invoice caps the logo
-   * at 90px and the quote at 150px, so the same logo prints two thirds larger on a
-   * quote. That is drift of exactly the kind this test exists to catch, but picking a
-   * winner changes how customer documents look, so it wants a decision rather than a
-   * quiet edit. Everything else must agree.
-   */
-  const KNOWN_DIVERGENT = ['.logo']
-
   it('renders the same declarations for every selector both documents use', () => {
     const invoiceRules = rulesOf(styleOf(invoice))
     const quoteRules = rulesOf(styleOf(quote))
@@ -143,18 +134,18 @@ describe('the two templates agree on shared styling', () => {
     expect(shared.length).toBeGreaterThan(10)
 
     // Where both documents style the same thing, they must style it identically.
-    // This is the drift the shared stylesheet exists to prevent.
-    const divergent = shared
-      .filter((selector) => invoiceRules.get(selector) !== quoteRules.get(selector))
-      .filter((selector) => !KNOWN_DIVERGENT.includes(selector))
+    // This is the drift the shared stylesheet exists to prevent. There is no exception
+    // list on purpose: the one divergence that existed, .logo at 90px on invoices and
+    // 150px on quotes, has been settled at 90px on both.
+    const divergent = shared.filter((selector) => invoiceRules.get(selector) !== quoteRules.get(selector))
     expect(divergent).toEqual([])
   })
 
-  it('still reports the known logo divergence, so it cannot be forgotten', () => {
+  it('caps the logo at the same size on both documents', () => {
     const invoiceRules = rulesOf(styleOf(invoice))
     const quoteRules = rulesOf(styleOf(quote))
 
     expect(invoiceRules.get('.logo')).toContain('max-width: 90px')
-    expect(quoteRules.get('.logo')).toContain('max-width: 150px')
+    expect(quoteRules.get('.logo')).toContain('max-width: 90px')
   })
 })
