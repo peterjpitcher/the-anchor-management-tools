@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
+import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
+import { applyStatementCapTopUp } from '@/lib/oj-projects/statement-cap'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { generateOjTimesheetPDF } from '@/lib/oj-timesheet'
@@ -75,7 +76,7 @@ function getProjectLabel(project: any) {
   if (!project) return 'Project'
   const code = project?.project_code ? String(project.project_code) : ''
   const name = project?.project_name ? String(project.project_name) : ''
-  if (code && name) return `${code} — ${name}`
+  if (code && name) return `${code}: ${name}`
   return code || name || 'Project'
 }
 
@@ -152,28 +153,143 @@ async function updateBillingRunById(
  * A run whose invoice is still a draft is left alone and reported, because
  * releasing its rows would duplicate that draft.
  */
+/**
+ * Settles or releases rows sitting at billing_pending with no billing run.
+ *
+ * Only the reissue and replacement RPCs produce this shape: they attach rows to
+ * a new invoice and null the run link. The row's own invoice is therefore the
+ * only authority on what should happen to it.
+ *
+ * A draft is left alone and reported: the invoice may simply not have been sent
+ * yet, and releasing its rows would leave the draft billing work that is once
+ * again queued for the next run.
+ */
+async function recoverRunlessLockedRows(
+  supabase: ReturnType<typeof createAdminClient>,
+  lockedRows: Array<{ billing_run_id?: unknown; invoice_id?: unknown }>,
+  summary: { orphan_settled: number; orphan_released: number; orphan_needs_review: string[] }
+) {
+  const TABLES = ['oj_entries', 'oj_recurring_charge_instances'] as const
+
+  const runlessRows = lockedRows.filter((row) => !row?.billing_run_id)
+  if (runlessRows.length === 0) return
+
+  const invoiceIds = new Set<string>()
+  let hasInvoicelessRows = false
+  for (const row of runlessRows) {
+    if (row?.invoice_id) invoiceIds.add(String(row.invoice_id))
+    else hasInvoicelessRows = true
+  }
+
+  // Locked, no run, no invoice: nothing can ever claim these, so free them.
+  if (hasInvoicelessRows) {
+    const nowIso = new Date().toISOString()
+    for (const table of TABLES) {
+      await throwOnMutationError(
+        supabase
+          .from(table)
+          .update({ status: 'unbilled', billing_run_id: null, billed_at: null, paid_at: null, updated_at: nowIso })
+          .is('billing_run_id', null)
+          .is('invoice_id', null)
+          .eq('status', 'billing_pending'),
+        `Failed to release run-less, invoice-less locked ${table} rows`
+      )
+    }
+    summary.orphan_released++
+  }
+
+  if (invoiceIds.size === 0) return
+
+  const { data: invoices, error: invoicesError } = await supabase
+    .from('invoices')
+    .select('id, status, deleted_at')
+    .in('id', [...invoiceIds])
+    .limit(1000)
+  if (invoicesError) throw new Error(invoicesError.message)
+
+  const invoiceById = new Map(
+    (invoices || []).map((invoice: any) => [String(invoice.id), invoice])
+  )
+
+  for (const invoiceId of invoiceIds) {
+    const nowIso = new Date().toISOString()
+    const invoice = invoiceById.get(invoiceId)
+    const invoiceStatus = invoice && !invoice.deleted_at ? String(invoice.status || '') : ''
+
+    if (invoiceStatus === 'draft') {
+      summary.orphan_needs_review.push(invoiceId)
+      continue
+    }
+
+    const settles = ['sent', 'paid', 'overdue', 'partially_paid'].includes(invoiceStatus)
+    const patch = settles
+      ? invoiceStatus === 'paid'
+        ? { status: 'paid', billed_at: nowIso, paid_at: nowIso, updated_at: nowIso }
+        : { status: 'billed', billed_at: nowIso, updated_at: nowIso }
+      // Void, soft-deleted, or vanished: the work was never charged, so put it
+      // back in the queue and cut the link to a bill that will never be paid.
+      : { status: 'unbilled', invoice_id: null, billed_at: null, paid_at: null, updated_at: nowIso }
+
+    for (const table of TABLES) {
+      await throwOnMutationError(
+        supabase
+          .from(table)
+          .update(patch)
+          .eq('invoice_id', invoiceId)
+          .is('billing_run_id', null)
+          .eq('status', 'billing_pending'),
+        `Failed to recover run-less locked ${table} rows for invoice ${invoiceId}`
+      )
+    }
+
+    if (settles) summary.orphan_settled++
+    else summary.orphan_released++
+  }
+}
+
 async function recoverUnfinishedBillingRuns(
   supabase: ReturnType<typeof createAdminClient>,
   currentPeriodYyyymm: string
 ) {
-  const summary = { settled: 0, released: 0, needs_review: [] as string[] }
+  const summary = {
+    settled: 0,
+    released: 0,
+    needs_review: [] as string[],
+    orphan_settled: 0,
+    orphan_released: 0,
+    orphan_needs_review: [] as string[],
+  }
 
   // Find the runs that still own locked rows, from either table.
   const [lockedEntries, lockedInstances] = await Promise.all([
-    supabase.from('oj_entries').select('billing_run_id').eq('status', 'billing_pending').limit(10000),
+    supabase
+      .from('oj_entries')
+      .select('billing_run_id, invoice_id')
+      .eq('status', 'billing_pending')
+      .limit(10000),
     supabase
       .from('oj_recurring_charge_instances')
-      .select('billing_run_id')
+      .select('billing_run_id, invoice_id')
       .eq('status', 'billing_pending')
       .limit(10000),
   ])
   if (lockedEntries.error) throw new Error(lockedEntries.error.message)
   if (lockedInstances.error) throw new Error(lockedInstances.error.message)
 
+  const allLockedRows = [...(lockedEntries.data || []), ...(lockedInstances.data || [])]
+
   const lockedRunIds = new Set<string>()
-  for (const row of [...(lockedEntries.data || []), ...(lockedInstances.data || [])]) {
+  for (const row of allLockedRows) {
     if (row?.billing_run_id) lockedRunIds.add(String(row.billing_run_id))
   }
+
+  // Rows locked with NO run at all. A reissue or replacement deliberately clears
+  // billing_run_id, so these can never be reached through oj_billing_runs and
+  // used to sit at billing_pending forever: no eligibility query wants them
+  // (they all ask for 'unbilled') and the invoice-paid trigger skips them (it
+  // only settles 'billed'). They are recovered against their own invoice.
+  await recoverRunlessLockedRows(supabase, allLockedRows, summary)
+
   if (lockedRunIds.size === 0) return summary
 
   const { data: staleRuns, error: staleRunsError } = await supabase
@@ -444,6 +560,12 @@ function buildInvoiceNotes(input: {
   carriedForwardMileageEntries?: any[]
   carriedForwardTimeEntries?: any[]
   carriedForwardOneOffEntries?: any[]
+  /**
+   * The client's billing settings, so the carry-forward figures below fall back
+   * exactly as the billing engine does. Without it a null rate or VAT snapshot
+   * silently values carried-forward work at zero on a customer-facing note.
+   */
+  settings?: any
 }) {
   const lines: string[] = []
   lines.push(`OJ Projects timesheet`)
@@ -474,7 +596,7 @@ function buildInvoiceNotes(input: {
   const timeByProject = new Map<string, { projectLabel: string; entries: any[] }>()
   for (const e of input.selectedTimeEntries || []) {
     const projectLabel = e?.project?.project_code
-      ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+      ? `${e.project.project_code}: ${e.project.project_name || 'Project'}`
       : e?.project?.project_name || 'Project'
     const key = String(e.project_id)
     const bucket = timeByProject.get(key) || { projectLabel, entries: [] as any[] }
@@ -535,7 +657,7 @@ function buildInvoiceNotes(input: {
         const miles = Number(e.miles || 0)
         const desc = e.description ? String(e.description).replace(/\s+/g, ' ').trim() : ''
         const projectLabel = e?.project?.project_code
-          ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+          ? `${e.project.project_code}: ${e.project.project_name || 'Project'}`
           : e?.project?.project_name || 'Project'
         lines.push(`- ${e.entry_date} • ${projectLabel} • ${miles.toFixed(2)} miles${desc ? ` • ${desc}` : ''}`)
       }
@@ -546,7 +668,7 @@ function buildInvoiceNotes(input: {
         const miles = Number(e.miles || 0)
         totalMiles += miles
         const projectLabel = e?.project?.project_code
-          ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+          ? `${e.project.project_code}: ${e.project.project_name || 'Project'}`
           : e?.project?.project_name || 'Project'
         byProject.set(projectLabel, (byProject.get(projectLabel) || 0) + miles)
       }
@@ -563,7 +685,7 @@ function buildInvoiceNotes(input: {
     for (const e of input.selectedOneOffEntries!) {
       const exVat = Number(e.amount_ex_vat_snapshot || 0)
       const projectLabel = e?.project?.project_code
-        ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+        ? `${e.project.project_code}: ${e.project.project_name || 'Project'}`
         : e?.project?.project_name || 'Project'
       const desc = e.description ? String(e.description).replace(/\s+/g, ' ').trim() : ''
       lines.push(`- ${e.entry_date} • ${projectLabel} • £${exVat.toFixed(2)} ex VAT${desc ? ` • ${desc}` : ''}`)
@@ -586,33 +708,30 @@ function buildInvoiceNotes(input: {
       const cfOneOff = input.carriedForwardOneOffEntries || []
 
       if (cfRecurring.length + cfMileage.length + cfTime.length + cfOneOff.length > 0) {
-        const recurringIncVat = cfRecurring.reduce((acc: number, c: any) => {
-          const exVat = roundMoney(Number(c.amount_ex_vat_snapshot || 0))
-          const vatRate = Number(c.vat_rate_snapshot || 0)
-          return acc + moneyIncVat(exVat, vatRate)
-        }, 0)
+        // These four totals must agree with what the next billing run will
+        // actually charge, so they go through the same helpers the engine uses
+        // rather than re-deriving the maths with different fallbacks.
+        const recurringIncVat = cfRecurring.reduce(
+          (acc: number, c: any) => acc + getRecurringCharge(c).incVat,
+          0
+        )
 
         const mileageMiles = cfMileage.reduce((acc: number, e: any) => acc + Number(e.miles || 0), 0)
-        const mileageIncVat = cfMileage.reduce((acc: number, e: any) => {
-          const miles = Number(e.miles || 0)
-          const rate = resolveRate(e.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
-          return acc + roundMoney(miles * rate)
-        }, 0)
+        const mileageIncVat = cfMileage.reduce(
+          (acc: number, e: any) => acc + getEntryCharge(e, input.settings).incVat,
+          0
+        )
 
         const timeMinutes = cfTime.reduce((acc: number, e: any) => acc + Number(e.duration_minutes_rounded || 0), 0)
-        const timeIncVat = cfTime.reduce((acc: number, e: any) => {
-          const minutes = Number(e.duration_minutes_rounded || 0)
-          const hours = minutes / 60
-          const rate = Number(e.hourly_rate_ex_vat_snapshot || 0)
-          const vatRate = Number(e.vat_rate_snapshot || 0)
-          return acc + moneyIncVat(roundMoney(hours * rate), vatRate)
-        }, 0)
+        const timeIncVat = cfTime.reduce(
+          (acc: number, e: any) => acc + getEntryCharge(e, input.settings).incVat,
+          0
+        )
 
-        const oneOffIncVat = cfOneOff.reduce((acc: number, e: any) => {
-          const exVat = roundMoney(Number(e.amount_ex_vat_snapshot || 0))
-          const vatRate = Number(e.vat_rate_snapshot || 0)
-          return acc + moneyIncVat(exVat, vatRate)
-        }, 0)
+        const oneOffIncVat = cfOneOff.reduce(
+          (acc: number, e: any) => acc + getEntryCharge(e, input.settings).incVat,
+          0
+        )
 
         if (cfRecurring.length > 0) lines.push(`- Recurring charges: £${roundMoney(recurringIncVat).toFixed(2)} (${cfRecurring.length} items)`)
         if (cfOneOff.length > 0) lines.push(`- One-off charges: £${roundMoney(oneOffIncVat).toFixed(2)} (${cfOneOff.length} items)`)
@@ -683,30 +802,6 @@ function computePartialExVatForHeadroom(headroomIncVat: number, vatRate: number)
     incVat = moneyIncVat(exVat, vatRate)
     guard += 1
   }
-  if (exVat <= 0) return null
-  return { exVat, incVat }
-}
-
-function computeExVatForTargetIncVat(targetIncVat: number, vatRate: number) {
-  const safeTarget = roundMoney(Number(targetIncVat) || 0)
-  if (!Number.isFinite(safeTarget) || safeTarget <= 0) return null
-  const divisor = 1 + vatRate / 100
-  if (!Number.isFinite(divisor) || divisor <= 0) return null
-
-  let exVat = roundMoney(safeTarget / divisor)
-  let incVat = moneyIncVat(exVat, vatRate)
-
-  let guard = 0
-  while (incVat < safeTarget - 0.009 && guard < 500) {
-    exVat = roundMoney(exVat + 0.01)
-    incVat = moneyIncVat(exVat, vatRate)
-    guard += 1
-  }
-  if (incVat - safeTarget > 0.009) {
-    exVat = roundMoney(exVat - 0.01)
-    incVat = moneyIncVat(exVat, vatRate)
-  }
-
   if (exVat <= 0) return null
   return { exVat, incVat }
 }
@@ -1327,78 +1422,6 @@ async function computeStatementBalanceBefore(input: {
   return { balanceBefore, unpaidInvoiceBalance, unbilledTotal }
 }
 
-function applyStatementCapTopUp(input: {
-  lineItems: Array<{
-    catalog_item_id: string | null
-    description: string
-    quantity: number
-    unit_price: number
-    discount_percentage: number
-    vat_rate: number
-  }>
-  totals: InvoiceTotalsResult
-  targetIncVat: number
-  vatRate: number
-}) {
-  let totals = input.totals
-  const target = roundMoney(Number(input.targetIncVat))
-  if (!Number.isFinite(target) || target <= 0) return { lineItems: input.lineItems, totals }
-
-  let diff = roundMoney(target - Number(totals.totalAmount))
-  if (!Number.isFinite(diff) || diff <= 0.009) return { lineItems: input.lineItems, totals }
-
-  const vatRate = Number(input.vatRate || 0)
-  const label =
-    vatRate === 0
-      ? 'Account balance payment (zero-rated)'
-      : `Account balance payment (${vatRate}% VAT)`
-
-  let existingIndex = input.lineItems.findIndex(
-    (item) => item.vat_rate === vatRate && item.description.startsWith('Account balance payment')
-  )
-
-  if (existingIndex < 0) {
-    input.lineItems.push({
-      catalog_item_id: null,
-      description: label,
-      quantity: 1,
-      unit_price: 0,
-      discount_percentage: 0,
-      vat_rate: vatRate,
-    })
-    existingIndex = input.lineItems.length - 1
-  }
-
-  const adjustment = computeExVatForTargetIncVat(diff, vatRate)
-  if (!adjustment) return { lineItems: input.lineItems, totals }
-
-  const existing = input.lineItems[existingIndex]
-  input.lineItems[existingIndex] = {
-    ...existing,
-    unit_price: roundMoney(Number(existing.unit_price || 0) + adjustment.exVat),
-  }
-
-  totals = calculateInvoiceTotals(input.lineItems, 0)
-  diff = roundMoney(target - Number(totals.totalAmount))
-
-  if (Math.abs(diff) > 0.009) {
-    let guard = 0
-    while (Math.abs(diff) > 0.009 && guard < 500) {
-      const step = diff > 0 ? 0.01 : -0.01
-      const current = input.lineItems[existingIndex]
-      input.lineItems[existingIndex] = {
-        ...current,
-        unit_price: roundMoney(Number(current.unit_price || 0) + step),
-      }
-      totals = calculateInvoiceTotals(input.lineItems, 0)
-      diff = roundMoney(target - Number(totals.totalAmount))
-      guard += 1
-    }
-  }
-
-  return { lineItems: input.lineItems, totals }
-}
-
 function buildStatementLineItems(input: {
   selectedRecurringInstances: any[]
   selectedMileageEntries: any[]
@@ -1500,11 +1523,14 @@ function buildDetailedLineItems(input: {
 
   for (const e of input.selectedOneOffEntries || []) {
     const exVat = roundMoney(Number(e.amount_ex_vat_snapshot || 0))
-    const vatRate = Number(e.vat_rate_snapshot || 0)
+    // Must match getEntryCharge, which is what the cap accounting counted this
+    // entry at. `|| 0` here would invoice a null-snapshot one-off at 0% VAT
+    // while the cap had already reserved room for it at 20%.
+    const vatRate = Number(e.vat_rate_snapshot ?? input.settings?.vat_rate ?? 20)
     const projectLabel = e?.project?.project_code
-      ? `${e.project.project_code} — ${e.project.project_name || 'Project'}`
+      ? `${e.project.project_code}: ${e.project.project_name || 'Project'}`
       : e?.project?.project_name || 'Project'
-    const desc = e.description ? ` — ${String(e.description).replace(/\s+/g, ' ').trim()}` : ''
+    const desc = e.description ? `, ${String(e.description).replace(/\s+/g, ' ').trim()}` : ''
     lineItems.push({
       catalog_item_id: null,
       description: `${projectLabel}${desc}`,
@@ -1567,7 +1593,7 @@ function buildDetailedLineItems(input: {
     }, 0)
 
     const label = project?.project_code
-      ? `${project.project_code} — ${project.project_name || 'Project'}`
+      ? `${project.project_code}: ${project.project_name || 'Project'}`
       : project?.project_name || 'Project'
 
     lineItems.push({
@@ -1907,6 +1933,7 @@ async function buildDryRunPreview(input: {
       carriedForwardMileageEntries: skippedMileage,
       carriedForwardTimeEntries: skippedTime,
       carriedForwardOneOffEntries: skippedOneOff,
+      settings,
     })
     const notesCompact = buildInvoiceNotes({
       period_start: period.period_start,
@@ -1922,6 +1949,7 @@ async function buildDryRunPreview(input: {
       carriedForwardMileageEntries: skippedMileage,
       carriedForwardTimeEntries: skippedTime,
       carriedForwardOneOffEntries: skippedOneOff,
+      settings,
     })
     attachTimesheet = notesFull.length > OJ_INVOICE_NOTES_MAX_CHARS
     notes = attachTimesheet ? `${notesCompact}\n\nFull breakdown attached as Timesheet PDF.` : notesFull
@@ -2583,9 +2611,12 @@ export async function GET(request: Request) {
 
         let additionalAttachments: Array<{ name: string; contentType: string; buffer: Buffer }> | undefined
         if (shouldAttachTimesheet) {
+          // Rates and VAT are needed as well as the cap, because the timesheet
+          // notes value carried-forward work through the same helpers the
+          // billing engine uses, and those fall back to the client's settings.
           const { data: settings } = await supabase
             .from('oj_vendor_billing_settings')
-            .select('billing_mode, monthly_cap_inc_vat')
+            .select('billing_mode, monthly_cap_inc_vat, hourly_rate_ex_vat, mileage_rate, vat_rate')
             .eq('vendor_id', vendorId)
             .maybeSingle()
 
@@ -2635,6 +2666,7 @@ export async function GET(request: Request) {
             carriedForwardMileageEntries: [],
             carriedForwardTimeEntries: [],
             carriedForwardOneOffEntries: [],
+            settings,
           })
 
           const timesheetPdf = await generateOjTimesheetPDF({
@@ -3336,6 +3368,7 @@ export async function GET(request: Request) {
         carriedForwardMileageEntries: skippedMileage,
         carriedForwardTimeEntries: skippedTime,
         carriedForwardOneOffEntries: skippedOneOff,
+        settings,
       })
 
       const notesCompact = buildInvoiceNotes({
@@ -3352,6 +3385,7 @@ export async function GET(request: Request) {
         carriedForwardMileageEntries: skippedMileage,
         carriedForwardTimeEntries: skippedTime,
         carriedForwardOneOffEntries: skippedOneOff,
+        settings,
       })
 
       let notes = ''

@@ -111,7 +111,7 @@ export async function getClientStatement(
       .order('created_at', { ascending: true })
 
     if (cnError) {
-      // credit_notes table may not exist yet — gracefully handle
+      // credit_notes table may not exist yet, so handle it gracefully
       console.warn('[client-statement] credit_notes query failed (table may not exist):', cnError.message)
     } else {
       allCreditNotes = creditNotes || []
@@ -167,7 +167,7 @@ export async function getClientStatement(
     if (payment.payment_date >= dateFrom && payment.payment_date <= dateTo) {
       const inv = invoices.find((i) => i.id === payment.invoice_id)
       const methodLabel = payment.payment_method
-        ? ` — ${payment.payment_method.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`
+        ? `, ${payment.payment_method.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`
         : ''
       rawTransactions.push({
         date: payment.payment_date,
@@ -301,7 +301,10 @@ export async function sendStatementEmail(
   dateFrom: string,
   dateTo: string
 ): Promise<{ success?: boolean; error?: string }> {
-  const hasPermission = await checkUserPermission('oj_projects', 'view')
+  // Sending a statement puts a PDF of the client's account in front of the
+  // client, so it needs the same authority as any other outward-facing action
+  // in this section. Viewing the statement on screen stays on 'view'.
+  const hasPermission = await checkUserPermission('oj_projects', 'edit')
   if (!hasPermission) return { error: 'You do not have permission to send statements' }
 
   // Get statement data
@@ -340,7 +343,7 @@ export async function sendStatementEmail(
   const fromLabel = fromDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
   const toLabel = toDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-  const subject = `Account Statement — ${statement.vendor.name} — ${fromLabel} to ${toLabel}`
+  const subject = `Account Statement: ${statement.vendor.name}, ${fromLabel} to ${toLabel}`
   const closingLabel = statement.closingBalance < 0
     ? `Credit balance: £${Math.abs(statement.closingBalance).toFixed(2)}`
     : `£${statement.closingBalance.toFixed(2)}`

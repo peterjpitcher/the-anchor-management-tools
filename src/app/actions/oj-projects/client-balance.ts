@@ -34,6 +34,13 @@ type ClientInvoiceSummary = {
 
 export type ClientBalance = {
   unpaidInvoiceBalance: number
+  /**
+   * Raised but never sent. Shown separately because the client has not been
+   * asked to pay it, so it is not a receivable and must stay out of
+   * totalOutstanding. A draft sitting here for weeks usually means a reissue
+   * was started and abandoned.
+   */
+  draftInvoiceTotal: number
   creditNoteTotal: number
   unbilledTimeTotal: number
   unbilledMileageTotal: number
@@ -76,15 +83,21 @@ export async function getClientBalance(
 
   if (displayInvoicesError) return { error: displayInvoicesError.message }
 
-  // Unpaid invoice balance: sum of (total - paid) for non-settled invoices
+  const outstandingOf = (inv: { total_amount?: unknown; paid_amount?: unknown }) =>
+    Math.max(Number(inv.total_amount || 0) - Number(inv.paid_amount || 0), 0)
+
+  // Unpaid invoice balance: sum of (total - paid) for invoices the client has
+  // actually been sent. Drafts are excluded and reported on their own.
   const unpaidInvoiceBalance = roundMoney(
     (unsettledInvoices || [])
-      .filter((inv) => !['paid', 'void', 'written_off'].includes(inv.status))
-      .reduce((acc, inv) => {
-        const total = Number(inv.total_amount || 0)
-        const paid = Number(inv.paid_amount || 0)
-        return acc + Math.max(total - paid, 0)
-      }, 0)
+      .filter((inv) => !['paid', 'void', 'written_off', 'draft'].includes(inv.status))
+      .reduce((acc, inv) => acc + outstandingOf(inv), 0)
+  )
+
+  const draftInvoiceTotal = roundMoney(
+    (unsettledInvoices || [])
+      .filter((inv) => inv.status === 'draft')
+      .reduce((acc, inv) => acc + outstandingOf(inv), 0)
   )
 
   // Unbilled entries: use the rate snapshots stored at entry creation time
@@ -99,11 +112,14 @@ export async function getClientBalance(
 
   if (entriesError) return { error: entriesError.message }
 
-  // Fall back to the client's configured VAT rate when an entry predates the
-  // snapshot column, matching what the billing engine will actually charge.
+  // Fall back to the client's configured rates when an entry predates the
+  // snapshot columns, matching what the billing engine will actually charge.
+  // The engine tries snapshot, then the client's setting, then the default, so
+  // omitting the middle candidate here valued the same work at the default rate
+  // and overstated the balance for every client not on it.
   const { data: vendorSettings } = await supabase
     .from('oj_vendor_billing_settings')
-    .select('vat_rate')
+    .select('vat_rate, hourly_rate_ex_vat, mileage_rate')
     .eq('vendor_id', vendorId)
     .maybeSingle()
   const defaultVatRate = typeof vendorSettings?.vat_rate === 'number' ? vendorSettings.vat_rate : 20
@@ -115,12 +131,20 @@ export async function getClientBalance(
     const vatRate = typeof entry.vat_rate_snapshot === 'number' ? entry.vat_rate_snapshot : defaultVatRate
     if (entry.entry_type === 'time') {
       const mins = Number(entry.duration_minutes_rounded || 0)
-      const rate = resolveRate(entry.hourly_rate_ex_vat_snapshot, DEFAULT_HOURLY_RATE_EX_VAT)
+      const rate = resolveRate(
+        entry.hourly_rate_ex_vat_snapshot,
+        vendorSettings?.hourly_rate_ex_vat,
+        DEFAULT_HOURLY_RATE_EX_VAT
+      )
       unbilledTimeTotal = roundMoney(unbilledTimeTotal + moneyIncVat(roundMoney((mins / 60) * rate), vatRate))
     } else if (entry.entry_type === 'mileage') {
       // Mileage is a disbursement and is billed with no VAT, as in getEntryCharge.
       const miles = Number(entry.miles || 0)
-      const mileageRate = resolveRate(entry.mileage_rate_snapshot, DEFAULT_MILEAGE_RATE)
+      const mileageRate = resolveRate(
+        entry.mileage_rate_snapshot,
+        vendorSettings?.mileage_rate,
+        DEFAULT_MILEAGE_RATE
+      )
       unbilledMileageTotal = roundMoney(unbilledMileageTotal + roundMoney(miles * mileageRate))
     } else if (entry.entry_type === 'one_off') {
       const amount = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
@@ -154,11 +178,14 @@ export async function getClientBalance(
   const unbilledTotal = roundMoney(unbilledTimeTotal + unbilledMileageTotal + unbilledOneOffTotal + unbilledRecurringTotal)
 
   // Credit notes only reduce the balance of invoices that are still counted in
-  // it. Scoping to the unsettled OJ invoice ids keeps two things out: notes
+  // it. Scoping to the unsettled OJ invoice ids keeps three things out: notes
   // against invoices already settled (which have contributed nothing since the
-  // filter above), and notes against this vendor's non-OJ invoices, since
-  // invoice_vendors is shared with the rest of the invoicing module.
-  const unsettledInvoiceIds = (unsettledInvoices || []).map((inv) => String(inv.id))
+  // filter above), notes against a draft (which no longer contributes either),
+  // and notes against this vendor's non-OJ invoices, since invoice_vendors is
+  // shared with the rest of the invoicing module.
+  const unsettledInvoiceIds = (unsettledInvoices || [])
+    .filter((inv) => inv.status !== 'draft')
+    .map((inv) => String(inv.id))
 
   let creditNoteTotal = 0
   if (unsettledInvoiceIds.length > 0) {
@@ -199,6 +226,7 @@ export async function getClientBalance(
   return {
     balance: {
       unpaidInvoiceBalance: adjustedUnpaidInvoiceBalance,
+      draftInvoiceTotal,
       creditNoteTotal,
       unbilledTimeTotal,
       unbilledMileageTotal,

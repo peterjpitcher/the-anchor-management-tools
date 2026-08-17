@@ -108,7 +108,7 @@ function generateStatementHTML(input: StatementPDFInput): string {
     </div>
     <div style="text-align: right;">
       <p style="font-size: 12px; color: #6b7280; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.05em;">Period</p>
-      <p style="font-size: 14px; font-weight: 500; margin: 0;">${periodFrom} — ${periodTo}</p>
+      <p style="font-size: 14px; font-weight: 500; margin: 0;">${periodFrom} to ${periodTo}</p>
     </div>
   </div>
 

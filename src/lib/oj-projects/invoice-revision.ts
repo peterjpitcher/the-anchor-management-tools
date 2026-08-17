@@ -1,5 +1,11 @@
 import { calculateInvoiceTotals, type InvoiceTotalsResult } from '@/lib/invoiceCalculations'
 import { buildRecurringChargeDescription } from '@/lib/oj-projects/recurring-periods'
+import {
+  DEFAULT_HOURLY_RATE_EX_VAT,
+  DEFAULT_MILEAGE_RATE,
+  resolveRate,
+} from '@/lib/oj-projects/rates'
+import { applyStatementCapTopUp } from '@/lib/oj-projects/statement-cap'
 import type { InvoiceLineItemInput } from '@/types/invoices'
 
 type RevisionInvoice = {
@@ -91,7 +97,7 @@ function periodFromReference(reference: string | null | undefined): string {
 function getEntryCharge(entry: OjInvoiceRevisionEntry, settings: RevisionSettings) {
   if (entry.entry_type === 'mileage') {
     const miles = Number(entry.miles || 0)
-    const rate = Number(entry.mileage_rate_snapshot ?? settings.mileage_rate ?? 0.55)
+    const rate = resolveRate(entry.mileage_rate_snapshot, settings.mileage_rate, DEFAULT_MILEAGE_RATE)
     const exVat = roundMoney(miles * rate)
     return { exVat, vatRate: 0, incVat: exVat }
   }
@@ -103,7 +109,7 @@ function getEntryCharge(entry: OjInvoiceRevisionEntry, settings: RevisionSetting
   }
 
   const minutes = Number(entry.duration_minutes_rounded || 0)
-  const rate = Number(entry.hourly_rate_ex_vat_snapshot ?? settings.hourly_rate_ex_vat ?? 75)
+  const rate = resolveRate(entry.hourly_rate_ex_vat_snapshot, settings.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
   const vatRate = Number(entry.vat_rate_snapshot ?? settings.vat_rate ?? 20)
   const exVat = roundMoney((minutes / 60) * rate)
   return { exVat, vatRate, incVat: moneyIncVat(exVat, vatRate) }
@@ -197,7 +203,9 @@ function buildDetailedLineItems(input: {
   if (mileageEntries.length > 0) {
     const totalMiles = mileageEntries.reduce((acc, entry) => acc + Number(entry.miles || 0), 0)
     const rates = new Set(
-      mileageEntries.map((entry) => Number(entry.mileage_rate_snapshot ?? input.settings.mileage_rate ?? 0.55))
+      mileageEntries.map((entry) =>
+        resolveRate(entry.mileage_rate_snapshot, input.settings.mileage_rate, DEFAULT_MILEAGE_RATE)
+      )
     )
 
     if (rates.size === 1) {
@@ -332,6 +340,15 @@ export function buildOjInvoiceRevision(input: {
   recurringInstances: OjInvoiceRevisionRecurringInstance[]
   entries: OjInvoiceRevisionEntry[]
   revisedAtIso: string
+  /**
+   * For a statement-mode client on a monthly cap, the amount this invoice must
+   * total. Rebuilding from the linked items alone drops a capped invoice below
+   * the contracted monthly figure whenever anything is removed from it, which
+   * quietly under-collects against a debt the client still owes.
+   *
+   * Omit for clients that are not capped, or when there is nothing left owing.
+   */
+  statementCapTargetIncVat?: number | null
 }): OjInvoiceRevisionResult {
   const settings = input.settings || {}
   const billableEntries = input.entries.filter((entry) => entry.billable !== false)
@@ -339,7 +356,7 @@ export function buildOjInvoiceRevision(input: {
   const periodYyyymm = periodFromReference(input.invoice.reference)
   const statementMode = Boolean(settings.statement_mode) || String(input.invoice.internal_notes || '').includes('Statement mode')
 
-  const lineItems = statementMode
+  let lineItems = statementMode
     ? buildStatementLineItems({
         recurringInstances: activeRecurringInstances,
         entries: billableEntries,
@@ -356,7 +373,22 @@ export function buildOjInvoiceRevision(input: {
     throw new Error('Cannot revise invoice because no billable OJ Projects items remain')
   }
 
-  const totals = calculateInvoiceTotals(lineItems, Number(input.invoice.invoice_discount_percentage || 0))
+  let totals = calculateInvoiceTotals(lineItems, Number(input.invoice.invoice_discount_percentage || 0))
+
+  // Statement-mode capped clients are billed a flat monthly amount while they
+  // owe anything, so the rebuild has to land back on that figure rather than on
+  // whatever the remaining linked items happen to add up to.
+  const capTarget = Number(input.statementCapTargetIncVat ?? 0)
+  if (statementMode && Number.isFinite(capTarget) && capTarget > 0) {
+    const adjusted = applyStatementCapTopUp({
+      lineItems,
+      totals,
+      targetIncVat: capTarget,
+      vatRate: Number(settings.vat_rate ?? 20),
+    })
+    lineItems = adjusted.lineItems
+    totals = adjusted.totals
+  }
   const notes = buildRevisionNotes({
     invoice: input.invoice,
     recurringInstances: activeRecurringInstances,

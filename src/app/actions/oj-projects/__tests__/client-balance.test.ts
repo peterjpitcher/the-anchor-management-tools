@@ -20,7 +20,7 @@ function mockQuery(data: unknown, error: unknown = null) {
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnValue(chain)
   }
-  // Terminal — returns { data, error }
+  // Terminal: returns { data, error }
   chain.then = undefined
   // Make the chain thenable at the end
   Object.defineProperty(chain, Symbol.for('vitest:result'), { value: { data, error } })
@@ -339,5 +339,65 @@ describe('getClientBalance', () => {
 
     expect(result.balance?.creditNoteTotal).toBe(0)
     expect(result.balance?.totalOutstanding).toBe(0)
+  })
+
+  it('keeps draft invoices out of what the client owes, and reports them separately', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: [
+        {
+          data: [
+            { id: 'inv-sent', status: 'sent', total_amount: 500, paid_amount: 0 },
+            { id: 'inv-draft', status: 'draft', total_amount: 460.5, paid_amount: 0 },
+          ],
+        },
+        { data: [] },
+      ],
+      oj_entries: { data: [] },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    // A draft has never been sent, so it is not a receivable. Counting it made
+    // an abandoned reissue look like money the client owed.
+    expect(result.balance?.unpaidInvoiceBalance).toBe(500)
+    expect(result.balance?.draftInvoiceTotal).toBe(460.5)
+    expect(result.balance?.totalOutstanding).toBe(500)
+  })
+
+  it('values unbilled time at the client rate, not the default, when the snapshot is null', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(true)
+
+    const mockSb = createMockSupabase({
+      invoices: { data: [] },
+      oj_entries: {
+        data: [
+          {
+            entry_type: 'time',
+            duration_minutes_rounded: 60,
+            miles: null,
+            hourly_rate_ex_vat_snapshot: null,
+            vat_rate_snapshot: 20,
+            mileage_rate_snapshot: null,
+            amount_ex_vat_snapshot: null,
+          },
+        ],
+      },
+      // The billing engine resolves snapshot, then this setting, then the
+      // default. Omitting the middle candidate billed the drawer at GBP 75.
+      oj_vendor_billing_settings: { data: { vat_rate: 20, hourly_rate_ex_vat: 62.5, mileage_rate: 0.55 } },
+      oj_recurring_charge_instances: { data: [] },
+      credit_notes: { data: [] },
+    })
+    vi.mocked(createClient).mockResolvedValue(mockSb as any)
+
+    const result = await getClientBalance('vendor-1')
+
+    // 1 hour at GBP 62.50 plus 20% VAT, not GBP 75 plus VAT (which would be 90).
+    expect(result.balance?.unbilledTimeTotal).toBe(75)
   })
 })

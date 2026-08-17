@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -108,6 +108,8 @@ export function EntriesClient({
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [billingFilter, setBillingFilter] = useState('all')
+  const hasMountedFilters = useRef(false)
+  const requestSequence = useRef(0)
 
   // Create modal state
   const [createOpen, setCreateOpen] = useState(false)
@@ -139,57 +141,46 @@ export function EntriesClient({
   // Delete confirm state
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const filtered = useMemo(() => {
-    let list = entries
-    if (clientFilter !== 'all') {
-      list = list.filter((e) => e.vendor_id === clientFilter)
-    }
-    if (projectFilter !== 'all') {
-      list = list.filter((e) => e.project_id === projectFilter)
-    }
-    if (invoiceFilter.trim()) {
-      const q = invoiceFilter.trim().toLowerCase()
-      list = list.filter(
-        (e) =>
-          e.invoice?.invoice_number?.toLowerCase().includes(q) ||
-          e.invoice_id?.toLowerCase().includes(q),
-      )
-    }
-    if (statusFilter !== 'all') {
-      list = list.filter((e) => e.status === statusFilter)
-    }
-    if (typeFilter !== 'all') {
-      list = list.filter((e) => e.entry_type === typeFilter)
-    }
-    if (billingFilter !== 'all') {
-      const billable = billingFilter === 'billable'
-      list = list.filter((e) => isEntryBillable(e) === billable)
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(
-        (e) =>
-          e.project?.project_name?.toLowerCase().includes(q) ||
-          e.project?.project_code?.toLowerCase().includes(q) ||
-          e.vendor?.name?.toLowerCase().includes(q) ||
-          e.invoice?.invoice_number?.toLowerCase().includes(q) ||
-          e.description?.toLowerCase().includes(q),
-      )
-    }
-    return list
-  }, [billingFilter, clientFilter, entries, invoiceFilter, projectFilter, search, statusFilter, typeFilter])
-
-  const reload = useCallback(async (page = entryPage) => {
+  const reload = useCallback(async (page: number) => {
+    const requestId = ++requestSequence.current
     setLoadingPage(true)
     try {
-      const res = await getEntries({ page, pageSize })
+      const res = await getEntries({
+        page,
+        pageSize,
+        search: search.trim() || undefined,
+        vendorId: clientFilter === 'all' ? undefined : clientFilter,
+        projectId: projectFilter === 'all' ? undefined : projectFilter,
+        invoiceSearch: invoiceFilter.trim() || undefined,
+        status: statusFilter,
+        entryType: typeFilter,
+        billing: billingFilter,
+      })
+      if (requestId !== requestSequence.current) return
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
       if (res.entries) setEntries(res.entries)
       if (typeof res.total === 'number') setEntriesTotal(res.total)
       if (typeof res.page === 'number') setEntryPage(res.page)
     } finally {
-      setLoadingPage(false)
+      if (requestId === requestSequence.current) setLoadingPage(false)
     }
-  }, [entryPage, pageSize])
+  }, [billingFilter, clientFilter, invoiceFilter, pageSize, projectFilter, search, statusFilter, typeFilter])
+
+  useEffect(() => {
+    if (!hasMountedFilters.current) {
+      hasMountedFilters.current = true
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      void reload(1)
+    }, search.trim() || invoiceFilter.trim() ? 300 : 0)
+
+    return () => window.clearTimeout(timer)
+  }, [reload, search, invoiceFilter])
 
   async function goToEntriesPage(page: number): Promise<void> {
     await reload(page)
@@ -520,14 +511,14 @@ export function EntriesClient({
 
       {/* Table */}
       <Card>
-        {filtered.length === 0 ? (
+        {entries.length === 0 ? (
           <Empty title="No entries" description="No entries match your filters." />
         ) : (
           <>
             <div className={loadingPage ? 'opacity-60' : undefined}>
               {/* Mobile card list */}
               <div className="divide-y divide-border md:hidden">
-                {filtered.map((entry) => {
+                {entries.map((entry) => {
                   const cardBillable = isEntryBillable(entry)
                   let cardValue = ''
                   if (entry.entry_type === 'time') {
@@ -605,7 +596,7 @@ export function EntriesClient({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((entry) => {
+                  {entries.map((entry) => {
                     const billable = isEntryBillable(entry)
 
                     return (

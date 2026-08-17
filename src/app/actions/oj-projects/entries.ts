@@ -8,6 +8,8 @@ import { recalculateTaxYearMileage } from '@/lib/mileage/recalculateTaxYear'
 import { getTaxYearBounds } from '@/lib/mileage/hmrcRates'
 import { generateProjectCode } from '@/lib/oj-projects/project-codes'
 import { getEntryDatePeriod } from '@/lib/oj-projects/retainers'
+import { resolveRetainerProject } from '@/lib/oj-projects/retainer-projects'
+import { computeStatementCapTargetIncVat } from '@/lib/oj-projects/statement-cap'
 import type { WorkHistoryPoint } from '@/lib/oj-projects/date-ranges'
 import {
   buildOjInvoiceRevision,
@@ -21,6 +23,10 @@ import { formBooleanSchema } from '@/lib/forms/formBoolean'
 
 function hasAtMostOneDecimalPlace(value: number): boolean {
   return Math.abs(Math.round(value * 10) - value * 10) < 0.000001
+}
+
+function quoteOrFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
 /**
@@ -138,29 +144,6 @@ function periodFromEntryDate(entryDate: string): string {
   return getEntryDatePeriod(entryDate)
 }
 
-function monthLabelFromPeriod(periodYyyymm: string): string {
-  const [year, month] = periodYyyymm.split('-').map(Number)
-  if (!year || !month) return periodYyyymm
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', {
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
-async function getVendorName(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  vendorId: string
-) {
-  const { data } = await supabase
-    .from('invoice_vendors')
-    .select('name')
-    .eq('id', vendorId)
-    .maybeSingle()
-
-  return data?.name ? String(data.name) : 'Client'
-}
-
 async function createGeneralProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
   vendorId: string
@@ -209,64 +192,27 @@ async function resolveGeneralProject(
   return createGeneralProject(supabase, vendorId)
 }
 
-async function createRetainerProject(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  vendorId: string,
-  periodYyyymm: string,
-  includedHours: number
-) {
-  const [vendorName, projectCode] = await Promise.all([
-    getVendorName(supabase, vendorId),
-    generateProjectCode(supabase, vendorId),
-  ])
-  const monthLabel = monthLabelFromPeriod(periodYyyymm)
-
-  const { data, error } = await supabase
-    .from('oj_projects')
-    .insert({
-      vendor_id: vendorId,
-      project_code: projectCode,
-      project_name: `${vendorName} Retainer (${monthLabel})`,
-      brief: `Monthly retainer bucket for ${monthLabel}.`,
-      internal_notes: `Auto-created by OJ Projects when logging a retainer entry for ${periodYyyymm}.`,
-      deadline: null,
-      budget_ex_vat: null,
-      budget_hours: includedHours,
-      status: 'active',
-      is_retainer: true,
-      retainer_period_yyyymm: periodYyyymm,
-    })
-    .select('id')
-    .single()
-
-  if (error) return { error: error.message }
-  return { projectId: data.id as string }
-}
-
-async function resolveRetainerProject(
+/**
+ * Delegates to the shared helper so an on-demand retainer created here is
+ * indistinguishable from one the nightly cron creates. These two used to hold
+ * separate copies and produced different codes and names for the same thing.
+ */
+async function resolveRetainerProjectForEntry(
   supabase: Awaited<ReturnType<typeof createClient>>,
   vendorId: string,
   entryDate: string,
   includedHours: number
 ) {
   const periodYyyymm = periodFromEntryDate(entryDate)
-  const { data: existing, error: existingError } = await supabase
-    .from('oj_projects')
-    .select('id, status')
-    .eq('vendor_id', vendorId)
-    .eq('is_retainer', true)
-    .eq('retainer_period_yyyymm', periodYyyymm)
-    .maybeSingle()
 
-  if (existingError) return { error: existingError.message }
-  if (existing?.id) {
-    if (existing.status === 'completed' || existing.status === 'archived') {
-      return { error: 'Cannot add entries to a closed retainer' }
-    }
-    return { projectId: existing.id as string }
-  }
+  const result = await resolveRetainerProject(supabase, {
+    vendorId,
+    periodYyyymm,
+    includedHours,
+  })
 
-  return createRetainerProject(supabase, vendorId, periodYyyymm, includedHours)
+  if ('error' in result) return { error: result.error }
+  return { projectId: result.projectId }
 }
 
 async function resolveProjectForEntry(
@@ -282,7 +228,7 @@ async function resolveProjectForEntry(
   const settings = await getVendorSettingsOrDefault(supabase, input.vendorId)
   const includedHours = Number(settings.retainer_included_hours_per_month || 0)
   if (Number.isFinite(includedHours) && includedHours > 0) {
-    return resolveRetainerProject(supabase, input.vendorId, input.entryDate, includedHours)
+    return resolveRetainerProjectForEntry(supabase, input.vendorId, input.entryDate, includedHours)
   }
 
   return resolveGeneralProject(supabase, input.vendorId)
@@ -479,7 +425,7 @@ async function recalculateLinkedOjInvoice(input: {
       .order('created_at', { ascending: true }),
     admin
       .from('oj_vendor_billing_settings')
-      .select('hourly_rate_ex_vat, mileage_rate, vat_rate, statement_mode')
+      .select('hourly_rate_ex_vat, mileage_rate, vat_rate, statement_mode, billing_mode, monthly_cap_inc_vat')
       .eq('vendor_id', invoice.vendor_id)
       .maybeSingle(),
   ])
@@ -496,6 +442,28 @@ async function recalculateLinkedOjInvoice(input: {
     ? { ...invoice, invoice_number: replacementInvoiceNumber }
     : invoice
 
+  // A statement-mode capped client is billed a flat monthly amount while they
+  // owe anything. Without this, editing one entry rebuilt the invoice from its
+  // remaining items and quietly billed the client less than the agreed figure,
+  // leaving the difference uncollected instead of rolling it into the debt.
+  let statementCapTargetIncVat: number | null = null
+  try {
+    statementCapTargetIncVat = await computeStatementCapTargetIncVat({
+      client: admin,
+      vendorId: invoice.vendor_id,
+      invoiceId: invoice.id,
+      invoiceDate: invoice.invoice_date,
+      reference: invoice.reference,
+      settings,
+      linkedEntries,
+      linkedRecurringInstances,
+    })
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Failed to work out the monthly cap for this invoice',
+    }
+  }
+
   let revision
   try {
     revision = buildOjInvoiceRevision({
@@ -504,6 +472,7 @@ async function recalculateLinkedOjInvoice(input: {
       entries: linkedEntries,
       recurringInstances: linkedRecurringInstances,
       revisedAtIso,
+      statementCapTargetIncVat,
     })
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to rebuild invoice' }
@@ -728,11 +697,21 @@ async function buildDeleteEntryResult(input: {
   return { success: true as const, invoiceRevision: revision.invoiceRevision }
 }
 
+/**
+ * Ceiling for a getEntries call that asks for neither a page nor a limit, such
+ * as the overview's current-month fetch. Well above any real month, and low
+ * enough to stay a cheap query.
+ */
+const UNPAGED_ENTRY_LIMIT = 5000
+
 export async function getEntries(options?: {
   vendorId?: string
   projectId?: string
   status?: string
   entryType?: string
+  billing?: string
+  search?: string
+  invoiceSearch?: string
   startDate?: string
   endDate?: string
   limit?: number
@@ -745,6 +724,51 @@ export async function getEntries(options?: {
   const pageSize = options?.pageSize ? Math.max(1, Math.min(500, options.pageSize)) : null
   const page = options?.page ? Math.max(1, options.page) : 1
   const supabase = await createClient()
+
+  const search = options?.search?.trim()
+  let matchingProjectIds: string[] = []
+  let matchingVendorIds: string[] = []
+  let matchingSearchInvoiceIds: string[] = []
+
+  if (search) {
+    const pattern = `%${search}%`
+    const quotedPattern = quoteOrFilterValue(pattern)
+    const [projectsResult, vendorsResult, invoicesResult] = await Promise.all([
+      supabase
+        .from('oj_projects')
+        .select('id')
+        .or(`project_name.ilike.${quotedPattern},project_code.ilike.${quotedPattern}`)
+        .limit(1000),
+      supabase.from('invoice_vendors').select('id').ilike('name', pattern).limit(1000),
+      supabase.from('invoices').select('id').ilike('invoice_number', pattern).limit(1000),
+    ])
+
+    const searchError = projectsResult.error || vendorsResult.error || invoicesResult.error
+    if (searchError) return { error: searchError.message }
+
+    matchingProjectIds = (projectsResult.data || []).map((row) => row.id)
+    matchingVendorIds = (vendorsResult.data || []).map((row) => row.id)
+    matchingSearchInvoiceIds = (invoicesResult.data || []).map((row) => row.id)
+  }
+
+  const invoiceSearch = options?.invoiceSearch?.trim()
+  let matchingInvoiceIds: string[] = []
+  if (invoiceSearch) {
+    const { data: invoices, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('id')
+      .ilike('invoice_number', `%${invoiceSearch}%`)
+      .limit(1000)
+
+    if (invoiceError) return { error: invoiceError.message }
+    matchingInvoiceIds = (invoices || []).map((row) => row.id)
+    if (z.string().uuid().safeParse(invoiceSearch).success) matchingInvoiceIds.push(invoiceSearch)
+
+    if (matchingInvoiceIds.length === 0) {
+      return { entries: [], total: 0, page, pageSize: pageSize ?? options?.limit ?? 0 }
+    }
+  }
+
   let query = supabase
     .from('oj_entries')
     .select(`
@@ -778,13 +802,28 @@ export async function getEntries(options?: {
   if (options?.projectId) query = query.eq('project_id', options.projectId)
   if (options?.status && options.status !== 'all') query = query.eq('status', options.status)
   if (options?.entryType && options.entryType !== 'all') query = query.eq('entry_type', options.entryType)
+  if (options?.billing === 'billable') query = query.eq('billable', true)
+  if (options?.billing === 'non_billable') query = query.eq('billable', false)
+  if (invoiceSearch) query = query.in('invoice_id', Array.from(new Set(matchingInvoiceIds)))
+  if (search) {
+    const pattern = `%${search}%`
+    const quotedPattern = quoteOrFilterValue(pattern)
+    const clauses = [`description.ilike.${quotedPattern}`]
+    if (matchingProjectIds.length > 0) clauses.push(`project_id.in.(${matchingProjectIds.join(',')})`)
+    if (matchingVendorIds.length > 0) clauses.push(`vendor_id.in.(${matchingVendorIds.join(',')})`)
+    if (matchingSearchInvoiceIds.length > 0) clauses.push(`invoice_id.in.(${matchingSearchInvoiceIds.join(',')})`)
+    query = query.or(clauses.join(','))
+  }
   if (options?.startDate) query = query.gte('entry_date', options.startDate)
   if (options?.endDate) query = query.lte('entry_date', options.endDate)
   if (pageSize) {
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)
-  } else if (options?.limit) {
-    query = query.limit(options.limit)
+  } else {
+    // An unbounded select is silently capped by PostgREST, which truncates the
+    // caller's figures with no signal. Always ask for an explicit bound so the
+    // returned `total` can be compared against the rows actually delivered.
+    query = query.limit(options?.limit ?? UNPAGED_ENTRY_LIMIT)
   }
 
   const { data, error, count } = await query

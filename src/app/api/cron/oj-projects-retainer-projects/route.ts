@@ -2,62 +2,12 @@ import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInTimeZone } from 'date-fns-tz'
-import crypto from 'crypto'
-import { deriveClientCode } from '@/lib/oj-projects/utils'
+import { resolveRetainerProject } from '@/lib/oj-projects/retainer-projects'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const LONDON_TZ = 'Europe/London'
-
-function randomSuffix(length = 5) {
-  const targetLength = Math.max(1, Math.floor(length))
-  return crypto
-    .randomBytes(Math.max(4, Math.ceil(targetLength / 2)))
-    .toString('hex')
-    .toUpperCase()
-    .slice(0, targetLength)
-}
-
-async function generateRetainerProjectCode(
-  supabase: ReturnType<typeof createAdminClient>,
-  vendorId: string,
-  periodYyyymm: string
-) {
-  let clientCode: string | null = null
-  try {
-    const { data: settings } = await supabase
-      .from('oj_vendor_billing_settings')
-      .select('client_code')
-      .eq('vendor_id', vendorId)
-      .maybeSingle()
-    if (settings?.client_code) {
-      clientCode = String(settings.client_code).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || null
-    }
-  } catch {}
-
-  if (!clientCode) {
-    const { data: vendor } = await supabase
-      .from('invoice_vendors')
-      .select('name')
-      .eq('id', vendorId)
-      .maybeSingle()
-    clientCode = deriveClientCode(String(vendor?.name || 'CLIENT'))
-  }
-
-  const periodCompact = periodYyyymm.replace('-', '')
-  const base = `OJP-${clientCode}-RET-${periodCompact}`
-
-  // Best-effort uniqueness: deterministic base, then suffix if needed.
-  const { data: existing } = await supabase
-    .from('oj_projects')
-    .select('id')
-    .eq('project_code', base)
-    .maybeSingle()
-
-  if (!existing) return base
-  return `${base}-${randomSuffix(4)}`
-}
 
 export async function GET(request: Request) {
   const authResult = authorizeCronRequest(request)
@@ -75,7 +25,6 @@ export async function GET(request: Request) {
   }
 
   const periodYyyymm = formatInTimeZone(now, LONDON_TZ, 'yyyy-MM')
-  const monthLabel = formatInTimeZone(now, LONDON_TZ, 'MMM yyyy')
 
   const supabase = createAdminClient()
 
@@ -134,60 +83,26 @@ export async function GET(request: Request) {
     const hours = Number(row?.retainer_included_hours_per_month || 0)
 
     try {
-      const { data: existing, error: existingError } = await supabase
-        .from('oj_projects')
-        .select('id, project_code')
-        .eq('vendor_id', vendorId)
-        .eq('is_retainer', true)
-        .eq('retainer_period_yyyymm', periodYyyymm)
-        .maybeSingle()
+      // Shared with the entries action, so a bucket created on demand when
+      // someone logs future-dated work is identical to one created here.
+      const result = await resolveRetainerProject(supabase, {
+        vendorId,
+        periodYyyymm,
+        vendorName,
+        includedHours: hours,
+      })
 
-      if (existingError) throw new Error(existingError.message)
+      if ('error' in result) throw new Error(result.error)
 
-      if (existing?.id) {
-        skippedCount++
-        results.push({
-          vendor_id: vendorId,
-          vendor_name: vendorName,
-          status: 'skipped',
-          project_id: String(existing.id),
-          project_code: String(existing.project_code || ''),
-        })
-        continue
-      }
+      if (result.created) createdCount++
+      else skippedCount++
 
-      const projectCode = await generateRetainerProjectCode(supabase, vendorId, periodYyyymm)
-      const projectName = `${vendorName || 'Client'} — Retainer (${monthLabel})`
-      const brief = `Monthly retainer bucket for ${monthLabel}. Log small BAU work here.`
-      const internalNotes = `Auto-created by OJ Projects retainer cron for ${periodYyyymm}.`
-
-      const { data: created, error: createError } = await supabase
-        .from('oj_projects')
-        .insert({
-          vendor_id: vendorId,
-          project_code: projectCode,
-          project_name: projectName,
-          brief,
-          internal_notes: internalNotes,
-          deadline: null,
-          budget_ex_vat: null,
-          budget_hours: Number.isFinite(hours) && hours > 0 ? hours : null,
-          status: 'active',
-          is_retainer: true,
-          retainer_period_yyyymm: periodYyyymm,
-        })
-        .select('id, project_code')
-        .single()
-
-      if (createError) throw new Error(createError.message)
-
-      createdCount++
       results.push({
         vendor_id: vendorId,
         vendor_name: vendorName,
-        status: 'created',
-        project_id: String(created.id),
-        project_code: String(created.project_code || projectCode),
+        status: result.created ? 'created' : 'skipped',
+        project_id: result.projectId,
+        project_code: result.projectCode,
       })
     } catch (err) {
       console.error('Failed to create OJ retainer project for vendor', {
