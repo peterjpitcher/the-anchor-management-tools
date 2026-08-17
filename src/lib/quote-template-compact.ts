@@ -1,6 +1,11 @@
 import { QuoteWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import {
+  renderDocumentFooter,
+  renderDocumentHead,
+  renderDocumentHeader,
+} from '@/lib/pdf/document-chrome'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
@@ -10,178 +15,7 @@ export interface QuoteTemplateData {
   logoUrl?: string
 }
 
-export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
-  const { quote, logoUrl } = data
-
-  // Check if any line items have discounts or if there's a quote discount
-  const hasDiscounts = quote.quote_discount_percentage > 0 ||
-    (quote.line_items?.some(item => item.discount_percentage > 0) ?? false)
-
-  // Helper functions
-  const escapeHtml = (value: string) => {
-    return String(value)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;')
-  }
-
-  const formatAddressHtml = (value: string | null | undefined) => {
-    if (!value) return ''
-
-    const normalized = String(value).replace(/\r\n/g, '\n').trim()
-    if (!normalized) return ''
-
-    const parts = normalized.includes('\n')
-      ? normalized.split('\n')
-      : normalized.split(',')
-
-    return parts
-      .map((part) => escapeHtml(part.trim()))
-      .filter(Boolean)
-      .join('<br>')
-  }
-
-  const formatDate = (date: string | null) => {
-    return formatDateFull(date)
-  }
-
-  const formatCurrency = (amount: number | null | undefined) => {
-    const value = Number(amount ?? 0)
-    return `£${(Number.isFinite(value) ? value : 0).toFixed(2)}`
-  }
-
-  // Calculate line item totals
-  const calculateLineSubtotal = (item: any) => {
-    return item.quantity * item.unit_price
-  }
-
-  const calculateLineDiscount = (item: any) => {
-    const subtotal = calculateLineSubtotal(item)
-    return subtotal * (item.discount_percentage / 100)
-  }
-
-  const calculateLineAfterDiscount = (item: any) => {
-    return calculateLineSubtotal(item) - calculateLineDiscount(item)
-  }
-
-  // Calculate line VAT after all discounts (including quote discount)
-  const calculateLineVat = (item: any) => {
-    const lineAfterDiscount = calculateLineAfterDiscount(item)
-    const lineShare = quote.subtotal_amount > 0 ? lineAfterDiscount / quote.subtotal_amount : 0
-    const lineAfterQuoteDiscount = lineAfterDiscount - (quote.discount_amount * lineShare)
-    return lineAfterQuoteDiscount * (item.vat_rate / 100)
-  }
-
-  const calculateLineTotal = (item: any) => {
-    const lineAfterDiscount = calculateLineAfterDiscount(item)
-    const lineShare = quote.subtotal_amount > 0 ? lineAfterDiscount / quote.subtotal_amount : 0
-    const lineAfterQuoteDiscount = lineAfterDiscount - (quote.discount_amount * lineShare)
-    const vat = calculateLineVat(item)
-    return lineAfterQuoteDiscount + vat
-  }
-
-  // Format status for display
-  const formatStatus = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')
-  }
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'accepted': return '#22c55e'
-      case 'rejected': return '#ef4444'
-      case 'expired': return '#f59e0b'
-      case 'sent': return '#3b82f6'
-      default: return '#6b7280'
-    }
-  }
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quote ${quote.quote_number} - ${quote.vendor?.name || 'Customer'}</title>
-  <style>
-    @page {
-      size: A4;
-      margin: 8mm;
-    }
-    
-    @media print {
-      body { margin: 0; }
-      .no-print { display: none !important; }
-      .page-break { page-break-before: always; }
-      .keep-together { page-break-inside: avoid; }
-    }
-    
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.3;
-      color: #333;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 5px;
-      font-size: 8pt;
-    }
-    
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 8px;
-    }
-    
-    .logo-section {
-      flex: 1;
-    }
-    
-    .logo {
-      max-width: 90px;
-      height: auto;
-      margin-bottom: 5px;
-    }
-    
-    .quote-header {
-      flex: 1;
-      text-align: right;
-    }
-    
-    h1 {
-      color: #111827;
-      margin: 0 0 5px 0;
-      font-size: 16pt;
-      font-weight: 700;
-    }
-    
-    .quote-number {
-      font-size: 10pt;
-      color: #6b7280;
-      margin-bottom: 2px;
-    }
-    
-    .status-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 3px;
-      font-size: 8pt;
-      font-weight: 600;
-      color: white;
-      margin-top: 5px;
-    }
-    
-    .company-details {
-      margin-bottom: 10px;
-      font-size: 8pt;
-      color: #6b7280;
-    }
-    
-    .addresses {
+const BODY_CSS = `    .addresses {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 15px;
@@ -351,38 +185,113 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
       font-size: 8pt;
     }
     
-    .footer {
-      margin-top: 20px;
-      padding-top: 10px;
-      border-top: 1px solid #e5e7eb;
-      text-align: center;
-      color: #6b7280;
-      font-size: 7pt;
+`
+
+export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
+  const { quote, logoUrl } = data
+
+  // Check if any line items have discounts or if there's a quote discount
+  const hasDiscounts = quote.quote_discount_percentage > 0 ||
+    (quote.line_items?.some(item => item.discount_percentage > 0) ?? false)
+
+  // Helper functions
+  const escapeHtml = (value: string) => {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+  }
+
+  const formatAddressHtml = (value: string | null | undefined) => {
+    if (!value) return ''
+
+    const normalized = String(value).replace(/\r\n/g, '\n').trim()
+    if (!normalized) return ''
+
+    const parts = normalized.includes('\n')
+      ? normalized.split('\n')
+      : normalized.split(',')
+
+    return parts
+      .map((part) => escapeHtml(part.trim()))
+      .filter(Boolean)
+      .join('<br>')
+  }
+
+  const formatDate = (date: string | null) => {
+    return formatDateFull(date)
+  }
+
+  const formatCurrency = (amount: number | null | undefined) => {
+    const value = Number(amount ?? 0)
+    return `£${(Number.isFinite(value) ? value : 0).toFixed(2)}`
+  }
+
+  // Calculate line item totals
+  const calculateLineSubtotal = (item: any) => {
+    return item.quantity * item.unit_price
+  }
+
+  const calculateLineDiscount = (item: any) => {
+    const subtotal = calculateLineSubtotal(item)
+    return subtotal * (item.discount_percentage / 100)
+  }
+
+  const calculateLineAfterDiscount = (item: any) => {
+    return calculateLineSubtotal(item) - calculateLineDiscount(item)
+  }
+
+  // Calculate line VAT after all discounts (including quote discount)
+  const calculateLineVat = (item: any) => {
+    const lineAfterDiscount = calculateLineAfterDiscount(item)
+    const lineShare = quote.subtotal_amount > 0 ? lineAfterDiscount / quote.subtotal_amount : 0
+    const lineAfterQuoteDiscount = lineAfterDiscount - (quote.discount_amount * lineShare)
+    return lineAfterQuoteDiscount * (item.vat_rate / 100)
+  }
+
+  const calculateLineTotal = (item: any) => {
+    const lineAfterDiscount = calculateLineAfterDiscount(item)
+    const lineShare = quote.subtotal_amount > 0 ? lineAfterDiscount / quote.subtotal_amount : 0
+    const lineAfterQuoteDiscount = lineAfterDiscount - (quote.discount_amount * lineShare)
+    const vat = calculateLineVat(item)
+    return lineAfterQuoteDiscount + vat
+  }
+
+  // Format status for display
+  const formatStatus = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')
+  }
+
+  // Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'accepted': return '#22c55e'
+      case 'rejected': return '#ef4444'
+      case 'expired': return '#f59e0b'
+      case 'sent': return '#3b82f6'
+      default: return '#6b7280'
     }
-    
-    .footer p {
-      margin: 2px 0;
-    }
-  </style>
-</head>
+  }
+
+  return `
+${renderDocumentHead({
+    titleHtml: `Quote ${quote.quote_number} - ${quote.vendor?.name || 'Customer'}`,
+    metaClass: '.quote-header',
+    numberClass: '.quote-number',
+    bodyCss: BODY_CSS,
+  })}
 <body>
-  <div class="header">
-    <div class="logo-section">
-      ${logoUrl ? `<img src="${logoUrl}" alt="${COMPANY_DETAILS.name}" class="logo">` : ''}
-      <div class="company-details">
-        <strong>${COMPANY_DETAILS.name}</strong><br>
-        ${COMPANY_DETAILS.fullAddress}<br>
-        VAT: ${COMPANY_DETAILS.vatNumber}
-      </div>
-    </div>
-    <div class="quote-header">
-      <h1>QUOTE</h1>
-      <div class="quote-number">#${quote.quote_number}</div>
+${renderDocumentHeader({
+    logoUrl,
+    metaClass: 'quote-header',
+    headingHtml: 'QUOTE',
+    metaHtml: `      <div class="quote-number">#${quote.quote_number}</div>
       <span class="status-badge" style="background-color: ${getStatusColor(quote.status)}">
         ${formatStatus(quote.status)}
-      </span>
-    </div>
-  </div>
+      </span>`,
+  })}
 
   <div class="addresses">
     <div class="address-block">
@@ -486,11 +395,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     </div>
   ` : ''}
 
-  <div class="footer">
-    <p>${COMPANY_DETAILS.name} | Company Reg: ${COMPANY_DETAILS.companyNumber} | VAT: ${COMPANY_DETAILS.vatNumber}</p>
-    <p>${COMPANY_DETAILS.fullAddress} | ${COMPANY_DETAILS.phone} | ${COMPANY_DETAILS.email}</p>
-    <p>Contact: ${CONTACT_NAME} | Mobile: ${CONTACT_PHONE}</p>
-  </div>
+${renderDocumentFooter()}
 </body>
 </html>
   `

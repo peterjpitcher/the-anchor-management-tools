@@ -15,6 +15,8 @@ import { describe, expect, it } from 'vitest'
 
 import { generateCompactInvoiceHTML } from '@/lib/invoice-template-compact'
 import { generateCompactQuoteHTML } from '@/lib/quote-template-compact'
+import { generateStatementHTML } from '@/lib/oj-statement'
+import { LOGO_MAX_WIDTH_PX } from '@/lib/pdf/document-chrome'
 
 const VENDOR = {
   id: 'vendor-1',
@@ -113,10 +115,31 @@ describe('quote PDF template', () => {
   })
 })
 
-describe('the two templates agree on shared styling', () => {
-  const invoice = generateCompactInvoiceHTML({ invoice: INVOICE })
-  const quote = generateCompactQuoteHTML({ quote: QUOTE })
+/**
+ * Every customer financial document must join this registry and render its
+ * chrome through `@/lib/pdf/document-chrome`. Comparing declarations catches
+ * drift after the fact; the registry is what makes a new document opt IN rather
+ * than silently sit outside the check.
+ */
+const STATEMENT: any = {
+  vendorName: "Acme & Sons <Supplies> Ltd",
+  periodFrom: '2026-06-01',
+  periodTo: '2026-08-31',
+  openingBalance: 500,
+  transactions: [
+    { date: '2026-06-10', description: 'Invoice INV-2026-0001 & <co>', reference: 'INV-2026-0001', debit: 250.5, credit: null, balance: 750.5 },
+    { date: '2026-07-02', description: "Payment received, O'Brien's", reference: 'INV-2026-0001', debit: null, credit: 120.25, balance: 630.25 },
+  ],
+  closingBalance: 630.25,
+}
 
+const DOCUMENTS = [
+  { name: 'invoice', html: generateCompactInvoiceHTML({ invoice: INVOICE }) },
+  { name: 'quote', html: generateCompactQuoteHTML({ quote: QUOTE }) },
+  { name: 'statement', html: generateStatementHTML(STATEMENT) },
+]
+
+describe('the registered document templates agree on shared styling', () => {
   const styleOf = (html: string) => html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? ''
   const rulesOf = (css: string) =>
     new Map(
@@ -126,26 +149,97 @@ describe('the two templates agree on shared styling', () => {
       ])
     )
 
-  it('renders the same declarations for every selector both documents use', () => {
-    const invoiceRules = rulesOf(styleOf(invoice))
-    const quoteRules = rulesOf(styleOf(quote))
+  const ruleSets = DOCUMENTS.map((doc) => ({ name: doc.name, rules: rulesOf(styleOf(doc.html)) }))
 
-    const shared = [...invoiceRules.keys()].filter((selector) => quoteRules.has(selector))
-    expect(shared.length).toBeGreaterThan(10)
+  it('renders the same declarations for every selector any two documents share', () => {
+    const divergent: string[] = []
 
-    // Where both documents style the same thing, they must style it identically.
-    // This is the drift the shared stylesheet exists to prevent. There is no exception
-    // list on purpose: the one divergence that existed, .logo at 90px on invoices and
-    // 150px on quotes, has been settled at 90px on both.
-    const divergent = shared.filter((selector) => invoiceRules.get(selector) !== quoteRules.get(selector))
+    for (let i = 0; i < ruleSets.length; i++) {
+      for (let j = i + 1; j < ruleSets.length; j++) {
+        const a = ruleSets[i]
+        const b = ruleSets[j]
+        for (const [selector, declarations] of a.rules) {
+          if (!b.rules.has(selector)) continue
+          if (b.rules.get(selector) !== declarations) {
+            divergent.push(`${selector} differs between ${a.name} and ${b.name}`)
+          }
+        }
+      }
+    }
+
+    // No exception list on purpose. The shared chrome is now the single source
+    // for these rules, so any divergence means a template stopped using it.
     expect(divergent).toEqual([])
   })
 
-  it('caps the logo at the same size on both documents', () => {
-    const invoiceRules = rulesOf(styleOf(invoice))
-    const quoteRules = rulesOf(styleOf(quote))
+  it('caps the logo at the same size on every document', () => {
+    for (const { name, rules } of ruleSets) {
+      expect(rules.get('.logo'), name).toContain(`max-width: ${LOGO_MAX_WIDTH_PX}px`)
+    }
+  })
 
-    expect(invoiceRules.get('.logo')).toContain('max-width: 90px')
-    expect(quoteRules.get('.logo')).toContain('max-width: 90px')
+  it('gives every document the shared legal footer', () => {
+    for (const doc of DOCUMENTS) {
+      expect(doc.html, doc.name).toContain('Company Reg:')
+      expect(doc.html, doc.name).toContain('VAT:')
+      expect(doc.html, doc.name).toContain('Mobile: 07990587315')
+    }
+  })
+
+  it('declares a language and a title on every document', () => {
+    for (const doc of DOCUMENTS) {
+      expect(doc.html, doc.name).toContain('<html lang="en">')
+      expect(doc.html, doc.name).toMatch(/<title>.+<\/title>/)
+    }
+  })
+})
+
+describe('statement template', () => {
+  const html = generateStatementHTML(STATEMENT)
+
+  it('escapes customer-supplied text rather than emitting raw markup', () => {
+    expect(html).toContain('&lt;Supplies&gt;')
+    expect(html).not.toContain('<Supplies>')
+    expect(html).toContain('&amp;')
+  })
+
+  it('shows the client how to pay, quoting their name as the reference', () => {
+    expect(html).toContain('How to Pay')
+    expect(html).toContain('Sort Code:')
+    expect(html).toContain('as the payment reference')
+  })
+
+  it('says nothing about unbilled work', () => {
+    // A statement records what has been billed. The old template carried a note
+    // about work in progress, which the owner removed from the contract.
+    expect(html).not.toMatch(/unbilled/i)
+    expect(html).not.toMatch(/work in progress/i)
+  })
+
+  it('closes the balance exactly once, so it cannot read as a page subtotal', () => {
+    // The closing balance used to sit in a `tfoot`, which Chromium may repeat on
+    // every page of a long statement.
+    expect(html.match(/Closing Balance/g)).toHaveLength(1)
+    expect(html).not.toContain('<tfoot>')
+  })
+
+  it('repeats the column header across pages and keeps rows whole', () => {
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? ''
+    expect(css).toContain('display: table-header-group')
+    expect(css).toContain('page-break-inside: avoid')
+  })
+
+  it('associates table headers with their columns', () => {
+    expect(html).toContain('<th scope="col">Date</th>')
+  })
+
+  it('states an empty period rather than rendering a bare table', () => {
+    const empty = generateStatementHTML({ ...STATEMENT, transactions: [] })
+    expect(empty).toContain('No transactions in this period.')
+  })
+
+  it('marks a credit balance rather than printing it as a debt', () => {
+    const credit = generateStatementHTML({ ...STATEMENT, closingBalance: -120.5 })
+    expect(credit).toContain('Credit balance: £120.50')
   })
 })
