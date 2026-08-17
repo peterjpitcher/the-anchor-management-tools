@@ -9,9 +9,10 @@ describe('event checklist definitions', () => {
       'Create Facebook Event',
       'Add GBP Event Post',
       'Schedule Social Posts',
+      'Schedule Event Email',
       'Scheduled Stories',
       'Set Up Paid Advertising',
-      'Whatsapp Reminder (Day of)'
+      'WhatsApp Reminder (3 Days Before)'
     ])
   })
 
@@ -24,7 +25,8 @@ describe('event checklist definitions', () => {
       -56,
       -56,
       -56,
-      0
+      -56,
+      -3
     ])
 
     const checklist = buildEventChecklist(
@@ -38,9 +40,12 @@ describe('event checklist definitions', () => {
       dueDate: '2026-08-06',
       status: 'due_today'
     })
-    expect(checklist[7]).toMatchObject({
-      label: 'Whatsapp Reminder (Day of)',
-      dueDate: '2026-10-01',
+    expect(checklist.find(({ key }) => key === 'schedule_event_email')?.dueDate).toBe(
+      checklist.find(({ key }) => key === 'schedule_social_content')?.dueDate
+    )
+    expect(checklist[8]).toMatchObject({
+      label: 'WhatsApp Reminder (3 Days Before)',
+      dueDate: '2026-09-28',
       status: 'upcoming'
     })
   })
@@ -52,7 +57,7 @@ describe('event checklist definitions', () => {
       '2026-07-09'
     )
 
-    expect(checklist).toHaveLength(8)
+    expect(checklist).toHaveLength(9)
     expect(checklist.find(({ label }) => label === 'Design Printed Materials')).toMatchObject({
       completed: true,
       completedAt: '2026-07-01T10:00:00Z'
