@@ -17,6 +17,7 @@ import { generateCompactInvoiceHTML } from '@/lib/invoice-template-compact'
 import { generateCompactQuoteHTML } from '@/lib/quote-template-compact'
 import { generateStatementHTML } from '@/lib/oj-statement'
 import { LOGO_MAX_WIDTH_PX } from '@/lib/pdf/document-chrome'
+import { buildStatementAgeing } from '@/lib/oj-projects/statement-ageing'
 
 const VENDOR = {
   id: 'vendor-1',
@@ -240,6 +241,62 @@ describe('statement template', () => {
 
   it('marks a credit balance rather than printing it as a debt', () => {
     const credit = generateStatementHTML({ ...STATEMENT, closingBalance: -120.5 })
-    expect(credit).toContain('Credit balance: £120.50')
+    expect(credit).toContain('£120.50 credit')
+  })
+})
+
+describe('statement ageing strip', () => {
+  const ageing = buildStatementAgeing(
+    [
+      { dueDate: '2026-08-08', remaining: 500 },
+      { dueDate: '2026-07-08', remaining: 130.25 },
+    ],
+    '2026-08-31'
+  )
+
+  const html = generateStatementHTML({ ...STATEMENT, ageing, closingBalance: ageing.netTotal })
+
+  it('labels the buckets as overdue, not as bare day counts', () => {
+    // Bare "30 / 60 / 90" is the ambiguity that lets two readers disagree about
+    // whether a figure means age or lateness.
+    expect(html).toContain('Aged by days overdue')
+    expect(html).toContain('Not yet due')
+    expect(html).toContain('1 to 30 days')
+    expect(html).toContain('Over 90 days')
+  })
+
+  it('states the as-at date, which is the period end rather than today', () => {
+    expect(html).toContain('as at 31 Aug 2026')
+  })
+
+  it('prints the reconciliation so the reader can check it', () => {
+    expect(html).toContain('equals the closing balance of')
+    expect(html).not.toContain('do not agree')
+  })
+
+  it('warns on the document itself when the figures do not reconcile', () => {
+    const broken = generateStatementHTML({ ...STATEMENT, ageing, closingBalance: 999 })
+    expect(broken).toContain('do not agree, so please contact us before paying')
+  })
+
+  it('names the credit separately when the client has one', () => {
+    const withCredit = buildStatementAgeing(
+      [
+        { dueDate: '2026-07-08', remaining: 500 },
+        { dueDate: '2026-06-08', remaining: -75.25 },
+      ],
+      '2026-08-31'
+    )
+    const out = generateStatementHTML({
+      ...STATEMENT,
+      ageing: withCredit,
+      closingBalance: withCredit.netTotal,
+    })
+
+    expect(out).toContain('less credit £75.25')
+  })
+
+  it('omits the strip entirely when no ageing is supplied', () => {
+    expect(generateStatementHTML(STATEMENT)).not.toContain('Aged by days overdue')
   })
 })

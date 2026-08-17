@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/email/emailService'
 import { generateStatementPDF } from '@/lib/oj-statement'
 import { logAuditEvent } from '@/app/actions/audit'
 import { escapeHtml } from '@/lib/cron/alerting'
+import { buildStatementAgeing, type StatementAgeing } from '@/lib/oj-projects/statement-ageing'
 
 export interface StatementTransaction {
   date: string
@@ -23,6 +24,8 @@ export interface ClientStatementData {
   openingBalance: number
   transactions: StatementTransaction[]
   closingBalance: number
+  /** `ageing.netTotal` must equal `closingBalance`; the PDF prints that check. */
+  ageing: StatementAgeing
 }
 
 export async function getClientStatement(
@@ -58,7 +61,7 @@ export async function getClientStatement(
   // Exclude void, written_off, and draft invoices (per decision D1)
   const { data: allInvoices, error: invoicesError } = await supabase
     .from('invoices')
-    .select('id, invoice_number, invoice_date, status, total_amount, paid_amount, created_at')
+    .select('id, invoice_number, invoice_date, due_date, status, total_amount, paid_amount, created_at')
     .eq('vendor_id', vendorId)
     .is('deleted_at', null)
     .ilike('reference', 'OJ Projects %')
@@ -111,11 +114,13 @@ export async function getClientStatement(
       .order('created_at', { ascending: true })
 
     if (cnError) {
-      // credit_notes table may not exist yet, so handle it gracefully
-      console.warn('[client-statement] credit_notes query failed (table may not exist):', cnError.message)
-    } else {
-      allCreditNotes = creditNotes || []
+      // Deliberately fails closed. Continuing without credit notes produces a
+      // statement that can ask a client to pay money already credited, and the
+      // ageing totals would not reconcile against the closing balance either.
+      console.error('[client-statement] credit_notes query failed:', cnError.message)
+      return { error: 'Could not load credit notes, so the statement would be incomplete. Please try again.' }
     }
+    allCreditNotes = creditNotes || []
   }
 
   // Opening balance: sum of unpaid amounts on invoices created BEFORE dateFrom
@@ -132,7 +137,10 @@ export async function getClientStatement(
         const creditsBefore = allCreditNotes
           .filter((cn) => cn.invoice_id === inv.id && cn.created_at.slice(0, 10) < dateFrom)
           .reduce((sum, cn) => sum + Number(cn.amount_inc_vat || 0), 0)
-        return acc + Math.max(total - paymentsBefore - creditsBefore, 0)
+        // NOT clamped at zero. Clamping discarded an overpayment carried into
+        // the period, so the opening balance overstated the debt and the ageing
+        // totals could never reconcile against the closing balance.
+        return acc + (total - paymentsBefore - creditsBefore)
       }, 0)
   )
 
@@ -219,6 +227,26 @@ export async function getClientStatement(
 
   const closingBalance = runningBalance
 
+  // Ageing is measured per invoice as at the period end, using the same
+  // payment and credit cut-off as the ledger above, so the two agree.
+  const ageing = buildStatementAgeing(
+    invoices
+      .filter((inv) => inv.invoice_date <= dateTo)
+      .map((inv) => {
+        const paid = allPayments
+          .filter((p) => p.invoice_id === inv.id && p.payment_date <= dateTo)
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+        const credited = allCreditNotes
+          .filter((cn) => cn.invoice_id === inv.id && cn.created_at.slice(0, 10) <= dateTo)
+          .reduce((sum, cn) => sum + Number(cn.amount_inc_vat || 0), 0)
+        return {
+          dueDate: String(inv.due_date || inv.invoice_date),
+          remaining: Number(inv.total_amount || 0) - paid - credited,
+        }
+      }),
+    dateTo
+  )
+
   return {
     statement: {
       vendor: { id: vendor.id, name: vendor.name, email: vendor.email || null },
@@ -226,6 +254,7 @@ export async function getClientStatement(
       openingBalance,
       transactions,
       closingBalance,
+      ageing,
     },
   }
 }
@@ -335,6 +364,7 @@ export async function sendStatementEmail(
     openingBalance: statement.openingBalance,
     transactions: statement.transactions,
     closingBalance: statement.closingBalance,
+    ageing: statement.ageing,
   })
 
   // Format date range for subject
