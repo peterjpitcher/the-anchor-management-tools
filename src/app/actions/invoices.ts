@@ -18,7 +18,7 @@ import type {
 import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
-const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
 type CreateInvoiceResult = { error: string } | { success: true; invoice: Invoice }
 type InvoiceEmailRecipients = { to: string | null; cc: string[] }

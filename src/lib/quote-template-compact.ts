@@ -3,7 +3,7 @@ import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
-const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07995087315'
+const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
 
 export interface QuoteTemplateData {
   quote: QuoteWithDetails

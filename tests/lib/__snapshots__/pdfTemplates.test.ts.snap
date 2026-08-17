@@ -1223,7 +1223,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
     <h3>How to Accept This Quote</h3>
     <p>To accept this quote and proceed with the work:</p>
     <p>• Email us at manager@the-anchor.pub with your acceptance</p>
-    <p>• Call Peter Pitcher directly on 07995087315</p>
+    <p>• Call Peter Pitcher directly on 07990587315</p>
     <p>• Call our office on 01753 682 707</p>
     <p>• Reply to the email this quote was attached to</p>
     <p><strong>This quote is valid until Tuesday, 1 September 2026</strong></p>
@@ -1239,7 +1239,7 @@ exports[`quote PDF template > renders a stable document 1`] = `
   <div class="footer">
     <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
     <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
-    <p>Contact: Peter Pitcher | Mobile: 07995087315</p>
+    <p>Contact: Peter Pitcher | Mobile: 07990587315</p>
   </div>
 </body>
 </html>
