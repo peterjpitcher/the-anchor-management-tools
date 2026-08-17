@@ -1,7 +1,14 @@
 # Spec: client statement PDF in the invoice house style
 
 **Date:** 2026-08-17 (v2, rewritten after developer review)
-**Status:** PR 1 ready to implement. PR 2 needs a calculation contract before it is written.
+**Status:** PR 1 **shipped** (`78660d8c`). PR 2 needs a calculation contract before it is written.
+
+> **PR 1 outcome.** Invoice, credit note and quote render byte-identical HTML, verified against
+> baselines captured before the refactor. A 64-transaction statement went from five pages to
+> two. The closing balance moved out of `tfoot` so it cannot repeat as a page subtotal, and the
+> logo is inlined from the bundle rather than fetched over HTTP. The drift test found a real
+> collision during the work: the statement had reused the invoice's `.payment-section` class
+> with different declarations.
 **Supersedes:** v1, which was reviewed as not ready. See `tasks/developer-review-statement-pdf-house-style-2026-08-17.md`.
 
 ---
