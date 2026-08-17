@@ -1,6 +1,11 @@
 import { InvoiceWithDetails } from '@/types/invoices'
 import { formatDateFull } from '@/lib/dateUtils'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import {
+  renderDocumentFooter,
+  renderDocumentHead,
+  renderDocumentHeader,
+} from '@/lib/pdf/document-chrome'
 import { escapeHtml } from '@/lib/cron/alerting'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 
@@ -32,254 +37,7 @@ export interface InvoiceTemplateData {
   creditNote?: CreditNoteDetails
 }
 
-export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
-  const { invoice, logoUrl, documentKind = 'invoice', remittance, creditNote } = data
-  const isRemittanceAdvice = documentKind === 'remittance_advice'
-  const isCreditNote = documentKind === 'credit_note'
-
-  // Check if any line items have discounts or if there's an invoice discount
-  const hasDiscounts = invoice.invoice_discount_percentage > 0 ||
-    (invoice.line_items?.some(item => item.discount_percentage > 0) ?? false)
-
-  // Helper functions
-  const formatAddressHtml = (value: string | null | undefined) => {
-    if (!value) return ''
-
-    const normalized = String(value).replace(/\r\n/g, '\n').trim()
-    if (!normalized) return ''
-
-    const parts = normalized.includes('\n')
-      ? normalized.split('\n')
-      : normalized.split(',')
-
-    return parts
-      .map((part) => escapeHtml(part.trim()))
-      .filter(Boolean)
-      .join('<br>')
-  }
-
-  const formatDate = (date: string | null) => {
-    return formatDateFull(date)
-  }
-
-  const formatCurrency = (amount: number) => {
-    return `£${amount.toFixed(2)}`
-  }
-
-  const formatPaymentTerms = () => {
-    const terms = invoice.vendor?.payment_terms
-    if (typeof terms !== 'number') {
-      return '30 days'
-    }
-    return terms === 0 ? 'Due upon receipt' : `${terms} days`
-  }
-
-  const formatDateOrDash = (date: string | null | undefined) => {
-    if (!date) return '-'
-    const parsed = new Date(date)
-    if (Number.isNaN(parsed.getTime())) return '-'
-    return formatDateFull(date)
-  }
-
-  const formatPaymentMethod = (method: string | null | undefined) => {
-    if (!method) return '-'
-    return String(method)
-      .split('_')
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ')
-  }
-
-  // Calculate line item totals
-  const calculateLineSubtotal = (item: any) => {
-    return item.quantity * item.unit_price
-  }
-
-  const calculateLineDiscount = (item: any) => {
-    const subtotal = calculateLineSubtotal(item)
-    return subtotal * (item.discount_percentage / 100)
-  }
-
-  const calculateLineAfterDiscount = (item: any) => {
-    return calculateLineSubtotal(item) - calculateLineDiscount(item)
-  }
-
-  // Calculate line VAT after all discounts (including invoice discount)
-  const calculateLineVat = (item: any) => {
-    const lineAfterDiscount = calculateLineAfterDiscount(item)
-    const lineShare = invoice.subtotal_amount > 0 ? lineAfterDiscount / invoice.subtotal_amount : 0
-    const lineAfterInvoiceDiscount = lineAfterDiscount - (invoice.discount_amount * lineShare)
-    return lineAfterInvoiceDiscount * (item.vat_rate / 100)
-  }
-
-  const calculateLineTotal = (item: any) => {
-    const lineAfterDiscount = calculateLineAfterDiscount(item)
-    const lineShare = invoice.subtotal_amount > 0 ? lineAfterDiscount / invoice.subtotal_amount : 0
-    const lineAfterInvoiceDiscount = lineAfterDiscount - (invoice.discount_amount * lineShare)
-    const vat = calculateLineVat(item)
-    return lineAfterInvoiceDiscount + vat
-  }
-
-  // Format status for display
-  const formatStatus = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')
-  }
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid': return '#22c55e'
-      case 'overdue': return '#ef4444'
-      case 'partially_paid': return '#f59e0b'
-      case 'sent': return '#3b82f6'
-      default: return '#6b7280'
-    }
-  }
-
-  const latestPayment = (invoice.payments || [])
-    .slice()
-    .sort((a, b) => {
-      const aDate = new Date(a.payment_date || a.created_at || 0).getTime()
-      const bDate = new Date(b.payment_date || b.created_at || 0).getTime()
-      return bDate - aDate
-    })[0]
-
-  const remittancePaymentAmount = remittance?.paymentAmount ?? latestPayment?.amount ?? invoice.paid_amount
-  const remittancePaymentDate = remittance?.paymentDate ?? latestPayment?.payment_date ?? null
-  const remittancePaymentMethod = remittance?.paymentMethod ?? latestPayment?.payment_method ?? null
-  const remittancePaymentReference =
-    remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
-  const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
-
-  // Internally we still call this "remittance advice", but the customer-facing term is "Receipt".
-  const documentTitle = isCreditNote ? 'Credit Note' : isRemittanceAdvice ? 'Receipt' : 'Invoice'
-  const documentHeader = isCreditNote ? 'CREDIT NOTE' : isRemittanceAdvice ? 'RECEIPT' : 'INVOICE'
-  const documentNumberLabel = isCreditNote
-    ? `${creditNote?.creditNoteNumber || 'CN-???'}`
-    : isRemittanceAdvice
-      ? `For Invoice #${invoice.invoice_number}`
-      : `#${invoice.invoice_number}`
-
-  const secondMetaLabel = isCreditNote ? 'Linked Invoice' : isRemittanceAdvice ? 'Payment Date' : 'Due Date'
-  const secondMetaValue = isCreditNote
-    ? `#${invoice.invoice_number}`
-    : isRemittanceAdvice
-      ? formatDateOrDash(remittancePaymentDate)
-      : formatDate(invoice.due_date)
-
-  const thirdMetaLabel = isCreditNote ? 'Reason' : isRemittanceAdvice ? 'Payment Method' : 'Reference'
-  const thirdMetaValue = isCreditNote
-    ? creditNote?.reason || '-'
-    : isRemittanceAdvice
-      ? formatPaymentMethod(remittancePaymentMethod)
-      : invoice.reference || '-'
-
-  const fourthMetaLabel = isCreditNote ? 'VAT Rate' : isRemittanceAdvice ? 'Payment Ref' : 'Terms'
-  const fourthMetaValue = isCreditNote
-    ? `${creditNote?.vatRate ?? 20}%`
-    : isRemittanceAdvice
-      ? remittancePaymentReference || '-'
-      : formatPaymentTerms()
-
-  // Use the shared calculator so per-line totals round identically to the
-  // on-screen and stored values (round-then-add, not add-then-round).
-  // Only the standard invoice line table consumes this; credit-note and
-  // remittance variants render their own fields and are untouched.
-  const lineItems = invoice.line_items ?? []
-  const totals = calculateInvoiceTotals(
-    lineItems.map(li => ({
-      quantity: li.quantity,
-      unit_price: li.unit_price,
-      discount_percentage: li.discount_percentage,
-      vat_rate: li.vat_rate,
-    })),
-    invoice.invoice_discount_percentage
-  )
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(documentTitle)} ${escapeHtml(invoice.invoice_number)} - ${escapeHtml(invoice.vendor?.name || 'Customer')}</title>
-  <style>
-    @page {
-      size: A4;
-      margin: 8mm;
-    }
-    
-    @media print {
-      body { margin: 0; }
-      .no-print { display: none !important; }
-      .page-break { page-break-before: always; }
-      .keep-together { page-break-inside: avoid; }
-    }
-    
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.3;
-      color: #333;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 5px;
-      font-size: 8pt;
-    }
-    
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 8px;
-    }
-    
-    .logo-section {
-      flex: 1;
-    }
-    
-    .logo {
-      max-width: 90px;
-      height: auto;
-      margin-bottom: 5px;
-    }
-    
-    .invoice-header {
-      flex: 1;
-      text-align: right;
-    }
-    
-    h1 {
-      color: #111827;
-      margin: 0 0 5px 0;
-      font-size: 16pt;
-      font-weight: 700;
-    }
-    
-    .invoice-number {
-      font-size: 10pt;
-      color: #6b7280;
-      margin-bottom: 2px;
-    }
-    
-    .status-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 3px;
-      font-size: 8pt;
-      font-weight: 600;
-      color: white;
-      margin-top: 5px;
-    }
-    
-    .company-details {
-      margin-bottom: 10px;
-      font-size: 8pt;
-      color: #6b7280;
-    }
-    
-    .addresses {
+const BODY_CSS = `    .addresses {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 15px;
@@ -460,38 +218,189 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
       font-size: 8pt;
     }
     
-    .footer {
-      margin-top: 20px;
-      padding-top: 10px;
-      border-top: 1px solid #e5e7eb;
-      text-align: center;
-      color: #6b7280;
-      font-size: 7pt;
+`
+
+export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
+  const { invoice, logoUrl, documentKind = 'invoice', remittance, creditNote } = data
+  const isRemittanceAdvice = documentKind === 'remittance_advice'
+  const isCreditNote = documentKind === 'credit_note'
+
+  // Check if any line items have discounts or if there's an invoice discount
+  const hasDiscounts = invoice.invoice_discount_percentage > 0 ||
+    (invoice.line_items?.some(item => item.discount_percentage > 0) ?? false)
+
+  // Helper functions
+  const formatAddressHtml = (value: string | null | undefined) => {
+    if (!value) return ''
+
+    const normalized = String(value).replace(/\r\n/g, '\n').trim()
+    if (!normalized) return ''
+
+    const parts = normalized.includes('\n')
+      ? normalized.split('\n')
+      : normalized.split(',')
+
+    return parts
+      .map((part) => escapeHtml(part.trim()))
+      .filter(Boolean)
+      .join('<br>')
+  }
+
+  const formatDate = (date: string | null) => {
+    return formatDateFull(date)
+  }
+
+  const formatCurrency = (amount: number) => {
+    return `£${amount.toFixed(2)}`
+  }
+
+  const formatPaymentTerms = () => {
+    const terms = invoice.vendor?.payment_terms
+    if (typeof terms !== 'number') {
+      return '30 days'
     }
-    
-    .footer p {
-      margin: 2px 0;
+    return terms === 0 ? 'Due upon receipt' : `${terms} days`
+  }
+
+  const formatDateOrDash = (date: string | null | undefined) => {
+    if (!date) return '-'
+    const parsed = new Date(date)
+    if (Number.isNaN(parsed.getTime())) return '-'
+    return formatDateFull(date)
+  }
+
+  const formatPaymentMethod = (method: string | null | undefined) => {
+    if (!method) return '-'
+    return String(method)
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  // Calculate line item totals
+  const calculateLineSubtotal = (item: any) => {
+    return item.quantity * item.unit_price
+  }
+
+  const calculateLineDiscount = (item: any) => {
+    const subtotal = calculateLineSubtotal(item)
+    return subtotal * (item.discount_percentage / 100)
+  }
+
+  const calculateLineAfterDiscount = (item: any) => {
+    return calculateLineSubtotal(item) - calculateLineDiscount(item)
+  }
+
+  // Calculate line VAT after all discounts (including invoice discount)
+  const calculateLineVat = (item: any) => {
+    const lineAfterDiscount = calculateLineAfterDiscount(item)
+    const lineShare = invoice.subtotal_amount > 0 ? lineAfterDiscount / invoice.subtotal_amount : 0
+    const lineAfterInvoiceDiscount = lineAfterDiscount - (invoice.discount_amount * lineShare)
+    return lineAfterInvoiceDiscount * (item.vat_rate / 100)
+  }
+
+  const calculateLineTotal = (item: any) => {
+    const lineAfterDiscount = calculateLineAfterDiscount(item)
+    const lineShare = invoice.subtotal_amount > 0 ? lineAfterDiscount / invoice.subtotal_amount : 0
+    const lineAfterInvoiceDiscount = lineAfterDiscount - (invoice.discount_amount * lineShare)
+    const vat = calculateLineVat(item)
+    return lineAfterInvoiceDiscount + vat
+  }
+
+  // Format status for display
+  const formatStatus = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')
+  }
+
+  // Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'paid': return '#22c55e'
+      case 'overdue': return '#ef4444'
+      case 'partially_paid': return '#f59e0b'
+      case 'sent': return '#3b82f6'
+      default: return '#6b7280'
     }
-  </style>
-</head>
+  }
+
+  const latestPayment = (invoice.payments || [])
+    .slice()
+    .sort((a, b) => {
+      const aDate = new Date(a.payment_date || a.created_at || 0).getTime()
+      const bDate = new Date(b.payment_date || b.created_at || 0).getTime()
+      return bDate - aDate
+    })[0]
+
+  const remittancePaymentAmount = remittance?.paymentAmount ?? latestPayment?.amount ?? invoice.paid_amount
+  const remittancePaymentDate = remittance?.paymentDate ?? latestPayment?.payment_date ?? null
+  const remittancePaymentMethod = remittance?.paymentMethod ?? latestPayment?.payment_method ?? null
+  const remittancePaymentReference =
+    remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
+  const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+
+  // Internally we still call this "remittance advice", but the customer-facing term is "Receipt".
+  const documentTitle = isCreditNote ? 'Credit Note' : isRemittanceAdvice ? 'Receipt' : 'Invoice'
+  const documentHeader = isCreditNote ? 'CREDIT NOTE' : isRemittanceAdvice ? 'RECEIPT' : 'INVOICE'
+  const documentNumberLabel = isCreditNote
+    ? `${creditNote?.creditNoteNumber || 'CN-???'}`
+    : isRemittanceAdvice
+      ? `For Invoice #${invoice.invoice_number}`
+      : `#${invoice.invoice_number}`
+
+  const secondMetaLabel = isCreditNote ? 'Linked Invoice' : isRemittanceAdvice ? 'Payment Date' : 'Due Date'
+  const secondMetaValue = isCreditNote
+    ? `#${invoice.invoice_number}`
+    : isRemittanceAdvice
+      ? formatDateOrDash(remittancePaymentDate)
+      : formatDate(invoice.due_date)
+
+  const thirdMetaLabel = isCreditNote ? 'Reason' : isRemittanceAdvice ? 'Payment Method' : 'Reference'
+  const thirdMetaValue = isCreditNote
+    ? creditNote?.reason || '-'
+    : isRemittanceAdvice
+      ? formatPaymentMethod(remittancePaymentMethod)
+      : invoice.reference || '-'
+
+  const fourthMetaLabel = isCreditNote ? 'VAT Rate' : isRemittanceAdvice ? 'Payment Ref' : 'Terms'
+  const fourthMetaValue = isCreditNote
+    ? `${creditNote?.vatRate ?? 20}%`
+    : isRemittanceAdvice
+      ? remittancePaymentReference || '-'
+      : formatPaymentTerms()
+
+  // Use the shared calculator so per-line totals round identically to the
+  // on-screen and stored values (round-then-add, not add-then-round).
+  // Only the standard invoice line table consumes this; credit-note and
+  // remittance variants render their own fields and are untouched.
+  const lineItems = invoice.line_items ?? []
+  const totals = calculateInvoiceTotals(
+    lineItems.map(li => ({
+      quantity: li.quantity,
+      unit_price: li.unit_price,
+      discount_percentage: li.discount_percentage,
+      vat_rate: li.vat_rate,
+    })),
+    invoice.invoice_discount_percentage
+  )
+
+  return `
+${renderDocumentHead({
+    titleHtml: `${escapeHtml(documentTitle)} ${escapeHtml(invoice.invoice_number)} - ${escapeHtml(invoice.vendor?.name || 'Customer')}`,
+    metaClass: '.invoice-header',
+    numberClass: '.invoice-number',
+    bodyCss: BODY_CSS,
+  })}
 <body>
-  <div class="header">
-    <div class="logo-section">
-      ${logoUrl ? `<img src="${logoUrl}" alt="${COMPANY_DETAILS.name}" class="logo">` : ''}
-      <div class="company-details">
-        <strong>${COMPANY_DETAILS.name}</strong><br>
-        ${COMPANY_DETAILS.fullAddress}<br>
-        VAT: ${COMPANY_DETAILS.vatNumber}
-      </div>
-    </div>
-    <div class="invoice-header">
-      <h1>${documentHeader}</h1>
-      <div class="invoice-number">${escapeHtml(documentNumberLabel)}</div>
+${renderDocumentHeader({
+    logoUrl,
+    metaClass: 'invoice-header',
+    headingHtml: documentHeader,
+    metaHtml: `      <div class="invoice-number">${escapeHtml(documentNumberLabel)}</div>
       <span class="status-badge" style="background-color: ${getStatusColor(invoice.status)}">
         ${formatStatus(invoice.status)}
-      </span>
-    </div>
-  </div>
+      </span>`,
+  })}
 
   <div class="addresses">
     <div class="address-block">
@@ -669,11 +578,7 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
     </div>
   ` : ''}
 
-  <div class="footer">
-    <p>${COMPANY_DETAILS.name} | Company Reg: ${COMPANY_DETAILS.companyNumber} | VAT: ${COMPANY_DETAILS.vatNumber}</p>
-    <p>${COMPANY_DETAILS.fullAddress} | ${COMPANY_DETAILS.phone} | ${COMPANY_DETAILS.email}</p>
-    <p>Contact: ${escapeHtml(CONTACT_NAME)} | Mobile: ${escapeHtml(CONTACT_PHONE)}</p>
-  </div>
+${renderDocumentFooter()}
 </body>
 </html>
   `

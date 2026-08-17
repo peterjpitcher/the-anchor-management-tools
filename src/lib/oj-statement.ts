@@ -1,6 +1,12 @@
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { escapeHtml } from '@/lib/cron/alerting'
 import { COMPANY_DETAILS } from '@/lib/company-details'
+import {
+  renderDocumentFooter,
+  renderDocumentHead,
+  renderDocumentHeader,
+} from '@/lib/pdf/document-chrome'
+import { getStatementLogoDataUri } from '@/lib/pdf/document-logo'
 import type { StatementTransaction } from '@/app/actions/oj-projects/client-statement'
 
 export interface StatementPDFInput {
@@ -10,6 +16,8 @@ export interface StatementPDFInput {
   openingBalance: number
   transactions: StatementTransaction[]
   closingBalance: number
+  /** Data URI. Omitted when the bundled asset cannot be read, exactly as invoices behave. */
+  logoUrl?: string
 }
 
 function formatCurrency(amount: number): string {
@@ -26,143 +34,202 @@ function formatStatementDate(dateStr: string): string {
   })
 }
 
-function generateStatementHTML(input: StatementPDFInput): string {
+/**
+ * Ledger-specific styling. The shared chrome owns page geometry, typography, the
+ * header and the footer; this owns the six-column statement table and the
+ * payment block, which no other document has.
+ */
+const STATEMENT_BODY_CSS = `
+    .statement-meta {
+      font-size: 8pt;
+      color: #6b7280;
+    }
+
+    .statement-meta strong {
+      color: #111827;
+    }
+
+    .ledger {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+    }
+
+    .ledger thead {
+      display: table-header-group;
+    }
+
+    .ledger tr {
+      page-break-inside: avoid;
+    }
+
+    .ledger th {
+      background: #f3f4f6;
+      padding: 5px 6px;
+      text-align: left;
+      font-size: 8pt;
+      font-weight: 600;
+      color: #374151;
+      border-bottom: 2px solid #d1d5db;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .ledger th.text-right,
+    .ledger td.text-right {
+      text-align: right;
+    }
+
+    .ledger td {
+      padding: 4px 6px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 8pt;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    .ledger .opening td {
+      background: #fefce8;
+      font-weight: 600;
+    }
+
+    .ledger .closing td {
+      background: #f0fdf4;
+      border-top: 2px solid #16a34a;
+      border-bottom: none;
+      font-size: 9pt;
+      font-weight: 700;
+      padding: 6px;
+    }
+
+    .credit-amount {
+      color: #dc2626;
+    }
+
+    .statement-payment {
+      margin-top: 12px;
+      padding: 8px;
+      background: #f9fafb;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+
+    .statement-payment h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .statement-payment p {
+      margin: 1px 0;
+      font-size: 8pt;
+    }
+`
+
+export function generateStatementHTML(input: StatementPDFInput): string {
   const vendorName = escapeHtml(input.vendorName)
   const periodFrom = escapeHtml(formatStatementDate(input.periodFrom))
   const periodTo = escapeHtml(formatStatementDate(input.periodTo))
 
-  const transactionRows = input.transactions
-    .map((txn) => {
-      const debitCell = txn.debit !== null ? formatCurrency(txn.debit) : ''
-      const creditCell = txn.credit !== null ? formatCurrency(txn.credit) : ''
-      const balanceCell = txn.balance < 0
-        ? `<span style="color: #dc2626;">(${formatCurrency(txn.balance)})</span>`
-        : formatCurrency(txn.balance)
+  const balanceCell = (amount: number) =>
+    amount < 0
+      ? `<span class="credit-amount">(${formatCurrency(amount)})</span>`
+      : formatCurrency(amount)
 
-      return `
-        <tr style="page-break-inside: avoid;">
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">${escapeHtml(formatStatementDate(txn.date))}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">${escapeHtml(txn.description)}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px;">${escapeHtml(txn.reference)}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">${debitCell}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right;">${creditCell}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 500;">${balanceCell}</td>
-        </tr>`
-    })
+  const transactionRows = input.transactions
+    .map(
+      (txn) => `      <tr>
+        <td>${escapeHtml(formatStatementDate(txn.date))}</td>
+        <td>${escapeHtml(txn.description)}</td>
+        <td>${escapeHtml(txn.reference)}</td>
+        <td class="text-right">${txn.debit !== null ? formatCurrency(txn.debit) : ''}</td>
+        <td class="text-right">${txn.credit !== null ? formatCurrency(txn.credit) : ''}</td>
+        <td class="text-right">${balanceCell(txn.balance)}</td>
+      </tr>`
+    )
     .join('\n')
 
-  const closingBalanceDisplay = input.closingBalance < 0
-    ? `Credit Balance: ${formatCurrency(input.closingBalance)}`
-    : formatCurrency(input.closingBalance)
+  const emptyRow = `      <tr>
+        <td colspan="6" style="text-align: center; color: #6b7280;">No transactions in this period.</td>
+      </tr>`
 
-  const companyName = escapeHtml(COMPANY_DETAILS?.name || 'Orange Jelly Limited')
-  const companyAddress = escapeHtml(COMPANY_DETAILS?.fullAddress || '')
-  const companyPhone = escapeHtml(COMPANY_DETAILS?.phone || '')
-  const companyEmail = escapeHtml(COMPANY_DETAILS?.email || '')
+  const closingBalanceDisplay =
+    input.closingBalance < 0
+      ? `Credit balance: ${formatCurrency(input.closingBalance)}`
+      : formatCurrency(input.closingBalance)
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    @page {
-      margin: 20mm 15mm 25mm 15mm;
-      @bottom-center {
-        content: "Page " counter(page) " of " counter(pages);
-        font-size: 10px;
-        color: #9ca3af;
-      }
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: #1f2937;
-      line-height: 1.5;
-      margin: 0;
-      padding: 0;
-    }
-    thead { display: table-header-group; }
-    tfoot { display: table-footer-group; }
-    tr { page-break-inside: avoid; }
-    table { width: 100%; border-collapse: collapse; }
-  </style>
-</head>
+  const head = renderDocumentHead({
+    titleHtml: `Account Statement ${vendorName} ${periodFrom} to ${periodTo}`,
+    metaClass: '.statement-header',
+    numberClass: '.statement-period',
+    bodyCss: STATEMENT_BODY_CSS,
+  })
+
+  const header = renderDocumentHeader({
+    logoUrl: input.logoUrl,
+    metaClass: 'statement-header',
+    headingHtml: 'ACCOUNT STATEMENT',
+    metaHtml: `      <div class="statement-meta">
+        <strong>${vendorName}</strong><br>
+        ${periodFrom} to ${periodTo}
+      </div>`,
+  })
+
+  return `${head}
 <body>
-  <!-- Header -->
-  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
-    <div>
-      <h1 style="font-size: 24px; font-weight: 700; margin: 0 0 4px 0; color: #111827;">ACCOUNT STATEMENT</h1>
-      <p style="font-size: 14px; color: #6b7280; margin: 0;">${companyName}</p>
-    </div>
-    <div style="text-align: right;">
-      <p style="font-size: 13px; color: #6b7280; margin: 0;">${companyAddress}</p>
-      <p style="font-size: 13px; color: #6b7280; margin: 0;">${companyPhone}</p>
-      <p style="font-size: 13px; color: #6b7280; margin: 0;">${companyEmail}</p>
-    </div>
-  </div>
+${header}
 
-  <!-- Client & Period -->
-  <div style="display: flex; justify-content: space-between; margin-bottom: 24px; padding: 16px; background: #f9fafb; border-radius: 8px;">
-    <div>
-      <p style="font-size: 12px; color: #6b7280; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.05em;">Client</p>
-      <p style="font-size: 16px; font-weight: 600; margin: 0;">${vendorName}</p>
-    </div>
-    <div style="text-align: right;">
-      <p style="font-size: 12px; color: #6b7280; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.05em;">Period</p>
-      <p style="font-size: 14px; font-weight: 500; margin: 0;">${periodFrom} to ${periodTo}</p>
-    </div>
-  </div>
-
-  <!-- Transactions Table -->
-  <table>
+  <table class="ledger">
     <thead>
-      <tr style="background: #f3f4f6;">
-        <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db; text-transform: uppercase; letter-spacing: 0.05em;">Date</th>
-        <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db; text-transform: uppercase; letter-spacing: 0.05em;">Description</th>
-        <th style="padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db; text-transform: uppercase; letter-spacing: 0.05em;">Reference</th>
-        <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db; text-transform: uppercase; letter-spacing: 0.05em;">Debit</th>
-        <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db; text-transform: uppercase; letter-spacing: 0.05em;">Credit</th>
-        <th style="padding: 10px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 2px solid #d1d5db; text-transform: uppercase; letter-spacing: 0.05em;">Balance</th>
+      <tr>
+        <th scope="col">Date</th>
+        <th scope="col">Description</th>
+        <th scope="col">Reference</th>
+        <th scope="col" class="text-right">Debit</th>
+        <th scope="col" class="text-right">Credit</th>
+        <th scope="col" class="text-right">Balance</th>
       </tr>
     </thead>
     <tbody>
-      <!-- Opening Balance -->
-      <tr style="background: #fefce8; page-break-inside: avoid;">
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px;" colspan="5"><strong>Opening Balance</strong></td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; text-align: right; font-weight: 600;">${formatCurrency(input.openingBalance)}</td>
+      <tr class="opening">
+        <td colspan="5">Opening Balance</td>
+        <td class="text-right">${balanceCell(input.openingBalance)}</td>
       </tr>
-      ${transactionRows}
+${input.transactions.length > 0 ? transactionRows : emptyRow}
+      <tr class="closing">
+        <td colspan="5">Closing Balance</td>
+        <td class="text-right">${closingBalanceDisplay}</td>
+      </tr>
     </tbody>
-    <tfoot>
-      <!-- Closing Balance -->
-      <tr style="background: #f0fdf4; page-break-inside: avoid;">
-        <td style="padding: 12px; border-top: 2px solid #16a34a; font-size: 14px; font-weight: 700;" colspan="5">Closing Balance</td>
-        <td style="padding: 12px; border-top: 2px solid #16a34a; font-size: 14px; font-weight: 700; text-align: right;">${closingBalanceDisplay}</td>
-      </tr>
-    </tfoot>
   </table>
 
-  <!-- Note -->
-  <div style="margin-top: 24px; padding: 12px 16px; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 4px;">
-    <p style="font-size: 12px; color: #1e40af; margin: 0; font-style: italic;">
-      This statement reflects invoiced amounts only. Unbilled work in progress is not included.
-    </p>
+  <div class="statement-payment">
+    <h3>How to Pay</h3>
+    <p><strong>Bank:</strong> ${COMPANY_DETAILS.bank.name}</p>
+    <p><strong>Account Name:</strong> ${COMPANY_DETAILS.bank.accountName}</p>
+    <p><strong>Sort Code:</strong> ${COMPANY_DETAILS.bank.sortCode}</p>
+    <p><strong>Account: </strong> ${COMPANY_DETAILS.bank.accountNumber}</p>
+    <p style="margin-top: 4px;">Please quote <strong>${vendorName}</strong> as the payment reference.</p>
   </div>
 
-  <!-- Footer -->
-  <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-    <p style="font-size: 11px; color: #9ca3af; text-align: center; margin: 0;">
-      ${companyName} | Generated on ${escapeHtml(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Europe/London' }))}
-    </p>
-  </div>
+${renderDocumentFooter()}
 </body>
 </html>`
 }
 
 export async function generateStatementPDF(input: StatementPDFInput): Promise<Buffer> {
-  const html = generateStatementHTML(input)
+  const html = generateStatementHTML({
+    ...input,
+    logoUrl: input.logoUrl ?? getStatementLogoDataUri(),
+  })
+
+  // Same geometry as the invoice. The statement used to set its own 20/25/15/15mm,
+  // which is a large part of why the two documents did not look related.
   return generatePDFFromHTML(html, {
     format: 'A4',
     printBackground: true,
-    margin: { top: '20mm', bottom: '25mm', left: '15mm', right: '15mm' },
+    margin: { top: '8mm', bottom: '8mm', left: '8mm', right: '8mm' },
   })
 }
