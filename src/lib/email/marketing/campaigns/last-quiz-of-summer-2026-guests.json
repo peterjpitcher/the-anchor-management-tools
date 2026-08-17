@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "title": "The Last Quiz of Summer is this Wednesday",
+  "preheader": "£3 entry · teams up to six · free-drink questions · spot prizes · food from 4pm",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/17f9b7f1-2244-42d2-be58-f4083592fe0e/hero/1785995052375_ChatGPT_Image_Aug_6_2026_06_43_48_AM.png",
+          "alt": "The Last Quiz of Summer at The Anchor on Wednesday 19 August",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Quiz Night artwork · 1254 × 1254",
+        "placeholder_caption": "The Last Quiz of Summer",
+        "kicker": "This Wednesday · 19 August · 7pm",
+        "headline": "The Last Quiz of Summer is this Wednesday",
+        "body": [
+          "Round up your smartest mates, your best guessers and that one person who somehow knows every song intro."
+        ],
+        "cta_label": "Book your quiz table",
+        "cta_url": "https://www.the-anchor.pub/events/pub-quiz-quiz-night-2026-08-19"
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "What to expect.",
+        "body": "Music · TV · Film · Random knowledge · Free-drink questions · Spot prizes"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Entry",
+            "value": "£3 cash per person"
+          },
+          {
+            "label": "Teams",
+            "value": "Up to six people"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Bring the team. We’ll bring the questions.",
+        "body": [
+          "First-time teams are every bit as welcome as the regulars. You do not need to be a quiz expert — just bring a team willing to have a go.",
+          "Come down early, grab some food and a drink, then settle in before the first question at 7pm. The full menu is available from 4pm to 9pm."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Wednesday night sorted",
+        "body": "Book ahead to secure your table, then all you need to do is round up the team.",
+        "cta_label": "Book for this Wednesday",
+        "cta_url": "https://www.the-anchor.pub/events/pub-quiz-quiz-night-2026-08-19",
+        "reassurance_items": [
+          "Teams of up to six",
+          "Free parking right outside"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}

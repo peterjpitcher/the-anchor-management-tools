@@ -56,6 +56,27 @@ and the queue UI checked in a browser (render, selection, empty state).
 Pill values at the time of writing: menu 121, table bookings 27, private
 bookings 13, checklists 55, rota 4, invoices 4, receipts 1, feedback 1.
 
+# Event QR pack: printed media only
+
+## Tasks
+
+- [x] Exclude screen-only QR channels from the event QR pack
+- [x] Keep screen QR channels available everywhere else
+- [x] Add a regression test for print, screen and digital channel inclusion
+- [x] Run focused tests, typecheck and lint
+
+## Review
+
+The event QR pack now creates, renders and lists only the 23 print channels. The
+five screen channels and all digital channels are excluded from this export, but
+their shared catalogue and event tools are unchanged.
+
+Verified on Node 20: 19 focused QR-pack tests and all 5,257 project tests pass;
+typecheck, full lint, diff checks and the production build are clean.
+
+Deployed to production as Vercel deployment
+`dpl_EiqZdHqDgXXgTWRgdVwzvm7FqgAm`; the production aliases report Ready.
+
 # FOH selected-customer walk-in hardening
 
 ## Tasks

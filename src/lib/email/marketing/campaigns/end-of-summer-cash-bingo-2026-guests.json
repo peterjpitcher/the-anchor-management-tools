@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "title": "Cash Bingo on Wednesday 2 September",
+  "preheader": "£10 cash books · 10 games · rollover Snowball · final cash jackpot · food from 4pm",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/15269bd7-037c-4634-8520-48bf8ac44906/hero/1786206627224_ChatGPT_Image_Aug_8_2026_05_27_00_PM.png",
+          "alt": "Cash Bingo cards and players at The Anchor in Stanwell Moor",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Cash Bingo artwork · 1254 × 1254",
+        "placeholder_caption": "End of Summer Cash Bingo",
+        "kicker": "Wednesday 2 September · 7pm",
+        "headline": "Ready for ten games of Cash Bingo?",
+        "body": [
+          "There are cash prizes throughout, plus a final jackpot that grows with every book sold. Book your seats, bring £10 cash per player and get ready for eyes down at 7pm."
+        ],
+        "cta_label": "Book your bingo seats",
+        "cta_url": "https://www.the-anchor.pub/events/cash-bingo-2026-09-02"
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "What to expect.",
+        "body": "10 games · Rollover Snowball · Final cash jackpot · Prizes along the way"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Books",
+            "value": "£10 cash on arrival"
+          },
+          {
+            "label": "Doors",
+            "value": "6.30pm for a 7pm start"
+          },
+          {
+            "label": "Players",
+            "value": "Must be 18 or over to play for cash prizes"
+          },
+          {
+            "label": "Seating",
+            "value": "Friendly communal tables"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "New to bingo? You’ll be right at home.",
+        "body": [
+          "The numbers are shown on the pub TVs, so every game is easy to follow whether you play regularly or this is your first time. Dabbers are available to buy at the pub if you need one.",
+          "Come down early, grab some food and a drink, then settle in before the first game. The full menu is available from 4pm to 9pm."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Eyes down",
+        "body": "Book ahead to secure your seats, then bring £10 cash for each book on the night.",
+        "cta_label": "Book your bingo seats",
+        "cta_url": "https://www.the-anchor.pub/events/cash-bingo-2026-09-02",
+        "reassurance_items": [
+          "Beginners are welcome",
+          "Free parking right outside"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}
