@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { datedFolderName, sanitizeFilename } from '@/lib/export/filenames'
-import { buildBriefMarkdown, qrFileStem, type BriefEvent } from '@/lib/export/qr-pack'
+import {
+  buildBriefMarkdown,
+  isPrintedMediaQrChannel,
+  qrFileStem,
+  type BriefEvent,
+} from '@/lib/export/qr-pack'
 import type { EventMarketingLink } from '@/services/event-marketing'
 
 const FULL_EVENT: BriefEvent = {
@@ -114,7 +119,7 @@ describe('datedFolderName', () => {
 })
 
 describe('buildBriefMarkdown', () => {
-  const links = [link('poster', 'Poster', 'print'), link('venue_screen', 'Venue Screen', 'screen')]
+  const links = [link('poster', 'Poster', 'print'), link('table_talker', 'Table Talker', 'print')]
 
   it('includes the details a designer needs', () => {
     const md = buildBriefMarkdown(FULL_EVENT, links)
@@ -137,7 +142,7 @@ describe('buildBriefMarkdown', () => {
   it('lists every code with its placement and short link', () => {
     const md = buildBriefMarkdown(FULL_EVENT, links)
     expect(md).toContain('| Poster |')
-    expect(md).toContain('| Venue Screen |')
+    expect(md).toContain('| Table Talker |')
     expect(md).toContain('https://l.the-anchor.pub/sc-poster')
   })
 
@@ -152,6 +157,17 @@ describe('buildBriefMarkdown', () => {
 
   it('shows a free event as free rather than as no price', () => {
     expect(buildBriefMarkdown(BARE_EVENT, [])).toContain('| Price | Free |')
+  })
+})
+
+describe('isPrintedMediaQrChannel', () => {
+  it('includes print placements', () => {
+    expect(isPrintedMediaQrChannel({ type: 'print' })).toBe(true)
+  })
+
+  it('excludes screen and digital placements', () => {
+    expect(isPrintedMediaQrChannel({ type: 'screen' })).toBe(false)
+    expect(isPrintedMediaQrChannel({ type: 'digital' })).toBe(false)
   })
 })
 

@@ -4,6 +4,7 @@
 
 import QRCode from 'qrcode'
 import type { EventMarketingLink } from '@/services/event-marketing'
+import type { EventMarketingChannelConfig } from '@/lib/event-marketing-links'
 import { formatDateInLondon } from '@/lib/dateUtils'
 
 /**
@@ -30,6 +31,13 @@ export const QR_OPTIONS = {
  * answer for anything larger, being resolution-independent and 2KB.
  */
 export const QR_PNG_WIDTH = 1200
+
+/** The designer pack is for artwork that will be physically printed. */
+export function isPrintedMediaQrChannel(
+  channel: Pick<EventMarketingChannelConfig, 'type'>,
+): boolean {
+  return channel.type === 'print'
+}
 
 export async function renderQrPng(url: string): Promise<Buffer> {
   return QRCode.toBuffer(url, { ...QR_OPTIONS, type: 'png', width: QR_PNG_WIDTH })
