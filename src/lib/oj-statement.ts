@@ -8,6 +8,7 @@ import {
 } from '@/lib/pdf/document-chrome'
 import { getStatementLogoDataUri } from '@/lib/pdf/document-logo'
 import type { StatementTransaction } from '@/app/actions/oj-projects/client-statement'
+import type { StatementAgeing } from '@/lib/oj-projects/statement-ageing'
 
 export interface StatementPDFInput {
   vendorName: string
@@ -16,12 +17,21 @@ export interface StatementPDFInput {
   openingBalance: number
   transactions: StatementTransaction[]
   closingBalance: number
+  ageing?: StatementAgeing
   /** Data URI. Omitted when the bundled asset cannot be read, exactly as invoices behave. */
   logoUrl?: string
 }
 
 function formatCurrency(amount: number): string {
   return `£${Math.abs(amount).toFixed(2)}`
+}
+
+/**
+ * A balance with its sign made explicit. `formatCurrency` takes the absolute
+ * value, so on its own it printed a credit as though the client owed it.
+ */
+function formatBalance(amount: number): string {
+  return amount < 0 ? `${formatCurrency(amount)} credit` : formatCurrency(amount)
 }
 
 function formatStatementDate(dateStr: string): string {
@@ -106,6 +116,53 @@ const STATEMENT_BODY_CSS = `
       color: #dc2626;
     }
 
+    .ageing {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+    }
+
+    .ageing th {
+      background: #f9fafb;
+      padding: 4px 6px;
+      font-size: 7pt;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      text-align: right;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .ageing th:first-child {
+      text-align: left;
+    }
+
+    .ageing td {
+      padding: 5px 6px;
+      font-size: 9pt;
+      font-weight: 600;
+      text-align: right;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .ageing td:first-child {
+      text-align: left;
+      font-weight: 400;
+      color: #6b7280;
+    }
+
+    .ageing .overdue-most {
+      color: #dc2626;
+    }
+
+    .reconciliation {
+      font-size: 7pt;
+      color: #6b7280;
+      margin: 0 0 10px 0;
+    }
+
     .statement-payment {
       margin-top: 12px;
       padding: 8px;
@@ -128,6 +185,24 @@ const STATEMENT_BODY_CSS = `
     }
 `
 
+/**
+ * States the check rather than hiding it. If the buckets ever stop reconciling
+ * against the closing balance the statement says so on its face, which is the
+ * whole point of showing ageing next to a ledger.
+ */
+function buildReconciliationLine(ageing: StatementAgeing, closingBalance: number): string {
+  const parts = [`Amounts overdue ${formatCurrency(ageing.receivablesTotal)}`]
+  if (ageing.creditTotal > 0) parts.push(`less credit ${formatCurrency(ageing.creditTotal)}`)
+  parts.push(`equals the closing balance of ${formatBalance(closingBalance)}`)
+
+  const reconciles = Math.abs(ageing.netTotal - closingBalance) < 0.005
+  return reconciles
+    ? escapeHtml(parts.join(', ') + '.')
+    : escapeHtml(
+        `${parts.join(', ')}. These figures do not agree, so please contact us before paying.`
+      )
+}
+
 export function generateStatementHTML(input: StatementPDFInput): string {
   const vendorName = escapeHtml(input.vendorName)
   const periodFrom = escapeHtml(formatStatementDate(input.periodFrom))
@@ -135,7 +210,7 @@ export function generateStatementHTML(input: StatementPDFInput): string {
 
   const balanceCell = (amount: number) =>
     amount < 0
-      ? `<span class="credit-amount">(${formatCurrency(amount)})</span>`
+      ? `<span class="credit-amount">(${formatCurrency(amount)}) credit</span>`
       : formatCurrency(amount)
 
   const transactionRows = input.transactions
@@ -155,10 +230,33 @@ export function generateStatementHTML(input: StatementPDFInput): string {
         <td colspan="6" style="text-align: center; color: #6b7280;">No transactions in this period.</td>
       </tr>`
 
-  const closingBalanceDisplay =
-    input.closingBalance < 0
-      ? `Credit balance: ${formatCurrency(input.closingBalance)}`
-      : formatCurrency(input.closingBalance)
+  const closingBalanceDisplay = formatBalance(input.closingBalance)
+
+  const ageing = input.ageing
+  const ageingBlock = ageing
+    ? `  <table class="ageing">
+    <thead>
+      <tr>
+        <th scope="col">Aged by days overdue</th>
+${ageing.buckets.map((b) => `        <th scope="col">${escapeHtml(b.label)}</th>`).join('\n')}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>as at ${escapeHtml(formatStatementDate(ageing.asAt))}</td>
+${ageing.buckets
+  .map(
+    (b) =>
+      `        <td${b.key === 'overdue_90_plus' && b.amount > 0 ? ' class="overdue-most"' : ''}>${formatCurrency(b.amount)}</td>`
+  )
+  .join('\n')}
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="reconciliation">${buildReconciliationLine(ageing, input.closingBalance)}</p>
+`
+    : ''
 
   const head = renderDocumentHead({
     titleHtml: `Account Statement ${vendorName} ${periodFrom} to ${periodTo}`,
@@ -181,7 +279,7 @@ export function generateStatementHTML(input: StatementPDFInput): string {
 <body>
 ${header}
 
-  <table class="ledger">
+${ageingBlock}  <table class="ledger">
     <thead>
       <tr>
         <th scope="col">Date</th>

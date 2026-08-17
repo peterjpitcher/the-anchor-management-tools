@@ -32,6 +32,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     openingBalance: statement.openingBalance,
     transactions: statement.transactions,
     closingBalance: statement.closingBalance,
+    ageing: statement.ageing,
   })
 
   const vendorCode = statement.vendor.name
