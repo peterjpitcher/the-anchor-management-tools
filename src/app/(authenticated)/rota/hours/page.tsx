@@ -2,7 +2,18 @@ import { redirect } from 'next/navigation';
 import { formatInTimeZone } from 'date-fns-tz';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { calculatePaidHours } from '@/lib/rota/pay-calculator';
+import {
+  isIsoDate,
+  toIsoDate,
+  addDaysIso,
+  addWeeksIso,
+  mondayOfWeekIso,
+  weekLabel,
+  actualHours,
+  roundHours,
+  plannedShiftHours,
+  generateWeeks,
+} from '@/lib/rota/hours-report';
 import { displayName } from '@/lib/employees/display-name';
 import { PageLayout } from '@/ds';
 import { rotaNavItems } from '../nav';
@@ -79,72 +90,10 @@ type PlannedShiftRow = {
   is_overnight: boolean;
 };
 
-function isIsoDate(value: string | undefined): value is string {
-  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
-}
-
-function toIsoDate(date: Date): string {
-  return date.toISOString().split('T')[0];
-}
-
-function addDaysIso(isoDate: string, days: number): string {
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return toIsoDate(date);
-}
-
-function addWeeksIso(isoDate: string, weeks: number): string {
-  return addDaysIso(isoDate, weeks * 7);
-}
-
-function mondayOfWeekIso(isoDate: string): string {
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  const day = date.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setUTCDate(date.getUTCDate() + diff);
-  return toIsoDate(date);
-}
-
-function weekLabel(weekStart: string): string {
-  return new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-  });
-}
-
 // Hours by employee is a planning screen, not a payroll record, so it shows the
 // name the team uses. Payroll itself still reports on the legal name.
 function employeeName(employee: Pick<EmployeeRow, 'first_name' | 'last_name' | 'preferred_name'>): string {
   return displayName(employee, 'Unknown');
-}
-
-function actualHours(session: SessionRow): number {
-  if (!session.clock_out_at) return 0;
-  const diffMs = new Date(session.clock_out_at).getTime() - new Date(session.clock_in_at).getTime();
-  return Math.max(0, diffMs / 3_600_000);
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function plannedShiftHours(shift: PlannedShiftRow): number {
-  return calculatePaidHours(
-    shift.start_time,
-    shift.end_time,
-    shift.unpaid_break_minutes,
-    shift.is_overnight,
-  );
-}
-
-function generateWeeks(fromDate: string, toDate: string): string[] {
-  const start = mondayOfWeekIso(fromDate);
-  const end = mondayOfWeekIso(toDate);
-  const weeks: string[] = [];
-  for (let current = start; current <= end; current = addWeeksIso(current, 1)) {
-    weeks.push(current);
-  }
-  return weeks;
 }
 
 function normalizeEmployeeParams(value: string | string[] | undefined): string[] {
