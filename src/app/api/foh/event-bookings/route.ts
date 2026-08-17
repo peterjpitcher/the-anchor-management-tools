@@ -22,6 +22,7 @@ import {
   shouldSeatFohWalkIn,
   WALK_IN_TODAY_ONLY_MESSAGE,
 } from '@/lib/foh/walk-in'
+import { splitWalkInGuestName, createWalkInCustomer } from '@/lib/foh/walk-in-customer'
 
 const CreateFohEventBookingSchema = z.object({
   customer_mode: z.enum(['selected', 'phone', 'anonymous']),
@@ -104,90 +105,6 @@ type FohEventBookingResponseData = {
 }
 
 // ─── FOH-specific helpers ─────────────────────────────────────────────────────
-
-function splitWalkInGuestName(fullName: string | null | undefined): {
-  firstName?: string
-  lastName?: string
-} {
-  if (!fullName) {
-    return {}
-  }
-
-  const cleaned = fullName.trim()
-  if (!cleaned) {
-    return {}
-  }
-
-  const parts = cleaned.split(/\s+/).filter(Boolean)
-  if (parts.length === 0) {
-    return {}
-  }
-
-  if (parts.length === 1) {
-    return { firstName: parts[0] }
-  }
-
-  return {
-    firstName: parts[0],
-    lastName: parts.slice(1).join(' ')
-  }
-}
-
-async function createWalkInCustomer(
-  supabase: ReturnType<typeof createAdminClient>,
-  input: {
-    firstName?: string
-    lastName?: string
-    guestName?: string
-    email?: string | null
-  }
-): Promise<{ customerId: string; syntheticPhone: string }> {
-  const guestNameParts = splitWalkInGuestName(input.guestName)
-  const firstName = input.firstName?.trim() || guestNameParts.firstName || 'Walk-in'
-  const lastName = input.lastName?.trim() || guestNameParts.lastName || ''
-  const sanitizedEmail = typeof input.email === 'string' ? input.email.trim().toLowerCase() || null : null
-  // Email is optional enrichment — never let a lower(email) unique-index
-  // collision block walk-in creation. On such a 23505 we drop the email and
-  // retry so the booking still succeeds.
-  let includeEmail = Boolean(sanitizedEmail)
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const suffix = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
-    const syntheticPhone = `+447000${suffix}`
-
-    const { data, error } = await supabase.from('customers')
-      .insert({
-        first_name: firstName,
-        last_name: lastName,
-        mobile_number: syntheticPhone,
-        mobile_e164: syntheticPhone,
-        sms_opt_in: false,
-        sms_status: 'sms_deactivated',
-        ...(includeEmail && sanitizedEmail ? { email: sanitizedEmail } : {})
-      })
-      .select('id')
-      .maybeSingle()
-
-    if (!error && data?.id) {
-      return {
-        customerId: data.id as string,
-        syntheticPhone
-      }
-    }
-
-    const errorRecord = error as { code?: string; message?: string } | null
-    if (errorRecord?.code === '23505') {
-      if (includeEmail && /email/i.test(errorRecord.message || '')) {
-        includeEmail = false
-      }
-      continue
-    }
-
-    throw new Error('Failed to create walk-in customer')
-  }
-
-  throw new Error('Failed to reserve a walk-in customer profile')
-}
 
 async function markTableBookingSeated(
   supabase: ReturnType<typeof createAdminClient>,
