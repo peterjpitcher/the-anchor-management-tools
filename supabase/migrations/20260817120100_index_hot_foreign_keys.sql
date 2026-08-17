@@ -11,12 +11,13 @@
 -- so every single lookup reads the whole table. Between them that is 1.25 billion
 -- rows read to answer queries that should touch a handful.
 --
--- concurrently is deliberate so the build takes no write lock on a live table, and
--- is why each statement stands alone rather than inside a transaction. Supabase's
--- migration runner does not wrap these in a transaction block.
+-- Built without CONCURRENTLY on purpose. The migration runner wraps each file in a
+-- transaction and CREATE INDEX CONCURRENTLY cannot run inside one. These tables hold
+-- 8,340 and 11,395 rows, so the build is a few milliseconds and the brief write lock
+-- is not worth the added complexity of running these outside the migration flow.
 
-create index concurrently if not exists idx_cashup_payment_breakdowns_session
+create index if not exists idx_cashup_payment_breakdowns_session
   on public.cashup_payment_breakdowns (cashup_session_id);
 
-create index concurrently if not exists idx_cashup_cash_counts_session
+create index if not exists idx_cashup_cash_counts_session
   on public.cashup_cash_counts (cashup_session_id);
