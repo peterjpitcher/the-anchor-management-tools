@@ -394,12 +394,12 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     </div>
     <div class="address-block">
       <h3>Quote For</h3>
-      <p><strong>${quote.vendor?.name || 'Customer'}</strong></p>
-      ${quote.vendor?.contact_name ? `<p>${quote.vendor.contact_name}</p>` : ''}
+      <p><strong>${escapeHtml(quote.vendor?.name || 'Customer')}</strong></p>
+      ${quote.vendor?.contact_name ? `<p>${escapeHtml(quote.vendor.contact_name)}</p>` : ''}
       ${quote.vendor?.address ? `<p>${formatAddressHtml(quote.vendor.address)}</p>` : ''}
-      ${quote.vendor?.email ? `<p>${quote.vendor.email}</p>` : ''}
-      ${quote.vendor?.phone ? `<p>${quote.vendor.phone}</p>` : ''}
-      ${quote.vendor?.vat_number ? `<p>VAT: ${quote.vendor.vat_number}</p>` : ''}
+      ${quote.vendor?.email ? `<p>${escapeHtml(quote.vendor.email)}</p>` : ''}
+      ${quote.vendor?.phone ? `<p>${escapeHtml(quote.vendor.phone)}</p>` : ''}
+      ${quote.vendor?.vat_number ? `<p>VAT: ${escapeHtml(quote.vendor.vat_number)}</p>` : ''}
     </div>
   </div>
 
@@ -414,7 +414,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
     </div>
     <div class="meta-item">
       <span class="meta-label">Reference</span>
-      <span class="meta-value">${quote.reference || '-'}</span>
+      <span class="meta-value">${escapeHtml(quote.reference || '-')}</span>
     </div>
   </div>
 
@@ -434,7 +434,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
         ${quote.line_items?.map(item => `
           <tr>
             <td>
-              <div class="item-description">${item.description}</div>
+              <div class="item-description">${escapeHtml(item.description)}</div>
               ${hasDiscounts && item.discount_percentage > 0 ? `<div class="item-line-discount">Line discount: ${item.discount_percentage}%</div>` : ''}
             </td>
             <td class="text-right">${item.quantity}</td>
@@ -482,7 +482,7 @@ export function generateCompactQuoteHTML(data: QuoteTemplateData): string {
   ${quote.notes ? `
     <div class="notes-section keep-together">
       <h3>Notes</h3>
-      <p>${quote.notes}</p>
+      <p>${escapeHtml(quote.notes)}</p>
     </div>
   ` : ''}
 

@@ -1,0 +1,1247 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`invoice PDF template > renders a credit note variant 1`] = `
+"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credit Note INV-2026-0001 - Acme &amp; Sons &lt;Supplies&gt; Ltd</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 8mm;
+    }
+    
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+      .page-break { page-break-before: always; }
+      .keep-together { page-break-inside: avoid; }
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.3;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 5px;
+      font-size: 8pt;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 8px;
+    }
+    
+    .logo-section {
+      flex: 1;
+    }
+    
+    .logo {
+      max-width: 90px;
+      height: auto;
+      margin-bottom: 5px;
+    }
+    
+    .invoice-header {
+      flex: 1;
+      text-align: right;
+    }
+    
+    h1 {
+      color: #111827;
+      margin: 0 0 5px 0;
+      font-size: 16pt;
+      font-weight: 700;
+    }
+    
+    .invoice-number {
+      font-size: 10pt;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 8pt;
+      font-weight: 600;
+      color: white;
+      margin-top: 5px;
+    }
+    
+    .company-details {
+      margin-bottom: 10px;
+      font-size: 8pt;
+      color: #6b7280;
+    }
+    
+    .addresses {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    
+    .address-block {
+      background: #f9fafb;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .address-block h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    
+    .address-block p {
+      margin: 2px 0;
+      color: #4b5563;
+      font-size: 8pt;
+    }
+    
+    .invoice-meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #f9fafb;
+      border-radius: 4px;
+      font-size: 8pt;
+    }
+    
+    .meta-item {
+      text-align: center;
+    }
+    
+    .meta-label {
+      font-size: 7pt;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      display: block;
+      margin-bottom: 1px;
+    }
+    
+    .meta-value {
+      font-size: 9pt;
+      color: #111827;
+      font-weight: 600;
+    }
+    
+    .items-section {
+      margin-bottom: 10px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 8pt;
+    }
+    
+    th {
+      background: #f3f4f6;
+      padding: 6px 8px;
+      text-align: left;
+      font-weight: 600;
+      color: #111827;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    th.text-right {
+      text-align: right;
+    }
+    
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #e5e7eb;
+      color: #4b5563;
+      vertical-align: top;
+    }
+    
+    td.text-right {
+      text-align: right;
+    }
+    
+    .item-description {
+      font-weight: 500;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+    
+    .item-line-discount {
+      font-size: 7pt;
+      color: #059669;
+    }
+    
+    .summary-section {
+      margin-top: 15px;
+      page-break-inside: avoid;
+    }
+    
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .summary-row.total {
+      border-bottom: none;
+      border-top: 2px solid #111827;
+      padding-top: 8px;
+      margin-top: 5px;
+      font-size: 11pt;
+      font-weight: 700;
+      color: #111827;
+    }
+    
+    .payment-section {
+      background: #f9fafb;
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 15px;
+      page-break-inside: avoid;
+    }
+    
+    .payment-section h3 {
+      margin: 0 0 8px 0;
+      color: #111827;
+      font-size: 10pt;
+    }
+    
+    .payment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    
+    .payment-method h4 {
+      margin: 0 0 4px 0;
+      color: #111827;
+      font-size: 9pt;
+    }
+    
+    .payment-method p {
+      margin: 2px 0;
+      color: #4b5563;
+      font-size: 8pt;
+    }
+    
+    .notes-section {
+      margin-top: 15px;
+      padding: 10px;
+      background: #fefce8;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+    
+    .notes-section h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+    }
+    
+    .notes-section p {
+      margin: 0;
+      color: #4b5563;
+      white-space: pre-wrap;
+      font-size: 8pt;
+    }
+    
+    .footer {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      color: #6b7280;
+      font-size: 7pt;
+    }
+    
+    .footer p {
+      margin: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-section">
+      
+      <div class="company-details">
+        <strong>Orange Jelly Limited</strong><br>
+        The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ<br>
+        VAT: GB315203647
+      </div>
+    </div>
+    <div class="invoice-header">
+      <h1>CREDIT NOTE</h1>
+      <div class="invoice-number">CN-2026-0001</div>
+      <span class="status-badge" style="background-color: #3b82f6">
+        Sent
+      </span>
+    </div>
+  </div>
+
+  <div class="addresses">
+    <div class="address-block">
+      <h3>From</h3>
+      <p><strong>Orange Jelly Limited</strong></p>
+      <p>The Anchor<br>Horton Road<br>Stanwell Moor Village<br>Surrey<br>TW19 6AQ</p>
+      <p>01753 682 707</p>
+      <p>manager@the-anchor.pub</p>
+    </div>
+    <div class="address-block">
+      <h3>Bill To</h3>
+      <p><strong>Acme &amp; Sons &lt;Supplies&gt; Ltd</strong></p>
+      <p>Dana O&#39;Fox</p>
+      <p>1 High Street<br>Stanwell Moor<br>TW19 6AQ</p>
+      <p>dana@acme.example</p>
+      <p>01784 123456</p>
+      <p>VAT: GB123&lt;456&gt;789</p>
+    </div>
+  </div>
+
+  <div class="invoice-meta">
+    <div class="meta-item">
+      <span class="meta-label">Invoice Date</span>
+      <span class="meta-value">Saturday, 1 August 2026</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Linked Invoice</span>
+      <span class="meta-value">#INV-2026-0001</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Reason</span>
+      <span class="meta-value">Goods returned</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">VAT Rate</span>
+      <span class="meta-value">20%</span>
+    </div>
+  </div>
+
+  
+
+  
+    <div class="payment-section keep-together">
+      <h3>Credit Note Details</h3>
+      <div class="payment-grid">
+        <div class="payment-method">
+          <h4>Amount</h4>
+          <p><strong>Amount (ex VAT):</strong> £100.00</p>
+          <p><strong>VAT (20%):</strong> £20.00</p>
+          <p><strong>Total Credit:</strong> £120.00</p>
+        </div>
+        <div class="payment-method">
+          <h4>Reference</h4>
+          <p><strong>Credit Note:</strong> CN-2026-0001</p>
+          <p><strong>Against Invoice:</strong> INV-2026-0001</p>
+          <p><strong>Reason:</strong> Goods returned</p>
+        </div>
+      </div>
+    </div>
+  
+
+  
+    <div class="payment-section keep-together">
+      <h3>Payment Information</h3>
+      <div class="payment-grid">
+        <div class="payment-method">
+          <h4>Bank Transfer</h4>
+          <p><strong>Bank:</strong> Orange Jelly Limited</p>
+          <p><strong>Account Name:</strong> Orange Jelly Limited</p>
+          <p><strong>Sort Code:</strong> 23-05-80</p>
+          <p><strong>Account: </strong> 32448887</p>
+          <p><strong>Reference:</strong> INV-2026-0001</p>
+        </div>
+        <div class="payment-method">
+          <h4>Other Methods</h4>
+          <p><strong>Card Payments:</strong> Subject to additional fees</p>
+          <p>For payment queries or to arrange card payment:</p>
+          <p>Contact: Peter Pitcher</p>
+          <p>Mobile: 07990587315</p>
+          <p>Office: 01753 682 707</p>
+          <p>Email: manager@the-anchor.pub</p>
+        </div>
+      </div>
+    </div>
+  
+
+  
+    <div class="notes-section keep-together">
+      <h3>Notes</h3>
+      <p>Thanks for your custom &amp; O&#39;Brien&#39;s &lt;regards&gt;</p>
+    </div>
+  
+
+  <div class="footer">
+    <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
+    <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
+    <p>Contact: Peter Pitcher | Mobile: 07990587315</p>
+  </div>
+</body>
+</html>
+  "
+`;
+
+exports[`invoice PDF template > renders a stable document 1`] = `
+"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice INV-2026-0001 - Acme &amp; Sons &lt;Supplies&gt; Ltd</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 8mm;
+    }
+    
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+      .page-break { page-break-before: always; }
+      .keep-together { page-break-inside: avoid; }
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.3;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 5px;
+      font-size: 8pt;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 8px;
+    }
+    
+    .logo-section {
+      flex: 1;
+    }
+    
+    .logo {
+      max-width: 90px;
+      height: auto;
+      margin-bottom: 5px;
+    }
+    
+    .invoice-header {
+      flex: 1;
+      text-align: right;
+    }
+    
+    h1 {
+      color: #111827;
+      margin: 0 0 5px 0;
+      font-size: 16pt;
+      font-weight: 700;
+    }
+    
+    .invoice-number {
+      font-size: 10pt;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 8pt;
+      font-weight: 600;
+      color: white;
+      margin-top: 5px;
+    }
+    
+    .company-details {
+      margin-bottom: 10px;
+      font-size: 8pt;
+      color: #6b7280;
+    }
+    
+    .addresses {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    
+    .address-block {
+      background: #f9fafb;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .address-block h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    
+    .address-block p {
+      margin: 2px 0;
+      color: #4b5563;
+      font-size: 8pt;
+    }
+    
+    .invoice-meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #f9fafb;
+      border-radius: 4px;
+      font-size: 8pt;
+    }
+    
+    .meta-item {
+      text-align: center;
+    }
+    
+    .meta-label {
+      font-size: 7pt;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      display: block;
+      margin-bottom: 1px;
+    }
+    
+    .meta-value {
+      font-size: 9pt;
+      color: #111827;
+      font-weight: 600;
+    }
+    
+    .items-section {
+      margin-bottom: 10px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 8pt;
+    }
+    
+    th {
+      background: #f3f4f6;
+      padding: 6px 8px;
+      text-align: left;
+      font-weight: 600;
+      color: #111827;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    th.text-right {
+      text-align: right;
+    }
+    
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #e5e7eb;
+      color: #4b5563;
+      vertical-align: top;
+    }
+    
+    td.text-right {
+      text-align: right;
+    }
+    
+    .item-description {
+      font-weight: 500;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+    
+    .item-line-discount {
+      font-size: 7pt;
+      color: #059669;
+    }
+    
+    .summary-section {
+      margin-top: 15px;
+      page-break-inside: avoid;
+    }
+    
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .summary-row.total {
+      border-bottom: none;
+      border-top: 2px solid #111827;
+      padding-top: 8px;
+      margin-top: 5px;
+      font-size: 11pt;
+      font-weight: 700;
+      color: #111827;
+    }
+    
+    .payment-section {
+      background: #f9fafb;
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 15px;
+      page-break-inside: avoid;
+    }
+    
+    .payment-section h3 {
+      margin: 0 0 8px 0;
+      color: #111827;
+      font-size: 10pt;
+    }
+    
+    .payment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    
+    .payment-method h4 {
+      margin: 0 0 4px 0;
+      color: #111827;
+      font-size: 9pt;
+    }
+    
+    .payment-method p {
+      margin: 2px 0;
+      color: #4b5563;
+      font-size: 8pt;
+    }
+    
+    .notes-section {
+      margin-top: 15px;
+      padding: 10px;
+      background: #fefce8;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+    
+    .notes-section h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+    }
+    
+    .notes-section p {
+      margin: 0;
+      color: #4b5563;
+      white-space: pre-wrap;
+      font-size: 8pt;
+    }
+    
+    .footer {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      color: #6b7280;
+      font-size: 7pt;
+    }
+    
+    .footer p {
+      margin: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-section">
+      
+      <div class="company-details">
+        <strong>Orange Jelly Limited</strong><br>
+        The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ<br>
+        VAT: GB315203647
+      </div>
+    </div>
+    <div class="invoice-header">
+      <h1>INVOICE</h1>
+      <div class="invoice-number">#INV-2026-0001</div>
+      <span class="status-badge" style="background-color: #3b82f6">
+        Sent
+      </span>
+    </div>
+  </div>
+
+  <div class="addresses">
+    <div class="address-block">
+      <h3>From</h3>
+      <p><strong>Orange Jelly Limited</strong></p>
+      <p>The Anchor<br>Horton Road<br>Stanwell Moor Village<br>Surrey<br>TW19 6AQ</p>
+      <p>01753 682 707</p>
+      <p>manager@the-anchor.pub</p>
+    </div>
+    <div class="address-block">
+      <h3>Bill To</h3>
+      <p><strong>Acme &amp; Sons &lt;Supplies&gt; Ltd</strong></p>
+      <p>Dana O&#39;Fox</p>
+      <p>1 High Street<br>Stanwell Moor<br>TW19 6AQ</p>
+      <p>dana@acme.example</p>
+      <p>01784 123456</p>
+      <p>VAT: GB123&lt;456&gt;789</p>
+    </div>
+  </div>
+
+  <div class="invoice-meta">
+    <div class="meta-item">
+      <span class="meta-label">Invoice Date</span>
+      <span class="meta-value">Saturday, 1 August 2026</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Due Date</span>
+      <span class="meta-value">Monday, 31 August 2026</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Reference</span>
+      <span class="meta-value">PO-4417 &lt;urgent&gt; &amp; rush</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Terms</span>
+      <span class="meta-value">30 days</span>
+    </div>
+  </div>
+
+  <div class="items-section">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 40%">Description</th>
+          <th class="text-right" style="width: 10%">Qty</th>
+          <th class="text-right" style="width: 15%">Unit Price</th>
+          <th class="text-right" style="width: 10%">Disc %</th>
+          <th class="text-right" style="width: 10%">VAT %</th>
+          <th class="text-right" style="width: 15%">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>
+              <div class="item-description">Beer &amp; wine &lt;house&gt;</div>
+              <div class="item-line-discount">Line discount: 10%</div>
+            </td>
+            <td class="text-right">3</td>
+            <td class="text-right">£25.50</td>
+            <td class="text-right">10%</td>
+            <td class="text-right">20%</td>
+            <td class="text-right">£82.62</td>
+          </tr>
+        
+          <tr>
+            <td>
+              <div class="item-description">Bar snacks, O&#39;Brien&#39;s</div>
+              
+            </td>
+            <td class="text-right">1</td>
+            <td class="text-right">£40.00</td>
+            <td class="text-right">0%</td>
+            <td class="text-right">20%</td>
+            <td class="text-right">£48.00</td>
+          </tr>
+        
+      </tbody>
+    </table>
+
+    <div class="summary-section">
+      <div class="summary-row">
+        <span>Subtotal</span>
+        <span>£108.85</span>
+      </div>
+      
+      <div class="summary-row">
+        <span>VAT</span>
+        <span>£21.77</span>
+      </div>
+      
+        <div class="summary-row total">
+          <span>Total Due</span>
+          <span>£130.62</span>
+        </div>
+      
+    </div>
+  </div>
+
+  
+
+  
+    <div class="payment-section keep-together">
+      <h3>Payment Information</h3>
+      <div class="payment-grid">
+        <div class="payment-method">
+          <h4>Bank Transfer</h4>
+          <p><strong>Bank:</strong> Orange Jelly Limited</p>
+          <p><strong>Account Name:</strong> Orange Jelly Limited</p>
+          <p><strong>Sort Code:</strong> 23-05-80</p>
+          <p><strong>Account: </strong> 32448887</p>
+          <p><strong>Reference:</strong> INV-2026-0001</p>
+        </div>
+        <div class="payment-method">
+          <h4>Other Methods</h4>
+          <p><strong>Card Payments:</strong> Subject to additional fees</p>
+          <p>For payment queries or to arrange card payment:</p>
+          <p>Contact: Peter Pitcher</p>
+          <p>Mobile: 07990587315</p>
+          <p>Office: 01753 682 707</p>
+          <p>Email: manager@the-anchor.pub</p>
+        </div>
+      </div>
+    </div>
+  
+
+  
+    <div class="notes-section keep-together">
+      <h3>Notes</h3>
+      <p>Thanks for your custom &amp; O&#39;Brien&#39;s &lt;regards&gt;</p>
+    </div>
+  
+
+  <div class="footer">
+    <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
+    <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
+    <p>Contact: Peter Pitcher | Mobile: 07990587315</p>
+  </div>
+</body>
+</html>
+  "
+`;
+
+exports[`quote PDF template > renders a stable document 1`] = `
+"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quote QT-2026-0001 - Acme & Sons <Supplies> Ltd</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 8mm;
+    }
+    
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+      .page-break { page-break-before: always; }
+      .keep-together { page-break-inside: avoid; }
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.3;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 5px;
+      font-size: 8pt;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 8px;
+    }
+    
+    .logo-section {
+      flex: 1;
+    }
+    
+    .logo {
+      max-width: 150px;
+      height: auto;
+      margin-bottom: 5px;
+    }
+    
+    .quote-header {
+      flex: 1;
+      text-align: right;
+    }
+    
+    h1 {
+      color: #111827;
+      margin: 0 0 5px 0;
+      font-size: 16pt;
+      font-weight: 700;
+    }
+    
+    .quote-number {
+      font-size: 10pt;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 8pt;
+      font-weight: 600;
+      color: white;
+      margin-top: 5px;
+    }
+    
+    .company-details {
+      margin-bottom: 10px;
+      font-size: 8pt;
+      color: #6b7280;
+    }
+    
+    .addresses {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    
+    .address-block {
+      background: #f9fafb;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .address-block h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    
+    .address-block p {
+      margin: 2px 0;
+      color: #4b5563;
+      font-size: 8pt;
+    }
+    
+    .quote-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #f9fafb;
+      border-radius: 4px;
+      font-size: 8pt;
+    }
+    
+    .meta-item {
+      text-align: center;
+    }
+    
+    .meta-label {
+      font-size: 7pt;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      display: block;
+      margin-bottom: 1px;
+    }
+    
+    .meta-value {
+      font-size: 9pt;
+      color: #111827;
+      font-weight: 600;
+    }
+    
+    .items-section {
+      margin-bottom: 10px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 8pt;
+    }
+    
+    th {
+      background: #f3f4f6;
+      padding: 6px 8px;
+      text-align: left;
+      font-weight: 600;
+      color: #111827;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    th.text-right {
+      text-align: right;
+    }
+    
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #e5e7eb;
+      color: #4b5563;
+      vertical-align: top;
+    }
+    
+    td.text-right {
+      text-align: right;
+    }
+    
+    .item-description {
+      font-weight: 500;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+    
+    .item-line-discount {
+      font-size: 7pt;
+      color: #059669;
+    }
+    
+    .summary-section {
+      margin-top: 15px;
+      page-break-inside: avoid;
+    }
+    
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .summary-row.total {
+      border-bottom: none;
+      border-top: 2px solid #111827;
+      padding-top: 8px;
+      margin-top: 5px;
+      font-size: 11pt;
+      font-weight: 700;
+      color: #111827;
+    }
+    
+    .acceptance-section {
+      background: #f0f9ff;
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 15px;
+      page-break-inside: avoid;
+      border: 1px solid #60a5fa;
+    }
+    
+    .acceptance-section h3 {
+      margin: 0 0 8px 0;
+      color: #1e40af;
+      font-size: 10pt;
+    }
+    
+    .acceptance-section p {
+      margin: 4px 0;
+      color: #1e40af;
+      font-size: 8pt;
+    }
+    
+    .notes-section {
+      margin-top: 15px;
+      padding: 10px;
+      background: #fefce8;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+    
+    .notes-section h3 {
+      margin: 0 0 5px 0;
+      color: #111827;
+      font-size: 9pt;
+    }
+    
+    .notes-section p {
+      margin: 0;
+      color: #4b5563;
+      white-space: pre-wrap;
+      font-size: 8pt;
+    }
+    
+    .footer {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      color: #6b7280;
+      font-size: 7pt;
+    }
+    
+    .footer p {
+      margin: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-section">
+      
+      <div class="company-details">
+        <strong>Orange Jelly Limited</strong><br>
+        The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ<br>
+        VAT: GB315203647
+      </div>
+    </div>
+    <div class="quote-header">
+      <h1>QUOTE</h1>
+      <div class="quote-number">#QT-2026-0001</div>
+      <span class="status-badge" style="background-color: #3b82f6">
+        Sent
+      </span>
+    </div>
+  </div>
+
+  <div class="addresses">
+    <div class="address-block">
+      <h3>From</h3>
+      <p><strong>Orange Jelly Limited</strong></p>
+      <p>The Anchor<br>Horton Road<br>Stanwell Moor Village<br>Surrey<br>TW19 6AQ</p>
+      <p>01753 682 707</p>
+      <p>manager@the-anchor.pub</p>
+    </div>
+    <div class="address-block">
+      <h3>Quote For</h3>
+      <p><strong>Acme &amp; Sons &lt;Supplies&gt; Ltd</strong></p>
+      <p>Dana O&#39;Fox</p>
+      <p>1 High Street<br>Stanwell Moor<br>TW19 6AQ</p>
+      <p>dana@acme.example</p>
+      <p>01784 123456</p>
+      <p>VAT: GB123&lt;456&gt;789</p>
+    </div>
+  </div>
+
+  <div class="quote-meta">
+    <div class="meta-item">
+      <span class="meta-label">Quote Date</span>
+      <span class="meta-value">Saturday, 1 August 2026</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Valid Until</span>
+      <span class="meta-value">Tuesday, 1 September 2026</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Reference</span>
+      <span class="meta-value">Enquiry 88 &lt;urgent&gt; &amp; rush</span>
+    </div>
+  </div>
+
+  <div class="items-section">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 40%">Description</th>
+          <th class="text-right" style="width: 10%">Qty</th>
+          <th class="text-right" style="width: 15%">Unit Price</th>
+          <th class="text-right" style="width: 10%">Disc %</th>
+          <th class="text-right" style="width: 10%">VAT %</th>
+          <th class="text-right" style="width: 15%">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>
+              <div class="item-description">Beer &amp; wine &lt;house&gt;</div>
+              <div class="item-line-discount">Line discount: 10%</div>
+            </td>
+            <td class="text-right">3</td>
+            <td class="text-right">£25.50</td>
+            <td class="text-right">10%</td>
+            <td class="text-right">20%</td>
+            <td class="text-right">£76.81</td>
+          </tr>
+        
+          <tr>
+            <td>
+              <div class="item-description">Bar snacks, O&#39;Brien&#39;s</div>
+              
+            </td>
+            <td class="text-right">1</td>
+            <td class="text-right">£40.00</td>
+            <td class="text-right">0%</td>
+            <td class="text-right">20%</td>
+            <td class="text-right">£44.63</td>
+          </tr>
+        
+      </tbody>
+    </table>
+
+    <div class="summary-section">
+      <div class="summary-row">
+        <span>Subtotal</span>
+        <span>£108.85</span>
+      </div>
+      
+      <div class="summary-row">
+        <span>VAT</span>
+        <span>£21.77</span>
+      </div>
+      <div class="summary-row total">
+        <span>Total</span>
+        <span>£130.62</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="acceptance-section keep-together">
+    <h3>How to Accept This Quote</h3>
+    <p>To accept this quote and proceed with the work:</p>
+    <p>• Email us at manager@the-anchor.pub with your acceptance</p>
+    <p>• Call Peter Pitcher directly on 07995087315</p>
+    <p>• Call our office on 01753 682 707</p>
+    <p>• Reply to the email this quote was attached to</p>
+    <p><strong>This quote is valid until Tuesday, 1 September 2026</strong></p>
+  </div>
+
+  
+    <div class="notes-section keep-together">
+      <h3>Notes</h3>
+      <p>Valid 30 days &amp; O&#39;Brien&#39;s &lt;regards&gt;</p>
+    </div>
+  
+
+  <div class="footer">
+    <p>Orange Jelly Limited | Company Reg: 10537179 | VAT: GB315203647</p>
+    <p>The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ | 01753 682 707 | manager@the-anchor.pub</p>
+    <p>Contact: Peter Pitcher | Mobile: 07995087315</p>
+  </div>
+</body>
+</html>
+  "
+`;
