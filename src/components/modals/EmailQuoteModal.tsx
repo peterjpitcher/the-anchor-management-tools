@@ -6,6 +6,10 @@ import { Button, Modal, ModalActions, Input, Textarea, Alert, FormGroup } from '
 import { Send } from 'lucide-react'
 import type { QuoteWithDetails } from '@/types/invoices'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
+import {
+  buildDefaultQuoteEmailBody,
+  buildDefaultQuoteEmailSubject,
+} from '@/lib/invoices/email-drafts'
 
 interface EmailQuoteModalProps {
   quote: QuoteWithDetails
@@ -18,30 +22,31 @@ export function EmailQuoteModal({ quote, isOpen, onClose, onSuccess }: EmailQuot
   const supabase = useSupabase()
   const [toEmails, setToEmails] = useState('')
   const [ccEmails, setCcEmails] = useState('')
-  const [subject, setSubject] = useState(`Quote ${quote.quote_number} from Orange Jelly Limited`)
-  const [body, setBody] = useState(
-    `Hi ${quote.vendor?.contact_name || quote.vendor?.name || 'there'},
-
-Thanks for getting in touch!
-
-I've attached quote ${quote.quote_number} for your review:
-
-Total Amount: £${quote.total_amount.toFixed(2)}
-Quote Valid Until: ${new Date(quote.valid_until).toLocaleDateString('en-GB')}
-
-${quote.notes ? `${quote.notes}\n\n` : ''}Please take your time to review everything, and don't hesitate to reach out if you have any questions or would like to discuss anything.
-
-Looking forward to hearing from you!
-
-Best wishes,
-Peter Pitcher
-Orange Jelly Limited
-07995087315
-
-P.S. The quote is attached as a PDF for your convenience.`
-  )
+  const [subject, setSubject] = useState(() => buildDefaultQuoteEmailSubject(quote))
+  const [body, setBody] = useState(() => buildDefaultQuoteEmailBody(quote))
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /**
+   * Same trap as the invoice dialog: `useState` initialisers run once, and this
+   * modal is rendered with an `isOpen` prop rather than mounted on demand, so
+   * the draft text would keep whatever the quote totalled when the page loaded.
+   * Rebuild it on open and whenever a quoted figure changes.
+   */
+  useEffect(() => {
+    if (!isOpen) return
+    setSubject(buildDefaultQuoteEmailSubject(quote))
+    setBody(buildDefaultQuoteEmailBody(quote))
+  }, [
+    isOpen,
+    quote.id,
+    quote.quote_number,
+    quote.total_amount,
+    quote.valid_until,
+    quote.notes,
+    quote.vendor?.contact_name,
+    quote.vendor?.name,
+  ])
 
   // Prefill To with Primary contact, CC with all other contacts + vendor default emails (excluding Primary)
   useEffect(() => {
