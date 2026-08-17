@@ -1,7 +1,20 @@
 # Spec: client statement PDF in the invoice house style
 
 **Date:** 2026-08-17 (v2, rewritten after developer review)
-**Status:** PR 1 **shipped** (`78660d8c`). PR 2 needs a calculation contract before it is written.
+**Status:** both PRs **shipped**. PR 1 `78660d8c`, PR 2 `c03b2ff3`.
+
+## Ageing rules, settled 2026-08-17
+
+| Rule | Decision |
+|---|---|
+| Age basis | **Days overdue**, not days since invoice. All clients are on 7-day terms, so invoice-date ageing reported a 9-day-late invoice as current. |
+| Buckets | Not yet due, 1 to 30, 31 to 60, 61 to 90, over 90 days overdue. |
+| As-at date | The statement's **period end**, never the generation date, so ageing and ledger agree and an old statement regenerates identically. |
+| Cut-off | Payments and credit notes dated on or before the period end, matching the ledger. |
+| Allocation | None needed. Every payment and credit note is invoice-linked. |
+| Rounding | Each invoice balance rounded before summing, so columns add up exactly. |
+| Credits | Reported separately, never netted into a bucket. |
+| Reconciliation | **Printed on the statement**: overdue less credit equals the closing balance. A mismatch prints a warning to contact us before paying. |
 
 > **PR 1 outcome.** Invoice, credit note and quote render byte-identical HTML, verified against
 > baselines captured before the refactor. A 64-transaction statement went from five pages to
