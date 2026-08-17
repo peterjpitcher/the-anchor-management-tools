@@ -1,143 +1,175 @@
 # Spec: client statement PDF in the invoice house style
 
-**Date:** 2026-08-17
-**Status:** draft for review. No code written.
-**Complexity:** 3 (M). 4 to 6 files, no schema change, no new integration.
+**Date:** 2026-08-17 (v2, rewritten after developer review)
+**Status:** PR 1 ready to implement. PR 2 needs a calculation contract before it is written.
+**Supersedes:** v1, which was reviewed as not ready. See `tasks/developer-review-statement-pdf-house-style-2026-08-17.md`.
+
+---
+
+## 0. What changed after review, and why
+
+v1 bundled a visual refactor with a new receivables-ageing calculation and specified only the
+visual half. The review was right, and three of its factual corrections were verified directly
+against the repository:
+
+| v1 claimed | Actually |
+|---|---|
+| The snapshot test proves rendered output is unchanged | It snapshots **HTML strings**. It cannot detect a pagination or visual regression. |
+| The invoice uses a shared browser pool, the statement does not | `generatePDFFromHTML` and `generateInvoicePDF` both call `renderPdfFromHtml`, and both create and close their own browser unless a caller passes one. **There is no pool.** |
+| Bank details come from `COMPANY_DETAILS.bankDetails` | The invoice reads `COMPANY_DETAILS.bank`. Both shapes exist, which is itself a trap. |
+
+The substantive error was bigger. v1 called ageing "presentation only, derived from invoice
+dates already held". It is not. `StatementPDFInput` carries flattened transactions with no
+invoice ids and no per-invoice balances, so ageing cannot be computed in the template at all.
+It needs a typed calculation in the data layer, the statement action, its return type and both
+callers. The "4 to 6 files, complexity 3" estimate was never achievable.
+
+**So the work splits in two.** PR 1 is the visual change you actually asked for and is safe to
+build now. PR 2 is a financial calculation and gets its own contract, tests and review.
 
 ---
 
 ## 1. Problem
 
-The client statement already downloads as a PDF, but it does not look like anything else we
-send. It is built by a separate 168-line template (`src/lib/oj-statement.ts`) that hand-rolls its
-own HTML with inline styles. Against an invoice it has:
+The client statement downloads as a PDF, but it does not look like anything else we send. It is
+built by a separate 168-line template (`src/lib/oj-statement.ts`) that hand-rolls its own HTML
+with inline styles. Against an invoice it has:
 
 | | Invoice | Statement today |
 |---|---|---|
 | Logo | `logo-oj.jpg`, capped at 90px | none, a text heading instead |
 | Company block | `COMPANY_DETAILS`, structured header | four loose paragraphs |
-| Footer | company name, reg number, VAT number | none |
+| Footer | company name, reg number, VAT number, contact | none |
 | Page margins | 8mm all round | 20/25/15/15mm |
 | Body font | template stylesheet | `-apple-system` inline |
-| Renderer | `generateInvoicePDF`, shared browser pool | `generatePDFFromHTML`, own browser |
 
-So a client who receives an invoice and a statement in the same week gets two documents that do
-not look like they came from the same company, and the statement carries no VAT or company
+A client who receives an invoice and a statement in the same week gets two documents that do not
+look like they came from the same company, and the statement carries no VAT or company
 registration number at all.
 
-## 2. Goal
+`generateStatementPDF` is the single generator behind both the downloaded PDF and the PDF
+attached to the statement email (`client-statement.ts`), so one change covers both surfaces.
 
-A statement that is visibly the same document family as an invoice: same logo, same header and
-footer furniture, same typography and spacing, same page geometry. Only the body differs,
-because a statement is a running-balance ledger rather than a priced line-item list.
+---
 
-This is one change, not two: `generateStatementPDF` is the single source for both the
-**downloaded** PDF and the PDF **attached to the statement email**
-(`client-statement.ts:331`). Restyling it fixes both at once.
+# PR 1: house style (ready to build)
 
-## 2a. Content decisions (settled 2026-08-17)
+## 1.1 Scope
+
+- Extract the genuinely shared document chrome into one module.
+- Restyle the statement against it: logo, company header, footer, page geometry, typography.
+- Add the bank-transfer block (decision below).
+- Remove nothing from the ledger and add no new calculation.
+
+**Explicitly not in PR 1:** ageing buckets. They move to PR 2.
+
+## 1.2 Content decisions (settled 2026-08-17)
 
 | Decision | Outcome |
 |---|---|
-| Show how to pay | **Yes.** Same bank details block as the invoice, from `COMPANY_DETAILS.bankDetails`. |
-| Ageing buckets | **Yes.** Current, 30, 60, 90+ days, as a summary strip above the ledger. Presentation only, derived from invoice dates already held. |
-| Show unbilled work | **No.** The statement is a record of what has been billed. No ledger rows and no closing note for work not yet invoiced. |
+| Show how to pay | **Yes.** The bank-transfer block only: Bank, Account Name, Sort Code, Account Number, read from `COMPANY_DETAILS.bank` (the property the invoice actually uses). No card wording, no "Other Methods". |
+| Payment reference | **Client name.** A statement covers several invoices and has no number of its own, so the invoice-number reference the invoice uses cannot be copied. |
+| Show unbilled work | **No.** The statement records what has been billed. No ledger rows and no closing note. The existing unbilled-work note is removed. |
 | Branding | **Orange Jelly Limited**, same logo and company block as the invoice. |
-| Document number | **No.** The client and period identify it, and the period is already in the filename. |
+| Document number | **No.** Client and period identify it, and the period is already in the filename. |
+| Contact mobile | **07990587315**, confirmed by the owner. Corrected repo-wide in `1288a5e0`, ahead of this work, so extraction cannot settle it accidentally. |
 
-## 3. Out of scope
+## 1.3 Design
 
-- Any content beyond the table above.
-- The statement drawer on screen. This is the PDF only.
-- Invoice or quote appearance. They must come out byte-identical, which the existing snapshot
-  test will enforce.
+Three templates already duplicate their chrome and have drifted twice: the quote logo printed at
+150px against the invoice's 90px (fixed in `41b4c8a1`), and the quote carried a different mobile
+number (fixed in `1288a5e0`). Both were found by accident. Extracting the shared chrome makes
+"these must agree" structural rather than something a test catches afterwards.
 
----
+**New: `src/lib/pdf/document-chrome.ts`.** Typed inputs, and it owns only what is genuinely
+common:
 
-## 4. The design decision
+- `renderDocumentHead({ title, extraCss })`: `@page`, print rules, base typography, and the
+  shared chrome selectors. `title` is escaped. `extraCss` is the document's own body styling,
+  appended verbatim, and stays owned by each template.
+- `renderDocumentHeader({ logoUrl, metaClass, heading, metaHtml })`: logo and company block on
+  the left, document meta on the right. `heading` is plain text and always escaped. `metaHtml`
+  is an explicitly trusted fragment, because the invoice puts a status badge there.
+- `renderDocumentFooter()`: the three existing footer lines, including contact name and mobile.
+- `LOGO_MAX_WIDTH_PX`, so the 90px cap lives in one place.
 
-There are already three of these templates: invoice, quote, and statement. They duplicate their
-chrome, and they have already drifted once. Commit `41b4c8a1`, three commits ago, fixed the quote
-logo printing two thirds larger than the invoice's because one capped it at 150px and the other
-at 90px. There is a test suite that exists purely to police this drift,
-`tests/lib/pdfTemplates.test.ts`, including "renders the same declarations for every selector
-both documents use" and "caps the logo at the same size on both documents".
-
-Three options:
-
-| Option | What it means | Verdict |
-|---|---|---|
-| **A. Extract shared chrome** | Pull the head, stylesheet, header and footer into one module. Invoice, quote and statement each supply only their body. | **Recommended** |
-| B. Fourth `documentKind` | `generateCompactInvoiceHTML` already switches on `invoice` / `remittance_advice` / `credit_note`. Add `statement`. | Rejected: those three share a body shape. A ledger does not, so it would thread unrelated conditionals through a 680-line template. |
-| C. Copy the invoice CSS into the statement | Fastest. | Rejected: guarantees a fourth thing to drift, and the repo has already paid for that once this month. |
-
-Option A is what the existing drift test is implicitly asking for. It turns "these must agree"
-from something a test checks after the fact into something the structure makes true.
-
-## 5. Proposed change
-
-### 5.1 New: `src/lib/pdf/document-chrome.ts`
-
-Owns everything outside the body:
-
-- `renderDocumentHead()`: the `@page` rule, base typography, the table page-break rules that all
-  three need (`thead { display: table-header-group }` and friends).
-- `renderDocumentHeader({ logoUrl, title, meta })`: logo plus company block on the left, document
-  title and metadata on the right.
-- `renderDocumentFooter()`: company name, registration number, VAT number, from `COMPANY_DETAILS`.
-- One exported constant for the logo cap, so the 90px value lives in exactly one place.
-
-**Constraint found while checking this.** The two documents already agree on `.header`,
-`.logo-section`, `.logo`, `.company-details` and `.footer`, but the right-hand meta block is
-called `.invoice-header` on one and `.quote-header` on the other. The shared header must
-therefore take that class name as a parameter rather than imposing one, or the extraction would
-change the rendered output of a document it is not meant to touch. The statement passes
+**Class names are parameterised, not imposed.** Invoice and quote agree on `.header`,
+`.logo-section`, `.logo`, `.company-details` and `.footer`, but differ on `.invoice-header` and
+`.quote-header`, and on `.invoice-number` and `.quote-number`. The shared header takes those as
+input so extraction cannot change a document it is not meant to touch. The statement passes
 `.statement-header`.
 
-The shared-styling test is forgiving here: it parses the CSS into a selector map and normalises
-whitespace, so reformatting is safe. The `renders a stable document` snapshot is not, and is the
-real guard on invoice and quote output.
+**Logo loading.** The statement will not fetch `${NEXT_PUBLIC_APP_URL}/logo-oj.jpg` over HTTP.
+The server requesting its own deployed URL is an integration and a failure point, and
+`networkidle0` can stall on it. The logo is read from the deployment bundle and inlined as a
+data URL. If it cannot be read, the statement renders without it, exactly as invoice and quote
+already do when `NEXT_PUBLIC_APP_URL` is unset.
 
-### 5.2 Changed: `src/lib/oj-statement.ts`
+## 1.4 Verification
 
-Keeps `generateStatementPDF` and its signature, so neither caller changes. Its HTML becomes
-chrome plus a ledger body: the client and period block, the opening balance, the transaction
-table, and the closing balance. Styling comes from the shared stylesheet instead of inline
-attributes.
+The honest claim, replacing v1's byte-identity wording:
 
-### 5.3 Changed: `src/lib/invoice-template-compact.ts` and `src/lib/quote-template-compact.ts`
+> Generated HTML for invoice, credit note and quote is unchanged, and rendered baseline pages
+> show no unexplained visual or pagination difference.
 
-Swap their own head, header and footer for the shared ones. **Their rendered output must not
-change.** The snapshot test is the proof.
+- Existing HTML snapshots must not move. Any diff is a bug in the extraction.
+- Capture baseline rendered PDFs for invoice, credit note, quote and statement before the
+  refactor. Compare page count and extracted text after. These are throwaway local artefacts,
+  not committed fixtures.
+- The drift test extends from two documents to three.
+- Escaping: hostile text through every statement field and every shared header field.
+- Pagination fixtures: one page, a row on the page boundary, 60+ rows, and long unbroken
+  references. The column header repeats, no ordinary row splits, and exactly one closing
+  balance appears. The current template sets `tfoot { display: table-footer-group }`, which can
+  repeat the closing balance on every page and must be checked in Chromium, not assumed.
 
-### 5.4 Changed: statement rendering path
+## 1.5 Files
 
-Render through the same helper the invoice uses, so the statement gets the shared browser pool
-and the same A4 geometry rather than its own margins.
+`document-chrome.ts` (new), `oj-statement.ts`, `invoice-template-compact.ts`,
+`quote-template-compact.ts`, `pdfTemplates.test.ts` plus snapshots, and a new statement template
+test. Six or seven files, no data layer, no migration.
 
 ---
 
-## 6. Acceptance criteria
+# PR 2: receivables ageing (not ready)
 
-- Invoice and quote snapshots are unchanged. Any diff means the extraction altered them and is
-  a bug, not an update to accept.
-- A statement PDF carries the logo at the same cap as an invoice, and a footer with the company
-  registration and VAT numbers.
-- The drift test is extended to all three documents, not two, so a future fourth document cannot
-  quietly diverge.
-- The emailed statement and the downloaded statement are the same artefact.
-- Client-supplied text is escaped, matching the invoice template's existing escaping test.
-- Long statements paginate with the table header repeating and no row split across a page.
+## 2.1 Why it is separate
 
-## 7. Risks
+Ageing is a financial calculation that changes what a client is told they owe. It needs a typed
+result computed per invoice in the data layer, returned through `ClientStatementData` and both
+callers, with the template staying presentational.
 
-| Risk | Mitigation |
-|---|---|
-| Extraction silently changes invoice output | The snapshot test already covers invoice and quote. Run it before and after. |
-| Statement pagination breaks on a long period | Keep the existing `thead`/`tr` page-break rules in the shared head and test a period with 60+ transactions. |
-| Puppeteer memory on Vercel | Reuse the existing browser pool rather than opening a second browser, which is what the statement does today. |
+## 2.2 What must be settled before it is written
 
-## 8. Delivery
+Owner and accounting decisions, with worked examples:
 
-One PR, roughly 300 to 400 lines of meaningful change. No migration, no new environment
-variable, no schema change. Independently deployable, and reversible by reverting one commit.
+- The as-at date, and whether age means days since invoice date or days overdue.
+- Exact inclusive bucket boundaries.
+- How partial payments and issued credit notes are applied, and their cut-off date.
+- How an overpayment or unapplied credit is shown, and the reconciliation invariant that ties
+  the buckets back to the closing balance.
+
+Two existing behaviours must be resolved at the same time, because ageing will expose both:
+
+- The opening-balance calculation clamps every invoice at zero after payments and credits, which
+  discards a credit carried into the period. `formatCurrency` also takes the absolute value, so a
+  credit balance prints as though it were a debt.
+- `getClientStatement` logs a warning and continues when the credit-note query fails, so a
+  permission or network error can produce a statement asking a client to pay money already
+  credited. For a customer-visible financial document this must fail closed.
+
+---
+
+## 3. Accepted risks
+
+Recorded rather than actioned, proportionate to a tool with one operator and a handful of
+statements a month:
+
+- **No PDF/UA or tagged-PDF target.** PR 1 will set `lang`, a document title, `scope="col"` on
+  table headers and non-colour sign labels, which is cheap. Formal accessibility certification
+  is not in scope.
+- **No render telemetry or alert thresholds.**
+- **No formal release checklist with a named rollback owner.** The change is one revertible
+  commit and the owner deploys and verifies it directly.
+- **Statement volume is not measured.** The 60-row fixture stands in for the upper bound. If a
+  multi-year statement ever times out, that is the trigger to add a range limit.
