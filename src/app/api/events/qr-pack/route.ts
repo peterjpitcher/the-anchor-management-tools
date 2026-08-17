@@ -9,6 +9,7 @@ import { datedFolderName, sanitizeFilename } from '@/lib/export/filenames'
 import {
   buildBriefMarkdown,
   buildReadme,
+  isPrintedMediaQrChannel,
   qrFileStem,
   renderQrPng,
   renderQrSvg,
@@ -19,8 +20,8 @@ import { EventMarketingService, type EventMarketingLink } from '@/services/event
 import { EVENT_MARKETING_CHANNELS } from '@/lib/event-marketing-links'
 
 export const runtime = 'nodejs'
-// Measured: 28 channels per event, 42ms per PNG plus a negligible SVG, is roughly
-// 1.2s of rendering per event. Forty events is about 48s, plus link resolution
+// Measured: 23 print channels per event, 42ms per PNG plus a negligible SVG, is
+// roughly 1s of rendering per event. Forty events is about 40s, plus link resolution
 // and zipping. 300 leaves comfortable headroom without pretending the work is
 // free.
 export const maxDuration = 300
@@ -42,8 +43,8 @@ const RENDER_CONCURRENCY = 4
  */
 const INCLUDED_STATUSES = ['scheduled', 'sold_out', 'rescheduled', 'postponed']
 
-/** Every channel that carries a QR: print and screen. Digital channels have none. */
-const QR_CHANNELS = EVENT_MARKETING_CHANNELS.filter(c => c.type === 'print' || c.type === 'screen')
+/** Only placements used in physically printed event artwork belong in this pack. */
+const PRINT_QR_CHANNELS = EVENT_MARKETING_CHANNELS.filter(isPrintedMediaQrChannel)
 
 function daysBetweenInclusive(start: string, end: string): number {
   const a = Date.parse(`${start}T00:00:00Z`)
@@ -174,14 +175,14 @@ export async function POST(request: NextRequest) {
       const existing = await EventMarketingService.getLinks(event.id)
       const byChannel = new Map(existing.map(l => [l.channel, l]))
 
-      const missing = QR_CHANNELS.filter(c => !byChannel.has(c.key))
+      const missing = PRINT_QR_CHANNELS.filter(c => !byChannel.has(c.key))
       for (const channel of missing) {
         const created = await EventMarketingService.generateSingleLink(event.id, channel.key)
         byChannel.set(created.channel, created)
         createdLinkIds.push(created.id)
       }
 
-      const links: EventMarketingLink[] = QR_CHANNELS
+      const links: EventMarketingLink[] = PRINT_QR_CHANNELS
         .map(c => byChannel.get(c.key))
         .filter((l): l is EventMarketingLink => Boolean(l))
 
@@ -200,12 +201,9 @@ export async function POST(request: NextRequest) {
       })
 
       for (const { link, index, png, svg } of rendered) {
-        // Print and screen split: a designer laying out posters should not have
-        // to pick their way past venue-screen assets.
-        const group = link.type === 'screen' ? 'screen' : 'print'
         const stem = sanitizeFilename(qrFileStem(link, index), `qr-${index}`)
-        zip.file(`${folder}/${group}/${stem}.png`, png)
-        zip.file(`${folder}/${group}/${stem}.svg`, svg)
+        zip.file(`${folder}/print/${stem}.png`, png)
+        zip.file(`${folder}/print/${stem}.svg`, svg)
 
         entry.links.push({
           channel: link.channel,
@@ -214,7 +212,7 @@ export async function POST(request: NextRequest) {
           shortCode: link.shortCode,
           shortUrl: link.shortUrl,
           destinationUrl: link.destinationUrl,
-          files: [`${group}/${stem}.png`, `${group}/${stem}.svg`],
+          files: [`print/${stem}.png`, `print/${stem}.svg`],
         })
       }
 
