@@ -49,11 +49,20 @@ export function Card({ children, className, title, subtitle, header, id: _id, on
         </div>
       )}
       {title && <CardHeader title={title} subtitle={subtitle} />}
-      {shouldAutoPad ? (
-        <div className="p-[var(--spacing-pad-card)]">{children}</div>
-      ) : (
-        children
-      )}
+      {/*
+        This wrapper is rendered unconditionally, and switches to `display: contents`
+        instead of disappearing, because plenty of cards flip between "has a CardBody"
+        and "has none" at runtime -- swapping a table for a loading spinner, for
+        instance. Rendering `children` bare in one branch and wrapped in a div in the
+        other changes the shape of the tree, so React tears the whole subtree down and
+        rebuilds it. That destroyed any focused input rendered above the swap: on
+        /customers you could type one character into the search box before the element
+        you were typing into was thrown away. `display: contents` keeps layout identical
+        to rendering the children directly, including inside flex and grid cards.
+      */}
+      <div className={shouldAutoPad ? 'p-[var(--spacing-pad-card)]' : 'contents'}>
+        {children}
+      </div>
     </div>
   )
 }
