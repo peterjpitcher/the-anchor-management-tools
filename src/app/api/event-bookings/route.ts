@@ -3,7 +3,8 @@ import { z } from 'zod'
 import {
   withApiAuth,
   createApiResponse,
-  createErrorResponse
+  createErrorResponse,
+  getApiKeyAuthState
 } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -110,14 +111,20 @@ function buildBookingAttribution(data: z.infer<typeof CreateEventBookingSchema>)
 }
 
 export async function POST(request: NextRequest) {
-  // Turnstile CAPTCHA verification — only for direct browser requests.
+  // Turnstile CAPTCHA verification, only for genuinely anonymous browser requests.
   // API-key-authenticated requests (the website proxy) skip Turnstile here: the
   // website uses its own Turnstile widget with a *different* secret key, so its
   // single-use token cannot be validated with this app's secret (attempting to
   // always fails with "Turnstile verification failed"). The website verifies the
   // token itself before proxying. Mirrors the established table-bookings route.
-  const hasApiKey = Boolean(request.headers.get('x-api-key') || request.headers.get('authorization'))
-  if (!hasApiKey) {
+  //
+  // This used to test for the mere presence of an x-api-key or authorization
+  // header, which nobody authenticates, so `x-api-key: anything` walked straight
+  // past the bot check. It now validates the key properly, and distinguishes a
+  // key we could not check (an outage) from one that is simply absent, so our
+  // own downtime is never reported to a guest as a failed bot check.
+  const authState = await getApiKeyAuthState(request.headers)
+  if (authState === 'anonymous') {
     const turnstileToken = request.headers.get('x-turnstile-token')
     const turnstile = await verifyTurnstileToken(turnstileToken, getClientIp(request))
     if (!turnstile.success) {

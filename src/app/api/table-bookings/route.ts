@@ -4,7 +4,7 @@ import {
   withApiAuth,
   createApiResponse,
   createErrorResponse,
-  isApiKeyAuthenticated
+  getApiKeyAuthState
 } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -284,24 +284,33 @@ export async function POST(request: NextRequest) {
   // would let any anonymous caller send `x-api-key: anything` and walk past both the IP limiter
   // and Turnstile. withApiAuth re-validates and rejects the junk key, so the only thing an
   // invalid key buys the caller now is the anonymous treatment it deserves.
-  const authenticated = await isApiKeyAuthenticated(request.headers)
+  const authState = await getApiKeyAuthState(request.headers)
 
   // IP-based rate limiting, the first line of defence before any DB work, for anonymous callers.
   // Authenticated callers are exempt: they arrive from a proxy's egress IPs, so one bucket
   // covered every guest on the public site at once. Their budget is the per-key hourly limit
   // enforced in withApiAuth (5,000/hour for the website key) plus the per-guest limit below.
-  if (!authenticated) {
+  // 'unavailable' is limited alongside anonymous: we cannot prove the caller is trusted, and
+  // the limiter only delays them, whereas the Turnstile gate below would refuse them outright.
+  if (authState !== 'authenticated') {
     const ipRateLimitResponse = await tableBookingIpLimiter(request)
     if (ipRateLimitResponse) {
       return ipRateLimitResponse
     }
   }
 
-  // Turnstile CAPTCHA verification, only for direct browser requests.
-  // API-key-authenticated requests (e.g. from the website proxy) skip Turnstile
-  // because the website has its own Turnstile widget with a different secret key
-  // and handles verification before proxying.
-  if (!authenticated) {
+  // Turnstile CAPTCHA verification, only for genuinely anonymous browser requests.
+  // API-key-authenticated requests (e.g. from the website proxy) skip Turnstile because the
+  // website has its own Turnstile widget, with a DIFFERENT secret key, and verifies the token
+  // itself before proxying. That difference is the whole reason this gate must not catch them:
+  // our secret cannot validate a token minted by their site key, so every guest routed here
+  // fails, no matter what they do.
+  //
+  // Hence 'anonymous' and not merely "not authenticated". A caller who presented a key we could
+  // not check (a database blip) is not a browser, has no widget to solve, and used to be told
+  // "Turnstile verification failed" for what was actually our outage. They now fall through to
+  // withApiAuth, which answers 503 AUTH_UNAVAILABLE and says what really happened.
+  if (authState === 'anonymous') {
     const turnstileToken = request.headers.get('x-turnstile-token')
     const clientIp = getClientIp(request)
     const turnstile = await verifyTurnstileToken(turnstileToken, clientIp)

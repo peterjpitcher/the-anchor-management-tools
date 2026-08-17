@@ -23,9 +23,27 @@ export async function generateApiKey(): Promise<string> {
   return 'anch_' + Buffer.from(bytes).toString('base64url');
 }
 
-async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
+/**
+ * The three genuinely different answers to "is this caller authenticated?".
+ *
+ * `unavailable` is the one that used to be missing. Collapsing a database
+ * failure into `invalid` made an outage indistinguishable from a forged key,
+ * and callers that treat "not authenticated" as "anonymous browser" then drew
+ * exactly the wrong conclusion: the public booking routes sent a website
+ * request to their Turnstile gate and rejected the guest for failing a bot
+ * check they had actually passed. Follows the same convention as
+ * checkRateLimit, which already returns null so callers can fail explicitly.
+ */
+export type ApiKeyAuthState = 'authenticated' | 'anonymous' | 'unavailable';
+
+type ApiKeyResolution =
+  | { state: 'authenticated'; key: ApiKey }
+  | { state: 'anonymous' }
+  | { state: 'unavailable' };
+
+async function resolveApiKey(apiKey: string | null): Promise<ApiKeyResolution> {
   if (!apiKey) {
-    return null;
+    return { state: 'anonymous' };
   }
 
   // Use admin client for API key validation since api_keys table requires elevated permissions
@@ -39,12 +57,13 @@ async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
     .eq('is_active', true);
 
   if (error) {
+    // Infrastructure, not the caller. Say so, rather than blaming the key.
     console.error('[API Auth] Failed to validate API key');
-    return null;
+    return { state: 'unavailable' };
   }
 
   if (!data || data.length === 0) {
-    return null;
+    return { state: 'anonymous' };
   }
 
   if (data.length > 1) {
@@ -56,7 +75,7 @@ async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
   // Check expiry
   if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
     console.warn('[API Auth] Rejected expired API key', { id: keyData.id });
-    return null;
+    return { state: 'anonymous' };
   }
 
   // Fire-and-forget — don't block the response for observational timestamp update
@@ -81,7 +100,18 @@ async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
       })
     );
 
-  return keyData as ApiKey;
+  return { state: 'authenticated', key: keyData as ApiKey };
+}
+
+/**
+ * Back-compatible wrapper. Treats `unavailable` as "no key", which is the old
+ * behaviour, so callers that only care whether they hold a usable key are
+ * unchanged. Anything that must tell an outage apart from a bad key should use
+ * resolveApiKey or getApiKeyAuthState instead.
+ */
+async function validateApiKey(apiKey: string | null): Promise<ApiKey | null> {
+  const resolution = await resolveApiKey(apiKey);
+  return resolution.state === 'authenticated' ? resolution.key : null;
 }
 
 // Returns `null` when rate limit checks are unavailable so callers can fail closed explicitly.
@@ -256,11 +286,23 @@ export function createErrorResponse(
  * could defeat the CAPTCHA by sending "x-api-key: anything".
  */
 export async function isApiKeyAuthenticated(headersList: Headers): Promise<boolean> {
+  return (await getApiKeyAuthState(headersList)) === 'authenticated';
+}
+
+/**
+ * As isApiKeyAuthenticated, but keeps `unavailable` distinct from `anonymous`.
+ *
+ * Use this wherever "not authenticated" is about to be read as "an anonymous
+ * browser", because that inference is only safe for `anonymous`. A caller that
+ * presented a key we could not check is not a browser, and must not be handed
+ * a bot challenge it was never given the means to answer.
+ */
+export async function getApiKeyAuthState(headersList: Headers): Promise<ApiKeyAuthState> {
   const apiKey = extractApiKey(headersList);
   if (!apiKey) {
-    return false;
+    return 'anonymous';
   }
-  return (await validateApiKey(apiKey)) !== null;
+  return (await resolveApiKey(apiKey)).state;
 }
 
 function extractApiKey(headersList: Headers): string | null {
@@ -336,12 +378,25 @@ export async function withApiAuth(
   const startTime = Date.now();
   const headersList = await headers();
   const apiKey = extractApiKey(headersList);
-  const validatedKey = await validateApiKey(apiKey);
-  
-  if (!validatedKey) {
+  const resolution = await resolveApiKey(apiKey);
+
+  // An outage is not a bad key. Answering 401 here sent integrators hunting for
+  // a credential problem that did not exist, and matched what checkRateLimit
+  // already does below when its own backing store is unreachable.
+  if (resolution.state === 'unavailable') {
+    return createErrorResponse(
+      'Authentication is temporarily unavailable',
+      'AUTH_UNAVAILABLE',
+      503
+    );
+  }
+
+  if (resolution.state === 'anonymous') {
     return createErrorResponse('Invalid or missing API key', 'UNAUTHORIZED', 401);
   }
-  
+
+  const validatedKey = resolution.key;
+
   // Check permissions
   const hasPermissions = requiredPermissions.every(perm => 
     validatedKey.permissions.includes(perm) || validatedKey.permissions.includes('*')
