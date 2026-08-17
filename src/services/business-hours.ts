@@ -190,7 +190,16 @@ const serviceStatusOverrideSchema = z.object({
   ),
 });
 
-export type KitchenWindow = { openMinutes: number; closeMinutes: number }
+export type KitchenWindow = {
+  openMinutes: number
+  closeMinutes: number
+  venueOpenMinutes?: number
+  serviceWindows?: Array<{
+    name: string | null
+    openMinutes: number
+    closeMinutes: number
+  }>
+}
 
 /**
  * Resolve the kitchen open/close window for a given date, mirroring how
@@ -209,16 +218,18 @@ export async function getKitchenWindowForDate(
     supabase.rpc('business_hours_for_date', { p_date: date }),
     supabase
       .from('special_hours')
-      .select('kitchen_opens, kitchen_closes, is_kitchen_closed, is_closed')
+      .select('opens, kitchen_opens, kitchen_closes, is_kitchen_closed, is_closed, schedule_config')
       .eq('date', date)
       .maybeSingle(),
   ]);
 
   const businessRow = ((businessRows ?? []) as {
+    opens: string | null
     kitchen_opens: string | null
     kitchen_closes: string | null
     is_kitchen_closed: boolean | null
     is_closed: boolean | null
+    schedule_config: unknown
   }[])[0] ?? null;
 
   if (!businessRow && !specialRow) {
@@ -249,7 +260,34 @@ export async function getKitchenWindowForDate(
     return null;
   }
 
-  return { openMinutes, closeMinutes };
+  const venueOpens = specialRow?.opens ?? businessRow?.opens ?? null;
+  const venueOpenMinutes = venueOpens ? toMinutes(venueOpens) : undefined;
+  const scheduleConfig = specialRow?.schedule_config ?? businessRow?.schedule_config ?? null;
+  const serviceWindows = Array.isArray(scheduleConfig)
+    ? scheduleConfig.flatMap((item) => {
+        if (!item || typeof item !== 'object') return [];
+        const row = item as Record<string, unknown>;
+        if (typeof row.starts_at !== 'string' || typeof row.ends_at !== 'string') return [];
+
+        const serviceOpenMinutes = toMinutes(row.starts_at);
+        let serviceCloseMinutes = toMinutes(row.ends_at);
+        if (!Number.isFinite(serviceOpenMinutes) || !Number.isFinite(serviceCloseMinutes)) return [];
+        if (serviceCloseMinutes <= serviceOpenMinutes) serviceCloseMinutes += 24 * 60;
+
+        return [{
+          name: typeof row.name === 'string' ? row.name : null,
+          openMinutes: serviceOpenMinutes,
+          closeMinutes: serviceCloseMinutes,
+        }];
+      })
+    : undefined;
+
+  return {
+    openMinutes,
+    closeMinutes,
+    venueOpenMinutes,
+    serviceWindows,
+  };
 }
 
 export class BusinessHoursService {

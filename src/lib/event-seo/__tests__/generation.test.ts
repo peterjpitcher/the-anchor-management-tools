@@ -225,6 +225,36 @@ describe('describeKitchenServiceForEvent', () => {
       'kitchen is closed'
     )
   })
+
+  it('uses the dinner window for an evening event after the September hours change', () => {
+    const result = describeKitchenServiceForEvent({
+      openMinutes: 12 * 60,
+      closeMinutes: 21 * 60,
+      venueOpenMinutes: 12 * 60,
+      serviceWindows: [
+        { name: 'Lunch', openMinutes: 12 * 60, closeMinutes: 15 * 60 },
+        { name: 'Dinner', openMinutes: 16 * 60, closeMinutes: 21 * 60 },
+      ],
+    }, '19:00', '23:00')
+
+    expect(result).toContain('pub is open from 12:00pm')
+    expect(result).toContain('full dinner menu is available from 4:00pm to 9:00pm')
+    expect(result).not.toContain('full lunch menu')
+  })
+
+  it('does not bridge the gap between lunch and dinner', () => {
+    const result = describeKitchenServiceForEvent({
+      openMinutes: 12 * 60,
+      closeMinutes: 21 * 60,
+      serviceWindows: [
+        { name: 'Lunch', openMinutes: 12 * 60, closeMinutes: 15 * 60 },
+        { name: 'Dinner', openMinutes: 16 * 60, closeMinutes: 21 * 60 },
+      ],
+    }, '15:30', '15:45')
+
+    expect(result).toContain('does not overlap')
+    expect(result).toContain('Do not say food or the menu is available')
+  })
 })
 
 // ── preflightCheck ──────────────────────────────────────────
