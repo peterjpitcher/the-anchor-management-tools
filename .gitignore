@@ -97,3 +97,12 @@ tasks/ai-seo-content-quality/
 # graphify knowledge-graph tool output (generated, ~18MB) — do not commit
 graphify-out/
 tmp/
+
+# Local working scratch. Deliberately never committed: these accumulate one-off
+# scripts, data dumps and exports taken while investigating live data, and some of
+# it is personal data. temp/ currently holds an Indeed import preview containing
+# real applicants' names, emails and phone numbers, which must not enter git
+# history, where deleting it later does not remove it.
+analysis/
+backups/
+temp/
