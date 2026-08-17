@@ -122,6 +122,12 @@ export type BuildFactsDbData = {
 export type EventKitchenWindow = {
   openMinutes: number
   closeMinutes: number
+  venueOpenMinutes?: number
+  serviceWindows?: Array<{
+    name: string | null
+    openMinutes: number
+    closeMinutes: number
+  }>
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -261,36 +267,45 @@ export function describeKitchenServiceForEvent(
     return 'The kitchen is closed on this event date. Do not say food or the menu is available.'
   }
 
-  const opens = formatClockMinutes(window.openMinutes)
-  const closes = formatClockMinutes(window.closeMinutes)
-  const hours = `${opens} to ${closes}`
   const startMinutes = parseClockMinutes(startTime)
   const parsedEndMinutes = parseClockMinutes(endTime)
+  const serviceWindows = window.serviceWindows?.length
+    ? window.serviceWindows
+    : [{ name: null, openMinutes: window.openMinutes, closeMinutes: window.closeMinutes }]
+  const venueOpening = window.venueOpenMinutes === undefined
+    ? ''
+    : `The pub is open from ${formatClockMinutes(window.venueOpenMinutes)}. `
+
+  const describeWindow = (service: (typeof serviceWindows)[number]): string => {
+    const name = service.name?.trim().toLowerCase()
+    const menuLabel = name === 'lunch' || name === 'dinner'
+      ? `full ${name} menu`
+      : 'full menu'
+    return `The ${menuLabel} is available from ${formatClockMinutes(service.openMinutes)} to ${formatClockMinutes(service.closeMinutes)}.`
+  }
 
   if (startMinutes === null) {
-    return `The full menu is available from ${hours}. Only mention it if the event overlaps these kitchen hours. Never describe the food offer as pizza-only.`
+    return `${venueOpening}${serviceWindows.map(describeWindow).join(' ')} Only mention a service if the event overlaps its hours. Never describe the food offer as pizza-only.`
   }
 
-  let overlap: boolean | null = null
+  let endMinutes: number | null = null
   if (parsedEndMinutes !== null) {
-    let endMinutes = parsedEndMinutes
+    endMinutes = parsedEndMinutes
     if (endMinutes <= startMinutes) endMinutes += 24 * 60
-    overlap = startMinutes < window.closeMinutes && endMinutes > window.openMinutes
-  } else if (startMinutes >= window.openMinutes && startMinutes < window.closeMinutes) {
-    overlap = true
-  } else if (startMinutes >= window.closeMinutes) {
-    overlap = false
   }
 
-  if (overlap === false) {
-    return `The full menu hours on this event date are ${hours}, but the event does not overlap them. Do not say food or the menu is available during the event.`
+  const overlappingServices = serviceWindows.filter((service) => {
+    if (endMinutes !== null) {
+      return startMinutes < service.closeMinutes && endMinutes > service.openMinutes
+    }
+    return startMinutes >= service.openMinutes && startMinutes < service.closeMinutes
+  })
+
+  if (overlappingServices.length === 0) {
+    return `${venueOpening}The event does not overlap any available food service. Do not say food or the menu is available during the event.`
   }
 
-  if (overlap === true) {
-    return `The full menu is available from ${hours}, and the event overlaps these kitchen hours. Mention the full menu, not pizza on its own, and make the kitchen closing time clear if the event continues later.`
-  }
-
-  return `The full menu is available from ${hours}. Only mention it if the event overlaps these kitchen hours. Never describe the food offer as pizza-only.`
+  return `${venueOpening}${overlappingServices.map(describeWindow).join(' ')} The event overlaps this service. Mention the full menu, not pizza on its own, and make the kitchen closing time clear if the event continues later.`
 }
 
 // ── Facts builder ───────────────────────────────────────────
