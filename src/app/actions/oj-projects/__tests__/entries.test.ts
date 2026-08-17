@@ -378,4 +378,124 @@ describe('getEntries pagination', () => {
       pageSize: 50,
     })
   })
+
+  it('applies entry filters before selecting the requested page', async () => {
+    const range = vi.fn().mockResolvedValue({ data: [], error: null, count: 4 })
+    const query = {
+      order: vi.fn(),
+      eq: vi.fn(),
+      range,
+    }
+    query.order.mockReturnValue(query)
+    query.eq.mockReturnValue(query)
+
+    mockCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'oj_entries') throw new Error(`Unexpected table: ${table}`)
+        return { select: vi.fn().mockReturnValue(query) }
+      }),
+    } as any)
+
+    const result = await getEntries({
+      page: 2,
+      pageSize: 10,
+      vendorId: 'vendor-1',
+      projectId: 'project-1',
+      status: 'unbilled',
+      entryType: 'time',
+      billing: 'billable',
+    })
+
+    expect(query.eq.mock.calls).toEqual(expect.arrayContaining([
+      ['vendor_id', 'vendor-1'],
+      ['project_id', 'project-1'],
+      ['status', 'unbilled'],
+      ['entry_type', 'time'],
+      ['billable', true],
+    ]))
+    expect(range).toHaveBeenCalledWith(10, 19)
+    expect(result).toMatchObject({ total: 4, page: 2, pageSize: 10 })
+  })
+
+  it('searches related records and filters the counted entry query before pagination', async () => {
+    const projectLimit = vi.fn().mockResolvedValue({ data: [{ id: 'project-1' }], error: null })
+    const vendorLimit = vi.fn().mockResolvedValue({ data: [{ id: 'vendor-1' }], error: null })
+    const invoiceLimit = vi.fn().mockResolvedValue({ data: [{ id: 'invoice-1' }], error: null })
+    const mainRange = vi.fn().mockResolvedValue({ data: [{ id: 'entry-1' }], error: null, count: 1 })
+    const mainQuery = {
+      order: vi.fn(),
+      or: vi.fn(),
+      range: mainRange,
+    }
+    mainQuery.order.mockReturnValue(mainQuery)
+    mainQuery.or.mockReturnValue(mainQuery)
+
+    mockCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === 'oj_projects') {
+          return {
+            select: vi.fn().mockReturnValue({
+              or: vi.fn().mockReturnValue({ limit: projectLimit }),
+            }),
+          }
+        }
+        if (table === 'invoice_vendors') {
+          return {
+            select: vi.fn().mockReturnValue({
+              ilike: vi.fn().mockReturnValue({ limit: vendorLimit }),
+            }),
+          }
+        }
+        if (table === 'invoices') {
+          return {
+            select: vi.fn().mockReturnValue({
+              ilike: vi.fn().mockReturnValue({ limit: invoiceLimit }),
+            }),
+          }
+        }
+        if (table === 'oj_entries') return { select: vi.fn().mockReturnValue(mainQuery) }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    } as any)
+
+    const result = await getEntries({ search: 'Golden', page: 1, pageSize: 50 })
+
+    expect(mainQuery.or).toHaveBeenCalledWith(expect.stringContaining('description.ilike."%Golden%"'))
+    expect(mainQuery.or).toHaveBeenCalledWith(expect.stringContaining('project_id.in.(project-1)'))
+    expect(mainQuery.or).toHaveBeenCalledWith(expect.stringContaining('vendor_id.in.(vendor-1)'))
+    expect(mainQuery.or).toHaveBeenCalledWith(expect.stringContaining('invoice_id.in.(invoice-1)'))
+    expect(mainRange).toHaveBeenCalledWith(0, 49)
+    expect(result).toMatchObject({ entries: [{ id: 'entry-1' }], total: 1 })
+  })
+
+  it('filters by invoice number before pagination', async () => {
+    const invoiceLimit = vi.fn().mockResolvedValue({ data: [{ id: 'invoice-1' }], error: null })
+    const range = vi.fn().mockResolvedValue({ data: [], error: null, count: 2 })
+    const query = {
+      order: vi.fn(),
+      in: vi.fn(),
+      range,
+    }
+    query.order.mockReturnValue(query)
+    query.in.mockReturnValue(query)
+
+    mockCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table === 'invoices') {
+          return {
+            select: vi.fn().mockReturnValue({
+              ilike: vi.fn().mockReturnValue({ limit: invoiceLimit }),
+            }),
+          }
+        }
+        if (table === 'oj_entries') return { select: vi.fn().mockReturnValue(query) }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    } as any)
+
+    await getEntries({ invoiceSearch: 'INV-003W9', page: 1, pageSize: 50 })
+
+    expect(query.in).toHaveBeenCalledWith('invoice_id', ['invoice-1'])
+    expect(range).toHaveBeenCalledWith(0, 49)
+  })
 })

@@ -16,6 +16,12 @@ import {
   getRecurringChargeIntervalMonths,
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
+import {
+  DEFAULT_HOURLY_RATE_EX_VAT,
+  DEFAULT_MILEAGE_RATE,
+  resolveRate,
+} from '@/lib/oj-projects/rates'
+import { computeStatementCapTargetIncVat } from '@/lib/oj-projects/statement-cap'
 import type { InvoiceLineItemInput } from '@/types/invoices'
 
 type ReissueMode = 'rebuild_draft' | 'replacement'
@@ -162,12 +168,14 @@ function periodFromEntryDate(entryDate: string): Period | null {
 
 function getEntryAmount(entry: any, settings: any): number {
   if (entry.entry_type === 'mileage') {
-    return roundMoney(Number(entry.miles || 0) * Number(entry.mileage_rate_snapshot ?? settings?.mileage_rate ?? 0.55))
+    const rate = resolveRate(entry.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
+    return roundMoney(Number(entry.miles || 0) * rate)
   }
   if (entry.entry_type === 'one_off') {
     return roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
   }
-  return roundMoney((Number(entry.duration_minutes_rounded || 0) / 60) * Number(entry.hourly_rate_ex_vat_snapshot ?? settings?.hourly_rate_ex_vat ?? 75))
+  const rate = resolveRate(entry.hourly_rate_ex_vat_snapshot, settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
+  return roundMoney((Number(entry.duration_minutes_rounded || 0) / 60) * rate)
 }
 
 function getEntryQuantityLabel(entry: any): string {
@@ -325,7 +333,7 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
   ] = await Promise.all([
     admin
       .from('oj_vendor_billing_settings')
-      .select('hourly_rate_ex_vat, mileage_rate, vat_rate, statement_mode')
+      .select('hourly_rate_ex_vat, mileage_rate, vat_rate, statement_mode, billing_mode, monthly_cap_inc_vat')
       .eq('vendor_id', invoice.vendor_id)
       .maybeSingle(),
     admin
@@ -575,6 +583,35 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
   }
 
   const replacementInvoiceNumber = options?.replacementInvoiceNumber || invoice.invoice_number
+
+  let statementCapTargetIncVat: number | null = null
+  try {
+    statementCapTargetIncVat = await computeStatementCapTargetIncVat({
+      client: admin,
+      vendorId: invoice.vendor_id,
+      invoiceId: invoice.id,
+      invoiceDate: invoice.invoice_date,
+      reference: invoice.reference,
+      settings,
+      linkedEntries: includedEntries,
+      linkedRecurringInstances: includedRecurring,
+    })
+  } catch (error) {
+    return {
+      eligible: false,
+      error: error instanceof Error ? error.message : 'Failed to work out the monthly cap for this invoice',
+      sourceInvoice: invoice,
+      period,
+      warnings,
+    }
+  }
+
+  if (statementCapTargetIncVat != null) {
+    warnings.push(
+      `This client is billed a flat £${statementCapTargetIncVat.toFixed(2)} inc VAT per month while they owe anything, so the invoice is topped up to that figure.`
+    )
+  }
+
   let revision
   try {
     revision = buildOjInvoiceRevision({
@@ -583,6 +620,7 @@ async function buildReissuePreview(invoiceId: string, options?: { replacementInv
       entries: includedEntries as OjInvoiceRevisionEntry[],
       recurringInstances: includedRecurring as OjInvoiceRevisionRecurringInstance[],
       revisedAtIso: new Date().toISOString(),
+      statementCapTargetIncVat,
     })
   } catch (error) {
     return {

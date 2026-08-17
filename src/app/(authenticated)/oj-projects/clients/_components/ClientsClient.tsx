@@ -48,7 +48,8 @@ import {
   upsertVendorBillingSettings,
   type OJVendorBillingSettings,
 } from '@/app/actions/oj-projects/vendor-settings'
-import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
+import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
+import { addMonthsToIsoDate } from '@/lib/oj-projects/recurring-periods'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -241,6 +242,15 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
   const [loadingStatement, setLoadingStatement] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
 
+  // Next-invoice preview state
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewData, setPreviewData] = useState<any | null>(null)
+
+  const previewVendor = useMemo(() => previewData?.vendors?.[0] || null, [previewData])
+  const previewInvoice = useMemo(() => previewVendor?.invoice_preview || null, [previewVendor])
+
   const filtered = useMemo(() => {
     if (!search.trim()) return clients
     const q = search.toLowerCase()
@@ -257,11 +267,12 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
     setLoadingRecurringCharges(true)
     setLoadingBillingSettings(true)
 
-    // Default statement date range to last 3 months
-    const now = new Date()
-    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1)
-    setStatementFrom(threeMonthsAgo.toISOString().split('T')[0])
-    setStatementTo(now.toISOString().split('T')[0])
+    // Default statement date range to the last 3 months. Built from the London
+    // business date, not `new Date().toISOString()`, which lands a day early
+    // between midnight and 01:00 BST.
+    const today = getTodayIsoDate()
+    setStatementFrom(`${addMonthsToIsoDate(today, -3).slice(0, 7)}-01`)
+    setStatementTo(today)
 
     try {
       const [balanceRes, chargesRes, settingsRes] = await Promise.all([
@@ -501,6 +512,41 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
     }
   }
 
+  function downloadStatementPdf(): void {
+    if (!drawerVendor || !statementFrom || !statementTo) return
+    const params = new URLSearchParams({
+      vendorId: drawerVendor.id,
+      dateFrom: statementFrom,
+      dateTo: statementTo,
+    })
+    window.open(`/api/oj-projects/statement-pdf?${params.toString()}`, '_blank', 'noopener')
+  }
+
+  /**
+   * Dry run of the monthly billing cron for this client, so the invoice can be
+   * checked before it is raised and emailed automatically on the 1st. Creates
+   * and sends nothing.
+   */
+  async function openPreview(): Promise<void> {
+    if (!drawerVendor) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    setPreviewData(null)
+    try {
+      const res = await fetch(
+        `/api/oj-projects/billing-preview?vendor_id=${encodeURIComponent(drawerVendor.id)}`
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Failed to load preview')
+      setPreviewData(data)
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Failed to load preview')
+    } finally {
+      setPreviewLoading(false)
+      setPreviewOpen(true)
+    }
+  }
+
   async function handleSendStatement(): Promise<void> {
     if (!drawerVendor || !statementFrom || !statementTo) return
     setSendingEmail(true)
@@ -674,6 +720,21 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 </div>
               </div>
 
+              {/*
+                Drafts are deliberately outside Total Outstanding: the client has
+                never been sent them, so they are not owed. Shown here because a
+                draft lingering for weeks usually means an invoice reissue was
+                started and abandoned, which freezes the work it covers.
+              */}
+              {balance.draftInvoiceTotal > 0 && (
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                  <span className="text-text-muted">
+                    Draft, not yet sent (excluded from the total)
+                  </span>
+                  <span className="font-semibold">{formatCurrency(balance.draftInvoiceTotal)}</span>
+                </div>
+              )}
+
               {/* Unbilled breakdown */}
               {balance.unbilledTotal > 0 && (
                 <div className="mt-3 space-y-1 text-sm">
@@ -703,6 +764,30 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   )}
                 </div>
               )}
+            </div>
+
+            {/*
+              The billing cron raises and emails this client's invoice
+              automatically on the 1st with no human gate, so this is the only
+              chance to see what it will send.
+            */}
+            <div className="border-t border-border pt-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-text">Next Invoice</h3>
+                  <p className="text-xs text-text-muted">
+                    Dry run of the monthly billing run. Nothing is created or sent.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={openPreview}
+                  loading={previewLoading}
+                >
+                  Preview Next Invoice
+                </Button>
+              </div>
             </div>
 
             {/* Invoices */}
@@ -936,6 +1021,14 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                 <Button
                   variant="secondary"
                   size="sm"
+                  onClick={downloadStatementPdf}
+                  disabled={!statementFrom || !statementTo}
+                >
+                  Download PDF
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={handleSendStatement}
                   loading={sendingEmail}
                 >
@@ -990,6 +1083,94 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
           <p className="text-sm text-text-muted py-4">Select a client to view balance details.</p>
         )}
       </Drawer>
+
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={previewVendor?.statement_mode ? 'Statement Invoice Preview (Dry Run)' : 'Invoice Preview (Dry Run)'}
+        width="lg"
+        footer={
+          <Button variant="secondary" onClick={() => setPreviewOpen(false)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="flex flex-col gap-4 text-sm">
+          <p className="rounded-lg bg-surface-2 p-3 text-text-muted">
+            Dry run for the period the next billing run will invoice. No invoice is created or sent.
+          </p>
+
+          {previewError && <p className="text-danger">{previewError}</p>}
+
+          {!previewError && previewVendor && !previewVendor.would_invoice && (
+            <p className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+              {previewVendor.reason || 'No invoice would be generated for this period.'}
+            </p>
+          )}
+
+          {!previewError && previewInvoice && (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-text-muted">Billing period</p>
+                  <p className="font-medium">{previewData?.period}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Invoice date</p>
+                  <p className="font-medium">{previewInvoice.invoice_date}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Due date</p>
+                  <p className="font-medium">{previewInvoice.due_date}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted">Reference</p>
+                  <p className="font-medium">{previewInvoice.reference}</p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-text-muted mb-2">Totals (ex VAT)</p>
+                <div className="flex justify-between font-semibold">
+                  <span>Subtotal</span>
+                  <span>
+                    {formatCurrency(Number(previewInvoice.totals?.subtotalBeforeInvoiceDiscount || 0))}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-text-muted">VAT is added when the invoice is sent.</p>
+              </div>
+
+              <div>
+                <p className="text-xs text-text-muted mb-2">Line items</p>
+                <div className="flex flex-col gap-2">
+                  {(previewInvoice.line_items || []).map((item: any, idx: number) => {
+                    const qty = Number(item.quantity || 0)
+                    const unit = Number(item.unit_price || 0)
+                    return (
+                      <div key={`${item.description}-${idx}`} className="rounded-lg border border-border p-2">
+                        <p className="font-medium">{item.description}</p>
+                        <p className="text-xs text-text-muted">
+                          Qty {qty} at {formatCurrency(unit)} ex VAT
+                        </p>
+                        <p className="font-semibold">{formatCurrency(qty * unit)}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {previewInvoice.notes && (
+                <div>
+                  <p className="text-xs text-text-muted mb-2">Notes</p>
+                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-2 p-3 text-xs">
+                    {previewInvoice.notes}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={clientModalOpen}

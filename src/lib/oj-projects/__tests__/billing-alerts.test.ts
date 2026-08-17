@@ -89,6 +89,44 @@ describe('sendBillingRunAlert', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
+  it('alerts when a run raised no invoices at all, even with zero failures', async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ success: true })
+
+    // A month where billing quietly did nothing used to look exactly like a
+    // clean month: no failures, so no alert, so nobody found out.
+    const results = makeResults({
+      sent: 0,
+      failed: 0,
+      skipped: 4,
+      vendors: [
+        { vendor_id: 'v-1', vendor_name: 'Skipped Vendor', status: 'skipped' },
+      ],
+    })
+
+    await sendBillingRunAlert(results)
+
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    const call = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(call.subject).toContain('no invoices raised')
+    expect(call.html).toContain('zero_vendor_run')
+    // No failures, so there is no failure table to show.
+    expect(call.html).not.toContain('Failed Vendors')
+  })
+
+  it('stays quiet when invoices went out and nothing failed', async () => {
+    const results = makeResults({
+      sent: 3,
+      failed: 0,
+      vendors: [
+        { vendor_id: 'v-1', vendor_name: 'OK Vendor', status: 'sent', invoice_id: 'inv-1' },
+      ],
+    })
+
+    await sendBillingRunAlert(results)
+
+    expect(sendEmail).not.toHaveBeenCalled()
+  })
+
   it('uses OJ_PROJECTS_BILLING_ALERT_EMAIL as primary env var', async () => {
     process.env.OJ_PROJECTS_BILLING_ALERT_EMAIL = 'primary@test.com'
     process.env.PAYROLL_ACCOUNTANT_EMAIL = 'fallback@test.com'

@@ -69,9 +69,12 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
     return
   }
 
-  // Only alert if there are issues
+  // Alert on failures, and also on a run that invoiced nobody. Billing silently
+  // not happening is indistinguishable from billing happening cleanly, so a
+  // month where nothing went out has to be reported even with zero failures.
   const failedVendors = results.vendors.filter((v) => v.status === 'failed')
-  if (failedVendors.length === 0) return
+  const invoicedNobody = results.sent === 0
+  if (failedVendors.length === 0 && !invoicedNobody) return
 
   const timestamp = new Date().toISOString()
   const environment = process.env.NODE_ENV ?? 'unknown'
@@ -82,7 +85,7 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
   const safeAppUrl = escapeHtml(appUrl)
   const safePeriod = escapeHtml(results.period)
 
-  // Build vendor issue rows — vendor name + failure tier only, no raw errors
+  // Build vendor issue rows: vendor name and failure tier only, no raw errors
   const vendorRows = failedVendors.map((v) => {
     const tier = v.failure_tier || classifyFailureTier(v)
     const safeName = escapeHtml(redactPii(v.vendor_name || v.vendor_id))
@@ -98,7 +101,10 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
     </tr>`
   })
 
-  const subject = `OJ Projects Billing Alert — ${results.period} — ${failedVendors.length} issue${failedVendors.length !== 1 ? 's' : ''}`
+  const issueSummary = failedVendors.length > 0
+    ? `${failedVendors.length} issue${failedVendors.length !== 1 ? 's' : ''}`
+    : 'no invoices raised'
+  const subject = `OJ Projects Billing Alert: ${results.period}, ${issueSummary}`
 
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;">
@@ -113,14 +119,18 @@ export async function sendBillingRunAlert(results: BillingRunResults): Promise<v
         <tr><td style="padding:4px 8px;font-weight:bold;">Skipped</td><td style="padding:4px 8px;">${results.skipped}</td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">Failed</td><td style="padding:4px 8px;color:#dc2626;font-weight:bold;">${results.failed}</td></tr>
       </table>
-      <h3 style="margin-top:16px;">Failed Vendors</h3>
+      ${invoicedNobody ? `<p style="margin-top:16px;font-weight:bold;color:#dc2626;">
+        This run raised no invoices at all (failure type: zero_vendor_run). If work was
+        logged for this period, billing has not happened and needs investigating.
+      </p>` : ''}
+      ${failedVendors.length > 0 ? `<h3 style="margin-top:16px;">Failed Vendors</h3>
       <table style="border-collapse:collapse;width:100%;font-size:13px;">
         <tr style="background:#f9fafb;">
           <th style="padding:4px 8px;text-align:left;font-weight:bold;">Vendor</th>
           <th style="padding:4px 8px;text-align:left;font-weight:bold;">Failure Type</th>
         </tr>
         ${vendorRows.join('\n        ')}
-      </table>
+      </table>` : ''}
       <p style="margin-top:16px;font-size:12px;color:#6b7280;">
         Check the billing runs table or Vercel logs for full details. No raw error messages are included in this alert for security.
       </p>
