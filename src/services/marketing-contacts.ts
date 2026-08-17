@@ -7,6 +7,7 @@ import {
   summariseClicksByRecipient,
 } from '@/lib/email/marketing/attribution'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ConsentService } from '@/services/consent'
 import {
   mapBusinessContact,
   type AudiencePreview,
@@ -807,6 +808,148 @@ export interface UnsubscribeInput {
   reason: DoNotContactReason
   campaignId?: string | null
   source: string
+}
+
+export interface UnsubscribeEmailAddressResult {
+  customerMatches: number
+  businessContactMatches: number
+  newlyUnsubscribed: number
+  alreadyUnsubscribed: number
+  addressBlocked: boolean
+}
+
+/**
+ * Stops marketing to an address, whether it belongs to a guest, a business contact, or no
+ * current record at all.
+ *
+ * The address-level block is written first. That makes the safe outcome durable even if a
+ * later consent-summary update fails, and it prevents a future import from silently adding
+ * the address back. Customer booking messages are unaffected because this table is checked
+ * only by the marketing sender.
+ */
+export async function unsubscribeEmailAddressFromMarketing(
+  rawEmail: string,
+  userId: string,
+): Promise<UnsubscribeEmailAddressResult> {
+  const supabase = createAdminClient()
+  const email = normaliseEmail(rawEmail)
+
+  if (!EMAIL_PATTERN.test(email)) {
+    throw new Error(`"${rawEmail}" is not a valid email address`)
+  }
+
+  const [customerResult, contactResult, blockResult] = await Promise.all([
+    supabase
+      .from('customers')
+      .select('id, email, marketing_email_opted_out_at, marketing_last_campaign_id')
+      .ilike('email', email),
+    supabase
+      .from('business_contacts')
+      .select('id, email, marketing_status, unsubscribed_at, last_marketing_campaign_id')
+      .eq('email', email),
+    supabase
+      .from('marketing_do_not_contact')
+      .select('email_normalised, removed_at')
+      .eq('email_normalised', email)
+      .maybeSingle(),
+  ])
+
+  if (customerResult.error) throw new Error(customerResult.error.message)
+  if (contactResult.error) throw new Error(contactResult.error.message)
+  if (blockResult.error) throw new Error(blockResult.error.message)
+
+  // ILIKE makes the customer lookup case-insensitive. Filter again because `_` and `%` are
+  // legal local-part characters but are also LIKE wildcards.
+  const customers = (customerResult.data ?? []).filter(
+    (customer) => normaliseEmail(customer.email ?? '') === email,
+  )
+  const contacts = contactResult.data ?? []
+  const existingBlock = blockResult.data
+
+  if (!existingBlock) {
+    const { error } = await supabase.from('marketing_do_not_contact').insert({
+      email_normalised: email,
+      email_hash: hashEmail(email),
+      reason: 'manual',
+      source: 'marketing_ui',
+      created_by: userId,
+    })
+    if (error) throw new Error(error.message)
+  } else if (existingBlock.removed_at) {
+    const { error } = await supabase
+      .from('marketing_do_not_contact')
+      .update({
+        reason: 'manual',
+        source: 'marketing_ui',
+        removed_at: null,
+        removed_by: null,
+        removal_note: null,
+      })
+      .eq('email_normalised', email)
+    if (error) throw new Error(error.message)
+  }
+
+  let newlyUnsubscribed = 0
+  let alreadyUnsubscribed = 0
+
+  for (const customer of customers) {
+    if (customer.marketing_email_opted_out_at) {
+      alreadyUnsubscribed++
+    } else {
+      await ConsentService.recordOptOut(
+        customer.id,
+        'email',
+        'customer_profile',
+        {
+          captureMethod: 'profile_toggle',
+          actorUserId: userId,
+          sourceUrl: '/marketing',
+          relatedEntityType: 'customer',
+          relatedEntityId: customer.id,
+          metadata: { source: 'marketing_ui', email_hash: hashEmail(email) },
+        },
+        ['marketing'],
+      )
+      newlyUnsubscribed++
+    }
+
+    if (customer.marketing_last_campaign_id) {
+      const { error } = await supabase
+        .from('customers')
+        .update({ marketing_unsubscribe_campaign_id: customer.marketing_last_campaign_id })
+        .eq('id', customer.id)
+        .is('marketing_unsubscribe_campaign_id', null)
+      if (error) throw new Error(error.message)
+    }
+  }
+
+  for (const contact of contacts) {
+    if (contact.marketing_status !== 'subscribed') {
+      alreadyUnsubscribed++
+      continue
+    }
+
+    const { error } = await supabase
+      .from('business_contacts')
+      .update({
+        marketing_status: 'unsubscribed',
+        unsubscribed_at: contact.unsubscribed_at ?? new Date().toISOString(),
+        unsubscribe_campaign_id: contact.last_marketing_campaign_id,
+      })
+      .eq('id', contact.id)
+      .eq('marketing_status', 'subscribed')
+
+    if (error) throw new Error(error.message)
+    newlyUnsubscribed++
+  }
+
+  return {
+    customerMatches: customers.length,
+    businessContactMatches: contacts.length,
+    newlyUnsubscribed,
+    alreadyUnsubscribed,
+    addressBlocked: true,
+  }
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   formatCountWithRate,
   formatDateTimeInLondon,
 } from './_shared/marketing-ui'
+import { UnsubscribeEmailCard } from './UnsubscribeEmailCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +38,10 @@ export default async function MarketingCampaignsPage() {
   const canView = await checkUserPermission('marketing', 'view')
   if (!canView) redirect('/unauthorized')
 
-  const canCreate = await checkUserPermission('marketing', 'create')
+  const [canCreate, canEdit] = await Promise.all([
+    checkUserPermission('marketing', 'create'),
+    checkUserPermission('marketing', 'edit'),
+  ])
 
   const [campaignsResult, settingsResult] = await Promise.all([
     listMarketingCampaigns({ page: 1, pageSize: PAGE_SIZE }),
@@ -103,6 +107,8 @@ export default async function MarketingCampaignsPage() {
             {settingsResult.error}. Treat the send switch as unknown until this loads.
           </Alert>
         )}
+
+        {canEdit && <UnsubscribeEmailCard />}
 
         <Card>
           {campaigns.length === 0 ? (
