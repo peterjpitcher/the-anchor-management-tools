@@ -26,6 +26,7 @@ import {
 } from '@/lib/email/employee-invite-emails';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { normalisePreferredName } from '@/lib/employees/display-name';
+import { resolveOnboardingSessionError } from '@/lib/employees/onboarding-session';
 import { formatPhoneForStorage } from '@/lib/utils';
 
 // This builds invite links that go out by email, so the fallback must resolve.
@@ -180,10 +181,8 @@ async function expirePendingSiblingTokens(
 }
 
 /**
- * Once a starter has created their account, the invite link stops being the only thing that
- * proves who they are. Until now the token stayed a bearer token for the whole flow, so anyone
- * it was forwarded to could keep reading and writing that person's onboarding data. From the
- * moment employees.auth_user_id is set, the signed in user must match it.
+ * Server side wrapper around resolveOnboardingSessionError. See that function for the rule and
+ * why "no session" has to be allowed here.
  */
 async function requireTokenBoundSession(employeeId: string): Promise<string | null> {
   const adminClient = createAdminClient();
@@ -193,21 +192,13 @@ async function requireTokenBoundSession(employeeId: string): Promise<string | nu
     .eq('employee_id', employeeId)
     .maybeSingle();
 
-  const authUserId = (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null;
-  if (!authUserId) {
-    // No account yet, so the token is still the only credential there is.
-    return null;
-  }
-
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return 'Please sign in again to continue your onboarding.';
-  }
-  if (user.id !== authUserId) {
-    return 'This onboarding link belongs to a different account.';
-  }
-  return null;
+
+  return resolveOnboardingSessionError({
+    employeeAuthUserId: (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null,
+    sessionUserId: user?.id ?? null,
+  });
 }
 
 // ---------------------------------------------------------------------------
