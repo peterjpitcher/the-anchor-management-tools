@@ -222,6 +222,10 @@
       "schedule": "0 18 * * 0"
     },
     {
+      "path": "/api/cron/rota-unfilled-urgent",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/cron/rota-staff-email",
       "schedule": "0 21 * * 0"
     },

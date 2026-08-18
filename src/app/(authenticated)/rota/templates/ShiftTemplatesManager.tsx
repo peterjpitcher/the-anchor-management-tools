@@ -19,6 +19,7 @@ import {
 import type { RotaEmployee } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
 import { displayName } from '@/lib/employees/display-name';
+import { calculatePaidHours } from '@/lib/rota/pay-math';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -42,14 +43,11 @@ const DEPARTMENT_BADGE: Record<string, 'info' | 'warning' | 'success' | 'default
   runner: 'success',
 };
 
-function paidHours(start: string, end: string, breakMins: number): string {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (endM <= startM) endM += 24 * 60;
-  const paid = Math.max(0, endM - startM - breakMins) / 60;
-  return `${paid.toFixed(1)}h`;
+/** Paid hours for a template row, formatted for display. The arithmetic itself
+ *  lives in @/lib/rota/pay-math so every rota surface agrees. Templates carry no
+ *  overnight flag, so an end time before the start is the only wrap rule. */
+function formatPaidHours(start: string, end: string, breakMins: number): string {
+  return `${calculatePaidHours(start, end, breakMins).toFixed(1)}h`;
 }
 
 function empName(emp: RotaEmployee): string {
@@ -186,7 +184,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
         {startTime && endTime && (
           <div className="flex items-end pb-0.5">
             <p className="text-sm text-gray-600">
-              Paid: <strong>{paidHours(startTime, endTime, parseInt(breakMins) || 0)}</strong>
+              Paid: <strong>{formatPaidHours(startTime, endTime, parseInt(breakMins) || 0)}</strong>
             </p>
           </div>
         )}
@@ -277,7 +275,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
             {formatTime12Hour(current.start_time)} – {formatTime12Hour(current.end_time)}
             {current.unpaid_break_minutes > 0 && ` · ${current.unpaid_break_minutes} min break`}
             {' · '}
-            {paidHours(current.start_time, current.end_time, current.unpaid_break_minutes)} paid
+            {formatPaidHours(current.start_time, current.end_time, current.unpaid_break_minutes)} paid
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1">
             {current.day_of_week !== null && current.day_of_week !== undefined && (

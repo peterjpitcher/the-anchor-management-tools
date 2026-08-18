@@ -11,6 +11,7 @@ import { Alert } from '@/ds';
 import { createShift } from '@/app/actions/rota';
 import type { RotaShift } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
+import { calculatePaidHours } from '@/lib/rota/pay-math';
 
 interface CreateShiftModalProps {
   weekId: string;
@@ -20,15 +21,6 @@ interface CreateShiftModalProps {
   departments: Department[];
   onClose: () => void;
   onCreated: (shift: RotaShift) => void;
-}
-
-function paidHoursNum(start: string, end: string, breakMins: number, overnight: boolean): number {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (overnight || endM <= startM) endM += 24 * 60;
-  return Math.max(0, endM - startM - breakMins) / 60;
 }
 
 function formatDate(iso: string): string {
@@ -150,7 +142,7 @@ export default function CreateShiftModal({
 
           {startTime && endTime && (
             <p className="text-sm text-gray-600">
-              Paid: <strong>{paidHoursNum(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
+              Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
             </p>
           )}
 

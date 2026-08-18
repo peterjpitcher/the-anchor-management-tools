@@ -38,6 +38,9 @@ import type { RotaDayInfo } from '@/app/actions/rota-day-info';
 import type { RotaSummary } from '@/lib/rota/summary';
 import type { OpeningExceptionTone, RotaOpeningException } from '@/lib/rota/opening-exceptions';
 import { shiftIsUnpublished, getRemovedPublishedShifts, type PublishedShiftSnapshot } from '@/lib/rota/publish-status';
+import { calculatePaidHours } from '@/lib/rota/pay-math';
+import { isInsideAcceptanceCutoff } from '@/lib/rota/acceptance-cutoff';
+import { countsTowardHours } from '@/lib/rota/shift-counting';
 import { displayName } from '@/lib/employees/display-name';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
@@ -86,8 +89,6 @@ type CouldntWorkTarget = {
   date: string;
 };
 
-const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
-
 // Static class strings per tone, because Tailwind cannot see dynamically built names.
 const OPENING_EXCEPTION_STYLES: Record<OpeningExceptionTone, { chip: string; banner: string }> = {
   danger: { chip: 'bg-danger-soft text-danger-fg', banner: 'border-danger/25 bg-danger-soft text-danger-fg' },
@@ -98,15 +99,6 @@ const OPENING_EXCEPTION_STYLES: Record<OpeningExceptionTone, { chip: string; ban
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (overnight || endM <= startM) endM += 24 * 60;
-  return Math.max(0, endM - startM - breakMins) / 60;
-}
 
 function empDisplayName(emp: RotaEmployee): string {
   return displayName(emp, 'Unknown');
@@ -184,21 +176,13 @@ function roleStyle(role: string): typeof ROLE_STYLES[number] {
   return ROLE_STYLES[hash];
 }
 
-function shiftStartDate(shift: RotaShift): Date | null {
-  const time = shift.start_time.length === 5 ? `${shift.start_time}:00` : shift.start_time;
-  const date = new Date(`${shift.shift_date}T${time}`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function effectiveAcceptanceStatus(shift: RotaShift): RotaShift['acceptance_status'] {
   if (shift.acceptance_status) return shift.acceptance_status;
   if (shift.is_open_shift || shift.status !== 'scheduled') return null;
 
-  const start = shiftStartDate(shift);
-  if (!start) return null;
-
-  const cutoffMs = SHIFT_ACCEPTANCE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
-  return start.getTime() - Date.now() <= cutoffMs ? 'auto_accepted' : null;
+  return isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, new Date())
+    ? 'auto_accepted'
+    : null;
 }
 
 function shiftAcceptanceDisplay(shift: RotaShift): {
@@ -276,8 +260,8 @@ function addWeeks(weekStart: string, n: number): string {
 
 function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
   return shifts
-    .filter(s => s.employee_id === employeeId && s.status === 'scheduled')
-    .reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
+    .filter(s => s.employee_id === employeeId && countsTowardHours(s))
+    .reduce((sum, s) => sum + calculatePaidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
 }
 
 type SummaryTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
@@ -332,7 +316,7 @@ function DraggableShiftBlock({
     disabled,
   });
 
-  const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+  const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
   const sickColour = shift.status === 'sick' ? 'bg-danger-soft border-danger/25' : '';
   const cancelColour = shift.status === 'cancelled' ? 'bg-surface-2 border-border opacity-60' : '';
@@ -371,7 +355,7 @@ function DraggableShiftBlock({
 
 // Shift block displayed in DragOverlay (no interaction)
 function ShiftBlockOverlay({ shift, isDraft }: { shift: RotaShift; isDraft: boolean }) {
-  const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+  const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
   return (
     <div className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
@@ -688,9 +672,9 @@ export default function RotaGrid({
 
   // Separate open shifts from employee shifts
   const openShifts = useMemo(() => shifts.filter(s => s.is_open_shift), [shifts]);
-  const activeShifts = useMemo(() => shifts.filter(s => s.status === 'scheduled'), [shifts]);
+  const activeShifts = useMemo(() => shifts.filter(countsTowardHours), [shifts]);
   const totalScheduledHours = useMemo(
-    () => activeShifts.reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0),
+    () => activeShifts.reduce((sum, s) => sum + calculatePaidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0),
     [activeShifts],
   );
   const scheduledEmployeeCount = useMemo(
