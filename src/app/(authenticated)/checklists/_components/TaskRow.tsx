@@ -183,17 +183,17 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
               <span className="text-sm font-medium">{task.title}</span>
               {task.wasLate && <Badge tone="warning">Late</Badge>}
             </div>
-            <p className="mt-1 text-xs text-muted">
+            <p className="mt-1 text-xs text-text-muted">
               Done by {task.completedByName ?? 'someone'}
               {task.completedAt ? `, ${formatDateTime12Hour(task.completedAt)}` : ''}
             </p>
             {task.valueRecorded != null && (
-              <p className="mt-1 text-xs text-subtle">
+              <p className="mt-1 text-xs text-text-subtle">
                 Reading: {task.valueRecorded}
                 {task.valueUnit ? ` ${task.valueUnit}` : ''}
               </p>
             )}
-            {task.notes && <p className="mt-1 text-xs text-subtle">Note: {task.notes}</p>}
+            {task.notes && <p className="mt-1 text-xs text-text-subtle">Note: {task.notes}</p>}
             {task.valueBreach && (
               <div className="mt-2">
                 <Alert
@@ -236,12 +236,12 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
     return (
       <div className="rounded-md border border-border p-3">
         <div className="flex items-center justify-between gap-3">
-          <span className="min-w-0 flex-1 truncate text-sm text-muted">{task.title}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-text-muted">{task.title}</span>
           <Badge tone={tone}>{label}</Badge>
         </div>
         {/* The whole point of asking for a reason is that somebody reads it. */}
         {task.skipReason && (
-          <p className="mt-1 text-xs text-subtle">Reason: {task.skipReason}</p>
+          <p className="mt-1 text-xs text-text-subtle">Reason: {task.skipReason}</p>
         )}
       </div>
     )
@@ -251,7 +251,7 @@ export function TaskRow({ task, identity, onChanged, onNeedIdentity, onBusyChang
   return (
     <div className="rounded-md border border-border p-3">
       <div className="text-sm font-medium">{task.title}</div>
-      {task.instruction && <p className="mt-1 text-xs text-muted">{task.instruction}</p>}
+      {task.instruction && <p className="mt-1 text-xs text-text-muted">{task.instruction}</p>}
 
       {task.requiresValue && (
         <div className="mt-3 max-w-xs">

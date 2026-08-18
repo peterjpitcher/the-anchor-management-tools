@@ -52,7 +52,7 @@ export default function EditEmergencyContactModal({
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity">
       <div className="relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         <button type="button"
           onClick={onClose}

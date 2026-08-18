@@ -217,8 +217,8 @@ export function SpecialHoursCalendar({ canManage, initialSpecialHours, initialOv
               const classNames = [
                 'min-h-[88px] rounded-lg border px-2 py-2 text-left transition relative',
                 day.inCurrentMonth ? 'border-gray-200' : 'border-gray-100 bg-gray-50 text-gray-400',
-                day.isToday ? 'ring-2 ring-primary-500 ring-offset-2' : '',
-                canManage ? 'hover:border-primary-400 hover:shadow-md cursor-pointer' : 'cursor-default',
+                day.isToday ? 'ring-2 ring-primary ring-offset-2' : '',
+                canManage ? 'hover:border-primary hover:shadow-md cursor-pointer' : 'cursor-default',
               ]
 
               if (hasSpecial) {

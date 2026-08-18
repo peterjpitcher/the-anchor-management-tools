@@ -498,7 +498,7 @@ export function ReceiptRules({
           <div className="p-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
-                <h3 className="text-md font-semibold text-text-strong mb-3">New rule</h3>
+                <h3 className="text-base font-semibold text-text-strong mb-3">New rule</h3>
                 {pendingSuggestion && (
                   <div className="mb-3 rounded-md border border-border bg-success-soft p-3 text-xs text-success-fg">
                     <div className="flex flex-wrap items-center justify-between gap-2">

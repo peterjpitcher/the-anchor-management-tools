@@ -39,8 +39,8 @@ export function AttributionPicker({
     <div>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Icon name="user" size={18} className="shrink-0 text-muted" />
-          <span className="shrink-0 text-sm text-muted">Completing as:</span>
+          <Icon name="user" size={18} className="shrink-0 text-text-muted" />
+          <span className="shrink-0 text-sm text-text-muted">Completing as:</span>
           <span className="truncate text-sm font-medium">
             {identity ? identity.name : 'Nobody chosen yet'}
           </span>
@@ -56,7 +56,7 @@ export function AttributionPicker({
       </div>
 
       {!identity && !open && (
-        <p className="mt-1 text-xs text-muted">Choose who you are, then tick your tasks.</p>
+        <p className="mt-1 text-xs text-text-muted">Choose who you are, then tick your tasks.</p>
       )}
 
       {open && (
@@ -71,11 +71,11 @@ export function AttributionPicker({
           />
           <div className="mt-2 max-h-72 overflow-y-auto">
             {loading ? (
-              <div className="flex items-center gap-2 p-3 text-sm text-muted">
+              <div className="flex items-center gap-2 p-3 text-sm text-text-muted">
                 <Spinner /> Loading staff
               </div>
             ) : filtered.length === 0 ? (
-              <p className="p-3 text-sm text-muted">No staff match that search.</p>
+              <p className="p-3 text-sm text-text-muted">No staff match that search.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {filtered.map((c) => (

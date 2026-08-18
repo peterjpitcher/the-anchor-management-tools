@@ -659,7 +659,7 @@ export function CampaignDetailClient({
             will. Nothing is recorded against any contact, so it does not affect the audience,
             the frequency cap or the campaign figures.
           </p>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-text-muted">
             Worth checking in Outlook on Windows, Gmail, and Apple Mail in dark mode. Those are
             the three that render email differently enough to matter.
           </p>

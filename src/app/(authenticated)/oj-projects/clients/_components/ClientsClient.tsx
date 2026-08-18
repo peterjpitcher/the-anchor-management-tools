@@ -1112,7 +1112,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                       : ''}
                   </p>
                   {!workRecord.record.reconciles && (
-                    <p className="text-error mb-2">
+                    <p className="text-danger mb-2">
                       These figures do not add up against the invoices, so no PDF can be produced.
                       Please check the entries before sending anything to the client.
                     </p>

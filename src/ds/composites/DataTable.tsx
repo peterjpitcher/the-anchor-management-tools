@@ -193,7 +193,7 @@ export function DataTable<T = unknown>({
         {isMobile ? (
           loadingIndicator
         ) : (
-          <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black ring-opacity-5')}>
+          <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black/5')}>
             <table className="min-w-full divide-y divide-gray-300">
               <thead className="bg-gray-50">
                 <tr>
@@ -363,7 +363,7 @@ export function DataTable<T = unknown>({
   // Desktop view
   return (
     <div className={cn('w-full', className)} {...props}>
-      <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black ring-opacity-5')}>
+      <div className={cn('overflow-hidden rounded-lg', bordered && 'shadow ring-1 ring-black/5')}>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-300">
             <thead className={cn('bg-gray-50', stickyHeader && 'sticky top-0 z-10')}>
