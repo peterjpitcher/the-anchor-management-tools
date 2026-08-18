@@ -1,8 +1,17 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import {
+  MAX_BLOCKS,
+  TIME_OFF_ERRORS,
+  validateTimeOffBlocks,
+  type TimeOffAnswer,
+  type TimeOffBlock,
+  type TimeOffErrorCode,
+} from '@/lib/leave/onboarding-time-off';
 import { checkUserPermission } from './rbac';
 import { logAuditEvent } from './audit';
 import { getCurrentUser } from '@/lib/audit-helpers';
@@ -34,7 +43,7 @@ function buildOnboardingUrl(token: string): string {
 
 export type InviteType = 'onboarding' | 'portal_access';
 type EmployeeStatus = 'Onboarding' | 'Active' | 'Started Separation' | 'Former';
-type OnboardingSectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health';
+type OnboardingSectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off';
 
 type ValidationResult = {
   valid: boolean;
@@ -104,6 +113,11 @@ export type OnboardingSnapshot = {
     disability_reg_expiry_date: string;
     disability_details: string;
   };
+  time_off: {
+    answer: TimeOffAnswer | null;
+    submissionVersion: number;
+    blocks: Array<{ startDate: string; endDate: string; leaveType: string; note: string }>;
+  };
   completedSections: Record<OnboardingSectionKey, boolean>;
 };
 
@@ -159,6 +173,37 @@ async function expirePendingSiblingTokens(
     return error.message || 'Failed to expire older invite links.';
   }
 
+  return null;
+}
+
+/**
+ * Once a starter has created their account, the invite link stops being the only thing that
+ * proves who they are. Until now the token stayed a bearer token for the whole flow, so anyone
+ * it was forwarded to could keep reading and writing that person's onboarding data. From the
+ * moment employees.auth_user_id is set, the signed in user must match it.
+ */
+async function requireTokenBoundSession(employeeId: string): Promise<string | null> {
+  const adminClient = createAdminClient();
+  const { data: employee } = await adminClient
+    .from('employees')
+    .select('auth_user_id')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  const authUserId = (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null;
+  if (!authUserId) {
+    // No account yet, so the token is still the only credential there is.
+    return null;
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return 'Please sign in again to continue your onboarding.';
+  }
+  if (user.id !== authUserId) {
+    return 'This onboarding link belongs to a different account.';
+  }
   return null;
 }
 
@@ -898,6 +943,86 @@ export async function saveOnboardingSection(
   }
 }
 
+/**
+ * Save the "time off already booked" step.
+ *
+ * Deliberately not routed through submitLeaveRequest: that needs an authenticated session and
+ * only accepts employees who are already Active, so it rejects everyone still onboarding. The
+ * database function does the whole thing in one transaction instead, so a new starter never
+ * ends up with half their dates in the rota.
+ */
+export async function saveOnboardingTimeOff(
+  token: string,
+  answer: TimeOffAnswer,
+  blocks: TimeOffBlock[],
+  submissionVersion: number,
+): Promise<{ success: true; requestsCreated: number } | { success: false; error: string; blockIndex?: number }> {
+  const validation = await validateInviteToken(token);
+  if (!validation.valid || !validation.employee_id) {
+    return { success: false, error: TIME_OFF_ERRORS.TIME_OFF_TOKEN_EXPIRED };
+  }
+  if (validation.inviteType !== 'onboarding') {
+    return { success: false, error: 'This link is for portal access only.' };
+  }
+
+  const adminClient = createAdminClient();
+
+  // Once the account exists the invite link is no longer the only thing proving who this is,
+  // so a forwarded link stops working.
+  const boundError = await requireTokenBoundSession(validation.employee_id);
+  if (boundError) return { success: false, error: boundError };
+
+  const submitted = answer === 'has_dates' ? blocks.slice(0, MAX_BLOCKS + 1) : [];
+
+  if (answer === 'has_dates') {
+    const { data: types } = await adminClient
+      .from('leave_types')
+      .select('code')
+      .eq('is_active', true)
+      .eq('allowed_at_onboarding', true);
+
+    const allowedTypes = new Set((types ?? []).map((row: { code: string }) => row.code));
+    const problem = validateTimeOffBlocks(submitted, { allowedTypes });
+    if (problem) {
+      return {
+        success: false,
+        error: TIME_OFF_ERRORS[problem.code as TimeOffErrorCode],
+        blockIndex: problem.blockIndex,
+      };
+    }
+  }
+
+  const { data, error } = await adminClient.rpc('save_onboarding_time_off', {
+    p_token: token,
+    p_answer: answer,
+    p_blocks: submitted,
+    p_submission_version: submissionVersion,
+  });
+
+  if (error) {
+    console.error('[saveOnboardingTimeOff] RPC error:', error);
+    const code = Object.keys(TIME_OFF_ERRORS).find(key => error.message?.includes(key)) as TimeOffErrorCode | undefined;
+    return { success: false, error: code ? TIME_OFF_ERRORS[code] : 'Could not save these dates. Please try again.' };
+  }
+
+  const result = data as { requests_created?: number } | null;
+
+  await logAuditEvent({
+    user_email: validation.email ?? undefined,
+    operation_type: 'update',
+    resource_type: 'employee_onboarding',
+    resource_id: validation.employee_id,
+    operation_status: 'success',
+    new_values: {
+      section: 'time_off',
+      answer,
+      blocks_saved: result?.requests_created ?? 0,
+    },
+  });
+
+  return { success: true, requestsCreated: result?.requests_created ?? 0 };
+}
+
 export async function getOnboardingSnapshot(token: string): Promise<
   { success: true; data: OnboardingSnapshot } | { success: false; error: string }
 > {
@@ -912,7 +1037,7 @@ export async function getOnboardingSnapshot(token: string): Promise<
   const adminClient = createAdminClient();
   const employeeId = validation.employee_id;
 
-  const [employeeResult, contactsResult, financialResult, healthResult] = await Promise.all([
+  const [employeeResult, contactsResult, financialResult, healthResult, timeOffResult, timeOffBlocksResult] = await Promise.all([
     adminClient
       .from('employees')
       .select('first_name, last_name, date_of_birth, address, post_code, phone_number, mobile_number')
@@ -932,6 +1057,19 @@ export async function getOnboardingSnapshot(token: string): Promise<
       .select('doctor_name, doctor_address, has_allergies, allergies, had_absence_over_2_weeks_last_3_years, had_outpatient_treatment_over_3_months_last_3_years, absence_or_treatment_details, illness_history, recent_treatment, has_diabetes, has_epilepsy, has_skin_condition, has_depressive_illness, has_bowel_problems, has_ear_problems, is_registered_disabled, disability_reg_number, disability_reg_expiry_date, disability_details')
       .eq('employee_id', employeeId)
       .maybeSingle(),
+    adminClient
+      .from('employee_onboarding_responses')
+      .select('answer, submission_version')
+      .eq('employee_id', employeeId)
+      .eq('question', 'booked_time_off')
+      .maybeSingle(),
+    adminClient
+      .from('leave_requests')
+      .select('start_date, end_date, leave_type, note')
+      .eq('employee_id', employeeId)
+      .eq('leave_origin', 'agreed_at_hire')
+      .eq('request_channel', 'onboarding')
+      .order('start_date', { ascending: true }),
   ]);
 
   if (employeeResult.error) {
@@ -968,6 +1106,10 @@ export async function getOnboardingSnapshot(token: string): Promise<
 
   const financial = financialResult.data;
   const health = healthResult.data;
+  const timeOffResponse = timeOffResult.data as { answer: string; submission_version: number } | null;
+  const timeOffBlocks = timeOffBlocksResult.data as Array<{
+    start_date: string; end_date: string; leave_type: string | null; note: string | null;
+  }> | null;
 
   return {
     success: true,
@@ -1017,11 +1159,24 @@ export async function getOnboardingSnapshot(token: string): Promise<
         disability_reg_expiry_date: health?.disability_reg_expiry_date ?? '',
         disability_details: health?.disability_details ?? '',
       },
+      time_off: {
+        // Read from the stored answer, never inferred from whether leave rows exist.
+        // "I have nothing booked" is a real answer that writes no leave.
+        answer: (timeOffResponse?.answer as TimeOffAnswer | undefined) ?? null,
+        submissionVersion: timeOffResponse?.submission_version ?? 0,
+        blocks: (timeOffBlocks ?? []).map(block => ({
+          startDate: block.start_date,
+          endDate: block.end_date,
+          leaveType: block.leave_type ?? 'holiday',
+          note: block.note ?? '',
+        })),
+      },
       completedSections: {
         personal: Boolean(employee?.first_name && employee?.last_name),
         emergency_contacts: Boolean(primaryContact?.name),
         financial: Boolean(financial),
         health: Boolean(health),
+        time_off: Boolean(timeOffResponse?.answer),
       },
     },
   };
