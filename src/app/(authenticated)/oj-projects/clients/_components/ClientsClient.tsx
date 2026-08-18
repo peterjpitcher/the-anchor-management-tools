@@ -28,6 +28,7 @@ import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { getClientBalance } from '@/app/actions/oj-projects/client-balance'
 import { getClientStatement, sendStatementEmail } from '@/app/actions/oj-projects/client-statement'
+import { getWorkRecord, type WorkRecordData } from '@/app/actions/oj-projects/work-record'
 import {
   createRecurringCharge,
   disableRecurringCharge,
@@ -240,6 +241,8 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
   const [statementTo, setStatementTo] = useState('')
   const [statement, setStatement] = useState<ClientStatementData | null>(null)
   const [loadingStatement, setLoadingStatement] = useState(false)
+  const [workRecord, setWorkRecord] = useState<WorkRecordData | null>(null)
+  const [loadingWorkRecord, setLoadingWorkRecord] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
 
   // Next-invoice preview state
@@ -510,6 +513,32 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
     } finally {
       setLoadingStatement(false)
     }
+  }
+
+  async function loadWorkRecord(): Promise<void> {
+    if (!drawerVendor || !statementFrom || !statementTo) return
+    setLoadingWorkRecord(true)
+    setWorkRecord(null)
+    try {
+      const res = await getWorkRecord(drawerVendor.id, statementFrom, statementTo)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
+      setWorkRecord(res.data ?? null)
+    } finally {
+      setLoadingWorkRecord(false)
+    }
+  }
+
+  function downloadWorkRecordPdf(): void {
+    if (!drawerVendor || !statementFrom || !statementTo) return
+    const params = new URLSearchParams({
+      vendorId: drawerVendor.id,
+      dateFrom: statementFrom,
+      dateTo: statementTo,
+    })
+    window.open(`/api/oj-projects/work-record?${params.toString()}`, '_blank', 'noopener')
   }
 
   function downloadStatementPdf(): void {
@@ -1004,6 +1033,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                       // range, widening it, seeing the old figures unchanged on
                       // screen, and emailing the client a different statement.
                       setStatement(null)
+                      setWorkRecord(null)
                     }}
                   />
                 </Field>
@@ -1014,6 +1044,7 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                     onChange={(e) => {
                       setStatementTo(e.target.value)
                       setStatement(null)
+                      setWorkRecord(null)
                     }}
                   />
                 </Field>
@@ -1044,6 +1075,68 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   Email Statement
                 </Button>
               </div>
+
+              {/* The Work Record answers a different question from the
+                  statement: not what is owed, but where the time went and which
+                  invoice charged it. Same dates, so it needs no controls. */}
+              <div className="flex gap-2 mt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={loadWorkRecord}
+                  loading={loadingWorkRecord}
+                >
+                  Preview Work Record
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={downloadWorkRecordPdf}
+                  disabled={!statementFrom || !statementTo}
+                >
+                  Download Work Record
+                </Button>
+              </div>
+
+              {workRecord && (
+                <div className="mt-4 border border-border rounded-lg p-3 text-sm">
+                  <p className="mb-2 text-xs font-medium text-text">
+                    {workRecord.period.from} to {workRecord.period.to}
+                  </p>
+                  <p className="text-text-muted mb-2">
+                    {workRecord.record.totalHours.toFixed(2)} hours across{' '}
+                    {workRecord.record.projectCount} project
+                    {workRecord.record.projectCount === 1 ? '' : 's'}
+                    {workRecord.record.notYetChargedHours > 0
+                      ? `, of which ${workRecord.record.notYetChargedHours.toFixed(2)} not yet charged`
+                      : ''}
+                  </p>
+                  {!workRecord.record.reconciles && (
+                    <p className="text-error mb-2">
+                      These figures do not add up against the invoices, so no PDF can be produced.
+                      Please check the entries before sending anything to the client.
+                    </p>
+                  )}
+                  <div className="max-h-[200px] overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-text-muted">
+                          <th className="text-left font-medium py-1">Project</th>
+                          <th className="text-right font-medium py-1">Hours</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {workRecord.record.projects.map((p) => (
+                          <tr key={p.project} className="border-t border-border">
+                            <td className="py-1">{p.project}</td>
+                            <td className="py-1 text-right">{p.hours.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* Statement preview */}
               {statement && (

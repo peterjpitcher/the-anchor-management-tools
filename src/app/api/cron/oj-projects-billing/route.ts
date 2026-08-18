@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { applyStatementCapTopUp } from '@/lib/oj-projects/statement-cap'
+import { getEntryCharge, getRecurringCharge } from '@/lib/oj-projects/charges'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { generateOjTimesheetPDF } from '@/lib/oj-timesheet'
@@ -744,40 +745,6 @@ function buildInvoiceNotes(input: {
   return lines.join('\n')
 }
 
-function getEntryCharge(entry: any, settings: any) {
-  const entryType = String(entry?.entry_type || '')
-  if (entryType === 'mileage') {
-    const miles = Number(entry.miles || 0)
-    const rate = resolveRate(entry.mileage_rate_snapshot, settings?.mileage_rate, DEFAULT_MILEAGE_RATE)
-    const exVat = roundMoney(miles * rate)
-    const vatRate = 0
-    const incVat = roundMoney(exVat)
-    return { exVat, vatRate, incVat }
-  }
-
-  if (entryType === 'one_off') {
-    const exVat = roundMoney(Number(entry.amount_ex_vat_snapshot || 0))
-    const vatRate = Number(entry.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
-    const incVat = moneyIncVat(exVat, vatRate)
-    return { exVat, vatRate, incVat }
-  }
-
-  const minutes = Number(entry.duration_minutes_rounded || 0)
-  const hours = minutes / 60
-  const rate = resolveRate(entry.hourly_rate_ex_vat_snapshot, settings?.hourly_rate_ex_vat, DEFAULT_HOURLY_RATE_EX_VAT)
-  const vatRate = Number(entry.vat_rate_snapshot ?? settings?.vat_rate ?? 20)
-  const exVat = roundMoney(hours * rate)
-  const incVat = moneyIncVat(exVat, vatRate)
-  return { exVat, vatRate, incVat }
-}
-
-function getRecurringCharge(instance: any) {
-  const exVat = roundMoney(Number(instance.amount_ex_vat_snapshot || 0))
-  const vatRate = Number(instance.vat_rate_snapshot || 0)
-  const incVat = moneyIncVat(exVat, vatRate)
-  return { exVat, vatRate, incVat }
-}
-
 function isRecurringInstanceActive(instance: any) {
   return instance?.recurring_charge?.is_active !== false
 }
@@ -870,6 +837,10 @@ function computePartialMilesForHeadroom(totalMiles: number, rate: number, headro
 function buildEntryInsertPayload(entry: any, overrides: Record<string, any>) {
   return {
     vendor_id: entry.vendor_id,
+    // The remainder points back at the half that kept the billed portion. Without
+    // it the two rows are identical apart from their duration, and on the client
+    // Work Record the pair reads as double billing.
+    split_from_entry_id: entry.split_from_entry_id ?? entry.id ?? null,
     project_id: entry.project_id,
     entry_type: entry.entry_type,
     entry_date: entry.entry_date,
