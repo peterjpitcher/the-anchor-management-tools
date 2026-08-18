@@ -151,10 +151,12 @@ export default function EmployeesClient({ initialData, initialError, permissions
         <PageHeader
           breadcrumbs={[{ label: 'Employees' }]}
           title="Employees"
-          subtitle={`${roster.statusCounts.active} active · ${roster.statusCounts.former} former · ${roster.statusCounts.onboarding} onboarding`}
           className="mb-0"
           actions={
             <div className="flex items-center gap-2">
+              <Link href="/employees/birthdays">
+                <Button variant="secondary" size="sm">Birthdays</Button>
+              </Link>
               <Link href="/employees/reliability">
                 <Button variant="secondary" size="sm">Reliability</Button>
               </Link>
@@ -186,7 +188,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Stat label="Active" value={String(roster.statusCounts.active)} />
           <Stat label="Onboarding" value={String(roster.statusCounts.onboarding)} />
           <Stat label="Former" value={String(roster.statusCounts.former)} />
@@ -199,6 +201,7 @@ export default function EmployeesClient({ initialData, initialError, permissions
             { id: 'all', label: `All (${roster.statusCounts.all})` },
             { id: 'Active', label: `Active (${roster.statusCounts.active})` },
             { id: 'Onboarding', label: `Onboarding (${roster.statusCounts.onboarding})` },
+            { id: 'Started Separation', label: `On Notice (${roster.statusCounts.startedSeparation})` },
             { id: 'Former', label: `Former (${roster.statusCounts.former})` },
           ]}
           activeTab={selectedStatus}

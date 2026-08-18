@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizePersonName } from '@/lib/names';
 import { z } from 'zod';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
+import { countAllowanceDays, getHolidayYear, getHolidayYearBounds } from '@/lib/leave/working-days';
+import { consumesAllowance, getAllowanceConsumingTypes } from '@/lib/leave/leave-types';
 import { formatPhoneForStorage } from '@/lib/utils';
 import { displayName } from '@/lib/employees/display-name';
 import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
@@ -193,13 +195,35 @@ function sanitizeEmployeeSearchTerm(value: string): string {
     .slice(0, 80);
 }
 
-function getCurrentCalendarYearDateRange(): { startDate: string; endDate: string } {
-  const currentYear = getTodayIsoDate().slice(0, 4);
+/**
+ * The current holiday year's date bounds.
+ *
+ * This used to be the calendar year, while the Holidays tab on the employee record used the
+ * configured holiday year. That was one of two reasons the same person could read 27 days on
+ * the roster and 4 on their own record. Both now read the same window and count it the same
+ * way, through countAllowanceDays.
+ */
+async function getCurrentHolidayYearDateRange(
+  adminClient: ReturnType<typeof createAdminClient>,
+): Promise<{ startDate: string; endDate: string }> {
+  const [monthSetting, daySetting] = await Promise.all([
+    adminClient.from('system_settings').select('value').eq('key', 'rota_holiday_year_start_month').maybeSingle(),
+    adminClient.from('system_settings').select('value').eq('key', 'rota_holiday_year_start_day').maybeSingle(),
+  ]);
 
-  return {
-    startDate: `${currentYear}-01-01`,
-    endDate: `${currentYear}-12-31`,
+  const readNumber = (row: { data: { value: unknown } | null }, fallback: number): number => {
+    const wrapped = row.data?.value as { value?: unknown } | undefined;
+    const value = Number(wrapped?.value);
+    return Number.isFinite(value) ? value : fallback;
   };
+
+  // Same defaults as getRotaSettings, kept here so the roster never fails on a missing row.
+  const startMonth = readNumber(monthSetting, 4);
+  const startDay = readNumber(daySetting, 6);
+
+  const today = getTodayIsoDate();
+  const holidayYear = getHolidayYear(today, startMonth, startDay);
+  return getHolidayYearBounds(holidayYear, startMonth, startDay);
 }
 
 export const addAttachmentSchema = z.object({
@@ -1308,10 +1332,14 @@ export class EmployeeService {
     const holidayCounts = new Map<string, number>();
 
     if (employeeIds.length > 0) {
-      const { startDate, endDate } = getCurrentCalendarYearDateRange();
+      const [{ startDate, endDate }, allowanceConsuming] = await Promise.all([
+        getCurrentHolidayYearDateRange(adminClient),
+        getAllowanceConsumingTypes(adminClient),
+      ]);
+
       const { data: leaveDays, error: leaveDaysError } = await adminClient
         .from('leave_days')
-        .select('employee_id, leave_date, leave_requests!inner(status)')
+        .select('employee_id, leave_date, leave_requests!inner(status, leave_type)')
         .in('employee_id', employeeIds)
         .gte('leave_date', startDate)
         .lte('leave_date', endDate)
@@ -1321,10 +1349,30 @@ export class EmployeeService {
         throw leaveDaysError;
       }
 
-      for (const leaveDay of leaveDays ?? []) {
-        const employeeId = (leaveDay as { employee_id?: string | null }).employee_id;
+      type RosterLeaveDay = {
+        employee_id?: string | null;
+        leave_date: string;
+        leave_requests:
+          | { status: string; leave_type: string | null }
+          | { status: string; leave_type: string | null }[]
+          | null;
+      };
+
+      const perEmployee = new Map<string, { leave_date: string; consumes_allowance: boolean }[]>();
+      for (const row of (leaveDays ?? []) as RosterLeaveDay[]) {
+        const employeeId = row.employee_id;
         if (!employeeId) continue;
-        holidayCounts.set(employeeId, (holidayCounts.get(employeeId) ?? 0) + 1);
+        const request = Array.isArray(row.leave_requests) ? row.leave_requests[0] : row.leave_requests;
+        const bucket = perEmployee.get(employeeId) ?? [];
+        bucket.push({
+          leave_date: String(row.leave_date),
+          consumes_allowance: consumesAllowance(request?.leave_type, allowanceConsuming),
+        });
+        perEmployee.set(employeeId, bucket);
+      }
+
+      for (const [employeeId, rows] of perEmployee) {
+        holidayCounts.set(employeeId, countAllowanceDays(rows));
       }
     }
 

@@ -6,6 +6,7 @@ import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 interface PersonalData {
   first_name: string;
   last_name: string;
+  preferred_name: string;
   date_of_birth: string;
   address: string;
   post_code: string;
@@ -23,6 +24,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
   const [data, setData] = useState<PersonalData>({
     first_name: initialData?.first_name ?? '',
     last_name: initialData?.last_name ?? '',
+    preferred_name: initialData?.preferred_name ?? '',
     date_of_birth: initialData?.date_of_birth ?? '',
     address: initialData?.address ?? '',
     post_code: initialData?.post_code ?? '',
@@ -50,6 +52,7 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
       const result = await saveOnboardingSection(token, 'personal', {
         first_name: data.first_name.trim(),
         last_name: data.last_name.trim(),
+        preferred_name: data.preferred_name.trim() || null,
         date_of_birth: data.date_of_birth || null,
         address: data.address || null,
         post_code: data.post_code || null,
@@ -90,6 +93,22 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {field('first_name', 'First Name', 'text', true)}
         {field('last_name', 'Last Name', 'text', true)}
+      </div>
+      <div>
+        <label htmlFor="preferred_name" className="block text-sm font-medium text-gray-700 mb-1">
+          Preferred Name
+        </label>
+        <input
+          id="preferred_name"
+          type="text"
+          value={data.preferred_name}
+          onChange={(e) => setData({ ...data, preferred_name: e.target.value })}
+          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          What you would like the team to call you. Leave blank to use your first name. If someone
+          here already goes by the same name, add your first initial, for example &quot;Jacob H&quot;.
+        </p>
       </div>
       {field('date_of_birth', 'Date of Birth', 'date')}
       <div>

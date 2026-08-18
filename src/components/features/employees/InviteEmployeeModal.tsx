@@ -61,6 +61,23 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
               />
             </div>
 
+            <div>
+              <label htmlFor="invite-start-date" className="block text-sm font-medium text-gray-700 mb-1">
+                Employment start date
+              </label>
+              <input
+                id="invite-start-date"
+                name="employment_start_date"
+                type="date"
+                required
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Set now so their length of service is right from day one. Completing onboarding
+                does not ask for it, so this is the only place it gets recorded.
+              </p>
+            </div>
+
             {state?.type === 'error' && (
               <p className="text-sm text-red-600">{state.message}</p>
             )}

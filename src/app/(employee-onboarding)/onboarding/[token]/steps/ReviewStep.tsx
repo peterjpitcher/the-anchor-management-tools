@@ -8,9 +8,11 @@ interface ReviewStepProps {
   token: string;
   savedSections: {
     personal: boolean;
+    time_off: boolean;
     emergency_contacts: boolean;
     financial: boolean;
     health: boolean;
+    right_to_work_notice: boolean;
   };
 }
 
@@ -38,9 +40,11 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
 
   const sections = [
     { key: 'personal', label: 'Personal Details' },
+    { key: 'time_off', label: 'Time Off Booked' },
     { key: 'emergency_contacts', label: 'Emergency Contacts' },
     { key: 'financial', label: 'Financial Details' },
     { key: 'health', label: 'Health Information' },
+    { key: 'right_to_work_notice', label: 'Right to Work' },
   ] as const;
 
   const allComplete = sections.every((s) => savedSections[s.key]);

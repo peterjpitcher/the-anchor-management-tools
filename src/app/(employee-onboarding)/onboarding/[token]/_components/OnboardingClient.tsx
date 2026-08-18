@@ -8,6 +8,8 @@ import PersonalStep from '../steps/PersonalStep'
 import EmergencyContactsStep from '../steps/EmergencyContactsStep'
 import FinancialStep from '../steps/FinancialStep'
 import HealthStep from '../steps/HealthStep'
+import TimeOffStep from '../steps/TimeOffStep'
+import RightToWorkNoticeStep from '../steps/RightToWorkNoticeStep'
 import ReviewStep from '../steps/ReviewStep'
 import type { InviteType, OnboardingSnapshot } from '@/app/actions/employeeInvite'
 
@@ -19,19 +21,21 @@ interface OnboardingClientProps {
   initialData: OnboardingSnapshot | null
 }
 
-type SectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health'
+type SectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off' | 'right_to_work_notice'
 
 const ONBOARDING_STEPS = [
   { key: 'create_account', title: 'Create Account' },
   { key: 'personal', title: 'Personal Details' },
+  { key: 'time_off', title: 'Time Off Booked' },
   { key: 'emergency_contacts', title: 'Emergency Contacts' },
   { key: 'financial', title: 'Financial Details' },
   { key: 'health', title: 'Health Information' },
+  { key: 'right_to_work_notice', title: 'Right to Work' },
   { key: 'review', title: 'Review & Submit' },
 ] as const
 
 function firstIncompleteStepIndex(savedSections: Record<SectionKey, boolean>): number {
-  const orderedSections: SectionKey[] = ['personal', 'emergency_contacts', 'financial', 'health']
+  const orderedSections: SectionKey[] = ['personal', 'time_off', 'emergency_contacts', 'financial', 'health', 'right_to_work_notice']
   const firstMissing = orderedSections.findIndex((section) => !savedSections[section])
   return firstMissing === -1 ? orderedSections.length : firstMissing
 }
@@ -90,9 +94,11 @@ function OnboardingFlow({
 }: Omit<OnboardingClientProps, 'inviteType'>) {
   const initialSavedSections = initialData?.completedSections ?? {
     personal: false,
+    time_off: false,
     emergency_contacts: false,
     financial: false,
     health: false,
+    right_to_work_notice: false,
   }
 
   const [accountCreated, setAccountCreated] = useState(hasAuthUser)
@@ -152,6 +158,19 @@ function OnboardingFlow({
             }}
           />
         )
+      case 'time_off':
+        return (
+          <TimeOffStep
+            token={token}
+            initialAnswer={initialData?.time_off?.answer ?? null}
+            initialBlocks={initialData?.time_off?.blocks ?? []}
+            initialSubmissionVersion={initialData?.time_off?.submissionVersion ?? 0}
+            onSuccess={() => {
+              markSectionComplete('time_off')
+              goToNextStep()
+            }}
+          />
+        )
       case 'emergency_contacts':
         return (
           <EmergencyContactsStep
@@ -181,6 +200,17 @@ function OnboardingFlow({
             initialData={initialData?.health}
             onSuccess={() => {
               markSectionComplete('health')
+              goToNextStep()
+            }}
+          />
+        )
+      case 'right_to_work_notice':
+        return (
+          <RightToWorkNoticeStep
+            token={token}
+            initialAcknowledged={initialData?.right_to_work_notice?.acknowledged ?? false}
+            onSuccess={() => {
+              markSectionComplete('right_to_work_notice')
               goToNextStep()
             }}
           />
