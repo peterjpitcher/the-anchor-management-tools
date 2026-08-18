@@ -5,7 +5,6 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
-import { normalizeNonWorkingWeekdays } from '@/lib/leave/working-days';
 
 export type PayAgeBand = {
   id: string;
@@ -285,7 +284,6 @@ const PaySettingsSchema = z.object({
   employeeId: z.string().uuid(),
   payType: z.enum(['hourly', 'salaried']),
   maxWeeklyHours: z.number().positive().nullable().optional(),
-  nonWorkingWeekdays: z.array(z.number().int().min(1).max(5)).max(5).optional(),
 });
 
 export async function upsertEmployeePaySettings(input: z.infer<typeof PaySettingsSchema>): Promise<
@@ -305,14 +303,16 @@ export async function upsertEmployeePaySettings(input: z.infer<typeof PaySetting
     .eq('employee_id', parsed.data.employeeId)
     .maybeSingle();
 
-  const nonWorkingWeekdays = normalizeNonWorkingWeekdays(parsed.data.nonWorkingWeekdays);
+  // non_working_weekdays is deliberately no longer written. Holiday now counts every calendar
+  // day of an allowance-consuming leave type, so there is no weekday exclusion to configure.
+  // The column is left in place until a later migration drops it, so nothing reading old rows
+  // breaks in the meantime.
   const { data, error } = await supabase
     .from('employee_pay_settings')
     .upsert({
       employee_id: parsed.data.employeeId,
       pay_type: parsed.data.payType,
       max_weekly_hours: parsed.data.maxWeeklyHours ?? null,
-      non_working_weekdays: nonWorkingWeekdays,
     }, { onConflict: 'employee_id' })
     .select('*')
     .single();
