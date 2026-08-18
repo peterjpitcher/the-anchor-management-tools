@@ -547,6 +547,11 @@ export async function declineOpenShiftVolunteer(
  * Assign an unfilled shift to anybody, the same operation as dragging it onto
  * their row on the grid. Like any grid edit this lands in the draft, so the week
  * still needs republishing before staff see it.
+ *
+ * The approved-leave guard is NOT repeated here. This delegates to `moveShift`,
+ * which writes through `write_rota_shifts_with_leave_guard`, so a volunteer who
+ * has approved leave that day is refused with the clash named. Checking again
+ * beforehand would only add a second, weaker copy of the rule that could drift.
  */
 export async function assignOpenShiftFromQueue(
   shiftId: string,

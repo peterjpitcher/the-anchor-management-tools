@@ -8,6 +8,7 @@ import { addShiftsFromTemplates } from '@/app/actions/rota';
 import type { RotaWeek, RotaShift, RotaEmployee } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import { displayName } from '@/lib/employees/display-name';
+import { calculatePaidHours } from '@/lib/rota/pay-math';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,14 +46,11 @@ interface FloatingItem {
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-function paidHours(start: string, end: string, breakMins: number): string {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (endM <= startM) endM += 24 * 60;
-  const paid = Math.max(0, endM - startM - breakMins) / 60;
-  return `${paid.toFixed(1)}h`;
+/** Paid hours for a template row, formatted for display. The arithmetic itself
+ *  lives in @/lib/rota/pay-math so every rota surface agrees. Templates carry no
+ *  overnight flag, so an end time before the start is the only wrap rule. */
+function formatPaidHours(start: string, end: string, breakMins: number): string {
+  return `${calculatePaidHours(start, end, breakMins).toFixed(1)}h`;
 }
 
 function formatDayHeader(isoDate: string): string {
@@ -275,7 +273,7 @@ export default function AddShiftsModal({
                     <span className="text-xs text-gray-500">
                       {item.template.start_time.slice(0, 5)}–{item.template.end_time.slice(0, 5)}
                       {' · '}
-                      {paidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
+                      {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                     </span>
                     {emp && (
                       <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
@@ -369,7 +367,7 @@ export default function AddShiftsModal({
                         <span className="text-xs text-gray-500">
                           {item.template.start_time.slice(0, 5)}–{item.template.end_time.slice(0, 5)}
                           {' · '}
-                          {paidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
+                          {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                         </span>
                         {emp && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">

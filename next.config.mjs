@@ -75,6 +75,20 @@ const nextConfig = {
       },
     ]
   },
+  async redirects() {
+    return [
+      {
+        // The /rota/print page was superseded by /api/rota/pdf and has been
+        // removed. Next forwards the query string automatically when the
+        // destination has none of its own, so saved ?week= links keep working.
+        // Temporary (307) rather than permanent, so a browser never pins the
+        // redirect in its cache if the path is ever reused.
+        source: '/rota/print',
+        destination: '/api/rota/pdf',
+        permanent: false,
+      },
+    ]
+  },
   images: {
     remotePatterns: [
       {

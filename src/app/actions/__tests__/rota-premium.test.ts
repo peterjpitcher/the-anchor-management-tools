@@ -19,17 +19,37 @@ const mockCreateAdminClient = vi.mocked(createAdminClient)
 
 const WEEK = { week_start: '2026-03-16' } // Monday
 
-// Capture the row passed to rota_shifts.insert so assertions can inspect the
-// premium columns that createShift persists.
-function makeSupabase(captured: { row?: Record<string, unknown> }) {
-  const insertReturn = {
-    select: vi.fn().mockReturnValue({
-      single: vi.fn().mockResolvedValue({
-        data: { id: 'shift-1', week_id: 'week-1', ...(captured.row ?? {}) },
-        error: null,
-      }),
-    }),
-  }
+type GuardCapture = { row?: Record<string, unknown>; rpcNames: string[] }
+
+function newCapture(): GuardCapture {
+  return { rpcNames: [] }
+}
+
+// Every rota write now goes through write_rota_shifts_with_leave_guard, so the
+// premium columns are asserted on the payload handed to that function rather
+// than on a PostgREST .insert()/.update() that no longer happens. The rpc name
+// is captured too, so the guard cannot be quietly taken back out.
+function makeGuardRpc(captured: GuardCapture) {
+  return vi.fn().mockImplementation((name: string, args: { p_shifts: Array<{ ref: string; values: Record<string, unknown> }> }) => {
+    captured.rpcNames.push(name)
+    if (name !== 'write_rota_shifts_with_leave_guard') {
+      return Promise.resolve({ data: null, error: null })
+    }
+    captured.row = args.p_shifts[0]?.values
+    return Promise.resolve({
+      data: {
+        status: 'written',
+        shifts: args.p_shifts.map(entry => ({ ref: entry.ref, shift_id: 'shift-1' })),
+        conflicts: [],
+        reason: null,
+      },
+      error: null,
+    })
+  })
+}
+
+// The cookie client only reads the week on the create path now.
+function makeSupabase(_captured: GuardCapture) {
   const from = vi.fn().mockImplementation((table: string) => {
     if (table === 'rota_weeks') {
       return {
@@ -39,14 +59,6 @@ function makeSupabase(captured: { row?: Record<string, unknown> }) {
         update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) }),
       }
     }
-    if (table === 'rota_shifts') {
-      return {
-        insert: vi.fn().mockImplementation((row: Record<string, unknown>) => {
-          captured.row = row
-          return insertReturn
-        }),
-      }
-    }
     return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
   })
 
@@ -54,6 +66,28 @@ function makeSupabase(captured: { row?: Record<string, unknown> }) {
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
     from,
   }
+}
+
+// The admin client on the create path: the guarded write, then the read-back of
+// the row it produced.
+function makeCreateAdmin(captured: GuardCapture) {
+  const from = vi.fn().mockImplementation((table: string) => {
+    if (table === 'rota_shifts') {
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockImplementation(() => Promise.resolve({
+              data: { id: 'shift-1', week_id: 'week-1', ...(captured.row ?? {}) },
+              error: null,
+            })),
+          }),
+        }),
+      }
+    }
+    return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
+  })
+
+  return { from, rpc: makeGuardRpc(captured) }
 }
 
 const BASE = {
@@ -75,8 +109,9 @@ describe('createShift premium handling', () => {
   })
 
   it('persists a whole-shift multiplier premium', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({ ...BASE, rateMultiplier: 1.5 } as never)
     expect(result.success).toBe(true)
@@ -87,8 +122,9 @@ describe('createShift premium handling', () => {
   })
 
   it('persists a custom rate override and clears the multiplier', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({ ...BASE, rateOverride: 18.5 } as never)
     expect(result.success).toBe(true)
@@ -97,8 +133,9 @@ describe('createShift premium handling', () => {
   })
 
   it('persists a valid partial window within the shift', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({
       ...BASE,
@@ -112,8 +149,9 @@ describe('createShift premium handling', () => {
   })
 
   it('rejects a window that starts before the shift', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({
       ...BASE,
@@ -127,8 +165,9 @@ describe('createShift premium handling', () => {
   })
 
   it('rejects a window where end is not after start', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({
       ...BASE,
@@ -141,8 +180,9 @@ describe('createShift premium handling', () => {
   })
 
   it('rejects a window with no rate set', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({
       ...BASE,
@@ -154,8 +194,9 @@ describe('createShift premium handling', () => {
   })
 
   it('accepts an after-midnight window on an overnight shift', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     // 20:00 -> 04:00 overnight; double-time from 00:00 to 04:00 (after midnight).
     const result = await createShift({
@@ -173,8 +214,9 @@ describe('createShift premium handling', () => {
   })
 
   it('accepts an overnight window that starts exactly at the shift start', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     // Regression: 18:00 -> 02:00 overnight shift, premium window 18:00 -> 20:00.
     // The window start equals the shift start, so it must NOT wrap to day+1
@@ -194,8 +236,9 @@ describe('createShift premium handling', () => {
   })
 
   it('rejects a custom rate above the £100/hr cap', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({ ...BASE, rateOverride: 150 } as never)
     expect(result.success).toBe(false)
@@ -203,17 +246,54 @@ describe('createShift premium handling', () => {
   })
 
   it('accepts a custom rate at exactly the £100/hr cap', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({ ...BASE, rateOverride: 100 } as never)
     expect(result.success).toBe(true)
     expect(captured.row?.rate_override).toBe(100)
   })
 
-  it('stores no premium when the rate is standard', async () => {
-    const captured: { row?: Record<string, unknown> } = {}
+  it('writes through the leave guard, not a bare insert', async () => {
+    // The guard is the only thing stopping a shift landing on approved leave
+    // (decision D1). If a refactor drops it, this fails rather than going quiet.
+    const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
+
+    const result = await createShift({ ...BASE } as never)
+    expect(result.success).toBe(true)
+    expect(captured.rpcNames).toContain('write_rota_shifts_with_leave_guard')
+  })
+
+  it('refuses when the guard reports approved leave', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    const admin = makeCreateAdmin(captured)
+    admin.rpc = vi.fn().mockResolvedValue({
+      data: {
+        status: 'leave_conflict',
+        shifts: [],
+        conflicts: [{ ref: 'shift', employee_id: BASE.employeeId, conflict_date: '2026-03-16' }],
+        reason: 'employee_on_leave',
+      },
+      error: null,
+    }) as never
+    admin.from = vi.fn().mockImplementation(() => ({
+      select: vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }),
+    })) as never
+    mockCreateAdminClient.mockReturnValue(admin as never)
+
+    const result = await createShift({ ...BASE } as never)
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error).toMatch(/approved leave/i)
+  })
+
+  it('stores no premium when the rate is standard', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeSupabase(captured) as never)
+    mockCreateAdminClient.mockReturnValue(makeCreateAdmin(captured) as never)
 
     const result = await createShift({ ...BASE } as never)
     expect(result.success).toBe(true)
@@ -279,27 +359,16 @@ const CURRENT: CurrentShift = {
   premium_end_time: null,
 }
 
-function makeUpdateSupabase(current: CurrentShift, captured: { payload?: Record<string, unknown> }) {
+// The cookie client only reads the shift being edited now: the write itself goes
+// through the guarded RPC on the admin client.
+function makeUpdateSupabase(current: CurrentShift) {
   const from = vi.fn().mockImplementation((table: string) => {
     if (table === 'rota_shifts') {
       return {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: current, error: null }) }),
         }),
-        update: vi.fn().mockImplementation((payload: Record<string, unknown>) => {
-          captured.payload = payload
-          return {
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: { ...current, ...payload }, error: null }),
-              }),
-            }),
-          }
-        }),
       }
-    }
-    if (table === 'rota_weeks') {
-      return { update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) }) }
     }
     return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
   })
@@ -314,12 +383,26 @@ function makeUpdateSupabase(current: CurrentShift, captured: { payload?: Record<
 // written by the rota write path (they resolve premium live), so we track any
 // timeclock_sessions.update to prove none happens, and track payroll approval
 // deletes to prove a genuine premium change invalidates the frozen snapshot.
-function makeAdmin(options: { periods?: Array<{ year: number; month: number }> } = {}) {
+function makeAdmin(options: { periods?: Array<{ year: number; month: number }>; current?: CurrentShift; captured?: GuardCapture } = {}) {
   const periods = options.periods ?? [{ year: 2026, month: 3 }]
+  const current = options.current ?? CURRENT
+  const captured = options.captured ?? newCapture()
   const sessionUpdates: Array<Record<string, unknown>> = []
   const approvalDeletes: Array<{ year: number; month: number }> = []
 
   const from = vi.fn().mockImplementation((table: string) => {
+    if (table === 'rota_shifts') {
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockImplementation(() => Promise.resolve({
+              data: { ...current, ...(captured.row ?? {}) },
+              error: null,
+            })),
+          }),
+        }),
+      }
+    }
     if (table === 'timeclock_sessions') {
       return {
         select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }),
@@ -346,7 +429,7 @@ function makeAdmin(options: { periods?: Array<{ year: number; month: number }> }
     }
     return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
   })
-  return { client: { from }, sessionUpdates, approvalDeletes }
+  return { client: { from, rpc: makeGuardRpc(captured) }, sessionUpdates, approvalDeletes, captured }
 }
 
 describe('updateShift premium handling', () => {
@@ -356,9 +439,9 @@ describe('updateShift premium handling', () => {
   })
 
   it('sets a premium on edit, invalidates payroll approvals, and never writes to sessions', async () => {
-    const captured: { payload?: Record<string, unknown> } = {}
-    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT, captured) as never)
-    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }] })
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }], captured })
     mockCreateAdminClient.mockReturnValue(admin.client as never)
 
     const result = await updateShift('shift-1', {
@@ -369,8 +452,8 @@ describe('updateShift premium handling', () => {
       premium_end_time: null,
     })
     expect(result.success).toBe(true)
-    expect(captured.payload?.rate_multiplier).toBe(1.5)
-    expect(captured.payload?.premium_reason).toBe('Bank holiday')
+    expect(captured.row?.rate_multiplier).toBe(1.5)
+    expect(captured.row?.premium_reason).toBe('Bank holiday')
     // Sessions inherit live now — the rota write path must never touch them.
     expect(admin.sessionUpdates).toHaveLength(0)
     // A genuine premium change drops the frozen payroll approval for the date.
@@ -380,9 +463,9 @@ describe('updateShift premium handling', () => {
   it('does NOT invalidate payroll approvals when the premium is unchanged', async () => {
     // Current shift already has ×1.5; re-saving the same premium is a no-op.
     const current: CurrentShift = { ...CURRENT, rate_multiplier: 1.5 }
-    const captured: { payload?: Record<string, unknown> } = {}
-    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current, captured) as never)
-    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }] })
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current) as never)
+    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }], current, captured })
     mockCreateAdminClient.mockReturnValue(admin.client as never)
 
     const result = await updateShift('shift-1', {
@@ -397,9 +480,9 @@ describe('updateShift premium handling', () => {
     // `numeric` reads come back as STRINGS; "1.50" must equal 1.5 so an unchanged
     // re-save does not churn payroll approvals.
     const current = { ...CURRENT, rate_multiplier: '1.50' as unknown as number }
-    const captured: { payload?: Record<string, unknown> } = {}
-    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current, captured) as never)
-    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }] })
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current) as never)
+    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }], current, captured })
     mockCreateAdminClient.mockReturnValue(admin.client as never)
 
     const result = await updateShift('shift-1', {
@@ -413,16 +496,16 @@ describe('updateShift premium handling', () => {
     // Regression: merging premium fields must let an explicit null CLEAR the other
     // rate column, otherwise the stale override survives and (override-wins) is paid.
     const current: CurrentShift = { ...CURRENT, rate_override: 20 as unknown as number, rate_multiplier: null }
-    const captured: { payload?: Record<string, unknown> } = {}
-    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current, captured) as never)
-    mockCreateAdminClient.mockReturnValue(makeAdmin().client as never)
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current) as never)
+    mockCreateAdminClient.mockReturnValue(makeAdmin({ current, captured }).client as never)
 
     const result = await updateShift('shift-1', {
       rate_multiplier: 1.5, rate_override: null, premium_reason: null, premium_start_time: null, premium_end_time: null,
     })
     expect(result.success).toBe(true)
-    expect(captured.payload?.rate_multiplier).toBe(1.5)
-    expect(captured.payload?.rate_override).toBeNull()
+    expect(captured.row?.rate_multiplier).toBe(1.5)
+    expect(captured.row?.rate_override).toBeNull()
   })
 
   it('does not invalidate approvals when a windowed premium is re-saved unchanged (HH:mm vs HH:mm:ss)', async () => {
@@ -431,9 +514,9 @@ describe('updateShift premium handling', () => {
     const current: CurrentShift = {
       ...CURRENT, rate_multiplier: 2, premium_start_time: '20:00:00', premium_end_time: '23:00:00',
     }
-    const captured: { payload?: Record<string, unknown> } = {}
-    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current, captured) as never)
-    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }] })
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(current) as never)
+    const admin = makeAdmin({ periods: [{ year: 2026, month: 3 }], current, captured })
     mockCreateAdminClient.mockReturnValue(admin.client as never)
 
     const result = await updateShift('shift-1', {
@@ -443,10 +526,22 @@ describe('updateShift premium handling', () => {
     expect(admin.approvalDeletes).toHaveLength(0)
   })
 
+  it('writes through the leave guard, not a bare update', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    const admin = makeAdmin({ captured })
+    mockCreateAdminClient.mockReturnValue(admin.client as never)
+
+    const result = await updateShift('shift-1', { notes: 'Covering the bar' })
+    expect(result.success).toBe(true)
+    expect(captured.rpcNames).toContain('write_rota_shifts_with_leave_guard')
+    expect(captured.row?.notes).toBe('Covering the bar')
+  })
+
   it('rejects a premium window that falls outside the edited shift times', async () => {
-    const captured: { payload?: Record<string, unknown> } = {}
-    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT, captured) as never)
-    mockCreateAdminClient.mockReturnValue(makeAdmin().client as never)
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    mockCreateAdminClient.mockReturnValue(makeAdmin({ captured }).client as never)
 
     const result = await updateShift('shift-1', {
       rate_multiplier: 2,
@@ -457,7 +552,7 @@ describe('updateShift premium handling', () => {
     })
     expect(result.success).toBe(false)
     if (!result.success) expect(result.error).toMatch(/within the shift/i)
-    expect(captured.payload).toBeUndefined()
+    expect(captured.row).toBeUndefined()
   })
 })
 
