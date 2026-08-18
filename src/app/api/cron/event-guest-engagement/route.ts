@@ -15,6 +15,7 @@ import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import { shouldSuppressEventReminderForLateBooking } from '@/lib/events/reminder-eligibility'
 import {
   getFirstVisitReviewEligibleCandidateKeys,
   hasCustomerReviewed,
@@ -88,6 +89,7 @@ const EVENT_PROMO_TEMPLATE_KEYS = [
 
 type BookingWithRelations = {
   id: string
+  created_at: string
   customer_id: string
   event_id: string
   seats: number | null
@@ -752,6 +754,7 @@ async function loadEventBookingsForEngagement(
     .from('bookings')
     .select(`
       id,
+      created_at,
       customer_id,
       event_id,
       seats,
@@ -919,6 +922,14 @@ async function processReminders(
       continue
     }
 
+    if (shouldSuppressEventReminderForLateBooking({
+      bookingCreatedAt: booking.created_at,
+      eventStartAt: eventStartIso,
+    })) {
+      result.skipped += 1
+      continue
+    }
+
     if (sentSet.has(`${booking.id}:${TEMPLATE_REMINDER_1D}`)) {
       result.skipped += 1
       continue
@@ -943,7 +954,7 @@ async function processReminders(
     // rather than selling. No seat ask: they have their seats.
     const seatCount = Math.max(0, Number(booking.seats || 0))
     const seatPhrase = seatCount === 1 ? 'Your seat is' : `Your ${seatCount} seats are`
-    const baseBody = `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come early for a drink if you fancy.`
+    const baseBody = `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come a bit early tomorrow if you fancy a drink.`
     const messageBody = ensureReplyInstruction(
       manageLink ? `${baseBody} Change: ${manageLink}` : baseBody,
       supportPhone
