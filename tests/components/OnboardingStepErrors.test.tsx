@@ -7,12 +7,14 @@ import ReviewStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/Rev
 const createEmployeeAccount = vi.fn()
 const saveOnboardingSection = vi.fn()
 const submitOnboardingProfile = vi.fn()
+const checkPreferredNameAvailability = vi.fn()
 const routerPush = vi.fn()
 
 vi.mock('@/app/actions/employeeInvite', () => ({
   createEmployeeAccount: (...args: unknown[]) => createEmployeeAccount(...args),
   saveOnboardingSection: (...args: unknown[]) => saveOnboardingSection(...args),
   submitOnboardingProfile: (...args: unknown[]) => submitOnboardingProfile(...args),
+  checkPreferredNameAvailability: (...args: unknown[]) => checkPreferredNameAvailability(...args),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -22,6 +24,59 @@ vi.mock('next/navigation', () => ({
 describe('onboarding step errors', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    checkPreferredNameAvailability.mockResolvedValue({ available: true })
+  })
+
+  it('warns about a taken preferred name as soon as the field is left', async () => {
+    // The uniqueness rule is a partial index covering only Active staff, so an onboarding record
+    // can hold a duplicate right up until submission flips its status. Without this warning the
+    // starter only finds out on the final screen, which has no name field to correct.
+    checkPreferredNameAvailability.mockResolvedValue({
+      available: false,
+      message: 'Someone here already goes by "Peter". Please pick something else, for example add your first initial.',
+    })
+
+    render(<PersonalStep token="invite-token" onSuccess={vi.fn()} />)
+
+    const field = screen.getByLabelText('Preferred Name')
+    fireEvent.change(field, { target: { value: 'Peter' } })
+    fireEvent.blur(field)
+
+    expect(await screen.findByText(/already goes by "Peter"/)).toBeInTheDocument()
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('clears the preferred name warning once the starter edits it again', async () => {
+    checkPreferredNameAvailability.mockResolvedValue({
+      available: false,
+      message: 'Someone here already goes by "Peter".',
+    })
+
+    render(<PersonalStep token="invite-token" onSuccess={vi.fn()} />)
+
+    const field = screen.getByLabelText('Preferred Name')
+    fireEvent.change(field, { target: { value: 'Peter' } })
+    fireEvent.blur(field)
+    expect(await screen.findByText(/already goes by "Peter"/)).toBeInTheDocument()
+
+    fireEvent.change(field, { target: { value: 'Peter H' } })
+    await waitFor(() => {
+      expect(screen.queryByText(/already goes by "Peter"/)).not.toBeInTheDocument()
+    })
+  })
+
+  it('does not block typing when the availability check itself fails', async () => {
+    checkPreferredNameAvailability.mockRejectedValue(new Error('network'))
+
+    render(<PersonalStep token="invite-token" onSuccess={vi.fn()} />)
+
+    const field = screen.getByLabelText('Preferred Name')
+    fireEvent.change(field, { target: { value: 'Peter' } })
+    fireEvent.blur(field)
+
+    await waitFor(() => {
+      expect(field).not.toHaveAttribute('aria-invalid')
+    })
   })
 
   it('surfaces thrown account creation errors', async () => {
