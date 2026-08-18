@@ -56,8 +56,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
     <div className="space-y-8">
       {/* Holiday year */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-1">Holiday Year</h3>
-        <p className="text-xs text-gray-500 mb-4">
+        <h3 className="text-sm font-semibold text-text-strong mb-1">Holiday Year</h3>
+        <p className="text-xs text-text-muted mb-4">
           The date on which the annual holiday entitlement resets. Defaults to 1 January, so the
           holiday year runs with the financial year.
         </p>
@@ -90,8 +90,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
 
       {/* Default allowance */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-1">Default Holiday Allowance</h3>
-        <p className="text-xs text-gray-500 mb-4">
+        <h3 className="text-sm font-semibold text-text-strong mb-1">Default Holiday Allowance</h3>
+        <p className="text-xs text-text-muted mb-4">
           Used when an employee has no personal allowance set in their pay settings.
         </p>
         <FormGroup label="Days per year" htmlFor="default-days" className="w-40">
@@ -109,8 +109,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
 
       {/* Labour planning */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-1">Labour Planning</h3>
-        <p className="text-xs text-gray-500 mb-4">
+        <h3 className="text-sm font-semibold text-text-strong mb-1">Labour Planning</h3>
+        <p className="text-xs text-text-muted mb-4">
           Used on the rota to flag days where scheduled wages exceed the target percentage of sales.
         </p>
         <FormGroup label="Target wage percentage" htmlFor="wage-target-percent" className="w-48">
@@ -129,8 +129,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
 
       {/* Email addresses */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-1">Email Addresses</h3>
-        <p className="text-xs text-gray-500 mb-4">
+        <h3 className="text-sm font-semibold text-text-strong mb-1">Email Addresses</h3>
+        <p className="text-xs text-text-muted mb-4">
           Where automated rota and payroll emails are sent. These override any environment variable fallbacks.
         </p>
         <div className="space-y-4 max-w-md">

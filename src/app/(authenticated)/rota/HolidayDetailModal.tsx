@@ -29,9 +29,9 @@ function dayCount(start: string, end: string): number {
 
 const STATUS_LABELS: Record<string, string> = { pending: 'Pending approval', approved: 'Approved', declined: 'Declined' };
 const STATUS_CLASSES: Record<string, string> = {
-  pending:  'bg-amber-100 text-amber-800',
-  approved: 'bg-green-100 text-green-800',
-  declined: 'bg-red-100 text-red-800',
+  pending:  'bg-warning-soft text-warning-fg',
+  approved: 'bg-success-soft text-success-fg',
+  declined: 'bg-danger-soft text-danger-fg',
 };
 
 export default function HolidayDetailModal({
@@ -101,45 +101,45 @@ export default function HolidayDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Holiday Request</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{employeeName}</p>
+            <h2 className="text-base font-semibold text-text-strong">Holiday Request</h2>
+            <p className="text-sm text-text-muted mt-0.5">{employeeName}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none mt-[-2px]" aria-label="Close">×</button>
+          <button type="button" onClick={onClose} className="text-text-subtle hover:text-text-muted text-2xl leading-none mt-[-2px]" aria-label="Close">×</button>
         </div>
 
         {/* Body */}
         <div className="px-5 py-4 space-y-4 min-h-[120px]">
-          {loading && <p className="text-sm text-gray-400">Loading…</p>}
-          {fetchError && <p className="text-sm text-red-600">{fetchError}</p>}
+          {loading && <p className="text-sm text-text-subtle">Loading…</p>}
+          {fetchError && <p className="text-sm text-danger-fg">{fetchError}</p>}
 
           {request && !isEditing && (
             <>
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Dates</p>
-                <p className="text-sm font-semibold text-gray-900">{formatDateRange(request.start_date, request.end_date)}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{days} day{days !== 1 ? 's' : ''}</p>
+                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Dates</p>
+                <p className="text-sm font-semibold text-text-strong">{formatDateRange(request.start_date, request.end_date)}</p>
+                <p className="text-xs text-text-muted mt-0.5">{days} day{days !== 1 ? 's' : ''}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Status</p>
+                <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Status</p>
                 <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${STATUS_CLASSES[request.status] ?? ''}`}>
                   {STATUS_LABELS[request.status] ?? request.status}
                 </span>
               </div>
               {request.note && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Employee note</p>
-                  <p className="text-sm text-gray-700">{request.note}</p>
+                  <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Employee note</p>
+                  <p className="text-sm text-text">{request.note}</p>
                 </div>
               )}
               {request.manager_note && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Manager note</p>
-                  <p className="text-sm text-gray-700">{request.manager_note}</p>
+                  <p className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">Manager note</p>
+                  <p className="text-sm text-text">{request.manager_note}</p>
                 </div>
               )}
             </>
@@ -148,25 +148,25 @@ export default function HolidayDetailModal({
           {request && isEditing && (
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Start date</label>
+                <label className="text-xs font-medium text-text block mb-1">Start date</label>
                 <input
                   type="date"
                   value={editStart}
                   onChange={e => setEditStart(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-border-focus"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">End date</label>
+                <label className="text-xs font-medium text-text block mb-1">End date</label>
                 <input
                   type="date"
                   value={editEnd}
                   min={editStart}
                   onChange={e => setEditEnd(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-border-focus"
                 />
               </div>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-text-subtle">
                 {editStart && editEnd && editStart <= editEnd
                   ? `${dayCount(editStart, editEnd)} day${dayCount(editStart, editEnd) !== 1 ? 's' : ''}`
                   : 'Invalid range'}
@@ -175,9 +175,9 @@ export default function HolidayDetailModal({
           )}
 
           {confirmDelete && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
-              <p className="text-sm font-semibold text-red-800">Delete this holiday request?</p>
-              <p className="text-xs text-red-600 mt-1">
+            <div className="rounded-lg bg-danger-soft border border-danger/25 px-4 py-3">
+              <p className="text-sm font-semibold text-danger-fg">Delete this holiday request?</p>
+              <p className="text-xs text-danger-fg mt-1">
                 This removes {days} day{days !== 1 ? 's' : ''} of leave for {employeeName} and cannot be undone.
               </p>
             </div>
@@ -185,13 +185,13 @@ export default function HolidayDetailModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3">
+        <div className="px-5 py-4 border-t border-border flex items-center gap-3">
           {/* Left: delete trigger / confirm */}
           {canEdit && !isEditing && !confirmDelete && (
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="text-sm font-medium text-red-600 hover:text-red-700"
+              className="text-sm font-medium text-danger-fg hover:text-danger-fg"
             >
               Delete
             </button>
@@ -202,7 +202,7 @@ export default function HolidayDetailModal({
                 type="button"
                 onClick={() => setConfirmDelete(false)}
                 disabled={isDeleting}
-                className="text-sm text-gray-600 hover:text-gray-800 px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-50"
+                className="text-sm text-text-muted hover:text-text-strong px-3 py-1.5 rounded-lg border border-border disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -210,7 +210,7 @@ export default function HolidayDetailModal({
                 type="button"
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="text-sm font-medium bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="text-sm font-medium bg-danger text-white px-3 py-1.5 rounded-lg hover:bg-danger disabled:opacity-50"
               >
                 {isDeleting ? 'Deleting…' : 'Confirm delete'}
               </button>
@@ -224,7 +224,7 @@ export default function HolidayDetailModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="text-sm text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+                  className="text-sm text-text-muted px-3 py-1.5 rounded-lg border border-border hover:bg-surface-2"
                 >
                   Close
                 </button>
@@ -232,7 +232,7 @@ export default function HolidayDetailModal({
                   <button
                     type="button"
                     onClick={() => setIsEditing(true)}
-                    className="text-sm font-medium bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700"
+                    className="text-sm font-medium bg-primary text-primary-fg px-3 py-1.5 rounded-lg hover:bg-primary-hover"
                   >
                     Edit dates
                   </button>
@@ -245,7 +245,7 @@ export default function HolidayDetailModal({
                   type="button"
                   onClick={() => { setIsEditing(false); if (request) { setEditStart(request.start_date); setEditEnd(request.end_date); } }}
                   disabled={isSaving}
-                  className="text-sm text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                  className="text-sm text-text-muted px-3 py-1.5 rounded-lg border border-border hover:bg-surface-2 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -253,7 +253,7 @@ export default function HolidayDetailModal({
                   type="button"
                   onClick={handleSave}
                   disabled={isSaving || !editStart || !editEnd || editStart > editEnd}
-                  className="text-sm font-medium bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50"
+                  className="text-sm font-medium bg-primary text-primary-fg px-3 py-1.5 rounded-lg hover:bg-primary-hover disabled:opacity-50"
                 >
                   {isSaving ? 'Saving…' : 'Save changes'}
                 </button>
