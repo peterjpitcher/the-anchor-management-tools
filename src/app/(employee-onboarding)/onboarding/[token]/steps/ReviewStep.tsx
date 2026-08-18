@@ -12,6 +12,7 @@ interface ReviewStepProps {
     emergency_contacts: boolean;
     financial: boolean;
     health: boolean;
+    right_to_work_notice: boolean;
   };
 }
 
@@ -43,6 +44,7 @@ export default function ReviewStep({ token, savedSections }: ReviewStepProps) {
     { key: 'emergency_contacts', label: 'Emergency Contacts' },
     { key: 'financial', label: 'Financial Details' },
     { key: 'health', label: 'Health Information' },
+    { key: 'right_to_work_notice', label: 'Right to Work' },
   ] as const;
 
   const allComplete = sections.every((s) => savedSections[s.key]);
