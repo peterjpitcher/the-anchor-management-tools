@@ -75,7 +75,7 @@ export async function getWorkRecord(
     invoiceIds.length
       ? supabase
           .from('invoices')
-          .select('id, invoice_number, invoice_date, status, total_amount')
+          .select('id, invoice_number, invoice_date, status, total_amount, is_fixed_price')
           .in('id', invoiceIds)
           .is('deleted_at', null)
           // Void invoices are excluded, as on the account statement. Their work

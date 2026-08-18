@@ -85,4 +85,28 @@ describe('work record template', () => {
       generateWorkRecordPDF({ ...INPUT, record: { ...record, reconciles: false } })
     ).rejects.toThrow(/did not reconcile/)
   })
+
+  it('describes a fixed-price stage as an agreed price, not a carry-forward', () => {
+    const fixed = buildWorkRecord({
+      entries: [
+        {
+          id: 'e1', entry_date: '2026-01-13', entry_type: 'time',
+          description: 'Front-end architecture', duration_minutes_rounded: 300,
+          miles: null, amount_ex_vat_snapshot: null, hourly_rate_ex_vat_snapshot: 75,
+          mileage_rate_snapshot: null, vat_rate_snapshot: 20, billable: true,
+          status: 'paid', invoice_id: 'inv-1',
+          project: { project_code: 'OJP-GB-1', project_name: 'Dukes Head website' },
+        },
+      ],
+      recurring: [],
+      invoices: [{ id: 'inv-1', invoice_number: 'INV-003VI', invoice_date: '2026-01-02', status: 'paid', total_amount: 500, is_fixed_price: true }],
+      settings: SETTINGS,
+    })
+
+    const html = generateWorkRecordHTML({ ...INPUT, record: fixed, monthlyCapIncVat: null })
+
+    expect(html).toContain('Agreed fixed price for this stage')
+    expect(html).toContain('Time spent on this stage')
+    expect(html).not.toContain('carried forward to a later invoice')
+  })
 })

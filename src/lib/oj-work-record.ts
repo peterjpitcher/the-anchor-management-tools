@@ -218,8 +218,14 @@ export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
   const invoiceBlocks = record.invoiceBlocks
     .map((block) => {
       const carried = block.carriedForwardExVat
-      const carriedRow =
-        Math.abs(carried) < 0.005
+      // A fixed-price stage says so plainly. Printing a carry-forward against an
+      // agreed price would invent a balance that does not exist.
+      const carriedRow = block.fixedPrice
+        ? `      <tr>
+        <td>Agreed fixed price for this stage</td>
+        <td class="num"></td>
+      </tr>`
+        : Math.abs(carried) < 0.005
           ? ''
           : `      <tr>
         <td>${carried > 0 ? 'Payment towards earlier work carried forward' : 'Work carried forward to a later invoice'}</td>
@@ -238,8 +244,8 @@ export function generateWorkRecordHTML(input: WorkRecordPDFInput): string {
 ${block.lines.length ? linesTable(block.lines, true) : '    <p class="note">No time entries on this invoice.</p>'}
     <table class="closing">
       <tr>
-        <td>Work on this invoice, ${block.hours.toFixed(2)} hours</td>
-        <td class="num">${money(block.workExVat)}</td>
+        <td>${block.fixedPrice ? `Time spent on this stage, ${block.hours.toFixed(2)} hours` : `Work on this invoice, ${block.hours.toFixed(2)} hours`}</td>
+        <td class="num">${block.fixedPrice ? '' : money(block.workExVat)}</td>
       </tr>
 ${recurringRow}
 ${carriedRow}
