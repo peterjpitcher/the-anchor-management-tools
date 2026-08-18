@@ -67,7 +67,7 @@ export default async function LeaveManagementPage() {
       >
         <Card>
           {requests.length === 0 ? (
-            <p className="text-sm text-gray-400 italic py-4 text-center">
+            <p className="text-sm text-text-subtle italic py-4 text-center">
               No leave requests submitted yet.
             </p>
           ) : (

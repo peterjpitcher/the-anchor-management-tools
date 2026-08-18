@@ -71,26 +71,26 @@ export default function MarkSickModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-surface shadow-xl"
         onClick={event => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-gray-200 p-5">
+        <div className="flex items-start justify-between border-b border-border p-5">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Mark as Couldn&apos;t Work</h2>
-            <p className="text-sm text-gray-500">{formatDate(shift?.shift_date ?? shiftDate ?? '')}</p>
-            <p className="mt-0.5 text-sm font-medium text-gray-900">{employeeName}</p>
+            <h2 className="text-lg font-semibold text-text-strong">Mark as Couldn&apos;t Work</h2>
+            <p className="text-sm text-text-muted">{formatDate(shift?.shift_date ?? shiftDate ?? '')}</p>
+            <p className="mt-0.5 text-sm font-medium text-text-strong">{employeeName}</p>
             {shift ? (
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-text-muted">
                 {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
               </p>
             ) : (
-              <p className="mt-1 text-sm text-gray-500">No shift scheduled</p>
+              <p className="mt-1 text-sm text-text-muted">No shift scheduled</p>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:text-gray-600"
+            className="rounded p-1 text-text-subtle hover:text-text-muted"
             aria-label="Close"
           >
             <XMarkIcon className="h-5 w-5" />

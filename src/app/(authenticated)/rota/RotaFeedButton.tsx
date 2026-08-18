@@ -94,17 +94,17 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
           {/* Popover */}
-          <div ref={popoverRef} role="dialog" aria-modal="true" className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3">
+          <div ref={popoverRef} role="dialog" aria-modal="true" className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] bg-surface border border-border rounded-xl shadow-lg p-4 space-y-3">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-900">Calendar feed</p>
-                <p className="text-xs text-gray-500 mt-0.5">Subscribe to see all rota shifts in your calendar app. Rota changes appear within 24 hours of publishing (Google Calendar), or sooner in Apple Calendar and Outlook.</p>
+                <p className="text-sm font-semibold text-text-strong">Calendar feed</p>
+                <p className="text-xs text-text-muted mt-0.5">Subscribe to see all rota shifts in your calendar app. Rota changes appear within 24 hours of publishing (Google Calendar), or sooner in Apple Calendar and Outlook.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close calendar feed popover"
-                className="p-1 text-gray-400 hover:text-gray-600 rounded shrink-0 ml-2"
+                className="p-1 text-text-subtle hover:text-text-muted rounded shrink-0 ml-2"
               >
                 <XMarkIcon className="h-4 w-4" />
               </button>
@@ -115,27 +115,27 @@ export default function RotaFeedButton({ feedUrl, showCalendarSync }: RotaFeedBu
                 type="text"
                 readOnly
                 value={feedUrl}
-                className="flex-1 min-w-0 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 text-gray-600 truncate focus:outline-none"
+                className="flex-1 min-w-0 text-xs border border-border rounded-lg px-2.5 py-1.5 bg-surface-2 text-text-muted truncate focus:outline-none"
                 onFocus={e => e.target.select()}
               />
               <button
                 type="button"
                 onClick={handleCopy}
-                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-surface-hover hover:bg-surface-hover rounded-lg transition-colors"
               >
                 {copied
-                  ? <><CheckIcon className="h-3.5 w-3.5 text-green-600" />Copied</>
+                  ? <><CheckIcon className="h-3.5 w-3.5 text-success-fg" />Copied</>
                   : <><ClipboardDocumentIcon className="h-3.5 w-3.5" />Copy</>
                 }
               </button>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
-              <p className="text-xs font-medium text-gray-600">How to subscribe:</p>
-              <ul className="text-xs text-gray-500 space-y-1">
-                <li><span className="font-medium text-gray-700">Google Calendar</span> — Other calendars → From URL</li>
-                <li><span className="font-medium text-gray-700">Apple Calendar</span> — File → New Calendar Subscription</li>
-                <li><span className="font-medium text-gray-700">Outlook</span> — Add calendar → Subscribe from web</li>
+            <div className="bg-surface-2 rounded-lg p-3 space-y-1.5">
+              <p className="text-xs font-medium text-text-muted">How to subscribe:</p>
+              <ul className="text-xs text-text-muted space-y-1">
+                <li><span className="font-medium text-text">Google Calendar</span> — Other calendars → From URL</li>
+                <li><span className="font-medium text-text">Apple Calendar</span> — File → New Calendar Subscription</li>
+                <li><span className="font-medium text-text">Outlook</span> — Add calendar → Subscribe from web</li>
               </ul>
             </div>
           </div>
