@@ -10,9 +10,10 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { sendRotaWeekEmails, sendRotaWeekChangeEmails, type DiffShiftRow } from '@/lib/rota/send-rota-emails';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { sendEmail } from '@/lib/email/emailService';
-import { fromZonedTime } from 'date-fns-tz';
-import { parseLondonDateTimeLocal } from '@/lib/dateUtils';
+import { formatDateInLondon, parseLondonDateTimeLocal } from '@/lib/dateUtils';
 import { hasPremium } from '@/lib/rota/pay-calculator';
+import { isInsideAcceptanceCutoff, isInsideLatePublishGrace } from '@/lib/rota/acceptance-cutoff';
+import { resolveRotaManagerEmail } from '@/lib/rota/manager-email';
 import {
   buildOpenShiftRequestManagerEmailHtml,
   buildShiftRejectedManagerEmailHtml,
@@ -172,8 +173,27 @@ function addDaysIso(isoDate: string, days: number): string {
 const SHIFT_AUTO_ACCEPT_POLICY_NOTE =
   'In line with our policy, all shifts must be accepted or rejected no less than two weeks before the shift.';
 
-const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
-const MANAGER_SHIFT_EMAIL = 'manager@the-anchor.pub';
+// The cutoff itself lives in @/lib/rota/acceptance-cutoff, which is the one
+// definition shared by this file, the staff portal, the rota grid and the
+// acceptance cron. It used to be declared in all four with two different
+// meanings (spec F14, decision D12), so do not re-derive it here.
+
+// Decision D13: publishing inside the cutoff is allowed but must never
+// auto-accept on the employee's behalf. A shift first published to somebody
+// inside the cutoff instead gets 48 hours from that publish in which they may
+// still turn it down. That window is decided by isInsideLatePublishGrace() in
+// @/lib/rota/acceptance-cutoff, shared with the staff portal and the acceptance
+// cron. It is deliberately not re-derived here: this file once granted the
+// window to shifts that were published in good time, so a shift the portal and
+// the cron both treated as auto-accepted could still be rejected through the
+// server action.
+
+/** The three fields the shared grace helper reads off a published shift row. */
+type LatePublishGraceShift = {
+  shift_date: string;
+  start_time: string;
+  first_published_at: string | null;
+};
 
 function getAppBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
@@ -299,16 +319,6 @@ function normaliseShiftPremium(input: PremiumWindowInput & { premiumReason?: str
   };
 }
 
-function shiftStartInstant(shiftDate: string, startTime: string): Date {
-  return fromZonedTime(`${shiftDate}T${startTime}`, 'Europe/London');
-}
-
-function isInsideAcceptanceCutoff(shiftDate: string, startTime: string, now: Date = new Date()): boolean {
-  const shiftStart = shiftStartInstant(shiftDate, startTime);
-  const cutoffMs = SHIFT_ACCEPTANCE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
-  return shiftStart.getTime() - now.getTime() <= cutoffMs;
-}
-
 function initialAcceptanceForShift(input: {
   employee_id?: string | null;
   is_open_shift?: boolean | null;
@@ -379,6 +389,213 @@ function shiftEmailSummary(shift: {
     department: shift.department,
     templateName: shift.name ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Approved leave and rota shifts (spec F2, decisions D1, D7, D8)
+//
+// Approved leave is an absolute bar on being rostered. There is no override and
+// no permission that skips it. The check and the write happen together inside
+// write_rota_shifts_with_leave_guard, under row locks, so a leave approval
+// landing at the same moment as a shift assignment cannot slip between them: an
+// application-side preflight query could not close that gap.
+//
+// Every rota write path goes through writeShiftsWithLeaveGuard below. It is a
+// batch by design, so the bulk paths can show a manager every clash at once
+// instead of failing on the first bad row, and nothing is written unless the
+// whole set is clear.
+// ---------------------------------------------------------------------------
+
+type GuardedShiftWrite = {
+  /** Caller key, echoed back, so a batch can match new ids to the rows it sent. */
+  ref: string;
+  /** Absent or null inserts a new shift; a shift id updates that shift. */
+  shiftId?: string | null;
+  /** snake_case rota_shifts columns to set. */
+  values: Record<string, unknown>;
+};
+
+type LeaveConflictRow = {
+  ref: string;
+  shift_id: string | null;
+  employee_id: string | null;
+  shift_date: string;
+  conflict_date: string;
+  leave_request_id: string | null;
+};
+
+type GuardedWriteOutcome =
+  | { success: true; shiftIdsByRef: Map<string, string> }
+  | { success: false; error: string };
+
+type EmployeeNameRow = {
+  employee_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  preferred_name: string | null;
+};
+
+/** "22 August", or "22 August and 23 August" when a shift straddles midnight. */
+function formatLeaveConflictDates(dates: string[]): string {
+  const labels = [...new Set(dates)]
+    .sort()
+    .map(date => formatDateInLondon(date, { day: 'numeric', month: 'long' }));
+
+  if (labels.length <= 1) return labels[0] ?? '';
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * Turn the function's structured refusal into something a manager can act on:
+ * who is on leave, and which day or days are in the way.
+ */
+async function describeLeaveConflicts(
+  admin: ReturnType<typeof createAdminClient>,
+  conflicts: LeaveConflictRow[],
+): Promise<string> {
+  const datesByEmployee = new Map<string, string[]>();
+  for (const conflict of conflicts) {
+    if (!conflict.employee_id) continue;
+    const dates = datesByEmployee.get(conflict.employee_id) ?? [];
+    dates.push(conflict.conflict_date);
+    datesByEmployee.set(conflict.employee_id, dates);
+  }
+
+  if (datesByEmployee.size === 0) {
+    return 'That clashes with approved leave.';
+  }
+
+  const { data } = await admin
+    .from('employees')
+    .select('employee_id, first_name, last_name, preferred_name')
+    .in('employee_id', [...datesByEmployee.keys()]);
+
+  const nameById = new Map<string, string>(
+    ((data ?? []) as EmployeeNameRow[]).map(row => [row.employee_id, employeeDisplayName(row)]),
+  );
+
+  const sentences = [...datesByEmployee.entries()]
+    .map(([employeeId, dates]) =>
+      `${nameById.get(employeeId) ?? 'That employee'} has approved leave on ${formatLeaveConflictDates(dates)}`,
+    )
+    .sort();
+
+  return `${sentences.join('. ')}.`;
+}
+
+/**
+ * Write one or more rota shifts through the leave guard. All or nothing: if any
+ * row would put somebody on shift during approved leave, nothing is written and
+ * every clash comes back in one refusal.
+ *
+ * The function also sets `has_unpublished_changes` on any affected published
+ * week, in the same transaction, so callers must NOT repeat that update. Doing
+ * it separately is what let a saved edit leave a week looking clean (spec F17).
+ */
+async function writeShiftsWithLeaveGuard(
+  admin: ReturnType<typeof createAdminClient>,
+  entries: GuardedShiftWrite[],
+): Promise<GuardedWriteOutcome> {
+  const { data, error } = await admin.rpc('write_rota_shifts_with_leave_guard', {
+    p_shifts: entries.map(entry => ({
+      ref: entry.ref,
+      shift_id: entry.shiftId ?? null,
+      values: entry.values,
+    })),
+  });
+
+  if (error) return { success: false, error: error.message };
+
+  const result = (data ?? null) as {
+    status?: string;
+    shifts?: Array<{ ref: string; shift_id: string }>;
+    conflicts?: LeaveConflictRow[];
+    reason?: string | null;
+  } | null;
+
+  if (!result?.status) return { success: false, error: 'The shift could not be saved' };
+
+  if (result.status === 'leave_conflict') {
+    return { success: false, error: await describeLeaveConflicts(admin, result.conflicts ?? []) };
+  }
+
+  if (result.status === 'stale') {
+    return {
+      success: false,
+      error: result.reason === 'shift_missing'
+        ? 'Shift not found'
+        : 'That shift changed while you were editing it. Refresh and try again.',
+    };
+  }
+
+  if (result.status !== 'written') {
+    return { success: false, error: 'The shift could not be saved' };
+  }
+
+  return {
+    success: true,
+    shiftIdsByRef: new Map((result.shifts ?? []).map(row => [row.ref, row.shift_id])),
+  };
+}
+
+/**
+ * Send one manager alert and record it in the rota email log.
+ *
+ * The address comes from the single resolver (spec F8, decision D15): the Rota
+ * Settings value, then the environment variable, then nothing. There is
+ * deliberately no fallback address. When none is configured the failure is
+ * logged, both to the console and to rota_email_log, and the email is skipped:
+ * a configuration gap must never break the staff-facing action behind it.
+ */
+async function sendRotaManagerAlert(
+  admin: ReturnType<typeof createAdminClient>,
+  alert: {
+    emailType: string;
+    entityType: string;
+    entityId: string;
+    subject: string;
+    html: string;
+    sentBy: string | null;
+  },
+): Promise<void> {
+  const resolved = await resolveRotaManagerEmail(admin);
+
+  if ('error' in resolved) {
+    console.error('[rota] Manager alert not sent:', alert.subject, resolved.error);
+    await admin.from('rota_email_log').insert({
+      email_type: alert.emailType,
+      entity_type: alert.entityType,
+      entity_id: alert.entityId,
+      to_addresses: [],
+      subject: alert.subject,
+      status: 'failed',
+      error_message: resolved.error,
+      sent_by: alert.sentBy,
+    });
+    return;
+  }
+
+  let status: 'sent' | 'failed' = 'failed';
+  let errorMessage: string | null = null;
+  try {
+    const emailResult = await sendEmail({ to: resolved.email, subject: alert.subject, html: alert.html });
+    status = emailResult.success ? 'sent' : 'failed';
+    errorMessage = emailResult.success ? null : emailResult.error ?? null;
+  } catch (sendError) {
+    status = 'failed';
+    errorMessage = sendError instanceof Error ? sendError.message : String(sendError);
+  }
+
+  await admin.from('rota_email_log').insert({
+    email_type: alert.emailType,
+    entity_type: alert.entityType,
+    entity_id: alert.entityId,
+    to_addresses: [resolved.email],
+    subject: alert.subject,
+    status,
+    error_message: errorMessage,
+    sent_by: alert.sentBy,
+  });
 }
 
 type OpenShiftRequestContextRow = {
@@ -1214,9 +1431,12 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
 
   const premium = normaliseShiftPremium(parsed.data);
 
-  const { data, error } = await supabase
-    .from('rota_shifts')
-    .insert({
+  // The write goes through the leave guard, which refuses outright if this puts
+  // somebody on shift during approved leave and marks the week dirty itself.
+  const admin = createAdminClient();
+  const written = await writeShiftsWithLeaveGuard(admin, [{
+    ref: 'shift',
+    values: {
       week_id: parsed.data.weekId,
       employee_id: parsed.data.isOpenShift ? null : (parsed.data.employeeId ?? null),
       is_open_shift: parsed.data.isOpenShift,
@@ -1237,19 +1457,22 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
         shift_date: parsed.data.shiftDate,
         start_time: parsed.data.startTime,
       }),
-      created_by: user?.id,
-    })
+      created_by: user?.id ?? null,
+    },
+  }]);
+
+  if (!written.success) return { success: false, error: written.error };
+
+  const newShiftId = written.shiftIdsByRef.get('shift');
+  if (!newShiftId) return { success: false, error: 'The shift could not be saved' };
+
+  const { data, error } = await admin
+    .from('rota_shifts')
     .select('*')
+    .eq('id', newShiftId)
     .single();
 
-  if (error) return { success: false, error: error.message };
-
-  // Mark week as having changes (if published)
-  await supabase
-    .from('rota_weeks')
-    .update({ has_unpublished_changes: true })
-    .eq('id', parsed.data.weekId)
-    .eq('status', 'published');
+  if (error || !data) return { success: false, error: error?.message ?? 'The shift could not be saved' };
 
   // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({
@@ -1352,21 +1575,26 @@ export async function updateShift(
     }));
   }
 
-  const { data, error } = await supabase
+  // The guard checks the row this update WOULD produce, so an edit that only
+  // moves the date is still checked against the employee already on the shift.
+  // It marks the week dirty in the same transaction, so there is no separate
+  // flag update here any more.
+  const admin = createAdminClient();
+  const written = await writeShiftsWithLeaveGuard(admin, [{
+    ref: 'shift',
+    shiftId,
+    values: updatePayload,
+  }]);
+
+  if (!written.success) return { success: false, error: written.error };
+
+  const { data, error } = await admin
     .from('rota_shifts')
-    .update(updatePayload)
-    .eq('id', shiftId)
     .select('*')
+    .eq('id', shiftId)
     .single();
 
-  if (error) return { success: false, error: error.message };
-
-  // Mark week as having unpublished changes
-  await supabase
-    .from('rota_weeks')
-    .update({ has_unpublished_changes: true })
-    .eq('id', data.week_id)
-    .eq('status', 'published');
+  if (error || !data) return { success: false, error: error?.message ?? 'The shift could not be saved' };
 
   // Editing an open shift into a cancelled or sick one kills any outstanding
   // requests to pick it up.
@@ -1380,7 +1608,6 @@ export async function updateShift(
   if (premiumChanged) {
     const shiftDate = (data.shift_date ?? current.shift_date) as string | null;
     if (shiftDate) {
-      const admin = createAdminClient();
       await invalidatePayrollApprovalsForDate(admin, shiftDate);
       // Audit the snapshot deletion so the invalidation is traceable to the
       // shift-premium change that caused it.
@@ -2035,7 +2262,12 @@ export async function acceptPortalShift(shiftId: string): Promise<
 
   const now = new Date();
   const insideCutoff = isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now);
-  const nextAcceptance = insideCutoff
+  const withinGrace = isInsideLatePublishGrace(shift as LatePublishGraceShift, now);
+  // D13: a shift published late is not auto-accepted, so somebody who accepts it
+  // inside their 48-hour window has genuinely chosen it. Recording that as an
+  // auto-acceptance would be untrue and would feed the reliability score wrongly.
+  const autoAccepted = insideCutoff && !withinGrace;
+  const nextAcceptance = autoAccepted
     ? {
         acceptance_status: 'auto_accepted' as const,
         acceptance_decided_at: now.toISOString(),
@@ -2059,7 +2291,7 @@ export async function acceptPortalShift(shiftId: string): Promise<
 
   void logAuditEvent({
     user_id: user?.id,
-    operation_type: insideCutoff ? 'auto_accept' : 'accept',
+    operation_type: autoAccepted ? 'auto_accept' : 'accept',
     resource_type: 'rota_shift',
     resource_id: parsed.data.shiftId,
     operation_status: 'success',
@@ -2067,16 +2299,17 @@ export async function acceptPortalShift(shiftId: string): Promise<
   });
 
   await recordShiftReliabilityEvent({
-    eventType: insideCutoff ? 'shift_auto_accepted' : 'shift_accepted',
+    eventType: autoAccepted ? 'shift_auto_accepted' : 'shift_accepted',
     employeeId: employee.employee_id,
     shift: shift as RotaShift,
     eventAt: nextAcceptance.acceptance_decided_at,
-    source: insideCutoff ? 'portal_accept_inside_cutoff' : 'portal_accept',
+    source: autoAccepted ? 'portal_accept_inside_cutoff' : 'portal_accept',
     userId: user?.id,
     userEmail: user?.email ?? null,
     metadata: {
       acceptance_status: nextAcceptance.acceptance_status,
       inside_cutoff: insideCutoff,
+      late_publish_grace: withinGrace,
     },
   });
 
@@ -2085,7 +2318,7 @@ export async function acceptPortalShift(shiftId: string): Promise<
   return {
     success: true,
     data: updated.data,
-    ...(insideCutoff ? { message: 'This shift is inside the two-week cutoff and has been auto-accepted.' } : {}),
+    ...(autoAccepted ? { message: 'This shift is inside the two-week cutoff and has been auto-accepted.' } : {}),
   };
 }
 
@@ -2131,7 +2364,13 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
   const now = new Date();
   const rejectedAt = now.toISOString();
   const rejectionNote = rejectionReason.reason;
-  if (isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now)) {
+  const insideCutoff = isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now);
+  // D13: a shift the employee only saw inside the cutoff, because the week was
+  // published late, is still theirs to turn down for 48 hours from that publish.
+  // Outside that window the two-week policy stands and the shift auto-accepts.
+  const withinGrace = isInsideLatePublishGrace(shift as LatePublishGraceShift, now);
+
+  if (insideCutoff && !withinGrace) {
     const updated = await setPublishedAndLiveAcceptance(parsed.data.shiftId, employee.employee_id, {
       acceptance_status: 'auto_accepted',
       acceptance_decided_at: rejectedAt,
@@ -2235,31 +2474,13 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
   );
 
   const staffName = employeeDisplayName(employee);
-  const subject = `Shift rejected: ${staffName} on ${shift.shift_date}`;
-  let emailStatus: 'sent' | 'failed' = 'failed';
-  let emailError: string | null = null;
-  try {
-    const emailResult = await sendEmail({
-      to: MANAGER_SHIFT_EMAIL,
-      subject,
-      html: buildShiftRejectedManagerEmailHtml(shiftEmailSummary(shift, staffName), rejectionNote),
-    });
-    emailStatus = emailResult.success ? 'sent' : 'failed';
-    emailError = emailResult.success ? null : emailResult.error ?? null;
-  } catch (sendError) {
-    emailStatus = 'failed';
-    emailError = sendError instanceof Error ? sendError.message : String(sendError);
-  }
-
-  await admin.from('rota_email_log').insert({
-    email_type: 'shift_rejected',
-    entity_type: 'rota_shift',
-    entity_id: parsed.data.shiftId,
-    to_addresses: [MANAGER_SHIFT_EMAIL],
-    subject,
-    status: emailStatus,
-    error_message: emailError,
-    sent_by: user.id,
+  await sendRotaManagerAlert(admin, {
+    emailType: 'shift_rejected',
+    entityType: 'rota_shift',
+    entityId: parsed.data.shiftId,
+    subject: `Shift rejected: ${staffName} on ${shift.shift_date}`,
+    html: buildShiftRejectedManagerEmailHtml(shiftEmailSummary(shift, staffName), rejectionNote),
+    sentBy: user.id,
   });
 
   void logAuditEvent({
@@ -2284,6 +2505,8 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
     metadata: {
       acceptance_status: 'rejected',
       opened_shift: true,
+      inside_cutoff: insideCutoff,
+      late_publish_grace: withinGrace,
     },
   });
 
@@ -2354,38 +2577,21 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
   const openRotaUrl = `${getAppBaseUrl()}/rota?week=${encodeURIComponent(shift.shift_date as string)}&shift=${encodeURIComponent(parsed.data.shiftId)}`;
   const dayContext = await getOpenShiftRequestDayContext(admin, shift.shift_date as string);
 
-  let emailStatus: 'sent' | 'failed' = 'failed';
-  let emailError: string | null = null;
-  try {
-    const emailResult = await sendEmail({
-      to: MANAGER_SHIFT_EMAIL,
-      subject,
-      html: buildOpenShiftRequestManagerEmailHtml(
-        shiftEmailSummary(shift, staffName),
-        parsed.data.note?.trim() || null,
-        {
-          autoAcceptUrl,
-          openRotaUrl,
-          dayContext,
-        },
-      ),
-    });
-    emailStatus = emailResult.success ? 'sent' : 'failed';
-    emailError = emailResult.success ? null : emailResult.error ?? null;
-  } catch (sendError) {
-    emailStatus = 'failed';
-    emailError = sendError instanceof Error ? sendError.message : String(sendError);
-  }
-
-  await admin.from('rota_email_log').insert({
-    email_type: 'open_shift_requested',
-    entity_type: 'rota_shift',
-    entity_id: parsed.data.shiftId,
-    to_addresses: [MANAGER_SHIFT_EMAIL],
+  await sendRotaManagerAlert(admin, {
+    emailType: 'open_shift_requested',
+    entityType: 'rota_shift',
+    entityId: parsed.data.shiftId,
     subject,
-    status: emailStatus,
-    error_message: emailError,
-    sent_by: user.id,
+    html: buildOpenShiftRequestManagerEmailHtml(
+      shiftEmailSummary(shift, staffName),
+      parsed.data.note?.trim() || null,
+      {
+        autoAcceptUrl,
+        openRotaUrl,
+        dayContext,
+      },
+    ),
+    sentBy: user.id,
   });
 
   revalidatePath('/portal/shifts');
@@ -2474,9 +2680,13 @@ export async function moveShift(
     return { success: false, error: `Shift date must stay within this rota week (${weekStart} to ${weekEnd})` };
   }
 
-  const { data, error } = await supabase
-    .from('rota_shifts')
-    .update({
+  // Dropping somebody onto a day they have approved leave for is refused here,
+  // before the move lands. The grid used to save first and warn afterwards.
+  const admin = createAdminClient();
+  const written = await writeShiftsWithLeaveGuard(admin, [{
+    ref: 'shift',
+    shiftId,
+    values: {
       employee_id: newEmployeeId,
       is_open_shift: newEmployeeId === null,
       shift_date: newShiftDate,
@@ -2487,18 +2697,18 @@ export async function moveShift(
         shift_date: newShiftDate,
         start_time: currentShift.start_time,
       }),
-    })
-    .eq('id', shiftId)
+    },
+  }]);
+
+  if (!written.success) return { success: false, error: written.error };
+
+  const { data, error } = await admin
+    .from('rota_shifts')
     .select('*')
+    .eq('id', shiftId)
     .single();
 
-  if (error) return { success: false, error: error.message };
-
-  await supabase
-    .from('rota_weeks')
-    .update({ has_unpublished_changes: true })
-    .eq('id', (data as RotaShift).week_id)
-    .eq('status', 'published');
+  if (error || !data) return { success: false, error: error?.message ?? 'The shift could not be moved' };
 
   if (newEmployeeId && currentShift.is_open_shift) {
     await closePendingOpenShiftRequests(shiftId, user?.id, 'Shift was given to somebody else');
@@ -2563,8 +2773,8 @@ export async function autoPopulateWeekFromTemplates(
     ),
   );
 
-  // Build all inserts first, then batch insert in one round-trip (fixes N+1)
-  const insertPayload: object[] = [];
+  // Build all inserts first, then write them in one guarded round-trip (fixes N+1)
+  const insertPayload: Record<string, unknown>[] = [];
   for (const t of templates) {
     if (t.day_of_week === null || t.day_of_week === undefined) continue;
     const dayIndex = t.day_of_week as number;
@@ -2592,7 +2802,7 @@ export async function autoPopulateWeekFromTemplates(
         shift_date: date,
         start_time: (t.start_time as string).slice(0, 5),
       }),
-      created_by: user?.id,
+      created_by: user?.id ?? null,
     });
   }
 
@@ -2600,21 +2810,30 @@ export async function autoPopulateWeekFromTemplates(
     return { success: true, created: 0, shifts: [] };
   }
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('rota_shifts')
-    .insert(insertPayload)
-    .select('*');
+  // One guarded batch: every clash with approved leave comes back together and
+  // the whole population is refused, so a manager fixes the week in one pass
+  // rather than discovering the next clash on the next attempt.
+  const admin = createAdminClient();
+  const written = await writeShiftsWithLeaveGuard(
+    admin,
+    insertPayload.map((values, index) => ({ ref: String(index), values })),
+  );
 
-  if (insertError) return { success: false, error: insertError.message };
+  if (!written.success) {
+    return { success: false, error: `No shifts were added. ${written.error}` };
+  }
+
+  const insertedIds = [...written.shiftIdsByRef.values()];
+  const { data: inserted, error: readError } = await admin
+    .from('rota_shifts')
+    .select('*')
+    .in('id', insertedIds);
+
+  if (readError) return { success: false, error: readError.message };
 
   const newShifts = (inserted ?? []) as RotaShift[];
 
   if (newShifts.length > 0) {
-    await supabase
-      .from('rota_weeks')
-      .update({ has_unpublished_changes: true })
-      .eq('id', weekId)
-      .eq('status', 'published');
     revalidatePath('/rota');
   }
 
@@ -2678,7 +2897,7 @@ export async function addShiftsFromTemplates(
     ),
   );
 
-  const insertPayload: object[] = [];
+  const insertPayload: Record<string, unknown>[] = [];
   for (const sel of selections) {
     if (existingSet.has(`${sel.templateId}:${sel.date}`)) continue;
     const t = templateMap.get(sel.templateId);
@@ -2710,7 +2929,7 @@ export async function addShiftsFromTemplates(
         shift_date: sel.date,
         start_time: (t.start_time as string).slice(0, 5),
       }),
-      created_by: user?.id,
+      created_by: user?.id ?? null,
     });
   }
 
@@ -2721,31 +2940,37 @@ export async function addShiftsFromTemplates(
     return { success: true, created: 0, skipped, shifts: [] };
   }
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('rota_shifts')
-    .insert(insertPayload)
-    .select('*');
+  // One guarded batch, all or nothing, so every leave clash in the selection is
+  // reported together and none of it is half-written.
+  const admin = createAdminClient();
+  const written = await writeShiftsWithLeaveGuard(
+    admin,
+    insertPayload.map((values, index) => ({ ref: String(index), values })),
+  );
 
-  if (insertError) {
+  if (!written.success) {
     void logAuditEvent({
       user_id: user?.id,
       operation_type: 'create',
       resource_type: 'rota_week',
       resource_id: weekId,
       operation_status: 'failure',
-      additional_info: { action: 'add_shifts_from_selection', error: insertError.message },
+      additional_info: { action: 'add_shifts_from_selection', error: written.error },
     });
-    return { success: false, error: insertError.message };
+    return { success: false, error: `No shifts were added. ${written.error}` };
   }
+
+  const insertedIds = [...written.shiftIdsByRef.values()];
+  const { data: inserted, error: readError } = await admin
+    .from('rota_shifts')
+    .select('*')
+    .in('id', insertedIds);
+
+  if (readError) return { success: false, error: readError.message };
 
   const newShifts = (inserted ?? []) as RotaShift[];
 
   if (newShifts.length > 0) {
-    await supabase
-      .from('rota_weeks')
-      .update({ has_unpublished_changes: true })
-      .eq('id', weekId)
-      .eq('status', 'published');
     revalidatePath('/rota');
   }
 
@@ -2929,54 +3154,59 @@ export async function publishRotaWeek(weekId: string): Promise<
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch week metadata early — needed to determine first vs. re-publish
-  const { data: weekRow } = await supabase
+  // Week metadata first: it decides first publish versus re-publish.
+  const { data: weekRow, error: weekError } = await supabase
     .from('rota_weeks')
     .select('week_start, status')
     .eq('id', weekId)
     .single();
 
-  const isRepublish = weekRow?.status === 'published';
+  if (weekError || !weekRow) return { success: false, error: 'Rota week not found' };
 
-  // Snapshot current shifts into rota_published_shifts so staff only see
-  // what was published, not in-progress edits.
-  const { data: currentShifts } = await supabase
+  const isRepublish = weekRow.status === 'published';
+
+  // The live shifts, as they are right now. `updated_at` travels with them as
+  // the basis publish_rota_week checks: if any of these rows move before the
+  // transaction commits, the publish is refused rather than quietly dropping
+  // somebody's edit. This read must match the function's own definition of the
+  // live set, which is every shift in the week that is not cancelled.
+  const { data: currentShifts, error: currentShiftsError } = await supabase
     .from('rota_shifts')
-    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time, updated_at')
     .eq('week_id', weekId)
     .neq('status', 'cancelled');
 
-  // Replace the snapshot atomically: delete the previous published snapshot for
-  // this week, then insert the current state fresh. Using delete-then-insert is
-  // simpler and more reliable than upsert + selective-delete; the sub-millisecond
-  // empty window is acceptable for an internal management tool.
-  // Must use the admin client — rota_published_shifts has no write RLS policies
-  // for regular users (intentional: only the system should write to this table).
-  const admin = createAdminClient();
-  const now = new Date().toISOString();
+  if (currentShiftsError) return { success: false, error: currentShiftsError.message };
 
-  // For a re-publish, capture the previous snapshot BEFORE we overwrite it so we
-  // can compute the per-employee diff and only email staff whose shifts changed.
-  let previousPublishedShifts: DiffShiftRow[] = [];
-  let previousSnapshot: RotaShift[] = [];
-  if (isRepublish) {
-    const { data: prev } = await admin
-      .from('rota_published_shifts')
-      .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
-      .eq('week_id', weekId);
-    previousSnapshot = (prev ?? []) as RotaShift[];
-    previousPublishedShifts = previousSnapshot.map(s => ({
-      id: s.id,
-      employee_id: s.employee_id,
-      shift_date: s.shift_date,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      department: s.department,
-      name: s.name,
-      is_open_shift: s.is_open_shift,
-      status: s.status,
-    }));
-  }
+  // rota_published_shifts has no write RLS policies for regular users
+  // (intentional: only the system writes it), so the snapshot work runs on the
+  // admin client.
+  const admin = createAdminClient();
+
+  // The snapshot staff can see right now, read BEFORE anything is replaced. It
+  // does two jobs: it is the per-employee diff, so only staff whose shifts
+  // actually changed are emailed, and it is the acceptance basis, so somebody
+  // accepting or rejecting between this read and the commit makes the publish
+  // fail instead of overwriting their decision.
+  const { data: previousRows, error: previousError } = await admin
+    .from('rota_published_shifts')
+    .select('id, week_id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
+    .eq('week_id', weekId);
+
+  if (previousError) return { success: false, error: previousError.message };
+
+  const previousSnapshot = (previousRows ?? []) as RotaShift[];
+  const previousPublishedShifts: DiffShiftRow[] = previousSnapshot.map(s => ({
+    id: s.id,
+    employee_id: s.employee_id,
+    shift_date: s.shift_date,
+    start_time: s.start_time,
+    end_time: s.end_time,
+    department: s.department,
+    name: s.name,
+    is_open_shift: s.is_open_shift,
+    status: s.status,
+  }));
 
   const currentSnapshot = (currentShifts ?? []) as RotaShift[];
   const previousById = new Map(previousSnapshot.map(s => [s.id, s]));
@@ -2992,7 +3222,8 @@ export async function publishRotaWeek(weekId: string): Promise<
     prev.is_overnight !== curr.is_overnight ||
     prev.is_open_shift !== curr.is_open_shift ||
     prev.status !== curr.status ||
-    // A premium change is a schedule change — re-notify the affected employee.
+    // A premium change is a schedule change, so the affected employee is
+    // re-notified.
     Number(prev.rate_multiplier ?? 0) !== Number(curr.rate_multiplier ?? 0) ||
     Number(prev.rate_override ?? 0) !== Number(curr.rate_override ?? 0) ||
     (prev.premium_reason ?? null) !== (curr.premium_reason ?? null) ||
@@ -3000,15 +3231,13 @@ export async function publishRotaWeek(weekId: string): Promise<
     (prev.premium_end_time ?? null) !== (curr.premium_end_time ?? null)
   );
 
-  await Promise.all(previousSnapshot.map(async prev => {
-    if (!prev.employee_id || prev.is_open_shift || prev.status !== 'scheduled') return;
-    const curr = currentById.get(prev.id);
-    if (curr && curr.employee_id === prev.employee_id && !curr.is_open_shift && curr.status === 'scheduled') return;
-    await recordCalendarCancellation(admin, prev, curr ? 'Shift reassigned or opened' : 'Shift removed');
-  }));
-
   const rowsToPublish = currentSnapshot.map(shift => {
+    // rota_published_shifts has no updated_at of its own, and publish_rota_week
+    // rejects any column it does not recognise, so the live row's timestamp is
+    // dropped here. It travelled only as the concurrency basis.
+    const { updated_at: _liveUpdatedAt, ...publishable } = shift;
     const prev = previousById.get(shift.id);
+
     if (shift.is_open_shift) {
       const openAcceptance = shift.acceptance_status === 'rejected'
         ? {
@@ -3028,22 +3257,28 @@ export async function publishRotaWeek(weekId: string): Promise<
             auto_accept_warning_sent_at: null,
           };
 
-      return {
-        ...shift,
-        ...openAcceptance,
-        published_at: now,
-      };
+      return { ...publishable, ...openAcceptance };
     }
 
+    // Decision D13: a publish NEVER auto-accepts, however close the shift is.
+    // A shift that is new to this employee, or whose schedule has changed, goes
+    // out as pending. Their 48-hour window to turn a late-published shift down
+    // is anchored on rota_published_shifts.first_published_at, which
+    // publish_rota_week maintains: it carries the old value forward while the
+    // shift keeps the same employee and resets it when the shift is new to them.
     const shouldResetAcceptance = !prev || scheduleChanged(prev, shift);
+    const needsDecision = Boolean(shift.employee_id)
+      && shift.status !== 'sick'
+      && shift.status !== 'cancelled';
     const acceptance = shouldResetAcceptance
-      ? initialAcceptanceForShift({
-          employee_id: shift.employee_id,
-          is_open_shift: shift.is_open_shift,
-          status: shift.status,
-          shift_date: shift.shift_date,
-          start_time: shift.start_time,
-        })
+      ? {
+          acceptance_status: (needsDecision ? 'pending' : null) as ShiftAcceptanceStatus | null,
+          acceptance_decided_at: null,
+          acceptance_decided_by: null,
+          acceptance_note: null,
+          auto_accept_reason: null,
+          auto_accept_warning_sent_at: null,
+        }
       : {
           acceptance_status: shift.acceptance_status ?? prev.acceptance_status ?? null,
           acceptance_decided_at: shift.acceptance_decided_at ?? prev.acceptance_decided_at ?? null,
@@ -3053,38 +3288,58 @@ export async function publishRotaWeek(weekId: string): Promise<
           auto_accept_warning_sent_at: shift.auto_accept_warning_sent_at ?? prev.auto_accept_warning_sent_at ?? null,
         };
 
-    return {
-      ...shift,
-      ...acceptance,
-      published_at: now,
-    };
+    return { ...publishable, ...acceptance };
   });
 
-  const { error: deleteError } = await admin
-    .from('rota_published_shifts')
-    .delete()
-    .eq('week_id', weekId);
-  if (deleteError) return { success: false, error: deleteError.message };
+  // The snapshot replacement and the week state change happen together inside
+  // publish_rota_week, so a failed insert can no longer leave staff looking at
+  // an empty rota: on any error the previous snapshot survives and the week
+  // stays dirty. Nothing below may be split back out into a separate statement.
+  const { data: publishData, error: publishError } = await admin.rpc('publish_rota_week', {
+    p_week_id: weekId,
+    p_published_by: user?.id ?? null,
+    p_rows: rowsToPublish,
+    p_expected_shifts: currentSnapshot.map(shift => ({ id: shift.id, updated_at: shift.updated_at })),
+    p_expected_published: previousSnapshot.map(shift => ({
+      id: shift.id,
+      employee_id: shift.employee_id,
+      acceptance_status: shift.acceptance_status,
+      acceptance_decided_at: shift.acceptance_decided_at,
+    })),
+  });
 
-  if (rowsToPublish.length) {
-    const { error: insertError } = await admin
-      .from('rota_published_shifts')
-      .insert(rowsToPublish);
-    if (insertError) return { success: false, error: insertError.message };
+  if (publishError) return { success: false, error: publishError.message };
+
+  const publishResult = (publishData ?? null) as { status?: string; reason?: string | null } | null;
+
+  if (publishResult?.status === 'stale') {
+    // Deliberately not retried. Somebody else changed the week, or a staff
+    // member decided on a shift, while this publish was being prepared. Doing it
+    // again automatically would push out a rota nobody has looked at.
+    return {
+      success: false,
+      error: 'The rota changed while you were publishing. Review the week and publish again.',
+    };
   }
 
-  // Only update status after snapshot succeeds
-  const { error } = await supabase
-    .from('rota_weeks')
-    .update({
-      status: 'published',
-      published_at: new Date().toISOString(),
-      published_by: user?.id,
-      has_unpublished_changes: false,
-    })
-    .eq('id', weekId);
+  if (publishResult?.status === 'not_found') {
+    return { success: false, error: 'Rota week not found' };
+  }
 
-  if (error) return { success: false, error: error.message };
+  if (publishResult?.status !== 'published') {
+    return { success: false, error: 'The rota could not be published' };
+  }
+
+  // Everything from here on is after the commit. Nothing below writes the
+  // snapshot, and none of it used to be safe to run before it: a publish that
+  // turned out to be stale would previously have already recorded calendar
+  // cancellations and emailed staff about a rota that never landed.
+  await Promise.all(previousSnapshot.map(async prev => {
+    if (!prev.employee_id || prev.is_open_shift || prev.status !== 'scheduled') return;
+    const curr = currentById.get(prev.id);
+    if (curr && curr.employee_id === prev.employee_id && !curr.is_open_shift && curr.status === 'scheduled') return;
+    await recordCalendarCancellation(admin, prev, curr ? 'Shift reassigned or opened' : 'Shift removed');
+  }));
 
   // Fire-and-forget: audit logging failure should not block the operation
   void logAuditEvent({

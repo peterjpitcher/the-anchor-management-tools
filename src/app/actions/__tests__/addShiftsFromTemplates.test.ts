@@ -1,16 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import { addShiftsFromTemplates } from '../rota'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 
 const mockPerm = vi.mocked(checkUserPermission)
 const mockCreateClient = vi.mocked(createClient)
+const mockCreateAdminClient = vi.mocked(createAdminClient)
+
+// The bulk insert goes through write_rota_shifts_with_leave_guard, so the admin
+// double supplies the RPC and the read-back of the rows it created.
+function makeAdmin({
+  rpcResult = null as unknown,
+  rpcError = null as unknown,
+  inserted = [] as unknown[],
+  readError = null as unknown,
+} = {}) {
+  const rpc = vi.fn().mockImplementation((_name: string, args: { p_shifts?: Array<{ ref: string }> }) =>
+    Promise.resolve({
+      data: rpcResult ?? {
+        status: 'written',
+        shifts: (args?.p_shifts ?? []).map(entry => ({ ref: entry.ref, shift_id: `shift-${entry.ref}` })),
+        conflicts: [],
+        reason: null,
+      },
+      error: rpcError,
+    }),
+  )
+
+  const from = vi.fn().mockImplementation((table: string) => {
+    if (table === 'rota_shifts') {
+      return { select: vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ data: inserted, error: readError }) }) }
+    }
+    if (table === 'employees') {
+      return { select: vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) }
+    }
+    return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
+  })
+
+  return { from, rpc }
+}
 
 // Minimal template fixture matching ShiftTemplate shape from DB
 const tBar = {
@@ -63,6 +99,7 @@ describe('addShiftsFromTemplates', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerm.mockResolvedValue(true)
+    mockCreateAdminClient.mockReturnValue(makeAdmin() as never)
   })
 
   it('returns permission denied when user lacks edit permission', async () => {
@@ -117,14 +154,13 @@ describe('addShiftsFromTemplates', () => {
     expect(result).toEqual({ success: false, error: 'No shifts selected' })
   })
 
-  it('returns error when insert fails', async () => {
+  function mockCookieClientForWrite() {
     mockCreateClient.mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
       from: vi.fn().mockImplementation((table: string) => {
         if (table === 'rota_weeks') return {
           select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({ data: { week_start: '2026-03-16' }, error: null }),
-          update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) }),
         }
         if (table === 'rota_shift_templates') return {
           select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
@@ -132,15 +168,52 @@ describe('addShiftsFromTemplates', () => {
         }
         if (table === 'rota_shifts') return {
           select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
         }
         return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis() }
       }),
     } as never)
+  }
+
+  it('returns error when the guarded write fails', async () => {
+    mockCookieClientForWrite()
+    mockCreateAdminClient.mockReturnValue(makeAdmin({ rpcError: { message: 'DB error' } }) as never)
 
     const result = await addShiftsFromTemplates('week-1', [{ templateId: 'tmpl-bar', date: '2026-03-16' }])
-    expect(result).toEqual({ success: false, error: 'DB error' })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error).toContain('DB error')
+  })
+
+  it('refuses the whole batch when the guard reports approved leave', async () => {
+    mockCookieClientForWrite()
+    mockCreateAdminClient.mockReturnValue(makeAdmin({
+      rpcResult: {
+        status: 'leave_conflict',
+        shifts: [],
+        conflicts: [{ ref: '0', employee_id: 'emp-1', conflict_date: '2026-03-16' }],
+        reason: 'employee_on_leave',
+      },
+    }) as never)
+
+    const result = await addShiftsFromTemplates('week-1', [{ templateId: 'tmpl-bar', date: '2026-03-16' }])
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error).toContain('No shifts were added')
+      expect(result.error).toContain('approved leave')
+    }
+  })
+
+  it('writes the batch through the leave guard', async () => {
+    mockCookieClientForWrite()
+    const admin = makeAdmin({
+      inserted: [{ id: 'shift-0', week_id: 'week-1', shift_date: '2026-03-16', department: 'bar' }],
+    })
+    mockCreateAdminClient.mockReturnValue(admin as never)
+
+    const result = await addShiftsFromTemplates('week-1', [{ templateId: 'tmpl-bar', date: '2026-03-16' }])
+    expect(result.success).toBe(true)
+    expect(admin.rpc).toHaveBeenCalledWith(
+      'write_rota_shifts_with_leave_guard',
+      expect.objectContaining({ p_shifts: expect.any(Array) }),
+    )
   })
 })

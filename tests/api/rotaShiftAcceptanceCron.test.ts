@@ -41,6 +41,21 @@ function makeEqUpdateSelect(
   return chain
 }
 
+function makeSystemSettings(email: string | null = 'manager@the-anchor.pub') {
+  // The manager mailbox now comes from Rota Settings (spec F8, decision D15)
+  // rather than a hard-coded address, so every mocked client needs this table.
+  return {
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: email === null ? null : { value: email },
+          error: null,
+        }),
+      }),
+    }),
+  }
+}
+
 describe('/api/cron/rota-shift-acceptance', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -90,13 +105,19 @@ describe('/api/cron/rota-shift-acceptance', () => {
       if (payload.auto_accept_warning_sent_at) {
         return { in: vi.fn().mockResolvedValue({ error: null }) }
       }
-      return makeEqUpdate(2)
+      // The mirror to the live rota reads the row back so a vanished shift is
+      // told apart from a failed write.
+      return makeEqUpdateSelect(2, { data: { id: 'shift-auto' }, error: null })
     })
     const emailLogInsert = vi.fn().mockResolvedValue({ error: null })
     const auditLogInsert = vi.fn().mockResolvedValue({ error: null })
 
     createAdminClientMock.mockReturnValue({
       from: vi.fn((table: string) => {
+        if (table === 'system_settings') {
+          return makeSystemSettings()
+        }
+
         if (table === 'rota_published_shifts') {
           return {
             select: vi.fn().mockReturnValue({
@@ -194,6 +215,10 @@ describe('/api/cron/rota-shift-acceptance', () => {
 
     createAdminClientMock.mockReturnValue({
       from: vi.fn((table: string) => {
+        if (table === 'system_settings') {
+          return makeSystemSettings()
+        }
+
         if (table === 'rota_published_shifts') {
           return {
             select: vi.fn().mockReturnValue({
@@ -252,5 +277,153 @@ describe('/api/cron/rota-shift-acceptance', () => {
     expect(payload.autoAcceptFailed).toBe(1)
     expect(rotaShiftsUpdate).not.toHaveBeenCalled()
     expect(auditLogInsert).not.toHaveBeenCalled()
+  })
+
+  it('holds a late-published shift through its 48-hour grace window, then auto-accepts it', async () => {
+    // Decision D13: a shift FIRST published to somebody inside the two-week cutoff
+    // is not auto-accepted straight away; they get 48 hours from publication to
+    // turn it down. Shift 2026-06-14 09:00 London (08:00Z), so the deadline is
+    // 2026-05-31T08:00Z. Published 2026-05-31T12:00Z, i.e. late, so the window
+    // runs to 2026-06-02T12:00Z.
+    const shifts = [
+      {
+        id: 'shift-late',
+        week_id: 'week-1',
+        employee_id: 'employee-2',
+        shift_date: '2026-06-14',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'kitchen',
+        name: 'Kitchen',
+        auto_accept_warning_sent_at: null,
+        first_published_at: '2026-05-31T12:00:00Z',
+      },
+    ]
+
+    function mockClient() {
+      const rotaPublishedUpdate = vi.fn(() => makeEqUpdateSelect(3))
+      const rotaShiftsUpdate = vi.fn(() => makeEqUpdateSelect(2, { data: { id: 'shift-late' }, error: null }))
+      createAdminClientMock.mockReturnValue({
+        from: vi.fn((table: string) => {
+          if (table === 'system_settings') return makeSystemSettings()
+          if (table === 'rota_published_shifts') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue({
+                      not: vi.fn().mockReturnValue({
+                        lte: vi.fn().mockReturnValue({
+                          order: vi.fn().mockReturnValue({
+                            order: vi.fn().mockResolvedValue({ data: shifts, error: null }),
+                          }),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+              update: rotaPublishedUpdate,
+            }
+          }
+          if (table === 'employees') {
+            return {
+              select: vi.fn().mockReturnValue({
+                in: vi.fn().mockResolvedValue({
+                  data: [{ employee_id: 'employee-2', first_name: 'Blake', last_name: 'Vale', email_address: 'blake@example.com' }],
+                  error: null,
+                }),
+              }),
+            }
+          }
+          if (table === 'rota_shifts') return { update: rotaShiftsUpdate }
+          if (table === 'rota_email_log') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+          if (table === 'audit_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      })
+      return { rotaPublishedUpdate }
+    }
+
+    // Inside the window: held, not auto-accepted.
+    vi.setSystemTime(new Date('2026-06-01T00:00:00Z'))
+    const inside = mockClient()
+    const heldResponse = await GET(new Request('http://localhost/api/cron/rota-shift-acceptance'))
+    const heldPayload = await heldResponse.json()
+    expect(heldPayload.autoAccepted).toBe(0)
+    expect(heldPayload.heldForLatePublishGrace).toBe(1)
+    expect(inside.rotaPublishedUpdate).not.toHaveBeenCalled()
+
+    // Past the window: auto-accepted.
+    vi.setSystemTime(new Date('2026-06-02T13:00:00Z'))
+    mockClient()
+    const acceptedResponse = await GET(new Request('http://localhost/api/cron/rota-shift-acceptance'))
+    const acceptedPayload = await acceptedResponse.json()
+    expect(acceptedPayload.autoAccepted).toBe(1)
+    expect(acceptedPayload.heldForLatePublishGrace).toBe(0)
+  })
+
+  it('gives no grace to a shift published in good time', async () => {
+    // The precondition that was missing from the server action: a shift published
+    // BEFORE its deadline never earns a window, so it auto-accepts as normal.
+    const shifts = [
+      {
+        id: 'shift-on-time',
+        week_id: 'week-1',
+        employee_id: 'employee-2',
+        shift_date: '2026-06-14',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'kitchen',
+        name: 'Kitchen',
+        auto_accept_warning_sent_at: null,
+        first_published_at: '2026-05-30T10:00:00Z',
+      },
+    ]
+
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'system_settings') return makeSystemSettings()
+        if (table === 'rota_published_shifts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    not: vi.fn().mockReturnValue({
+                      lte: vi.fn().mockReturnValue({
+                        order: vi.fn().mockReturnValue({
+                          order: vi.fn().mockResolvedValue({ data: shifts, error: null }),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+            update: vi.fn(() => makeEqUpdateSelect(3)),
+          }
+        }
+        if (table === 'employees') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({
+                data: [{ employee_id: 'employee-2', first_name: 'Blake', last_name: 'Vale', email_address: 'blake@example.com' }],
+                error: null,
+              }),
+            }),
+          }
+        }
+        if (table === 'rota_shifts') return { update: vi.fn(() => makeEqUpdateSelect(2, { data: { id: 'shift-on-time' }, error: null })) }
+        if (table === 'rota_email_log') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        if (table === 'audit_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const response = await GET(new Request('http://localhost/api/cron/rota-shift-acceptance'))
+    const payload = await response.json()
+    expect(payload.autoAccepted).toBe(1)
+    expect(payload.heldForLatePublishGrace).toBe(0)
   })
 })

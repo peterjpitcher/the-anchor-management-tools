@@ -16,6 +16,7 @@ import type { Department } from '@/app/actions/budgets';
 import MarkSickModal from './MarkSickModal';
 import { PremiumControl, usePremiumControl } from './CreateShiftModal';
 import { displayName } from '@/lib/employees/display-name';
+import { calculatePaidHours } from '@/lib/rota/pay-math';
 
 interface ShiftDetailModalProps {
   shift: RotaShift;
@@ -31,15 +32,6 @@ interface ShiftDetailModalProps {
   onClose: () => void;
   onUpdated: (shift: RotaShift) => void;
   onDeleted: (shiftId: string) => void;
-}
-
-function paidHoursNum(start: string, end: string, breakMins: number, overnight: boolean): number {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (overnight || endM <= startM) endM += 24 * 60;
-  return Math.max(0, endM - startM - breakMins) / 60;
 }
 
 function formatDate(iso: string): string {
@@ -200,7 +192,7 @@ export default function ShiftDetailModal({
     ? displayName(employee, 'Unknown')
     : 'Unknown employee';
 
-  const paidH = paidHoursNum(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+  const paidH = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const premiumSummary = describePremium(shift);
   const isCouldntWork = shift.status === 'sick';
   const acceptanceStatus = shift.acceptance_status
@@ -494,7 +486,7 @@ export default function ShiftDetailModal({
 
               {startTime && endTime && (
                 <p className="text-sm text-gray-600">
-                  Paid: <strong>{paidHoursNum(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
+                  Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
                 </p>
               )}
 

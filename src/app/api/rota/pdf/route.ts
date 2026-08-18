@@ -10,9 +10,12 @@ import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest } from '@/a
 import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { displayName } from '@/lib/employees/display-name';
+import { calculatePaidHours } from '@/lib/rota/pay-math';
+import { countsTowardHours } from '@/lib/rota/shift-counting';
+import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 
 // ---------------------------------------------------------------------------
-// Helpers (duplicated from print page — no shared module to keep things simple)
+// Helpers. Paid hours and the counting rule come from the shared rota modules.
 // ---------------------------------------------------------------------------
 
 function getMondayOfWeek(date: Date): Date {
@@ -24,13 +27,18 @@ function getMondayOfWeek(date: Date): Date {
   return d;
 }
 
-function paidHours(start: string, end: string, breakMins: number, overnight: boolean): number {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  const startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  if (overnight || endM <= startM) endM += 24 * 60;
-  return Math.max(0, endM - startM - breakMins) / 60;
+// Paid hours come from the shared pure module. The copy that used to live here
+// treated an equal start and end as a full 24 hours, so every absence marker
+// (stored as 00:00:00 to 00:00:00) inflated the printed weekly total by a day.
+function shiftPaidHours(shift: RotaShift): number {
+  return calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
+}
+
+// Hours are only ever shown on a row that actually counts. A sick or cancelled
+// row still appears on the sheet, but printing hours beside it would not add up
+// to the weekly total, which deliberately excludes it.
+function shiftHoursSuffix(shift: RotaShift): string {
+  return countsTowardHours(shift) ? ` · ${shiftPaidHours(shift).toFixed(1)}h` : '';
 }
 
 // Internal staff-facing sheet, so it shows the same preferred name as the on-screen rota.
@@ -61,10 +69,13 @@ function formatWeekRange(days: string[]): string {
   return `${startStr} – ${endStr}`;
 }
 
+// Only `scheduled` rows count, as a positive rule rather than an exclusion list.
+// Absence and cancelled markers stay visible in the grid below but never add to
+// the total staff read off the sheet.
 function empWeekHours(employeeId: string, shifts: RotaShift[]): number {
   return shifts
-    .filter(s => s.employee_id === employeeId && s.status !== 'cancelled')
-    .reduce((sum, s) => sum + paidHours(s.start_time, s.end_time, s.unpaid_break_minutes, s.is_overnight), 0);
+    .filter(s => s.employee_id === employeeId && countsTowardHours(s))
+    .reduce((sum, s) => sum + shiftPaidHours(s), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +103,6 @@ function buildShiftCell(
     : '';
 
   const shiftsHtml = cellShifts.map(shift => {
-    const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
     const isSick = shift.status === 'sick';
     const isBar = shift.department === 'bar';
     const bg = isSick ? '#fee2e2' : isBar ? '#dbeafe' : '#ffedd5';
@@ -103,7 +113,7 @@ function buildShiftCell(
     return `<div style="background:${bg};color:${fg};border-radius:3px;padding:2px 4px;margin-bottom:2px;font-size:${fs}px">
       ${nameHtml}
       <div style="font-weight:600">${formatTime(shift.start_time)}–${formatTime(shift.end_time)}</div>
-      <div style="font-size:${fs - 1}px;opacity:0.85">${isSick ? 'Sick' : isBar ? 'Bar' : 'Kitchen'} · ${ph.toFixed(1)}h</div>
+      <div style="font-size:${fs - 1}px;opacity:0.85">${isSick ? 'Sick' : isBar ? 'Bar' : 'Kitchen'}${shiftHoursSuffix(shift)}</div>
     </div>`;
   }).join('');
 
@@ -143,7 +153,7 @@ function buildRotaHTML(
       </td>
       ${cells}
       <td style="padding:4px 4px;border:1px solid #d1d5db;text-align:center;font-weight:700;font-size:${headerFontSize}px;vertical-align:top;color:${totalHrs > 0 ? '#111' : '#d1d5db'}">
-        ${totalHrs > 0 ? totalHrs.toFixed(1) : '—'}
+        ${totalHrs > 0 ? totalHrs.toFixed(1) : '-'}
       </td>
     </tr>`;
   }).join('');
@@ -152,12 +162,11 @@ function buildRotaHTML(
     const cells = days.map(d => {
       const dayOpen = openShifts.filter(s => s.shift_date === d && s.status !== 'cancelled');
       const inner = dayOpen.map(shift => {
-        const ph = paidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
         const isBar = shift.department === 'bar';
         return `<div style="border-radius:3px;padding:2px 4px;margin-bottom:2px;font-size:${baseFontSize}px;
           background:${isBar ? '#dbeafe' : '#ffedd5'};color:${isBar ? '#1e40af' : '#9a3412'}">
           <div style="font-weight:600">${formatTime(shift.start_time)}–${formatTime(shift.end_time)}</div>
-          <div style="font-size:${baseFontSize - 1}px;opacity:0.85">${isBar ? 'Bar' : 'Kitchen'} · ${ph.toFixed(1)}h</div>
+          <div style="font-size:${baseFontSize - 1}px;opacity:0.85">${isBar ? 'Bar' : 'Kitchen'}${shiftHoursSuffix(shift)}</div>
         </div>`;
       }).join('');
       return `<td style="padding:3px 4px;border:1px solid #d1d5db;vertical-align:top">${inner}</td>`;
@@ -276,7 +285,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)) {
       return getMondayOfWeek(new Date(weekParam + 'T00:00:00Z')).toISOString().split('T')[0];
     }
-    return getMondayOfWeek(new Date()).toISOString().split('T')[0];
+    // "Today" is a London date. A raw `new Date()` here printed the previous week
+    // during the first hour of a British Summer Time Monday.
+    return getMondayOfWeek(new Date(getTodayIsoDate() + 'T00:00:00Z')).toISOString().split('T')[0];
   })();
 
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -302,7 +313,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const shifts: RotaShift[] = shiftsResult.success ? shiftsResult.data : [];
   const leaveDays: LeaveDayWithRequest[] = leaveDaysResult.success ? leaveDaysResult.data : [];
 
-  const generatedAt = new Date().toLocaleDateString('en-GB', {
+  // London, not the server clock: the print stamp was an hour out through BST.
+  const generatedAt = formatDateInLondon(new Date(), {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
