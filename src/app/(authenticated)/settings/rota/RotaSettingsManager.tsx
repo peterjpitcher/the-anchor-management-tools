@@ -58,7 +58,8 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-1">Holiday Year</h3>
         <p className="text-xs text-gray-500 mb-4">
-          The date on which the annual holiday entitlement resets. Defaults to 6 April (UK tax year).
+          The date on which the annual holiday entitlement resets. Defaults to 1 January, so the
+          holiday year runs with the financial year.
         </p>
         <div className="flex flex-wrap items-end gap-4">
           <FormGroup label="Start month" htmlFor="holiday-month" className="min-w-[140px]">
@@ -133,16 +134,30 @@ export default function RotaSettingsManager({ initialSettings, canManage }: Rota
           Where automated rota and payroll emails are sent. These override any environment variable fallbacks.
         </p>
         <div className="space-y-4 max-w-md">
-          <FormGroup label="Rota manager alert email" htmlFor="manager-email">
-            <Input
-              id="manager-email"
-              type="email"
-              placeholder="manager@example.com"
-              value={managerEmail}
-              onChange={e => setManagerEmail(e.target.value)}
-              disabled={!canManage}
-            />
-          </FormGroup>
+          <div>
+            <FormGroup label="Rota manager alert email" htmlFor="manager-email">
+              <Input
+                id="manager-email"
+                type="email"
+                placeholder="manager@example.com"
+                value={managerEmail}
+                onChange={e => setManagerEmail(e.target.value)}
+                disabled={!canManage}
+              />
+            </FormGroup>
+            {/* Spelled out because this address used to drive only the Sunday alert
+                while the other two paths carried a hard-coded copy of the mailbox, so
+                the screen was quietly lying about what it controlled. */}
+            <p className="mt-2 text-xs text-text-muted">Every rota alert goes to this address:</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-text-muted">
+              <li>the Sunday summary of unfilled shifts and weeks still to publish</li>
+              <li>a staff member rejecting a shift, or asking for an open one</li>
+              <li>a copy of the reminder chasing staff to accept or reject their shifts</li>
+            </ul>
+            <p className="mt-2 text-xs text-text-muted">
+              Leave it blank to fall back to the ROTA_MANAGER_EMAIL environment variable.
+            </p>
+          </div>
           <FormGroup label="Payroll accountant email" htmlFor="accountant-email">
             <Input
               id="accountant-email"

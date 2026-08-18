@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
-import { formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, formatDateTime12Hour, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import {
   getOrCreatePayrollPeriodForDateRecord,
   getOrCreatePayrollPeriodRecord,
@@ -21,6 +21,14 @@ import {
 } from '@/lib/rota/pay-calculator';
 import type { RateResolver, ShiftPremium, SessionPremium } from '@/lib/rota/pay-calculator';
 import { HOLIDAY_PAY_PERCENTAGE } from '@/lib/rota/constants';
+import {
+  LATE_PUBLISH_GRACE_HOURS,
+  acceptanceDeadlineInstant,
+  isInsideAcceptanceCutoff,
+  isInsideLatePublishGrace,
+  latePublishGraceEnd,
+  shiftStartInstant,
+} from '@/lib/rota/acceptance-cutoff';
 import { format, parseISO } from 'date-fns';
 import CalendarSubscribeButton from './CalendarSubscribeButton';
 import PaySummaryCard from './PaySummaryCard';
@@ -55,6 +63,7 @@ type PortalShift = {
   acceptance_status: ShiftAcceptanceStatus | null;
   acceptance_decided_at: string | null;
   auto_accept_reason: string | null;
+  first_published_at: string | null;
   employee_name?: string | null;
   rate_multiplier: number | null;
   rate_override: number | null;
@@ -76,7 +85,21 @@ type UserRoleRow = {
 
 const SHIFT_AUTO_ACCEPT_POLICY_NOTE =
   'In line with our policy, all shifts must be accepted or rejected no less than two weeks before the shift.';
-const SHIFT_ACCEPTANCE_CUTOFF_DAYS = 14;
+// The two-week cutoff itself lives in @/lib/rota/acceptance-cutoff so this page,
+// the server actions and the auto-accept cron can never disagree about it. Every
+// deadline shown here is derived from acceptanceDeadlineInstant(), never from a
+// separate calendar subtraction: the two differ by an hour across each British
+// Summer Time change, which is how this page came to promise staff a deadline
+// the server did not honour.
+//
+// Decision D13: a shift FIRST published to this employee INSIDE that cutoff gets
+// a grace window, counted from publication, in which they may still accept or
+// reject. rota_published_shifts.first_published_at carries that timestamp; it is
+// reset when a shift is published to a different employee, so it always means
+// "when this person first saw this shift". The window itself is decided by
+// latePublishGraceEnd() in that same module, shared with the server actions and
+// the cron, so the "was it published late" precondition and the clamp to the
+// shift start cannot drift between the three of them again.
 
 function formatDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
@@ -199,36 +222,46 @@ function roleNameFromRow(row: UserRoleRow): string | null {
   return row.roles?.name ?? null;
 }
 
-function shiftStartTime(shift: Pick<PortalShift, 'shift_date' | 'start_time'>): number {
-  return new Date(`${shift.shift_date}T${shift.start_time}`).getTime();
+type DecidableShift = Pick<PortalShift, 'shift_date' | 'start_time' | 'first_published_at'>;
+
+/** A deadline instant rendered in London wall-clock, e.g. "Sat 16 Aug 2026 at 5pm". */
+function formatDeadlineInstant(instant: Date): string {
+  return `${formatDateInLondon(instant, { weekday: 'short' })} ${formatDateTime12Hour(instant)}`;
 }
 
-function toLocalIsoDate(date: Date): string {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
-}
-
-function autoAcceptDeadlineLabel(shift: Pick<PortalShift, 'shift_date' | 'start_time'>): string {
-  const deadline = new Date(`${shift.shift_date}T00:00:00`);
-  deadline.setDate(deadline.getDate() - SHIFT_ACCEPTANCE_CUTOFF_DAYS);
-  return `${formatFullDate(toLocalIsoDate(deadline))} at ${formatTime12Hour(shift.start_time)}`;
+/**
+ * The deadline copy shown to the employee. Normally the two-week deadline; while
+ * a late-publish grace window is open, the end of that window plus a short line
+ * saying why it is different.
+ *
+ * ShiftDecisionControls renders this as "Auto-accepts on {label}.", so the
+ * string must not end in its own full stop.
+ */
+function autoAcceptDeadlineLabel(shift: DecidableShift, now: Date): string {
+  const graceEnd = latePublishGraceEnd(shift);
+  if (graceEnd && now.getTime() < graceEnd.getTime()) {
+    return `${formatDeadlineInstant(graceEnd)}, because this shift was published late `
+      + `and you get ${LATE_PUBLISH_GRACE_HOURS} hours from publication to accept or reject it`;
+  }
+  return formatDeadlineInstant(acceptanceDeadlineInstant(shift.shift_date, shift.start_time));
 }
 
 function resolvePortalAcceptanceStatus(shift: PortalShift, now: Date): ShiftAcceptanceStatus | null {
   if (shift.acceptance_status === 'rejected') return 'rejected';
 
-  const startMs = shiftStartTime(shift);
+  const startMs = shiftStartInstant(shift.shift_date, shift.start_time).getTime();
   if (startMs <= now.getTime()) {
     return shift.acceptance_status === 'accepted' || shift.acceptance_status === 'auto_accepted'
       ? shift.acceptance_status
       : null;
   }
 
-  const cutoffMs = SHIFT_ACCEPTANCE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
-  if (startMs - now.getTime() <= cutoffMs) return 'auto_accepted';
+  // Inside the cutoff the decision is taken out of their hands, except while a
+  // late-publish grace window is still open (D13), when they keep the choice.
+  if (isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now)
+    && !isInsideLatePublishGrace(shift, now)) {
+    return 'auto_accepted';
+  }
 
   return shift.acceptance_status ?? 'pending';
 }
@@ -762,7 +795,7 @@ export default async function MyShiftsPage({
                           acceptanceStatus={shift.acceptance_status}
                           acceptedAt={shift.acceptance_decided_at}
                           autoAcceptReason={shift.auto_accept_reason}
-                          autoAcceptDeadline={autoAcceptDeadlineLabel(shift)}
+                          autoAcceptDeadline={autoAcceptDeadlineLabel(shift, now)}
                         />
                       )}
                     </div>

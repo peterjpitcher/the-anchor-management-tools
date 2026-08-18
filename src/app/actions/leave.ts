@@ -5,7 +5,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { eachIsoDateInRange, getTodayIsoDate, isValidIsoDate } from '@/lib/dateUtils';
+import {
+  eachIsoDateInRange,
+  formatDateDdMmmmYyyy,
+  formatTime12Hour,
+  getTodayIsoDate,
+  isValidIsoDate,
+} from '@/lib/dateUtils';
 import { sendEmail } from '@/lib/email/emailService';
 import {
   buildHolidaySubmittedEmailHtml,
@@ -62,6 +68,7 @@ type UpdateLeaveDatesRpcResult = {
   success?: boolean;
   error?: string;
   code?: string;
+  conflicts?: unknown;
 };
 
 type EmployeeLeaveSettings = {
@@ -82,6 +89,87 @@ async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle();
   return Boolean(data);
+}
+
+// ---------------------------------------------------------------------------
+// Approved leave can never sit on top of a rostered shift (spec F2, decision D1)
+//
+// Approval is refused while a clashing shift exists. There is no override. The
+// clashing shifts come back with the refusal so the manager can be shown exactly
+// what is in the way and go and clear or reassign each one.
+//
+// The check is NOT done here. It is done inside the Postgres functions added by
+// 20260819000002, in the same transaction as the leave write and under the same
+// advisory lock that write_rota_shifts_with_leave_guard takes (decision D8). An
+// application preflight cannot close this: the manager approves, the preflight
+// reads an empty rota, somebody drags a shift onto that employee and commits
+// while the request is still pending, and then the approval commits. Both guards
+// pass and the shift lands on approved leave. Everything below only turns the
+// structured refusal those functions return into something a manager can read.
+//
+// The boundary rule is decision D7 and lives in public.rota_shift_leave_dates,
+// shared by both directions, so a shift blocked one way cannot slip through the
+// other.
+// ---------------------------------------------------------------------------
+
+export type LeaveShiftConflict = {
+  shiftId: string;
+  shiftDate: string;
+  leaveDate: string;
+  startTime: string;
+  endTime: string;
+  department: string | null;
+  shiftName: string | null;
+  isOvernight: boolean;
+};
+
+/** What the guarded leave functions in 20260819000002 return. */
+type LeaveGuardResult = {
+  status: 'approved' | 'booked' | 'rota_conflict' | 'not_found' | 'not_pending' | 'overlap' | 'invalid_range';
+  conflicts?: unknown;
+  request_id?: string;
+  leave_dates?: string[];
+};
+
+/** One row of public.rota_shifts_clashing_with_leave, as returned through PostgREST. */
+type LeaveConflictRow = {
+  shift_id: string;
+  shift_date: string;
+  leave_date: string;
+  start_time: string;
+  end_time: string;
+  department: string | null;
+  shift_name: string | null;
+  is_overnight: boolean | null;
+};
+
+function mapLeaveConflicts(rows: unknown): LeaveShiftConflict[] {
+  if (!Array.isArray(rows)) return [];
+  return (rows as LeaveConflictRow[]).map(row => ({
+    shiftId: row.shift_id,
+    shiftDate: row.shift_date,
+    leaveDate: row.leave_date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    department: row.department ?? null,
+    shiftName: row.shift_name ?? null,
+    isOvernight: Boolean(row.is_overnight),
+  }));
+}
+
+function describeLeaveConflict(conflict: LeaveShiftConflict): string {
+  const times = `${formatTime12Hour(conflict.startTime)} to ${formatTime12Hour(conflict.endTime)}`;
+  const label = conflict.shiftName || conflict.department || 'shift';
+  return `${formatDateDdMmmmYyyy(conflict.shiftDate)}, ${times}, ${label}`;
+}
+
+function buildLeaveConflictError(conflicts: LeaveShiftConflict[]): string {
+  const listed = conflicts.slice(0, 3).map(describeLeaveConflict).join('; ');
+  const remaining = conflicts.length - Math.min(conflicts.length, 3);
+  const more = remaining > 0 ? `, and ${remaining} more` : '';
+  const subject = conflicts.length === 1 ? 'a rostered shift' : `${conflicts.length} rostered shifts`;
+  const object = conflicts.length === 1 ? 'it' : 'them';
+  return `This holiday clashes with ${subject}: ${listed}${more}. Reassign or remove ${object} on the rota, then approve the holiday.`;
 }
 
 export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema>): Promise<
@@ -218,7 +306,7 @@ export async function reviewLeaveRequest(
   requestId: string,
   decision: 'approved' | 'declined',
   managerNote?: string,
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true } | { success: false; error: string; conflicts?: LeaveShiftConflict[] }> {
   const canApprove = await checkUserPermission('leave', 'approve');
   if (!canApprove) return { success: false, error: 'Permission denied' };
 
@@ -235,22 +323,51 @@ export async function reviewLeaveRequest(
   if (request.status !== 'pending') return { success: false, error: 'Request is not pending' };
 
   const reviewedAt = new Date().toISOString();
-  const { data: reviewedRow, error } = await supabase
-    .from('leave_requests')
-    .update({
-      status: decision,
-      manager_note: managerNote ?? null,
-      reviewed_by: user?.id,
-      reviewed_at: reviewedAt,
-      updated_at: reviewedAt,
-    })
-    .eq('id', requestId)
-    .eq('status', 'pending')
-    .select('id')
-    .maybeSingle();
 
-  if (error) return { success: false, error: error.message };
-  if (!reviewedRow) return { success: false, error: 'Request was already reviewed' };
+  if (decision === 'approved') {
+    // Approving turns this into real leave, so the rota has to be clear (D1). The
+    // check and the status change happen together inside the database, under the
+    // employee leave lock, so a shift assignment landing at the same moment either
+    // is seen by the check or waits for this approval to finish (D8).
+    const admin = createAdminClient();
+    const { data: guardData, error: guardError } = await admin.rpc('approve_leave_request_with_rota_guard', {
+      p_request_id: requestId,
+      p_reviewed_by: user?.id ?? null,
+      p_manager_note: managerNote ?? null,
+      p_reviewed_at: reviewedAt,
+    });
+
+    if (guardError) return { success: false, error: guardError.message };
+
+    const guard = guardData as LeaveGuardResult | null;
+    if (!guard) return { success: false, error: 'Could not approve this holiday' };
+    if (guard.status === 'not_found') return { success: false, error: 'Request not found' };
+    if (guard.status === 'not_pending') return { success: false, error: 'Request was already reviewed' };
+    if (guard.status === 'rota_conflict') {
+      const conflicts = mapLeaveConflicts(guard.conflicts);
+      return { success: false, error: buildLeaveConflictError(conflicts), conflicts };
+    }
+    if (guard.status !== 'approved') {
+      return { success: false, error: 'Could not approve this holiday' };
+    }
+  } else {
+    const { data: reviewedRow, error } = await supabase
+      .from('leave_requests')
+      .update({
+        status: decision,
+        manager_note: managerNote ?? null,
+        reviewed_by: user?.id,
+        reviewed_at: reviewedAt,
+        updated_at: reviewedAt,
+      })
+      .eq('id', requestId)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+
+    if (error) return { success: false, error: error.message };
+    if (!reviewedRow) return { success: false, error: 'Request was already reviewed' };
+  }
 
   // If declined, remove the pending leave_days
   if (decision === 'declined') {
@@ -317,7 +434,7 @@ export async function reviewLeaveRequest(
       userId: user?.id,
       userEmail: user?.email ?? null,
       includeApproved: true,
-      includeLateAndConflict: true,
+      includeLate: true,
     });
   } else {
     await recordHolidayAuditOnly({
@@ -347,7 +464,7 @@ export async function bookApprovedHoliday(input: {
   note?: string | null;
 }): Promise<
   { success: true; leaveDays: { employee_id: string; leave_date: string; request_id: string; status: 'approved' }[] } |
-  { success: false; error: string }
+  { success: false; error: string; conflicts?: LeaveShiftConflict[] }
 > {
   const parsed = SubmitLeaveSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.message };
@@ -363,48 +480,64 @@ export async function bookApprovedHoliday(input: {
 
   const supabase = await createClient();
 
-  // Check for overlapping non-declined requests
-  const { data: overlapping } = await supabase
-    .from('leave_requests')
-    .select('id')
-    .eq('employee_id', employeeId)
-    .neq('status', 'declined')
-    .lte('start_date', endDate)
-    .gte('end_date', startDate);
-  if (overlapping && overlapping.length > 0) {
-    return { success: false, error: 'Employee already has leave covering some of these dates' };
-  }
-
   const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
   const holidayYear = getHolidayYear(startDate, holidayYearStartMonth, holidayYearStartDay);
   const { data: { user } } = await supabase.auth.getUser();
+  const bookedAt = new Date().toISOString();
 
-  const { data: request, error: reqError } = await supabase
-    .from('leave_requests')
-    .insert({
-      employee_id: employeeId,
-      start_date: startDate,
-      end_date: endDate,
-      note: note ?? null,
-      holiday_year: holidayYear,
-      status: 'approved',
-      reviewed_by: user?.id ?? null,
-      reviewed_at: new Date().toISOString(),
-      created_by: user?.id ?? null,
-    })
-    .select('*')
-    .single();
+  // This books approved leave outright, so the same block applies as at approval (D1),
+  // and for the same reason it happens inside the database under the employee leave
+  // lock rather than as a preflight query out here (D8). The overlap check moves in
+  // with it so both refusals are decided against the same locked snapshot.
+  const admin = createAdminClient();
+  const { data: guardData, error: guardError } = await admin.rpc('book_approved_leave_with_rota_guard', {
+    p_employee_id: employeeId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_note: note ?? null,
+    p_holiday_year: holidayYear,
+    p_created_by: user?.id ?? null,
+    p_booked_at: bookedAt,
+  });
 
-  if (reqError) return { success: false, error: reqError.message };
+  if (guardError) return { success: false, error: guardError.message };
 
-  const dayRows = eachIsoDateInRange(startDate, endDate).map(leaveDate => ({
+  const guard = guardData as LeaveGuardResult | null;
+  if (!guard) return { success: false, error: 'Could not book this holiday' };
+  if (guard.status === 'overlap') {
+    return { success: false, error: 'Employee already has leave covering some of these dates' };
+  }
+  if (guard.status === 'invalid_range') {
+    return { success: false, error: 'End date must be on or after start date' };
+  }
+  if (guard.status === 'rota_conflict') {
+    const conflicts = mapLeaveConflicts(guard.conflicts);
+    return { success: false, error: buildLeaveConflictError(conflicts), conflicts };
+  }
+  if (guard.status !== 'booked' || !guard.request_id) {
+    return { success: false, error: 'Could not book this holiday' };
+  }
+
+  const request: LeaveRequest = {
+    id: guard.request_id,
+    employee_id: employeeId,
+    start_date: startDate,
+    end_date: endDate,
+    note: note ?? null,
+    status: 'approved',
+    manager_note: null,
+    reviewed_by: user?.id ?? null,
+    reviewed_at: bookedAt,
+    holiday_year: holidayYear,
+    created_at: bookedAt,
+    updated_at: bookedAt,
+  };
+
+  const dayRows = (guard.leave_dates ?? eachIsoDateInRange(startDate, endDate)).map(leaveDate => ({
     request_id: request.id,
     employee_id: employeeId,
     leave_date: leaveDate,
   }));
-
-  const { error: leaveDaysApprovedError } = await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
-  if (leaveDaysApprovedError) return { success: false, error: leaveDaysApprovedError.message };
 
   void logAuditEvent({
     user_id: user?.id,
@@ -416,13 +549,13 @@ export async function bookApprovedHoliday(input: {
   });
 
   await recordHolidayReliabilityEvents({
-    leave: request as LeaveRequest,
+    leave: request,
     source: 'holiday_direct_booking',
     userId: user?.id,
     userEmail: user?.email ?? null,
     includeRequested: true,
     includeApproved: true,
-    includeLateAndConflict: true,
+    includeLate: true,
   });
 
   revalidatePath('/rota');
@@ -679,7 +812,7 @@ export async function updateLeaveRequestDates(
   requestId: string,
   startDate: string,
   endDate: string,
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true } | { success: false; error: string; conflicts?: LeaveShiftConflict[] }> {
   const canEdit = await checkUserPermission('leave', 'edit');
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
@@ -722,6 +855,13 @@ export async function updateLeaveRequestDates(
     return { success: false, error: 'Employee already has leave covering some of these dates' };
   }
 
+  // An edit to an already-approved request extends approved leave over the new dates,
+  // so it has to clear the rota exactly as an approval does (D1). The whole resulting
+  // date set is checked, not just the dates being added: a date that is kept is still
+  // approved leave, and a shift sitting on it is still a clash. update_leave_request_dates
+  // does that check itself, under the employee leave lock and in the same transaction
+  // as the write (D8), and returns the clashing shifts with a 'rota_conflict' code.
+
   const { holidayYearStartMonth, holidayYearStartDay } = await getRotaSettings();
   const holidayYear = getHolidayYear(parsedStartDate, holidayYearStartMonth, holidayYearStartDay);
   const admin = createAdminClient();
@@ -737,6 +877,10 @@ export async function updateLeaveRequestDates(
 
   const rpcResult = rpcData as UpdateLeaveDatesRpcResult | null;
   if (!rpcResult?.success) {
+    if (rpcResult?.code === 'rota_conflict') {
+      const conflicts = mapLeaveConflicts(rpcResult.conflicts);
+      return { success: false, error: buildLeaveConflictError(conflicts), conflicts };
+    }
     return { success: false, error: rpcResult?.error ?? 'Failed to update holiday dates' };
   }
 
@@ -776,7 +920,7 @@ export async function updateLeaveRequestDates(
       source: 'holiday_edit',
       userId: user?.id,
       userEmail: user?.email ?? null,
-      includeLateAndConflict: true,
+      includeLate: true,
     });
   }
 

@@ -100,6 +100,19 @@ function mockSupabaseClient(overrides: Record<string, unknown> = {}) {
         eq: vi.fn().mockResolvedValue({ error: null }),
       }),
     }),
+    // Every rota write goes through write_rota_shifts_with_leave_guard now, so the
+    // admin double needs an rpc. The default answer is "written, no conflicts".
+    rpc: vi.fn().mockImplementation((_name: string, args: { p_shifts?: Array<{ ref: string }> }) =>
+      Promise.resolve({
+        data: {
+          status: 'written',
+          shifts: (args?.p_shifts ?? []).map(entry => ({ ref: entry.ref, shift_id: 'shift-new' })),
+          conflicts: [],
+          reason: null,
+        },
+        error: null,
+      }),
+    ),
     ...overrides,
   }
   mockedCreateClient.mockResolvedValue(client)
@@ -522,13 +535,11 @@ describe('Rota actions', () => {
           }
         }
         if (table === 'rota_shifts') {
+          // The guarded write returns the new id; the action then reads the row back.
           return {
-            insert: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({
-                  data: createdShift,
-                  error: null,
-                }),
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: createdShift, error: null }),
               }),
             }),
           }
@@ -538,12 +549,61 @@ describe('Rota actions', () => {
 
       const result = await createShift(validInput)
       expect(result.success).toBe(true)
+      // The leave guard is the only thing stopping a shift landing on approved
+      // leave (decision D1), so assert the write actually went through it.
+      expect(client.rpc).toHaveBeenCalledWith(
+        'write_rota_shifts_with_leave_guard',
+        expect.objectContaining({ p_shifts: expect.any(Array) }),
+      )
       expect(mockedLogAuditEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           operation_type: 'create',
           resource_type: 'rota_shift',
         }),
       )
+    })
+
+    it('should refuse when the guard reports approved leave', async () => {
+      mockedPermission.mockResolvedValue(true)
+
+      const client = mockSupabaseClient()
+      client.from = vi.fn().mockImplementation((table: string) => {
+        if (table === 'rota_weeks') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: { week_start: '2026-04-06' }, error: null }),
+              }),
+            }),
+          }
+        }
+        if (table === 'employees') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({
+                data: [{ employee_id: validInput.employeeId, first_name: 'Billy', last_name: 'Summers', preferred_name: null }],
+                error: null,
+              }),
+            }),
+          }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      })
+      client.rpc = vi.fn().mockResolvedValue({
+        data: {
+          status: 'leave_conflict',
+          shifts: [],
+          conflicts: [{ ref: 'shift', employee_id: validInput.employeeId, conflict_date: '2026-04-06' }],
+          reason: 'employee_on_leave',
+        },
+        error: null,
+      })
+
+      const result = await createShift(validInput)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toContain('approved leave')
+      }
     })
   })
 
@@ -652,40 +712,28 @@ describe('Rota actions', () => {
         end_time: '17:00',
       }
 
+      const currentShift = {
+        employee_id: 'employee-1',
+        is_open_shift: false,
+        status: 'scheduled',
+        shift_date: '2026-04-06',
+        start_time: '09:00',
+      }
+
       const client = mockSupabaseClient()
       client.from = vi.fn().mockImplementation((table: string) => {
         if (table === 'rota_shifts') {
+          // The action reads the current row with a named column list, writes through
+          // the guarded RPC, then reads the result back with select('*').
           return {
-            select: vi.fn().mockReturnValue({
+            select: vi.fn().mockImplementation((columns: string) => ({
               eq: vi.fn().mockReturnValue({
                 single: vi.fn().mockResolvedValue({
-                  data: {
-                    employee_id: 'employee-1',
-                    is_open_shift: false,
-                    status: 'scheduled',
-                    shift_date: '2026-04-06',
-                    start_time: '09:00',
-                  },
+                  data: columns === '*' ? updatedShift : currentShift,
                   error: null,
                 }),
               }),
-            }),
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                  single: vi.fn().mockResolvedValue({ data: updatedShift, error: null }),
-                }),
-              }),
-            }),
-          }
-        }
-        if (table === 'rota_weeks') {
-          return {
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockResolvedValue({ error: null }),
-              }),
-            }),
+            })),
           }
         }
         throw new Error(`Unexpected table: ${table}`)
@@ -696,6 +744,15 @@ describe('Rota actions', () => {
       if (result.success) {
         expect(result.data.start_time).toBe('10:00')
       }
+      expect(client.rpc).toHaveBeenCalledWith(
+        'write_rota_shifts_with_leave_guard',
+        expect.objectContaining({
+          p_shifts: [expect.objectContaining({
+            shift_id: 'shift-1',
+            values: expect.objectContaining({ start_time: '10:00' }),
+          })],
+        }),
+      )
     })
   })
 

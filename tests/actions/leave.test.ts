@@ -412,6 +412,43 @@ describe('leave actions', () => {
 
       expect(result).toEqual({ success: false, error: 'Employee already has leave covering some of these dates' })
     })
+
+    it('refuses and names the clashing shifts when the rota is not clear', async () => {
+      // Decision D1: approved leave and a rostered shift cannot coexist. The check
+      // happens inside update_leave_request_dates, under the employee leave lock,
+      // and comes back as a rota_conflict carrying the shifts in the way.
+      mockedPermission.mockResolvedValue(true)
+      mockUpdateClient()
+      const rpc = vi.fn().mockResolvedValue({
+        data: {
+          success: false,
+          code: 'rota_conflict',
+          error: 'This holiday clashes with a rostered shift',
+          conflicts: [{
+            shift_id: 'shift-1',
+            shift_date: '2026-06-20',
+            leave_date: '2026-06-20',
+            start_time: '12:00:00',
+            end_time: '21:00:00',
+            department: 'kitchen',
+            shift_name: 'Saturday Kitchen',
+            is_overnight: false,
+          }],
+        },
+        error: null,
+      })
+      mockedCreateAdminClient.mockReturnValue({ rpc })
+
+      const result = await updateLeaveRequestDates(REQUEST_ID, '2026-06-16', '2026-06-24')
+
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error).toContain('Saturday Kitchen')
+        expect(result.error).toContain('Reassign or remove it on the rota')
+        expect(result.conflicts).toHaveLength(1)
+        expect(result.conflicts?.[0]?.shiftId).toBe('shift-1')
+      }
+    })
   })
 
   describe('deleteLeaveRequest', () => {

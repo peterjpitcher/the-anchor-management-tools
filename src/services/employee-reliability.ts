@@ -333,34 +333,17 @@ export async function recordCouldntWorkReliabilityEvent(input: {
   });
 }
 
-async function getHolidayConflictCount(
-  supabase: SupabaseLike,
-  employeeId: string,
-  startDate: string,
-  endDate: string,
-): Promise<number> {
-  try {
-    const { data, error } = await supabase
-      .from('rota_published_shifts')
-      .select('id')
-      .eq('employee_id', employeeId)
-      .eq('status', 'scheduled')
-      .eq('is_open_shift', false)
-      .gte('shift_date', startDate)
-      .lte('shift_date', endDate);
-
-    if (error) {
-      console.error('[employeeReliability] failed to detect holiday conflicts', error);
-      return 0;
-    }
-
-    return (data ?? []).length;
-  } catch (error) {
-    console.error('[employeeReliability] exception while detecting holiday conflicts', error);
-    return 0;
-  }
-}
-
+// No 'holiday_conflict' event is emitted any more (spec F2, developer review C10).
+//
+// It docked the EMPLOYEE's reliability score for a clash the MANAGER created by
+// rostering over approved leave. Approval is now blocked outright while a clashing
+// shift exists (decision D1), so the event can no longer fire legitimately.
+//
+// The 'holiday_conflict' member of ReliabilityEventType and its case in
+// calculateBusinessReliabilityScore are deliberately kept: the event_type CHECK
+// constraint is closed and the scoring switch is exhaustive with no default, so
+// historical rows must still read and score. Those rows are cleaned up under the
+// runbook, not by this code.
 export async function recordHolidayReliabilityEvents(input: {
   leave: ReliabilityLeaveSnapshot;
   eventAt?: string;
@@ -369,7 +352,7 @@ export async function recordHolidayReliabilityEvents(input: {
   userEmail?: string | null;
   includeRequested?: boolean;
   includeApproved?: boolean;
-  includeLateAndConflict?: boolean;
+  includeLate?: boolean;
   supabase?: SupabaseLike;
 }): Promise<void> {
   const supabase = input.supabase ?? createAdminClient();
@@ -421,50 +404,22 @@ export async function recordHolidayReliabilityEvents(input: {
     });
   }
 
-  if (input.includeLateAndConflict) {
-    if (noticeDays <= 14) {
-      await recordReliabilityEvent({
-        eventType: 'late_holiday',
-        employeeId: input.leave.employee_id,
-        eventAt,
-        source: input.source,
-        sourceTable: 'leave_requests',
-        sourceId: input.leave.id,
-        idempotencyKey: `late_holiday:${input.leave.id}:${input.leave.start_date}:${input.leave.end_date}`,
-        leave: input.leave,
-        leaveDayCount: days,
-        noticeDays,
-        note: input.leave.manager_note ?? input.leave.note ?? null,
-        metadata: baseMetadata,
-        supabase,
-      });
-    }
-
-    const conflictCount = await getHolidayConflictCount(
+  if (input.includeLate && noticeDays <= 14) {
+    await recordReliabilityEvent({
+      eventType: 'late_holiday',
+      employeeId: input.leave.employee_id,
+      eventAt,
+      source: input.source,
+      sourceTable: 'leave_requests',
+      sourceId: input.leave.id,
+      idempotencyKey: `late_holiday:${input.leave.id}:${input.leave.start_date}:${input.leave.end_date}`,
+      leave: input.leave,
+      leaveDayCount: days,
+      noticeDays,
+      note: input.leave.manager_note ?? input.leave.note ?? null,
+      metadata: baseMetadata,
       supabase,
-      input.leave.employee_id,
-      input.leave.start_date,
-      input.leave.end_date,
-    );
-
-    if (conflictCount > 0) {
-      await recordReliabilityEvent({
-        eventType: 'holiday_conflict',
-        employeeId: input.leave.employee_id,
-        eventAt,
-        source: input.source,
-        sourceTable: 'leave_requests',
-        sourceId: input.leave.id,
-        idempotencyKey: `holiday_conflict:${input.leave.id}:${input.leave.start_date}:${input.leave.end_date}`,
-        leave: input.leave,
-        leaveDayCount: days,
-        noticeDays,
-        impactedShiftCount: conflictCount,
-        note: input.leave.manager_note ?? input.leave.note ?? null,
-        metadata: baseMetadata,
-        supabase,
-      });
-    }
+    });
   }
 
   if (input.includeRequested || input.includeApproved) {
