@@ -120,6 +120,29 @@ export async function finalizeEmployeeSeparation(
     };
   }
 
+  // Future rota shifts and open timeclock sessions were already blocking, but booked leave was
+  // not, so a leaver could keep holiday sitting on the rota after their last day.
+  const { data: futureLeave, error: futureLeaveError } = await adminClient
+    .from('leave_days')
+    .select('leave_date')
+    .eq('employee_id', employeeId)
+    .gt('leave_date', today)
+    .order('leave_date', { ascending: true })
+    .limit(3);
+
+  if (futureLeaveError) {
+    return { success: false, error: 'Failed to check future booked leave.', code: 'leave_check_failed' };
+  }
+
+  if ((futureLeave ?? []).length > 0) {
+    const dates = (futureLeave as Array<{ leave_date: string }>).map(row => row.leave_date).join(', ');
+    return {
+      success: false,
+      error: `This employee still has leave booked from ${dates}. Cancel that leave before marking them as Former.`,
+      code: 'future_booked_leave',
+    };
+  }
+
   // Clear future template pre-assignments before status changes so old templates
   // cannot put a former employee back on generated rotas.
   await adminClient
