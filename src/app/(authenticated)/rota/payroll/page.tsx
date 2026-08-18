@@ -91,7 +91,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
               dayInfo={dayInfo}
             />
           ) : (
-            <p className="text-sm text-red-600">{payrollResult.error}</p>
+            <p className="text-sm text-danger-fg">{payrollResult.error}</p>
           )}
         </Card>
       </Section>

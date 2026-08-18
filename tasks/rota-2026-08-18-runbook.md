@@ -184,3 +184,57 @@ where d.status='draft'
   and exists (select 1 from rota_weeks p where p.status='published' and p.week_start > d.week_start)
   and d.week_start >= current_date;
 ```
+
+---
+
+# Post-deploy status, 2026-08-18
+
+PR #108 merged (`af93b346`) and **verified live** on
+`management.orangejelly.co.uk`: the new `/api/cron/rota-unfilled-urgent` route
+answers 401 (exists, auth-gated) where a nonsense path answers 404. Migrations
+were already applied and all eleven functions verified.
+
+PR #109 merged into its stacked base branch instead of `main`, so the design
+tokens never reached production. Re-raised as **#110** against `main`.
+
+| item | at review | now | outstanding |
+|---|---|---|---|
+| R1 shifts on approved leave | 9 | **0** | none, and now blocked at the database |
+| R2 shifts staff cannot see, week of 2026-09-07 | 28 | 28 | republish the week |
+| R3 draft week before a published week | 1 | 1 | publish 2026-08-31 |
+| R4 ghost shifts staff still see | 4 | 7 | see below |
+| R5 historical `holiday_conflict` events | 3 | 4 | review and delete the manager-caused ones |
+
+**The drift is wider than the review found.** Thirteen weeks are affected, not
+four. Ten are historical and small:
+
+| week | staff cannot see | ghosts |
+|---|---|---|
+| 2026-01-12, 01-19, 01-26 | 1 each | 0 |
+| 2026-02-02 | 3 | 0 |
+| 2026-02-09, 02-16, 02-23 | 2 each | 0 |
+| 2026-03-16 | 0 | 3 |
+| 2026-06-15 | 0 | 1 |
+| 2026-08-03 | 0 | 3 |
+
+**Recommendation: leave the ten historical weeks alone.** Republishing a past
+week emails staff about shifts that already happened, which is worse than the
+stale snapshot it fixes. They are inert history. The new readiness model reports
+on the horizon ahead, so they will not generate noise.
+
+**The two that matter, both future:**
+
+1. **Publish the week of 2026-08-31** (27 shifts). Now safe: with #108 live,
+   publishing inside the cutoff no longer auto-accepts, and those staff get the
+   48-hour grace window instead. Before the deploy this would have auto-accepted
+   all 27 on the next 07:30 cron run.
+2. **Republish the week of 2026-09-07** (28 shifts). Staff currently see 4 of 32.
+
+The week of 2026-09-14 is draft with 30 shifts, but nothing is published after
+it, so that is ordinary planning rather than a hole.
+
+**R5 detail.** Four events, latest 2026-06-24, so nothing has fired since the
+review. Two are `backfill`, one `holiday_edit`, one `holiday_direct_booking`.
+Check what actually happened in each case before deleting: the 2026-08-10
+open-shift-request precedent showed that blanket-resolving a queue tells nine
+people the wrong thing.

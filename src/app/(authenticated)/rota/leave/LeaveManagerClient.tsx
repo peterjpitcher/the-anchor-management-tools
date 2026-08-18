@@ -109,9 +109,9 @@ function LeaveRequestRow({
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <div
-        className="flex items-center justify-between px-4 py-3 bg-white cursor-pointer hover:bg-gray-50 transition-colors"
+        className="flex items-center justify-between px-4 py-3 bg-surface cursor-pointer hover:bg-surface-2 transition-colors"
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-3 min-w-0">
@@ -119,8 +119,8 @@ function LeaveRequestRow({
             {request.status}
           </Badge>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{empName}</p>
-            <p className="text-xs text-gray-500 truncate">
+            <p className="text-sm font-medium text-text-strong truncate">{empName}</p>
+            <p className="text-xs text-text-muted truncate">
               {formatDate(request.start_date)} – {formatDate(request.end_date)} · {days} day{days !== 1 ? 's' : ''}
             </p>
           </div>
@@ -132,7 +132,7 @@ function LeaveRequestRow({
                 type="button"
                 onClick={e => { e.stopPropagation(); setConfirmDecision('approved'); }}
                 disabled={isPending}
-                className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded"
+                className="p-1 text-success-fg hover:text-success-fg hover:bg-success-soft rounded"
                 title="Approve"
                 aria-label={`Approve ${empName} holiday request`}
               >
@@ -142,7 +142,7 @@ function LeaveRequestRow({
                 type="button"
                 onClick={e => { e.stopPropagation(); setConfirmDecision('declined'); }}
                 disabled={isPending}
-                className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded"
                 title="Decline"
                 aria-label={`Decline ${empName} holiday request`}
               >
@@ -155,7 +155,7 @@ function LeaveRequestRow({
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setExpanded(true); setIsEditing(true); }}
-                className="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+                className="p-1 text-text-muted hover:text-text-strong hover:bg-surface-hover rounded"
                 title="Edit dates"
                 aria-label={`Edit ${empName} holiday request`}
               >
@@ -164,7 +164,7 @@ function LeaveRequestRow({
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
-                className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+                className="p-1 text-danger-fg hover:text-danger-fg hover:bg-danger-soft rounded"
                 title="Delete request"
                 aria-label={`Delete ${empName} holiday request`}
               >
@@ -173,38 +173,38 @@ function LeaveRequestRow({
             </>
           )}
           {expanded ? (
-            <ChevronUpIcon className="h-4 w-4 text-gray-400" />
+            <ChevronUpIcon className="h-4 w-4 text-text-subtle" />
           ) : (
-            <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+            <ChevronDownIcon className="h-4 w-4 text-text-subtle" />
           )}
         </div>
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 bg-gray-50 border-t border-gray-100 space-y-3">
+        <div className="px-4 pb-4 bg-surface-2 border-t border-border space-y-3">
           <dl className="grid grid-cols-2 gap-2 mt-3 text-sm">
             <div>
-              <dt className="text-gray-500 text-xs">Submitted</dt>
-              <dd className="text-gray-900">{formatDate(request.created_at)}</dd>
+              <dt className="text-text-muted text-xs">Submitted</dt>
+              <dd className="text-text-strong">{formatDate(request.created_at)}</dd>
             </div>
             <div>
-              <dt className="text-gray-500 text-xs">Holiday year</dt>
-              <dd className="text-gray-900">{request.holiday_year}/{String(request.holiday_year + 1).slice(2)}</dd>
+              <dt className="text-text-muted text-xs">Holiday year</dt>
+              <dd className="text-text-strong">{request.holiday_year}/{String(request.holiday_year + 1).slice(2)}</dd>
             </div>
             {usageProgress && (
               <div className="col-span-2">
-                <dt className="text-gray-500 text-xs mb-1">
+                <dt className="text-text-muted text-xs mb-1">
                   Allowance used ({request.holiday_year}/{String(request.holiday_year + 1).slice(2)})
                 </dt>
                 <dd>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                    <div className="flex-1 bg-surface-hover rounded-full h-1.5">
                       <div
-                        className={`h-1.5 rounded-full ${usageProgress.isOverAllowance ? 'bg-red-500' : 'bg-green-500'}`}
+                        className={`h-1.5 rounded-full ${usageProgress.isOverAllowance ? 'bg-danger' : 'bg-success'}`}
                         style={{ width: `${usageProgress.percent}%` }}
                       />
                     </div>
-                    <span className={`text-xs font-medium ${usageProgress.isOverAllowance ? 'text-red-600' : 'text-gray-700'}`}>
+                    <span className={`text-xs font-medium ${usageProgress.isOverAllowance ? 'text-danger-fg' : 'text-text'}`}>
                       {usageProgress.count} / {usageProgress.allowance} days
                     </span>
                   </div>
@@ -213,14 +213,14 @@ function LeaveRequestRow({
             )}
             {request.note && (
               <div className="col-span-2">
-                <dt className="text-gray-500 text-xs">Employee note</dt>
-                <dd className="text-gray-900 italic">&ldquo;{request.note}&rdquo;</dd>
+                <dt className="text-text-muted text-xs">Employee note</dt>
+                <dd className="text-text-strong italic">&ldquo;{request.note}&rdquo;</dd>
               </div>
             )}
             {request.manager_note && (
               <div className="col-span-2">
-                <dt className="text-gray-500 text-xs">Manager note</dt>
-                <dd className="text-gray-900">{request.manager_note}</dd>
+                <dt className="text-text-muted text-xs">Manager note</dt>
+                <dd className="text-text-strong">{request.manager_note}</dd>
               </div>
             )}
           </dl>
@@ -247,7 +247,7 @@ function LeaveRequestRow({
                   variant="secondary"
                   onClick={() => setConfirmDecision('declined')}
                   disabled={isPending}
-                  className="!text-red-700 !border-red-200 hover:!bg-red-50"
+                  className="!text-danger-fg !border-danger/25 hover:!bg-danger-soft"
                 >
                   Decline
                 </Button>
@@ -256,7 +256,7 @@ function LeaveRequestRow({
           )}
 
           {canEdit && (
-            <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="rounded-lg border border-border bg-surface p-3">
               {!isEditing ? (
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" variant="secondary" onClick={() => setIsEditing(true)}>
@@ -269,7 +269,7 @@ function LeaveRequestRow({
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="space-y-1 text-xs font-medium text-gray-600">
+                    <label className="space-y-1 text-xs font-medium text-text-muted">
                       Start date
                       <Input
                         type="date"
@@ -277,7 +277,7 @@ function LeaveRequestRow({
                         onChange={e => setEditStartDate(e.target.value)}
                       />
                     </label>
-                    <label className="space-y-1 text-xs font-medium text-gray-600">
+                    <label className="space-y-1 text-xs font-medium text-text-muted">
                       End date
                       <Input
                         type="date"
@@ -286,7 +286,7 @@ function LeaveRequestRow({
                       />
                     </label>
                   </div>
-                  {editError && <p role="alert" className="text-xs text-red-600">{editError}</p>}
+                  {editError && <p role="alert" className="text-xs text-danger-fg">{editError}</p>}
                   <div className="flex gap-2">
                     <Button type="button" size="sm" onClick={handleSaveDates} disabled={isPending}>
                       {isPending ? 'Saving…' : 'Save dates'}
@@ -369,7 +369,7 @@ export default function LeaveManagerClient({
   return (
     <div className="space-y-4">
       {/* Filter tabs */}
-      <div className="flex gap-1 border border-gray-200 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 border border-border rounded-lg p-1 w-fit">
         {(['pending', 'approved', 'declined', 'all'] as const).map(f => (
           <button
             key={f}
@@ -377,13 +377,13 @@ export default function LeaveManagerClient({
             onClick={() => setFilter(f)}
             className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
               filter === f
-                ? 'bg-gray-900 text-white'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                ? 'bg-primary text-primary-fg'
+                : 'text-text-muted hover:text-text-strong hover:bg-surface-hover'
             }`}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
             {f === 'pending' && pendingCount > 0 && (
-              <span className="ml-1 bg-amber-400 text-amber-900 rounded-full px-1 text-[10px]">
+              <span className="ml-1 bg-warning text-warning-fg rounded-full px-1 text-[10px]">
                 {pendingCount}
               </span>
             )}
@@ -392,7 +392,7 @@ export default function LeaveManagerClient({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-gray-400 italic py-6 text-center">
+        <p className="text-sm text-text-subtle italic py-6 text-center">
           No {filter === 'all' ? '' : filter} requests.
         </p>
       ) : (

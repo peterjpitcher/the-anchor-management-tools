@@ -73,15 +73,15 @@ export default function CreateShiftModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between p-5 border-b border-gray-200">
+        <div className="flex items-start justify-between p-5 border-b border-border">
           <div>
-            <p className="text-sm text-gray-500">{formatDate(shiftDate)}</p>
-            <p className="text-lg font-semibold text-gray-900 mt-0.5">{employeeName}</p>
+            <p className="text-sm text-text-muted">{formatDate(shiftDate)}</p>
+            <p className="text-lg font-semibold text-text-strong mt-0.5">{employeeName}</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded">
+          <button type="button" onClick={onClose} className="p-1 text-text-subtle hover:text-text-muted rounded">
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
@@ -124,9 +124,9 @@ export default function CreateShiftModal({
               type="checkbox"
               checked={overnight}
               onChange={e => setOvernight(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600"
+              className="rounded border-border-strong text-info-fg"
             />
-            <label htmlFor="cs-overnight" className="text-gray-700">Overnight shift</label>
+            <label htmlFor="cs-overnight" className="text-text">Overnight shift</label>
           </div>
 
           <PremiumControl state={premium} idPrefix="cs" />
@@ -141,7 +141,7 @@ export default function CreateShiftModal({
           </FormGroup>
 
           {startTime && endTime && (
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-muted">
               Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
             </p>
           )}
@@ -287,7 +287,7 @@ export function PremiumControl({ state, idPrefix }: PremiumControlProps) {
   const showPremiumDetail = state.mode !== 'none';
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+    <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-3">
       <FormGroup label="Pay rate" htmlFor={`${idPrefix}-rate`}>
         <Select
           id={`${idPrefix}-rate`}
@@ -329,9 +329,9 @@ export function PremiumControl({ state, idPrefix }: PremiumControlProps) {
               type="checkbox"
               checked={state.useWindow}
               onChange={e => state.setUseWindow(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600"
+              className="rounded border-border-strong text-info-fg"
             />
-            <label htmlFor={`${idPrefix}-window`} className="text-gray-700">Applies to part of the shift only</label>
+            <label htmlFor={`${idPrefix}-window`} className="text-text">Applies to part of the shift only</label>
           </div>
 
           {state.useWindow && (
