@@ -833,12 +833,36 @@ export async function saveOnboardingSection(
   try {
     if (section === 'personal') {
       const parsed = PersonalSectionSchema.parse(data);
+
+      // employees_preferred_name_active_unique is a PARTIAL index: it only covers Active and
+      // Started Separation. An onboarding record can therefore save a name that already belongs
+      // to somebody, and the collision only surfaces at the very end when completion flips the
+      // status to Active, as a raw constraint error on a screen with no field to correct.
+      // Check it here instead, on the step where the name was actually typed.
+      const preferredName = normalisePreferredName(parsed.preferred_name);
+      if (preferredName) {
+        const { data: clash } = await adminClient
+          .from('employees')
+          .select('employee_id, first_name, last_name')
+          .in('status', ['Active', 'Started Separation'])
+          .ilike('preferred_name', preferredName)
+          .neq('employee_id', employeeId)
+          .maybeSingle();
+
+        if (clash) {
+          return {
+            success: false,
+            error: `Someone here already goes by "${preferredName}". Please pick something else, for example add your first initial.`,
+          };
+        }
+      }
+
       const { error } = await adminClient
         .from('employees')
         .update({
           first_name: parsed.first_name,
           last_name: parsed.last_name,
-          preferred_name: normalisePreferredName(parsed.preferred_name),
+          preferred_name: preferredName,
           date_of_birth: parsed.date_of_birth ?? null,
           address: parsed.address ?? null,
           post_code: parsed.post_code ?? null,
@@ -1255,7 +1279,20 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
 
   if (completionError) {
     console.error('[submitOnboardingProfile] Failed to complete onboarding:', completionError);
-    return { success: false, error: completionError.message || 'Failed to complete profile. Please try again.' };
+
+    // The preferred name index only applies to Active and Started Separation, so a clash can
+    // only ever surface here, at the moment completion flips the status. Raw constraint text on
+    // the final screen is a dead end: it names a database index and there is no field on that
+    // screen to change. Say what to do instead.
+    const message = completionError.message ?? '';
+    if (message.includes('employees_preferred_name_active_unique') || (completionError as { code?: string }).code === '23505') {
+      return {
+        success: false,
+        error: 'Someone here already goes by the preferred name you chose. Please go back to Personal Details and pick a different one, for example add your first initial.',
+      };
+    }
+
+    return { success: false, error: message || 'Failed to complete profile. Please try again.' };
   }
 
   const completion = completionData as {
