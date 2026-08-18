@@ -27,6 +27,12 @@ jobs:
 
       - name: Typecheck
         run: npx tsc --noEmit
+        env:
+          # tsc on this codebase peaks a little over 4 GB, which is right on the
+          # runner's default heap limit, so it aborted with exit 134 rather than
+          # reporting type errors. Give it headroom. The Build step below already
+          # does the same thing for the same reason.
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Test
         run: npm run test:coverage
