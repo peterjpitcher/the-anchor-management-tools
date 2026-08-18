@@ -8,6 +8,20 @@ import { generateStatementPDF } from '@/lib/oj-statement'
 import { logAuditEvent } from '@/app/actions/audit'
 import { escapeHtml } from '@/lib/cron/alerting'
 import { buildStatementAgeing, type StatementAgeing } from '@/lib/oj-projects/statement-ageing'
+import { toLocalIsoDate } from '@/lib/dateUtils'
+
+/**
+ * The London calendar date a credit note was issued on.
+ *
+ * `created_at` is a UTC timestamp, and slicing the first ten characters off it
+ * reads the UTC date. During British Summer Time a credit note issued at 00:30
+ * is stored as 23:30 the day before, so slicing put it in the previous day and,
+ * at a month end, on the wrong month's statement.
+ */
+function creditNoteDate(createdAt: string): string {
+  const parsed = new Date(createdAt)
+  return Number.isNaN(parsed.getTime()) ? String(createdAt).slice(0, 10) : toLocalIsoDate(parsed)
+}
 
 export interface StatementTransaction {
   date: string
@@ -169,7 +183,7 @@ export async function getClientStatement(
     .reduce((sum, p) => sum + Number(p.amount || 0), 0)
 
   const creditedBefore = allCreditNotes
-    .filter((cn) => cn.created_at.slice(0, 10) < dateFrom)
+    .filter((cn) => creditNoteDate(cn.created_at) < dateFrom)
     .reduce((sum, cn) => sum + Number(cn.amount_inc_vat || 0), 0)
 
   const openingBalance = roundMoney(invoicedBefore - paidBefore - creditedBefore)
@@ -220,7 +234,7 @@ export async function getClientStatement(
 
   // Credit notes within range
   for (const cn of allCreditNotes) {
-    const cnDate = cn.created_at.slice(0, 10)
+    const cnDate = creditNoteDate(cn.created_at)
     if (cnDate >= dateFrom && cnDate <= dateTo) {
       rawTransactions.push({
         date: cnDate,
@@ -267,7 +281,7 @@ export async function getClientStatement(
           .filter((p) => p.invoice_id === inv.id && p.payment_date <= dateTo)
           .reduce((sum, p) => sum + Number(p.amount || 0), 0)
         const credited = allCreditNotes
-          .filter((cn) => cn.invoice_id === inv.id && cn.created_at.slice(0, 10) <= dateTo)
+          .filter((cn) => cn.invoice_id === inv.id && creditNoteDate(cn.created_at) <= dateTo)
           .reduce((sum, cn) => sum + Number(cn.amount_inc_vat || 0), 0)
         return {
           dueDate: String(inv.due_date || inv.invoice_date),
