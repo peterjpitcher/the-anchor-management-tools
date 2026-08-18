@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "title": "Detention Disco on Friday 11 September",
+  "preheader": "£5 cash entry · two themed rounds · Nikki hosting · Friday 11 September from 7pm",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/5cdadf74-97c1-4ec0-b495-d369a7304494/square/1786964352628_ChatGPT_Image_Aug_17_2026_11_51_42_AM.png",
+          "alt": "Detention Disco Music Bingo with Nikki at The Anchor in Stanwell Moor",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Detention Disco artwork · 1254 × 1254",
+        "placeholder_caption": "Back to School Music Bingo",
+        "kicker": "Friday 11 September · From 7pm",
+        "headline": "Your Friday night detention starts at 7pm",
+        "body": [
+          "School disco favourites, throwback anthems and huge singalong hits take over The Anchor for two themed rounds of Music Bingo, hosted by Nikki. Book every person coming and bring £5 cash each on the night."
+        ],
+        "cta_label": "Book your Music Bingo seats",
+        "cta_url": "https://www.the-anchor.pub/events/detention-disco-back-to-school-music-bingo-2026-09-11"
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "What to expect.",
+        "body": "Two themed rounds · Quick games · Prizes · Singing · Dancing · Nikki madness"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Entry",
+            "value": "£5 cash on arrival"
+          },
+          {
+            "label": "Time",
+            "value": "Friday 11 September from 7pm"
+          },
+          {
+            "label": "Theme",
+            "value": "Back to School"
+          },
+          {
+            "label": "Seating",
+            "value": "Friendly communal tables"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Know the song? Mark your card.",
+        "body": [
+          "Listen to each clip, match it to the titles or artists on your card and mark the square. We reveal every song title and artist before the track ends, so you can join in and win even if you do not know much about music.",
+          "Dress for the theme if you fancy it. A full school-disco outfit is welcome, but even a small themed touch can earn extra points.",
+          "The pub is open from 12pm and dinner is served from 4pm to 9pm, so come down early for food and settle in before the first round."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Class dismissed",
+        "body": "Book ahead to keep your group together where possible, then bring £5 cash per person on the night.",
+        "cta_label": "Book your Music Bingo seats",
+        "cta_url": "https://www.the-anchor.pub/events/detention-disco-back-to-school-music-bingo-2026-09-11",
+        "reassurance_items": [
+          "No expert music knowledge needed",
+          "Free parking right outside"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}
