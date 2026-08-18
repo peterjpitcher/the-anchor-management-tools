@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { saveOnboardingSection } from '@/app/actions/employeeInvite';
+import { checkPreferredNameAvailability, saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface PersonalData {
   first_name: string;
@@ -33,6 +33,24 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Warned as they leave the field rather than when they press Save. The uniqueness rule only
+  // applies to Active staff, so without this the clash stays invisible until the very last step.
+  const [preferredNameWarning, setPreferredNameWarning] = useState('');
+
+  const handlePreferredNameBlur = async () => {
+    const candidate = data.preferred_name.trim();
+    if (!candidate) {
+      setPreferredNameWarning('');
+      return;
+    }
+    try {
+      const result = await checkPreferredNameAvailability(token, candidate);
+      setPreferredNameWarning(result.available ? '' : (result.message ?? ''));
+    } catch {
+      // A failed availability check must never block typing. Saving still enforces it.
+      setPreferredNameWarning('');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,10 +120,25 @@ export default function PersonalStep({ token, initialData, onSuccess }: Personal
           id="preferred_name"
           type="text"
           value={data.preferred_name}
-          onChange={(e) => setData({ ...data, preferred_name: e.target.value })}
-          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+          onChange={(e) => {
+            setData({ ...data, preferred_name: e.target.value });
+            if (preferredNameWarning) setPreferredNameWarning('');
+          }}
+          onBlur={handlePreferredNameBlur}
+          aria-invalid={preferredNameWarning ? true : undefined}
+          aria-describedby="preferred_name-help"
+          className={`block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+            preferredNameWarning
+              ? 'border-amber-500 focus:border-amber-500 focus:ring-amber-500'
+              : 'border-gray-300 focus:border-green-500 focus:ring-green-500'
+          }`}
         />
-        <p className="mt-1 text-xs text-gray-500">
+        {preferredNameWarning && (
+          <p className="mt-1 text-sm text-amber-700" role="status">
+            {preferredNameWarning}
+          </p>
+        )}
+        <p id="preferred_name-help" className="mt-1 text-xs text-gray-500">
           What you would like the team to call you. Leave blank to use your first name. If someone
           here already goes by the same name, add your first initial, for example &quot;Jacob H&quot;.
         </p>

@@ -1099,6 +1099,45 @@ export async function acknowledgeRightToWorkNotice(
   return { success: true };
 }
 
+/**
+ * Is this preferred name free?
+ *
+ * Called as the starter leaves the field so they are told immediately, rather than finding out
+ * when they press Save, or worse at the very end when completion flips their status to Active
+ * and the partial unique index finally applies.
+ */
+export async function checkPreferredNameAvailability(
+  token: string,
+  preferredName: string,
+): Promise<{ available: boolean; message?: string }> {
+  const trimmed = normalisePreferredName(preferredName);
+  if (!trimmed) return { available: true };
+
+  const validation = await validateInviteToken(token);
+  if (!validation.valid || !validation.employee_id) {
+    // Not the moment to nag about an expired link; saving will say so properly.
+    return { available: true };
+  }
+
+  const adminClient = createAdminClient();
+  const { data: clash } = await adminClient
+    .from('employees')
+    .select('employee_id')
+    .in('status', ['Active', 'Started Separation'])
+    .ilike('preferred_name', trimmed)
+    .neq('employee_id', validation.employee_id)
+    .maybeSingle();
+
+  if (clash) {
+    return {
+      available: false,
+      message: `Someone here already goes by "${trimmed}". Please pick something else, for example add your first initial.`,
+    };
+  }
+
+  return { available: true };
+}
+
 export async function getOnboardingSnapshot(token: string): Promise<
   { success: true; data: OnboardingSnapshot } | { success: false; error: string }
 > {
