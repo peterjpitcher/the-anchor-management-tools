@@ -25,6 +25,7 @@ import {
   type SeparationShiftSummary,
 } from '@/lib/email/employee-invite-emails';
 import { getTodayIsoDate } from '@/lib/dateUtils';
+import { normalisePreferredName } from '@/lib/employees/display-name';
 import { formatPhoneForStorage } from '@/lib/utils';
 
 // This builds invite links that go out by email, so the fallback must resolve.
@@ -62,6 +63,7 @@ export type OnboardingSnapshot = {
   personal: {
     first_name: string;
     last_name: string;
+    preferred_name: string;
     date_of_birth: string;
     address: string;
     post_code: string;
@@ -220,6 +222,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
 
   const email = normalizeEmail(formData.get('email') as string | null);
   const jobTitle = (formData.get('job_title') as string | null)?.trim() || null;
+  const employmentStartDate = (formData.get('employment_start_date') as string | null)?.trim() || null;
 
   const emailSchema = z.string().email('Please enter a valid email address.');
   const emailResult = emailSchema.safeParse(email);
@@ -233,6 +236,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     const { data, error } = await adminClient.rpc('create_employee_invite', {
       p_email: email,
       p_job_title: jobTitle,
+      p_employment_start_date: employmentStartDate,
     });
 
     if (error) {
@@ -275,7 +279,7 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
         resource_type: 'employee',
         resource_id: result.employee_id,
         operation_status: 'success',
-        new_values: { email, job_title: jobTitle, status: 'Onboarding' },
+        new_values: { email, job_title: jobTitle, employment_start_date: employmentStartDate, status: 'Onboarding' },
       });
     } catch (auditError) {
       console.error('[inviteEmployee] Audit log failed:', auditError);
@@ -697,6 +701,7 @@ function onboardingFinancialField(options: {
 const PersonalSectionSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
+  preferred_name: z.string().optional().nullable(),
   date_of_birth: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   post_code: z.string().optional().nullable(),
@@ -842,6 +847,7 @@ export async function saveOnboardingSection(
         .update({
           first_name: parsed.first_name,
           last_name: parsed.last_name,
+          preferred_name: normalisePreferredName(parsed.preferred_name),
           date_of_birth: parsed.date_of_birth ?? null,
           address: parsed.address ?? null,
           post_code: parsed.post_code ?? null,
@@ -851,7 +857,17 @@ export async function saveOnboardingSection(
         })
         .eq('employee_id', employeeId);
 
-      if (error) throw error;
+      if (error) {
+        // A unique index guards preferred names across current employees. Turn the raw
+        // constraint error into something a new starter can act on.
+        if ((error as { code?: string }).code === '23505') {
+          return {
+            success: false,
+            error: 'Someone here already goes by that name. Please choose a different one, for example add your first initial.',
+          };
+        }
+        throw error;
+      }
       await auditOnboardingSectionWrite(employeeId, validation.email, 'personal', Object.keys(parsed));
 
     } else if (section === 'emergency_contacts') {
@@ -1085,7 +1101,7 @@ export async function getOnboardingSnapshot(token: string): Promise<
   const [employeeResult, contactsResult, financialResult, healthResult, timeOffResult, timeOffBlocksResult] = await Promise.all([
     adminClient
       .from('employees')
-      .select('first_name, last_name, date_of_birth, address, post_code, phone_number, mobile_number')
+      .select('first_name, last_name, preferred_name, date_of_birth, address, post_code, phone_number, mobile_number')
       .eq('employee_id', employeeId)
       .maybeSingle(),
     adminClient
@@ -1163,6 +1179,7 @@ export async function getOnboardingSnapshot(token: string): Promise<
       personal: {
         first_name: employee?.first_name ?? '',
         last_name: employee?.last_name ?? '',
+        preferred_name: employee?.preferred_name ?? '',
         date_of_birth: employee?.date_of_birth ?? '',
         address: employee?.address ?? '',
         post_code: employee?.post_code ?? '',
