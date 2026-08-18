@@ -171,8 +171,10 @@ describe('VendorSummaryGrid', () => {
     render(<VendorSummaryGrid vendors={vendors} initialWatchlist={[]} initialReviews={[]} />)
 
     expect(await screen.findByText('Spend movement overview')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'All vendors' }))
-    const rows = screen.getAllByRole('row')
+    // The heading above renders while the movements are still loading, so it cannot stand
+    // in for the table being present. Wait for a control that only exists once loaded.
+    fireEvent.click(await screen.findByRole('button', { name: 'All vendors' }))
+    const rows = await screen.findAllByRole('row')
     expect(within(rows[1]).getByText('Food Supplier')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Year on year' }))
@@ -198,10 +200,12 @@ describe('VendorSummaryGrid', () => {
       />,
     )
 
-    await waitFor(() => expect(mockedGetReceiptVendorMovements).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('button', { name: 'Watched (1)' }))
+    // Wait for the panel to finish loading, not merely for the request to be issued. The
+    // view filters and the table only render once the movements promise has resolved, so
+    // asserting on the mock's call count leaves the click racing the first re-render.
+    fireEvent.click(await screen.findByRole('button', { name: 'Watched (1)' }))
 
-    const rows = screen.getAllByRole('row').slice(1)
+    const rows = (await screen.findAllByRole('row')).slice(1)
     expect(rows.some((row) => within(row).queryByText('Brewery A'))).toBe(true)
     expect(rows.some((row) => within(row).queryByText('Food Supplier'))).toBe(false)
   })
