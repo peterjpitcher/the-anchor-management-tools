@@ -74,14 +74,123 @@ export interface MarketingClickRow {
   device_type: string | null
 }
 
+export interface MarketingClickClassification {
+  /** Clicks safe to show as human engagement. Raw rows remain untouched in the database. */
+  humanRows: MarketingClickRow[]
+  /** Known bots, scan bursts and clicks made before the campaign send time. */
+  filteredRows: MarketingClickRow[]
+}
+
 /**
- * Only 'bot' is excluded, and an unclassified click still counts.
+ * Mail-security tools rarely identify themselves as bots. The traffic we have observed uses
+ * ordinary Chrome and Firefox user agents, then requests nearly every unrelated link in the
+ * message in a burst. User-agent matching alone therefore promotes a scan into a person.
  *
- * The user-agent parser labels what it recognises. A null device type is a real visit we
- * failed to classify, and dropping it would understate a campaign for no better reason than a
- * gap in a lookup table. This matches `isHumanClick` in the short-links service, so the two
- * places clicks are counted agree.
+ * A five-minute session is long enough to contain the slower scanners we have seen. Inside a
+ * session, activity is filtered only when it covers at least 80% of a campaign's links (and at
+ * least three distinct links) plus either happens in 30 seconds or repeats links. A person can
+ * still click one or two links quickly, and a real isolated click after a scan burst is kept.
  */
+const SCAN_SESSION_GAP_MS = 5 * 60 * 1000
+const RAPID_SCAN_SPAN_MS = 30 * 1000
+const MIN_SCAN_LINKS = 3
+const MIN_LINK_COVERAGE = 0.8
+const MIN_DUPLICATE_REQUESTS = 2
+
+function parseClickTime(value: string | null): number | null {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function sessionsFor(rows: MarketingClickRow[]): MarketingClickRow[][] {
+  const timed = rows
+    .map((row) => ({ row, time: parseClickTime(row.clicked_at) }))
+    .filter((entry): entry is { row: MarketingClickRow; time: number } => entry.time != null)
+    .sort((a, b) => a.time - b.time)
+
+  const sessions: MarketingClickRow[][] = []
+  let current: MarketingClickRow[] = []
+  let previousTime: number | null = null
+
+  for (const entry of timed) {
+    if (previousTime != null && entry.time - previousTime > SCAN_SESSION_GAP_MS) {
+      if (current.length > 0) sessions.push(current)
+      current = []
+    }
+
+    current.push(entry.row)
+    previousTime = entry.time
+  }
+
+  if (current.length > 0) sessions.push(current)
+  return sessions
+}
+
+function looksLikeScanSession(
+  rows: MarketingClickRow[],
+  campaignLinkIds: Set<string>,
+): boolean {
+  if (campaignLinkIds.size < MIN_SCAN_LINKS || rows.length < MIN_SCAN_LINKS) return false
+
+  const distinctLinks = new Set(
+    rows
+      .map((row) => row.short_link_id)
+      .filter((id): id is string => id != null && campaignLinkIds.has(id)),
+  )
+
+  const requiredLinks = Math.max(MIN_SCAN_LINKS, Math.ceil(campaignLinkIds.size * MIN_LINK_COVERAGE))
+  if (distinctLinks.size < requiredLinks) return false
+
+  const times = rows
+    .map((row) => parseClickTime(row.clicked_at))
+    .filter((time): time is number => time != null)
+    .sort((a, b) => a - b)
+  if (times.length === 0) return false
+
+  const span = times[times.length - 1] - times[0]
+  const duplicateRequests = rows.length - distinctLinks.size
+  return span <= RAPID_SCAN_SPAN_MS || duplicateRequests >= MIN_DUPLICATE_REQUESTS
+}
+
+export function classifyMarketingClicks(
+  rows: MarketingClickRow[],
+  linkIds: Iterable<string>,
+  options: { notBefore?: string | null } = {},
+): MarketingClickClassification {
+  const campaignLinkIds = new Set(linkIds)
+  const filtered = new Set<MarketingClickRow>()
+  const notBefore = parseClickTime(options.notBefore ?? null)
+
+  for (const row of rows) {
+    const time = parseClickTime(row.clicked_at)
+    if (row.device_type === 'bot' || (notBefore != null && time != null && time < notBefore)) {
+      filtered.add(row)
+    }
+  }
+
+  const rowsByRecipient = new Map<string, MarketingClickRow[]>()
+  for (const row of rows) {
+    if (filtered.has(row) || !row.utm_content) continue
+    const current = rowsByRecipient.get(row.utm_content) ?? []
+    current.push(row)
+    rowsByRecipient.set(row.utm_content, current)
+  }
+
+  for (const recipientRows of rowsByRecipient.values()) {
+    for (const session of sessionsFor(recipientRows)) {
+      if (!looksLikeScanSession(session, campaignLinkIds)) continue
+      for (const row of session) filtered.add(row)
+    }
+  }
+
+  return {
+    humanRows: rows.filter((row) => !filtered.has(row)),
+    filteredRows: rows.filter((row) => filtered.has(row)),
+  }
+}
+
+/** Explicit bot check used outside campaign-level reporting, where no scan session exists. */
 export function isHumanClick(deviceType: string | null | undefined): boolean {
   return deviceType !== 'bot'
 }

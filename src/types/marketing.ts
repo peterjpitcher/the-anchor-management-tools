@@ -356,17 +356,18 @@ export interface MarketingCampaignWithSummary extends MarketingCampaign {
 /**
  * What the campaign actually caused, measured first-party.
  *
- * Nothing here comes from the email provider. Clicks are rows in `short_link_clicks` on links
- * we minted ourselves, and conversions are bookings the brand website attributed back to the
- * campaign. The provider's own open and click counts sit alongside these on
- * `MarketingCampaignStats` and answer a different question: it says THAT someone engaged, this
- * says WHICH call to action they took and whether it produced a booking.
+ * Nothing here comes from the email provider. Clicks are cleaned rows in `short_link_clicks` on
+ * links we minted ourselves, and conversions are bookings the brand website attributed back to
+ * the campaign. Provider opens sit alongside these on `MarketingCampaignStats`; provider clicks
+ * are deliberately not used because mail-security scanners inflate them.
  */
 export interface MarketingCampaignEngagement {
-  /** Human clicks on this campaign's short links. Bot clicks are excluded. */
+  /** Human clicks on this campaign's short links after automated scan filtering. */
   clicks: number
-  /** Distinct recipients of THIS campaign who clicked, identified by `utm_content`. */
+  /** Distinct recipients of THIS campaign with a cleaned click, identified by `utm_content`. */
   uniqueClickers: number
+  /** Raw click rows hidden because they were bots, scan bursts or pre-send tests. */
+  filteredClicks: number
   /** What the campaign actually produced, split by kind so the two are never conflated. */
   conversions: MarketingCampaignConversions
   /**
