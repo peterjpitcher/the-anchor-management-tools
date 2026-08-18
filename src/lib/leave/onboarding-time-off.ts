@@ -37,6 +37,7 @@ export const TIME_OFF_ERRORS = {
   TIME_OFF_OVERLAP: 'These dates overlap another block you have already added.',
   TIME_OFF_UNKNOWN_TYPE: 'Please choose what this time off is.',
   TIME_OFF_NOTE_TOO_LONG: `Please keep the note under ${MAX_NOTE_LENGTH} characters.`,
+  TIME_OFF_SHIFT_CLASH: 'You are already on the rota for one of these dates. Please speak to your manager.',
   TIME_OFF_TOKEN_EXPIRED: 'Your invite link has expired. Ask your manager for a new one.',
 } as const;
 

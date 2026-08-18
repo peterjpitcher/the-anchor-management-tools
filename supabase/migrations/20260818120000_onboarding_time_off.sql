@@ -154,6 +154,13 @@ begin
     raise exception 'TIME_OFF_TOKEN_INVALID';
   end if;
 
+  -- Migration 20260819000002 established the rule that any path which approves, books or edits
+  -- approved leave must take this advisory lock FIRST and then check the rota, all inside one
+  -- transaction. Rows written here are approved on insert, so this path is bound by that rule.
+  -- In practice an onboarding employee has no shifts yet, but taking the lock costs nothing and
+  -- leaves the invariant true for every writer rather than every writer but one.
+  perform public.lock_rota_employee_leave(v_employee.employee_id);
+
   select * into v_existing from employee_onboarding_responses
   where employee_id = v_employee.employee_id and question = 'booked_time_off';
 
@@ -214,6 +221,17 @@ begin
           and leave_date between v_start and v_end
       ) then
         raise exception 'TIME_OFF_OVERLAP';
+      end if;
+
+      -- Checked under the advisory lock taken above, so a shift cannot be dragged onto these
+      -- dates between this check and the insert.
+      if exists (
+        select 1 from public.rota_shifts_clashing_with_leave(
+          v_employee.employee_id,
+          array(select d::date from generate_series(v_start, v_end, interval '1 day') d)
+        )
+      ) then
+        raise exception 'TIME_OFF_SHIFT_CLASH';
       end if;
 
       -- Auto approved: these dates were agreed when the person was hired, so there is nothing
