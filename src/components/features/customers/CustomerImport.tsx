@@ -297,7 +297,7 @@ export function CustomerImport({ onImportComplete, onCancel, existingCustomers }
             </p>
           </div>
 
-          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg mb-6">
+          <div className="overflow-hidden shadow ring-1 ring-black/5 md:rounded-lg mb-6">
             <DataTable<ParsedCustomer>
               data={parsedData}
               getRowKey={(row: ParsedCustomer) => parsedData.indexOf(row)}

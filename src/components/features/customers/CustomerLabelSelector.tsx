@@ -166,7 +166,7 @@ export function CustomerLabelSelector({
       {/* Label Selector Dropdown */}
       {showSelector && canEdit && (
         <div className="relative">
-          <div className="absolute z-10 mt-1 w-64 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5">
+          <div className="absolute z-10 mt-1 w-64 rounded-md bg-white shadow-lg ring-1 ring-black/5">
             <div className="py-1">
               {availableLabels.map((label) => (
                 <button type="button"

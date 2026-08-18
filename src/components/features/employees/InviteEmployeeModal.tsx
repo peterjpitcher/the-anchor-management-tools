@@ -24,7 +24,7 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-      <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={onClose} />
+      <div className="fixed inset-0 bg-gray-500/75" onClick={onClose} />
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative w-full max-w-md rounded-lg bg-white shadow-xl p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">Invite Employee</h2>

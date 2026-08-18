@@ -351,11 +351,11 @@ export default function DashboardClient({
             </div>
             <div>
               <div className="text-[11px] text-text-muted">Week vs last</div>
-              <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-error' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
+              <div className={`text-base font-semibold tabular-nums ${revenueSummary.vsLastWeek.startsWith('-') ? 'text-danger' : revenueSummary.vsLastWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.vsLastWeek}</div>
             </div>
             <div>
               <div className="text-[11px] text-text-muted">Last year same week</div>
-              <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-error' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.lastYearSameWeek}</div>
+              <div className={`text-base font-semibold tabular-nums ${revenueSummary.lastYearSameWeek.startsWith('-') ? 'text-danger' : revenueSummary.lastYearSameWeek === '--' ? 'text-text-muted' : 'text-success'}`}>{revenueSummary.lastYearSameWeek}</div>
             </div>
           </div>
         </CardBody>

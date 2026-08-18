@@ -429,7 +429,7 @@ export function ContactsClient({
               )}
 
               {selectedContacts.length > 0 && (
-                <div className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mb-3 flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="min-w-0 text-sm text-text">
                     {selectedContacts.length} selected on this page
                   </p>
@@ -597,7 +597,7 @@ export function ContactsClient({
                         <TableRow>
                           <TableCell
                             colSpan={CONTACT_TABLE_COLUMNS}
-                            className="whitespace-normal bg-surface-muted align-top"
+                            className="whitespace-normal bg-surface-2 align-top"
                           >
                             <ContactDetailPanel
                               contact={contact}
