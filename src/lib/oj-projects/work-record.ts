@@ -55,6 +55,8 @@ export interface WorkRecordInvoice {
   invoice_date: string
   status: string
   total_amount: number
+  /** Agreed as a price, not derived from time. Reconciling it against hours would be a fiction. */
+  is_fixed_price?: boolean
 }
 
 export interface WorkRecordLine {
@@ -79,8 +81,13 @@ export interface WorkRecordInvoiceBlock {
   workExVat: number
   recurringExVat: number
   recurringLabels: string[]
-  /** Invoice total ex VAT, less the work and recurring charges on it. */
+  /**
+   * Invoice total ex VAT, less the work and recurring charges on it. Always zero
+   * on a fixed-price invoice, where the difference is not carry-forward but
+   * simply the difference between an agreed price and the time it took.
+   */
   carriedForwardExVat: number
+  fixedPrice: boolean
   invoiceExVat: number
   invoiceIncVat: number
 }
@@ -213,7 +220,10 @@ export function buildWorkRecord(input: {
     const invoiceIncVat = roundMoney(Number(invoice.total_amount || 0))
     const invoiceExVat = roundMoney(invoiceIncVat / (1 + vatRate / 100))
 
+    const fixedPrice = invoice.is_fixed_price === true
+
     invoiceBlocks.push({
+      fixedPrice,
       invoiceNumber: invoice.invoice_number,
       invoiceDate: invoice.invoice_date,
       status: invoice.status,
@@ -224,8 +234,10 @@ export function buildWorkRecord(input: {
       recurringExVat,
       recurringLabels: invoiceRecurring.map((r) => r.description_snapshot || 'Recurring charge'),
       // Whatever the invoice charged beyond the work on it: under a cap, money
-      // paid against work carried forward from an earlier month.
-      carriedForwardExVat: roundMoney(invoiceExVat - workExVat - recurringExVat),
+      // paid against work carried forward from an earlier month. A fixed-price
+      // stage has no such balance, so the document states the agreed price
+      // rather than implying hours were carried anywhere.
+      carriedForwardExVat: fixedPrice ? 0 : roundMoney(invoiceExVat - workExVat - recurringExVat),
       invoiceExVat,
       invoiceIncVat,
     })
@@ -263,8 +275,13 @@ export function buildWorkRecord(input: {
     // Every block must account for its invoice to the penny. The account
     // statement prints a mismatch on the page; this document must not, so a
     // failure blocks generation instead.
+    // A fixed-price block is exempt: its total is an agreed figure, not a sum of
+    // the work behind it, so requiring it to add up would block a document that
+    // is in fact correct.
     reconciles: invoiceBlocks.every(
-      (b) => Math.abs(b.workExVat + b.recurringExVat + b.carriedForwardExVat - b.invoiceExVat) < 0.005
+      (b) =>
+        b.fixedPrice ||
+        Math.abs(b.workExVat + b.recurringExVat + b.carriedForwardExVat - b.invoiceExVat) < 0.005
     ),
   }
 }

@@ -145,4 +145,34 @@ describe('buildWorkRecord', () => {
     expect(block.carriedForwardExVat).toBeLessThan(0)
     expect(record.reconciles).toBe(true)
   })
+
+  it('states an agreed price rather than reconciling a fixed-price stage', () => {
+    // The real shape: GBP 552.67 of time behind a GBP 416.67 fixed-price stage.
+    // Treated as capped work this would print "carried forward to a later
+    // invoice", inventing a balance the client does not have.
+    const record = buildWorkRecord({
+      entries: [timeEntry({ duration_minutes_rounded: 442, hourly_rate_ex_vat_snapshot: 75 })],
+      recurring: [],
+      invoices: [{ ...INVOICE, total_amount: 500, is_fixed_price: true }],
+      settings: SETTINGS,
+    })
+
+    const block = record.invoiceBlocks[0]
+    expect(block.fixedPrice).toBe(true)
+    expect(block.carriedForwardExVat).toBe(0)
+    // Still reconciles, because an agreed price is not required to equal its hours.
+    expect(record.reconciles).toBe(true)
+  })
+
+  it('still reconciles capped invoices strictly', () => {
+    const record = buildWorkRecord({
+      entries: [timeEntry({ duration_minutes_rounded: 300 })],
+      recurring: [],
+      invoices: [INVOICE],
+      settings: SETTINGS,
+    })
+
+    expect(record.invoiceBlocks[0].fixedPrice).toBe(false)
+    expect(record.invoiceBlocks[0].carriedForwardExVat).toBe(104.17)
+  })
 })
