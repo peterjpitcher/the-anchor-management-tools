@@ -63,12 +63,17 @@ function empName(emp: RotaEmployee): string {
 }
 
 function deptBadgeClass(dept: string): string {
+// Department and payroll-flag colours stay on the raw palette deliberately. They
+// encode a CATEGORY, not a state, and the design system only has state tones
+// (success, warning, danger, info). Mapping kitchen onto the warning tone would
+// make a normal kitchen shift read as a problem. A category ramp is a design
+// decision, not a mechanical swap: see F15 in tasks/rota-review-2026-08-18.md.
   const map: Record<string, string> = {
-    bar: 'bg-blue-100 text-blue-700',
+    bar: 'bg-info-soft text-info-fg',
     kitchen: 'bg-orange-100 text-orange-700',
-    runner: 'bg-green-100 text-green-700',
+    runner: 'bg-success-soft text-success-fg',
   };
-  return map[dept] ?? 'bg-gray-100 text-gray-600';
+  return map[dept] ?? 'bg-surface-hover text-text-muted';
 }
 
 // ---------------------------------------------------------------------------
@@ -218,15 +223,15 @@ export default function AddShiftsModal({
     const noneScheduled = dayScheduledTemplates.length === 0;
 
     return (
-      <div key={dayIndex} className="border-b border-gray-100 last:border-b-0">
+      <div key={dayIndex} className="border-b border-border last:border-b-0">
         {/* Day header */}
-        <div className="sticky top-0 z-10 flex items-center gap-2 px-5 py-2 bg-gray-50 border-b border-gray-100">
-          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+        <div className="sticky top-0 z-10 flex items-center gap-2 px-5 py-2 bg-surface-2 border-b border-border">
+          <span className="text-xs font-semibold text-text uppercase tracking-wide">
             {DAY_NAMES[dayIndex]}
           </span>
-          <span className="text-xs text-gray-400">{formatDayHeader(date)}</span>
+          <span className="text-xs text-text-subtle">{formatDayHeader(date)}</span>
           {allExist && (
-            <span className="ml-auto text-xs text-green-600 font-medium">
+            <span className="ml-auto text-xs text-success-fg font-medium">
               ✓ All scheduled templates already added
             </span>
           )}
@@ -234,7 +239,7 @@ export default function AddShiftsModal({
 
         {/* Rows */}
         {noneScheduled ? (
-          <p className="px-5 py-2 text-xs text-gray-400 italic">
+          <p className="px-5 py-2 text-xs text-text-subtle italic">
             No templates scheduled for {DAY_NAMES[dayIndex]}s — use &ldquo;Other templates&rdquo; below to add manually.
           </p>
         ) : (
@@ -250,7 +255,7 @@ export default function AddShiftsModal({
                 className={`flex items-center gap-3 px-5 py-2.5 transition-colors ${
                   isDisabled
                     ? 'opacity-45 cursor-default'
-                    : 'hover:bg-gray-50 cursor-pointer'
+                    : 'hover:bg-surface-2 cursor-pointer'
                 }`}
               >
                 <input
@@ -259,36 +264,36 @@ export default function AddShiftsModal({
                   disabled={isDisabled}
                   onChange={() => toggleScheduled(globalIdx)}
                   onClick={e => e.stopPropagation()}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600 shrink-0"
+                  className="h-4 w-4 rounded border-border-strong text-info-fg accent-blue-600 shrink-0"
                   aria-label={`${item.template.name} on ${DAY_NAMES[dayIndex]}`}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-sm font-medium text-gray-900">{item.template.name}</span>
+                    <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
                       {item.template.department}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-text-muted">
                       {item.template.start_time.slice(0, 5)}–{item.template.end_time.slice(0, 5)}
                       {' · '}
                       {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                     </span>
                     {emp && (
-                      <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
+                      <span className="text-xs bg-surface-hover text-text-muted px-1.5 py-0.5 rounded-full">
                         👤 {empName(emp)}
                       </span>
                     )}
                   </div>
                 </div>
                 {item.state === 'recommended' && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide shrink-0">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-info-soft text-info-fg uppercase tracking-wide shrink-0">
                     Recommended
                   </span>
                 )}
                 {item.state === 'exists' && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 uppercase tracking-wide shrink-0">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-hover text-text-subtle uppercase tracking-wide shrink-0">
                     Already added
                   </span>
                 )}
@@ -310,14 +315,14 @@ export default function AddShiftsModal({
       onClick={onClose}
     >
       <div
-        className="bg-white w-full sm:rounded-xl shadow-xl sm:max-w-xl flex flex-col max-h-[90vh]"
+        className="bg-surface w-full sm:rounded-xl shadow-xl sm:max-w-xl flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0">
           <div>
-            <p className="text-base font-semibold text-gray-900">Add Shifts</p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-base font-semibold text-text-strong">Add Shifts</p>
+            <p className="text-xs text-text-muted mt-0.5">
               {weekDates[0] && weekDates[6]
                 ? `Week of ${formatDayHeader(weekDates[0])} – ${formatDayHeader(weekDates[6])}`
                 : ''
@@ -329,7 +334,7 @@ export default function AddShiftsModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded"
+            className="p-1 text-text-subtle hover:text-text-muted rounded"
             aria-label="Close"
           >
             <XMarkIcon className="h-5 w-5" />
@@ -343,8 +348,8 @@ export default function AddShiftsModal({
 
           {/* Floating templates */}
           {floating.length > 0 && (
-            <div className="bg-amber-50 border-t border-amber-200 px-5 py-3">
-              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-2">
+            <div className="bg-warning-soft border-t border-warning/25 px-5 py-3">
+              <p className="text-xs font-semibold text-warning-fg uppercase tracking-wide mb-2">
                 ⚡ Other templates — no assigned day
               </p>
               {floating.map((item, idx) => {
@@ -355,22 +360,22 @@ export default function AddShiftsModal({
                       type="checkbox"
                       checked={item.checked}
                       onChange={() => toggleFloating(idx)}
-                      className="h-4 w-4 rounded border-gray-300 accent-amber-600 shrink-0"
+                      className="h-4 w-4 rounded border-border-strong accent-amber-600 shrink-0"
                       aria-label={item.template.name}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-medium text-gray-900">{item.template.name}</span>
+                        <span className="text-sm font-medium text-text-strong">{item.template.name}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${deptBadgeClass(item.template.department)}`}>
                           {item.template.department}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-text-muted">
                           {item.template.start_time.slice(0, 5)}–{item.template.end_time.slice(0, 5)}
                           {' · '}
                           {formatPaidHours(item.template.start_time, item.template.end_time, item.template.unpaid_break_minutes)} paid
                         </span>
                         {emp && (
-                          <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                          <span className="text-xs bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded-full">
                             👤 {empName(emp)}
                           </span>
                         )}
@@ -382,8 +387,8 @@ export default function AddShiftsModal({
                       disabled={!item.checked}
                       className={`text-xs border rounded-md px-2 py-1.5 shrink-0 min-w-[110px] ${
                         item.checked && !item.day
-                          ? 'border-red-400 bg-red-50'
-                          : 'border-gray-300 bg-white'
+                          ? 'border-danger bg-danger-soft'
+                          : 'border-border-strong bg-surface'
                       } disabled:opacity-40`}
                       aria-label={`Pick a day for ${item.template.name}`}
                     >
@@ -402,9 +407,9 @@ export default function AddShiftsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-200 shrink-0 bg-white">
-          <p className="text-sm text-gray-500">
-            <strong className="text-gray-900">{totalSelected}</strong>{' '}
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-border shrink-0 bg-surface">
+          <p className="text-sm text-text-muted">
+            <strong className="text-text-strong">{totalSelected}</strong>{' '}
             {totalSelected === 1 ? 'shift' : 'shifts'} selected
           </p>
           <div className="flex gap-2">

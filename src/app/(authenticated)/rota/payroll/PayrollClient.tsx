@@ -106,8 +106,8 @@ function formatTime12h(time: string | null | undefined): string {
 }
 
 function diffColour(diff: number) {
-  if (Math.abs(diff) < 0.05) return 'text-gray-500';
-  return diff < 0 ? 'text-red-600 font-medium' : 'text-green-600';
+  if (Math.abs(diff) < 0.05) return 'text-text-muted';
+  return diff < 0 ? 'text-danger-fg font-medium' : 'text-success-fg';
 }
 
 function diffLabel(diff: number) {
@@ -117,14 +117,14 @@ function diffLabel(diff: number) {
 
 function PayRateDisplay({ row }: { row: PayrollRow }) {
   if (row.hourlyRate == null) {
-    return <span className="font-medium text-amber-700">Not set</span>;
+    return <span className="font-medium text-warning-fg">Not set</span>;
   }
 
   const premiumRate = (row.premiumHours ?? 0) > 0 ? row.effectiveRate : null;
 
   return (
     <div className="whitespace-nowrap">
-      <span className="font-semibold text-gray-900">£{row.hourlyRate.toFixed(2)}/hr</span>
+      <span className="font-semibold text-text-strong">£{row.hourlyRate.toFixed(2)}/hr</span>
       {premiumRate != null && (
         <span className="block text-[10px] font-medium text-purple-700">
           Premium £{premiumRate.toFixed(2)}/hr
@@ -147,11 +147,11 @@ function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkRea
           <span
             key={f}
             className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              isCouldntWorkPayrollFlag(f) ? 'bg-red-100 text-red-700' :
-              f === 'variance'           ? 'bg-amber-100 text-amber-700' :
+              isCouldntWorkPayrollFlag(f) ? 'bg-danger-soft text-danger-fg' :
+              f === 'variance'           ? 'bg-warning-soft text-warning-fg' :
               f === 'auto_close'         ? 'bg-purple-100 text-purple-700' :
               f === 'unscheduled'        ? 'bg-orange-100 text-orange-700' :
-              'bg-gray-100 text-gray-600'
+              'bg-surface-hover text-text-muted'
             }`}
           >
             {payrollFlagLabel(f)}
@@ -159,7 +159,7 @@ function FlagChips({ flags, couldntWorkReason }: { flags: string; couldntWorkRea
         ))}
       </div>
       {showCouldntWorkReason && (
-        <p className="text-[10px] leading-snug text-red-700">
+        <p className="text-[10px] leading-snug text-danger-fg">
           <span className="font-medium">Reason: </span>
           {reason}
         </p>
@@ -324,7 +324,7 @@ export default function PayrollClient({
     <div className="space-y-6">
       {/* Month selector */}
       <select
-        className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white"
+        className="text-sm border border-border rounded-lg px-3 py-1.5 text-text bg-surface"
         value={`?year=${year}&month=${month}`}
         onChange={e => { if (e.target.value) router.push(`/rota/payroll${e.target.value}`); }}
       >
@@ -337,21 +337,21 @@ export default function PayrollClient({
       <div className="flex items-center gap-3 text-sm">
         {editingPeriod ? (
           <>
-            <label className="text-gray-500 shrink-0">Period:</label>
+            <label className="text-text-muted shrink-0">Period:</label>
             <input
               type="date"
               value={periodStart}
               onChange={e => setPeriodStart(e.target.value)}
               aria-invalid={Boolean(periodError)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm"
+              className="border border-border-strong rounded px-2 py-1 text-sm"
             />
-            <span className="text-gray-400">–</span>
+            <span className="text-text-subtle">–</span>
             <input
               type="date"
               value={periodEnd}
               onChange={e => setPeriodEnd(e.target.value)}
               aria-invalid={Boolean(periodError)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm"
+              className="border border-border-strong rounded px-2 py-1 text-sm"
             />
             <Button type="button" size="sm" onClick={handleSavePeriod} disabled={periodPending || Boolean(periodError)}>
               {periodPending ? 'Saving…' : 'Save'}
@@ -360,20 +360,20 @@ export default function PayrollClient({
               Cancel
             </Button>
             {periodError ? (
-              <span className="text-xs text-red-600">{periodError}</span>
+              <span className="text-xs text-danger-fg">{periodError}</span>
             ) : null}
           </>
         ) : (
           <>
-            <span className="text-gray-500">Period:</span>
-            <span className="text-gray-800 font-medium">
+            <span className="text-text-muted">Period:</span>
+            <span className="text-text-strong font-medium">
               {formatDate(initialPeriod.period_start)} – {formatDate(initialPeriod.period_end)}
             </span>
             {canApprove && !approval && (
               <button
                 type="button"
                 onClick={() => setEditingPeriod(true)}
-                className="text-xs text-blue-600 hover:underline"
+                className="text-xs text-info-fg hover:underline"
               >
                 Edit
               </button>
@@ -386,25 +386,25 @@ export default function PayrollClient({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           {approval ? (
-            <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-success-fg bg-success-soft border border-success/30 rounded-lg px-3 py-2">
               <CheckCircleIcon className="h-4 w-4 shrink-0" />
               <span>Approved {formatDateInLondon(approval.approved_at, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               {approval.email_sent_at && (
-                <span className="text-green-600">· Emailed {formatDateInLondon(approval.email_sent_at)}</span>
+                <span className="text-success-fg">· Emailed {formatDateInLondon(approval.email_sent_at)}</span>
               )}
             </div>
           ) : (
             <Badge variant="warning" size="sm">Pending approval</Badge>
           )}
           {approval && (editingKey !== null || confirmDeleteKey !== null) && (
-            <span className="text-xs text-amber-600">Editing after approval — re-approve to update the snapshot</span>
+            <span className="text-xs text-warning-fg">Editing after approval — re-approve to update the snapshot</span>
           )}
         </div>
         <div className="flex gap-2">
           {canExport && approval && (
             <a
               href={`/api/rota/export?year=${year}&month=${month}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 font-medium"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm text-text hover:bg-surface-2 font-medium"
               download
             >
               <ArrowDownTrayIcon className="h-3.5 w-3.5" />
@@ -435,29 +435,29 @@ export default function PayrollClient({
       ) : (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-gray-700">Daily breakdown</h3>
+            <h3 className="text-sm font-semibold text-text">Daily breakdown</h3>
             <div className="flex gap-2">
-              <button type="button" onClick={expandAll} className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2">
+              <button type="button" onClick={expandAll} className="text-xs text-text-muted hover:text-text underline underline-offset-2">
                 Expand all
               </button>
-              <span className="text-gray-300">|</span>
-              <button type="button" onClick={collapseAll} className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2">
+              <span className="text-text-subtle">|</span>
+              <button type="button" onClick={collapseAll} className="text-xs text-text-muted hover:text-text underline underline-offset-2">
                 Collapse all
               </button>
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 overflow-x-auto">
+          <div className="rounded-lg border border-border overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-8" />
-                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date / Employee</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Planned</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Worked</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Diff</th>
-                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-gray-500">Pay rate</th>
-                  <th scope="col" className="px-3 py-2 text-xs font-medium text-gray-500">Flags</th>
+                <tr className="bg-surface-2 border-b border-border">
+                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted w-8" />
+                  <th scope="col" className="text-left px-3 py-2 text-xs font-medium text-text-muted">Date / Employee</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Planned</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Worked</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Diff</th>
+                  <th scope="col" className="text-right px-3 py-2 text-xs font-medium text-text-muted">Pay rate</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium text-text-muted">Flags</th>
                   <th scope="col" className="px-3 py-2 w-16" />
                 </tr>
               </thead>
@@ -475,24 +475,24 @@ export default function PayrollClient({
                     <tr
                       key={`date-${date}`}
                       onClick={() => toggleDate(date)}
-                      className="border-t border-gray-100 bg-gray-50 hover:bg-gray-100 cursor-pointer select-none"
+                      className="border-t border-border bg-surface-2 hover:bg-surface-hover cursor-pointer select-none"
                     >
-                      <td className="px-3 py-2 text-gray-400">
+                      <td className="px-3 py-2 text-text-subtle">
                         {isExpanded
                           ? <ChevronDownIcon className="h-3.5 w-3.5" />
                           : <ChevronRightIcon className="h-3.5 w-3.5" />}
                       </td>
-                      <td className="px-3 py-2 font-semibold text-gray-800">
+                      <td className="px-3 py-2 font-semibold text-text-strong">
                         {formatDate(date)}
-                        <span className="ml-2 text-xs font-normal text-gray-400">{dayRows.length} shift{dayRows.length !== 1 ? 's' : ''}</span>
+                        <span className="ml-2 text-xs font-normal text-text-subtle">{dayRows.length} shift{dayRows.length !== 1 ? 's' : ''}</span>
                         <DayInfoChips info={dayInfo?.[date]} />
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-700 font-medium">{dayPlanned.toFixed(1)}h</td>
-                      <td className="px-3 py-2 text-right text-gray-700 font-medium">{dayActual > 0 ? `${dayActual.toFixed(1)}h` : '—'}</td>
+                      <td className="px-3 py-2 text-right text-text font-medium">{dayPlanned.toFixed(1)}h</td>
+                      <td className="px-3 py-2 text-right text-text font-medium">{dayActual > 0 ? `${dayActual.toFixed(1)}h` : '—'}</td>
                       <td className={`px-3 py-2 text-right text-xs ${diffColour(dayDiff)}`}>{dayActual > 0 ? diffLabel(dayDiff) : '—'}</td>
-                      <td className="px-3 py-2 text-right text-xs text-gray-300">—</td>
+                      <td className="px-3 py-2 text-right text-xs text-text-subtle">—</td>
                       <td className="px-3 py-2">
-                        {dayHasFlags && <span className="text-[10px] text-amber-600 font-medium">⚑ flagged</span>}
+                        {dayHasFlags && <span className="text-[10px] text-warning-fg font-medium">⚑ flagged</span>}
                       </td>
                       <td className="px-3 py-2" />
                     </tr>,
@@ -506,27 +506,27 @@ export default function PayrollClient({
                       const isCouldntWork = hasCouldntWorkPayrollFlag(row.flags);
 
                       const dataRow = (
-                        <tr key={`row-${rowKey}`} className="group border-t border-gray-100 bg-white hover:bg-gray-50">
+                        <tr key={`row-${rowKey}`} className="group border-t border-border bg-surface hover:bg-surface-2">
                           <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-gray-800">
+                          <td className="px-3 py-2 pl-8 text-text-strong">
                             {row.employeeName}
-                            <span className="ml-2 text-xs text-gray-400 capitalize">{row.department}</span>
+                            <span className="ml-2 text-xs text-text-subtle capitalize">{row.department}</span>
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-600 text-xs tabular-nums">
+                          <td className="px-3 py-2 text-right text-text-muted text-xs tabular-nums">
                             {isCouldntWork
                               ? null
                               : row.plannedStart
-                              ? <>{formatTime12h(row.plannedStart)}–{formatTime12h(row.plannedEnd)}{' '}<span className="text-gray-400">({row.plannedHours?.toFixed(1)}h)</span></>
+                              ? <>{formatTime12h(row.plannedStart)}–{formatTime12h(row.plannedEnd)}{' '}<span className="text-text-subtle">({row.plannedHours?.toFixed(1)}h)</span></>
                               : row.plannedHours != null ? `${row.plannedHours.toFixed(1)}h` : '—'
                             }
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-600 text-xs tabular-nums">
+                          <td className="px-3 py-2 text-right text-text-muted text-xs tabular-nums">
                             {row.actualStart
-                              ? <>{formatTime12h(row.actualStart)}–{row.actualEnd ? formatTime12h(row.actualEnd) : '…'}{' '}<span className="text-gray-400">({row.actualHours?.toFixed(1)}h)</span></>
+                              ? <>{formatTime12h(row.actualStart)}–{row.actualEnd ? formatTime12h(row.actualEnd) : '…'}{' '}<span className="text-text-subtle">({row.actualHours?.toFixed(1)}h)</span></>
                               : row.actualHours != null ? `${row.actualHours.toFixed(1)}h` : '—'
                             }
                           </td>
-                          <td className={`px-3 py-2 text-right text-xs ${row.actualHours != null ? diffColour(empDiff) : 'text-gray-300'}`}>
+                          <td className={`px-3 py-2 text-right text-xs ${row.actualHours != null ? diffColour(empDiff) : 'text-text-subtle'}`}>
                             {row.actualHours != null ? diffLabel(empDiff) : '—'}
                           </td>
                           <td className="px-3 py-2 text-right text-xs">
@@ -535,14 +535,14 @@ export default function PayrollClient({
                           <td className="px-3 py-2">
                             <FlagChips flags={row.flags} couldntWorkReason={row.sickReason} />
                             {row.sessionNote && (
-                              <p className="mt-1 text-[10px] text-gray-500 italic">
-                                <span className="not-italic font-medium text-gray-400">Timeclock: </span>
+                              <p className="mt-1 text-[10px] text-text-muted italic">
+                                <span className="not-italic font-medium text-text-subtle">Timeclock: </span>
                                 {row.sessionNote}
                               </p>
                             )}
                             {row.note && (
-                              <p className="mt-1 text-[10px] text-blue-700 italic">
-                                <span className="not-italic font-medium text-blue-400">Note: </span>
+                              <p className="mt-1 text-[10px] text-info-fg italic">
+                                <span className="not-italic font-medium text-info-fg">Note: </span>
                                 {row.note}
                               </p>
                             )}
@@ -554,14 +554,14 @@ export default function PayrollClient({
                                   type="button"
                                   onClick={() => handleDelete(row)}
                                   disabled={deleteLoading}
-                                  className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                                  className="text-[10px] px-1.5 py-0.5 bg-danger text-white rounded hover:bg-danger disabled:opacity-50"
                                 >
                                   {deleteLoading ? '…' : 'Confirm'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setConfirmDeleteKey(null)}
-                                  className="text-[10px] text-gray-400 hover:text-gray-600"
+                                  className="text-[10px] text-text-subtle hover:text-text-muted"
                                 >
                                   Cancel
                                 </button>
@@ -571,7 +571,7 @@ export default function PayrollClient({
                                 <button
                                   type="button"
                                   onClick={() => startEdit(rowKey, row)}
-                                  className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                  className="p-1 text-text-subtle hover:text-info-fg rounded"
                                   title="Edit times"
                                 >
                                   <PencilSquareIcon className="h-3.5 w-3.5" />
@@ -580,7 +580,7 @@ export default function PayrollClient({
                                   <button
                                     type="button"
                                     onClick={() => startEditNote(rowKey, row.note)}
-                                    className={`p-1 rounded ${row.note ? 'text-blue-400 hover:text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                                    className={`p-1 rounded ${row.note ? 'text-info-fg hover:text-info-fg' : 'text-text-subtle hover:text-text-muted'}`}
                                     title={row.note ? 'Edit note' : 'Add note'}
                                   >
                                     <ChatBubbleBottomCenterTextIcon className="h-3.5 w-3.5" />
@@ -589,7 +589,7 @@ export default function PayrollClient({
                                 <button
                                   type="button"
                                   onClick={() => { setConfirmDeleteKey(rowKey); setEditingKey(null); setEditingNoteKey(null); }}
-                                  className="p-1 text-gray-400 hover:text-red-600 rounded"
+                                  className="p-1 text-text-subtle hover:text-danger-fg rounded"
                                   title="Delete row"
                                 >
                                   <TrashIcon className="h-3.5 w-3.5" />
@@ -601,12 +601,12 @@ export default function PayrollClient({
                       );
 
                       const editRow = isEditing ? (
-                        <tr key={`edit-${rowKey}`} className="border-t border-blue-100 bg-blue-50">
+                        <tr key={`edit-${rowKey}`} className="border-t border-info/25 bg-info-soft">
                           <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-xs text-gray-500">
-                            Edit actual times for <span className="font-medium text-gray-700">{row.employeeName}</span>
+                          <td className="px-3 py-2 pl-8 text-xs text-text-muted">
+                            Edit actual times for <span className="font-medium text-text">{row.employeeName}</span>
                           </td>
-                          <td className="px-3 py-2 text-right text-xs text-gray-400 tabular-nums">
+                          <td className="px-3 py-2 text-right text-xs text-text-subtle tabular-nums">
                             {isCouldntWork ? null : row.plannedStart ? `${formatTime12h(row.plannedStart)}–${formatTime12h(row.plannedEnd)}` : '—'}
                           </td>
                           <td className="px-3 py-2 text-right" colSpan={2}>
@@ -615,14 +615,14 @@ export default function PayrollClient({
                                 type="time"
                                 value={editClockIn}
                                 onChange={e => setEditClockIn(e.target.value)}
-                                className="text-xs border border-gray-300 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                className="text-xs border border-border-strong rounded px-1.5 py-0.5 w-24 focus:outline-none focus:ring-1 focus:ring-border-focus"
                               />
-                              <span className="text-gray-400 text-xs">–</span>
+                              <span className="text-text-subtle text-xs">–</span>
                               <input
                                 type="time"
                                 value={editClockOut}
                                 onChange={e => setEditClockOut(e.target.value)}
-                                className="text-xs border border-gray-300 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                className="text-xs border border-border-strong rounded px-1.5 py-0.5 w-24 focus:outline-none focus:ring-1 focus:ring-border-focus"
                               />
                             </div>
                           </td>
@@ -636,14 +636,14 @@ export default function PayrollClient({
                                 type="button"
                                 onClick={() => handleSaveEdit(row)}
                                 disabled={editSaving}
-                                className="text-[10px] px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                className="text-[10px] px-1.5 py-0.5 bg-info text-white rounded hover:bg-info disabled:opacity-50"
                               >
                                 {editSaving ? '…' : 'Save'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingKey(null)}
-                                className="text-[10px] text-gray-400 hover:text-gray-600"
+                                className="text-[10px] text-text-subtle hover:text-text-muted"
                               >
                                 Cancel
                               </button>
@@ -653,11 +653,11 @@ export default function PayrollClient({
                       ) : null;
 
                       const noteEditRow = editingNoteKey === rowKey && row.shiftId ? (
-                        <tr key={`note-${rowKey}`} className="border-t border-amber-100 bg-amber-50">
+                        <tr key={`note-${rowKey}`} className="border-t border-warning/25 bg-warning-soft">
                           <td className="px-3 py-2" />
-                          <td className="px-3 py-2 pl-8 text-xs text-gray-500" colSpan={5}>
+                          <td className="px-3 py-2 pl-8 text-xs text-text-muted" colSpan={5}>
                             <div className="flex items-center gap-2">
-                              <span className="text-gray-500 shrink-0">Payroll note for <span className="font-medium text-gray-700">{row.employeeName}</span>:</span>
+                              <span className="text-text-muted shrink-0">Payroll note for <span className="font-medium text-text">{row.employeeName}</span>:</span>
                               <input
                                 autoFocus
                                 type="text"
@@ -665,7 +665,7 @@ export default function PayrollClient({
                                 onChange={e => setEditNoteValue(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') handleSaveNote(row.shiftId!); if (e.key === 'Escape') setEditingNoteKey(null); }}
                                 placeholder="Add a note for this shift…"
-                                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                className="flex-1 text-xs border border-border-strong rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-warning"
                               />
                             </div>
                           </td>
@@ -676,14 +676,14 @@ export default function PayrollClient({
                                 type="button"
                                 onClick={() => handleSaveNote(row.shiftId!)}
                                 disabled={notePending}
-                                className="text-[10px] px-1.5 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+                                className="text-[10px] px-1.5 py-0.5 bg-warning text-white rounded hover:bg-warning disabled:opacity-50"
                               >
                                 {notePending ? '…' : 'Save'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingNoteKey(null)}
-                                className="text-[10px] text-gray-400 hover:text-gray-600"
+                                className="text-[10px] text-text-subtle hover:text-text-muted"
                               >
                                 Cancel
                               </button>
@@ -698,15 +698,15 @@ export default function PayrollClient({
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                <tr className="border-t-2 border-border bg-surface-2">
                   <td className="px-3 py-2" />
-                  <td className="px-3 py-2 font-semibold text-gray-900">Total</td>
-                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{totalPlanned.toFixed(1)}h</td>
-                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{totalActual.toFixed(1)}h</td>
+                  <td className="px-3 py-2 font-semibold text-text-strong">Total</td>
+                  <td className="px-3 py-2 text-right font-semibold text-text-strong">{totalPlanned.toFixed(1)}h</td>
+                  <td className="px-3 py-2 text-right font-semibold text-text-strong">{totalActual.toFixed(1)}h</td>
                   <td className={`px-3 py-2 text-right font-semibold text-sm ${diffColour(totalActual - totalPlanned)}`}>
                     {diffLabel(totalActual - totalPlanned)}
                   </td>
-                  <td className="px-3 py-2 text-right text-xs font-medium text-gray-500">Varies</td>
+                  <td className="px-3 py-2 text-right text-xs font-medium text-text-muted">Varies</td>
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2" />
                 </tr>
@@ -719,39 +719,39 @@ export default function PayrollClient({
       {/* Employee summary cards */}
       {employeeCards.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Employee summary</h3>
+          <h3 className="text-sm font-semibold text-text mb-3">Employee summary</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {employeeCards.map(card => (
               <div
                 key={card.employeeId}
-                className="bg-white border border-gray-200 rounded-lg p-3 text-sm"
+                className="bg-surface border border-border rounded-lg p-3 text-sm"
               >
-                <p className="font-semibold text-gray-900 truncate">{card.employeeName}</p>
+                <p className="font-semibold text-text-strong truncate">{card.employeeName}</p>
                 <div className={`my-2 rounded-md border px-2.5 py-2 ${
                   card.hourlyRate != null
-                    ? 'border-green-100 bg-green-50'
-                    : 'border-amber-100 bg-amber-50'
+                    ? 'border-success/30 bg-success-soft'
+                    : 'border-warning/25 bg-warning-soft'
                 }`}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Pay rate</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Pay rate</p>
                   <p className={`text-base font-bold ${
-                    card.hourlyRate != null ? 'text-green-800' : 'text-amber-700'
+                    card.hourlyRate != null ? 'text-success-fg' : 'text-warning-fg'
                   }`}>
                     {card.hourlyRate != null ? `£${card.hourlyRate.toFixed(2)} per hour` : 'Not set'}
                   </p>
                 </div>
-                <div className="space-y-1 text-xs text-gray-600">
+                <div className="space-y-1 text-xs text-text-muted">
                   <div className="flex justify-between">
                     <span>Planned</span>
-                    <span className="font-medium text-gray-800">{card.plannedHours.toFixed(1)}h</span>
+                    <span className="font-medium text-text-strong">{card.plannedHours.toFixed(1)}h</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Actual</span>
-                    <span className="font-medium text-gray-800">{card.actualHours.toFixed(1)}h</span>
+                    <span className="font-medium text-text-strong">{card.actualHours.toFixed(1)}h</span>
                   </div>
                 </div>
-                <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-xs">
-                  <span className="font-medium text-gray-600">Earned to date</span>
-                  <span className="font-bold text-green-700">£{card.earnedToDate.toFixed(2)}</span>
+                <div className="mt-2 pt-2 border-t border-border flex justify-between text-xs">
+                  <span className="font-medium text-text-muted">Earned to date</span>
+                  <span className="font-bold text-success-fg">£{card.earnedToDate.toFixed(2)}</span>
                 </div>
               </div>
             ))}

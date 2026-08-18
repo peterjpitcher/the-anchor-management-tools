@@ -141,7 +141,7 @@ function OpenShiftCard({
       />
 
       <CardBody>
-        <div className="mb-3 rounded-default bg-surface-muted p-3">
+        <div className="mb-3 rounded-default bg-surface-2 p-3">
           {origin.kind === 'rejected' && (
             <>
               <p className="text-xs text-text">

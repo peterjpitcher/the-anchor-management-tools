@@ -37,8 +37,8 @@ export default function RotaPublishStatus({
       : 'Unpublished changes';
   const Icon = isPublished ? CheckCircleIcon : ExclamationTriangleIcon;
   const statusClasses = isPublished
-    ? 'border-green-200 bg-green-50 text-green-700'
-    : 'border-amber-200 bg-amber-50 text-amber-800';
+    ? 'border-success/30 bg-success-soft text-success-fg'
+    : 'border-warning/25 bg-warning-soft text-warning-fg';
 
   const handlePublish = () => {
     startPublishTransition(async () => {
@@ -61,7 +61,7 @@ export default function RotaPublishStatus({
           type="button"
           onClick={handlePublish}
           disabled={publishPending}
-          className="ml-1 rounded border border-current/30 bg-white/60 px-2 py-0.5 text-[11px] font-semibold hover:bg-white disabled:opacity-50"
+          className="ml-1 rounded border border-current/30 bg-surface/60 px-2 py-0.5 text-[11px] font-semibold hover:bg-surface disabled:opacity-50"
         >
           {publishPending ? 'Publishing...' : 'Publish'}
         </button>

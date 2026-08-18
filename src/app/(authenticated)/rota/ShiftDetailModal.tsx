@@ -246,19 +246,19 @@ export default function ShiftDetailModal({
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-gray-200">
+        <div className="flex items-start justify-between p-5 border-b border-border">
           <div>
-            <p className="text-sm text-gray-500">{formatDate(shift.shift_date)}</p>
-            <p className="text-lg font-semibold text-gray-900 mt-0.5">{empName}</p>
+            <p className="text-sm text-text-muted">{formatDate(shift.shift_date)}</p>
+            <p className="text-lg font-semibold text-text-strong mt-0.5">{empName}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded"
+            className="p-1 text-text-subtle hover:text-text-muted rounded"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -284,61 +284,61 @@ export default function ShiftDetailModal({
                 {!isCouldntWork && (
                   <>
                     <div className="flex justify-between text-sm">
-                      <dt className="text-gray-500">Time</dt>
-                      <dd className="text-gray-900 font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
+                      <dt className="text-text-muted">Time</dt>
+                      <dd className="text-text-strong font-medium">{formatTime12Hour(shift.start_time)} – {formatTime12Hour(shift.end_time)}{shift.is_overnight ? ' (+1)' : ''}</dd>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <dt className="text-gray-500">Break</dt>
-                      <dd className="text-gray-900">{shift.unpaid_break_minutes} min</dd>
+                      <dt className="text-text-muted">Break</dt>
+                      <dd className="text-text-strong">{shift.unpaid_break_minutes} min</dd>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <dt className="text-gray-500">Paid hours</dt>
-                      <dd className="text-gray-900 font-medium">{paidH.toFixed(1)}h</dd>
+                      <dt className="text-text-muted">Paid hours</dt>
+                      <dd className="text-text-strong font-medium">{paidH.toFixed(1)}h</dd>
                     </div>
                     {premiumSummary && (
                       <div className="flex justify-between text-sm">
-                        <dt className="text-gray-500">Premium</dt>
-                        <dd className="text-gray-900 text-right max-w-[260px]">{premiumSummary}</dd>
+                        <dt className="text-text-muted">Premium</dt>
+                        <dd className="text-text-strong text-right max-w-[260px]">{premiumSummary}</dd>
                       </div>
                     )}
                   </>
                 )}
                 <div className="flex justify-between text-sm">
-                  <dt className="text-gray-500">Acceptance</dt>
-                  <dd className="text-gray-900 text-right max-w-[260px]">
+                  <dt className="text-text-muted">Acceptance</dt>
+                  <dd className="text-text-strong text-right max-w-[260px]">
                     <span className="font-medium">{acceptanceStatus}</span>
-                    {acceptanceDetail && <span className="block text-xs text-gray-500">{acceptanceDetail}</span>}
-                    {shift.auto_accept_reason && <span className="block text-xs text-gray-500">{shift.auto_accept_reason}</span>}
+                    {acceptanceDetail && <span className="block text-xs text-text-muted">{acceptanceDetail}</span>}
+                    {shift.auto_accept_reason && <span className="block text-xs text-text-muted">{shift.auto_accept_reason}</span>}
                   </dd>
                 </div>
                 {shift.notes && (
                   <div className="flex justify-between text-sm">
-                    <dt className="text-gray-500">Notes</dt>
-                    <dd className="text-gray-900 text-right max-w-[240px]">{shift.notes}</dd>
+                    <dt className="text-text-muted">Notes</dt>
+                    <dd className="text-text-strong text-right max-w-[240px]">{shift.notes}</dd>
                   </div>
                 )}
                 {shift.status === 'sick' && shift.sick_reason && (
                   <div className="flex justify-between text-sm">
-                    <dt className="text-gray-500">Couldn&apos;t Work reason</dt>
-                    <dd className="text-gray-900 text-right max-w-[240px]">{shift.sick_reason}</dd>
+                    <dt className="text-text-muted">Couldn&apos;t Work reason</dt>
+                    <dd className="text-text-strong text-right max-w-[240px]">{shift.sick_reason}</dd>
                   </div>
                 )}
               </dl>
 
               {shift.is_open_shift && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-sm font-semibold text-amber-950">Open shift requests</p>
+                <div className="rounded-lg border border-warning/25 bg-warning-soft p-3">
+                  <p className="text-sm font-semibold text-warning-fg">Open shift requests</p>
                   {openShiftRequests.length === 0 ? (
-                    <p className="mt-1 text-xs text-amber-800">No requests yet.</p>
+                    <p className="mt-1 text-xs text-warning-fg">No requests yet.</p>
                   ) : (
                     <div className="mt-2 space-y-2">
                       {openShiftRequests.map(request => (
-                        <div key={request.id} className="rounded-md bg-white/70 px-3 py-2 text-xs text-amber-950">
+                        <div key={request.id} className="rounded-md bg-surface/70 px-3 py-2 text-xs text-warning-fg">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium">{request.employee_name}</span>
-                            <span className="capitalize text-amber-700">{request.status}</span>
+                            <span className="capitalize text-warning-fg">{request.status}</span>
                           </div>
-                          {request.note && <p className="mt-1 text-amber-800">{request.note}</p>}
+                          {request.note && <p className="mt-1 text-warning-fg">{request.note}</p>}
                         </div>
                       ))}
                     </div>
@@ -351,7 +351,7 @@ export default function ShiftDetailModal({
                   <p className="text-sm font-semibold text-rose-950">Rejected shift history</p>
                   <div className="mt-2 space-y-2">
                     {rejectionHistory.map(rejection => (
-                      <div key={rejection.id} className="rounded-md bg-white/75 px-3 py-2 text-xs text-rose-950">
+                      <div key={rejection.id} className="rounded-md bg-surface/75 px-3 py-2 text-xs text-rose-950">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-medium">{rejectedEmployeeNames[rejection.employee_id] ?? 'Unknown staff member'}</span>
                           <span className="text-rose-700">{formatDateTime(rejection.rejected_at)}</span>
@@ -368,23 +368,23 @@ export default function ShiftDetailModal({
                 </div>
               )}
 
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <p className="text-sm font-semibold text-gray-900">Shift audit trail</p>
+              <div className="rounded-lg border border-border bg-surface-2 p-3">
+                <p className="text-sm font-semibold text-text-strong">Shift audit trail</p>
                 {auditTrail.length === 0 ? (
-                  <p className="mt-1 text-xs text-gray-500">No recorded changes for this shift.</p>
+                  <p className="mt-1 text-xs text-text-muted">No recorded changes for this shift.</p>
                 ) : (
                   <div className="mt-2 space-y-3">
                     {auditTrail.map(entry => {
                       const lines = auditLines(entry, auditValueLabels);
                       return (
-                        <div key={entry.id} className="border-l-2 border-gray-300 pl-3">
+                        <div key={entry.id} className="border-l-2 border-border-strong pl-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-gray-900">{operationLabel(entry.operation_type)}</p>
-                            <p className="text-xs text-gray-500">{formatDateTime(entry.created_at)}</p>
+                            <p className="text-xs font-semibold text-text-strong">{operationLabel(entry.operation_type)}</p>
+                            <p className="text-xs text-text-muted">{formatDateTime(entry.created_at)}</p>
                           </div>
-                          <p className="mt-0.5 text-xs text-gray-500">By {entry.user_name || entry.user_email || 'System'}</p>
+                          <p className="mt-0.5 text-xs text-text-muted">By {entry.user_name || entry.user_email || 'System'}</p>
                           {lines.length > 0 && (
-                            <ul className="mt-1 space-y-0.5 text-xs text-gray-700">
+                            <ul className="mt-1 space-y-0.5 text-xs text-text">
                               {lines.map(line => <li key={line}>{line}</li>)}
                             </ul>
                           )}
@@ -418,15 +418,15 @@ export default function ShiftDetailModal({
                       variant="ghost"
                       onClick={() => setConfirmDelete(true)}
                       disabled={isPending}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="text-danger-fg hover:text-danger-fg hover:bg-danger-soft"
                     >
                       Delete
                     </Button>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-600">Delete this shift?</span>
+                      <span className="text-xs text-danger-fg">Delete this shift?</span>
                       <Button type="button" size="sm" onClick={handleDelete} disabled={isPending}
-                        className="!bg-red-600 !text-white hover:!bg-red-700">
+                        className="!bg-danger !text-white hover:!bg-danger">
                         {isPending ? 'Deleting…' : 'Confirm'}
                       </Button>
                       <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -468,9 +468,9 @@ export default function ShiftDetailModal({
                   type="checkbox"
                   checked={overnight}
                   onChange={e => setOvernight(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600"
+                  className="rounded border-border-strong text-info-fg"
                 />
-                <label htmlFor="sd-overnight" className="text-gray-700">Overnight shift</label>
+                <label htmlFor="sd-overnight" className="text-text">Overnight shift</label>
               </div>
 
               <PremiumControl state={premium} idPrefix="sd" />
@@ -485,7 +485,7 @@ export default function ShiftDetailModal({
               </FormGroup>
 
               {startTime && endTime && (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-text-muted">
                   Paid: <strong>{calculatePaidHours(startTime, endTime, parseInt(breakMins) || 0, overnight).toFixed(1)}h</strong>
                 </p>
               )}

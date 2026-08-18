@@ -30,12 +30,17 @@ interface ShiftTemplatesManagerProps {
   departments: Department[];
 }
 
+// Department and payroll-flag colours stay on the raw palette deliberately. They
+// encode a CATEGORY, not a state, and the design system only has state tones
+// (success, warning, danger, info). Mapping kitchen onto the warning tone would
+// make a normal kitchen shift read as a problem. A category ramp is a design
+// decision, not a mechanical swap: see F15 in tasks/rota-review-2026-08-18.md.
 const DEPARTMENT_COLOURS: Record<string, string> = {
-  bar: 'bg-blue-50 border-blue-200',
+  bar: 'bg-info-soft border-info/25',
   kitchen: 'bg-orange-50 border-orange-200',
-  runner: 'bg-green-50 border-green-200',
+  runner: 'bg-success-soft border-success/30',
 };
-const DEPARTMENT_COLOUR_DEFAULT = 'bg-gray-50 border-gray-200';
+const DEPARTMENT_COLOUR_DEFAULT = 'bg-surface-2 border-border';
 
 const DEPARTMENT_BADGE: Record<string, 'info' | 'warning' | 'success' | 'default'> = {
   bar: 'info',
@@ -112,8 +117,8 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
   };
 
   return (
-    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
-      <p className="text-sm font-medium text-gray-700">
+    <div className="p-4 bg-surface-2 rounded-lg border border-border space-y-4">
+      <p className="text-sm font-medium text-text">
         {initial ? 'Edit template' : 'New shift template'}
       </p>
       {error && <Alert variant="error">{error}</Alert>}
@@ -183,14 +188,14 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
 
         {startTime && endTime && (
           <div className="flex items-end pb-0.5">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-text-muted">
               Paid: <strong>{formatPaidHours(startTime, endTime, parseInt(breakMins) || 0)}</strong>
             </p>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 border-t border-gray-200 pt-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 border-t border-border pt-4">
         <div>
           <FormGroup label="Day of week (auto-schedule)" htmlFor="tmpl-day">
             <Select
@@ -203,7 +208,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
               ]}
             />
           </FormGroup>
-          <p className="text-xs text-gray-400 mt-1">Auto-populates on this day when you click &ldquo;Apply templates&rdquo;.</p>
+          <p className="text-xs text-text-subtle mt-1">Auto-populates on this day when you click &ldquo;Apply templates&rdquo;.</p>
         </div>
 
         <div>
@@ -218,7 +223,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
               ]}
             />
           </FormGroup>
-          <p className="text-xs text-gray-400 mt-1">Creates an assigned shift instead of an open one.</p>
+          <p className="text-xs text-text-subtle mt-1">Creates an assigned shift instead of an open one.</p>
         </div>
       </div>
 
@@ -270,8 +275,8 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
     >
       <div className="flex items-center gap-3 min-w-0">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{current.name}</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-medium text-text-strong truncate">{current.name}</p>
+          <p className="text-xs text-text-muted">
             {formatTime12Hour(current.start_time)} – {formatTime12Hour(current.end_time)}
             {current.unpaid_break_minutes > 0 && ` · ${current.unpaid_break_minutes} min break`}
             {' · '}
@@ -284,12 +289,12 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
               </span>
             )}
             {assignedEmp && (
-              <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
+              <span className="text-[10px] bg-surface-hover text-text-muted px-1.5 py-0.5 rounded font-medium">
                 {empName(assignedEmp)}
               </span>
             )}
             {!assignedEmp && current.day_of_week !== null && (
-              <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">
+              <span className="text-[10px] bg-warning-soft text-warning-fg px-1.5 py-0.5 rounded font-medium">
                 Open shift
               </span>
             )}
@@ -303,7 +308,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="p-1 text-gray-400 hover:text-gray-700 rounded"
+              className="p-1 text-text-subtle hover:text-text rounded"
               title="Edit template"
             >
               <PencilIcon className="h-4 w-4" />
@@ -312,7 +317,7 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
               type="button"
               onClick={handleDeactivate}
               disabled={deactivating}
-              className="p-1 text-gray-400 hover:text-red-600 rounded disabled:opacity-50"
+              className="p-1 text-text-subtle hover:text-danger-fg rounded disabled:opacity-50"
               title="Deactivate template"
             >
               <TrashIcon className="h-4 w-4" />
@@ -338,7 +343,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-text-muted">
           Templates appear in the rota palette. Assign a day of the week so they auto-populate
           when you click &ldquo;Apply templates&rdquo; on the rota — open shifts unless an employee is pre-assigned.
         </p>
@@ -364,7 +369,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
       )}
 
       {activeTemplates.length === 0 && !showNewForm ? (
-        <p className="text-sm text-gray-400 italic py-6 text-center">
+        <p className="text-sm text-text-subtle italic py-6 text-center">
           No templates yet. Create your first template above.
         </p>
       ) : (
@@ -380,7 +385,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
             if (deptTemplates.length === 0) return null;
             return (
               <div key={dept.name}>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{dept.label}</h3>
+                <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">{dept.label}</h3>
                 <div className="space-y-2">
                   {deptTemplates.map(t => <TemplateRow key={t.id} template={t} employees={employees} departments={departments} canEdit={canEdit} />)}
                 </div>
@@ -396,7 +401,7 @@ export default function ShiftTemplatesManager({ canEdit, initialTemplates, emplo
             if (other.length === 0) return null;
             return (
               <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Other</h3>
+                <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Other</h3>
                 <div className="space-y-2">
                   {other.map(t => <TemplateRow key={t.id} template={t} employees={employees} departments={departments} canEdit={canEdit} />)}
                 </div>
