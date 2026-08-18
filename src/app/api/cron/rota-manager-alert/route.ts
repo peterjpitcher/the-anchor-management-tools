@@ -4,6 +4,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { displayName } from '@/lib/employees/display-name';
+import {
+  getUnfilledShifts,
+  addDaysIso,
+  type UnfilledShift,
+  type UnfilledQueryFailure as QueryFailure,
+} from '@/lib/rota/unfilled-shifts';
 import { resolveRotaManagerEmail } from '@/lib/rota/manager-email';
 import {
   readinessWeekFromRow,
@@ -35,29 +41,6 @@ const HORIZON_WEEKS = Math.ceil(HORIZON_DAYS / 7);
 /** Rows of detail shown per section before the email switches to "and N more". */
 const MAX_DETAIL_ROWS = 5;
 
-type OpenShiftRow = {
-  id: string;
-  shift_date: string;
-  start_time: string;
-  end_time: string;
-  department: string;
-  name: string | null;
-};
-
-type RejectionRow = {
-  shift_id: string;
-  employee_id: string;
-  rejection_note: string | null;
-  rejected_at: string;
-};
-
-type EmployeeNameRow = {
-  employee_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  preferred_name: string | null;
-};
-
 type WeekRow = {
   id: string;
   week_start: string;
@@ -68,6 +51,13 @@ type WeekRow = {
 type LiveShiftRow = RotaPublishShift & { week_id: string };
 type PublishedShiftRow = PublishedShiftSnapshot & { week_id: string };
 
+type EmployeeNameRow = {
+  employee_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  preferred_name: string | null;
+};
+
 type PendingLeaveRow = {
   id: string;
   employee_id: string;
@@ -76,32 +66,12 @@ type PendingLeaveRow = {
   created_at: string;
 };
 
-type UnfilledShift = {
-  date: string;
-  startTime: string;
-  endTime: string;
-  department: string;
-  templateName: string | null;
-  rejectedByName: string | null;
-  rejectionNote: string | null;
-};
-
 type PendingLeave = {
   employeeName: string;
   startDate: string;
   endDate: string;
   requestedAt: string;
 };
-
-/** A query that failed. Recorded rather than swallowed: a database fault used to
- *  look exactly like "nothing to report" and silently suppressed the whole alert. */
-type QueryFailure = { step: string; message: string };
-
-function addDaysIso(isoDate: string, days: number): string {
-  const d = new Date(isoDate + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().split('T')[0];
-}
 
 function escapeHtml(value: string): string {
   return value
@@ -136,77 +106,6 @@ function plural(count: number, singular: string, pluralForm: string): string {
  * Unfilled shifts from today up to the horizon, annotated with the rejection that
  * freed them where there was one. The error is returned rather than swallowed.
  */
-async function getUnfilledShifts(
-  supabase: ReturnType<typeof createAdminClient>,
-  todayIso: string,
-): Promise<{ shifts: UnfilledShift[]; failures: QueryFailure[] }> {
-  const failures: QueryFailure[] = [];
-
-  const { data: shiftRows, error: shiftsError } = await supabase
-    .from('rota_shifts')
-    .select('id, shift_date, start_time, end_time, department, name')
-    .eq('is_open_shift', true)
-    .eq('status', 'scheduled')
-    .gte('shift_date', todayIso)
-    .lte('shift_date', addDaysIso(todayIso, HORIZON_DAYS))
-    .order('shift_date', { ascending: true })
-    .order('start_time', { ascending: true });
-
-  if (shiftsError) {
-    return { shifts: [], failures: [{ step: 'unfilled_shifts', message: shiftsError.message }] };
-  }
-
-  const shifts = (shiftRows ?? []) as OpenShiftRow[];
-  if (shifts.length === 0) return { shifts: [], failures };
-
-  const { data: rejectionRows, error: rejectionsError } = await supabase
-    .from('rota_shift_rejections')
-    .select('shift_id, employee_id, rejection_note, rejected_at')
-    .in('shift_id', shifts.map(shift => shift.id))
-    .order('rejected_at', { ascending: false });
-
-  if (rejectionsError) {
-    failures.push({ step: 'shift_rejections', message: rejectionsError.message });
-  }
-
-  const rejections = (rejectionRows ?? []) as RejectionRow[];
-  const latestByShift = new Map<string, RejectionRow>();
-  for (const rejection of rejections) {
-    if (!latestByShift.has(rejection.shift_id)) latestByShift.set(rejection.shift_id, rejection);
-  }
-
-  const employeeIds = [...new Set(rejections.map(rejection => rejection.employee_id))];
-  const { data: employeeRows, error: employeesError } = employeeIds.length
-    ? await supabase
-        .from('employees')
-        .select('employee_id, first_name, last_name, preferred_name')
-        .in('employee_id', employeeIds)
-    : { data: [] as EmployeeNameRow[], error: null };
-
-  if (employeesError) {
-    failures.push({ step: 'rejection_employee_names', message: employeesError.message });
-  }
-
-  const nameById = new Map<string, string>(
-    ((employeeRows ?? []) as EmployeeNameRow[]).map(row => [row.employee_id, displayName(row, 'a staff member')]),
-  );
-
-  return {
-    shifts: shifts.map(shift => {
-      const rejection = latestByShift.get(shift.id) ?? null;
-      return {
-        date: shift.shift_date,
-        startTime: shift.start_time,
-        endTime: shift.end_time,
-        department: shift.department,
-        templateName: shift.name,
-        rejectedByName: rejection ? (nameById.get(rejection.employee_id) ?? 'a staff member') : null,
-        rejectionNote: rejection?.rejection_note ?? null,
-      };
-    }),
-    failures,
-  };
-}
 
 /**
  * Leave requests still waiting for a decision, most urgent first, which means the
@@ -538,7 +437,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const [readinessResult, unfilledResult, leaveResult] = await Promise.all([
     getWeekReadiness(supabase, firstWeekStart),
-    getUnfilledShifts(supabase, todayIso),
+    getUnfilledShifts(supabase, todayIso, HORIZON_DAYS),
     getPendingLeave(supabase),
   ]);
 
