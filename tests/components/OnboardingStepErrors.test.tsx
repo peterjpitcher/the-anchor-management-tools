@@ -65,6 +65,7 @@ describe('onboarding step errors', () => {
           emergency_contacts: true,
           financial: true,
           health: true,
+          right_to_work_notice: true,
         }}
       />,
     )

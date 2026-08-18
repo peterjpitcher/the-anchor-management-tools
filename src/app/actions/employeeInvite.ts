@@ -43,7 +43,7 @@ function buildOnboardingUrl(token: string): string {
 
 export type InviteType = 'onboarding' | 'portal_access';
 type EmployeeStatus = 'Onboarding' | 'Active' | 'Started Separation' | 'Former';
-type OnboardingSectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off';
+type OnboardingSectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off' | 'right_to_work_notice';
 
 type ValidationResult = {
   valid: boolean;
@@ -118,6 +118,7 @@ export type OnboardingSnapshot = {
     submissionVersion: number;
     blocks: Array<{ startDate: string; endDate: string; leaveType: string; note: string }>;
   };
+  right_to_work_notice: { acknowledged: boolean };
   completedSections: Record<OnboardingSectionKey, boolean>;
 };
 
@@ -1023,6 +1024,50 @@ export async function saveOnboardingTimeOff(
   return { success: true, requestsCreated: result?.requests_created ?? 0 };
 }
 
+/**
+ * Record that the new starter has read the right to work notice.
+ *
+ * This is NOT a right to work check and must never be treated as one. The check is done by a
+ * manager who sees the original documents in person, or online with the applicant's share code.
+ * This only records that we told them what to bring, and when.
+ */
+export async function acknowledgeRightToWorkNotice(
+  token: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const validation = await validateInviteToken(token);
+  if (!validation.valid || !validation.employee_id) {
+    return { success: false, error: 'Your invite link has expired. Ask your manager for a new one.' };
+  }
+  if (validation.inviteType !== 'onboarding') {
+    return { success: false, error: 'This link is for portal access only.' };
+  }
+
+  const boundError = await requireTokenBoundSession(validation.employee_id);
+  if (boundError) return { success: false, error: boundError };
+
+  const adminClient = createAdminClient();
+  const { error } = await adminClient.rpc('record_onboarding_acknowledgement', {
+    p_token: token,
+    p_question: 'right_to_work_notice',
+  });
+
+  if (error) {
+    console.error('[acknowledgeRightToWorkNotice] RPC error:', error);
+    return { success: false, error: 'Could not save that. Please try again.' };
+  }
+
+  await logAuditEvent({
+    user_email: validation.email ?? undefined,
+    operation_type: 'update',
+    resource_type: 'employee_onboarding',
+    resource_id: validation.employee_id,
+    operation_status: 'success',
+    new_values: { section: 'right_to_work_notice', answer: 'acknowledged' },
+  });
+
+  return { success: true };
+}
+
 export async function getOnboardingSnapshot(token: string): Promise<
   { success: true; data: OnboardingSnapshot } | { success: false; error: string }
 > {
@@ -1059,10 +1104,9 @@ export async function getOnboardingSnapshot(token: string): Promise<
       .maybeSingle(),
     adminClient
       .from('employee_onboarding_responses')
-      .select('answer, submission_version')
+      .select('question, answer, submission_version')
       .eq('employee_id', employeeId)
-      .eq('question', 'booked_time_off')
-      .maybeSingle(),
+      .in('question', ['booked_time_off', 'right_to_work_notice']),
     adminClient
       .from('leave_requests')
       .select('start_date, end_date, leave_type, note')
@@ -1106,7 +1150,9 @@ export async function getOnboardingSnapshot(token: string): Promise<
 
   const financial = financialResult.data;
   const health = healthResult.data;
-  const timeOffResponse = timeOffResult.data as { answer: string; submission_version: number } | null;
+  const responses = (timeOffResult.data ?? []) as Array<{ question: string; answer: string; submission_version: number }>;
+  const timeOffResponse = responses.find(row => row.question === 'booked_time_off') ?? null;
+  const rtwNoticeResponse = responses.find(row => row.question === 'right_to_work_notice') ?? null;
   const timeOffBlocks = timeOffBlocksResult.data as Array<{
     start_date: string; end_date: string; leave_type: string | null; note: string | null;
   }> | null;
@@ -1171,12 +1217,14 @@ export async function getOnboardingSnapshot(token: string): Promise<
           note: block.note ?? '',
         })),
       },
+      right_to_work_notice: { acknowledged: rtwNoticeResponse?.answer === 'acknowledged' },
       completedSections: {
         personal: Boolean(employee?.first_name && employee?.last_name),
         emergency_contacts: Boolean(primaryContact?.name),
         financial: Boolean(financial),
         health: Boolean(health),
         time_off: Boolean(timeOffResponse?.answer),
+        right_to_work_notice: rtwNoticeResponse?.answer === 'acknowledged',
       },
     },
   };
