@@ -308,7 +308,7 @@ export function MileageClient({
 
       {/* Filter row */}
       {showFilters && (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-1 p-4">
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4">
           <div className="min-w-64 flex-1">
             <label htmlFor="filter-search" className="block text-xs font-medium text-text-muted mb-1">
               Search
