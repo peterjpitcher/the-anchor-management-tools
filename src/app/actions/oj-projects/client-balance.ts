@@ -59,6 +59,10 @@ export async function getClientBalance(
 
   const supabase = await createClient()
 
+  // Scoped to the client, not to invoices the OJ billing cron raised. This must
+  // match getClientStatement or the drawer and the customer's PDF report a
+  // different debt for the same client on the same day.
+  //
   // Balance must not be derived from the visible invoice list; the drawer only
   // shows the latest 50 invoices, but the money total needs every unsettled row.
   const { data: unsettledInvoices, error: unsettledInvoicesError } = await supabase
@@ -66,7 +70,6 @@ export async function getClientBalance(
     .select('id, status, total_amount, paid_amount')
     .eq('vendor_id', vendorId)
     .is('deleted_at', null)
-    .ilike('reference', 'OJ Projects %')
     .not('status', 'in', '(paid,void,written_off)')
 
   if (unsettledInvoicesError) return { error: unsettledInvoicesError.message }
@@ -77,7 +80,6 @@ export async function getClientBalance(
     .select('id, invoice_number, invoice_date, due_date, reference, status, total_amount, paid_amount')
     .eq('vendor_id', vendorId)
     .is('deleted_at', null)
-    .ilike('reference', 'OJ Projects %')
     .order('invoice_date', { ascending: false })
     .limit(50)
 
@@ -197,8 +199,11 @@ export async function getClientBalance(
       .in('invoice_id', unsettledInvoiceIds)
 
     if (cnError) {
-      // Table may not exist yet if migration hasn't been applied
-      console.warn('[client-balance] credit_notes query failed (table may not exist):', cnError.message)
+      // Fails closed, matching getClientStatement. Continuing here showed a
+      // balance as though no credit existed, so the drawer could overstate what
+      // a client owed while looking perfectly healthy.
+      console.error('[client-balance] credit_notes query failed:', cnError.message)
+      return { error: 'Could not load credit notes, so the balance would be wrong. Please try again.' }
     } else {
       creditNoteTotal = roundMoney(
         (creditNotes || []).reduce((acc, cn) => acc + Number(cn.amount_inc_vat || 0), 0)

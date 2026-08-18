@@ -40,6 +40,22 @@ export async function getClientStatement(
     return { error: 'Missing required parameters: vendorId, dateFrom, dateTo' }
   }
 
+  // Validated here rather than at the route, so a hand-edited or shared link is
+  // covered as well as the button. A lexical comparison alone accepted
+  // '2026-8-18', which then silently pulled in invoices past the requested end
+  // date and aged the whole balance as not yet due, while the email version
+  // printed the literal words 'Invalid Date'.
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+  const isRealDate = (value: string) => {
+    if (!ISO_DATE.test(value)) return false
+    const parsed = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+  }
+
+  if (!isRealDate(dateFrom) || !isRealDate(dateTo)) {
+    return { error: 'Dates must be real calendar dates in YYYY-MM-DD format' }
+  }
+
   if (dateFrom > dateTo) {
     return { error: 'Date range is invalid: dateFrom must be before dateTo' }
   }
@@ -57,14 +73,23 @@ export async function getClientStatement(
     return { error: vendorError?.message || 'Vendor not found' }
   }
 
-  // Fetch all OJ Projects invoices for this vendor (dual-filter pattern)
-  // Exclude void, written_off, and draft invoices (per decision D1)
+  // Every invoice for this client, not just those the OJ billing cron raised.
+  //
+  // This used to filter on reference ILIKE 'OJ Projects %'. The document is
+  // headed ACCOUNT STATEMENT and a client reads it as their whole account, but
+  // the filter silently dropped anything invoiced by hand or under an older
+  // reference convention: GBP 8,325 of Barons Pubs history and GBP 2,980 of
+  // Golden Barrels'. It also failed open on NULL, because ILIKE against NULL is
+  // NULL rather than false, so two invoices vanished for having no reference at
+  // all. The billing engine keeps its own OJ-only scope; that is about which
+  // work the monthly cap covers, which is a different question.
+  //
+  // Draft invoices stay out: the client has not been asked to pay them.
   const { data: allInvoices, error: invoicesError } = await supabase
     .from('invoices')
     .select('id, invoice_number, invoice_date, due_date, status, total_amount, paid_amount, created_at')
     .eq('vendor_id', vendorId)
     .is('deleted_at', null)
-    .ilike('reference', 'OJ Projects %')
     .not('status', 'in', '("void","written_off","draft")')
     .order('invoice_date', { ascending: true })
 
@@ -123,26 +148,31 @@ export async function getClientStatement(
     allCreditNotes = creditNotes || []
   }
 
-  // Opening balance: sum of unpaid amounts on invoices created BEFORE dateFrom
-  const openingBalance = roundMoney(
-    invoices
-      .filter((inv) => inv.invoice_date < dateFrom)
-      .reduce((acc, inv) => {
-        const total = Number(inv.total_amount || 0)
-        // Subtract payments made before dateFrom for these invoices
-        const paymentsBefore = allPayments
-          .filter((p) => p.invoice_id === inv.id && p.payment_date < dateFrom)
-          .reduce((sum, p) => sum + Number(p.amount || 0), 0)
-        // Subtract credit notes created before dateFrom
-        const creditsBefore = allCreditNotes
-          .filter((cn) => cn.invoice_id === inv.id && cn.created_at.slice(0, 10) < dateFrom)
-          .reduce((sum, cn) => sum + Number(cn.amount_inc_vat || 0), 0)
-        // NOT clamped at zero. Clamping discarded an overpayment carried into
-        // the period, so the opening balance overstated the debt and the ageing
-        // totals could never reconcile against the closing balance.
-        return acc + (total - paymentsBefore - creditsBefore)
-      }, 0)
-  )
+  // Opening balance: what was owed the moment before the period began.
+  //
+  // Invoices count only if they predate the period, but settlements count
+  // whatever their invoice's date. A payment banked before the period against an
+  // invoice raised inside it (a standing order arriving ahead of the invoice)
+  // otherwise appears nowhere at all: the invoice shows as a debit in the ledger
+  // and the money that cleared it is silently dropped, leaving the statement
+  // demanding payment the client has already made.
+  //
+  // NOT clamped at zero. Clamping discarded an overpayment carried into the
+  // period, so the opening balance overstated the debt and the ageing totals
+  // could never reconcile against the closing balance.
+  const invoicedBefore = invoices
+    .filter((inv) => inv.invoice_date < dateFrom)
+    .reduce((acc, inv) => acc + Number(inv.total_amount || 0), 0)
+
+  const paidBefore = allPayments
+    .filter((p) => p.payment_date < dateFrom)
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+
+  const creditedBefore = allCreditNotes
+    .filter((cn) => cn.created_at.slice(0, 10) < dateFrom)
+    .reduce((sum, cn) => sum + Number(cn.amount_inc_vat || 0), 0)
+
+  const openingBalance = roundMoney(invoicedBefore - paidBefore - creditedBefore)
 
   // Build transactions within the date range
   type RawTransaction = {
@@ -406,23 +436,53 @@ export async function sendStatementEmail(
     ],
   })
 
+  // Looked up before the send so the failure path can be attributed too.
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // invoice_email_logs requires a row to reference an invoice or a quote, and a
+  // statement is neither, so every insert here was silently rejected and no
+  // statement send has ever been recorded. The error was never checked and the
+  // function reported success regardless. email_messages carries no such
+  // constraint.
+  const recordSend = async (status: 'sent' | 'failed', errorMessage?: string) => {
+    const { error: logError } = await supabase.from('email_messages').insert({
+      to_address: recipientResult.to,
+      subject,
+      body_html: bodyHtml,
+      direction: 'outbound',
+      comm_type: 'oj_statement',
+      status,
+      error: errorMessage || null,
+      sent_at: status === 'sent' ? new Date().toISOString() : null,
+      metadata: {
+        vendor_id: vendorId,
+        cc: recipientResult.cc || null,
+        sent_by: user?.id || null,
+        period_from: dateFrom,
+        period_to: dateTo,
+      },
+    })
+
+    // Checked, unlike the insert this replaces. A rejected log row is why no
+    // statement send was ever recorded.
+    if (logError) {
+      console.error('[client-statement] failed to record statement email:', logError.message)
+    }
+  }
+
   if (!emailResult.success) {
+    // Recorded before returning, so a send that timed out after the mail was
+    // accepted leaves a trace. Without it the only visible outcome was an error
+    // and the operator's instinct is to click again, sending a second copy.
+    await recordSend('failed', emailResult.error)
     return { error: emailResult.error || 'Failed to send statement email' }
   }
 
-  // Log to invoice_email_logs
-  const { data: { user } } = await supabase.auth.getUser()
-
-  await supabase.from('invoice_email_logs').insert({
-    invoice_id: null,
-    sent_to: recipientResult.to,
-    sent_by: user?.id || null,
-    subject,
-    body: bodyHtml,
-    status: 'sent',
-  })
+  await recordSend('sent')
 
   await logAuditEvent({
+    user_id: user?.id,
+    user_email: user?.email,
     operation_type: 'send',
     resource_type: 'statement',
     resource_id: vendorId,
