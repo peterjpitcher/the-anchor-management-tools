@@ -563,6 +563,17 @@ nav[aria-label="Mobile navigation"],
   min-height: calc(100vh - 52px);
 }
 
+/* The negative margins above exist to break these screens out of the authenticated app shell's
+   padding. The employee onboarding route group has no app shell, so applying them there drags
+   the content 28px off the left of the viewport. It went unnoticed while the route group layout
+   wrapped everything in its own centred container; that container has been removed because it
+   was also squeezing the flow to 672px and rendering a second header. */
+.employee-onboarding-shell .onboard,
+.employee-onboarding-shell .auth {
+  margin: 0;
+  min-height: 100vh;
+}
+
 /* ===== Auth / Login ===== */
 .auth {
   background: var(--color-bg);
