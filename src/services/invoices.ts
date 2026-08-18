@@ -476,6 +476,51 @@ export class InvoiceService {
     if (!updatedInvoice) {
       throw new Error('Invoice status changed before update completed');
     }
+
+    // Marking an invoice paid used to set paid_amount and stop there, leaving no
+    // payment record behind it. Most of the app reads paid_amount, but the client
+    // statement rebuilds what a customer has paid from payment records, so it lost
+    // the money entirely: Barons Pubs' statement demanded GBP 2,878.13 they had
+    // already settled, shown as over 90 days overdue. Recording the payment keeps
+    // the two views of the same money in agreement.
+    if (newStatus === 'paid') {
+      const { data: existingPayments, error: existingPaymentsError } = await supabase
+        .from('invoice_payments')
+        .select('amount')
+        .eq('invoice_id', invoiceId);
+
+      if (existingPaymentsError) {
+        console.error('Error loading existing invoice payments:', existingPaymentsError);
+      } else {
+        // Only the shortfall, so an invoice settled by part-payments and then
+        // marked paid records the remainder rather than the whole total again.
+        const alreadyRecorded = (existingPayments || []).reduce(
+          (sum, payment) => sum + Number(payment.amount || 0),
+          0
+        );
+        const shortfall =
+          Math.round((Number(currentInvoice.total_amount || 0) - alreadyRecorded) * 100) / 100;
+
+        if (shortfall > 0) {
+          const { error: paymentInsertError } = await supabase.from('invoice_payments').insert({
+            invoice_id: invoiceId,
+            payment_date: new Date().toISOString().slice(0, 10),
+            amount: shortfall,
+            payment_method: null,
+            reference: null,
+            notes: 'Recorded automatically when the invoice was marked paid.',
+          });
+
+          if (paymentInsertError) {
+            // The status change has already committed and is the source of truth
+            // for what is owed, so this must not fail the operation. It is loud
+            // because a missing row puts the statement back out of step.
+            console.error('Failed to record payment for invoice marked paid:', paymentInsertError);
+          }
+        }
+      }
+    }
+
     return { updatedInvoice, oldStatus: currentInvoice.status };
   }
 

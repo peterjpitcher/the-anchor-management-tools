@@ -22,6 +22,10 @@ export interface StatementPDFInput {
   logoUrl?: string
 }
 
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
 function formatCurrency(amount: number): string {
   return `£${Math.abs(amount).toFixed(2)}`
 }
@@ -191,7 +195,15 @@ const STATEMENT_BODY_CSS = `
  * whole point of showing ageing next to a ledger.
  */
 function buildReconciliationLine(ageing: StatementAgeing, closingBalance: number): string {
-  const parts = [`Amounts overdue ${formatCurrency(ageing.receivablesTotal)}`]
+  // Split rather than lumped. Summing every bucket and calling the total
+  // "amounts overdue" told a client inside their seven-day terms that money not
+  // yet due was late, on the one line of the document that asserts lateness.
+  const notYetDue = ageing.buckets.find((b) => b.key === 'not_yet_due')?.amount ?? 0
+  const overdue = roundMoney(ageing.receivablesTotal - notYetDue)
+
+  const parts: string[] = []
+  if (notYetDue > 0) parts.push(`Not yet due ${formatCurrency(notYetDue)}`)
+  parts.push(`${parts.length ? 'overdue' : 'Overdue'} ${formatCurrency(overdue)}`)
   if (ageing.creditTotal > 0) parts.push(`less credit ${formatCurrency(ageing.creditTotal)}`)
   parts.push(`equals the closing balance of ${formatBalance(closingBalance)}`)
 

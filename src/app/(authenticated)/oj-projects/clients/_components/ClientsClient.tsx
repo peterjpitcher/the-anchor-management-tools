@@ -998,14 +998,23 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   <Input
                     type="date"
                     value={statementFrom}
-                    onChange={(e) => setStatementFrom(e.target.value)}
+                    onChange={(e) => {
+                      setStatementFrom(e.target.value)
+                      // Clearing the preview stops an operator reviewing one
+                      // range, widening it, seeing the old figures unchanged on
+                      // screen, and emailing the client a different statement.
+                      setStatement(null)
+                    }}
                   />
                 </Field>
                 <Field label="To">
                   <Input
                     type="date"
                     value={statementTo}
-                    onChange={(e) => setStatementTo(e.target.value)}
+                    onChange={(e) => {
+                      setStatementTo(e.target.value)
+                      setStatement(null)
+                    }}
                   />
                 </Field>
               </div>
@@ -1039,6 +1048,11 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
               {/* Statement preview */}
               {statement && (
                 <div className="mt-4 border border-border rounded-lg p-3 text-sm">
+                  {/* The period is stated so the preview can never be mistaken
+                      for a different range than the one it covers. */}
+                  <p className="mb-2 text-xs font-medium text-text">
+                    {statement.period.from} to {statement.period.to}
+                  </p>
                   <div className="flex justify-between mb-2 text-text-muted">
                     <span>Opening balance</span>
                     <span className="font-medium">{formatCurrency(statement.openingBalance)}</span>
