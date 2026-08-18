@@ -8,6 +8,7 @@ import PersonalStep from '../steps/PersonalStep'
 import EmergencyContactsStep from '../steps/EmergencyContactsStep'
 import FinancialStep from '../steps/FinancialStep'
 import HealthStep from '../steps/HealthStep'
+import TimeOffStep from '../steps/TimeOffStep'
 import ReviewStep from '../steps/ReviewStep'
 import type { InviteType, OnboardingSnapshot } from '@/app/actions/employeeInvite'
 
@@ -19,11 +20,12 @@ interface OnboardingClientProps {
   initialData: OnboardingSnapshot | null
 }
 
-type SectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health'
+type SectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off'
 
 const ONBOARDING_STEPS = [
   { key: 'create_account', title: 'Create Account' },
   { key: 'personal', title: 'Personal Details' },
+  { key: 'time_off', title: 'Time Off Booked' },
   { key: 'emergency_contacts', title: 'Emergency Contacts' },
   { key: 'financial', title: 'Financial Details' },
   { key: 'health', title: 'Health Information' },
@@ -31,7 +33,7 @@ const ONBOARDING_STEPS = [
 ] as const
 
 function firstIncompleteStepIndex(savedSections: Record<SectionKey, boolean>): number {
-  const orderedSections: SectionKey[] = ['personal', 'emergency_contacts', 'financial', 'health']
+  const orderedSections: SectionKey[] = ['personal', 'time_off', 'emergency_contacts', 'financial', 'health']
   const firstMissing = orderedSections.findIndex((section) => !savedSections[section])
   return firstMissing === -1 ? orderedSections.length : firstMissing
 }
@@ -90,6 +92,7 @@ function OnboardingFlow({
 }: Omit<OnboardingClientProps, 'inviteType'>) {
   const initialSavedSections = initialData?.completedSections ?? {
     personal: false,
+    time_off: false,
     emergency_contacts: false,
     financial: false,
     health: false,
@@ -148,6 +151,19 @@ function OnboardingFlow({
             initialData={initialData?.personal}
             onSuccess={() => {
               markSectionComplete('personal')
+              goToNextStep()
+            }}
+          />
+        )
+      case 'time_off':
+        return (
+          <TimeOffStep
+            token={token}
+            initialAnswer={initialData?.time_off?.answer ?? null}
+            initialBlocks={initialData?.time_off?.blocks ?? []}
+            initialSubmissionVersion={initialData?.time_off?.submissionVersion ?? 0}
+            onSuccess={() => {
+              markSectionComplete('time_off')
               goToNextStep()
             }}
           />

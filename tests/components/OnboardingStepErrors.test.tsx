@@ -61,6 +61,7 @@ describe('onboarding step errors', () => {
         token="invite-token"
         savedSections={{
           personal: true,
+          time_off: true,
           emergency_contacts: true,
           financial: true,
           health: true,
