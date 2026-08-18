@@ -31,7 +31,7 @@ import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHoliday
 import EmployeeReliabilityTab from '@/components/features/employees/EmployeeReliabilityTab'
 import { getEmployeePaySettings, getEmployeeRateOverrides } from '@/app/actions/pay-bands'
 import { getHourlyRate } from '@/lib/rota/pay-calculator'
-import { getLeaveRequests } from '@/app/actions/leave'
+import { getEmployeeLeaveDays, getLeaveRequests } from '@/app/actions/leave'
 import { getRotaSettings } from '@/app/actions/rota-settings'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getEmployeeReliabilityData } from '@/services/employee-reliability'
@@ -67,6 +67,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     paySettingsResult,
     rateOverridesResult,
     leaveRequestsResult,
+    leaveDaysResult,
     rotaSettings,
     canCreateLeave,
     reliabilityData,
@@ -75,6 +76,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     getEmployeePaySettings(employeeId),
     getEmployeeRateOverrides(employeeId),
     getLeaveRequests({ employeeId }),
+    getEmployeeLeaveDays(employeeId),
     getRotaSettings(),
     checkUserPermission('leave', 'create'),
     getEmployeeReliabilityData(employeeId),
@@ -108,6 +110,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   const paySettings = paySettingsResult.success ? paySettingsResult.data : null
   const rateOverrides = rateOverridesResult.success ? rateOverridesResult.data : []
   const leaveRequests = leaveRequestsResult.success ? leaveRequestsResult.data : []
+  const leaveDays = leaveDaysResult.success ? leaveDaysResult.data : []
 
   // Resolve current rate for display (today's date in London timezone)
   const today = getTodayIsoDate()
@@ -273,6 +276,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           employeeId={employee.employee_id}
           canCreateLeave={canCreateLeave}
           leaveRequests={leaveRequests}
+          leaveDays={leaveDays}
           paySettings={paySettings}
           rotaSettings={rotaSettings}
         />

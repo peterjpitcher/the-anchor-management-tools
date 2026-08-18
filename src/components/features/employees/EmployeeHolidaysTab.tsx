@@ -12,16 +12,23 @@ import { bookApprovedHoliday, type LeaveRequest } from '@/app/actions/leave';
 import type { EmployeePaySettings } from '@/app/actions/pay-bands';
 import type { RotaSettings } from '@/app/actions/rota-settings';
 import {
-  countLeaveAllowanceDays,
+  countAllowanceDays,
+  countRequestDays,
   getHolidayYear,
-  normalizeNonWorkingWeekdays,
 } from '@/lib/leave/working-days';
+import type { EmployeeLeaveDay } from '@/app/actions/leave';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
   canCreateLeave: boolean;
   leaveRequests: LeaveRequest[];
+  /**
+   * Dated leave rows. Totals are computed from these rather than from each request's start and
+   * end dates, so a request spanning new year is charged to the year each day falls in, and the
+   * figure matches the Holiday column on the employees list.
+   */
+  leaveDays: EmployeeLeaveDay[];
   paySettings: EmployeePaySettings | null;
   rotaSettings: Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay' | 'defaultHolidayDays'>;
 }
@@ -44,12 +51,12 @@ export default function EmployeeHolidaysTab({
   employeeId,
   canCreateLeave,
   leaveRequests,
+  leaveDays,
   paySettings,
   rotaSettings,
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
-  const nonWorkingWeekdays = normalizeNonWorkingWeekdays(paySettings?.non_working_weekdays);
 
   const currentYear = getHolidayYear(getTodayIsoDate(), holidayYearStartMonth, holidayYearStartDay);
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -60,20 +67,26 @@ export default function EmployeeHolidaysTab({
   const [bookError, setBookError] = useState('');
   const [bookIsPending, startBookTransition] = useTransition();
 
-  // Derive available years from requests + always include current year
-  const yearsInData = [...new Set(leaveRequests.map(r => r.holiday_year))];
-  const availableYears = [...new Set([...yearsInData, currentYear])].sort((a, b) => b - a);
+  // Each dated row is attributed to the holiday year its own date falls in.
+  const daysByYear = new Map<number, EmployeeLeaveDay[]>();
+  for (const day of leaveDays) {
+    const year = getHolidayYear(day.leave_date, holidayYearStartMonth, holidayYearStartDay);
+    const bucket = daysByYear.get(year) ?? [];
+    bucket.push(day);
+    daysByYear.set(year, bucket);
+  }
 
+  // Years offered in the selector come from the dated rows, so a request that began in the
+  // previous year still surfaces the year its days actually land in.
+  const availableYears = [...new Set([...daysByYear.keys(), currentYear])].sort((a, b) => b - a);
+
+  const selectedDays = daysByYear.get(selectedYear) ?? [];
+  const approvedDays = countAllowanceDays(selectedDays.filter(d => d.status === 'approved'));
+  const pendingDays = countAllowanceDays(selectedDays.filter(d => d.status === 'pending'));
+
+  // The request list still groups by the stored holiday_year, which is what the year filter on
+  // the request header means. Totals above deliberately do not use it.
   const yearRequests = leaveRequests.filter(r => r.holiday_year === selectedYear);
-
-  // Count approved days for selected year (from dates, not leave_days table)
-  const approvedDays = yearRequests
-    .filter(r => r.status === 'approved')
-    .reduce((sum, r) => sum + countLeaveAllowanceDays(r.start_date, r.end_date, nonWorkingWeekdays), 0);
-
-  const pendingDays = yearRequests
-    .filter(r => r.status === 'pending')
-    .reduce((sum, r) => sum + countLeaveAllowanceDays(r.start_date, r.end_date, nonWorkingWeekdays), 0);
 
   const progressPct = allowance > 0 ? Math.min(100, (approvedDays / allowance) * 100) : 0;
   const overAllowance = allowance > 0 && approvedDays >= allowance;
@@ -215,7 +228,7 @@ export default function EmployeeHolidaysTab({
       ) : (
         <div className="space-y-2">
           {yearRequests.map(r => {
-            const days = countLeaveAllowanceDays(r.start_date, r.end_date, nonWorkingWeekdays);
+            const days = countRequestDays(r.start_date, r.end_date);
             return (
               <div key={r.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
                 <div className="min-w-0">
