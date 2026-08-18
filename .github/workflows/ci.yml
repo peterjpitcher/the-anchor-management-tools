@@ -47,6 +47,48 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
           CRON_SECRET: placeholder-cron-secret
 
+  database-contract:
+    # Rules that only a real Postgres can prove. The application level tests stand in for the
+    # database, so they cannot demonstrate what an index actually does. A duplicate preferred
+    # name reached a new starter's final screen in production because the uniqueness index is
+    # partial and stays silent until a row's status changes, which no mock would have caught.
+    #
+    # The schema fixture is deliberately minimal and the definitions under test are applied from
+    # the REAL migration files, so this cannot drift from what ships.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGURL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Create the minimal schema the migrations attach to
+        run: psql "$PGURL" -v ON_ERROR_STOP=1 -f tests/db/fixture.sql
+
+      - name: Apply the real migrations under test
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260809120000_employee_preferred_name.sql
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260819030000_leave_types.sql
+
+      - name: Assert the database contract
+        run: psql "$PGURL" -v ON_ERROR_STOP=1 -f tests/db/schema-contract.sql
+
   supabase-dry-run:
     runs-on: ubuntu-latest
     if: ${{ (vars.RUN_SUPABASE_DRY_RUN == 'true') }}
