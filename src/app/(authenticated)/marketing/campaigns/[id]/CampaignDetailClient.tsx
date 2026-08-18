@@ -308,7 +308,7 @@ export function CampaignDetailClient({
             <Stat
               label="Clicked"
               value={stats.clicked}
-              hint={`${formatPercent(stats.rates.clickRate)} reported by the email provider`}
+              hint={`${formatPercent(stats.rates.clickRate)} after automated scans are removed`}
             />
             <Stat
               label="Unsubscribed"
@@ -327,11 +327,11 @@ export function CampaignDetailClient({
               subtitle="Counted through our own short links and our own booking records, so these say which call to action worked and whether it turned into business"
             />
             <CardBody>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                 <Stat
-                  label="Link clicks"
+                  label="Link visits"
                   value={stats.engagement.clicks}
-                  hint="Every click on a campaign link, bots removed"
+                  hint="Cleaned visits across every campaign link"
                 />
                 <Stat
                   label="People who clicked"
@@ -339,6 +339,11 @@ export function CampaignDetailClient({
                   hint={
                     shareOf(stats.engagement.uniqueClickers, stats.sent) ?? 'Nothing sent yet'
                   }
+                />
+                <Stat
+                  label="Filtered activity"
+                  value={stats.engagement.filteredClicks}
+                  hint="Automated scans and pre-send tests hidden from results"
                 />
                 <Stat
                   label="Bookings"
@@ -364,9 +369,9 @@ export function CampaignDetailClient({
               </div>
 
               <p className="mt-4 text-sm text-text-muted">
-                Opens and the click figure above come from the email provider. These come from
-                our own redirector, so they can be traced from one contact through to the
-                booking they made. The two will not match exactly, and that is expected.
+                Opens come from the email provider. Clicks come from our own redirector and
+                exclude bots plus rapid sweeps across most links. Raw activity is retained for
+                auditing, and a later isolated click from the same person still counts.
               </p>
 
               {linkPerformanceError ? (

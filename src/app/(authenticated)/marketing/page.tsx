@@ -210,7 +210,8 @@ export default async function MarketingCampaignsPage() {
         <p className="text-sm text-text-muted">
           Campaigns are authored as JSON content files and pasted in on the new campaign page.
           There is no editor here on purpose: the layout blocks are fixed so every email renders
-          the same way in every inbox. Opens are not tracked, so that column usually stays empty.
+          the same way in every inbox. Opens are approximate because mail apps can prefetch
+          images. Clicks exclude suspected automated link scans.
         </p>
       </div>
     </PageLayout>

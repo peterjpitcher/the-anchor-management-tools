@@ -3,12 +3,11 @@ import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import {
+  classifyMarketingClicks,
   fetchCampaignLinks,
-  fetchClicksByRecipientIds,
   fetchClicksForLinks,
   fetchConversionsByUtmCampaign,
   fetchEnquiryConversionsByUtmCampaign,
-  isHumanClick,
   summariseClicksByRecipient,
 } from '@/lib/email/marketing/attribution'
 import { provisionCampaignLinks } from '@/lib/email/marketing/links'
@@ -774,8 +773,8 @@ export function campaignUtmValue(campaign: Pick<MarketingCampaign, 'id' | 'utmCa
  * analytics.
  *
  * Denominators, stated once:
- *   - `clicks` counts CLICK ROWS, not people. Bots are excluded; a click we could not classify
- *     still counts. One person clicking three links produces three.
+ *   - `clicks` counts CLICK ROWS, not people. Known bots, pre-send tests and scan bursts are
+ *     excluded. One person clicking three genuine links produces three.
  *   - `uniqueClickers` counts DISTINCT RECIPIENTS OF THIS CAMPAIGN. A click is only counted if
  *     its `utm_content` matches a recipient row on this campaign, so a stray click on a shared
  *     link cannot inflate it. Compare it against `sent`, not against `recipients`.
@@ -797,12 +796,16 @@ async function fetchCampaignEngagement(
     supabase,
     links.map((link) => link.id),
   )
+  const classified = classifyMarketingClicks(
+    clickRows,
+    links.map((link) => link.id),
+    { notBefore: campaign.scheduledFor },
+  )
 
   let clicks = 0
   const clickers = new Set<string>()
 
-  for (const row of clickRows) {
-    if (!isHumanClick(row.device_type)) continue
+  for (const row of classified.humanRows) {
     clicks += 1
     if (row.utm_content && recipientIds.has(row.utm_content)) clickers.add(row.utm_content)
   }
@@ -816,6 +819,7 @@ async function fetchCampaignEngagement(
   return {
     clicks,
     uniqueClickers: clickers.size,
+    filteredClicks: classified.filteredRows.length,
     conversions: {
       bookings: bookings.count,
       enquiries: enquiries.count,
@@ -829,10 +833,9 @@ async function fetchCampaignEngagement(
 /**
  * Campaign results.
  *
- * Every provider-side metric is counted from a TIMESTAMP column, never from `email_messages
- * .status`. The webhook promotes that status forwards (delivered, then opened, then clicked),
- * so counting statuses would report a campaign where everyone clicked as having zero
- * deliveries and zero opens.
+ * Delivery and open metrics are counted from TIMESTAMP columns, never from `email_messages
+ * .status`. The webhook promotes that status forwards, so counting statuses would report a
+ * campaign where everyone opened as having zero deliveries.
  *
  * Rates use `sent` as the denominator throughout: a skipped or failed row never reached an
  * inbox, so including it would depress every figure and make a clean send look like a poor
@@ -887,14 +890,12 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
 
   let delivered = 0
   let opened = 0
-  let clicked = 0
   let bounced = 0
   let complained = 0
 
   for (const row of messageEngagement.values()) {
     if (row.delivered_at) delivered += 1
     if (row.opened_at) opened += 1
-    if (row.clicked_at) clicked += 1
     if (row.bounced_at) bounced += 1
     if (row.complained_at) complained += 1
   }
@@ -920,6 +921,9 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
     campaign,
     new Set(recipients.map((row) => row.id)),
   )
+  // Provider clicks include enterprise mail scanners. The headline click number is therefore
+  // the distinct recipients left after our own redirector removes scan bursts.
+  const clicked = engagement.uniqueClickers
 
   return {
     campaignId: id,
@@ -955,10 +959,10 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
 /**
  * Which call to action actually worked.
  *
- * One row per destination the campaign points at. `clicks` counts click rows on that link with
- * bots removed; `uniqueClickers` counts distinct recipients of this campaign who clicked that
- * particular link, so the two columns answer "how much traffic" and "how many people" without
- * pretending to be the same number.
+ * One row per destination the campaign points at. `clicks` counts cleaned rows on that link;
+ * `uniqueClickers` counts distinct recipients of this campaign who clicked that particular link,
+ * so the two columns answer "how much traffic" and "how many people" without promoting a
+ * security scanner into a customer.
  *
  * `originalUrl` is what the person writing the email typed, taken from the link's metadata.
  * The stored destination has the UTM parameters baked in, which is noise on a results table.
@@ -967,6 +971,7 @@ export async function getCampaignLinkPerformance(
   campaignId: string,
 ): Promise<MarketingCampaignLinkPerformance[]> {
   const supabase = createAdminClient()
+  const campaign = await requireCampaign(campaignId)
 
   const links = await fetchCampaignLinks(supabase, campaignId)
   if (links.length === 0) return []
@@ -988,10 +993,15 @@ export async function getCampaignLinkPerformance(
     supabase,
     links.map((link) => link.id),
   )
+  const classified = classifyMarketingClicks(
+    clickRows,
+    links.map((link) => link.id),
+    { notBefore: campaign.scheduledFor },
+  )
 
   const clicksByLink = new Map<string, { clicks: number; clickers: Set<string> }>()
-  for (const row of clickRows) {
-    if (!row.short_link_id || !isHumanClick(row.device_type)) continue
+  for (const row of classified.humanRows) {
+    if (!row.short_link_id) continue
 
     const current = clicksByLink.get(row.short_link_id) ?? { clicks: 0, clickers: new Set<string>() }
     current.clicks += 1
@@ -1034,6 +1044,7 @@ export async function listRecipients(
   options: ListRecipientsOptions = {},
 ): Promise<ListRecipientsResult> {
   const supabase = createAdminClient()
+  const campaign = await requireCampaign(campaignId)
 
   const page = Math.max(1, options.page ?? 1)
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, options.pageSize ?? DEFAULT_PAGE_SIZE))
@@ -1060,14 +1071,19 @@ export async function listRecipients(
       .filter((messageId): messageId is string => messageId != null),
   )
 
-  // One extra query for the whole page, keyed on the recipient ids the email carried in
-  // `utm_content`. Asking per row would be up to 200 round trips for one table.
-  const clicksByRecipient = summariseClicksByRecipient(
-    await fetchClicksByRecipientIds(
-      supabase,
-      recipients.map((recipient) => recipient.id),
-    ),
+  // Classification needs the whole campaign, not one page: a scanner reveals itself by
+  // sweeping unrelated links. The cleaned rows are then reduced to the recipients on screen.
+  const links = await fetchCampaignLinks(supabase, campaignId)
+  const clickRows = await fetchClicksForLinks(
+    supabase,
+    links.map((link) => link.id),
   )
+  const classified = classifyMarketingClicks(
+    clickRows,
+    links.map((link) => link.id),
+    { notBefore: campaign.scheduledFor },
+  )
+  const clicksByRecipient = summariseClicksByRecipient(classified.humanRows)
 
   return {
     recipients: recipients.map((recipient) => {
