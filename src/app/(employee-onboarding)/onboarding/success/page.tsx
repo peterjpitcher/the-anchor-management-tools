@@ -10,7 +10,7 @@ export default async function OnboardingSuccessPage({ searchParams }: Onboarding
   const isPortalAccess = params?.type === 'portal_access';
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-2xl space-y-4 px-4 py-8">
       <div className="rounded-lg bg-white p-8 shadow-sm text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
           <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">

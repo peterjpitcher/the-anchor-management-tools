@@ -265,58 +265,58 @@ function mockCancelOwnClient(options: {
   return { client, employeeQuery, deleteQuery }
 }
 
+/** One dated leave row as getHolidayUsage now reads it, with its request embedded. */
+type UsageDayRow = {
+  leave_date: string
+  leave_requests: { status: string; leave_type: string }
+}
+
 function mockHolidayUsageClient(options: {
-  paySettings?: { holiday_allowance_days: number | null; non_working_weekdays?: number[] | null } | null
+  paySettings?: { holiday_allowance_days: number | null } | null
   paySettingsError?: { message: string } | null
-  approvedRequests?: Array<{ id: string }>
-  pendingRequests?: Array<{ id: string }>
-  approvedDays?: Array<{ leave_date: string }>
-  pendingDays?: Array<{ leave_date: string }>
+  /** Every dated row in the holiday year, whatever its status or type. */
+  days?: UsageDayRow[]
+  daysError?: { message: string } | null
 } = {}) {
   const payQuery = chain()
   payQuery.maybeSingle.mockResolvedValue({
     data: options.paySettings === undefined
-      ? { holiday_allowance_days: 20, non_working_weekdays: [] }
+      ? { holiday_allowance_days: 20 }
       : options.paySettings,
     error: options.paySettingsError ?? null,
   })
 
-  const approvedRequestsQuery = chain() as Record<string, Mock> & { data?: Array<{ id: string }>; error?: null }
-  approvedRequestsQuery.data = options.approvedRequests ?? [{ id: REQUEST_ID }]
-  approvedRequestsQuery.error = null
+  // getHolidayUsage now makes ONE dated query bounded by the holiday year, rather than
+  // fetching request ids per status and then their days.
+  const daysQuery = chain() as Record<string, Mock> & { data?: UsageDayRow[]; error?: { message: string } | null }
+  daysQuery.data = options.days ?? []
+  daysQuery.error = options.daysError ?? null
 
-  const pendingRequestsQuery = chain() as Record<string, Mock> & { data?: Array<{ id: string }>; error?: null }
-  pendingRequestsQuery.data = options.pendingRequests ?? []
-  pendingRequestsQuery.error = null
-
-  const approvedDaysQuery = chain() as Record<string, Mock> & { data?: Array<{ leave_date: string }>; error?: null }
-  approvedDaysQuery.data = options.approvedDays ?? []
-  approvedDaysQuery.error = null
-
-  const pendingDaysQuery = chain() as Record<string, Mock> & { data?: Array<{ leave_date: string }>; error?: null }
-  pendingDaysQuery.data = options.pendingDays ?? []
-  pendingDaysQuery.error = null
-
-  const leaveRequestQueries = [approvedRequestsQuery, pendingRequestsQuery]
-  const leaveDayQueries = [approvedDaysQuery, pendingDaysQuery]
+  const leaveTypesSelect = vi.fn().mockResolvedValue({
+    data: [
+      { code: 'holiday', label: 'Holiday', consumes_allowance: true, paid: true, shown_on_rota: true, counts_in_reliability: true, allowed_at_onboarding: true, sort_order: 1, is_active: true },
+      { code: 'unavailable', label: 'Not available to work', consumes_allowance: false, paid: false, shown_on_rota: true, counts_in_reliability: false, allowed_at_onboarding: true, sort_order: 2, is_active: true },
+    ],
+    error: null,
+  })
 
   const client = {
     from: vi.fn((table: string) => {
       if (table === 'employee_pay_settings') {
         return { select: vi.fn(() => payQuery) }
       }
-      if (table === 'leave_requests') {
-        return { select: vi.fn(() => leaveRequestQueries.shift()) }
-      }
       if (table === 'leave_days') {
-        return { select: vi.fn(() => leaveDayQueries.shift()) }
+        return { select: vi.fn(() => daysQuery) }
+      }
+      if (table === 'leave_types') {
+        return { select: leaveTypesSelect }
       }
       throw new Error(`Unexpected table: ${table}`)
     }),
   }
 
   mockedCreateClient.mockResolvedValue(client)
-  return { client, approvedDaysQuery, pendingDaysQuery }
+  return { client, daysQuery }
 }
 
 describe('leave actions', () => {
@@ -521,22 +521,32 @@ describe('leave actions', () => {
   })
 
   describe('getHolidayUsage', () => {
-    it('counts only allowance working days from legacy leave day rows', async () => {
+    const holidayDay = (leave_date: string) => ({
+      leave_date,
+      leave_requests: { status: 'approved', leave_type: 'holiday' },
+    })
+    const pendingDay = (leave_date: string) => ({
+      leave_date,
+      leave_requests: { status: 'pending', leave_type: 'holiday' },
+    })
+    const unavailableDay = (leave_date: string) => ({
+      leave_date,
+      leave_requests: { status: 'approved', leave_type: 'unavailable' },
+    })
+
+    it('counts every calendar day, weekends included', async () => {
       mockedPermission.mockResolvedValue(true)
       mockHolidayUsageClient({
-        paySettings: { holiday_allowance_days: 10, non_working_weekdays: [2] },
-        approvedDays: [
-          { leave_date: '2026-07-20' },
-          { leave_date: '2026-07-21' },
-          { leave_date: '2026-07-22' },
-          { leave_date: '2026-07-25' },
-          { leave_date: '2026-07-26' },
-        ],
-        pendingRequests: [{ id: OTHER_REQUEST_ID }],
-        pendingDays: [
-          { leave_date: '2026-07-23' },
-          { leave_date: '2026-07-24' },
-          { leave_date: '2026-07-25' },
+        paySettings: { holiday_allowance_days: 10 },
+        days: [
+          // Mon, Tue, Wed, then Sat and Sun. All five are working days at a pub.
+          holidayDay('2026-07-20'),
+          holidayDay('2026-07-21'),
+          holidayDay('2026-07-22'),
+          holidayDay('2026-07-25'),
+          holidayDay('2026-07-26'),
+          pendingDay('2026-07-23'),
+          pendingDay('2026-07-24'),
         ],
       })
 
@@ -544,11 +554,51 @@ describe('leave actions', () => {
 
       expect(result).toEqual({
         success: true,
-        count: 2,
+        count: 5,
         pendingCount: 2,
         allowance: 10,
         overThreshold: false,
       })
+    })
+
+    it('excludes leave whose type does not consume allowance', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockHolidayUsageClient({
+        paySettings: { holiday_allowance_days: 10 },
+        days: [
+          holidayDay('2026-07-20'),
+          // A long block of "cannot work" must not eat the holiday allowance.
+          unavailableDay('2026-07-21'),
+          unavailableDay('2026-07-22'),
+          unavailableDay('2026-07-23'),
+        ],
+      })
+
+      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
+
+      expect(result).toMatchObject({ success: true, count: 1, pendingCount: 0 })
+    })
+
+    it('flags an employee at or over their allowance', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockHolidayUsageClient({
+        paySettings: { holiday_allowance_days: 2 },
+        days: [holidayDay('2026-07-20'), holidayDay('2026-07-21')],
+      })
+
+      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
+
+      expect(result).toMatchObject({ success: true, count: 2, overThreshold: true })
+    })
+
+    it('falls back to the default allowance when the employee has no pay settings', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockHolidayUsageClient({ paySettings: null, days: [] })
+
+      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
+
+      // defaultHolidayDays from the mocked rota settings.
+      expect(result).toMatchObject({ success: true, count: 0, allowance: 28 })
     })
   })
 })

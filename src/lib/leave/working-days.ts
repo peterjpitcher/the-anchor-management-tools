@@ -1,43 +1,61 @@
-import { eachIsoDateInRange, getIsoWeekday } from '@/lib/dateUtils';
+import { eachIsoDateInRange } from '@/lib/dateUtils';
 
-export const WEEKDAY_OPTIONS = [
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-] as const;
+/**
+ * Holiday counting.
+ *
+ * There is exactly one place in this app that turns leave into a number, and every screen
+ * calls it. Before this existed the employees roster counted every leave day in the calendar
+ * year while the Holidays tab counted Monday to Friday days across the request's header dates
+ * filtered by its stored holiday_year, so the same person read 27 on one screen and 4 on the
+ * other.
+ *
+ * Two rules changed with it:
+ *
+ * 1. Every calendar day counts, including Saturday and Sunday. The Anchor is a pub, so the
+ *    weekend is the busiest part of the week. Excluding it meant a weekend off cost nothing.
+ * 2. Leave that should not consume allowance is excluded by its TYPE, never by which day of
+ *    the week it falls on. That is what leave_types.consumes_allowance is for.
+ *
+ * Counting is done over dated leave_days rows rather than a request's start and end dates, so
+ * a request running from 28 December to 3 January is charged to the year each day actually
+ * falls in rather than wholly to the year it started in.
+ */
 
-export function normalizeNonWorkingWeekdays(value: unknown): number[] {
-  if (!Array.isArray(value)) return [];
+/** A dated leave row, as stored in leave_days, carrying its request's type. */
+export type CountableLeaveDay = {
+  leave_date: string;
+  /** leave_types.code. Absent is treated as allowance consuming, matching the column default. */
+  consumes_allowance?: boolean | null;
+};
 
-  return Array.from(
-    new Set(
-      value
-        .map(day => typeof day === 'number' ? day : Number(day))
-        .filter(day => Number.isInteger(day) && day >= 1 && day <= 5),
-    ),
-  ).sort((a, b) => a - b);
+/** True when this row comes off the holiday allowance. */
+export function isCountedLeaveDay(day: CountableLeaveDay): boolean {
+  return day.consumes_allowance !== false;
 }
 
-export function isCountedLeaveDate(
-  isoDate: string,
-  nonWorkingWeekdays: readonly number[] = [],
-): boolean {
-  const isoDay = getIsoWeekday(isoDate);
-  if (isoDay === null) return false;
-
-  if (isoDay > 5) return false;
-  return !nonWorkingWeekdays.includes(isoDay);
+/**
+ * The number of days to charge against the holiday allowance.
+ * Counts dated rows, so it is correct across a holiday year boundary.
+ */
+export function countAllowanceDays(days: readonly CountableLeaveDay[]): number {
+  return days.filter(isCountedLeaveDay).length;
 }
 
-export function getCountedLeaveDates(
-  startDate: string,
-  endDate: string,
-  nonWorkingWeekdays: readonly number[] = [],
-): string[] {
-  return eachIsoDateInRange(startDate, endDate)
-    .filter(date => isCountedLeaveDate(date, nonWorkingWeekdays));
+/**
+ * Every date in an inclusive range. Used when expanding a request into leave_days and when a
+ * caller only has the header dates to work from.
+ */
+export function getLeaveDates(startDate: string, endDate: string): string[] {
+  return eachIsoDateInRange(startDate, endDate);
+}
+
+/**
+ * Length of a request in days, inclusive of both ends. This is the size of the booking, which
+ * is not the same thing as what it costs: a request whose type does not consume allowance has
+ * a length but no cost.
+ */
+export function countRequestDays(startDate: string, endDate: string): number {
+  return eachIsoDateInRange(startDate, endDate).length;
 }
 
 /**
@@ -57,10 +75,23 @@ export function getHolidayYear(
   return isoDate >= yearStart ? year : year - 1;
 }
 
-export function countLeaveAllowanceDays(
-  startDate: string,
-  endDate: string,
-  nonWorkingWeekdays: readonly number[] = [],
-): number {
-  return getCountedLeaveDates(startDate, endDate, nonWorkingWeekdays).length;
+/**
+ * The inclusive date bounds of a holiday year, as ISO strings. Callers use this to select the
+ * dated leave_days rows belonging to a year, instead of filtering on the request header's
+ * holiday_year column.
+ */
+export function getHolidayYearBounds(
+  holidayYear: number,
+  startMonth: number,
+  startDay: number,
+): { startDate: string; endDate: string } {
+  const mm = String(startMonth).padStart(2, '0');
+  const dd = String(startDay).padStart(2, '0');
+  const startDate = `${holidayYear}-${mm}-${dd}`;
+
+  const nextStart = new Date(`${holidayYear + 1}-${mm}-${dd}T00:00:00Z`);
+  nextStart.setUTCDate(nextStart.getUTCDate() - 1);
+  const endDate = nextStart.toISOString().slice(0, 10);
+
+  return { startDate, endDate };
 }

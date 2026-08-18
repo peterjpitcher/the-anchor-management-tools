@@ -25,10 +25,15 @@ import {
   recordHolidayReliabilityEvents,
 } from '@/services/employee-reliability';
 import {
+  countAllowanceDays,
   getHolidayYear,
-  isCountedLeaveDate,
-  normalizeNonWorkingWeekdays,
+  getHolidayYearBounds,
 } from '@/lib/leave/working-days';
+import {
+  consumesAllowance,
+  DEFAULT_LEAVE_TYPE,
+  getAllowanceConsumingTypes,
+} from '@/lib/leave/leave-types';
 
 export type LeaveRequest = {
   id: string;
@@ -73,7 +78,6 @@ type UpdateLeaveDatesRpcResult = {
 
 type EmployeeLeaveSettings = {
   holiday_allowance_days?: number | null;
-  non_working_weekdays?: unknown;
 };
 
 // Returns true if the current session user IS the employee identified by employeeId
@@ -613,64 +617,65 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
 
   const supabase = await createClient();
 
-  // Parallelise four independent fetches
-  const [paySettingRes, rotaSettings, approvedRes, pendingRes] = await Promise.all([
+  const [paySettingRes, rotaSettings, allowanceConsuming] = await Promise.all([
     supabase
       .from('employee_pay_settings')
-      .select('holiday_allowance_days, non_working_weekdays')
+      .select('holiday_allowance_days')
       .eq('employee_id', employeeId)
       .maybeSingle(),
     getRotaSettings(),
-    supabase
-      .from('leave_requests')
-      .select('id')
-      .eq('employee_id', employeeId)
-      .eq('holiday_year', holidayYear)
-      .eq('status', 'approved'),
-    supabase
-      .from('leave_requests')
-      .select('id')
-      .eq('employee_id', employeeId)
-      .eq('holiday_year', holidayYear)
-      .eq('status', 'pending'),
+    getAllowanceConsumingTypes(supabase),
   ]);
 
   if (paySettingRes.error) return { success: false, error: paySettingRes.error.message };
 
   const paySetting = paySettingRes.data as EmployeeLeaveSettings | null;
-  const { defaultHolidayDays } = rotaSettings;
+  const { defaultHolidayDays, holidayYearStartMonth, holidayYearStartDay } = rotaSettings;
   const allowance = paySetting?.holiday_allowance_days ?? defaultHolidayDays;
-  const nonWorkingWeekdays = normalizeNonWorkingWeekdays(paySetting?.non_working_weekdays);
 
-  const approvedIds = (approvedRes.data ?? []).map(r => r.id);
-  const pendingIds = (pendingRes.data ?? []).map(r => r.id);
+  // Select the DATED rows inside the holiday year rather than filtering requests on their
+  // holiday_year column. A request running 28 December to 3 January is then charged to the
+  // year each of its days actually falls in, instead of wholly to the year it started in.
+  const { startDate, endDate } = getHolidayYearBounds(
+    holidayYear,
+    holidayYearStartMonth,
+    holidayYearStartDay,
+  );
 
-  const [approvedDaysResult, pendingDaysResult] = await Promise.all([
-    approvedIds.length === 0
-      ? Promise.resolve({ data: [], error: null })
-      : supabase
-          .from('leave_days')
-          .select('leave_date')
-          .eq('employee_id', employeeId)
-          .in('request_id', approvedIds),
-    pendingIds.length === 0
-      ? Promise.resolve({ data: [], error: null })
-      : supabase
-          .from('leave_days')
-          .select('leave_date')
-          .eq('employee_id', employeeId)
-          .in('request_id', pendingIds),
-  ]);
+  const { data: dayRows, error: dayRowsError } = await supabase
+    .from('leave_days')
+    .select('leave_date, leave_requests!inner(status, leave_type)')
+    .eq('employee_id', employeeId)
+    .gte('leave_date', startDate)
+    .lte('leave_date', endDate);
 
-  if (approvedDaysResult.error) return { success: false, error: approvedDaysResult.error.message };
-  if (pendingDaysResult.error) return { success: false, error: pendingDaysResult.error.message };
+  if (dayRowsError) return { success: false, error: dayRowsError.message };
 
-  const total = (approvedDaysResult.data ?? [])
-    .filter(day => isCountedLeaveDate(String(day.leave_date), nonWorkingWeekdays))
-    .length;
-  const pendingTotal = (pendingDaysResult.data ?? [])
-    .filter(day => isCountedLeaveDate(String(day.leave_date), nonWorkingWeekdays))
-    .length;
+  type DayRow = {
+    leave_date: string;
+    leave_requests:
+      | { status: string; leave_type: string | null }
+      | { status: string; leave_type: string | null }[]
+      | null;
+  };
+
+  const countByStatus = (status: string) =>
+    countAllowanceDays(
+      ((dayRows ?? []) as DayRow[])
+        .map(row => {
+          const request = Array.isArray(row.leave_requests) ? row.leave_requests[0] : row.leave_requests;
+          if (!request || request.status !== status) return null;
+          return {
+            leave_date: String(row.leave_date),
+            consumes_allowance: consumesAllowance(request.leave_type, allowanceConsuming),
+          };
+        })
+        .filter((row): row is { leave_date: string; consumes_allowance: boolean } => row !== null),
+    );
+
+  const total = countByStatus('approved');
+  const pendingTotal = countByStatus('pending');
+
   return { success: true, count: total, pendingCount: pendingTotal, allowance, overThreshold: allowance > 0 && total >= allowance };
 }
 
@@ -929,4 +934,70 @@ export async function updateLeaveRequestDates(
   revalidatePath('/portal/leave');
   revalidatePath(`/employees/${request.employee_id}`);
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Dated leave rows for one employee (employee record, Holidays tab)
+// ---------------------------------------------------------------------------
+
+export type EmployeeLeaveDay = {
+  request_id: string;
+  leave_date: string;
+  status: 'pending' | 'approved' | 'declined';
+  leave_type: string;
+  consumes_allowance: boolean;
+};
+
+/**
+ * Every dated leave row for one employee, annotated with whether it consumes allowance.
+ *
+ * The Holidays tab used to total a request's header dates, which charged a request spanning
+ * new year wholly to the year it began in, and excluded weekends. Totalling these dated rows
+ * instead makes the tab agree with the employees roster, because both now feed the same
+ * countAllowanceDays function.
+ */
+export async function getEmployeeLeaveDays(employeeId: string): Promise<
+  { success: true; data: EmployeeLeaveDay[] } | { success: false; error: string }
+> {
+  const canView = await checkUserPermission('leave', 'view');
+  if (!canView && !(await isOwnEmployeeRecord(employeeId))) {
+    return { success: false, error: 'Permission denied' };
+  }
+
+  const supabase = await createClient();
+  const allowanceConsuming = await getAllowanceConsumingTypes(supabase);
+
+  const { data, error } = await supabase
+    .from('leave_days')
+    .select('request_id, leave_date, leave_requests!inner(status, leave_type)')
+    .eq('employee_id', employeeId)
+    .order('leave_date', { ascending: true });
+
+  if (error) return { success: false, error: error.message };
+
+  type Row = {
+    request_id: string;
+    leave_date: string;
+    leave_requests:
+      | { status: string; leave_type: string | null }
+      | { status: string; leave_type: string | null }[]
+      | null;
+  };
+
+  const rows = ((data ?? []) as Row[])
+    .map(row => {
+      const request = Array.isArray(row.leave_requests) ? row.leave_requests[0] : row.leave_requests;
+      if (!request) return null;
+      const leaveType = request.leave_type ?? DEFAULT_LEAVE_TYPE;
+      return {
+        request_id: row.request_id,
+        leave_date: String(row.leave_date),
+        status: request.status as EmployeeLeaveDay['status'],
+        leave_type: leaveType,
+        consumes_allowance: consumesAllowance(leaveType, allowanceConsuming),
+      };
+    })
+    .filter((row): row is EmployeeLeaveDay => row !== null);
+
+  return { success: true, data: rows };
 }
