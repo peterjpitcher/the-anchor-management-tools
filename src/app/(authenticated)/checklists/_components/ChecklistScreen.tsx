@@ -257,7 +257,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
           />
           {doneCount > 0 && (
             <div className="mt-2 flex items-center justify-between gap-3 border-t border-border pt-2">
-              <span className="text-xs text-muted">
+              <span className="text-xs text-text-muted">
                 {doneCount} of {allTasks.length} done
               </span>
               <button

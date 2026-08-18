@@ -122,12 +122,12 @@ export function ChecklistMidShiftPrompt() {
         </>
       }
     >
-      <p className="text-sm text-muted">These checks are due:</p>
+      <p className="text-sm text-text-muted">These checks are due:</p>
       <ul className="mt-3 space-y-2">
         {prompts.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
             <span className="min-w-0 truncate text-sm font-medium text-text">{p.title}</span>
-            <span className="shrink-0 text-xs text-muted">{p.slot}</span>
+            <span className="shrink-0 text-xs text-text-muted">{p.slot}</span>
           </li>
         ))}
       </ul>

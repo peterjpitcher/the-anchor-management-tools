@@ -255,7 +255,7 @@ export function RefundDialog({
                   <button
                     type="button"
                     onClick={handleRefundInFull}
-                    className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                    className="text-xs text-primary hover:text-primary-hover font-medium"
                   >
                     Refund in full
                   </button>

@@ -666,7 +666,7 @@ export default function EventDetailClient({
               <p className="text-sm text-text-muted">Checking payment…</p>
             ) : cancelRefundInfo && cancelRefundInfo.maxRefundable > 0 ? (
               cancelRefundInfo.canRefund ? (
-                <div className="space-y-2 rounded-md border border-line bg-surface-sunk p-3">
+                <div className="space-y-2 rounded-md border border-border bg-surface-2 p-3">
                   <label className="flex items-center gap-2 text-sm font-medium text-text">
                     <input
                       type="checkbox"
@@ -867,15 +867,15 @@ function ShortLinksTab({ links, totalClicks }: { links: EventMarketingLink[]; to
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Total Clicks</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{totalClicks.toLocaleString()}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{totalClicks.toLocaleString()}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Active Links</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{links.length}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{links.length}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Avg. Clicks/Link</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">
+          <p className="mt-1 text-2xl font-semibold text-text-strong">
             {links.length > 0 ? Math.round(totalClicks / links.length) : 0}
           </p>
         </Card>
@@ -1194,27 +1194,27 @@ function AttendeesTab({
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 min-[1280px]:grid-cols-6">
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Total Seats Booked</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{totalSeats}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{totalSeats}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Active Bookings</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{activeBookingsCount}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{activeBookingsCount}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Capacity</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{capacityPct !== null ? `${capacityPct}%` : '-'}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{capacityPct !== null ? `${capacityPct}%` : '-'}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Est. Revenue</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{estimatedRevenue !== null ? formatCurrency(estimatedRevenue) : '-'}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Paid</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{formatCurrency(totalPaidAmount)}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{formatCurrency(totalPaidAmount)}</p>
         </Card>
         <Card padding="md">
           <p className="text-xs font-medium text-text-muted">Link Clicks</p>
-          <p className="mt-1 text-2xl font-semibold text-text-primary">{totalLinkClicks.toLocaleString()}</p>
+          <p className="mt-1 text-2xl font-semibold text-text-strong">{totalLinkClicks.toLocaleString()}</p>
         </Card>
       </div>
 
