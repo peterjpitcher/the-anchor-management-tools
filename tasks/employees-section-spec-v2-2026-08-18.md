@@ -451,3 +451,78 @@ are re-run immediately before each release rather than trusted from this documen
 Any reclassification of live leave data needs the owner's approval per record, recording old value, new
 value, reason, who approved, when, and the rollback statement. The 63 day block is the only such record
 today.
+
+---
+
+## 8. Decisions of 2026-08-19, and what they changed
+
+| # | Question put to the owner | Answer |
+|---|---|---|
+| 1 | Rebuild holiday so it accrues from hours worked | Yes |
+| 2 | Block rostering until right to work is checked | **No** |
+| 3 | Capture HMRC new starter data | No, the accountant has what they need from the New Starter PDF |
+| 4 | Chase unapproved holiday requests | Yes |
+
+### 4 is built and live
+
+`/api/cron/leave-approval-reminders`, daily at 09:30, backed by `leave_reminder_log`.
+
+### 2 is closed, with one thing recorded
+
+No scheduling gate will be built. Six of twelve active employees still have no right to work
+record and four of the six who do were checked after their start date. Nothing in the app will
+prevent that, so it is a manual matter. The employee facing notice built earlier still tells every
+new starter to bring their documents.
+
+### 3 is closed, but the premise is not quite right
+
+The New Starter PDF contains: full name, date of birth, address, phone, mobile, email, job title,
+employment status, start date, first shift date, National Insurance number, and the right to work
+fields. It does **not** contain the HMRC starter declaration (the A, B or C statement) or the
+student loan plan, and neither is captured anywhere in the app.
+
+Those two answers are what set a new starter's tax code and loan deductions. If the accountant is
+collecting them another way then nothing is missing. If they are not, the gap is real. Recorded
+here rather than acted on, because the owner has said the accountant is covered.
+
+### 1 needs the numbers below looked at before it is built
+
+Holiday is currently a flat 25 days for everyone. Under the lawful method for irregular hours
+staff, entitlement accrues at 12.07% of hours actually worked. For the current team in 2026 to
+date, using the same paid hours rule as `calculatePaidHours`:
+
+| Employee | Shifts | Hours worked | Holiday earned (hours) | Roughly, in shifts | Leave days taken |
+|---|---|---|---|---|---|
+| b64e6ae5 | 151 | 467 | 56.4 | 18.2 | 15 |
+| c418660e | 88 | 425 | 51.2 | 10.6 | 45 |
+| 2a38c5d1 | 87 | 362 | 43.7 | 10.5 | 37 |
+| 7ff6951d | 75 | 305 | 36.8 | 9.1 | 27 |
+| 83cc4abc | 46 | 207 | 25.0 | 5.6 | 18 |
+| 5723ebbd | 43 | 191 | 23.0 | 5.2 | 30 |
+| 469d76ad | 44 | 144 | 17.4 | 5.3 | 13 |
+| b15306cb | 32 | 80 | 9.7 | 3.9 | 14 |
+| bd45f2cf | 22 | 75 | 9.1 | 2.7 | 30 |
+| 8d4ecdaf | 12 | 58 | 7.0 | 1.4 | 0 |
+| ca08139d | 3 | 8 | 1.0 | 0.4 | 6 |
+
+The last two columns are in different units and that is the whole problem. Leave days are calendar
+days; earned holiday is shifts. Somebody taking a week off loses seven leave days but perhaps three
+shifts. One person has worked three shifts all year and has six days of holiday recorded against a
+25 day allowance, which describes nothing.
+
+**What this means.** The days model does not fit this workforce. Switching to hours is the right
+answer and is what the law requires for irregular hours staff.
+
+**Why it is not built yet.** It changes the entitlement figure every employee sees, and entitlement
+affects pay. Two things were asked for and not supplied: whether the accountant treats these staff
+as irregular hours or part year, and whether holiday pay is already being rolled up. The second
+matters because the staff portal already shows each employee a holiday pay figure of 12.07% of
+their actual pay, while the payroll export carries no holiday line at all. Those two facts need
+reconciling by somebody who knows what is actually paid, before the app asserts a third number.
+
+**The build, once confirmed.** Add `holiday_basis` to `employee_pay_settings` (`fixed_days` for
+salaried, `accrued_hours` for everyone else). Compute entitlement on read as 12.07% of paid hours
+in the holiday year, and hours taken as leave days valued at that person's average paid hours per
+worked shift. No ledger table and no accrual job: for twelve people the figure is cheap to compute
+and always reconcilable, which a stored balance is not. Display hours, with an approximate shift
+count underneath as a reading aid only.
