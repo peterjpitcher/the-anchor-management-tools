@@ -206,6 +206,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/leave-approval-reminders",
+      "schedule": "30 9 * * *"
+    },
+    {
       "path": "/api/cron/rota-auto-close",
       "schedule": "0 5 * * *"
     },
