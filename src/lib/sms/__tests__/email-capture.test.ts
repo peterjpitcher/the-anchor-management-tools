@@ -41,6 +41,30 @@ describe('the email capture message fits one segment', () => {
     const body = asSent(buildEmailCaptureMessage(absurdName, RAW_LINK))
     expect(countSmsSegments(normaliseToGsm7(body))).toBe(1)
   })
+
+  it.each(['Charlotte', 'Christopher', 'Bartholomew'])(
+    'keeps the full personalised wording for %s, a realistic longer name',
+    (name) => {
+      // Regression guard. The wording before 2026-08-20 only fitted names up to five
+      // characters, so anyone with a longer one silently dropped to the terse fallback and
+      // lost the personalisation. That is invisible unless it is asserted.
+      const body = buildEmailCaptureMessage(name, RAW_LINK)
+      expect(body).toContain(name)
+      expect(body).toMatch(/news, offers and what is on/i)
+      expect(countSmsSegments(normaliseToGsm7(asSent(body)))).toBe(1)
+    }
+  )
+
+  it('keeps the opt-out even though it looks like an easy 24 characters to save', () => {
+    // Measured: every variant fits one segment with it AND without it, so removing it saves
+    // nothing at all. It is also what PECR soft opt-in requires in each message, and soft
+    // opt-in is the entire legal basis for texting this audience.
+    const withOptOut = asSent(buildEmailCaptureMessage('Christopher', RAW_LINK))
+    expect(withOptOut).toContain('NOEVENTS')
+    expect(countSmsSegments(normaliseToGsm7(withOptOut))).toBe(1)
+    const withoutOptOut = withOptOut.replace(' Reply NOEVENTS to stop.', '')
+    expect(countSmsSegments(normaliseToGsm7(withoutOptOut))).toBe(1)
+  })
 })
 
 describe('the message says what it has to say', () => {
@@ -68,5 +92,11 @@ describe('the message says what it has to say', () => {
     // "We have your number but not your email" gives the guest a reason. A bare request for
     // an address from a pub reads as data collection and gets ignored.
     expect(buildEmailCaptureMessage('Sam', RAW_LINK)).toMatch(/not your email/i)
+  })
+
+  it('names the real scope, not events alone', () => {
+    // The venue sends news, offers and changes as well as what is on. A message promising
+    // only events under-describes what the address will actually be used for.
+    expect(buildEmailCaptureMessage('Sam', RAW_LINK)).toMatch(/news, offers and what is on/i)
   })
 })
