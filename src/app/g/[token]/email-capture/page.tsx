@@ -53,8 +53,8 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
     return (
       <Shell title="Got it, thank you">
         <p>
-          That is on your record now. We will let you know what is coming up at The Anchor,
-          and every email has an unsubscribe link if you change your mind.
+          That is on your record now. We will send you the latest from The Anchor, and every
+          email has an unsubscribe link if you change your mind.
         </p>
       </Shell>
     )
@@ -90,8 +90,8 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
   return (
     <Shell title="What is your email address?">
       <p>
-        {greeting} have got your phone number but not your email, so you are missing what is
-        coming up.
+        {greeting} have got your phone number but not your email, so you are missing the
+        latest from The Anchor.
       </p>
       <p className="text-sm text-gray-600">{GUEST_MARKETING_EMAIL_LABEL}</p>
 

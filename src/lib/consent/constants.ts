@@ -14,10 +14,12 @@
 // "Email me about future events and offers." wording. That wording predates v1 and no guest
 // has been shown it since. Website rows over the same period correctly carried v3.
 //
-// Brought to v4 on 2026-08-19 to match the website. If you change the wording in either
-// repo, change it in both, and bump the version in both.
+// Brought to v4 on 2026-08-19 to match the website, and to v5 on 2026-08-20 when the venue
+// confirmed the scope is wider still: the latest from The Anchor generally, including
+// changes as they happen, not only events, menus and offers. If you change the wording in
+// either repo, change it in both, and bump the version in both.
 
-export const GUEST_COMMS_CONSENT_TEXT_VERSION = 'guest-comms-consent-v4'
+export const GUEST_COMMS_CONSENT_TEXT_VERSION = 'guest-comms-consent-v5'
 
 export const GUEST_SERVICE_CONTACT_NOTICE =
   'We will use your phone and email to manage this booking, including confirmations, reminders, payment links, waitlist updates, and changes.'
@@ -32,13 +34,13 @@ export const GUEST_SERVICE_CONTACT_NOTICE =
 // occasional and only promotable against a specific event record, and live music is
 // discontinued in full.
 export const GUEST_MARKETING_EMAIL_LABEL =
-  'Email me what is on at The Anchor: quiz nights and bingo, new menus, and offers.'
+  'Email me the latest from The Anchor: quiz nights and bingo, new menus, offers, and any changes.'
 
 export const GUEST_MARKETING_SMS_LABEL =
-  'Text me what is on at The Anchor: quiz nights and bingo, new menus, and offers.'
+  'Text me the latest from The Anchor: quiz nights and bingo, new menus, offers, and any changes.'
 
 export const GUEST_WHATSAPP_SERVICE_LABEL =
   'Send booking updates by WhatsApp.'
 
 export const GUEST_MARKETING_WHATSAPP_LABEL =
-  'Send me WhatsApp updates about what is on, new menus, and offers.'
+  'Send me WhatsApp updates on what is on, new menus, offers, and any changes.'

@@ -38,6 +38,17 @@ const SEND_LOOP_CHECK_INTERVAL = 25
  */
 const OPT_OUT_TEXT = ' Reply NOEVENTS to stop.'
 
+/**
+ * Keeping this costs nothing, which is worth stating plainly because it looks like an easy
+ * 24 characters to save. Measured 20 August 2026: every variant below fits ONE segment with
+ * it and one segment without it (149 to 157 chars against a 160 limit). SMS is billed per
+ * segment, so removing it would save exactly zero across all 423 recipients.
+ *
+ * It is also what makes the send lawful. PECR soft opt-in is the entire basis for texting
+ * this audience, and it requires a simple means of refusing in EACH message, not just the
+ * first. The consent notice these guests were shown already promises this exact route.
+ */
+
 export type EmailCaptureAudienceRow = {
   customer_id: string
   first_name: string | null
@@ -80,10 +91,17 @@ const SHORTENED_LINK_STAND_IN = 'https://l.the-anchor.pub/abc123'
  * If shortening ever fails, shortenUrlsInSmsBody leaves the original URL in place and the
  * message costs two segments instead of one. That is the right way round: a more expensive
  * message still arrives, whereas refusing to send would lose the address entirely.
+ *
+ * The first variant was reworded on 2026-08-20 for two reasons. It now names the real scope
+ * ("news, offers and what is on") rather than events alone, matching what the venue actually
+ * sends. And it is shorter: the previous wording only fitted names up to five characters, so
+ * anyone called Charlotte or Christopher silently dropped to the terse fallback and lost the
+ * personalisation that makes this read as a message from the pub. Every realistic first name
+ * now fits the full version.
  */
 export function buildEmailCaptureMessage(firstName: string, link: string): string {
   const variants = [
-    `The Anchor: ${firstName}, we have your number but not your email, so you are missing what is on. Add it here: LINK`,
+    `The Anchor: ${firstName}, we have your number but not your email. Get our news, offers and what is on: LINK`,
     `The Anchor: ${firstName}, we have your number but not your email. Add it here: LINK`,
     `The Anchor: we have your number but not your email. Add it here: LINK`,
   ]
