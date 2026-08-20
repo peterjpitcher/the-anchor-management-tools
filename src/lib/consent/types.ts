@@ -22,6 +22,7 @@ export type ConsentSource =
   | 'system_migration'
   | 'gdpr_action'
   | 'email_unsubscribe_link'
+  | 'guest_email_capture_link'
 
 export type ConsentCaptureMethod =
   | 'checkbox'
@@ -34,6 +35,7 @@ export type ConsentCaptureMethod =
   | 'service_notice'
   | 'provider_event'
   | 'unsubscribe_link'
+  | 'sms_one_tap'
 
 type ConsentRelatedEntityType =
   | 'table_booking'
