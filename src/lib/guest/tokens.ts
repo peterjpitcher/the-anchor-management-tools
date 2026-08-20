@@ -11,6 +11,7 @@ type GuestTokenActionType =
   | 'private_feedback'
   | 'private_booking_outcome'
   | 'booking_confirm'
+  | 'email_capture'
 
 export type CreateGuestTokenInput = {
   customerId: string
