@@ -1,0 +1,251 @@
+/**
+ * The email-capture SMS: asking guests we can text, but cannot email, for an address.
+ *
+ * Measured 19 August 2026: 466 customers are SMS-reachable with no email on file, 423 of
+ * them have booked before. The guest email list is 225 people and opens at 41 to 56 per
+ * cent, so this one send is the largest single addition available to it.
+ *
+ * Why this does not use sendBulkSms: that path takes one fixed body for every recipient.
+ * Each guest here needs their own single-use link, so the loop below mints a token per
+ * person and sends individually, exactly as cross-promo.ts does.
+ */
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { sendSMS } from '@/lib/twilio'
+import { logger } from '@/lib/logger'
+import { getSmartFirstName } from '@/lib/sms/bulk'
+import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
+import { createGuestToken } from '@/lib/guest/tokens'
+
+/**
+ * How long a capture link stays good.
+ *
+ * Long, because unlike a booking confirmation there is no event racing it: an address given
+ * in three weeks is worth the same as one given today. Not unlimited, because a link that
+ * writes to a customer record should not sit in an old text message indefinitely.
+ */
+const TOKEN_TTL_DAYS = 30
+
+const SEND_LOOP_TIME_BUDGET_MS = 240_000 // 4 minutes, matching cross-promo's cron headroom
+const SEND_LOOP_CHECK_INTERVAL = 25
+
+/**
+ * The opt-out route, worded exactly as the consent notices promise it.
+ *
+ * Soft opt-in requires a simple way to refuse, and NOEVENTS is the keyword the management
+ * app already honours via marketing_sms_opted_out_at. Leaving it off would make this the
+ * one marketing text that offers no way out.
+ */
+const OPT_OUT_TEXT = ' Reply NOEVENTS to stop.'
+
+export type EmailCaptureAudienceRow = {
+  customer_id: string
+  first_name: string | null
+  phone_number: string
+  last_activity_on: string | null
+}
+
+export type EmailCaptureSendResult = {
+  sent: number
+  skipped: number
+  errors: number
+  aborted?: boolean
+}
+
+function resolveAppBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
+}
+
+/**
+ * A stand-in the length of a real shortened link, used only for measuring.
+ *
+ * sendSMS shortens every URL in the body before dispatch (lib/twilio.ts, via
+ * shortenUrlsInSmsBody), so the raw /g/<43-char-token>/email-capture URL this module builds
+ * is roughly 95 characters at build time and about 31 by the time it is sent
+ * ("https://l.the-anchor.pub/" plus a 6-character code).
+ *
+ * Measuring the raw length would therefore reject every variant that actually fits, and
+ * strip the guest's name from a message that had room for it.
+ */
+const SHORTENED_LINK_STAND_IN = 'https://l.the-anchor.pub/abc123'
+
+/**
+ * Pick the longest variant that still fits one SMS segment once the link is shortened.
+ *
+ * Segments are billed individually and this send goes to hundreds of people, so a body that
+ * spills into a second segment doubles the cost of the whole exercise. The named variant is
+ * tried first because a guest's own name is what makes this read as a message from the pub
+ * rather than a broadcast.
+ *
+ * If shortening ever fails, shortenUrlsInSmsBody leaves the original URL in place and the
+ * message costs two segments instead of one. That is the right way round: a more expensive
+ * message still arrives, whereas refusing to send would lose the address entirely.
+ */
+export function buildEmailCaptureMessage(firstName: string, link: string): string {
+  const variants = [
+    `The Anchor: ${firstName}, we have your number but not your email, so you are missing what is on. Add it here: LINK`,
+    `The Anchor: ${firstName}, we have your number but not your email. Add it here: LINK`,
+    `The Anchor: we have your number but not your email. Add it here: LINK`,
+  ]
+
+  const fits = (variant: string) =>
+    countSmsSegments(
+      normaliseToGsm7(variant.replace('LINK', SHORTENED_LINK_STAND_IN) + OPT_OUT_TEXT)
+    ) === 1
+
+  const chosen = variants.find(fits) ?? variants[variants.length - 1]
+  return chosen.replace('LINK', link) + OPT_OUT_TEXT
+}
+
+/** Load the segment. Defined in the database so the preview and the send cannot disagree. */
+export async function loadEmailCaptureAudience(
+  maxRecipients: number
+): Promise<EmailCaptureAudienceRow[]> {
+  const db = createAdminClient()
+  const { data, error } = await db.rpc('get_email_capture_audience', {
+    p_max_recipients: maxRecipients,
+  })
+
+  if (error) {
+    throw new Error(`Failed to load the email capture audience: ${error.message}`)
+  }
+
+  return (data as EmailCaptureAudienceRow[] | null) ?? []
+}
+
+async function sendSmsSafe(
+  to: string,
+  body: string,
+  options: { customerId: string; metadata?: Record<string, unknown> }
+): Promise<Awaited<ReturnType<typeof sendSMS>>> {
+  try {
+    return await sendSMS(to, body, options)
+  } catch (err) {
+    logger.warn('Failed sending an email capture SMS', {
+      metadata: { to, error: err instanceof Error ? err.message : String(err) },
+    })
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to send SMS',
+    } as Awaited<ReturnType<typeof sendSMS>>
+  }
+}
+
+/**
+ * Send the ask.
+ *
+ * `dryRun` renders and counts everything without minting a token or sending a message, so
+ * the exact bodies can be read before hundreds of real texts go out. It is the default
+ * deliberately: nothing here should send because a caller forgot an argument.
+ */
+export async function sendEmailCaptureSms(options: {
+  maxRecipients: number
+  dryRun?: boolean
+  startTime?: number
+}): Promise<EmailCaptureSendResult & { preview: string[] }> {
+  const db = createAdminClient()
+  const dryRun = options.dryRun !== false
+  const stats: EmailCaptureSendResult & { preview: string[] } = {
+    sent: 0,
+    skipped: 0,
+    errors: 0,
+    preview: [],
+  }
+
+  const audience = await loadEmailCaptureAudience(options.maxRecipients)
+  if (audience.length === 0) {
+    logger.info('Email capture: nobody is eligible', {})
+    return stats
+  }
+
+  const baseUrl = resolveAppBaseUrl()
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+  for (const recipient of audience) {
+    if (
+      options.startTime &&
+      stats.sent > 0 &&
+      stats.sent % SEND_LOOP_CHECK_INTERVAL === 0
+    ) {
+      const elapsed = Date.now() - options.startTime
+      if (elapsed > SEND_LOOP_TIME_BUDGET_MS) {
+        logger.warn('Email capture: aborting the send loop, approaching the time budget', {
+          metadata: {
+            sent: stats.sent,
+            remaining: audience.length - (stats.sent + stats.errors + stats.skipped),
+            elapsedMs: elapsed,
+          },
+        })
+        stats.aborted = true
+        break
+      }
+    }
+
+    const firstName = getSmartFirstName(recipient.first_name)
+
+    if (dryRun) {
+      // A placeholder of representative length, so the preview shows the real segment count
+      // rather than one that is short by the length of a token.
+      const sampleLink = `${baseUrl}/g/${'x'.repeat(43)}/email-capture`
+      stats.preview.push(buildEmailCaptureMessage(firstName, sampleLink))
+      stats.skipped += 1
+      continue
+    }
+
+    let rawToken: string
+    try {
+      const token = await createGuestToken(db, {
+        customerId: recipient.customer_id,
+        actionType: 'email_capture',
+        expiresAt,
+      })
+      rawToken = token.rawToken
+    } catch (tokenError) {
+      logger.warn('Email capture: could not mint a token, skipping recipient', {
+        metadata: {
+          customerId: recipient.customer_id,
+          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+        },
+      })
+      stats.errors += 1
+      continue
+    }
+
+    const link = `${baseUrl}/g/${rawToken}/email-capture`
+    const body = buildEmailCaptureMessage(firstName, link)
+
+    // The token row already exists at this point, which is what makes the whole send
+    // idempotent: get_email_capture_audience excludes anyone who has one, so a failed send
+    // is not retried by a later run. That is the deliberate trade. Re-texting someone the
+    // pub has already asked is worse than missing one address, and a failure here is
+    // usually a dead number rather than a transient fault.
+    const result = await sendSmsSafe(recipient.phone_number, body, {
+      customerId: recipient.customer_id,
+      metadata: {
+        template_key: 'email_capture_ask',
+        marketing: true,
+        idempotency_key: `email_capture_${recipient.customer_id}`,
+      },
+    })
+
+    if (!result.success) {
+      stats.errors += 1
+      continue
+    }
+
+    stats.sent += 1
+  }
+
+  logger.info('Email capture send finished', {
+    metadata: {
+      dryRun,
+      audienceSize: audience.length,
+      sent: stats.sent,
+      skipped: stats.skipped,
+      errors: stats.errors,
+      aborted: stats.aborted ?? false,
+    },
+  })
+
+  return stats
+}
