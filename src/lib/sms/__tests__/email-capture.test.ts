@@ -3,9 +3,9 @@ import { buildEmailCaptureMessage } from '@/lib/sms/email-capture'
 import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
 
 /**
- * The message is the whole product here. It goes to several hundred people at once, each
- * segment is billed separately, and it carries the only opt-out route those guests are
- * given, so these are the properties worth pinning rather than the exact wording.
+ * The message is the whole product here. It goes to several hundred people at once and each
+ * segment is billed separately, so these are the properties worth pinning rather than the
+ * exact wording.
  */
 
 /**
@@ -55,27 +55,16 @@ describe('the email capture message fits one segment', () => {
     }
   )
 
-  it('keeps the opt-out even though it looks like an easy 24 characters to save', () => {
-    // Measured: every variant fits one segment with it AND without it, so removing it saves
-    // nothing at all. It is also what PECR soft opt-in requires in each message, and soft
-    // opt-in is the entire legal basis for texting this audience.
-    const withOptOut = asSent(buildEmailCaptureMessage('Christopher', RAW_LINK))
-    expect(withOptOut).toContain('NOEVENTS')
-    expect(countSmsSegments(normaliseToGsm7(withOptOut))).toBe(1)
-    const withoutOptOut = withOptOut.replace(' Reply NOEVENTS to stop.', '')
-    expect(countSmsSegments(normaliseToGsm7(withoutOptOut))).toBe(1)
+  it('carries no opt-out line, which was a deliberate owner decision', () => {
+    // Removed on 2026-08-20 on the owner's explicit instruction, after being shown it costs
+    // nothing (one segment either way). Asserted rather than left implicit so that its
+    // absence reads as a decision in the test suite, not as something that fell out by
+    // accident. STOP, STOPALL, UNSUBSCRIBE and QUIT remain honoured by opt-out-keywords.ts.
+    expect(buildEmailCaptureMessage('Christopher', RAW_LINK)).not.toContain('NOEVENTS')
   })
 })
 
 describe('the message says what it has to say', () => {
-  it('always carries the NOEVENTS opt-out', () => {
-    // Soft opt-in requires a simple way to refuse. A marketing text without one is the
-    // single thing that would make this send unlawful rather than merely unwelcome.
-    for (const name of ['Sam', 'Christopher', 'Bartholomew Fitzwilliam Montgomery']) {
-      expect(buildEmailCaptureMessage(name, RAW_LINK)).toContain('NOEVENTS')
-    }
-  })
-
   it('always carries the link', () => {
     expect(buildEmailCaptureMessage('Sam', RAW_LINK)).toContain(RAW_LINK)
   })

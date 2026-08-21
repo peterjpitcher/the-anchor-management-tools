@@ -72,8 +72,7 @@ export default function EmailCaptureClient() {
         <div className="space-y-4">
           <p className="text-sm text-gray-700">
             Texts guests we can reach by SMS but have no email address for, with a one-tap
-            link to add one. Everyone here has booked before, and the message carries the
-            NOEVENTS opt-out.
+            link to add one. Everyone here has booked before.
           </p>
           <p className="text-sm text-gray-500">
             Each person is asked once. Anyone already sent a link is excluded automatically,
@@ -117,8 +116,8 @@ export default function EmailCaptureClient() {
                   </pre>
                 ))}
                 <p className="text-xs text-gray-500">
-                  The link shown is a placeholder of the same length as a real one. Each guest
-                  gets their own single-use link.
+                  Shown exactly as the guest receives it, with the link already shortened.
+                  Each guest gets their own single-use link in place of the example one.
                 </p>
               </div>
             ) : null}
