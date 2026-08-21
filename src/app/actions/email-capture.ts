@@ -19,15 +19,24 @@ import {
 } from '@/lib/sms/email-capture'
 
 /**
- * Hard ceiling on one run, independent of whatever the caller asks for.
+ * Hard ceiling on one run, set BELOW the global SMS safety guard on purpose.
  *
- * The measured audience is 423. A cap a little above that lets the real send happen in one
- * go while making a runaway request obvious rather than expensive.
+ * lib/sms/safety.ts refuses every outbound SMS once 120 have gone out in the trailing hour
+ * (SMS_SAFETY_GLOBAL_HOURLY_LIMIT, default 120), and no caller bypasses it. That ceiling is
+ * real and has already truncated a live send: the peak rolling hour in April 2026 was exactly
+ * 120. Asking for 423 in one go would therefore have sent 120 and had the rest refused.
+ *
+ * 100 leaves headroom for booking confirmations and reminders going out in the same hour,
+ * which share the same budget. The audience shrinks as people are asked, so the operator runs
+ * this once an hour until it reports nobody left.
  */
-const MAX_RECIPIENTS_PER_RUN = 500
+const MAX_RECIPIENTS_PER_RUN = 100
 
 export type EmailCapturePreview = {
+  /** Everyone still waiting to be asked, which may be more than one run can take. */
   eligibleCount: number
+  /** How many this run would actually text, capped by MAX_RECIPIENTS_PER_RUN. */
+  thisRunCount: number
   sampleMessages: string[]
   /** Warmest first, so staff can sanity-check that the ordering is doing what it claims. */
   sampleNames: string[]
@@ -40,18 +49,18 @@ export async function previewEmailCaptureSend(): Promise<
   if (!allowed) return { error: 'Insufficient permissions to send messages' }
 
   try {
-    const audience = await loadEmailCaptureAudience(MAX_RECIPIENTS_PER_RUN)
-    const dry = await sendEmailCaptureSms({
-      maxRecipients: Math.min(3, MAX_RECIPIENTS_PER_RUN),
-      dryRun: true,
-    })
+    // 1000 is the function's own ceiling, so this counts everyone still waiting rather than
+    // just the slice this run would take.
+    const waiting = await loadEmailCaptureAudience(1000)
+    const dry = await sendEmailCaptureSms({ maxRecipients: 3, dryRun: true })
 
     return {
       success: true,
       data: {
-        eligibleCount: audience.length,
+        eligibleCount: waiting.length,
+        thisRunCount: Math.min(waiting.length, MAX_RECIPIENTS_PER_RUN),
         sampleMessages: dry.preview,
-        sampleNames: audience.slice(0, 5).map((row) => row.first_name || 'there'),
+        sampleNames: waiting.slice(0, 5).map((row) => row.first_name || 'there'),
       },
     }
   } catch (error) {
@@ -80,7 +89,7 @@ export async function runEmailCaptureSend(
 
   let audienceSize: number
   try {
-    audienceSize = (await loadEmailCaptureAudience(MAX_RECIPIENTS_PER_RUN)).length
+    audienceSize = (await loadEmailCaptureAudience(1000)).length
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to load the audience' }
   }
@@ -89,11 +98,14 @@ export async function runEmailCaptureSend(
     return { error: 'Nobody is eligible right now, so there is nothing to send' }
   }
 
-  if (audienceSize !== confirmedCount) {
+  const thisRun = Math.min(audienceSize, MAX_RECIPIENTS_PER_RUN)
+
+  if (thisRun !== confirmedCount) {
     return {
       error:
-        `The audience changed since you last looked: it was ${confirmedCount} and is now ` +
-        `${audienceSize}. Refresh the preview and check it before sending.`,
+        `The audience changed since you last looked: this run was going to text ` +
+        `${confirmedCount} and would now text ${thisRun}. Refresh the preview and check it ` +
+        `before sending.`,
     }
   }
 
@@ -112,9 +124,11 @@ export async function runEmailCaptureSend(
       operation_status: 'success',
       additional_info: {
         audienceSize,
+        requested: thisRun,
         sent: result.sent,
         errors: result.errors,
         aborted: result.aborted ?? false,
+        rateLimited: result.rateLimited ?? false,
       },
     })
 

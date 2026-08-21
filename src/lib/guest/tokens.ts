@@ -24,7 +24,14 @@ export type CreateGuestTokenInput = {
   waitlistOfferId?: string | null
 }
 
-function generateGuestToken(): string {
+/**
+ * Exported because a token's raw value is needed BEFORE its row exists.
+ *
+ * The email-capture send builds the message (which embeds the token URL), sends it, and only
+ * then writes the row, so that a send which never left the building leaves no trace and the
+ * recipient stays eligible. See lib/sms/email-capture.ts for why that ordering matters.
+ */
+export function generateGuestToken(): string {
   return crypto.randomBytes(32).toString('base64url')
 }
 

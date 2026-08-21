@@ -15,7 +15,7 @@ import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
-import { createGuestToken } from '@/lib/guest/tokens'
+import { generateGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 
 /**
  * How long a capture link stays good.
@@ -56,6 +56,8 @@ export type EmailCaptureSendResult = {
   skipped: number
   errors: number
   aborted?: boolean
+  /** The hourly SMS safety guard stopped the run. Everyone left is still eligible. */
+  rateLimited?: boolean
 }
 
 function resolveAppBaseUrl(): string {
@@ -124,6 +126,18 @@ export async function loadEmailCaptureAudience(
   }
 
   return (data as EmailCaptureAudienceRow[] | null) ?? []
+}
+
+/**
+ * Did the send fail because the hourly guard is refusing everything?
+ *
+ * lib/sms/safety.ts returns code 'global_rate_limit' for the global ceiling and
+ * 'recipient_rate_limit' for a per-person one. Only the global case means the rest of the
+ * run is doomed; a per-recipient limit is specific to that person, so the loop carries on.
+ */
+function isRateLimited(result: { code?: string | null; error?: string | null }): boolean {
+  if (result.code === 'global_rate_limit') return true
+  return typeof result.error === 'string' && /safety guard/i.test(result.error)
 }
 
 async function sendSmsSafe(
@@ -208,33 +222,25 @@ export async function sendEmailCaptureSms(options: {
       continue
     }
 
-    let rawToken: string
-    try {
-      const token = await createGuestToken(db, {
-        customerId: recipient.customer_id,
-        actionType: 'email_capture',
-        expiresAt,
-      })
-      rawToken = token.rawToken
-    } catch (tokenError) {
-      logger.warn('Email capture: could not mint a token, skipping recipient', {
-        metadata: {
-          customerId: recipient.customer_id,
-          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
-        },
-      })
-      stats.errors += 1
-      continue
-    }
-
+    // The raw token is generated in memory and its ROW IS WRITTEN ONLY AFTER A SUCCESSFUL
+    // SEND. This ordering is the whole safety of the feature and it was originally the other
+    // way round, which was a serious bug.
+    //
+    // get_email_capture_audience excludes anyone holding an email_capture token, so writing
+    // the row first meant a send that never left the building still marked the guest as
+    // asked, permanently. The original comment justified that by assuming failures would be
+    // dead numbers. They are not: the dominant failure is the global 120-per-hour SMS safety
+    // guard (lib/sms/safety.ts), which returns success:false for EVERY remaining recipient
+    // once the hour's budget is gone. On a 423-person audience that would have silently
+    // written off roughly 300 people who never received anything.
+    //
+    // Writing the row after the send inverts the failure: a crash between sending and
+    // writing gives that one guest a link that reports itself expired, and the page hands
+    // them the pub's phone number. Recoverable and visible, rather than silent and permanent.
+    const rawToken = generateGuestToken()
     const link = `${baseUrl}/g/${rawToken}/email-capture`
     const body = buildEmailCaptureMessage(firstName, link)
 
-    // The token row already exists at this point, which is what makes the whole send
-    // idempotent: get_email_capture_audience excludes anyone who has one, so a failed send
-    // is not retried by a later run. That is the deliberate trade. Re-texting someone the
-    // pub has already asked is worse than missing one address, and a failure here is
-    // usually a dead number rather than a transient fault.
     const result = await sendSmsSafe(recipient.phone_number, body, {
       customerId: recipient.customer_id,
       metadata: {
@@ -246,7 +252,38 @@ export async function sendEmailCaptureSms(options: {
 
     if (!result.success) {
       stats.errors += 1
+
+      // A rate-limited send is not this recipient's problem, it is the hour's. Every
+      // remaining recipient would fail identically, so stop rather than grind through them
+      // logging hundreds of identical errors.
+      if (isRateLimited(result)) {
+        logger.warn('Email capture: stopping, the SMS safety guard is refusing sends', {
+          metadata: {
+            sent: stats.sent,
+            remaining: audience.length - (stats.sent + stats.errors + stats.skipped),
+          },
+        })
+        stats.rateLimited = true
+        break
+      }
+
       continue
+    }
+
+    const { error: tokenError } = await db.from('guest_tokens').insert({
+      hashed_token: hashGuestToken(rawToken),
+      customer_id: recipient.customer_id,
+      action_type: 'email_capture',
+      expires_at: expiresAt,
+    })
+
+    if (tokenError) {
+      // The guest has the text but the link will not resolve. Loud, because it is the one
+      // case where somebody is asked and cannot answer, and staff may need to add the
+      // address by hand.
+      logger.error('Email capture: sent the text but could not store its token', {
+        metadata: { customerId: recipient.customer_id, error: tokenError.message },
+      })
     }
 
     stats.sent += 1
