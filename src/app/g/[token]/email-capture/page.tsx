@@ -43,7 +43,7 @@ export const metadata = {
 
 type PageProps = {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ state?: string }>
+  searchParams: Promise<{ state?: string; sms?: string; stop?: string }>
 }
 
 /** The problems the action route can hand back, worded for a guest rather than a log. */
@@ -57,7 +57,7 @@ const PROBLEMS: Record<string, string> = {
 
 export default async function EmailCapturePage({ params, searchParams }: PageProps) {
   const { token } = await params
-  const { state } = await searchParams
+  const { state, sms, stop } = await searchParams
   const supabase = createAdminClient()
 
   if (state === 'saved') {
@@ -71,6 +71,16 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
           We will send you the latest from The Anchor. Every email has an unsubscribe link, so
           you can stop them any time.
         </GuestAlert>
+        {/*
+          Confirming the objection, not just the email. A guest who asks us to stop texting has
+          no other way to check it happened, and the ICO's direct marketing guidance expects an
+          objection to be acknowledged. It also makes a dropped tick visible instead of silent.
+        */}
+        {sms === 'stopped' ? (
+          <GuestAlert tone="success" title="We have stopped the marketing texts">
+            Your booking confirmations and reminders will still come by text.
+          </GuestAlert>
+        ) : null}
       </GuestShell>
     )
   }
@@ -121,12 +131,28 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
     <GuestShell>
       <div className={GUEST_INTRO_CLASS}>
         <p className={GUEST_KICKER_CLASS}>The Anchor</p>
+        {/*
+          Benefit first, ask second. The previous version led with "what is your email
+          address?" and explained only what WE send ("you are missing the latest"), which is
+          the venue's point of view rather than the guest's. Measured on 2026-08-21: 28% of
+          people texted tapped through, and 6% of those completed. The message was persuading
+          them; the page was not closing.
+
+          "First chance to book" is the one thing this list offers that nothing else does,
+          and the owner confirmed on 2026-08-19 that early booking for paid events is real.
+          Deliberately NO scarcity claim: of the last seven ticketed events only one exceeded
+          capacity, so "they sell out" would be inventing urgency the bookings contradict.
+        */}
         <h1 className={GUEST_H1_CLASS}>
-          {customer.firstName ? `${customer.firstName}, what is your email address?` : 'What is your email address?'}
+          {customer.firstName ? `${customer.firstName}, get first pick of what's on` : "Get first pick of what's on"}
         </h1>
         <p className={GUEST_LEAD_CLASS}>
-          We have got your phone number but not your email, so you are missing the latest from
-          The Anchor.
+          Quiz nights, bingo, new menus and offers, straight to your inbox. Email subscribers
+          get first chance to book the paid events.
+        </p>
+        <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+          We have got your phone number but not your email, so add it below and you will not
+          miss anything.
         </p>
       </div>
 
@@ -157,6 +183,34 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
           <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
             {GUEST_MARKETING_EMAIL_LABEL}
           </p>
+
+          {/*
+            Offering to stop the texts, in the one place a guest has just told us email suits
+            them better. Two reasons, and the second matters more than the first.
+
+            Cost: a marketing text costs real money per message and an email costs almost
+            nothing, so anyone who prefers email is cheaper to reach and no less reachable.
+
+            Consent: the send that brought them here carries no opt-out line, by the owner's
+            decision on 2026-08-20. That left STOP as the only route, and STOP silences
+            booking confirmations too. This box gives back the granular choice, stopping
+            marketing texts while leaving confirmations and reminders alone.
+
+            Unticked by default. A pre-ticked box would quietly shrink the SMS list on the
+            venue's behalf rather than on the guest's, which is not a choice at all.
+          */}
+          <label className="flex items-start gap-3 font-anchor-body text-[14px] leading-[1.6] text-guest-text">
+            <input
+              type="checkbox"
+              name="stop_marketing_sms"
+              value="yes"
+              className="mt-[3px] h-[18px] w-[18px] flex-shrink-0 rounded border-guest-line accent-anchor-green"
+            />
+            <span>
+              Email is enough, stop sending me marketing texts. Your booking confirmations and
+              reminders will still come by text.
+            </span>
+          </label>
 
           {/*
             A plain <button> rather than GuestButton: this form posts without JavaScript, and
