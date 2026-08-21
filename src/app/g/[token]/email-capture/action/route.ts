@@ -25,13 +25,24 @@ type RouteContext = {
   params: Promise<{ token: string }>
 }
 
+/** The exact words beside the checkbox, stored verbatim in the consent ledger. */
+const SMS_OPT_OUT_LABEL =
+  'Email is enough, stop sending me marketing texts. Your booking confirmations and reminders will still come by text.'
+
 /** Postgres unique-violation. The only one reachable here is idx_customers_email_unique. */
 const UNIQUE_VIOLATION = '23505'
 
-function back(request: NextRequest, token: string, state: string): NextResponse {
-  return NextResponse.redirect(new URL(`/g/${token}/email-capture?state=${state}`, request.url), {
-    status: 303,
-  })
+function back(
+  request: NextRequest,
+  token: string,
+  state: string,
+  extra?: Record<string, string>
+): NextResponse {
+  const params = new URLSearchParams({ state, ...(extra ?? {}) })
+  return NextResponse.redirect(
+    new URL(`/g/${token}/email-capture?${params.toString()}`, request.url),
+    { status: 303 }
+  )
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -53,6 +64,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const form = await request.formData()
   const email = String(form.get('email') || '').trim()
+  const stopMarketingSms = String(form.get('stop_marketing_sms') || '') === 'yes'
 
   if (!email || !isPlausibleEmail(email)) {
     return back(request, token, 'invalid')
@@ -71,6 +83,61 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const now = new Date().toISOString()
+
+  // An objection to marketing is actioned FIRST, and on its own.
+  //
+  // It used to ride along inside the email UPDATE below. That meant any failure of that one
+  // statement threw the objection away with it: a unique-email collision rolls back the whole
+  // row, and the guest was bounced to a form with the box silently unticked and a message
+  // that said nothing about their texts. Measured on the live audience: 46% share a surname
+  // with someone who already holds an email, so a shared household address hitting that
+  // collision is an ordinary event, not a corner case.
+  //
+  // Someone who ticks the box and presses submit has objected. Under UK GDPR Article 21 that
+  // objection stands on its own; it is not conditional on the rest of the form succeeding.
+  //
+  // `.is('marketing_sms_opted_out_at', null)` keeps the ORIGINAL objection date for anyone who
+  // had already refused, rather than resetting the clock to today.
+  let smsStopped = false
+  if (stopMarketingSms) {
+    const { error: smsError } = await supabase
+      .from('customers')
+      .update({ marketing_sms_opt_in: false, marketing_sms_opted_out_at: now })
+      .eq('id', lookup.customer.id)
+      .is('marketing_sms_opted_out_at', null)
+
+    if (smsError) {
+      logger.error('Failed to record a guest objection to marketing texts', {
+        metadata: { customerId: lookup.customer.id, error: smsError.message },
+      })
+    } else {
+      smsStopped = true
+      try {
+        await ConsentService.recordConsent({
+          customerId: lookup.customer.id,
+          channel: 'sms',
+          purpose: 'marketing',
+          status: 'opted_out',
+          legalBasis: 'consent',
+          source: 'guest_email_capture_link',
+          captureMethod: 'sms_one_tap',
+          consentTextVersion: GUEST_COMMS_CONSENT_TEXT_VERSION,
+          consentText: SMS_OPT_OUT_LABEL,
+          userAgent: request.headers.get('user-agent'),
+          relatedEntityType: 'customer',
+          relatedEntityId: lookup.customer.id,
+          updateSummary: false,
+        })
+      } catch (consentError) {
+        logger.error('Stopped marketing texts but failed to record the consent row', {
+          metadata: {
+            customerId: lookup.customer.id,
+            error: consentError instanceof Error ? consentError.message : String(consentError),
+          },
+        })
+      }
+    }
+  }
 
   const { error: updateError } = await supabase
     .from('customers')
@@ -92,13 +159,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       logger.warn('Email capture hit an address already held by another customer', {
         metadata: { customerId: lookup.customer.id },
       })
-      return back(request, token, 'taken')
+      return back(request, token, 'taken', stopMarketingSms ? { stop: '1' } : undefined)
     }
 
     logger.error('Failed to store a captured email address', {
       metadata: { customerId: lookup.customer.id, error: updateError.message },
     })
-    return back(request, token, 'error')
+    return back(request, token, 'error', stopMarketingSms ? { stop: '1' } : undefined)
   }
 
   // The consent row is what makes the address usable later, so a failure to write it must
@@ -145,5 +212,5 @@ export async function POST(request: NextRequest, context: RouteContext) {
     })
   }
 
-  return back(request, token, 'saved')
+  return back(request, token, 'saved', smsStopped ? { sms: 'stopped' } : undefined)
 }
