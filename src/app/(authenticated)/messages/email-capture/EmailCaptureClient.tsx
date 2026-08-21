@@ -48,7 +48,7 @@ export default function EmailCaptureClient() {
     setSending(true)
     setError(null)
 
-    const response = await runEmailCaptureSend(preview.eligibleCount)
+    const response = await runEmailCaptureSend(preview.thisRunCount)
     setSending(false)
 
     if ('error' in response) {
@@ -57,10 +57,13 @@ export default function EmailCaptureClient() {
       return
     }
 
-    const { sent, errors, aborted } = response.data
+    const { sent, errors, aborted, rateLimited } = response.data
     setResult(
-      `Sent ${sent}${errors ? `, ${errors} failed` : ''}` +
-        (aborted ? '. The run stopped early on its time budget, so run it again to finish.' : '.')
+      `Sent ${sent}${errors ? `, ${errors} failed` : ''}.` +
+        (rateLimited
+          ? ' The hourly SMS limit stopped the run. Everyone left is still on the list, so come back in an hour and run it again.'
+          : '') +
+        (aborted ? ' The run stopped on its time budget, so run it again to continue.' : '')
     )
     toast.success(`Sent ${sent} messages`)
     void load()
@@ -75,8 +78,13 @@ export default function EmailCaptureClient() {
             link to add one. Everyone here has booked before.
           </p>
           <p className="text-sm text-gray-500">
-            Each person is asked once. Anyone already sent a link is excluded automatically,
-            so running this again will not text them a second time.
+            Each person is asked once. Anyone already texted is excluded automatically, so
+            running this again will not reach them a second time.
+          </p>
+          <p className="text-sm text-gray-500">
+            Sends go out in batches of up to 100 an hour, because the whole app shares an
+            hourly SMS limit with booking confirmations and reminders. Run it again each hour
+            until it says nobody is left.
           </p>
         </div>
       </Card>
@@ -90,11 +98,18 @@ export default function EmailCaptureClient() {
         ) : preview ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <Badge>{preview.eligibleCount}</Badge>
+              <Badge>{preview.thisRunCount}</Badge>
               <span className="text-sm text-gray-700">
-                {preview.eligibleCount === 1 ? 'guest' : 'guests'} would be texted
+                {preview.thisRunCount === 1 ? 'guest' : 'guests'} would be texted in this run
               </span>
             </div>
+
+            {preview.eligibleCount > preview.thisRunCount ? (
+              <Alert variant="info">
+                {preview.eligibleCount} guests are waiting in total. This run takes the first{' '}
+                {preview.thisRunCount}; the rest stay on the list for the next run.
+              </Alert>
+            ) : null}
 
             {preview.sampleNames.length > 0 ? (
               <p className="text-sm text-gray-500">
@@ -125,9 +140,9 @@ export default function EmailCaptureClient() {
             <div className="flex gap-3 pt-2">
               <Button
                 onClick={() => setConfirmOpen(true)}
-                disabled={sending || preview.eligibleCount === 0}
+                disabled={sending || preview.thisRunCount === 0}
               >
-                {sending ? 'Sending...' : `Send to ${preview.eligibleCount}`}
+                {sending ? 'Sending...' : `Send to ${preview.thisRunCount}`}
               </Button>
               <Button variant="secondary" onClick={() => void load()} disabled={sending}>
                 Refresh
@@ -141,7 +156,7 @@ export default function EmailCaptureClient() {
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleSend}
-        title={`Text ${preview?.eligibleCount ?? 0} guests?`}
+        title={`Text ${preview?.thisRunCount ?? 0} guests?`}
         message="This sends real text messages and cannot be undone. Each guest is asked only once, so there is no way to re-send to them later."
         confirmText="Send now"
       />
