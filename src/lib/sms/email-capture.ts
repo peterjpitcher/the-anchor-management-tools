@@ -56,8 +56,10 @@ export type EmailCaptureSendResult = {
   skipped: number
   errors: number
   aborted?: boolean
-  /** The hourly SMS safety guard stopped the run. Everyone left is still eligible. */
-  rateLimited?: boolean
+  /** The safety code that ended the run early, if one did. Everyone left is still eligible. */
+  stoppedBy?: string
+  /** Tally of why sends failed, keyed by the safety or provider code. */
+  failureCodes: Record<string, number>
 }
 
 function resolveAppBaseUrl(): string {
@@ -129,15 +131,23 @@ export async function loadEmailCaptureAudience(
 }
 
 /**
- * Did the send fail because the hourly guard is refusing everything?
+ * Does this failure doom the whole run, or just this one person?
  *
- * lib/sms/safety.ts returns code 'global_rate_limit' for the global ceiling and
- * 'recipient_rate_limit' for a per-person one. Only the global case means the rest of the
- * run is doomed; a per-recipient limit is specific to that person, so the loop carries on.
+ * MATCH ON THE CODE, NEVER ON THE MESSAGE. lib/twilio.ts returns the identical string
+ * 'SMS sending paused by safety guard' for EVERY safety outcome and puts the real reason in
+ * `code`. An earlier version fell back to matching that message, so one recipient hitting
+ * their own personal limit aborted a run of 100. That is what happened on the 11:08 run of
+ * 2026-08-21: nothing was sent, and the report wrongly blamed the hourly limit when only 19
+ * messages had gone out against a ceiling of 120.
+ *
+ * Fatal to the run:
+ *   global_rate_limit   the hour's budget is gone, every remaining send would fail
+ *   safety_unavailable  the guard cannot evaluate, so everything fails closed
+ * Specific to one person, so the loop carries on:
+ *   recipient_hourly_limit, recipient_daily_limit
  */
-function isRateLimited(result: { code?: string | null; error?: string | null }): boolean {
-  if (result.code === 'global_rate_limit') return true
-  return typeof result.error === 'string' && /safety guard/i.test(result.error)
+function isFatalToRun(result: { code?: string | null }): boolean {
+  return result.code === 'global_rate_limit' || result.code === 'safety_unavailable'
 }
 
 async function sendSmsSafe(
@@ -176,6 +186,7 @@ export async function sendEmailCaptureSms(options: {
     sent: 0,
     skipped: 0,
     errors: 0,
+    failureCodes: {},
     preview: [],
   }
 
@@ -256,17 +267,17 @@ export async function sendEmailCaptureSms(options: {
     if (!result.success) {
       stats.errors += 1
 
-      // A rate-limited send is not this recipient's problem, it is the hour's. Every
-      // remaining recipient would fail identically, so stop rather than grind through them
-      // logging hundreds of identical errors.
-      if (isRateLimited(result)) {
-        logger.warn('Email capture: stopping, the SMS safety guard is refusing sends', {
-          metadata: {
-            sent: stats.sent,
-            remaining: audience.length - (stats.sent + stats.errors + stats.skipped),
-          },
+      // Record WHY, tallied by code. Without this the operator sees a bare error count and
+      // has to go digging in platform logs to find out whether it was a rate limit, a dead
+      // number, or the guard being unable to evaluate at all.
+      const code = (result as { code?: string | null }).code || 'unknown'
+      stats.failureCodes[code] = (stats.failureCodes[code] ?? 0) + 1
+
+      if (isFatalToRun(result)) {
+        logger.warn('Email capture: stopping, this failure dooms the rest of the run', {
+          metadata: { code, sent: stats.sent, remaining: audience.length - processed },
         })
-        stats.rateLimited = true
+        stats.stoppedBy = code
         break
       }
 
@@ -300,6 +311,8 @@ export async function sendEmailCaptureSms(options: {
       skipped: stats.skipped,
       errors: stats.errors,
       aborted: stats.aborted ?? false,
+      stoppedBy: stats.stoppedBy ?? null,
+      failureCodes: stats.failureCodes,
     },
   })
 

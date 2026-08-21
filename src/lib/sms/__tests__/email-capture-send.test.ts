@@ -118,23 +118,27 @@ describe('the hourly SMS safety guard stops the run instead of burning through i
 
     const result = await sendEmailCaptureSms({ maxRecipients: 10, dryRun: false })
 
-    expect(result.rateLimited).toBe(true)
+    expect(result.stoppedBy).toBe('global_rate_limit')
     expect(result.sent).toBe(1)
     // c3 was never attempted, so it never even reached sendSMS.
     expect(sendSMS).toHaveBeenCalledTimes(2)
     expect(inserted.map((r) => r.customer_id)).toEqual(['c1'])
   })
 
-  it('carries on past a per-recipient limit, which is that person and not the hour', async () => {
+  it('carries on past a per-recipient limit, even though it carries the same message text', async () => {
+    // The regression that cost a whole run on 2026-08-21: twilio.ts returns the identical
+    // 'SMS sending paused by safety guard' string for every safety outcome, and the detector
+    // matched on that text, so one person's own limit aborted everyone else's send.
     const { inserted } = mockDb(AUDIENCE)
     ;(sendSMS as unknown as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ success: false, code: 'recipient_rate_limit', error: 'too many for this recipient' })
+      .mockResolvedValueOnce({ success: false, code: 'recipient_hourly_limit', error: 'SMS sending paused by safety guard' })
       .mockResolvedValueOnce({ success: true })
       .mockResolvedValueOnce({ success: true })
 
     const result = await sendEmailCaptureSms({ maxRecipients: 10, dryRun: false })
 
-    expect(result.rateLimited).toBeUndefined()
+    expect(result.stoppedBy).toBeUndefined()
+    expect(result.failureCodes).toEqual({ recipient_hourly_limit: 1 })
     expect(result.sent).toBe(2)
     expect(inserted.map((r) => r.customer_id)).toEqual(['c2', 'c3'])
   })
