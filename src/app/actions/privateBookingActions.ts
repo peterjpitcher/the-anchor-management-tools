@@ -273,6 +273,10 @@ export async function createPrivateBooking(formData: FormData) {
 
     const bookingData = validationResult.data
 
+    if (!bookingData.customer_id && !bookingData.contact_phone) {
+      return { error: 'Select an existing customer or enter a phone number' }
+    }
+
     const [{ data: { user } }, canCreate, canManage] = await Promise.all([
       supabase.auth.getUser(),
       checkUserPermission('private_bookings', 'create'),
