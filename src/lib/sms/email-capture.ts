@@ -188,18 +188,21 @@ export async function sendEmailCaptureSms(options: {
   const baseUrl = resolveAppBaseUrl()
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
+  let processed = 0
+
   for (const recipient of audience) {
-    if (
-      options.startTime &&
-      stats.sent > 0 &&
-      stats.sent % SEND_LOOP_CHECK_INTERVAL === 0
-    ) {
+    processed += 1
+
+    // Counts ITERATIONS, not successful sends. Keying this off stats.sent meant a run where
+    // sends stopped succeeding never checked the clock again, because the counter it watched
+    // had frozen. That is exactly the run most likely to be crawling towards a timeout.
+    if (options.startTime && processed % SEND_LOOP_CHECK_INTERVAL === 0) {
       const elapsed = Date.now() - options.startTime
       if (elapsed > SEND_LOOP_TIME_BUDGET_MS) {
         logger.warn('Email capture: aborting the send loop, approaching the time budget', {
           metadata: {
             sent: stats.sent,
-            remaining: audience.length - (stats.sent + stats.errors + stats.skipped),
+            remaining: audience.length - processed,
             elapsedMs: elapsed,
           },
         })
