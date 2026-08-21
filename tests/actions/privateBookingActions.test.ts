@@ -211,10 +211,18 @@ function mockUnauthenticatedClient() {
   })
 }
 
-/** Builds a minimal FormData for booking creation */
+/**
+ * Builds a minimal FormData for booking creation.
+ *
+ * `contact_phone` is part of the minimum since 2026-08-20, when createPrivateBooking began
+ * requiring either an existing customer_id or a phone number. A private booking with no way
+ * to reach the organiser is not a booking anyone can run, so the guard is right and the
+ * fixture was simply older than it.
+ */
 function buildCreateFormData(overrides: Record<string, string> = {}): FormData {
   const fd = new FormData()
   fd.set('customer_first_name', 'Jane')
+  fd.set('contact_phone', '07700900000')
   fd.set('event_date', '2026-06-15')
   fd.set('start_time', '18:00')
   fd.set('guest_count', '12')
@@ -278,6 +286,34 @@ describe('privateBookingActions', () => {
           resource_id: 'booking-1',
         })
       )
+    })
+
+    it('refuses a booking with neither a customer nor a phone number', async () => {
+      // A private booking nobody can be reached about is not a booking anyone can run:
+      // no deposit chase, no final numbers, no way to tell the organiser about a change.
+      const fd = buildCreateFormData()
+      fd.delete('contact_phone')
+
+      const result = await createPrivateBooking(fd)
+
+      expect(result).toEqual({ error: 'Select an existing customer or enter a phone number' })
+      expect(mockedCreateBooking).not.toHaveBeenCalled()
+    })
+
+    it('accepts an existing customer with no phone number typed in', async () => {
+      // The other half of the rule. Picking a known customer already supplies the contact
+      // details, so demanding the phone again would block the commonest path through the form.
+      const mockBooking = { id: 'booking-2', customer_first_name: 'Jane' }
+      mockedCreateBooking.mockResolvedValue(mockBooking)
+
+      const fd = buildCreateFormData()
+      fd.delete('contact_phone')
+      fd.set('customer_id', '11111111-2222-3333-4444-555555555555')
+
+      const result = await createPrivateBooking(fd)
+
+      expect(result).toEqual({ success: true, data: mockBooking })
+      expect(mockedCreateBooking).toHaveBeenCalledTimes(1)
     })
 
     it('should return error when user lacks create permission', async () => {
