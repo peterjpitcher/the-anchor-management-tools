@@ -57,11 +57,27 @@ export default function EmailCaptureClient() {
       return
     }
 
-    const { sent, errors, aborted, rateLimited } = response.data
+    const { sent, errors, aborted, stoppedBy, failureCodes } = response.data
+
+    // Reasons in plain words. Anything not listed is shown as its raw code rather than
+    // swallowed, because a failure nobody can name is a failure nobody can fix.
+    const REASONS: Record<string, string> = {
+      global_rate_limit: 'the hourly SMS limit was reached',
+      safety_unavailable: 'the SMS safety check could not run',
+      recipient_hourly_limit: 'they had already had several texts this hour',
+      recipient_daily_limit: 'they had already had several texts today',
+    }
+    const describe = (code: string) => REASONS[code] ?? `code ${code}`
+
+    const breakdown = Object.entries(failureCodes ?? {})
+      .map(([code, n]) => `${n} because ${describe(code)}`)
+      .join(', ')
+
     setResult(
       `Sent ${sent}${errors ? `, ${errors} failed` : ''}.` +
-        (rateLimited
-          ? ' The hourly SMS limit stopped the run. Everyone left is still on the list, so come back in an hour and run it again.'
+        (breakdown ? ` Failures: ${breakdown}.` : '') +
+        (stoppedBy
+          ? ` The run stopped early because ${describe(stoppedBy)}. Everyone left is still on the list, so run it again later.`
           : '') +
         (aborted ? ' The run stopped on its time budget, so run it again to continue.' : '')
     )

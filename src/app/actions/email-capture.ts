@@ -128,7 +128,8 @@ export async function runEmailCaptureSend(
         sent: result.sent,
         errors: result.errors,
         aborted: result.aborted ?? false,
-        rateLimited: result.rateLimited ?? false,
+        stoppedBy: result.stoppedBy ?? null,
+        failureCodes: result.failureCodes,
       },
     })
 
