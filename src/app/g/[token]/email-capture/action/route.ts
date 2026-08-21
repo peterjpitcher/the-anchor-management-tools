@@ -45,6 +45,66 @@ function back(
   )
 }
 
+/**
+ * Action a guest's objection to marketing texts.
+ *
+ * Separate from everything else because it must not depend on which branch the request takes.
+ * It previously lived inline in the main path only, so a guest who already had an address on
+ * file ticked the box, was told "Got it, thank you", and had the objection thrown away.
+ *
+ * Under UK GDPR Article 21 an objection stands on its own. It is not conditional on the email
+ * saving, on the address being new, or on anything else on the form succeeding.
+ *
+ * `.is('marketing_sms_opted_out_at', null)` keeps the ORIGINAL objection date for anyone who
+ * had already refused, rather than resetting the clock to today.
+ */
+async function stopMarketingTexts(
+  supabase: ReturnType<typeof createAdminClient>,
+  customerId: string,
+  userAgent: string | null,
+  now: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('customers')
+    .update({ marketing_sms_opt_in: false, marketing_sms_opted_out_at: now })
+    .eq('id', customerId)
+    .is('marketing_sms_opted_out_at', null)
+
+  if (error) {
+    logger.error('Failed to record a guest objection to marketing texts', {
+      metadata: { customerId, error: error.message },
+    })
+    return false
+  }
+
+  try {
+    await ConsentService.recordConsent({
+      customerId,
+      channel: 'sms',
+      purpose: 'marketing',
+      status: 'opted_out',
+      legalBasis: 'consent',
+      source: 'guest_email_capture_link',
+      captureMethod: 'sms_one_tap',
+      consentTextVersion: GUEST_COMMS_CONSENT_TEXT_VERSION,
+      consentText: SMS_OPT_OUT_LABEL,
+      userAgent,
+      relatedEntityType: 'customer',
+      relatedEntityId: customerId,
+      updateSummary: false,
+    })
+  } catch (consentError) {
+    logger.error('Stopped marketing texts but failed to record the consent row', {
+      metadata: {
+        customerId,
+        error: consentError instanceof Error ? consentError.message : String(consentError),
+      },
+    })
+  }
+
+  return true
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { token } = await context.params
   const supabase = createAdminClient()
@@ -79,65 +139,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
   // it overwritten. A guest tapping an old link should never silently replace an address
   // that staff, or the guest, corrected in the meantime.
   if (lookup.alreadyDone) {
-    return back(request, token, 'saved')
+    // Their address is already on file, but the objection still has to be actioned. Telling
+    // someone "Got it" while discarding the thing they actually asked for is the worst of
+    // both: they believe it is done and it is not.
+    const stopped = stopMarketingSms
+      ? await stopMarketingTexts(
+          supabase,
+          lookup.customer.id,
+          request.headers.get('user-agent'),
+          new Date().toISOString()
+        )
+      : false
+    return back(request, token, 'saved', stopped ? { sms: 'stopped' } : undefined)
   }
 
   const now = new Date().toISOString()
 
-  // An objection to marketing is actioned FIRST, and on its own.
-  //
-  // It used to ride along inside the email UPDATE below. That meant any failure of that one
-  // statement threw the objection away with it: a unique-email collision rolls back the whole
-  // row, and the guest was bounced to a form with the box silently unticked and a message
-  // that said nothing about their texts. Measured on the live audience: 46% share a surname
-  // with someone who already holds an email, so a shared household address hitting that
-  // collision is an ordinary event, not a corner case.
-  //
-  // Someone who ticks the box and presses submit has objected. Under UK GDPR Article 21 that
-  // objection stands on its own; it is not conditional on the rest of the form succeeding.
-  //
-  // `.is('marketing_sms_opted_out_at', null)` keeps the ORIGINAL objection date for anyone who
-  // had already refused, rather than resetting the clock to today.
-  let smsStopped = false
-  if (stopMarketingSms) {
-    const { error: smsError } = await supabase
-      .from('customers')
-      .update({ marketing_sms_opt_in: false, marketing_sms_opted_out_at: now })
-      .eq('id', lookup.customer.id)
-      .is('marketing_sms_opted_out_at', null)
-
-    if (smsError) {
-      logger.error('Failed to record a guest objection to marketing texts', {
-        metadata: { customerId: lookup.customer.id, error: smsError.message },
-      })
-    } else {
-      smsStopped = true
-      try {
-        await ConsentService.recordConsent({
-          customerId: lookup.customer.id,
-          channel: 'sms',
-          purpose: 'marketing',
-          status: 'opted_out',
-          legalBasis: 'consent',
-          source: 'guest_email_capture_link',
-          captureMethod: 'sms_one_tap',
-          consentTextVersion: GUEST_COMMS_CONSENT_TEXT_VERSION,
-          consentText: SMS_OPT_OUT_LABEL,
-          userAgent: request.headers.get('user-agent'),
-          relatedEntityType: 'customer',
-          relatedEntityId: lookup.customer.id,
-          updateSummary: false,
-        })
-      } catch (consentError) {
-        logger.error('Stopped marketing texts but failed to record the consent row', {
-          metadata: {
-            customerId: lookup.customer.id,
-            error: consentError instanceof Error ? consentError.message : String(consentError),
-          },
-        })
-      }
-    }
-  }
+  const smsStopped = stopMarketingSms
+    ? await stopMarketingTexts(supabase, lookup.customer.id, request.headers.get('user-agent'), now)
+    : false
 
   const { error: updateError } = await supabase
     .from('customers')
