@@ -30,24 +30,19 @@ const SEND_LOOP_TIME_BUDGET_MS = 240_000 // 4 minutes, matching cross-promo's cr
 const SEND_LOOP_CHECK_INTERVAL = 25
 
 /**
- * The opt-out route, worded exactly as the consent notices promise it.
+ * No opt-out line, by the owner's explicit decision on 2026-08-20, taken after being shown
+ * that it costs nothing: every variant fits ONE segment with it and without it, and SMS is
+ * billed per segment. This was a deliberate call, not an oversight, and it is recorded here
+ * so nobody "fixes" it back without knowing that.
  *
- * Soft opt-in requires a simple way to refuse, and NOEVENTS is the keyword the management
- * app already honours via marketing_sms_opted_out_at. Leaving it off would make this the
- * one marketing text that offers no way out.
- */
-const OPT_OUT_TEXT = ' Reply NOEVENTS to stop.'
-
-/**
- * Keeping this costs nothing, which is worth stating plainly because it looks like an easy
- * 24 characters to save. Measured 20 August 2026: every variant below fits ONE segment with
- * it and one segment without it (149 to 157 chars against a 160 limit). SMS is billed per
- * segment, so removing it would save exactly zero across all 423 recipients.
+ * What recipients still have: STOP, STOPALL, UNSUBSCRIBE and QUIT are honoured by
+ * lib/sms/opt-out-keywords.ts and by the carriers themselves, so a guest is never trapped.
  *
- * It is also what makes the send lawful. PECR soft opt-in is the entire basis for texting
- * this audience, and it requires a simple means of refusing in EACH message, not just the
- * first. The consent notice these guests were shown already promises this exact route.
+ * What they lose is the granular route. NOEVENTS stopped marketing texts only and left
+ * booking confirmations running; STOP stops everything. A guest who merely does not want
+ * invites will now silence their own booking confirmations to get there.
  */
+const OPT_OUT_TEXT = ''
 
 export type EmailCaptureAudienceRow = {
   customer_id: string
@@ -202,10 +197,13 @@ export async function sendEmailCaptureSms(options: {
     const firstName = getSmartFirstName(recipient.first_name)
 
     if (dryRun) {
-      // A placeholder of representative length, so the preview shows the real segment count
-      // rather than one that is short by the length of a token.
-      const sampleLink = `${baseUrl}/g/${'x'.repeat(43)}/email-capture`
-      stats.preview.push(buildEmailCaptureMessage(firstName, sampleLink))
+      // Shown exactly as the guest receives it, with the link already shortened.
+      //
+      // This previously rendered the RAW /g/<43-char-token>/email-capture URL, which was
+      // actively misleading: staff approving the send read a message far longer than the one
+      // that actually goes out, and could not see the short link at all. sendSMS shortens
+      // every URL before dispatch, so the shortened form IS the truth.
+      stats.preview.push(buildEmailCaptureMessage(firstName, SHORTENED_LINK_STAND_IN))
       stats.skipped += 1
       continue
     }
