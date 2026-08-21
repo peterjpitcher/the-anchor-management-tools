@@ -4,44 +4,55 @@
  * The page renders; the POST in ./action stores. Nothing here mutates, so a carrier or
  * messaging app that prefetches the link in the SMS cannot record anything.
  *
- * One field, prefilled with nothing, with the guest's own name on the page. Everything
- * else we already know, which is the whole advantage of a tokenised link over a public
- * form: they type an address and nothing else.
+ * Branded with GuestShell like every other guest page, and that is not decoration. This
+ * page arrives as an unexpected text from an unrecognised short domain and asks for personal
+ * data, which is the exact shape of a phishing message. Without the Anchor header, the
+ * address in the footer and a phone number the guest can ring, the safest thing a sensible
+ * person can do is close it. The branding is what makes answering reasonable.
+ *
+ * One field, prefilled with nothing, with the guest's own name on the page. Everything else
+ * we already know, which is the whole advantage of a tokenised link over a public form:
+ * they type an address and nothing else.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { lookupEmailCaptureToken } from '@/lib/guest/email-capture-token'
 import { GUEST_MARKETING_EMAIL_LABEL } from '@/lib/consent/constants'
+import {
+  GuestShell,
+  GuestCard,
+  GuestAlert,
+  GuestField,
+  guestFieldControlProps,
+} from '@/components/features/guest'
+import {
+  GUEST_H1_CLASS,
+  GUEST_INPUT_CLASS,
+  GUEST_INPUT_INVALID_CLASS,
+  GUEST_INTRO_CLASS,
+  GUEST_KICKER_CLASS,
+  GUEST_LEAD_CLASS,
+} from '@/components/features/guest/styles'
+import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
-const RAW_CONTACT_PHONE = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || '01753682707'
-
-/** The env var carries the number unspaced, which reads as a string of digits to a guest. */
-const CONTACT_PHONE_HREF = RAW_CONTACT_PHONE.replace(/\s/g, '')
-const CONTACT_PHONE_DISPLAY = /^0\d{10}$/.test(CONTACT_PHONE_HREF)
-  ? `${CONTACT_PHONE_HREF.slice(0, 5)} ${CONTACT_PHONE_HREF.slice(5)}`
-  : RAW_CONTACT_PHONE
+export const metadata = {
+  title: 'Add your email address',
+}
 
 type PageProps = {
   params: Promise<{ token: string }>
   searchParams: Promise<{ state?: string }>
 }
 
-function Shell({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
-      <div className="mt-4 space-y-4 text-gray-700">{children}</div>
-      <p className="mt-8 text-sm text-gray-500">
-        The Anchor, Stanwell Moor. Anything else, call us on{' '}
-        <a className="underline" href={`tel:${CONTACT_PHONE_HREF}`}>
-          {CONTACT_PHONE_DISPLAY}
-        </a>
-        .
-      </p>
-    </main>
-  )
+/** The problems the action route can hand back, worded for a guest rather than a log. */
+const PROBLEMS: Record<string, string> = {
+  invalid: 'That address does not look right. Please check it and try again.',
+  taken:
+    'We already have that address on someone else’s record. Give us a ring and we will put it on the right one.',
+  error: 'We could not save that. Please try once more, or give us a ring.',
+  busy: 'That did not go through. Please try once more in a moment.',
 }
 
 export default async function EmailCapturePage({ params, searchParams }: PageProps) {
@@ -51,104 +62,120 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
 
   if (state === 'saved') {
     return (
-      <Shell title="Got it, thank you">
-        <p>
-          That is on your record now. We will send you the latest from The Anchor, and every
-          email has an unsubscribe link if you change your mind.
-        </p>
-      </Shell>
+      <GuestShell>
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>The Anchor</p>
+          <h1 className={GUEST_H1_CLASS}>Got it, thank you</h1>
+        </div>
+        <GuestAlert tone="success" title="Your email address is on your record">
+          We will send you the latest from The Anchor. Every email has an unsubscribe link, so
+          you can stop them any time.
+        </GuestAlert>
+      </GuestShell>
     )
   }
 
   const lookup = await lookupEmailCaptureToken(supabase, token)
 
   // Every dead link is told the same story, so the page never reveals whether a token
-  // existed. The phone number is the way out of all of them.
+  // existed. The phone number in the footer is the way out of all of them.
   if (!lookup.ok) {
     return (
-      <Shell title="This link has expired">
-        <p>
-          These links only last a few weeks. If you would still like to hear what is on, give
-          us a ring and we will add your email address for you.
-        </p>
-      </Shell>
+      <GuestShell>
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>The Anchor</p>
+          <h1 className={GUEST_H1_CLASS}>This link has expired</h1>
+          <p className={GUEST_LEAD_CLASS}>
+            These links only last a few weeks. If you would still like to hear what is on, give
+            us a ring and we will add your email address for you.
+          </p>
+        </div>
+      </GuestShell>
     )
   }
 
   if (lookup.alreadyDone) {
     return (
-      <Shell title="You are already on the list">
-        <p>We have got an email address for you, so there is nothing else to do.</p>
-        <p>If you would like to change it, give us a ring and we will sort it out.</p>
-      </Shell>
+      <GuestShell>
+        <div className={GUEST_INTRO_CLASS}>
+          <p className={GUEST_KICKER_CLASS}>The Anchor</p>
+          <h1 className={GUEST_H1_CLASS}>You are already on the list</h1>
+          <p className={GUEST_LEAD_CLASS}>
+            We have got an email address for you, so there is nothing else to do. If you would
+            like to change it, give us a ring and we will sort it out.
+          </p>
+        </div>
+      </GuestShell>
     )
   }
 
   const { customer } = lookup
-  const greeting = customer.firstName ? `${customer.firstName}, we` : 'We'
+  const problem = state ? PROBLEMS[state] : undefined
+  const fieldProps = guestFieldControlProps({
+    id: 'email',
+    required: true,
+    error: problem,
+  })
 
   return (
-    <Shell title="What is your email address?">
-      <p>
-        {greeting} have got your phone number but not your email, so you are missing the
-        latest from The Anchor.
-      </p>
-      <p className="text-sm text-gray-600">{GUEST_MARKETING_EMAIL_LABEL}</p>
+    <GuestShell>
+      <div className={GUEST_INTRO_CLASS}>
+        <p className={GUEST_KICKER_CLASS}>The Anchor</p>
+        <h1 className={GUEST_H1_CLASS}>
+          {customer.firstName ? `${customer.firstName}, what is your email address?` : 'What is your email address?'}
+        </h1>
+        <p className={GUEST_LEAD_CLASS}>
+          We have got your phone number but not your email, so you are missing the latest from
+          The Anchor.
+        </p>
+      </div>
 
-      <form method="POST" action={`/g/${token}/email-capture/action`} className="space-y-3 pt-2">
-        <label htmlFor="email" className="block text-sm font-medium text-gray-900">
-          Email address
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          inputMode="email"
-          autoFocus
-          placeholder="name@example.com"
-          className="w-full rounded-lg border border-gray-300 px-4 py-4 text-lg"
-          aria-describedby={state ? 'email-problem' : undefined}
-        />
+      {problem ? (
+        <GuestAlert tone="problem" title="That did not save">
+          {problem}
+        </GuestAlert>
+      ) : null}
 
-        {state === 'invalid' ? (
-          <p id="email-problem" className="text-sm text-amber-700">
-            That address does not look right. Please check it and try again.
-          </p>
-        ) : null}
-
-        {state === 'taken' ? (
-          <p id="email-problem" className="text-sm text-amber-700">
-            We already have that address against someone else. Give us a ring and we will get
-            it onto the right record.
-          </p>
-        ) : null}
-
-        {state === 'error' ? (
-          <p id="email-problem" className="text-sm text-amber-700">
-            We could not save that. Please try once more, or give us a ring.
-          </p>
-        ) : null}
-
-        {state === 'busy' ? (
-          <p id="email-problem" className="text-sm text-amber-700">
-            That did not go through. Please try once more in a moment.
-          </p>
-        ) : null}
-
-        <button
-          type="submit"
-          className="w-full rounded-lg bg-emerald-700 px-4 py-4 text-lg font-semibold text-white"
+      <GuestCard variant="accent">
+        <form
+          method="POST"
+          action={`/g/${token}/email-capture/action`}
+          className="flex w-full flex-col gap-[18px]"
         >
-          Add my email
-        </button>
-      </form>
+          <GuestField id="email" label="Email address" required error={problem}>
+            <input
+              {...fieldProps}
+              name="email"
+              type="email"
+              autoComplete="email"
+              inputMode="email"
+              placeholder="name@example.com"
+              className={cn(GUEST_INPUT_CLASS, problem && GUEST_INPUT_INVALID_CLASS)}
+            />
+          </GuestField>
 
-      <p className="pt-2 text-xs text-gray-500">
+          <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
+            {GUEST_MARKETING_EMAIL_LABEL}
+          </p>
+
+          {/*
+            A plain <button> rather than GuestButton: this form posts without JavaScript, and
+            GuestButton's link variant would not submit it. The classes mirror the primary
+            variant so it is visually identical to every other guest page.
+          */}
+          <button
+            type="submit"
+            className="inline-flex w-full items-center justify-center rounded-[10px] bg-anchor-green px-5 py-[14px] font-anchor-body text-[16px] font-semibold text-anchor-cream-text transition-colors hover:bg-anchor-green-deep"
+          >
+            Add my email
+          </button>
+        </form>
+      </GuestCard>
+
+      <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
         We will never pass your address to anyone else, and every email has an unsubscribe
-        link. Booking confirmations carry on either way.
+        link. Your booking confirmations and reminders carry on either way.
       </p>
-    </Shell>
+    </GuestShell>
   )
 }
