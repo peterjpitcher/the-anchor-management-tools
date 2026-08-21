@@ -133,26 +133,33 @@ export default async function EmailCapturePage({ params, searchParams }: PagePro
         <p className={GUEST_KICKER_CLASS}>The Anchor</p>
         {/*
           Benefit first, ask second. The previous version led with "what is your email
-          address?" and explained only what WE send ("you are missing the latest"), which is
-          the venue's point of view rather than the guest's. Measured on 2026-08-21: 28% of
-          people texted tapped through, and 6% of those completed. The message was persuading
-          them; the page was not closing.
+          address?" and explained only what WE send, which is the venue's point of view rather
+          than the guest's. Measured on 2026-08-21: 28% of people texted tapped through, and
+          6% of those completed. The message was persuading them; the page was not closing.
 
-          "First chance to book" is the one thing this list offers that nothing else does,
-          and the owner confirmed on 2026-08-19 that early booking for paid events is real.
-          Deliberately NO scarcity claim: of the last seven ticketed events only one exceeded
-          capacity, so "they sell out" would be inventing urgency the bookings contradict.
+          TWO CLAIMS WERE CUT ON 2026-08-21 BECAUSE THEY WERE NOT TRUE.
+
+          "Email subscribers get first chance to book the paid events" had no mechanism behind
+          it and the history says the reverse. `events` has no presale or audience-gating
+          column, only booking_open / bookings_enabled / booking_cutoff_at, all
+          audience-agnostic. All 13 upcoming paid events have been open to everyone since
+          2025-12-27. And the email list is served LAST: for The Last Quiz of Summer the SMS
+          promo went out on 10 August and the email campaign on 17 August. Since this page is
+          only ever reached FROM an SMS, it was telling people already on the faster list that
+          joining the slower one would get them served first.
+
+          "First pick" carried the same priority implication and went with it.
+
+          What is left is verified: the nights run and their prices are in the SSOT, and menus
+          and offers are what the venue actually sends. No scarcity claim either, since only
+          one of the last seven ticketed events exceeded capacity.
         */}
         <h1 className={GUEST_H1_CLASS}>
-          {customer.firstName ? `${customer.firstName}, get first pick of what's on` : "Get first pick of what's on"}
+          {customer.firstName ? `${customer.firstName}, know what's on before you turn up` : "Know what's on before you turn up"}
         </h1>
         <p className={GUEST_LEAD_CLASS}>
-          Quiz nights, bingo, new menus and offers, straight to your inbox. Email subscribers
-          get first chance to book the paid events.
-        </p>
-        <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
-          We have got your phone number but not your email, so add it below and you will not
-          miss anything.
+          Quiz nights, music bingo and cash bingo, new menus, and our offers as they come up,
+          straight to your inbox.
         </p>
       </div>
 
