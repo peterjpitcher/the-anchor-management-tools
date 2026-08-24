@@ -7,6 +7,7 @@ import {
   CheckCircleIcon,
   ClockIcon,
   DocumentTextIcon,
+  EllipsisHorizontalIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   PlusIcon,
@@ -23,6 +24,8 @@ import {
   CardHeader,
   ConfirmDialog,
   Drawer,
+  Dropdown,
+  DropdownItem,
   Input,
   PageHeader,
   SearchInput,
@@ -886,63 +889,6 @@ function statusLabel(status: string | null | undefined) {
   return status ? status.replaceAll('_', ' ') : 'unknown'
 }
 
-type QuickStatusAction = {
-  status: string
-  label: string
-  note: string
-  variant?: 'primary' | 'secondary' | 'danger'
-  confirmTitle?: string
-  confirmMessage?: string
-}
-
-function quickStatusActionsFor(status: string): QuickStatusAction[] {
-  const rejectAction: QuickStatusAction = {
-    status: 'rejected',
-    label: 'Reject candidate',
-    note: 'Rejected from quick action',
-    variant: 'danger',
-    confirmTitle: 'Reject candidate',
-    confirmMessage: 'Reject this candidate?',
-  }
-
-  switch (status) {
-    case 'new':
-    case 'ai_screened':
-      return [
-        { status: 'shortlisted', label: 'Shortlist candidate', note: 'Shortlisted from quick action', variant: 'primary' },
-        rejectAction,
-      ]
-    case 'shortlisted':
-      return [rejectAction]
-    case 'interview_scheduled':
-      return [
-        { status: 'interviewed', label: 'Mark interviewed', note: 'Marked interviewed from quick action', variant: 'primary' },
-        rejectAction,
-      ]
-    case 'interviewed':
-      return [
-        { status: 'offered', label: 'Mark offered', note: 'Marked offered from quick action', variant: 'primary' },
-        rejectAction,
-      ]
-    case 'trial_scheduled':
-      return [
-        { status: 'trial_completed', label: 'Mark trial completed', note: 'Marked trial completed from quick action', variant: 'primary' },
-        rejectAction,
-      ]
-    case 'trial_completed':
-      return [
-        { status: 'offered', label: 'Mark offered', note: 'Marked offered from quick action', variant: 'primary' },
-        rejectAction,
-      ]
-    case 'offered':
-      return [{ status: 'hired', label: 'Mark hired', note: 'Marked hired from quick action', variant: 'primary' }]
-    case 'on_hold':
-      return [{ status: 'shortlisted', label: 'Reopen as shortlisted', note: 'Reopened from quick action', variant: 'primary' }]
-    default:
-      return []
-  }
-}
-
 function recruitmentNextActionHint(status: string, interviewInviteSent: boolean, trialInviteSent: boolean) {
   switch (status) {
     case 'new':
@@ -973,6 +919,106 @@ function recruitmentNextActionHint(status: string, interviewInviteSent: boolean,
     default:
       return 'Use the next action that matches the latest candidate conversation.'
   }
+}
+
+/**
+ * One thing a member of staff can do to a candidate from the drawer's action bar.
+ * The bar is stage-driven: `drawerStageActions` returns them in priority order and
+ * the first two are promoted to primary and secondary, the rest fall into the
+ * overflow menu. Everything is derived from the application's status so the next
+ * step is always on screen, whichever tab is open.
+ */
+type DrawerActionSpec =
+  | { kind: 'status'; label: string; status: string; note: string }
+  | { kind: 'decision'; label: string; decision: 'reject' | 'offer' | 'decline_duplicate' | 'withdraw' | 'hold'; danger?: boolean }
+  | { kind: 'booking'; label: string; bookingType: 'interview' | 'trial_shift' }
+  | { kind: 'goto'; label: string; tab: DrawerTab }
+  | { kind: 'hire'; label: string }
+
+type DrawerStageContext = {
+  status: string
+  canEdit: boolean
+  canManage: boolean
+  canSendInterviewLink: boolean
+  canSendTrialLink: boolean
+  canScheduleInterview: boolean
+  canScheduleTrial: boolean
+  interviewInviteSent: boolean
+  trialInviteSent: boolean
+  canCreateEmployeeInvite: boolean
+}
+
+function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
+  const reject: DrawerActionSpec | false = ctx.canEdit && { kind: 'decision', label: 'Reject', decision: 'reject', danger: true }
+  const offer: DrawerActionSpec | false = ctx.canManage && { kind: 'decision', label: 'Make offer', decision: 'offer' }
+  const interviewLink: DrawerActionSpec | false = ctx.canSendInterviewLink && {
+    kind: 'booking',
+    label: ctx.interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link',
+    bookingType: 'interview',
+  }
+  const trialLink: DrawerActionSpec | false = ctx.canSendTrialLink && {
+    kind: 'booking',
+    label: ctx.trialInviteSent ? 'Resend trial booking link' : 'Send trial booking link',
+    bookingType: 'trial_shift',
+  }
+  const bookInterview: DrawerActionSpec | false = ctx.canScheduleInterview && { kind: 'goto', label: 'Book interview directly', tab: 'schedule' }
+  const bookTrial: DrawerActionSpec | false = ctx.canScheduleTrial && { kind: 'goto', label: 'Book trial directly', tab: 'schedule' }
+  const status = (label: string, next: string): DrawerActionSpec | false => ctx.canEdit && {
+    kind: 'status', label, status: next, note: `${label} from the action bar`,
+  }
+
+  let ordered: Array<DrawerActionSpec | false> = []
+  switch (ctx.status) {
+    case 'new':
+    case 'ai_screened':
+      ordered = [status('Shortlist', 'shortlisted'), reject, interviewLink]
+      break
+    case 'shortlisted':
+      ordered = [interviewLink, bookInterview, reject]
+      break
+    case 'interview_invited':
+      ordered = [bookInterview, interviewLink, reject]
+      break
+    case 'interview_scheduled':
+      ordered = [{ kind: 'goto', label: 'Record interview outcome', tab: 'schedule' }, status('Mark interviewed', 'interviewed'), reject]
+      break
+    case 'interviewed':
+      ordered = [trialLink, offer, bookTrial, reject]
+      break
+    case 'trial_offered':
+      ordered = [bookTrial, trialLink, reject]
+      break
+    case 'trial_scheduled':
+      ordered = [{ kind: 'goto', label: 'Record trial outcome', tab: 'schedule' }, status('Mark trial completed', 'trial_completed'), reject]
+      break
+    case 'trial_completed':
+      ordered = [offer, reject]
+      break
+    case 'offered':
+      ordered = [
+        ctx.canCreateEmployeeInvite && { kind: 'hire', label: 'Create employee invite' },
+        status('Mark hired', 'hired'),
+      ]
+      break
+    case 'hired':
+      ordered = []
+      break
+    case 'on_hold':
+      ordered = [status('Reopen as shortlisted', 'shortlisted'), reject]
+      break
+    case 'talent_pool':
+      ordered = [status('Reopen as shortlisted', 'shortlisted')]
+      break
+    case 'rejected':
+    case 'withdrawn':
+    case 'declined_duplicate':
+      ordered = [status('Reopen as shortlisted', 'shortlisted')]
+      break
+    default:
+      ordered = [interviewLink, reject]
+      break
+  }
+  return ordered.filter(Boolean) as DrawerActionSpec[]
 }
 
 function scoreRowClass(score: number | null | undefined) {
@@ -1327,6 +1373,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [decisionSendEmail, setDecisionSendEmail] = useState(true)
   const [decisionLoadingPreview, setDecisionLoadingPreview] = useState(false)
   const [decisionState, decisionFormAction] = useActionState(decideRecruitmentApplicationAction, null)
+  const [hireDialogOpen, setHireDialogOpen] = useState(false)
+  const [stageDialogOpen, setStageDialogOpen] = useState(false)
+  // Overflow-menu items are plain buttons, not forms, so they share one confirm
+  // dialog and one result banner rather than each carrying their own.
+  const [pendingBarAction, setPendingBarAction] = useState<null | { title: string; message: string; run: () => Promise<unknown> }>(null)
+  const [barActionState, setBarActionState] = useState<null | { success?: string; error?: string }>(null)
+  const [barActionPending, setBarActionPending] = useState(false)
   const [candidateTrail, setCandidateTrail] = useState<{ notes: any[]; systemChanges: any[] }>({ notes: [], systemChanges: [] })
   const [addNoteState, addNoteAction] = useActionState(addRecruitmentCandidateNoteAction, null)
   const [search, setSearch] = useState('')
@@ -1504,7 +1557,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     'trial_offered',
     'on_hold',
   ].includes(selectedApplicationStatus))
-  const quickStatusActions = selectedApplication ? quickStatusActionsFor(selectedApplicationStatus) : []
   const nextActionHint = selectedApplication
     ? recruitmentNextActionHint(selectedApplicationStatus, interviewInviteSent, trialInviteSent)
     : null
@@ -1577,6 +1629,186 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     'trial_offered',
     'on_hold',
   ].includes(selectedApplicationStatus))
+  const canCreateEmployeeInvite = Boolean(permissions.canManage && candidateHasEmail)
+
+  const stageActions = useMemo(() => (
+    selectedApplication
+      ? drawerStageActions({
+        status: selectedApplicationStatus,
+        canEdit: permissions.canEdit,
+        canManage: permissions.canManage,
+        canSendInterviewLink: permissions.canSend && candidateHasEmail && canSendInterviewBooking,
+        canSendTrialLink: permissions.canSend && candidateHasEmail && canSendTrialBooking,
+        canScheduleInterview: canScheduleInterviewForCandidate,
+        canScheduleTrial: canScheduleTrialForCandidate,
+        interviewInviteSent,
+        trialInviteSent,
+        canCreateEmployeeInvite,
+      })
+      : []
+  ), [
+    selectedApplication, selectedApplicationStatus, permissions, candidateHasEmail,
+    canSendInterviewBooking, canSendTrialBooking, canScheduleInterviewForCandidate,
+    canScheduleTrialForCandidate, interviewInviteSent, trialInviteSent, canCreateEmployeeInvite,
+  ])
+  const primaryStageAction = stageActions[0] ?? null
+  const secondaryStageAction = stageActions[1] ?? null
+  const overflowStageActions = stageActions.slice(2)
+  const drawerTabCounts: Partial<Record<DrawerTab, number>> = {
+    schedule: selectedApplicationAppointments.length,
+    comms: selectedApplicationAllCommunications.length,
+    activity: candidateTrail.notes.length,
+  }
+
+  async function runPendingBarAction() {
+    if (!pendingBarAction) return
+    const action = pendingBarAction
+    setPendingBarAction(null)
+    setBarActionState(null)
+    setBarActionPending(true)
+    try {
+      const result = await action.run()
+      if (result && typeof result === 'object' && 'error' in result && (result as { error?: string }).error) {
+        setBarActionState({ error: String((result as { error?: string }).error) })
+        return
+      }
+      setBarActionState({ success: 'Done.' })
+      router.refresh()
+    } catch (error) {
+      setBarActionState({ error: error instanceof Error ? error.message : 'Action failed.' })
+    } finally {
+      setBarActionPending(false)
+    }
+  }
+
+  function queueStatusChange(status: string, note: string) {
+    if (!selectedApplication) return
+    const applicationId = selectedApplication.id
+    setPendingBarAction({
+      title: statusLabel(status),
+      message: `Move ${candidateName(selectedApplication.candidate)} to "${statusLabel(status)}"?`,
+      run: () => {
+        const formData = new FormData()
+        formData.set('application_id', applicationId)
+        formData.set('status', status)
+        formData.set('note', note)
+        return statusFormAction(formData)
+      },
+    })
+  }
+
+  function queueBookingInvite(type: 'interview' | 'trial_shift') {
+    if (!selectedApplication) return
+    const applicationId = selectedApplication.id
+    const label = type === 'interview' ? 'interview' : 'trial'
+    setPendingBarAction({
+      title: `Send ${label} booking link`,
+      message: `Email ${candidateName(selectedApplication.candidate)} a ${label} booking link?`,
+      run: () => {
+        const formData = new FormData()
+        formData.set('application_id', applicationId)
+        formData.set('type', type)
+        return bookingInviteFormAction(formData)
+      },
+    })
+  }
+
+  function queueRescore() {
+    if (!selectedApplication) return
+    const applicationId = selectedApplication.id
+    setPendingBarAction({
+      title: 'Re-score AI fit',
+      message: 'Queue this application for a fresh AI score against the current posting?',
+      run: () => {
+        const formData = new FormData()
+        formData.set('application_id', applicationId)
+        return rescoreFormAction(formData)
+      },
+    })
+  }
+
+  function queueArchiveToggle() {
+    if (!selectedApplication) return
+    const applicationId = selectedApplication.id
+    const archived = Boolean(selectedApplication.archived_at)
+    setPendingBarAction({
+      title: archived ? 'Restore application' : 'Archive application',
+      message: archived ? 'Restore this application?' : 'Archive this application?',
+      run: () => {
+        const formData = new FormData()
+        formData.set('application_id', applicationId)
+        return archived ? restoreApplicationFormAction(formData) : archiveApplicationFormAction(formData)
+      },
+    })
+  }
+
+  /** Renders one action-bar action. Each kind knows how to submit or open itself. */
+  function renderStageAction(action: DrawerActionSpec, variant: 'primary' | 'secondary') {
+    if (!selectedApplication) return null
+    switch (action.kind) {
+      case 'status':
+        return (
+          <ActionFeedbackForm
+            action={statusFormAction}
+            successMessage={`${statusLabel(action.status)} saved.`}
+            onSuccess={() => router.refresh()}
+          >
+            <input type="hidden" name="application_id" value={selectedApplication.id} />
+            <input type="hidden" name="status" value={action.status} />
+            <input type="hidden" name="note" value={action.note} />
+            <SubmitButton variant={variant}>{action.label}</SubmitButton>
+          </ActionFeedbackForm>
+        )
+      case 'decision':
+        return (
+          <Button
+            type="button"
+            size="sm"
+            variant={action.danger && variant === 'secondary' ? 'danger' : variant}
+            onClick={() => openDecision(action.decision)}
+          >
+            {action.label}
+          </Button>
+        )
+      case 'booking':
+        return (
+          <ActionFeedbackForm
+            action={bookingInviteFormAction}
+            successMessage="Booking link sent."
+            confirmTitle={action.label}
+            confirmMessage={`Email ${candidateName(selectedApplication.candidate)} a booking link?`}
+            onSuccess={() => router.refresh()}
+          >
+            <input type="hidden" name="application_id" value={selectedApplication.id} />
+            <input type="hidden" name="type" value={action.bookingType} />
+            <SubmitButton variant={variant}>{action.label}</SubmitButton>
+          </ActionFeedbackForm>
+        )
+      case 'goto':
+        return (
+          <Button type="button" size="sm" variant={variant} onClick={() => setDrawerTab(action.tab)}>
+            {action.label}
+          </Button>
+        )
+      case 'hire':
+        return (
+          <Button type="button" size="sm" variant={variant} onClick={() => setHireDialogOpen(true)}>
+            {action.label}
+          </Button>
+        )
+    }
+  }
+
+  /** Queues an overflow-menu copy of a stage action behind the shared confirm dialog. */
+  function queueStageAction(action: DrawerActionSpec) {
+    switch (action.kind) {
+      case 'status': return queueStatusChange(action.status, action.note)
+      case 'booking': return queueBookingInvite(action.bookingType)
+      case 'decision': return openDecision(action.decision)
+      case 'goto': return setDrawerTab(action.tab)
+      case 'hire': return setHireDialogOpen(true)
+    }
+  }
 
   async function draftEmail(applicationId: string, type: string) {
     setClientMessage(null)
@@ -1765,7 +1997,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setEmailSendState(null)
     setPrintableText(null)
     setClientMessage(null)
-    setDrawerTab(['interview_invited', 'trial_offered'].includes(application.status) ? 'schedule' : 'overview')
+    setHireDialogOpen(false)
+    setStageDialogOpen(false)
+    setPendingBarAction(null)
+    setBarActionState(null)
+    // The action bar is stage-aware and always on screen, so the drawer no longer
+    // needs to guess a tab. It always opens on the same one.
+    setDrawerTab('overview')
     setDetailDrawerOpen(true)
   }
 
@@ -2131,125 +2369,80 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
             >
               {selectedApplication && (
                 <div className="space-y-4">
-                  <div className="space-y-3 border-b border-border pb-4">
+                  {/* Summary, action bar and tabs stay pinned while the tab body scrolls,
+                      so the next step is reachable from anywhere in the drawer. */}
+                  <div className="sticky top-0 z-20 -mx-5 -mt-5 border-b border-border bg-surface px-5 pt-5">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-base font-semibold text-text-strong">{candidateName(selectedApplication.candidate)}</p>
                       <Badge tone="neutral">{statusLabel(selectedApplication.status)}</Badge>
-                      <Badge tone="neutral">AI {selectedApplication.ai_score ?? '-'} · {selectedApplication.ai_recommendation?.replaceAll('_', ' ') || 'review'}</Badge>
-                    </div>
-                    <p className="text-xs text-text-muted">{roleTitle(selectedApplication)} · {selectedApplication.source} · {formatDateTime(selectedApplication.created_at)}</p>
-                    <div className="flex flex-wrap gap-2">
+                      <Badge tone={scoreTone(selectedApplication.ai_score)}>AI {selectedApplication.ai_score ?? '-'} · {selectedApplication.ai_recommendation?.replaceAll('_', ' ') || 'review'}</Badge>
                       <Badge tone={rtwTone(selectedApplication.candidate?.right_to_work_status)}>RTW: {rtwLabel(selectedApplication.candidate?.right_to_work_status)}</Badge>
-                      {selectedApplication.candidate?.sms_consent === true && <Badge tone="success">SMS ok</Badge>}
-                      {selectedApplication.candidate?.future_recruitment_consent === true && <Badge tone="success">Future ok</Badge>}
+                      {selectedApplication.archived_at && <Badge tone="warning">Archived</Badge>}
                     </div>
-                    <p className="text-sm text-text-muted">{selectedApplication.candidate?.email || 'No email on file'} · {selectedApplication.candidate?.phone || selectedApplication.candidate?.phone_e164 || 'No phone on file'}</p>
-                    {nextActionHint && (
-                      <div className="rounded border border-border bg-surface-2 p-3">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Next step</p>
-                        <p className="mt-1 text-sm text-text">{nextActionHint}</p>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      {selectedApplication.candidate?.cv_file_path && (
-                        <Button type="button" size="sm" variant="secondary" icon={<DocumentTextIcon className="h-4 w-4" />} onClick={() => openCv(selectedApplication.candidate_id)}>Open CV</Button>
-                      )}
-                      <Button type="button" size="sm" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
-                      <Button type="button" size="sm" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
+                    <p className="mt-1 text-xs text-text-muted">{roleTitle(selectedApplication)} · {selectedApplication.source} · Applied {formatDateTime(selectedApplication.created_at)}</p>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
+                      {selectedApplication.candidate?.email
+                        ? <a className="text-primary hover:underline" href={`mailto:${selectedApplication.candidate.email}`}>{selectedApplication.candidate.email}</a>
+                        : <span>No email on file</span>}
+                      <span aria-hidden="true">·</span>
+                      {(selectedApplication.candidate?.phone || selectedApplication.candidate?.phone_e164)
+                        ? <a className="text-primary hover:underline" href={`tel:${selectedApplication.candidate.phone_e164 || selectedApplication.candidate.phone}`}>{selectedApplication.candidate.phone || selectedApplication.candidate.phone_e164}</a>
+                        : <span>No phone on file</span>}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {primaryStageAction && renderStageAction(primaryStageAction, 'primary')}
+                      {secondaryStageAction && renderStageAction(secondaryStageAction, 'secondary')}
+                      <Dropdown
+                        trigger={
+                          <Button type="button" size="sm" variant="secondary" icon={<EllipsisHorizontalIcon className="h-4 w-4" />} aria-label="More actions">
+                            More
+                          </Button>
+                        }
+                        align="left"
+                      >
+                        {overflowStageActions.map(action => (
+                          <DropdownItem key={`${action.kind}-${action.label}`} onClick={() => queueStageAction(action)}>
+                            {action.label}
+                          </DropdownItem>
+                        ))}
+                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('reject')} danger>Reject</DropdownItem>}
+                        {permissions.canManage && <DropdownItem onClick={() => openDecision('offer')}>Make offer</DropdownItem>}
+                        {permissions.canManage && <DropdownItem onClick={() => openDecision('decline_duplicate')}>Already considered</DropdownItem>}
+                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('withdraw')}>Mark withdrawn</DropdownItem>}
+                        {permissions.canEdit && <DropdownItem onClick={() => openDecision('hold')}>Put on hold</DropdownItem>}
+                        {canCreateEmployeeInvite && <DropdownItem onClick={() => setHireDialogOpen(true)}>Create employee invite</DropdownItem>}
+                        {permissions.canEdit && <DropdownItem onClick={() => setStageDialogOpen(true)}>Change stage manually</DropdownItem>}
+                        {permissions.canManage && selectedApplication.job_posting_id && <DropdownItem onClick={queueRescore}>Re-score AI fit</DropdownItem>}
+                        {permissions.canEdit && (
+                          <DropdownItem onClick={queueArchiveToggle} danger={!selectedApplication.archived_at}>
+                            {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
+                          </DropdownItem>
+                        )}
+                      </Dropdown>
                     </div>
-                    {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
-                    {printableText && (
-                      <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-2 p-3 text-xs text-text">
-                        {printableText}
-                      </pre>
-                    )}
+                    {nextActionHint && <p className="mt-2 text-xs text-text-muted">{nextActionHint}</p>}
+                    {barActionPending && <p className="mt-1 text-xs text-text-muted">Working...</p>}
+                    {barActionState?.error && <p className="mt-1 text-xs text-danger">{barActionState.error}</p>}
+                    {barActionState?.success && <p className="mt-1 text-xs text-success">{barActionState.success}</p>}
+
+                    <div role="tablist" className="mt-3 flex flex-wrap gap-1">
+                      {DRAWER_TABS.map(tab => {
+                        const count = drawerTabCounts[tab.id]
+                        return (
+                          <button key={tab.id} type="button" role="tab" aria-selected={drawerTab === tab.id} onClick={() => setDrawerTab(tab.id)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${drawerTab === tab.id ? 'border-primary text-text-strong' : 'border-transparent text-text-muted hover:text-text'}`}>
+                            {tab.label}
+                            {typeof count === 'number' && count > 0 && <span className="ml-1 text-xs text-text-muted">({count})</span>}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
 
-                  <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
-                    {DRAWER_TABS.map(tab => (
-                      <button key={tab.id} type="button" role="tab" aria-selected={drawerTab === tab.id} onClick={() => setDrawerTab(tab.id)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${drawerTab === tab.id ? 'border-primary text-text-strong' : 'border-transparent text-text-muted hover:text-text'}`}>{tab.label}</button>
-                    ))}
-                  </div>
+                  {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
 
                   {drawerTab === 'overview' && (
                     <div className="space-y-4">
-                      <div className="space-y-2 rounded border border-border bg-surface-2 p-3">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Interview booking link</p>
-                        {!permissions.canSend ? (
-                          <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
-                        ) : !candidateHasEmail ? (
-                          <p className="text-sm text-text-muted">Add an email address before sending a booking link.</p>
-                        ) : !canSendInterviewBooking ? (
-                          <p className="text-sm text-text-muted">An interview booking link is not available at this stage.</p>
-                        ) : (
-                          <>
-                            {selectedApplicationOpenInterviewSlots.length === 0 && (
-                              <p className="text-sm text-warning">No open interview slots are currently available.</p>
-                            )}
-                            <ActionFeedbackForm
-                              action={bookingInviteFormAction}
-                              successMessage={interviewInviteSent ? 'Interview booking link resent.' : 'Interview booking link sent.'}
-                              confirmTitle={interviewInviteSent ? 'Resend interview link' : undefined}
-                              confirmMessage={interviewInviteSent ? 'An interview invite has already been sent. Send another booking link?' : undefined}
-                              onSuccess={() => router.refresh()}
-                            >
-                              <input type="hidden" name="application_id" value={selectedApplication.id} />
-                              <input type="hidden" name="type" value="interview" />
-                              <SubmitButton variant={interviewInviteSent ? 'secondary' : 'primary'}>
-                                {interviewInviteSent ? 'Resend interview booking link' : 'Send interview booking link'}
-                              </SubmitButton>
-                            </ActionFeedbackForm>
-                          </>
-                        )}
-                      </div>
-
-                      {permissions.canEdit && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Stage</p>
-                          {quickStatusActions.filter(action => !DECISION_STATUSES.includes(action.status)).length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {quickStatusActions.filter(action => !DECISION_STATUSES.includes(action.status)).map(action => (
-                                <ActionFeedbackForm
-                                  key={action.status}
-                                  action={statusFormAction}
-                                  successMessage={`${statusLabel(action.status)} saved.`}
-                                  confirmTitle={action.confirmTitle}
-                                  confirmMessage={action.confirmMessage}
-                                  onSuccess={() => router.refresh()}
-                                >
-                                  <input type="hidden" name="application_id" value={selectedApplication.id} />
-                                  <input type="hidden" name="status" value={action.status} />
-                                  <input type="hidden" name="note" value={action.note} />
-                                  <SubmitButton variant={action.variant ?? 'secondary'}>{action.label}</SubmitButton>
-                                </ActionFeedbackForm>
-                              ))}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap gap-2">
-                            {permissions.canEdit && <Button type="button" size="sm" variant="danger" onClick={() => openDecision('reject')}>Reject</Button>}
-                            {permissions.canManage && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('offer')}>Make offer</Button>}
-                            {permissions.canManage && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('decline_duplicate')}>Already considered</Button>}
-                            {permissions.canEdit && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('withdraw')}>Withdraw</Button>}
-                            {permissions.canEdit && <Button type="button" size="sm" variant="secondary" onClick={() => openDecision('hold')}>Hold</Button>}
-                          </div>
-                          <ActionFeedbackForm
-                            action={statusFormAction}
-                            className="flex flex-wrap items-center gap-2"
-                            successMessage="Status saved."
-                            onSuccess={() => router.refresh()}
-                          >
-                            <input type="hidden" name="application_id" value={selectedApplication.id} />
-                            <Select name="status" defaultValue={selectedApplication.status} className="w-44" aria-label="Manual status">
-                              {statusOptions.map(status => (
-                                <option key={status} value={status}>{statusLabel(status)}</option>
-                              ))}
-                            </Select>
-                            <input type="hidden" name="note" value="Status changed manually" />
-                            <SubmitButton variant="secondary">Save manual status</SubmitButton>
-                          </ActionFeedbackForm>
-                        </div>
-                      )}
-
                       {(() => {
                         const a = selectedApplication
                         const answerRows: Array<[string, string]> = []
@@ -2380,6 +2573,11 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </p>
                         </div>
                       )}
+                      {selectedApplication.candidate?.cv_file_path && (
+                        <Button type="button" size="sm" variant="secondary" icon={<DocumentTextIcon className="h-4 w-4" />} onClick={() => openCv(selectedApplication.candidate_id)}>
+                          Open CV
+                        </Button>
+                      )}
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="rounded border border-border bg-surface-2 p-3">
@@ -2400,7 +2598,18 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   {drawerTab === 'schedule' && (
                     <div className="space-y-3">
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Interviews and trials</p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase text-text-muted">Interviews and trials</p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" size="xs" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'interview')}>Interview kit</Button>
+                            <Button type="button" size="xs" variant="secondary" icon={<PrinterIcon className="h-4 w-4" />} onClick={() => buildPrintable(selectedApplication.id, 'trial')}>Trial brief</Button>
+                          </div>
+                        </div>
+                        {printableText && (
+                          <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-2 p-3 text-xs text-text">
+                            {printableText}
+                          </pre>
+                        )}
                         {selectedApplicationAppointments.length === 0 && (
                           <p className="text-sm text-text-muted">No interview or trial scheduled yet.</p>
                         )}
@@ -2798,52 +3007,75 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <ActionStateMessage state={candidateUpdateState} />
                         </div>
                       </form>
+                    </div>
+                  )}
 
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Admin</p>
-                        {permissions.canManage && selectedApplication.job_posting_id && (
-                          <ActionFeedbackForm
-                            action={rescoreFormAction}
-                            successMessage="Application queued for re-score."
-                            onSuccess={() => router.refresh()}
-                          >
-                            <input type="hidden" name="application_id" value={selectedApplication.id} />
-                            <SubmitButton variant="secondary">Re-score AI fit</SubmitButton>
-                          </ActionFeedbackForm>
-                        )}
-                        {permissions.canManage && candidateHasEmail && (
-                          <ActionFeedbackForm
-                            action={hireFormAction}
-                            className="flex flex-wrap items-center gap-2"
-                            confirmTitle="Hire candidate"
-                            confirmMessage="Create an employee invite and link it to this application?"
-                            successMessage="Employee invite created."
-                            onSuccess={() => router.refresh()}
-                          >
-                            <input type="hidden" name="application_id" value={selectedApplication.id} />
-                            <Input name="job_title" placeholder="Job title for employee invite" className="w-56" />
-                            <SubmitButton variant={selectedApplicationStatus === 'offered' ? 'primary' : 'secondary'}>
-                              Create employee invite
-                            </SubmitButton>
-                          </ActionFeedbackForm>
-                        )}
-                        {permissions.canEdit && (
-                          <ActionFeedbackForm
-                            action={selectedApplication.archived_at ? restoreApplicationFormAction : archiveApplicationFormAction}
-                            confirmTitle={selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
-                            confirmMessage={selectedApplication.archived_at ? 'Restore this application?' : 'Archive this application?'}
-                            successMessage={selectedApplication.archived_at ? 'Application restored.' : 'Application archived.'}
-                            onSuccess={() => router.refresh()}
-                          >
-                            <input type="hidden" name="application_id" value={selectedApplication.id} />
-                            <SubmitButton variant={selectedApplication.archived_at ? 'secondary' : 'danger'}>
-                              {selectedApplication.archived_at ? 'Restore application' : 'Archive application'}
-                            </SubmitButton>
-                          </ActionFeedbackForm>
-                        )}
+                  {hireDialogOpen && selectedApplication && (
+                    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHireDialogOpen(false)}>
+                      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>
+                        <p className="text-sm font-semibold text-text-strong">Create employee invite</p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          Creates an employee invite for {candidateName(selectedApplication.candidate)} and links it to this application.
+                        </p>
+                        <ActionFeedbackForm
+                          action={hireFormAction}
+                          className="mt-3 space-y-3"
+                          successMessage="Employee invite created."
+                          onSuccess={() => { setHireDialogOpen(false); router.refresh() }}
+                        >
+                          <input type="hidden" name="application_id" value={selectedApplication.id} />
+                          <ProfileField label="Job title for the employee invite">
+                            <Input name="job_title" placeholder="e.g. Bar and floor team member" />
+                          </ProfileField>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setHireDialogOpen(false)}>Cancel</Button>
+                            <SubmitButton>Create employee invite</SubmitButton>
+                          </div>
+                        </ActionFeedbackForm>
                       </div>
                     </div>
                   )}
+
+                  {stageDialogOpen && selectedApplication && (
+                    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setStageDialogOpen(false)}>
+                      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>
+                        <p className="text-sm font-semibold text-text-strong">Change stage manually</p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          Use this only when the normal actions do not fit. It records a status change with no email to the candidate.
+                        </p>
+                        <ActionFeedbackForm
+                          action={statusFormAction}
+                          className="mt-3 space-y-3"
+                          successMessage="Stage saved."
+                          onSuccess={() => { setStageDialogOpen(false); router.refresh() }}
+                        >
+                          <input type="hidden" name="application_id" value={selectedApplication.id} />
+                          <input type="hidden" name="note" value="Status changed manually" />
+                          <ProfileField label="Stage">
+                            <Select name="status" defaultValue={selectedApplication.status}>
+                              {statusOptions.map(status => (
+                                <option key={status} value={status}>{statusLabel(status)}</option>
+                              ))}
+                            </Select>
+                          </ProfileField>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setStageDialogOpen(false)}>Cancel</Button>
+                            <SubmitButton>Save stage</SubmitButton>
+                          </div>
+                        </ActionFeedbackForm>
+                      </div>
+                    </div>
+                  )}
+
+                  <ConfirmDialog
+                    open={Boolean(pendingBarAction)}
+                    onClose={() => setPendingBarAction(null)}
+                    onConfirm={runPendingBarAction}
+                    title={pendingBarAction?.title ?? 'Confirm action'}
+                    message={pendingBarAction?.message ?? ''}
+                    confirmLabel="Confirm"
+                    tone="warning"
+                  />
 
                   {decisionDialog && selectedApplication && (
                     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDecisionDialog(null)}>
