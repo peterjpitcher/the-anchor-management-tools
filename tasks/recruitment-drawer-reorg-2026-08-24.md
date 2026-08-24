@@ -190,4 +190,18 @@ the drawer's own title bar already shows it, and the role, source, applied date,
 email and phone share one wrapped line. Two lines rather than four, because
 everything sticky costs screen on a phone.
 
-Not deployed. `main` is ahead of the deployed commit until the next push.
+**Deployed and live**, 2026-08-24. Commit `89b6ecf3` pushed to `main`, Vercel
+production build Ready after 5 minutes.
+
+Proof the pushed commit is what production serves, rather than a green check on a
+preview:
+
+- GitHub commit status for `89b6ecf3` is `success`, naming Vercel deployment
+  `BPPJuo4zesNLTo23et1tcyo6cVyq`.
+- `management.orangejelly.co.uk` returns HTTP 200 and stamps every static asset
+  with `?dpl=dpl_BPPJuo4zesNLTo23et1tcyo6cVyq`, the same deployment.
+- `vercel ls oj-anchor-management-tools --prod` shows that deployment Ready in
+  Production, and it is the only production deploy since the push.
+
+Still unverified: nobody has clicked through the drawer in a browser. `/recruitment`
+is auth-gated, so the render-level evidence is the component tests, not a session.
