@@ -6,6 +6,8 @@ import {
   generateRecruitmentInterviewKitHtml,
   sanitizeRecruitmentKitFilename,
 } from '@/lib/recruitment/interview-kit-template'
+import { recruitmentKitLogoSrc } from '@/lib/recruitment/kit-logo'
+import { recruitmentKitPdfOptions } from '@/lib/recruitment/kit-pdf'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -117,23 +119,10 @@ export async function GET(
       application,
       appointment: appointment ?? null,
       cvText: cvPdfBytes ? null : cvText,
-      logoUrl: `${origin}/booking-confirmation/anchor-logo-black.png`,
+      logoUrl: recruitmentKitLogoSrc(`${origin}/booking-confirmation/anchor-logo-black.png`),
     })
 
-    let pdfBuffer = await generatePDFFromHTML(html, {
-      // A4, not Letter. The venue prints on UK paper, and a Letter page is 6mm
-      // wider, so it came out either scaled down or clipped on the right.
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: {
-        top: '0',
-        right: '0',
-        bottom: '0',
-        left: '0',
-      },
-      displayHeaderFooter: false,
-    })
+    let pdfBuffer = await generatePDFFromHTML(html, recruitmentKitPdfOptions())
 
     if (cvPdfBytes) {
       pdfBuffer = await mergePdfs(pdfBuffer, cvPdfBytes)
