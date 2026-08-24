@@ -165,12 +165,29 @@ At >=1024px, split the drawer into a main column and a 320px right rail holding 
 the stage timeline and the at-a-glance facts. This removes most remaining tab-hopping. Needs the
 drawer width raising from `min(980px, 100vw)` to about `min(1180px, 100vw)`.
 
-## 4. Suggested delivery order
+## 4. Delivery
 
-1. Action bar plus sticky header. Biggest win, no data changes.
-2. Tab merge to four, and the removals in 3.4.
-3. Messages tab renders `final_body`.
-4. Notes tab split, human notes first.
-5. Optional two-pane desktop layout.
+Built 2026-08-24, two commits on `main`.
 
-Steps 1 and 2 are the ones that fix "I can never find what I need".
+| Step | State |
+|---|---|
+| Action bar plus sticky header | Done, `cb4fe9ec` |
+| Tab merge to four, and the removals in 3.4 | Done, `419a1973` |
+| Messages tab renders `final_body` | Done, `419a1973` |
+| Notes tab split, human notes first | Done, `419a1973` |
+| Two-pane desktop layout (3.6) | Not built, declined as optional |
+
+Verification: `tsc --noEmit` clean, `eslint --max-warnings=0` clean,
+`next build` exit 0, full suite 5,682 tests across 680 files passing.
+`tests/components/RecruitmentDrawerOrganisation.test.tsx` renders the drawer and
+covers the reorganisation directly, including that creating an employee invite is
+one click from any tab. The two source-assertion guards in
+`tests/actions/recruitmentAuditSource.test.ts` were pinned to the old structure
+and now assert the new one.
+
+Changed against the spec above: the sticky header carries no candidate name, since
+the drawer's own title bar already shows it, and the role, source, applied date,
+email and phone share one wrapped line. Two lines rather than four, because
+everything sticky costs screen on a phone.
+
+Not deployed. `main` is ahead of the deployed commit until the next push.
