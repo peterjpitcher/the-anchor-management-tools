@@ -151,12 +151,16 @@ type SlotDateTimeParts = {
 
 const emptySlotDateTime: SlotDateTimeParts = { date: '', hour: '', minute: '' }
 
+/**
+ * Named after the question each tab answers, not after the shape of the data it
+ * holds. "Who is this person", "where are we up to", "what did we say to them",
+ * "what do we think". Actions live in the drawer's action bar, not in a tab.
+ */
 const DRAWER_TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'schedule', label: 'Schedule' },
-  { id: 'comms', label: 'Comms' },
-  { id: 'activity', label: 'Activity' },
-  { id: 'profile', label: 'Profile' },
+  { id: 'candidate', label: 'Candidate' },
+  { id: 'progress', label: 'Progress' },
+  { id: 'messages', label: 'Messages' },
+  { id: 'notes', label: 'Notes' },
 ] as const
 
 type DrawerTab = (typeof DRAWER_TABS)[number]['id']
@@ -961,8 +965,8 @@ function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
     label: ctx.trialInviteSent ? 'Resend trial booking link' : 'Send trial booking link',
     bookingType: 'trial_shift',
   }
-  const bookInterview: DrawerActionSpec | false = ctx.canScheduleInterview && { kind: 'goto', label: 'Book interview directly', tab: 'schedule' }
-  const bookTrial: DrawerActionSpec | false = ctx.canScheduleTrial && { kind: 'goto', label: 'Book trial directly', tab: 'schedule' }
+  const bookInterview: DrawerActionSpec | false = ctx.canScheduleInterview && { kind: 'goto', label: 'Book interview directly', tab: 'progress' }
+  const bookTrial: DrawerActionSpec | false = ctx.canScheduleTrial && { kind: 'goto', label: 'Book trial directly', tab: 'progress' }
   const status = (label: string, next: string): DrawerActionSpec | false => ctx.canEdit && {
     kind: 'status', label, status: next, note: `${label} from the action bar`,
   }
@@ -980,7 +984,7 @@ function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
       ordered = [bookInterview, interviewLink, reject]
       break
     case 'interview_scheduled':
-      ordered = [{ kind: 'goto', label: 'Record interview outcome', tab: 'schedule' }, status('Mark interviewed', 'interviewed'), reject]
+      ordered = [{ kind: 'goto', label: 'Record interview outcome', tab: 'progress' }, status('Mark interviewed', 'interviewed'), reject]
       break
     case 'interviewed':
       ordered = [trialLink, offer, bookTrial, reject]
@@ -989,7 +993,7 @@ function drawerStageActions(ctx: DrawerStageContext): DrawerActionSpec[] {
       ordered = [bookTrial, trialLink, reject]
       break
     case 'trial_scheduled':
-      ordered = [{ kind: 'goto', label: 'Record trial outcome', tab: 'schedule' }, status('Mark trial completed', 'trial_completed'), reject]
+      ordered = [{ kind: 'goto', label: 'Record trial outcome', tab: 'progress' }, status('Mark trial completed', 'trial_completed'), reject]
       break
     case 'trial_completed':
       ordered = [offer, reject]
@@ -1367,7 +1371,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const [cvRetryState, cvRetryAction] = useActionState(retryRecruitmentCvExtractionAction, null)
   const [cvBatchState, cvBatchAction] = useActionState(retryManualReviewCvsAction, null)
   const [activeTab, setActiveTab] = useState<'pipeline' | 'applications' | 'postings' | 'schedule' | 'talent' | 'templates' | 'communications'>('pipeline')
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('overview')
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('candidate')
   const [decisionDialog, setDecisionDialog] = useState<null | { decision: 'reject'|'offer'|'decline_duplicate'|'withdraw'|'hold' }>(null)
   const [decisionEmail, setDecisionEmail] = useState<{ subject: string; body: string }>({ subject: '', body: '' })
   const [decisionSendEmail, setDecisionSendEmail] = useState(true)
@@ -1525,7 +1529,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const selectedApplicationAllCommunications = communications.filter((communication: any) => (
     communication.application_id === selectedApplication?.id || communication.candidate_id === selectedCandidate?.id
   ))
-  const selectedApplicationCommunications = selectedApplicationAllCommunications.slice(0, 8)
   const previousEmailForDraft = emailDraft && !emailDraft.error
     ? selectedApplicationAllCommunications.find((communication: any) => (
       communication.type === emailDraft.type
@@ -1575,31 +1578,40 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     })
     return () => { cancelled = true }
   }, [detailDrawerOpen, selectedCandidateId, addNoteState])
+  /**
+   * Split in two so the Notes tab can lead with what people actually wrote and keep
+   * the machine trail behind a toggle. Communications are deliberately absent: the
+   * Messages tab shows them in full, bodies included, so repeating the subject lines
+   * here only added noise.
+   */
   const candidateTrailEvents = useMemo(() => {
-    const events: Array<{ key: string; at: string; kind: string; title: string; detail?: string; actor?: string }> = []
+    type TrailEvent = { key: string; at: string; kind: string; title: string; detail?: string; actor?: string }
+    const notes: TrailEvent[] = []
+    const system: TrailEvent[] = []
     for (const note of candidateTrail.notes) {
-      events.push({ key: `note-${note.id}`, at: note.created_at, kind: 'note', title: 'Note', detail: note.content, actor: note.created_by_email ?? undefined })
+      notes.push({ key: `note-${note.id}`, at: note.created_at, kind: 'note', title: 'Note', detail: note.content, actor: note.created_by_email ?? undefined })
     }
     for (const event of selectedApplicationEvents) {
-      events.push({ key: `status-${event.id}`, at: event.created_at, kind: 'status', title: `Status → ${String(event.to_status ?? '').replaceAll('_', ' ')}`, detail: event.note ?? undefined })
-    }
-    for (const comm of selectedApplicationCommunications) {
-      events.push({ key: `comm-${comm.id}`, at: comm.created_at, kind: 'comms', title: `${String(comm.type ?? comm.channel ?? 'message').replaceAll('_', ' ')} · ${comm.delivery_status ?? ''}`, detail: comm.subject ?? undefined })
+      system.push({ key: `status-${event.id}`, at: event.created_at, kind: 'status', title: `Status → ${String(event.to_status ?? '').replaceAll('_', ' ')}`, detail: event.note ?? undefined })
     }
     for (const apt of selectedApplicationAppointments) {
-      events.push({ key: `appt-${apt.id}`, at: apt.created_at, kind: 'appointment', title: `${apt.type === 'trial_shift' ? 'Trial' : 'Interview'} scheduled`, detail: formatSlotDateTime(apt.scheduled_start) })
+      system.push({ key: `appt-${apt.id}`, at: apt.created_at, kind: 'appointment', title: `${apt.type === 'trial_shift' ? 'Trial' : 'Interview'} scheduled`, detail: formatSlotDateTime(apt.scheduled_start) })
       if (apt.outcome_recorded_at) {
-        events.push({ key: `apt-out-${apt.id}`, at: apt.outcome_recorded_at, kind: 'appointment', title: `Appointment outcome: ${String(apt.status ?? '').replaceAll('_', ' ')}`, detail: apt.outcome ?? undefined })
+        system.push({ key: `apt-out-${apt.id}`, at: apt.outcome_recorded_at, kind: 'appointment', title: `Appointment outcome: ${String(apt.status ?? '').replaceAll('_', ' ')}`, detail: apt.outcome ?? undefined })
       }
     }
     for (const run of selectedApplicationAiRuns) {
-      events.push({ key: `ai-${run.id}`, at: run.created_at, kind: 'ai', title: `AI ${String(run.operation ?? '').replaceAll('_', ' ')} · ${run.status ?? ''}`, detail: run.model ?? undefined })
+      system.push({ key: `ai-${run.id}`, at: run.created_at, kind: 'ai', title: `AI ${String(run.operation ?? '').replaceAll('_', ' ')} · ${run.status ?? ''}`, detail: run.model ?? undefined })
     }
     for (const change of candidateTrail.systemChanges) {
-      events.push({ key: `sys-${change.id}`, at: change.at, kind: 'system', title: `${String(change.operation_type ?? '').replaceAll('_', ' ')} ${String(change.resource_type ?? '').replace('recruitment_', '').replaceAll('_', ' ')}`.trim(), detail: (change.changed_keys ?? []).join(', ') || undefined, actor: change.actor ?? undefined })
+      system.push({ key: `sys-${change.id}`, at: change.at, kind: 'system', title: `${String(change.operation_type ?? '').replaceAll('_', ' ')} ${String(change.resource_type ?? '').replace('recruitment_', '').replaceAll('_', ' ')}`.trim(), detail: (change.changed_keys ?? []).join(', ') || undefined, actor: change.actor ?? undefined })
     }
-    return events.filter(e => e.at).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-  }, [candidateTrail, selectedApplicationEvents, selectedApplicationCommunications, selectedApplicationAppointments, selectedApplicationAiRuns])
+    const newestFirst = (a: TrailEvent, b: TrailEvent) => new Date(b.at).getTime() - new Date(a.at).getTime()
+    return {
+      notes: notes.filter(e => e.at).sort(newestFirst),
+      system: system.filter(e => e.at).sort(newestFirst),
+    }
+  }, [candidateTrail, selectedApplicationEvents, selectedApplicationAppointments, selectedApplicationAiRuns])
   // Duplicate guard is per APPLICATION (a candidate may hold several applications).
   const applicationHasFutureScheduled = (type: 'interview' | 'trial_shift') => appointments.some((appointment: any) => (
     appointment.application_id === selectedApplication?.id
@@ -1655,9 +1667,9 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
   const secondaryStageAction = stageActions[1] ?? null
   const overflowStageActions = stageActions.slice(2)
   const drawerTabCounts: Partial<Record<DrawerTab, number>> = {
-    schedule: selectedApplicationAppointments.length,
-    comms: selectedApplicationAllCommunications.length,
-    activity: candidateTrail.notes.length,
+    progress: selectedApplicationAppointments.length,
+    messages: selectedApplicationAllCommunications.length,
+    notes: candidateTrail.notes.length,
   }
 
   async function runPendingBarAction() {
@@ -2003,7 +2015,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
     setBarActionState(null)
     // The action bar is stage-aware and always on screen, so the drawer no longer
     // needs to guess a tab. It always opens on the same one.
-    setDrawerTab('overview')
+    setDrawerTab('candidate')
     setDetailDrawerOpen(true)
   }
 
@@ -2372,15 +2384,17 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                   {/* Summary, action bar and tabs stay pinned while the tab body scrolls,
                       so the next step is reachable from anywhere in the drawer. */}
                   <div className="sticky top-0 z-20 -mx-5 -mt-5 border-b border-border bg-surface px-5 pt-5">
+                    {/* The drawer's own title bar already carries the name, so this block
+                        stays to two lines. Everything sticky costs screen on a phone. */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-text-strong">{candidateName(selectedApplication.candidate)}</p>
                       <Badge tone="neutral">{statusLabel(selectedApplication.status)}</Badge>
                       <Badge tone={scoreTone(selectedApplication.ai_score)}>AI {selectedApplication.ai_score ?? '-'} · {selectedApplication.ai_recommendation?.replaceAll('_', ' ') || 'review'}</Badge>
                       <Badge tone={rtwTone(selectedApplication.candidate?.right_to_work_status)}>RTW: {rtwLabel(selectedApplication.candidate?.right_to_work_status)}</Badge>
                       {selectedApplication.archived_at && <Badge tone="warning">Archived</Badge>}
                     </div>
-                    <p className="mt-1 text-xs text-text-muted">{roleTitle(selectedApplication)} · {selectedApplication.source} · Applied {formatDateTime(selectedApplication.created_at)}</p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-text-muted">
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
+                      <span>{roleTitle(selectedApplication)} · {selectedApplication.source} · applied {formatDateTime(selectedApplication.created_at)}</span>
+                      <span aria-hidden="true">·</span>
                       {selectedApplication.candidate?.email
                         ? <a className="text-primary hover:underline" href={`mailto:${selectedApplication.candidate.email}`}>{selectedApplication.candidate.email}</a>
                         : <span>No email on file</span>}
@@ -2441,7 +2455,7 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
 
                   {clientMessage && <p className="text-xs text-text-muted">{clientMessage}</p>}
 
-                  {drawerTab === 'overview' && (
+                  {drawerTab === 'candidate' && (
                     <div className="space-y-4">
                       {(() => {
                         const a = selectedApplication
@@ -2473,11 +2487,6 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         )
                       })()}
 
-                      <div>
-                        <p className="text-xs font-semibold uppercase text-text-muted">AI score</p>
-                        <p className="text-2xl font-semibold text-text-strong">{selectedApplication.ai_score ?? '-'}</p>
-                        <p className="text-sm text-text-muted">{selectedApplication.ai_recommendation?.replaceAll('_', ' ') || 'Manual review'}</p>
-                      </div>
                       {selectedCvExtractionMessage && (
                         <div className="rounded border border-warning/30 bg-warning-soft p-3 text-sm text-warning-fg">
                           <p className="font-medium">CV extraction needs review</p>
@@ -2506,57 +2515,13 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           <p className="text-sm text-text">{textList(selectedConcerns)}</p>
                         </div>
                       </div>
-                      <div className="space-y-3 rounded border border-border bg-surface-2 p-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase text-text-muted">Ask about concerns</p>
-                          <p className="mt-1 text-sm text-text-muted">Drafts neutral questions from the application, recorded concerns, and the role requirements. Review everything before sending.</p>
-                        </div>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                          <div>
-                            <p className="text-xs font-medium text-text-muted">Available concerns</p>
-                            <p className="mt-1 whitespace-pre-wrap text-sm text-text">{textList(selectedConcerns)}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-text-muted">Role prerequisites</p>
-                            <p className="mt-1 whitespace-pre-wrap text-sm text-text">{selectedApplication.job_posting?.requirements || 'No role prerequisites recorded.'}</p>
-                            {selectedApplication.job_posting?.ai_scoring_notes && (
-                              <p className="mt-2 whitespace-pre-wrap text-xs text-text-muted">Screening notes: {selectedApplication.job_posting.ai_scoring_notes}</p>
-                            )}
-                          </div>
-                        </div>
-                        {!permissions.canSend ? (
-                          <p className="text-sm text-text-muted">You do not have permission to send recruitment emails.</p>
-                        ) : !candidateHasEmail ? (
-                          <p className="text-sm text-text-muted">Add an email address before drafting this follow-up.</p>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<SparklesIcon className="h-4 w-4" />}
-                            onClick={() => draftEmail(selectedApplication.id, 'concerns_follow_up')}
-                          >
-                            Draft concerns email
-                          </Button>
-                        )}
-                        {emailDraft?.type === 'concerns_follow_up' && emailDraft.error && (
-                          <p className="text-xs text-danger">{emailDraft.error}</p>
-                        )}
-                        <ActionStateMessage state={emailSendState} />
-                        {emailDraft?.type === 'concerns_follow_up' && !emailDraft.error && (
-                          <form key={emailDraft.runId ?? emailDraft.type} action={sendDecisionEmail} className="space-y-2">
-                            <input type="hidden" name="application_id" value={selectedApplication.id} />
-                            <input type="hidden" name="type" value="concerns_follow_up" />
-                            {emailDraft.runId && <input type="hidden" name="ai_run_id" value={emailDraft.runId} />}
-                            <Input name="subject" defaultValue={emailDraft.subject} aria-label="Concerns email subject" />
-                            <Textarea name="body" defaultValue={emailDraft.body} rows={8} aria-label="Concerns email body" />
-                            {duplicateEmailWarning && (
-                              <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-                                {duplicateEmailWarning}
-                              </p>
-                            )}
-                            <SubmitButton>Send reviewed email</SubmitButton>
-                          </form>
+                      {/* Read-only context for judging the concerns above. Drafting the
+                          follow-up email itself lives in Messages, with every other template. */}
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Role prerequisites</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-text">{selectedApplication.job_posting?.requirements || 'No role prerequisites recorded.'}</p>
+                        {selectedApplication.job_posting?.ai_scoring_notes && (
+                          <p className="mt-2 whitespace-pre-wrap text-xs text-text-muted">Screening notes: {selectedApplication.job_posting.ai_scoring_notes}</p>
                         )}
                       </div>
                       {extractedProfile(selectedApplication.candidate) && (
@@ -2579,23 +2544,120 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         </Button>
                       )}
 
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="rounded border border-border bg-surface-2 p-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Right to work</p>
-                          <p className="mt-1 text-sm text-text">{rtwLabel(selectedApplication.candidate?.right_to_work_status)}{selectedApplication.candidate?.right_to_work_document_type ? ` · ${selectedApplication.candidate.right_to_work_document_type}` : ''}</p>
-                          {selectedApplication.candidate?.right_to_work_checked_at && (
-                            <p className="text-xs text-text-muted">Checked {formatDateTime(selectedApplication.candidate.right_to_work_checked_at)}</p>
-                          )}
-                        </div>
-                        <div className="rounded border border-border bg-surface-2 p-3">
-                          <p className="text-xs font-semibold uppercase text-text-muted">Consent</p>
-                          <p className="mt-1 text-sm text-text">SMS: {selectedApplication.candidate?.sms_consent ? 'yes' : 'no'} · Future: {selectedApplication.candidate?.future_recruitment_consent ? 'yes' : 'no'}</p>
-                        </div>
+                      {/* Compliance facts stay readable without opening the edit form.
+                          Right to work also has a chip in the drawer header. */}
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Details</p>
+                        <dl className="mt-1 space-y-1 text-sm text-text">
+                          <div><span className="text-text-muted">Location:</span> {selectedApplication.candidate?.location || 'Not recorded'}</div>
+                          <div>
+                            <span className="text-text-muted">Right to work:</span> {rtwLabel(selectedApplication.candidate?.right_to_work_status)}
+                            {selectedApplication.candidate?.right_to_work_document_type ? ` · ${selectedApplication.candidate.right_to_work_document_type}` : ''}
+                            {selectedApplication.candidate?.right_to_work_checked_at ? ` · checked ${formatDateTime(selectedApplication.candidate.right_to_work_checked_at)}` : ''}
+                          </div>
+                          <div>
+                            <span className="text-text-muted">Consent:</span> SMS {selectedApplication.candidate?.sms_consent ? 'yes' : 'no'} · future recruitment {selectedApplication.candidate?.future_recruitment_consent ? 'yes' : 'no'}
+                          </div>
+                        </dl>
                       </div>
+
+                      {(() => {
+                        const candidate = selectedApplication.candidate
+                        const otherApplications = applications.filter((app: any) => (
+                          app.candidate_id === selectedApplication.candidate_id && app.id !== selectedApplication.id
+                        ))
+                        const isTalentPool = selectedApplication.status === 'talent_pool'
+                        const converted = Boolean(candidate?.converted_employee_id)
+                        if (otherApplications.length === 0 && !isTalentPool && !converted) return null
+                        return (
+                          <div className="space-y-1 rounded border border-border bg-surface-2 p-3">
+                            <p className="text-xs font-semibold uppercase text-text-muted">Elsewhere in recruitment</p>
+                            {converted && <p className="text-sm text-text">Converted to employee</p>}
+                            {isTalentPool && <p className="text-sm text-text">In talent pool</p>}
+                            {otherApplications.length > 0 && (
+                              <div className="text-sm text-text">
+                                <p className="text-xs text-text-muted">Other applications</p>
+                                {otherApplications.map((app: any) => (
+                                  <p key={app.id} className="text-xs text-text-muted">
+                                    {roleTitle(app)} · {statusLabel(app.status)} · {formatDateTime(app.created_at)}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                      {permissions.canEdit && (
+                        <details className="rounded border border-border bg-surface-2 p-3">
+                          <summary className="cursor-pointer text-sm font-medium text-primary">Edit candidate details</summary>
+                          <form action={candidateUpdateAction} className="mt-3 space-y-3 border-t border-border pt-3">
+                            <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <ProfileField label="First name">
+                                <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
+                              </ProfileField>
+                              <ProfileField label="Last name">
+                                <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
+                              </ProfileField>
+                            </div>
+                            <ProfileField label="Email">
+                              <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
+                            </ProfileField>
+                            <ProfileField label="Phone">
+                              <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
+                            </ProfileField>
+                            <ProfileField label="Location">
+                              <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
+                            </ProfileField>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <ProfileField label="Right to work">
+                                <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
+                                  <option value="not_checked">Not checked</option>
+                                  <option value="pending">Pending</option>
+                                  <option value="verified">Verified</option>
+                                  <option value="failed">Failed</option>
+                                </Select>
+                              </ProfileField>
+                              <ProfileField label="Document type">
+                                <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
+                                  <option value="">Not set</option>
+                                  <option value="Passport">Passport</option>
+                                  <option value="Biometric Residence Permit">Biometric Residence Permit</option>
+                                  <option value="Share Code">Share Code</option>
+                                  <option value="List A">List A</option>
+                                  <option value="List B">List B</option>
+                                  <option value="Other">Other</option>
+                                </Select>
+                              </ProfileField>
+                            </div>
+                            <ProfileField label="Right to work checked at">
+                              <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
+                            </ProfileField>
+                            <ProfileField label="Notes for AI context">
+                              <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
+                            </ProfileField>
+                            <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
+                              <label className="flex items-center gap-2">
+                                <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
+                                SMS consent
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
+                                Future recruitment consent
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <SubmitButton>Save candidate</SubmitButton>
+                              <ActionStateMessage state={candidateUpdateState} />
+                            </div>
+                          </form>
+                        </details>
+                      )}
                     </div>
                   )}
 
-                  {drawerTab === 'schedule' && (
+                  {drawerTab === 'progress' && (
                     <div className="space-y-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2621,6 +2683,12 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           const rescheduleSlots = slots.filter((slot: any) => (
                             !slot.archived_at && slot.status === 'open' && slot.type === apt.type
                           ))
+                          // "Record interview outcome" in the action bar sends you here, so an
+                          // appointment that has already happened and still has no outcome opens
+                          // its own controls rather than hiding them behind another click.
+                          const awaitingOutcome = apt.status === 'scheduled'
+                            && !apt.outcome_recorded_at
+                            && toTime(apt.scheduled_start) < Date.now()
                           return (
                             <div key={apt.id} className="space-y-1 rounded border border-border bg-surface-2 p-3">
                               <div className="flex items-center justify-between gap-2">
@@ -2642,8 +2710,10 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                                 </p>
                               ))}
                               {permissions.canEdit && !apt.archived_at && (
-                                <details className="mt-1">
-                                  <summary className="cursor-pointer text-xs font-medium text-primary">Manage</summary>
+                                <details className="mt-1" open={awaitingOutcome}>
+                                  <summary className="cursor-pointer text-xs font-medium text-primary">
+                                    {awaitingOutcome ? 'Record outcome' : 'Manage'}
+                                  </summary>
                                   <div className="mt-2 space-y-3 border-t border-border pt-3">
                                     <form action={outcomeFormAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                       <input type="hidden" name="appointment_id" value={apt.id} />
@@ -2826,10 +2896,24 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                           </ActionFeedbackForm>
                         </div>
                       )}
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase text-text-muted">Stage history</p>
+                        {selectedApplicationEvents.length === 0 && (
+                          <p className="text-sm text-text-muted">No stage changes recorded yet.</p>
+                        )}
+                        {selectedApplicationEvents.map((event: any) => (
+                          <div key={event.id} className="rounded border border-border bg-surface-2 p-2">
+                            <p className="text-sm font-medium text-text-strong">{statusLabel(event.to_status)}</p>
+                            {event.note && <p className="whitespace-pre-wrap text-xs text-text">{event.note}</p>}
+                            <p className="text-xs text-text-muted">{formatSlotDateTime(event.created_at)}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {drawerTab === 'comms' && (
+                  {drawerTab === 'messages' && (
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase text-text-muted">Email composer</p>
@@ -2878,138 +2962,84 @@ export default function RecruitmentDashboardClient({ initialData, permissions }:
                         )}
                       </div>
 
+                      {/* The full thread, bodies included. `final_body` was already loaded
+                          with the drawer's data but used to be readable only from the
+                          dashboard's global Communications tab. */}
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Communications</p>
-                        {selectedApplicationCommunications.map((communication: any) => (
-                          <div key={communication.id} className="rounded border border-border bg-surface-2 p-2">
-                            <p className="text-sm font-medium text-text-strong">{communication.type?.replaceAll('_', ' ')} · {communication.delivery_status}</p>
-                            <p className="text-xs text-text-muted">{formatDateTime(communication.created_at)} · {communication.subject || communication.channel}</p>
-                          </div>
+                        <p className="text-xs font-semibold uppercase text-text-muted">Sent to this candidate</p>
+                        {selectedApplicationAllCommunications.length === 0 && (
+                          <p className="text-sm text-text-muted">Nothing has been sent to this candidate yet.</p>
+                        )}
+                        {selectedApplicationAllCommunications.map((communication: any, index: number) => (
+                          <details key={communication.id} open={index === 0} className="rounded border border-border bg-surface-2 p-2">
+                            <summary className="cursor-pointer">
+                              <span className="text-sm font-medium text-text-strong">{communication.subject || communication.type?.replaceAll('_', ' ') || communication.channel}</span>
+                              <span className="ml-2 text-xs text-text-muted">
+                                {communication.type?.replaceAll('_', ' ')} · {communication.delivery_status} · {formatDateTime(communication.sent_at || communication.created_at)}
+                              </span>
+                            </summary>
+                            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap border-t border-border pt-2 text-sm text-text">{communication.final_body}</pre>
+                            {permissions.canSend && !['sent', 'queued'].includes(communication.delivery_status) && (
+                              <ActionFeedbackForm
+                                action={retryCommunicationFormAction}
+                                className="mt-2"
+                                confirmTitle="Retry send"
+                                confirmMessage="Try sending this message again?"
+                                successMessage="Communication retry queued."
+                                onSuccess={() => router.refresh()}
+                              >
+                                <input type="hidden" name="communication_id" value={communication.id} />
+                                <SubmitButton variant="secondary">Retry send</SubmitButton>
+                              </ActionFeedbackForm>
+                            )}
+                          </details>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {drawerTab === 'activity' && (
+                  {drawerTab === 'notes' && (
                     <div className="space-y-4">
                       {permissions.canEdit && (
                         <form action={addNoteAction} className="space-y-2">
                           <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
                           <input type="hidden" name="application_id" value={selectedApplication.id} />
-                          <Textarea name="content" placeholder="Add an internal note — date-stamped, visible to recruitment staff" rows={2} />
+                          <Textarea name="content" placeholder="Add an internal note, date-stamped and visible to recruitment staff" rows={2} />
                           <div className="flex items-center gap-2">
                             <SubmitButton variant="secondary">Add note</SubmitButton>
                             <ActionStateMessage state={addNoteState} />
                           </div>
                         </form>
                       )}
+                      {/* What people wrote comes first. The machine trail is real but noisy,
+                          so it sits behind a toggle rather than burying the notes. */}
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-text-muted">Audit trail</p>
-                        {candidateTrailEvents.length === 0 && <p className="text-sm text-text-muted">No activity yet.</p>}
-                        {candidateTrailEvents.map(ev => (
+                        <p className="text-xs font-semibold uppercase text-text-muted">Notes</p>
+                        {candidateTrailEvents.notes.length === 0 && <p className="text-sm text-text-muted">No notes yet.</p>}
+                        {candidateTrailEvents.notes.map(ev => (
                           <div key={ev.key} className="rounded border border-border bg-surface-2 p-2">
-                            <p className="text-sm font-medium text-text-strong">{ev.title}</p>
-                            {ev.detail && <p className="whitespace-pre-wrap text-xs text-text">{ev.detail}</p>}
-                            <p className="text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
+                            <p className="whitespace-pre-wrap text-sm text-text">{ev.detail}</p>
+                            <p className="mt-1 text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
                           </div>
                         ))}
                       </div>
+                      <details className="rounded border border-border bg-surface-2 p-3">
+                        <summary className="cursor-pointer text-sm font-medium text-primary">
+                          Show system activity ({candidateTrailEvents.system.length})
+                        </summary>
+                        <div className="mt-2 space-y-2 border-t border-border pt-3">
+                          {candidateTrailEvents.system.length === 0 && <p className="text-sm text-text-muted">No activity yet.</p>}
+                          {candidateTrailEvents.system.map(ev => (
+                            <div key={ev.key} className="rounded border border-border bg-surface p-2">
+                              <p className="text-sm font-medium text-text-strong">{ev.title}</p>
+                              {ev.detail && <p className="whitespace-pre-wrap text-xs text-text">{ev.detail}</p>}
+                              <p className="text-xs text-text-muted">{formatSlotDateTime(ev.at)}{ev.actor ? ` · ${ev.actor}` : ''}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     </div>
                   )}
-
-                  {drawerTab === 'profile' && (
-                    <div className="space-y-4">
-                      {(() => {
-                        const candidate = selectedApplication.candidate
-                        const otherApplications = applications.filter((app: any) => (
-                          app.candidate_id === selectedApplication.candidate_id && app.id !== selectedApplication.id
-                        ))
-                        const isTalentPool = selectedApplication.status === 'talent_pool'
-                        const converted = Boolean(candidate?.converted_employee_id)
-                        if (otherApplications.length === 0 && !isTalentPool && !converted) return null
-                        return (
-                          <div className="space-y-1 rounded border border-border bg-surface-2 p-3">
-                            <p className="text-xs font-semibold uppercase text-text-muted">Candidate status</p>
-                            {converted && <p className="text-sm text-text">Converted to employee</p>}
-                            {isTalentPool && <p className="text-sm text-text">In talent pool</p>}
-                            {otherApplications.length > 0 && (
-                              <div className="text-sm text-text">
-                                <p className="text-xs text-text-muted">Other applications</p>
-                                {otherApplications.map((app: any) => (
-                                  <p key={app.id} className="text-xs text-text-muted">
-                                    {roleTitle(app)} · {statusLabel(app.status)} · {formatDateTime(app.created_at)}
-                                  </p>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })()}
-                      <form action={candidateUpdateAction} className="space-y-3">
-                        <input type="hidden" name="candidate_id" value={selectedApplication.candidate_id} />
-                        <p className="text-xs font-semibold uppercase text-text-muted">Candidate profile</p>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <ProfileField label="First name">
-                            <Input name="first_name" defaultValue={selectedApplication.candidate?.first_name ?? ''} placeholder="First name" />
-                          </ProfileField>
-                          <ProfileField label="Last name">
-                            <Input name="last_name" defaultValue={selectedApplication.candidate?.last_name ?? ''} placeholder="Last name" />
-                          </ProfileField>
-                        </div>
-                        <ProfileField label="Email">
-                          <Input name="email" defaultValue={selectedApplication.candidate?.email ?? ''} placeholder="Email" />
-                        </ProfileField>
-                        <ProfileField label="Phone">
-                          <Input name="phone" defaultValue={selectedApplication.candidate?.phone ?? ''} placeholder="Phone" />
-                        </ProfileField>
-                        <ProfileField label="Location">
-                          <Input name="location" defaultValue={selectedApplication.candidate?.location ?? ''} placeholder="Location" />
-                        </ProfileField>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <ProfileField label="Right to work">
-                            <Select name="right_to_work_status" defaultValue={selectedApplication.candidate?.right_to_work_status ?? 'not_checked'}>
-                              <option value="not_checked">Not checked</option>
-                              <option value="pending">Pending</option>
-                              <option value="verified">Verified</option>
-                              <option value="failed">Failed</option>
-                            </Select>
-                          </ProfileField>
-                          <ProfileField label="Document type">
-                            <Select name="right_to_work_document_type" defaultValue={selectedApplication.candidate?.right_to_work_document_type ?? ''}>
-                              <option value="">Not set</option>
-                              <option value="Passport">Passport</option>
-                              <option value="Biometric Residence Permit">Biometric Residence Permit</option>
-                              <option value="Share Code">Share Code</option>
-                              <option value="List A">List A</option>
-                              <option value="List B">List B</option>
-                              <option value="Other">Other</option>
-                            </Select>
-                          </ProfileField>
-                        </div>
-                        <ProfileField label="Right to work checked at">
-                          <Input name="right_to_work_checked_at" type="datetime-local" defaultValue={todayLocalDateTime(selectedApplication.candidate?.right_to_work_checked_at)} />
-                        </ProfileField>
-                        <ProfileField label="Notes for AI context">
-                          <Textarea name="notes" defaultValue={selectedApplication.candidate?.notes ?? ''} placeholder="Recruitment notes" rows={3} />
-                        </ProfileField>
-                        <div className="grid grid-cols-1 gap-2 text-sm text-text sm:grid-cols-2">
-                          <label className="flex items-center gap-2">
-                            <input type="checkbox" name="sms_consent" defaultChecked={selectedApplication.candidate?.sms_consent === true} />
-                            SMS consent
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input type="checkbox" name="future_recruitment_consent" defaultChecked={selectedApplication.candidate?.future_recruitment_consent === true} />
-                            Future recruitment consent
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <SubmitButton>Save candidate</SubmitButton>
-                          <ActionStateMessage state={candidateUpdateState} />
-                        </div>
-                      </form>
-                    </div>
-                  )}
-
                   {hireDialogOpen && selectedApplication && (
                     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setHireDialogOpen(false)}>
                       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg" onClick={e => e.stopPropagation()}>

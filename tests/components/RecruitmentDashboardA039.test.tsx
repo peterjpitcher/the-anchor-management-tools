@@ -302,6 +302,10 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Candidate 1 Test/i }))
 
+    // The drawer always opens on Candidate. For an invited candidate the action
+    // bar's primary action is the route to the scheduling form.
+    fireEvent.click(screen.getByRole('button', { name: 'Book interview directly' }))
+
     expect(screen.getByText('Schedule interview for candidate')).toBeInTheDocument()
     expect(screen.getByLabelText('Interview slot to schedule')).toHaveValue('slot-1')
     expect(screen.getByRole('button', { name: 'Schedule interview' })).toBeInTheDocument()
@@ -325,6 +329,7 @@ describe('RecruitmentDashboardClient A-039', () => {
 
     render(<RecruitmentDashboardClient initialData={data} permissions={permissions} />)
     fireEvent.click(screen.getByRole('button', { name: /Candidate 1 Test/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Book interview directly' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Schedule interview' }))
 

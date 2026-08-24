@@ -89,18 +89,44 @@ describe('recruitment audit source coverage', () => {
   })
 
   it('keeps recruitment drawer actions clear and status-aware', () => {
-    expect(dashboardClientSource).toContain('function quickStatusActionsFor')
+    // Every action lives in one stage-aware action bar rather than being scattered
+    // across the tabs, so these labels must stay reachable from the mapping itself.
+    expect(dashboardClientSource).toContain('function drawerStageActions')
     expect(dashboardClientSource).toContain('function recruitmentNextActionHint')
-    expect(dashboardClientSource).toContain('Next step')
-    expect(dashboardClientSource).toContain('Shortlist candidate')
-    expect(dashboardClientSource).toContain('Mark interviewed')
+    expect(dashboardClientSource).toContain("status('Shortlist', 'shortlisted')")
+    expect(dashboardClientSource).toContain("status('Mark interviewed', 'interviewed')")
     expect(dashboardClientSource).toContain('Send interview booking link')
     expect(dashboardClientSource).toContain('Resend interview booking link')
     expect(dashboardClientSource).toContain('Send trial booking link')
-    expect(dashboardClientSource).toContain('Save manual status')
+    expect(dashboardClientSource).toContain('Resend trial booking link')
+    expect(dashboardClientSource).toContain('Change stage manually')
     expect(dashboardClientSource).toContain('Re-score AI fit')
     expect(dashboardClientSource).toContain('Create employee invite')
-    expect(dashboardClientSource).toContain("variant={selectedApplication.archived_at ? 'secondary' : 'danger'}")
+    expect(dashboardClientSource).toContain('Archive application')
+    expect(dashboardClientSource).toContain('Restore application')
+  })
+
+  it('keeps the drawer action bar and tabs pinned above the scrolling tab body', () => {
+    // The action bar only solves "I can never find what I need" if it stays on
+    // screen. Losing the sticky wrapper would silently undo that.
+    expect(dashboardClientSource).toContain('sticky top-0 z-20 -mx-5 -mt-5 border-b border-border bg-surface px-5 pt-5')
+    expect(dashboardClientSource).toContain('{primaryStageAction && renderStageAction(primaryStageAction')
+    expect(dashboardClientSource).toContain('{secondaryStageAction && renderStageAction(secondaryStageAction')
+  })
+
+  it('names the drawer tabs after the question each one answers', () => {
+    expect(dashboardClientSource).toContain("{ id: 'candidate', label: 'Candidate' }")
+    expect(dashboardClientSource).toContain("{ id: 'progress', label: 'Progress' }")
+    expect(dashboardClientSource).toContain("{ id: 'messages', label: 'Messages' }")
+    expect(dashboardClientSource).toContain("{ id: 'notes', label: 'Notes' }")
+    // The drawer no longer guesses a tab from the status; the action bar adapts instead.
+    expect(dashboardClientSource).not.toContain("['interview_invited', 'trial_offered'].includes(application.status) ? 'schedule' : 'overview'")
+  })
+
+  it('shows what was actually sent to the candidate inside the drawer', () => {
+    // `final_body` was always loaded but used to be readable only from the
+    // dashboard's global Communications tab.
+    expect(dashboardClientSource).toContain('{communication.final_body}')
   })
 
   it('keeps candidate profile fields labelled and compact', () => {
