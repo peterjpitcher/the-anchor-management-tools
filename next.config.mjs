@@ -67,6 +67,13 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  // The recruitment PDFs read the logo off disk and inline it, rather than fetching
+  // it over HTTP from inside the function. Next does not trace public/ files on its
+  // own, so name it here or the serverless bundle ships without it.
+  outputFileTracingIncludes: {
+    '/api/recruitment/applications/[id]/interview-kit': ['./public/booking-confirmation/anchor-logo-black.png'],
+    '/api/recruitment/applications/[id]/trial-brief': ['./public/booking-confirmation/anchor-logo-black.png'],
+  },
   async headers() {
     return [
       {

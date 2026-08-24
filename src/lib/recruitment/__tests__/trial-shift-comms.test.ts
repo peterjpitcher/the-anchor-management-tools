@@ -49,8 +49,11 @@ describe('recruitment printables', () => {
       appointment: { scheduled_start: '2026-09-04T17:00:00.000Z', location: 'The Anchor' },
       logoUrl: 'https://example.test/logo.png',
     })
-    expect(html).toContain('@page { size: A4; margin: 0; }')
+    expect(html).toContain('@page { size: A4; margin: 14mm 16mm 18mm; }')
     expect(html).not.toMatch(/size:\s*letter/i)
+    // Margins must be per-page, not document padding, or pages after the first
+    // run into the paper edge.
+    expect(html).toContain('padding: 0 !important')
   })
 
   it('puts the dress code on the trial brief so the supervisor can check it', () => {
@@ -67,13 +70,18 @@ describe('recruitment printables', () => {
     // US Letter is 6mm wider than A4, so a Letter page printed on UK paper is
     // either scaled down or clipped on the right.
     const template = read('src/lib/recruitment/interview-kit-template.ts')
-    expect(template).toContain('@page { size: A4; margin: 0; }')
+    expect(template).toContain('@page { size: A4; margin: 14mm 16mm 18mm; }')
     expect(template).not.toMatch(/size:\s*letter/i)
     expect(template).not.toContain('8.5in')
 
-    const route = read('src/app/api/recruitment/applications/[id]/interview-kit/route.ts')
-    expect(route).toContain("format: 'A4'")
-    expect(route).not.toContain("format: 'Letter'")
+    const options = read('src/lib/recruitment/kit-pdf.ts')
+    expect(options).toContain("format: 'A4' as const")
+    expect(options).not.toContain("'Letter'")
+    // Both routes share one set of options so they cannot drift apart again.
+    for (const route of ['interview-kit', 'trial-brief']) {
+      const src = read(`src/app/api/recruitment/applications/[id]/${route}/route.ts`)
+      expect(src).toContain('generatePDFFromHTML(html, recruitmentKitPdfOptions())')
+    }
   })
 
   it('serves the trial brief as a PDF route rather than a pop-up text dump', () => {
@@ -81,5 +89,30 @@ describe('recruitment printables', () => {
     expect(drawer).toContain("const path = kind === 'interview' ? 'interview-kit' : 'trial-brief'")
     expect(drawer).not.toContain('plainPrintableHtml')
     expect(drawer).not.toContain('printableText')
+  })
+})
+
+describe('recruitment printable chrome', () => {
+  it('inlines the logo instead of fetching it from inside the function', () => {
+    // The PDFs went out with a broken-image icon and alt text where the logo
+    // should be. Reading the file off disk removes the network from the path.
+    const logo = read('src/lib/recruitment/kit-logo.ts')
+    expect(logo).toContain("data:image/png;base64,")
+    const config = read('next.config.mjs')
+    // Next does not trace public/ files on its own.
+    expect(config).toContain('outputFileTracingIncludes')
+    expect(config).toContain('./public/booking-confirmation/anchor-logo-black.png')
+  })
+
+  it('repeats the strapline as a running footer with a page count', () => {
+    // As an in-flow block it orphaned onto a near-empty final page whenever the
+    // content happened to fill the previous one.
+    const options = read('src/lib/recruitment/kit-pdf.ts')
+    expect(options).toContain('displayHeaderFooter: true')
+    expect(options).toContain('class="pageNumber"')
+    expect(options).toContain('class="totalPages"')
+    for (const template of ['interview-kit-template', 'trial-brief-template']) {
+      expect(read(`src/lib/recruitment/${template}.ts`)).not.toContain('doc-footer-note')
+    }
   })
 })

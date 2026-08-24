@@ -3,6 +3,8 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { sanitizeRecruitmentKitFilename } from '@/lib/recruitment/interview-kit-template'
 import { generateRecruitmentTrialBriefHtml } from '@/lib/recruitment/trial-brief-template'
+import { recruitmentKitLogoSrc } from '@/lib/recruitment/kit-logo'
+import { recruitmentKitPdfOptions } from '@/lib/recruitment/kit-pdf'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -62,17 +64,10 @@ export async function GET(
     const html = generateRecruitmentTrialBriefHtml({
       application,
       appointment: appointment ?? null,
-      logoUrl: `${origin}/booking-confirmation/anchor-logo-black.png`,
+      logoUrl: recruitmentKitLogoSrc(`${origin}/booking-confirmation/anchor-logo-black.png`),
     })
 
-    const pdfBuffer = await generatePDFFromHTML(html, {
-      // A4 to match the venue's paper. The margins are in the document itself.
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      displayHeaderFooter: false,
-    })
+    const pdfBuffer = await generatePDFFromHTML(html, recruitmentKitPdfOptions())
 
     const disposition = request.nextUrl.searchParams.get('download') === '1' ? 'attachment' : 'inline'
     const filename = sanitizeRecruitmentKitFilename(

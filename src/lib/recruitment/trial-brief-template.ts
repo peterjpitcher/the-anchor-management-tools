@@ -65,7 +65,7 @@ export function generateRecruitmentTrialBriefHtml(input: {
   const name = candidateName(candidate)
   const role = posting.title || 'General recruitment'
   const when = formatTrialDate(input.appointment?.scheduled_start)
-  const where = input.appointment?.location || 'The Anchor, Horton Road, Stanwell Moor, Surrey TW19 6AQ'
+  const where = input.appointment?.location || 'The Anchor'
   const strengths = asStringArray(application.ai_strengths)
   const concerns = asStringArray(application.ai_concerns)
   const score = typeof application.ai_score === 'number' ? `${application.ai_score} out of 100` : 'Not scored'
@@ -147,18 +147,14 @@ export function generateRecruitmentTrialBriefHtml(input: {
   .ff { display: flex; align-items: baseline; gap: 8px; }
   .ff-label { font-weight: 600; font-size: 14px; white-space: nowrap; }
   .ff-line { flex: 1; border-bottom: 1px solid var(--line); height: 1.4rem; }
-  .doc-footer-note {
-    margin: 30px 0 4px; padding-top: 14px; border-top: 1px solid var(--line);
-    font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; gap: 16px;
-  }
-  @page { size: A4; margin: 0; }
+  @page { size: A4; margin: 14mm 16mm 18mm; }
   @media print {
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; background: #fff; }
-    .doc { max-width: none !important; margin: 0 !important; padding: 12mm 16mm !important; box-shadow: none !important; background: #fff; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; background: #fff; }
     .screen-only { display: none !important; }
-    h2.sec, .card h3 { break-after: avoid; }
-    .card, .callout, li { break-inside: avoid; }
+    h2.sec, .card h3, .sec-lead, .sec-rule, .q { break-after: avoid; page-break-after: avoid; }
+    .card, .callout, li, .lines { break-inside: avoid; page-break-inside: avoid; }
   }
 </style>
 </head>
@@ -228,8 +224,6 @@ export function generateRecruitmentTrialBriefHtml(input: {
       <div class="ff"><span class="ff-label">Outcome:</span><span class="ff-line"></span></div>
       <div class="ff"><span class="ff-label">Signature:</span><span class="ff-line"></span></div>
     </div>
-
-    <div class="doc-footer-note"><span>The Anchor - Stanwell Moor Village - A village pub since 1751</span><span>Where Everyone's Welcome</span></div>
   </main>
 </body>
 </html>`

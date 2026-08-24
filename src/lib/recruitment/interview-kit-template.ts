@@ -206,7 +206,6 @@ export function generateRecruitmentInterviewKitHtml(input: {
     letter-spacing: -0.02em; color: var(--anchor-green);
     margin: 6px 0 2px;
   }
-  .cover-sub { font-family: var(--font-script); color: var(--anchor-gold-dark); font-size: 1.2rem; line-height: 1; margin: 0; }
   .facts {
     display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 1px; background: var(--border); border: 1px solid var(--border);
@@ -351,18 +350,14 @@ export function generateRecruitmentInterviewKitHtml(input: {
     border-radius: 12px;
     padding: 18px;
   }
-  .doc-footer-note {
-    margin: 34px 0 4px; padding-top: 14px; border-top: 1px solid var(--border);
-    font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; gap: 16px;
-  }
-  @page { size: A4; margin: 0; }
+  @page { size: A4; margin: 14mm 16mm 18mm; }
   @media print {
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; background: #fff; }
-    .doc { max-width: none !important; margin: 0 !important; padding: 12mm 16mm !important; box-shadow: none !important; background: #fff; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; background: #fff; }
     .screen-only { display: none !important; }
-    h2.sec, .field-label, h3 { break-after: avoid; }
-    .sc-card, .cert, .callout, .decision, .cert-row, li { break-inside: avoid; }
+    h2.sec, .field-label, h3, .sec-lead, .sec-rule, .q { break-after: avoid; page-break-after: avoid; }
+    .sc-card, .cert, .callout, .decision, .cert-row, li, .lines { break-inside: avoid; page-break-inside: avoid; }
     .page-break { break-before: page; }
   }
 </style>
@@ -381,7 +376,6 @@ export function generateRecruitmentInterviewKitHtml(input: {
           </div>
           <p class="kicker" style="margin-top:12px;">Candidate Interview Kit</p>
           <h1 class="cover-title">${escapeHtml(name)}</h1>
-          <p class="cover-sub">${escapeHtml(role)}</p>
           <div class="facts">
             <div class="fact"><div class="lbl">Role</div><div class="val">${escapeHtml(role)}</div></div>
             <div class="fact"><div class="lbl">Interview date</div><div class="val">${escapeHtml(interviewDate)}</div></div>
@@ -476,8 +470,6 @@ export function generateRecruitmentInterviewKitHtml(input: {
         </section>
 
         ${cvSection}
-
-        <div class="doc-footer-note"><span>The Anchor - Stanwell Moor Village - A village pub since 1751</span><span>Where Everyone's Welcome</span></div>
   </main>
 </body>
 </html>`
