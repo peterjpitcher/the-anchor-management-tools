@@ -97,8 +97,8 @@ describe('recruitment audit source coverage', () => {
     expect(dashboardClientSource).toContain("status('Mark interviewed', 'interviewed')")
     expect(dashboardClientSource).toContain('Send interview booking link')
     expect(dashboardClientSource).toContain('Resend interview booking link')
-    expect(dashboardClientSource).toContain('Send trial booking link')
-    expect(dashboardClientSource).toContain('Resend trial booking link')
+    // No trial booking link: trials are assigned by staff around the rota.
+    expect(dashboardClientSource).toContain("label: 'Book trial directly'")
     expect(dashboardClientSource).toContain('Change stage manually')
     expect(dashboardClientSource).toContain('Re-score AI fit')
     expect(dashboardClientSource).toContain('Create employee invite')
@@ -109,7 +109,7 @@ describe('recruitment audit source coverage', () => {
   it('keeps the drawer action bar and tabs pinned above the scrolling tab body', () => {
     // The action bar only solves "I can never find what I need" if it stays on
     // screen. Losing the sticky wrapper would silently undo that.
-    expect(dashboardClientSource).toContain('sticky top-0 z-20 -mx-5 -mt-5 border-b border-border bg-surface px-5 pt-5')
+    expect(dashboardClientSource).toContain('sticky top-0 z-20 -mx-5 -mt-5 bg-surface px-5 pb-3 pt-5')
     expect(dashboardClientSource).toContain('{primaryStageAction && renderStageAction(primaryStageAction')
     expect(dashboardClientSource).toContain('{secondaryStageAction && renderStageAction(secondaryStageAction')
   })

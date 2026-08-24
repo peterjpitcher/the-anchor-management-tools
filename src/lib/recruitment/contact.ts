@@ -22,6 +22,19 @@ export const RECRUITMENT_RIGHT_TO_WORK_WORDING = [
   '- any other document accepted by GOV.UK for a right-to-work check',
 ].join('\n')
 
+/**
+ * Trial-shift dress code. Deliberately shorter than the full staff dress code:
+ * a candidate on a trial owns no Anchor kit and needs one clear, cheap-to-meet
+ * instruction, not the whole uniform policy.
+ */
+export const RECRUITMENT_TRIAL_DRESS_CODE = [
+  'What to wear:',
+  '- chino shorts, chinos or jeans',
+  '- a plain block-coloured shirt or t-shirt, no logos',
+  '- no hats',
+  '- clean, closed-toe shoes, not sliders, flip-flops or heels',
+].join('\n')
+
 export function recruitmentSenderEmail(): string {
   return process.env.RECRUITMENT_FROM_EMAIL?.trim() || RECRUITMENT_CONTACT_EMAIL
 }
