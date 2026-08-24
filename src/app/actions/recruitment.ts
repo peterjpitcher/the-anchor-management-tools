@@ -11,7 +11,6 @@ import {
   addRecruitmentCandidateNote,
   getRecruitmentCandidateTrail,
   decideRecruitmentApplication,
-  buildRecruitmentPrintableKit,
   bulkUpdateRecruitmentApplications,
   cancelRecruitmentAppointmentByStaff,
   cancelRecruitmentAppointmentSlot,
@@ -1582,57 +1581,5 @@ export async function eraseRecruitmentCandidateAction(formData: FormData): Promi
     return { success: true, data: result, message: 'Candidate PII erased.' }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to erase candidate.' }
-  }
-}
-
-export async function getRecruitmentPrintableKitAction(formData: FormData): Promise<ActionResult<{
-  text: string
-  application: any
-  appointment: any | null
-  cvUrl: string | null
-  kind: 'interview' | 'trial'
-}>> {
-  try {
-    await requireRecruitmentPermission('view')
-    const applicationId = formString(formData, 'application_id')
-    const kind = formString(formData, 'kind') === 'trial' ? 'trial' : 'interview'
-    if (!applicationId) throw new Error('Application ID is required.')
-
-    const admin = createAdminClient()
-    const { data: application, error } = await admin
-      .from('recruitment_applications')
-      .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
-      .eq('id', applicationId)
-      .maybeSingle()
-    if (error) throw error
-    if (!application) throw new Error('Application not found.')
-
-    const { data: appointment } = await admin
-      .from('recruitment_candidate_appointments')
-      .select('*')
-      .eq('application_id', applicationId)
-      .order('scheduled_start', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    let cvUrl: string | null = null
-    try {
-      cvUrl = await getRecruitmentCvSignedUrl(application.candidate_id, admin)
-    } catch (cvError) {
-      console.warn('Failed to create recruitment CV link for printable kit', cvError)
-    }
-
-    return {
-      success: true,
-      data: {
-        text: buildRecruitmentPrintableKit({ application, appointment, kind }),
-        application,
-        appointment: appointment ?? null,
-        cvUrl,
-        kind,
-      },
-    }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to build printable kit.' }
   }
 }

@@ -168,16 +168,16 @@ export function generateRecruitmentInterviewKitHtml(input: {
   }
   .doc {
     box-sizing: border-box;
-    max-width: 8.5in;
+    max-width: 210mm;
     margin: 24px auto;
     background: var(--anchor-cream);
-    padding: 0.45in 0.7in;
+    padding: 12mm 16mm;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
   }
   .toolbar {
     position: sticky; top: 0; z-index: 50;
     display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; max-width: 8.5in; margin: 24px auto -8px;
+    gap: 16px; max-width: 210mm; margin: 24px auto -8px;
     padding: 12px 18px; background: var(--anchor-green-deep);
     color: #ffffff; border-radius: 12px;
   }
@@ -355,11 +355,11 @@ export function generateRecruitmentInterviewKitHtml(input: {
     margin: 34px 0 4px; padding-top: 14px; border-top: 1px solid var(--border);
     font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; gap: 16px;
   }
-  @page { size: letter; margin: 0; }
+  @page { size: A4; margin: 0; }
   @media print {
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; background: #fff; }
-    .doc { max-width: none !important; margin: 0 !important; padding: 0.45in 0.7in !important; box-shadow: none !important; background: #fff; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 12mm 16mm !important; box-shadow: none !important; background: #fff; }
     .screen-only { display: none !important; }
     h2.sec, .field-label, h3 { break-after: avoid; }
     .sc-card, .cert, .callout, .decision, .cert-row, li { break-inside: avoid; }

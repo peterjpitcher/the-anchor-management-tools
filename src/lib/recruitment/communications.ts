@@ -6,6 +6,7 @@ import { draftRecruitmentEmail } from '@/lib/recruitment/ai'
 import {
   RECRUITMENT_EMAIL_SIGNATURE,
   RECRUITMENT_RIGHT_TO_WORK_WORDING,
+  RECRUITMENT_TRIAL_DRESS_CODE,
   recruitmentSenderEmail,
 } from '@/lib/recruitment/contact'
 import { formatRecruitmentAppointmentTime } from '@/services/recruitment'
@@ -237,6 +238,22 @@ function ensureTrialShiftDetails(body: string): string {
   }
 
   return `${body.trim()}\n\n${details}`
+}
+
+/**
+ * Trial-shift emails must always carry the dress code. Candidates own no Anchor kit
+ * and turning up in the wrong thing wastes the shift, so this is injected rather than
+ * left to whoever last edited the stored template.
+ */
+function ensureTrialDressCode(body: string): string {
+  if (/block-coloured shirt/i.test(body)) return body
+
+  const rightToWorkMarker = '\n\nPlease bring proof of your right to work'
+  if (body.includes(rightToWorkMarker)) {
+    return body.replace(rightToWorkMarker, `\n\n${RECRUITMENT_TRIAL_DRESS_CODE}${rightToWorkMarker}`)
+  }
+
+  return `${body.trim()}\n\n${RECRUITMENT_TRIAL_DRESS_CODE}`
 }
 
 function ensureRightToWorkWording(body: string): string {
@@ -786,11 +803,16 @@ export async function sendRecruitmentTemplateEmail(
   // Decode any legacy literal "\n" before finalize so signature de-duplication
   // (which keys off real newlines) runs against a correctly broken-up body.
   const mergedBody = mergeTemplate(decodeEscapedNewlines(options.bodyOverride ?? template.body), mergeData)
-  const body = normalizeBodyText(finalizeRecruitmentEmailBody(
-    inviteAppointmentType
-      ? ensureInviteHasAvailableTimes(mergedBody, inviteAppointmentType, null)
-      : mergedBody
-  ))
+  // A trial confirmation, or a reminder for a trial, must carry what to wear.
+  const isTrialShiftEmail = type === 'trial_confirmation'
+    || (type === 'reminder' && appointment?.type === 'trial_shift')
+  let preparedBody = inviteAppointmentType
+    ? ensureInviteHasAvailableTimes(mergedBody, inviteAppointmentType, null)
+    : mergedBody
+  if (isTrialShiftEmail) {
+    preparedBody = ensureTrialDressCode(ensureTrialShiftDetails(preparedBody))
+  }
+  const body = normalizeBodyText(finalizeRecruitmentEmailBody(preparedBody))
   assertNoUnresolvedPlaceholders(subject, body)
 
   const { data: communication, error: commError } = await supabase

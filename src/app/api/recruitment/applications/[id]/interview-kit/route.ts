@@ -121,7 +121,9 @@ export async function GET(
     })
 
     let pdfBuffer = await generatePDFFromHTML(html, {
-      format: 'Letter',
+      // A4, not Letter. The venue prints on UK paper, and a Letter page is 6mm
+      // wider, so it came out either scaled down or clipped on the right.
+      format: 'A4',
       printBackground: true,
       preferCSSPageSize: true,
       margin: {
