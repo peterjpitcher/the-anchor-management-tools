@@ -237,4 +237,27 @@ shoes, not sliders, flip-flops or heels", which they did not specify. It is in t
 venue's own staff dress code and is a safety point behind a bar. Awaiting their
 call on whether it stays.
 
+## 6. Print layout, second pass
+
+The A4 page size was correct but the layout was not. Fixed in `e9faa17c`, live on
+`dpl_DhYveLXxh1u57PFvFBZNFAg6VxCq`.
+
+| Defect | Cause |
+|---|---|
+| Every page after the first ran into the paper edge | Margins were padding on `.doc`. Padding applies once to the whole flowed block, so only page 1 got a top margin and only the last got a bottom one. Moved to `@page` |
+| Logo was a broken-image icon | Fetched over HTTP from inside the PDF function. Now inlined as a data URI from disk, with `outputFileTracingIncludes` so it ships in the bundle |
+| Questions split from their answer lines, headings orphaned | `break-inside: avoid` on the `li` was not enough. Added `.q { break-after: avoid }` and `.lines { break-inside: avoid }` |
+| Near-blank final page holding only the strapline | In-flow footer block spilled whenever content filled the previous page. Now a Puppeteer running footer with a page count. Took the trial brief from 3 pages to 2 |
+
+Also removed the script-font role line from the kit cover: it repeated the ROLE box
+below it and rendered a stray stroke through itself at that size.
+
+Both routes now share `recruitmentKitPdfOptions()` so their geometry cannot drift apart.
+
+**Process lesson.** The first pass verified the fix by generating the PDF and reading
+the page box: 216mm becomes 210mm. That was true and it proved nothing about the four
+defects above, because the page box was the one property I had thought to check.
+Rendering the document and reading every page as an image found all four in a single
+step. For any artefact a human looks at, the verification is to look at it.
+
 Still unverified: nobody has printed either PDF on a physical printer.
