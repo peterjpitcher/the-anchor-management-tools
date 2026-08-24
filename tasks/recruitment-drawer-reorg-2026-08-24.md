@@ -205,3 +205,36 @@ preview:
 
 Still unverified: nobody has clicked through the drawer in a browser. `/recruitment`
 is auth-gated, so the render-level evidence is the component tests, not a session.
+
+
+## 5. Follow-up fixes, same day
+
+Owner feedback after using the reorganised drawer. All four shipped in `52b6ca98`,
+verified live on `management.orangejelly.co.uk` serving
+`dpl_E1x1dSqJo3oqRRWLcJKzZ4KEJeeY`.
+
+| Reported | Cause | Fix |
+|---|---|---|
+| Cannot find how to invite someone as an employee | Only in the action bar, and only promoted at `offered` | Added a "Hire" section to the Progress tab |
+| No padding at the top of the scrollable area | The border sat on the sticky wrapper, so it could carry no padding below the tabs | Border moved to the tab strip, `pb-3` on the wrapper |
+| Trials should not let the candidate pick a time | The drawer minted a trial booking link and the composer drafted a "choose a time" email | Both removed. Booking a trial already emails a confirmation with an ICS, and the reminder cron fires the day before. Both now carry the dress code |
+| Neither kit prints properly | Interview kit was `@page { size: letter }` + `format: 'Letter'`, measured 216mm x 279mm against UK A4 at 210mm x 297mm. Trial brief was a `<pre>` text dump in a pop-up with no page size | Interview kit is A4. Trial brief is a real A4 PDF at `/api/recruitment/applications/[id]/trial-brief` |
+
+Proof for the print fix, generated through the real Puppeteer pipeline and read
+back out of the PDF page box:
+
+```
+before (size: letter, format Letter): 216mm x 279mm
+after  (size: A4, format A4):         210mm x 297mm
+```
+
+Also removed: 596 lines of client-side code duplicating the server templates, plus
+`getRecruitmentPrintableKitAction` and `buildRecruitmentPrintableKit`, unreachable
+once the routes existed.
+
+Assumption flagged to the owner: the trial dress code adds "clean, closed-toe
+shoes, not sliders, flip-flops or heels", which they did not specify. It is in the
+venue's own staff dress code and is a safety point behind a bar. Awaiting their
+call on whether it stays.
+
+Still unverified: nobody has printed either PDF on a physical printer.
