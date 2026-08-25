@@ -153,7 +153,7 @@ export default function NewPrivateBookingPage() {
                   placeholder="Search by name or phone number..."
                 />
                 <p className="mt-1 text-sm text-gray-500">
-                  Search for an existing customer or leave blank to create a new one
+                  Select an existing customer, or enter a phone number below to create a new one
                 </p>
               </div>
 
@@ -189,6 +189,7 @@ export default function NewPrivateBookingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-4">
                 <FormGroup
                   label="Phone Number"
+                  required={!selectedCustomer}
                 >
                   <Input
                     type="tel"
@@ -196,6 +197,7 @@ export default function NewPrivateBookingPage() {
                     name="contact_phone"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
+                    required={!selectedCustomer}
                     placeholder="+1 415 555 2671 or local format"
                     autoComplete="tel"
                     inputMode="tel"

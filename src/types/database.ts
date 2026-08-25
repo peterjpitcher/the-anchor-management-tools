@@ -33,6 +33,10 @@ export interface Event {
   meta_description?: string | null;
   keywords?: string[] | null;
   hero_image_url?: string | null;
+  landscape_image_url?: string | null;
+  social_image_url?: string | null;
+  story_image_url?: string | null;
+  print_poster_url?: string | null;
   gallery_image_urls?: string[] | null;
   poster_image_url?: string | null;
   thumbnail_image_url?: string | null;

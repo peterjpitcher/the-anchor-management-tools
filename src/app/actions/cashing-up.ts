@@ -6,7 +6,15 @@ import { CashingUpService } from '@/services/cashing-up.service';
 import { type CashupInsightsPeriod, UpsertCashupSessionDTO } from '@/types/cashing-up';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
-import { getErrorMessage } from '@/lib/errors';
+import { getErrorCode, getErrorMessage } from '@/lib/errors';
+import { isMatchingCashupSubmissionRetry } from '@/lib/cashing-up/submission-retry';
+
+const CASHUP_ALREADY_EXISTS_MESSAGE = 'A session for this site and date already exists.';
+const CASHUP_ALREADY_EXISTS_HELP = 'A cash-up for this site and date already exists. Refresh the page to view it.';
+
+function isCashupAlreadyExistsError(error: unknown): boolean {
+  return getErrorCode(error) === 'P0001' && getErrorMessage(error) === CASHUP_ALREADY_EXISTS_MESSAGE;
+}
 
 async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
@@ -74,6 +82,24 @@ export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO,
   }
 
   try {
+    if (!existingId) {
+      const existingSession = await CashingUpService.getSessionByDateAndSite(
+        supabase,
+        data.siteId,
+        data.sessionDate
+      );
+
+      if (existingSession) {
+        if (isMatchingCashupSubmissionRetry(existingSession, data, user.id)) {
+          revalidatePath('/cashing-up');
+          revalidateTag('dashboard');
+          return { success: true, data: existingSession, recovered: true };
+        }
+
+        return { success: false, error: CASHUP_ALREADY_EXISTS_HELP };
+      }
+    }
+
     const result = await CashingUpService.upsertSession(
       supabase,
       { ...data, status: 'submitted' },
@@ -90,6 +116,26 @@ export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO,
     });
     return { success: true, data: result };
   } catch (error: unknown) {
+    if (!existingId && isCashupAlreadyExistsError(error)) {
+      try {
+        const existingSession = await CashingUpService.getSessionByDateAndSite(
+          supabase,
+          data.siteId,
+          data.sessionDate
+        );
+
+        if (existingSession && isMatchingCashupSubmissionRetry(existingSession, data, user.id)) {
+          revalidatePath('/cashing-up');
+          revalidateTag('dashboard');
+          return { success: true, data: existingSession, recovered: true };
+        }
+      } catch (lookupError: unknown) {
+        console.error('Failed to recover duplicate cashup submission:', lookupError);
+      }
+
+      return { success: false, error: CASHUP_ALREADY_EXISTS_HELP };
+    }
+
     console.error('Submit cashup error:', error);
     return { success: false, error: getErrorMessage(error) };
   }

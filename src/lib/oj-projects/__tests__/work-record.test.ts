@@ -175,4 +175,49 @@ describe('buildWorkRecord', () => {
     expect(record.invoiceBlocks[0].fixedPrice).toBe(false)
     expect(record.invoiceBlocks[0].carriedForwardExVat).toBe(104.17)
   })
+
+  it('refuses an invoice with no work behind it rather than dropping it', () => {
+    // INV-003VM: GBP 500, paid, and nothing linked to it. It used to be skipped
+    // silently, so the account statement showed it and this document did not.
+    // The two disagreed by GBP 500 and nothing flagged it.
+    const record = buildWorkRecord({
+      entries: [timeEntry({ duration_minutes_rounded: 300 })],
+      recurring: [],
+      invoices: [INVOICE, { ...INVOICE, id: 'inv-2', invoice_number: 'INV-002' }],
+      settings: SETTINGS,
+    })
+
+    expect(record.invoiceBlocks).toHaveLength(2)
+    expect(record.unexplainedInvoices).toEqual(['INV-002'])
+    expect(record.reconciles).toBe(false)
+  })
+
+  it('does not let the fixed-price exemption excuse an empty invoice', () => {
+    // The exemption is from the arithmetic, never from needing work at all.
+    // INV-003VM was flagged fixed price, which is exactly what would have let
+    // it through a check that trusted the flag on its own.
+    const record = buildWorkRecord({
+      entries: [],
+      recurring: [],
+      invoices: [{ ...INVOICE, is_fixed_price: true }],
+      settings: SETTINGS,
+    })
+
+    expect(record.invoiceBlocks[0].unexplained).toBe(true)
+    expect(record.invoiceBlocks[0].carriedForwardExVat).toBe(416.67)
+    expect(record.reconciles).toBe(false)
+  })
+
+  it('takes the net figure from the invoice, not from the client VAT rate', () => {
+    // INV-003VM was raised at 0% VAT on GBP 500. Dividing the gross by the
+    // client's configured 20% reported its net as GBP 416.67 and lost GBP 83.33.
+    const record = buildWorkRecord({
+      entries: [timeEntry({ duration_minutes_rounded: 300 })],
+      recurring: [],
+      invoices: [{ ...INVOICE, total_amount: 500, subtotal_amount: 500 }],
+      settings: SETTINGS,
+    })
+
+    expect(record.invoiceBlocks[0].invoiceExVat).toBe(500)
+  })
 })

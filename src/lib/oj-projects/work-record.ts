@@ -55,6 +55,13 @@ export interface WorkRecordInvoice {
   invoice_date: string
   status: string
   total_amount: number
+  /**
+   * The invoice's own net figure. Preferred over dividing the gross by the
+   * client's configured VAT rate, which mis-states any invoice raised at a
+   * different rate: INV-003VM carries 0% VAT on GBP 500 and the divide reported
+   * it as GBP 416.67.
+   */
+  subtotal_amount?: number | null
   /** Agreed as a price, not derived from time. Reconciling it against hours would be a fiction. */
   is_fixed_price?: boolean
 }
@@ -88,6 +95,12 @@ export interface WorkRecordInvoiceBlock {
    */
   carriedForwardExVat: number
   fixedPrice: boolean
+  /**
+   * No work and no recurring charge is attached, so nothing on the account
+   * explains what the client paid for. Never printable, and never silently
+   * dropped: it blocks the document until the data is corrected.
+   */
+  unexplained: boolean
   invoiceExVat: number
   invoiceIncVat: number
 }
@@ -118,6 +131,8 @@ export interface WorkRecord {
   settledWithoutInvoiceHours: number
   /** Every invoice block closed. False blocks generation rather than printing a contradiction. */
   reconciles: boolean
+  /** Invoice numbers with nothing behind them, so the refusal can name them. */
+  unexplainedInvoices: string[]
 }
 
 function projectLabel(entry: WorkRecordEntry): string {
@@ -207,7 +222,11 @@ export function buildWorkRecord(input: {
   for (const invoice of input.invoices) {
     const invoiceEntries = entries.filter((e) => e.invoice_id === invoice.id)
     const invoiceRecurring = input.recurring.filter((r) => r.invoice_id === invoice.id)
-    if (invoiceEntries.length === 0 && invoiceRecurring.length === 0) continue
+    // An invoice with nothing attached used to be skipped here. That is what
+    // made INV-003VM invisible: a paid GBP 500 invoice the client could see on
+    // their statement and not find in this document. It now becomes a block so
+    // the reconciliation check below can refuse the whole document.
+    const unexplained = invoiceEntries.length === 0 && invoiceRecurring.length === 0
 
     const lines = invoiceEntries.map((e) => toLine(e, input.settings, splitPartners))
     const workExVat = roundMoney(lines.reduce((acc, l) => acc + l.exVat, 0))
@@ -218,7 +237,13 @@ export function buildWorkRecord(input: {
 
     const vatRate = Number(input.settings?.vat_rate ?? 20)
     const invoiceIncVat = roundMoney(Number(invoice.total_amount || 0))
-    const invoiceExVat = roundMoney(invoiceIncVat / (1 + vatRate / 100))
+    // The invoice's own net figure where it has one. Falling back to the client's
+    // configured rate is only for rows that predate the column.
+    const invoiceExVat = roundMoney(
+      invoice.subtotal_amount === null || invoice.subtotal_amount === undefined
+        ? invoiceIncVat / (1 + vatRate / 100)
+        : Number(invoice.subtotal_amount)
+    )
 
     const fixedPrice = invoice.is_fixed_price === true
 
@@ -237,7 +262,12 @@ export function buildWorkRecord(input: {
       // paid against work carried forward from an earlier month. A fixed-price
       // stage has no such balance, so the document states the agreed price
       // rather than implying hours were carried anywhere.
-      carriedForwardExVat: fixedPrice ? 0 : roundMoney(invoiceExVat - workExVat - recurringExVat),
+      // A fixed-price stage has no balance to carry, but only once some work is
+      // actually attached to it. With nothing attached, the whole invoice is
+      // unaccounted for and saying otherwise would hide the gap again.
+      carriedForwardExVat:
+        fixedPrice && !unexplained ? 0 : roundMoney(invoiceExVat - workExVat - recurringExVat),
+      unexplained,
       invoiceExVat,
       invoiceIncVat,
     })
@@ -277,11 +307,15 @@ export function buildWorkRecord(input: {
     // failure blocks generation instead.
     // A fixed-price block is exempt: its total is an agreed figure, not a sum of
     // the work behind it, so requiring it to add up would block a document that
-    // is in fact correct.
-    reconciles: invoiceBlocks.every(
-      (b) =>
-        b.fixedPrice ||
+    // is in fact correct. It is exempt from the arithmetic only, never from
+    // needing work attached at all.
+    reconciles: invoiceBlocks.every((b) => {
+      if (b.unexplained) return false
+      if (b.fixedPrice) return true
+      return (
         Math.abs(b.workExVat + b.recurringExVat + b.carriedForwardExVat - b.invoiceExVat) < 0.005
-    ),
+      )
+    }),
+    unexplainedInvoices: invoiceBlocks.filter((b) => b.unexplained).map((b) => b.invoiceNumber),
   }
 }

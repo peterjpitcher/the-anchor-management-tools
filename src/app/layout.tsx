@@ -3,9 +3,9 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import SupabaseProvider from "@/components/providers/SupabaseProvider";
-import { ServiceWorkerRegistration } from "@/components/features/shared/ServiceWorkerRegistration";
-import { NetworkStatus } from "@/components/features/shared/NetworkStatus";
+import { ServiceWorkerCleanup } from "@/components/features/shared/ServiceWorkerRegistration";
 import { ChunkErrorReloader } from "@/components/features/shared/ChunkErrorReloader";
+import { getDeploymentVersion } from "@/lib/foh/deployment-version";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -60,10 +60,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+      <head>
+        <meta name="app-deployment-version" content={getDeploymentVersion()} />
+      </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
-        {/* <ServiceWorkerRegistration /> */}
-        {/* <NetworkStatus /> */}
-        <ChunkErrorReloader />
+        <ServiceWorkerCleanup />
+        <ChunkErrorReloader deploymentVersion={getDeploymentVersion()} />
         <Toaster position="top-right" />
         <SupabaseProvider>{children}</SupabaseProvider>
       </body>

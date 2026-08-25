@@ -339,7 +339,12 @@ export async function generateWorkRecordPDF(input: WorkRecordPDFInput): Promise<
     // The account statement prints a mismatch on its face. This document must
     // not: a client-facing breakdown that does not add up to its own invoice is
     // worse than no document at all.
-    throw new Error('Work Record did not reconcile against its invoices, so no PDF was produced')
+    const unexplained = input.record.unexplainedInvoices ?? []
+    throw new Error(
+      unexplained.length
+        ? `Work Record could not be produced: ${unexplained.join(', ')} ${unexplained.length === 1 ? 'has' : 'have'} no work recorded against ${unexplained.length === 1 ? 'it' : 'them'}, so the document would not agree with the account statement`
+        : 'Work Record did not reconcile against its invoices, so no PDF was produced'
+    )
   }
 
   const html = generateWorkRecordHTML({

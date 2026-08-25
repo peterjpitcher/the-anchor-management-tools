@@ -67,28 +67,28 @@ export async function getWorkRecord(
 
   if (entriesError) return { error: entriesError.message }
 
-  const invoiceIds = Array.from(
-    new Set((entries || []).map((e) => e.invoice_id).filter(Boolean) as string[])
+  const referencedInvoiceIds = new Set(
+    (entries || []).map((e) => e.invoice_id).filter(Boolean) as string[]
   )
 
   const [invoicesResult, recurringResult, settingsResult] = await Promise.all([
-    invoiceIds.length
-      ? supabase
-          .from('invoices')
-          .select('id, invoice_number, invoice_date, status, total_amount, is_fixed_price')
-          .in('id', invoiceIds)
-          .is('deleted_at', null)
-          // Void invoices are excluded, as on the account statement. Their work
-          // has moved to the reissue, so including both shows it twice.
-          .not('status', 'in', '("void","written_off","draft")')
-          .order('invoice_date', { ascending: true })
-      : Promise.resolve({ data: [], error: null }),
-    invoiceIds.length
-      ? supabase
-          .from('oj_recurring_charge_instances')
-          .select('invoice_id, description_snapshot, amount_ex_vat_snapshot, vat_rate_snapshot')
-          .in('invoice_id', invoiceIds)
-      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from('invoices')
+      // The client's whole invoice ledger, not just the invoices entries happen
+      // to point at. Deriving the list from entries hid INV-003VM, a paid GBP 500
+      // invoice with no work linked to it, from this document for months while
+      // the account statement showed it: the two disagreed by GBP 500.
+      .select('id, invoice_number, invoice_date, status, subtotal_amount, total_amount, is_fixed_price')
+      .eq('vendor_id', vendorId)
+      .is('deleted_at', null)
+      // Void invoices are excluded, as on the account statement. Their work
+      // has moved to the reissue, so including both shows it twice.
+      .not('status', 'in', '("void","written_off","draft")')
+      .order('invoice_date', { ascending: true }),
+    supabase
+      .from('oj_recurring_charge_instances')
+      .select('invoice_id, description_snapshot, amount_ex_vat_snapshot, vat_rate_snapshot')
+      .eq('vendor_id', vendorId),
     supabase
       .from('oj_vendor_billing_settings')
       .select('hourly_rate_ex_vat, mileage_rate, vat_rate, billing_mode, monthly_cap_inc_vat, statement_mode')
@@ -100,7 +100,15 @@ export async function getWorkRecord(
   if (recurringResult.error) return { error: recurringResult.error.message }
 
   const settings = settingsResult.data
-  const invoices = invoicesResult.data || []
+  // An invoice belongs in the document when it falls in the period the client
+  // asked about, or when in-period work was charged on it. The second case
+  // matters under a monthly cap, where the invoice is raised months after the
+  // work and would otherwise fall outside the window.
+  const invoices = (invoicesResult.data || []).filter(
+    (i) =>
+      referencedInvoiceIds.has(i.id) ||
+      (typeof i.invoice_date === 'string' && i.invoice_date >= dateFrom && i.invoice_date <= dateTo)
+  )
   const liveInvoiceIds = new Set(invoices.map((i) => i.id))
 
   const record = buildWorkRecord({

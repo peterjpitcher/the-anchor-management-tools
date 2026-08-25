@@ -5,6 +5,7 @@ import { getWeeklyDataAction } from '@/app/actions/cashing-up'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import { CashingUpService } from '@/services/cashing-up.service'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { getErrorMessage } from '@/lib/errors'
 import { DailyClient } from './_components/DailyClient'
 
 export default async function DailyCashupPage(props: { searchParams: Promise<{ date?: string; siteId?: string; edit?: string }> }) {
@@ -30,14 +31,25 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   dateObj.setDate(diffToMon)
   const weekStart = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`
 
-  const [summaryRes, targetRes, weeklyRes, existingSession, missingRes] = await Promise.all([
+  const [summaryRes, targetRes, weeklyRes, existingSessionRes, missingRes] = await Promise.all([
     getDailySummaryAction(sessionDate),
     getDailyTargetAction(siteId, sessionDate),
     getWeeklyDataAction(siteId, weekStart),
-    CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate).catch(() => null),
+    CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate)
+      .then(data => ({ data, error: null }))
+      .catch((error: unknown) => ({ data: null, error: getErrorMessage(error) })),
     getMissingCashupDatesAction(siteId),
   ])
 
+  if (existingSessionRes.error) {
+    return (
+      <p className="text-danger-fg text-center py-8">
+        Unable to load the existing cash-up: {existingSessionRes.error}. Please refresh and try again.
+      </p>
+    )
+  }
+
+  const existingSession = existingSessionRes.data
   const targetAmount = typeof targetRes.data === 'number' ? targetRes.data : 0
 
   return (

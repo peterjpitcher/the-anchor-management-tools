@@ -16,7 +16,7 @@ export type EventImageVariant =
   | 'print_poster'
 
 /** Column on `events` that caches the public URL for a variant. */
-type CacheColumn =
+export type EventImageCacheColumn =
   | 'hero_image_url'
   | 'landscape_image_url'
   | 'social_image_url'
@@ -44,7 +44,7 @@ export interface EventImageVariantConfig {
   maxBytes: number
   /** False means the URL is never emitted by the public API. */
   webServed: boolean
-  cacheColumn: CacheColumn
+  cacheColumn: EventImageCacheColumn
 }
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'] as const
@@ -226,6 +226,49 @@ export function storagePathFromPublicUrl(imageUrl: string | null | undefined): s
   } catch {
     return rawPath
   }
+}
+
+/** Return the file extension from an image URL, without its leading dot. */
+export function eventImageFileExtension(imageUrl: string): string | null {
+  try {
+    const fileName = decodeURIComponent(new URL(imageUrl).pathname.split('/').pop() ?? '')
+    const match = fileName.match(/\.([a-z0-9]+)$/i)
+    return match?.[1]?.toLowerCase() ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Supabase public files need its `download` query parameter to send an
+ * attachment response. The HTML download attribute alone is ignored for the
+ * cross-origin storage URL, so Chrome otherwise opens the image in a new tab.
+ */
+export function buildEventImageDownloadUrl(imageUrl: string, fileName?: string | null): string {
+  try {
+    const url = new URL(imageUrl)
+    const pathFileName = decodeURIComponent(url.pathname.split('/').pop() ?? '')
+    url.searchParams.set('download', fileName?.trim() || pathFileName || 'event-artwork')
+    return url.toString()
+  } catch {
+    return imageUrl
+  }
+}
+
+/** Give Marketing-tab downloads short, useful names instead of storage keys. */
+export function buildEventImageDownloadFileName(
+  eventName: string,
+  variant: EventImageVariant,
+  imageUrl: string
+): string {
+  const eventPart = eventName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'event'
+  const variantPart = variant.replace(/_/g, '-')
+  const extension = eventImageFileExtension(imageUrl)
+  return `${eventPart}-${variantPart}${extension ? `.${extension}` : ''}`
 }
 
 /** Strip anything that would make a storage key awkward, keeping it recognisable. */

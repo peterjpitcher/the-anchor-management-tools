@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
+import {
+  isChunkLoadFailure,
+  recoverFromChunkFailure,
+  retryPendingNavigation,
+} from '@/components/features/shared/ChunkErrorReloader';
 
 export default function GlobalError({
   error,
@@ -9,19 +14,14 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const isChunkError = error?.name === 'ChunkLoadError' ||
-    error?.message?.includes('Loading chunk') ||
-    error?.message?.includes('Failed to fetch dynamically imported module');
+  const chunkErrorMessage = `${error?.name || ''}: ${error?.message || ''}`;
+  const isChunkError = isChunkLoadFailure(chunkErrorMessage);
 
   useEffect(() => {
     if (isChunkError) {
-      const key = 'chunk-reload-attempted';
-      if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, '1');
-        window.location.reload();
-      }
+      recoverFromChunkFailure(chunkErrorMessage);
     }
-  }, [isChunkError]);
+  }, [chunkErrorMessage, isChunkError]);
 
   if (isChunkError) {
     return (
@@ -36,7 +36,7 @@ export default function GlobalError({
               <button
                 type="button"
                 className="px-4 py-2 bg-blue-600 text-white rounded"
-                onClick={() => window.location.reload()}
+                onClick={retryPendingNavigation}
               >
                 Reload page
               </button>
