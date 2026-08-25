@@ -21,6 +21,11 @@ interface ApiKeysManagerProps {
 
 const PERMISSION_OPTIONS = [
   { value: 'read:events', label: 'Read Events' },
+  // Gates GET /api/events/{id}/artwork, the only route that emits the story and
+  // print-poster URLs. Listed here so a rotated key can be issued with it: a
+  // replacement key created without it leaves artwork import reporting
+  // "unavailable" while every other check stays green.
+  { value: 'read:events:artwork', label: 'Read Event Artwork' },
   { value: 'write:events', label: 'Write Events' },
   { value: 'write:performers', label: 'Write Performers' },
   { value: 'read:menu', label: 'Read Menu' },
