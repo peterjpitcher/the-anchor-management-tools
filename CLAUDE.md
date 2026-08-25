@@ -57,6 +57,17 @@ When given a bug report, just fix it. Don't ask for hand-holding. Check Supabase
 - All customer-facing language must reflect current policies, not legacy ones
 - Legacy "credit card hold" language anywhere in code or templates is always a bug
 
+## Receipt Operations
+
+Before any `/receipts` work, read these files:
+
+- `/Users/peterpitcher/Documents/Codex/2026-08-18/i-w/outputs/receipt-runbook.md`
+- `/Users/peterpitcher/Documents/Codex/2026-08-18/i-w/outputs/vendor-login-index.md`
+
+Update both after every receipt run with confirmed URLs, account labels, MFA requirements, matching rules and blockers. Never store passwords, password fragments, recovery answers or one-time codes; keep credentials in Chrome Password Manager.
+
+During every receipt run, also review and update the runbook's VAT recovery watchlist. Compare each vendor with its past VAT treatment and record any unusual missing VAT, rate change, refund, credit note or overseas reverse-charge issue.
+
 ---
 
 ## Prompting Conventions
@@ -382,4 +393,3 @@ A comprehensive UI redesign and feature expansion of The Anchor Management Tools
 - `src/lib/supabase-retry.ts` adds retry wrapper for Supabase queries
 - `error.tsx` files at route group level catch rendering errors
 <!-- GSD:architecture-end -->
-

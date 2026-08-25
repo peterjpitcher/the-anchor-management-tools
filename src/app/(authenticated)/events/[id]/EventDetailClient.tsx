@@ -45,6 +45,7 @@ import { EditAttendeeNamesModal } from './EditAttendeeNamesModal'
 import { validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
+import { EventArtworkDownloadsCard } from '@/components/features/events/EventArtworkDownloadsCard'
 import { EventChecklistCard } from '@/components/features/events/EventChecklistCard'
 import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate } from '@/lib/dateUtils'
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
@@ -1574,6 +1575,8 @@ function MarketingTab({
 }) {
   return (
     <div className="flex flex-col gap-6">
+      <EventArtworkDownloadsCard event={event} />
+
       <EventMarketingLinksCard
         links={links}
         eventId={event.id}

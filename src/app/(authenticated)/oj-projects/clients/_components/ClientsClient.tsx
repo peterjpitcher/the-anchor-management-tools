@@ -1113,8 +1113,9 @@ export function ClientsClient({ initialClients }: ClientsClientProps): React.Rea
                   </p>
                   {!workRecord.record.reconciles && (
                     <p className="text-danger mb-2">
-                      These figures do not add up against the invoices, so no PDF can be produced.
-                      Please check the entries before sending anything to the client.
+                      {workRecord.record.unexplainedInvoices?.length
+                        ? `${workRecord.record.unexplainedInvoices.join(', ')} ${workRecord.record.unexplainedInvoices.length === 1 ? 'has' : 'have'} no work recorded against ${workRecord.record.unexplainedInvoices.length === 1 ? 'it' : 'them'}, so this document would not agree with the account statement. Link the work it covered, or credit it, before sending anything to the client.`
+                        : 'These figures do not add up against the invoices, so no PDF can be produced. Please check the entries before sending anything to the client.'}
                     </p>
                   )}
                   <div className="max-h-[200px] overflow-auto">

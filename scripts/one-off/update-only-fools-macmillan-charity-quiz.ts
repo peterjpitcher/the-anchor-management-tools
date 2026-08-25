@@ -20,9 +20,9 @@ const EVENT_NAME = 'Lovely Jubbly: Only Fools and Horses Charity Quiz Night'
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 
 const shortDescription =
-  'Join The Anchor and the Stanwell Moor Village Hall team for an Only Fools and Horses charity quiz in aid of Macmillan Cancer Support. Entry is £3 cash per person, and every entry fee will be donated.'
+  'Join The Anchor in partnership with the Stanwell Moor Community Wellbeing Garden for an Only Fools and Horses charity quiz in aid of Macmillan Cancer Support. Entry is £3 cash per person, and every entry fee will be donated.'
 
-const longDescription = `The Anchor and the Stanwell Moor Village Hall team are joining forces for a special Only Fools and Horses charity quiz night in aid of Macmillan Cancer Support. Join us on Friday 25 September from 7pm to 9.30pm for classic quotes, themed questions, plenty of laughs and a good cause at the heart of the night. Every penny from the £3 quiz entry fee will be donated to Macmillan Cancer Support.
+const longDescription = `The Anchor is partnering with the Stanwell Moor Community Wellbeing Garden for a special Only Fools and Horses charity quiz night in aid of Macmillan Cancer Support. Join us on Friday 25 September from 7pm to 9.30pm for classic quotes, themed questions, plenty of laughs and a good cause at the heart of the night. Every penny from the £3 quiz entry fee will be donated to Macmillan Cancer Support.
 
 Expect four themed rounds with ten questions in each, covering iconic moments, favourite characters, classic catchphrases and deeper cuts for proper fans. There will also be a quick interactive game using one phone per team. Quizmaster Peter Pitcher will keep the questions moving and the atmosphere lively, whether you know every episode or simply fancy a fun Friday night with friends.
 
@@ -43,7 +43,7 @@ const brief = `# Lovely Jubbly: Only Fools and Horses Charity Quiz Night
 **Friday 25 September 2026 | 7pm-9.30pm**
 **The Anchor, Horton Road, Stanwell Moor Village, TW19 6AQ**
 
-The Anchor and the **Stanwell Moor Village Hall team** are joining forces for a special Only Fools and Horses charity quiz night in aid of **Macmillan Cancer Support**.
+The Anchor is partnering with the **Stanwell Moor Community Wellbeing Garden** for a special Only Fools and Horses charity quiz night in aid of **Macmillan Cancer Support**.
 
 He who dares, quizzes. Get your team together for a feel-good Friday night packed with classic quotes, memorable characters, themed questions, laughs and prizes.
 
@@ -124,13 +124,13 @@ Book online at **the-anchor.pub/book-table** and add **"ONLY FOOLS QUIZ"** in th
 Spaces are limited, so get your team together and book early. You know it makes sense.`
 
 const facebookDescription =
-  'The Anchor and the Stanwell Moor Village Hall team are joining forces for an Only Fools and Horses charity quiz in aid of Macmillan Cancer Support. Join us on Friday 25 September, 7pm-9.30pm. Entry is £3 cash per person, and every quiz entry fee will be donated. Teams of up to six. Booking is strongly recommended.'
+  'The Anchor is partnering with the Stanwell Moor Community Wellbeing Garden for an Only Fools and Horses charity quiz in aid of Macmillan Cancer Support. Join us on Friday 25 September, 7pm-9.30pm. Entry is £3 cash per person, and every quiz entry fee will be donated. Teams of up to six. Booking is strongly recommended.'
 
 const googleDescription =
-  'Only Fools and Horses charity quiz in aid of Macmillan Cancer Support, run by The Anchor with the Stanwell Moor Village Hall team. Friday 25 September, 7pm-9.30pm. Entry is £3 cash per person and every quiz entry fee will be donated. Teams of up to six; booking recommended.'
+  'Only Fools and Horses charity quiz in aid of Macmillan Cancer Support, run by The Anchor in partnership with the Stanwell Moor Community Wellbeing Garden. Friday 25 September, 7pm-9.30pm. Entry is £3 cash per person and every quiz entry fee will be donated. Teams of up to six; booking recommended.'
 
 const openTableDescription =
-  'Book a table for our Only Fools and Horses charity quiz, run by The Anchor with the Stanwell Moor Village Hall team in aid of Macmillan Cancer Support. Friday 25 September, 7pm-9.30pm. Teams of up to six. Entry is £3 cash per person on arrival, and every quiz entry fee will be donated.'
+  'Book a table for our Only Fools and Horses charity quiz, run by The Anchor in partnership with the Stanwell Moor Community Wellbeing Garden in aid of Macmillan Cancer Support. Friday 25 September, 7pm-9.30pm. Teams of up to six. Entry is £3 cash per person on arrival, and every quiz entry fee will be donated.'
 
 const primaryKeywords = [
   'Only Fools and Horses quiz',
@@ -147,7 +147,7 @@ const secondaryKeywords = [
 
 const localSeoKeywords = [
   'Stanwell Moor charity event',
-  'Stanwell Moor Village Hall',
+  'Stanwell Moor Community Wellbeing Garden',
   'quiz near Staines',
 ]
 
@@ -159,21 +159,21 @@ const eventUpdate = {
   highlights: [
     'In aid of Macmillan Cancer Support',
     'Every £3 quiz entry fee donated',
-    'Run with Stanwell Moor Village Hall team',
+    'In partnership with Stanwell Moor Community Wellbeing Garden',
     'Teams of up to 6 players',
     'Prizes provided separately',
   ],
   meta_title: 'Only Fools and Horses Charity Quiz',
   meta_description:
-    'Only Fools and Horses charity quiz in aid of Macmillan Cancer Support, run with Stanwell Moor Village Hall. Book your team for 25 September.',
+    'Only Fools and Horses charity quiz in aid of Macmillan Cancer Support, in partnership with Stanwell Moor Community Wellbeing Garden. Book for 25 September.',
   keywords: [...primaryKeywords, ...secondaryKeywords, ...localSeoKeywords],
   primary_keywords: primaryKeywords,
   secondary_keywords: secondaryKeywords,
   local_seo_keywords: localSeoKeywords,
   image_alt_text:
-    'Only Fools and Horses charity quiz artwork for The Anchor and Stanwell Moor Village Hall, in aid of Macmillan Cancer Support',
+    'Only Fools and Horses charity quiz artwork for The Anchor and Stanwell Moor Community Wellbeing Garden, in aid of Macmillan Cancer Support',
   social_copy_whatsapp:
-    'Lovely Jubbly! Join our Only Fools and Horses charity quiz on Friday 25 September, 7pm, run with the Stanwell Moor Village Hall team in aid of Macmillan Cancer Support. £3 cash per person and every entry fee is donated. Teams of up to 6. Book: the-anchor.pub/book-table',
+    'Lovely Jubbly! Join our Only Fools and Horses charity quiz on Friday 25 September, 7pm, in partnership with the Stanwell Moor Community Wellbeing Garden in aid of Macmillan Cancer Support. £3 cash per person and every entry fee is donated. Teams of up to 6. Book: the-anchor.pub/book-table',
   attendance_note:
     '£3 cash per person. Every quiz entry fee will be donated to Macmillan Cancer Support. Teams of up to 6. Arrive from 6:45pm and be seated by 6:55pm.',
   cancellation_policy:
@@ -383,6 +383,13 @@ async function main(): Promise<void> {
   const remainingFields = changedFields(verifiedEvent as Record<string, unknown>)
   if (remainingFields.length > 0) {
     throw new Error(`Event verification failed for: ${remainingFields.join(', ')}`)
+  }
+  const verifiedListingText = JSON.stringify({ event: verifiedEvent, faqs: verifiedFaqs })
+  if (/village hall/i.test(verifiedListingText)) {
+    throw new Error('Event verification failed: Village Hall wording remains')
+  }
+  if (!verifiedListingText.includes('Stanwell Moor Community Wellbeing Garden')) {
+    throw new Error('Event verification failed: Community Wellbeing Garden partnership is missing')
   }
   assertScriptExpectedRowCount({
     operation: 'Verify event FAQs',

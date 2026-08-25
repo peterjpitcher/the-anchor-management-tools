@@ -272,8 +272,9 @@ export default function DashboardClient({
             ) : (
               <div className="px-[var(--spacing-pad-card)]">
                 {upcomingEvents.map((e) => (
-                  <div
+                  <Link
                     key={e.id}
+                    href={e.href}
                     className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_auto_auto] items-center gap-3.5 py-2.5 border-t border-border first:border-t-0"
                   >
                     <div className="w-11 text-center rounded-lg bg-primary-soft text-primary-soft-fg py-1.5 flex-shrink-0">
@@ -291,7 +292,7 @@ export default function DashboardClient({
                       </div>
                     </div>
                     <Badge tone={e.badge.tone}>{e.badge.text}</Badge>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

@@ -20,6 +20,7 @@ import {
 import {
   EVENT_IMAGE_VARIANTS,
   EVENT_IMAGE_VARIANT_ORDER,
+  buildEventImageDownloadUrl,
   buildVariantPrompt,
   formatBytes,
   type EventImageVariant,
@@ -463,10 +464,8 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
 
                 {state?.url && (
                   <a
-                    href={state.url}
+                    href={buildEventImageDownloadUrl(state.url, state.fileName)}
                     download={state.fileName ?? undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-gray-300 bg-white px-2 text-gray-700 hover:bg-gray-50"
                   >
                     <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MagnifyingGlassIcon, UserIcon, PhoneIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { createClient } from '@/lib/supabase/client'
+import { buildCustomerSearchFilter } from './customerSearchFilters'
 
 interface Customer {
   id: string
@@ -34,6 +35,7 @@ export default function CustomerSearchInput({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [searchError, setSearchError] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -92,47 +94,29 @@ export default function CustomerSearchInput({
   }, [])
 
   const searchCustomers = async (term: string) => {
-    if (term.length < 2) {
+    const trimmedTerm = term.trim()
+    if (trimmedTerm.length < 2) {
       setSearchResults([])
+      setShowDropdown(false)
+      setSearchError(false)
       return
     }
 
     setIsSearching(true)
+    setSearchError(false)
 
-    // Build search query
-    let query = supabase
+    const query = supabase
       .from('customers')
-      .select('*')
+      .select('id, first_name, last_name, mobile_number, mobile_e164, email')
       .order('first_name', { ascending: true })
       .limit(10)
-
-    // Check if search term looks like a phone number
-    const phonePattern = /^[0-9\s\-\+\(\)]+$/
-    if (phonePattern.test(term)) {
-      // Search by phone number
-      const cleanPhone = term.replace(/\D/g, '')
-      query = query.or(`mobile_number.ilike.%${cleanPhone}%`)
-    } else {
-      // Search by name
-      const searchWords = term.toLowerCase().split(' ').filter(word => word.length > 0)
-      
-      if (searchWords.length === 1) {
-        // Single word - search in both first and last name
-        query = query.or(`first_name.ilike.%${searchWords[0]}%,last_name.ilike.%${searchWords[0]}%`)
-      } else {
-        // Multiple words - try to match first and last name
-        query = query.or(
-          `and(first_name.ilike.%${searchWords[0]}%,last_name.ilike.%${searchWords[1]}%),` +
-          `and(first_name.ilike.%${searchWords[1]}%,last_name.ilike.%${searchWords[0]}%)`
-        )
-      }
-    }
+      .or(buildCustomerSearchFilter(trimmedTerm))
 
     const { data, error } = await query
 
     const results = (data as Customer[] | null) ?? []
 
-    if (!error && results.length > 0) {
+    if (!error) {
       const filtered = results.filter((customer) => {
         if (!excludedIds) return true
         if (selectedCustomerId && customer.id === selectedCustomerId) return true
@@ -142,6 +126,8 @@ export default function CustomerSearchInput({
       setShowDropdown(true)
     } else {
       setSearchResults([])
+      setSearchError(true)
+      setShowDropdown(true)
     }
 
     setIsSearching(false)
@@ -149,6 +135,7 @@ export default function CustomerSearchInput({
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
+    setSearchError(false)
     
     // Clear previous timeout
     if (searchTimeout.current) {
@@ -180,6 +167,7 @@ export default function CustomerSearchInput({
     setSelectedCustomer(null)
     setSearchTerm('')
     setSearchResults([])
+    setSearchError(false)
     onCustomerSelect(null)
   }
 
@@ -278,9 +266,11 @@ export default function CustomerSearchInput({
       )}
 
       {/* No Results Message */}
-      {showDropdown && searchResults.length === 0 && searchTerm.length >= 2 && !isSearching && (
+      {showDropdown && searchResults.length === 0 && searchTerm.trim().length >= 2 && !isSearching && (
         <div className="absolute z-50 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 p-4">
-          <p className="text-sm text-gray-500 text-center">No customers found</p>
+          <p className="text-sm text-gray-500 text-center">
+            {searchError ? 'Customer search failed. Please try again.' : 'No customers found'}
+          </p>
         </div>
       )}
     </div>

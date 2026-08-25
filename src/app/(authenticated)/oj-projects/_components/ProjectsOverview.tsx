@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -43,6 +43,7 @@ import {
 } from '@/lib/oj-projects/date-ranges'
 import { getEntryDatePeriod, isProjectSelectableForEntryDate } from '@/lib/oj-projects/retainers'
 import { DEFAULT_HOURLY_RATE_EX_VAT, DEFAULT_MILEAGE_RATE, resolveRate } from '@/lib/oj-projects/rates'
+import { clearPendingNavigation, rememberPendingNavigation } from '@/lib/navigation-recovery'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -109,6 +110,7 @@ export function ProjectsOverview({
   const canDelete = hasPermission('oj_projects', 'delete')
 
   const [isPending, startTransition] = useTransition()
+  const [clientFilterValue, setClientFilterValue] = useState(selectedVendorId)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [lastCreateVendorId, setLastCreateVendorId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -134,6 +136,11 @@ export function ProjectsOverview({
     linked_invoice_number: '',
     linked_invoice_status: '',
   })
+
+  useEffect(() => {
+    setClientFilterValue(selectedVendorId)
+    clearPendingNavigation()
+  }, [selectedVendorId])
 
   const vendors = useMemo(() => {
     const map = new Map<string, string>()
@@ -212,14 +219,16 @@ export function ProjectsOverview({
    * pointing at wherever the user came from instead of at every filter they tried.
    */
   function applyFilters(next: { vendorId?: string; days?: WorkHistoryRangeDays }): void {
-    const vendorId = next.vendorId ?? selectedVendorId
+    const vendorId = next.vendorId ?? clientFilterValue
     const days = next.days ?? workHistoryDays
     const params = new URLSearchParams()
     if (vendorId) params.set('client', vendorId)
     if (days !== DEFAULT_WORK_HISTORY_DAYS) params.set('range', String(days))
     const query = params.toString()
+    const destination = query ? `/oj-projects?${query}` : '/oj-projects'
+    rememberPendingNavigation(destination)
     startTransition(() => {
-      router.replace(query ? `/oj-projects?${query}` : '/oj-projects', { scroll: false })
+      router.replace(destination, { scroll: false })
     })
   }
 
@@ -230,6 +239,7 @@ export function ProjectsOverview({
   }
 
   function handleClientFilterChange(vendorId: string): void {
+    setClientFilterValue(vendorId)
     setLastCreateVendorId(vendorId)
     applyFilters({ vendorId })
   }
@@ -430,8 +440,9 @@ export function ProjectsOverview({
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end lg:ml-4">
           <Select
             label="Client"
-            value={selectedVendorId}
+            value={clientFilterValue}
             onChange={(e) => handleClientFilterChange(e.target.value)}
+            disabled={isPending}
             options={[
               { label: 'All clients', value: '' },
               ...vendors.map((v) => ({ label: v.name, value: v.id })),

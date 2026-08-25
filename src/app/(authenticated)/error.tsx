@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
+import {
+  isChunkLoadFailure,
+  recoverFromChunkFailure,
+  retryPendingNavigation,
+} from '@/components/features/shared/ChunkErrorReloader';
 
 export default function AuthenticatedError({
   error,
@@ -9,22 +14,14 @@ export default function AuthenticatedError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const isChunkError = error.name === 'ChunkLoadError' ||
-    error.message?.includes('Loading chunk') ||
-    error.message?.includes('Failed to fetch dynamically imported module');
+  const chunkErrorMessage = `${error.name || ''}: ${error.message || ''}`;
+  const isChunkError = isChunkLoadFailure(chunkErrorMessage);
 
   useEffect(() => {
     if (isChunkError) {
-      // After a deployment, old chunk hashes no longer exist on the server.
-      // A hard reload fetches fresh HTML with current chunk references.
-      // Guard against reload loops with a sessionStorage flag.
-      const key = 'chunk-reload-attempted';
-      if (!sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, '1');
-        window.location.reload();
-      }
+      recoverFromChunkFailure(chunkErrorMessage);
     }
-  }, [isChunkError]);
+  }, [chunkErrorMessage, isChunkError]);
 
   if (isChunkError) {
     return (
@@ -35,7 +32,7 @@ export default function AuthenticatedError({
         </p>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={retryPendingNavigation}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
         >
           Reload page
