@@ -72,7 +72,77 @@ components:
       in: header
       name: X-Twilio-Signature
       description: Twilio request signature for webhook validation
+
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >
+        Integration API key. Scopes are held per key in api_keys.permissions.
+        A key carrying "*" satisfies every scope.
   schemas:
+    EventArtworkFile:
+      type: object
+      required: [url, mimeType, sizeBytes, updatedAt, inherited]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Absolute https URL of the artwork file in public storage.
+        mimeType:
+          type: string
+          nullable: true
+        sizeBytes:
+          type: integer
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this variant was last replaced. Null when inherited.
+        inherited:
+          type: boolean
+          description: >
+            True when the URL comes from the event's cache column with no
+            event_images row behind it, which happens when the event inherits its
+            category default image. The file is then category stock rather than
+            artwork designed for this event, and carries no metadata.
+
+    EventArtwork:
+      type: object
+      required: [eventId, slug, kitUpdatedAt, variants]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          nullable: true
+        kitUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Newest updatedAt across the emitted variants. Variants are uploaded
+            one at a time, so a kit replaced mid-session can be observed as a
+            mixture; comparing the per-variant timestamps detects that.
+        variants:
+          type: object
+          description: >
+            All three keys are always present. A variant is either a complete
+            object or an explicit null. An absent key is not a valid response.
+          required: [square, story, landscape]
+          properties:
+            square:
+              nullable: true
+              allOf: [{ $ref: '#/components/schemas/EventArtworkFile' }]
+            story:
+              nullable: true
+              allOf: [{ $ref: '#/components/schemas/EventArtworkFile' }]
+            landscape:
+              nullable: true
+              allOf: [{ $ref: '#/components/schemas/EventArtworkFile' }]
+
     Error:
       type: object
       properties:
@@ -719,6 +789,68 @@ paths:
           description: Unauthorized
         '404':
           description: Event not found
+
+  /events/{id}/artwork:
+    get:
+      tags:
+        - Events
+      summary: Get the designed artwork kit for one event
+      description: >
+        Square, story and landscape artwork for a single event.
+
+
+        Separate from /events/{id} on purpose. That endpoint is shared-cacheable
+        with an ETag, so a body that changed shape with the caller's scopes could
+        be cross-served between integrations. Every response here is
+        `Cache-Control: no-store` with no ETag.
+
+
+        The three outcomes are deliberately distinguishable: 403 means the key
+        lacks the scope, 404 means no such event (or an installation predating
+        this route), and 200 with all-null variants means the event genuinely has
+        no artwork. Collapsing them would let the feature fail silently.
+
+
+        Story and print-poster URLs are excluded from the website-facing image
+        fields on /events and /events/{id}; story is served here instead. The
+        underlying storage bucket is public, so this scope governs discovery, not
+        confidentiality.
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: Event UUID or slug.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artwork kit. Requires the read:events:artwork scope.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/EventArtwork'
+        '401':
+          description: Invalid or missing API key
+        '403':
+          description: >
+            The key is valid but lacks read:events or read:events:artwork. Never
+            report this to a user as "no artwork".
+        '404':
+          description: Event not found, or this installation predates the route
+        '429':
+          description: Rate limit exceeded
 
   /events/{id}/check-availability:
     post:
