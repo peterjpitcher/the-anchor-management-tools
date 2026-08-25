@@ -204,11 +204,23 @@ export function createCorsPreflightResponse({
   });
 }
 
+/**
+ * How a response may be stored by caches.
+ *
+ * `private` exists for routes whose body depends on the caller's scopes. Those
+ * must never sit in a shared cache: two keys asking for the same URL get
+ * different bodies, and a cached copy of one would be served to the other. It
+ * also drops the ETag, because a validator on a scope-dependent body invites
+ * exactly the same cross-serving through a 304.
+ */
+export type ApiCacheMode = 'public' | 'private';
+
 export function createApiResponse(
   data: any,
   status: number = 200,
   headers: Record<string, string> = {},
-  method?: string
+  method?: string,
+  cacheMode: ApiCacheMode = 'public'
 ) {
   // Normalise payload so consumers always see a success/data envelope
   const payload =
@@ -217,7 +229,8 @@ export function createApiResponse(
       : { success: true, data };
 
   const isGet = !method || method.toUpperCase() === 'GET' || method.toUpperCase() === 'OPTIONS'
-  const cacheControl = isGet
+  const isCacheable = isGet && cacheMode === 'public'
+  const cacheControl = isCacheable
     ? 'public, max-age=60, stale-while-revalidate=120'
     : 'no-store'
 
@@ -245,7 +258,7 @@ export function createApiResponse(
   //
   // Hashing the whole payload matches the pattern already used correctly in
   // src/app/api/portal/calendar-feed/route.ts.
-  if (isGet) {
+  if (isCacheable) {
     responseHeaders['ETag'] = `"${createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex')
@@ -262,7 +275,8 @@ export function createErrorResponse(
   message: string, 
   code: string, 
   status: number = 400,
-  details?: any
+  details?: any,
+  cacheMode: ApiCacheMode = 'public'
 ) {
   return createApiResponse(
     {
@@ -273,7 +287,10 @@ export function createErrorResponse(
         ...(details && { details }),
       },
     },
-    status
+    status,
+    {},
+    undefined,
+    cacheMode
   );
 }
 
@@ -370,11 +387,22 @@ async function safeLogApiUsage(
   }
 }
 
+export interface WithApiAuthOptions {
+  /**
+   * `private` for routes whose body depends on the caller's scopes. It applies
+   * to the guard's own 401/403/429/503 replies too: a publicly cached 403 for
+   * one key could otherwise be replayed to a key that does hold the scope.
+   */
+  cacheMode?: ApiCacheMode;
+}
+
 export async function withApiAuth(
   handler: (req: Request, apiKey: ApiKey) => Promise<Response>,
   requiredPermissions: string[] = ['read:events'],
-  request?: Request
+  request?: Request,
+  options?: WithApiAuthOptions
 ): Promise<Response> {
+  const cacheMode: ApiCacheMode = options?.cacheMode ?? 'public';
   const startTime = Date.now();
   const headersList = await headers();
   const apiKey = extractApiKey(headersList);
@@ -387,12 +415,14 @@ export async function withApiAuth(
     return createErrorResponse(
       'Authentication is temporarily unavailable',
       'AUTH_UNAVAILABLE',
-      503
+      503,
+      undefined,
+      cacheMode
     );
   }
 
   if (resolution.state === 'anonymous') {
-    return createErrorResponse('Invalid or missing API key', 'UNAUTHORIZED', 401);
+    return createErrorResponse('Invalid or missing API key', 'UNAUTHORIZED', 401, undefined, cacheMode);
   }
 
   const validatedKey = resolution.key;
@@ -424,7 +454,7 @@ export async function withApiAuth(
         error: err instanceof Error ? err.message : String(err),
       })
     );
-    return createErrorResponse('Insufficient permissions', 'FORBIDDEN', 403);
+    return createErrorResponse('Insufficient permissions', 'FORBIDDEN', 403, undefined, cacheMode);
   }
   
   // Check rate limit
@@ -434,7 +464,9 @@ export async function withApiAuth(
     return createErrorResponse(
       'Rate limiting is temporarily unavailable',
       'RATE_LIMIT_UNAVAILABLE',
-      503
+      503,
+      undefined,
+      cacheMode
     );
   }
   
@@ -442,7 +474,9 @@ export async function withApiAuth(
     return createErrorResponse(
       'Rate limit exceeded', 
       'RATE_LIMIT_EXCEEDED', 
-      429
+      429,
+      undefined,
+      cacheMode
     );
   }
   
@@ -486,7 +520,9 @@ export async function withApiAuth(
     return createErrorResponse(
       'Internal server error',
       'INTERNAL_ERROR',
-      500
+      500,
+      undefined,
+      cacheMode
     );
   }
 }

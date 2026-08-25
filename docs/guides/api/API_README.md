@@ -30,6 +30,10 @@ All endpoints live in `src/app/api/`. Consult the corresponding route file for r
 - `GET /events/{id}` returns the event object as `data` (no nested `event` wrapper); `_meta.lastUpdated` is included for cache diagnostics.
 - `POST /events/{id}/check-availability` includes both legacy fields (`available_seats`, `requested_seats`) and normalized capacity fields (`capacity`, `remaining`, `percentage_full`).
 - `GET /event-categories` includes `event_count` for upcoming active events (scheduled/draft/rescheduled/postponed).
+- `GET /events` and `GET /events/{id}` carry only the website-facing image fields (`image[]`, `heroImageUrl`, `thumbnailImageUrl`, `posterImageUrl`, `squareImageUrl`, `landscapeImageUrl`, `socialImageUrl`). Story and print-poster URLs are never among them: the website reads `image[0]` ahead of every named field and prefers `posterImageUrl`, so a 9:16 crop or an A4 PDF appearing there would be published on live pages.
+- `GET /events/{id}/artwork` serves the designed kit (`square`, `story`, `landscape`) to keys holding **both** `read:events` and `read:events:artwork`. It is a separate route because its body depends on the caller's scopes, so unlike the endpoints above it is `Cache-Control: no-store` with no ETag and can never be shared between callers by a cache.
+  - `403` means the scope is missing. `404` means no such event, or an installation predating the route. `200` with all-null `variants` means the event genuinely has no artwork. Consumers must keep these apart, or a provisioning mistake looks identical to an event with no images.
+  - The `event-images` bucket is public, so the scope governs which integrations *discover* these URLs. It is not confidentiality.
 - `POST /table-bookings` is the only public table-booking endpoint. It requires `Idempotency-Key` and returns `data.state` as one of: `confirmed`, `pending_payment`, or `blocked`.
 - `POST /table-bookings` next-step behavior: when state is `pending_payment`, `next_step_url` and `hold_expires_at` are returned; when state is `blocked`, `blocked_reason` is returned.
 
