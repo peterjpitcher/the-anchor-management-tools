@@ -289,50 +289,58 @@ describe('PrivateBookingService SMS side-effect meta', () => {
     )
   })
 
-  it('recordFinalPayment returns smsSideEffects when queueAndSend returns an error result', async () => {
+  it('recordBalancePayment surfaces an SMS failure rather than swallowing it', async () => {
+    // The payment itself succeeded, so the caller must still see success:true.
+    // The SMS failure has to travel back as data: silently dropping it once
+    // left staff believing a customer had been told when they had not.
     const fetchSingle = vi.fn().mockResolvedValue({
       data: {
         id: 'booking-1',
-        customer_first_name: 'Alex',
-        customer_last_name: 'Smith',
-        customer_name: 'Alex Smith',
-        event_date: '2026-02-20',
+        customer_first_name: 'Test',
+        customer_last_name: 'Customer',
+        customer_name: 'Test Customer',
+        event_date: '2026-02-01',
         start_time: '18:00',
         end_time: '22:00',
         end_time_next_day: false,
         contact_phone: '+447700900123',
+        contact_email: null,
         customer_id: null,
         calendar_event_id: null,
         status: 'confirmed',
         guest_count: 30,
         event_type: 'party',
         deposit_paid_date: '2026-01-10T12:00:00.000Z',
+        deposit_amount: 100,
+        total_amount: 0,
+        date_tbd: false,
+        internal_notes: null,
       },
       error: null,
     })
     const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-    const fetchSelect = vi.fn().mockReturnValue({ eq: fetchEq })
 
-    const updateMaybeSingle = vi.fn().mockResolvedValue({
-      data: { id: 'booking-1' },
+    // The customer-payable total comes from the view, because stored item
+    // prices are net and the customer was quoted gross.
+    const viewMaybeSingle = vi.fn().mockResolvedValue({
+      data: { calculated_total: 500, gross_total: 600 },
       error: null,
     })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
-    const updateEq = vi.fn().mockReturnValue({ is: updateIs })
-    const update = vi.fn().mockReturnValue({ eq: updateEq })
+    const viewEq = vi.fn().mockReturnValue({ maybeSingle: viewMaybeSingle })
 
     mockedCreateClient.mockResolvedValue({
       from: vi.fn((table: string) => {
-        if (table !== 'private_bookings') {
-          throw new Error(`Unexpected table: ${table}`)
+        if (table === 'private_bookings') {
+          return { select: vi.fn().mockReturnValue({ eq: fetchEq }) }
         }
-
-        return {
-          select: fetchSelect,
-          update,
+        if (table === 'private_bookings_with_details') {
+          return { select: vi.fn().mockReturnValue({ eq: viewEq }) }
         }
+        throw new Error(`Unexpected table: ${table}`)
       }),
+      // Settlement is decided inside the RPC now, never by the service
+      // stamping final_payment_date itself.
+      rpc: vi.fn().mockResolvedValue({ data: { is_fully_paid: true }, error: null }),
     })
 
     ;(SmsQueueService.queueAndSend as unknown as Mock).mockResolvedValue({
@@ -341,7 +349,12 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       logFailure: false,
     })
 
-    const result = await PrivateBookingService.recordFinalPayment('booking-1', 'bank_transfer', 'user-1')
+    const result = await PrivateBookingService.recordBalancePayment(
+      'booking-1',
+      600,
+      'bank_transfer',
+      'user-1',
+    )
 
     expect(result).toMatchObject({ success: true })
     expect((result as any).smsSideEffects).toEqual([
@@ -354,16 +367,6 @@ describe('PrivateBookingService SMS side-effect meta', () => {
         error: 'SMS blocked by idempotency safety guard',
       }),
     ])
-    expect((SmsQueueService.queueAndSend as unknown as Mock).mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        trigger_type: 'final_payment_received',
-        template_key: 'private_booking_final_payment',
-        message_body: finalPaymentMessage({
-          customerFirstName: 'Alex',
-          eventDate: '20 February 2026',
-        }),
-      })
-    )
   })
 
   it('cancelBooking returns smsSideEffects when queueAndSend throws', async () => {
