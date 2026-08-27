@@ -529,3 +529,81 @@ Say these out loud rather than discover them later.
 | Reference | Prefill format, edited value saved, cleared value stores null, appears on both PDF and email |
 
 Use anonymised fixtures. Do not commit customer names.
+
+---
+
+## Deploy runbook
+
+Everything is consolidated on `feat/private-booking-invoice`. Merging that one
+branch ships the invoice feature plus three parallel fixes.
+
+`claude/distracted-sinoussi-8c8d4d` and `claude/elated-ptolemy-1ee2e2` are
+empty and can be deleted. The other three are merged in and can be deleted
+after the merge lands.
+
+### 1. Merge
+
+```bash
+git checkout main && git merge feat/private-booking-invoice
+```
+
+### 2. Deploy the code, and wait for it
+
+Push and confirm the production alias actually moved before touching the
+database. A green GitHub check is a preview build, not production.
+
+### 3. Apply the migrations, in this order
+
+**Do not run `npx supabase db push`.** Use the Supabase MCP `apply_migration`
+one at a time. Every other file in `supabase/migrations` now matches the
+ledger exactly, so nothing else can be swept along.
+
+| # | Migration | What it does |
+|---|---|---|
+| 1 | `20260819100000_leave_reminder_ledger` | Pre-existing, see below |
+| 2 | `20260828080000_settle_two_private_bookings_paid_offline` | Corrects two bookings marked paid while owing |
+| 3 | `20260828085000_close_anon_reads_on_timeclock_and_mis_scoped_tables` | Closes the staff pay-data leak |
+| 4 | `20260828090000_invoice_line_items_generated_columns` | Schema drift fix, no-op against production |
+| 5 | `20260828091000_private_booking_invoice_foundations` | Columns and indexes |
+| 6 | `20260828092000_private_booking_invoice_atomic` | The function |
+
+Number 1 is not part of this work but is worth doing while you are here.
+`leave_reminder_log` has never existed in production, and
+`/api/cron/leave-approval-reminders` reads and writes it every morning at
+09:30. Its code shipped on 19 August and its migration did not, so holiday
+approval chasing has been failing silently since. The migration is additive
+only. Skip it if you would rather keep this deploy to one subject.
+
+### 4. Check after applying
+
+```sql
+-- The function exists and is service-role only.
+SELECT has_function_privilege('anon',  p.oid, 'EXECUTE') AS anon_can,
+       has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_can
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname = 'create_private_booking_invoice_atomic';
+-- expect: anon_can false, service_can true
+
+-- The generated columns are still generated (migration 4 was a no-op).
+SELECT count(*) FROM information_schema.columns
+WHERE table_name = 'invoice_line_items' AND is_generated = 'ALWAYS';
+-- expect: 4
+
+-- The three invoice crons still see exactly what they saw before.
+SELECT count(*) FROM invoices WHERE sent_at IS NOT NULL AND deleted_at IS NULL;
+-- expect: 45 (43 paid + 2 overdue, backfilled)
+```
+
+### 5. Smoke test
+
+- `/timeclock` still loads and clock-in still works. It is a public no-auth
+  route and migration 3 revokes the anon grant it never actually used.
+- Invoice one real booking. Susan Herd, 15 October 2026, should come to
+  exactly £1,140.00. Check the PDF, the email, and that pressing the button
+  again shows the existing invoice rather than making a second one.
+
+### Rollback
+
+The invoice migrations are additive. If the feature misbehaves, the button is
+the only way in and it is super_admin only, so removing `canInvoice` from
+`page.tsx` disables it without touching the database.
