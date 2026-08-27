@@ -3,7 +3,50 @@
 Companion to `tasks/spec-private-booking-invoice.md` (the design). This is the build order.
 
 Date: 2026-08-27
-Status: ready to start. Nothing built yet.
+Status: **BUILT on `feat/private-booking-invoice`. Migrations written, NOT applied.**
+
+## Build status
+
+| Phase | State |
+|---|---|
+| 0 Schema drift | Migration written, not applied |
+| 1 Foundations | Migration written, not applied |
+| 2 Atomic function | Migration written, not applied, **proven against production data** |
+| 3 Server action | Done, 24 tests |
+| 4 Document and email | Done, 16 tests |
+| 5 UI | Done |
+| 6 Rollout | Owner's call |
+
+Gates: typecheck 0 errors, lint 0 warnings, 693 test files / 5795 tests all
+passing, production build exit 0.
+
+### What was proven against real production data
+
+The whole of phase 1 and 2 was executed inside a transaction that was rolled
+back, using booking `6932f051` (gross total £1,140.00):
+
+- Both migrations apply cleanly to the live schema.
+- First call created `INV-003WD`, total £1,140.00, paid £0.00, status `draft`,
+  2 line items, booking stamped `held_separately`.
+- **Second call returned `created: false` and the same invoice number.** The
+  idempotency guard holds: no second invoice, no second number burnt.
+- After rollback: 50 invoices (unchanged), `invoice_series` still at 52, no
+  leaked column, no leaked function. Production was not modified.
+
+One thing that verification surfaced: the function calls
+`assert_rpc_permission('invoices','create')`, which raises `42501` unless the
+caller presents a `service_role` JWT claim. The server action uses
+`createAdminClient()`, which does, so it early-returns. Anything else is
+refused, which is the intent.
+
+### Not built, and why
+
+- **Booking and invoice balances still diverge** (debt item 1 below). Eleven
+  surfaces read `private_booking_payments` and none reads `invoice_payments`.
+  Staff must keep recording payments on the booking.
+- **No correction path.** Unchanged from the spec: a credit note cannot
+  increase an invoice, and reissue is OJ-Projects only.
+- **Mandatory email on confirm** is a separate change.
 
 **How to use this.** Work top to bottom. Each task lists the files, the change, and how to
 prove it worked before moving on. Do not skip the verification steps: two of them exist
