@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
-import TimeclockClient from './_components/TimeclockClient'
+import TimeclockClient, { type KioskSession } from './_components/TimeclockClient'
 import { Toaster } from 'react-hot-toast'
 
 export const dynamic = 'force-dynamic'
@@ -27,7 +27,18 @@ export default async function TimeclockPage() {
     last_name: string | null
     preferred_name: string | null
   }[]
-  const openSessions = sessionsResult.success ? sessionsResult.data : []
+  // getOpenSessions() selects the whole row for the authenticated FOH screens.
+  // This page is public, and anything handed to a client component lands in the
+  // RSC payload, so the session is narrowed to the fields the kiosk renders
+  // before it crosses that boundary. Sending the row as-is would publish
+  // manager_note, rate_override and premium_reason for everyone on shift.
+  const openSessions: KioskSession[] = (sessionsResult.success ? sessionsResult.data : []).map(
+    (session) => ({
+      employee_id: session.employee_id,
+      clock_in_at: session.clock_in_at,
+      employee_name: session.employee_name,
+    }),
+  )
 
   return (
     <>

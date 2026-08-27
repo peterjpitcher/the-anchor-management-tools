@@ -6,7 +6,6 @@ import toast from 'react-hot-toast'
 import { clockIn, clockOut } from '@/app/actions/timeclock'
 import { Avatar } from '@/ds'
 import { disambiguatedNames } from '@/lib/employees/display-name'
-import type { TimeclockSession } from '@/app/actions/timeclock'
 
 interface Employee {
   employee_id: string
@@ -15,9 +14,20 @@ interface Employee {
   preferred_name: string | null
 }
 
+// /timeclock is a public route, so every prop on this component is serialised
+// into the RSC payload that any anonymous visitor receives. A full
+// TimeclockSession carries manager_note, rate_override, premium_reason and the
+// rest of the review/pay columns, so the kiosk takes only the three fields it
+// actually renders. Widen this type only with something safe to publish.
+export interface KioskSession {
+  employee_id: string
+  clock_in_at: string
+  employee_name: string
+}
+
 interface TimeclockClientProps {
   employees: Employee[]
-  openSessions: (TimeclockSession & { employee_name: string })[]
+  openSessions: KioskSession[]
 }
 
 // The kiosk is a shared screen, so staff need to spot themselves at a glance:
@@ -103,7 +113,13 @@ export default function TimeclockClient({ employees, openSessions: initialSessio
           const result = await clockIn(pinTarget.employee_id, normalizedPin)
           if (!result.success) { toast.error(result.error); return }
           toast.success(`Welcome in, ${empName(pinTarget)}!`)
-          setSessions(prev => [...prev, { ...result.data, employee_name: empName(pinTarget) }])
+          // Narrowed rather than spread: clockIn returns the whole row, and the
+          // kiosk must not hold pay or review columns in client state.
+          setSessions(prev => [...prev, {
+            employee_id: result.data.employee_id,
+            clock_in_at: result.data.clock_in_at,
+            employee_name: empName(pinTarget),
+          }])
         }
         setPinTarget(null)
         setPin('')
