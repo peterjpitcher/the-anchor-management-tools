@@ -221,9 +221,11 @@ export async function POST(request: NextRequest) {
                 accessibility_needs: body.accessibility_needs,
                 date_tbd: body.date_tbd,
                 items: body.items,
-                // Server-controlled fields — never trust the caller
+                // Server-controlled fields, never trust the caller
                 status: 'draft',
                 source: 'website',
+                // A public enquiry is a lead: no hold clock, no deposit SMS.
+                is_web_enquiry: true,
             };
 
             // Service-role client required: anon lost EXECUTE on

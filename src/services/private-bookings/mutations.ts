@@ -691,7 +691,16 @@ export async function createBooking(
 
   // Logic for Deposit Due Date (Hold Expiry) — a hold must never run past the
   // balance & final-details deadline (SOP §10).
-  if (!requiresDeposit || input.date_tbd) {
+  // A web enquiry gets no hold clock at all.
+  //
+  // Until this was added, a website enquiry was created with the default £250
+  // deposit, which started a hold, which the expire-holds cron then cancelled.
+  // Scarlett Austin (booking ccc882a6, 26 July 2026) was SMSed "£250 deposit
+  // secures it" one second after pressing submit, chased twice, and told her
+  // hold had lapsed three days later. Nobody had spoken to her at any point.
+  // A lead nobody has quoted must not be able to expire itself, so hold_expiry
+  // stays null, which is also what excludes it from that cron.
+  if (!requiresDeposit || input.date_tbd || input.is_web_enquiry) {
     holdExpiryMoment = null;
   } else if (input.hold_expiry) {
     // User manually specified a date. A date-only deadline runs to the end of
@@ -757,9 +766,12 @@ export async function createBooking(
       ? `${input.customer_first_name} ${input.customer_last_name}`
       : input.customer_first_name,
     deposit_amount: depositAmount,
-    status: requiresDeposit ? 'draft' : 'confirmed',
+    // An enquiry stays a draft even where the deposit was waived: confirming a
+    // booking nobody has read would be worse than losing it.
+    status: input.is_web_enquiry ? 'draft' : (requiresDeposit ? 'draft' : 'confirmed'),
     date_tbd: input.date_tbd ? true : false,
   };
+  delete (bookingPayload as Record<string, unknown>).is_web_enquiry;
 
   // 2. Atomic Transaction
   const { data: booking, error } = await supabase.rpc('create_private_booking_transaction', {
@@ -785,7 +797,11 @@ export async function createBooking(
   // SMS
   if (booking) {
     const bookingForSideEffects = { ...bookingPayload, ...booking, hold_expiry: holdExpiryIso };
-    if (requiresDeposit) {
+    if (input.is_web_enquiry) {
+      // Deliberately silent to the customer. The only message that should reach
+      // someone who filled in the enquiry form is a human replying to it. The
+      // manager is notified separately by the calling route.
+    } else if (requiresDeposit) {
       void sendCreationSms(bookingForSideEffects, normalizedContactPhone).catch((smsError) => {
         logger.error('Private booking creation SMS background task failed', {
           error: smsError instanceof Error ? smsError : new Error(String(smsError)),
