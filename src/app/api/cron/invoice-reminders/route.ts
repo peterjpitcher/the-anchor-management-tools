@@ -70,7 +70,11 @@ export async function GET(request: Request) {
         line_items:invoice_line_items(*),
         payments:invoice_payments(*)
       `)
+      .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
       .in('status', ['sent', 'partially_paid', 'overdue'])
+      // Never chase an invoice that was never actually delivered. status is a
+      // legacy mirror; sent_at is the authoritative delivery record.
+      .not('sent_at', 'is', null)
       .lte('due_date', todayIso)
       .is('deleted_at', null)
       .order('due_date', { ascending: true })

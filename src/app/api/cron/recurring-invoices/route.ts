@@ -303,6 +303,7 @@ export async function GET(request: Request) {
             line_items:invoice_line_items(*),
             payments:invoice_payments(*)
           `)
+          .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
           .eq('id', newInvoice.id)
           .single()
 

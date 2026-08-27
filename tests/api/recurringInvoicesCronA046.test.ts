@@ -114,7 +114,11 @@ function makeSupabase() {
     error: null,
   })
   const invoiceLoadEq = vi.fn(() => ({ single: invoiceLoadSingle }))
-  const invoiceSelect = vi.fn(() => ({ eq: invoiceLoadEq }))
+  // Line items are ordered explicitly now: without display_order PostgREST
+  // gives no stable order, so a PDF could print its lines differently between
+  // generating, retrying and downloading.
+  const invoiceLoadOrder = vi.fn(() => ({ eq: invoiceLoadEq }))
+  const invoiceSelect = vi.fn(() => ({ order: invoiceLoadOrder, eq: invoiceLoadEq }))
 
   const invoiceStatusMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'invoice-1' }, error: null })
   const invoiceStatusSelect = vi.fn(() => ({ maybeSingle: invoiceStatusMaybeSingle }))

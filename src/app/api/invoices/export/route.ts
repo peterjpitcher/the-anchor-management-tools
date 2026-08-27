@@ -121,6 +121,7 @@ export async function GET(request: NextRequest) {
         vendor:invoice_vendors(*),
         line_items:invoice_line_items(*)
       `)
+      .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
       .gte('invoice_date', startDate)
       .lte('invoice_date', endDate)
       .is('deleted_at', null)

@@ -2470,6 +2470,7 @@ export async function GET(request: Request) {
           .select('id')
           .eq('vendor_id', vendorId)
           .eq('reference', `OJ Projects ${period.period_yyyymm}`)
+          .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
           .ilike('internal_notes', `%${billingRun.id}%`)
           .order('created_at', { ascending: false })
           .limit(1)

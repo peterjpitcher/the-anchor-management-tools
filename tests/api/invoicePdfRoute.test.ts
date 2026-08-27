@@ -43,7 +43,11 @@ function mockSupabaseInvoice(invoiceResult = invoice) {
   const single = vi.fn().mockResolvedValue({ data: invoiceResult, error: null })
   const is = vi.fn(() => ({ single }))
   const eq = vi.fn(() => ({ is }))
-  const select = vi.fn(() => ({ eq }))
+  // Line items are ordered explicitly now: without display_order PostgREST
+  // gives no stable order, so a PDF could print its lines differently between
+  // generating, retrying and downloading.
+  const order = vi.fn(() => ({ eq }))
+  const select = vi.fn(() => ({ order, eq }))
   const from = vi.fn(() => ({ select }))
 
   ;(createClient as unknown as vi.Mock).mockResolvedValue({
