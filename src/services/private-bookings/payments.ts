@@ -558,115 +558,20 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
 }
 
 // ---------------------------------------------------------------------------
-// Record final payment — caller handles auth check
+// There is deliberately no "record final payment" helper here.
+//
+// Marking a booking settled is never a direct write to final_payment_date. The
+// legacy helper stamped that column from a payment method alone, so a booking
+// could read "paid in full" with no money recorded against it (live example:
+// a July 2025 booking that read as settled with GBP 232.98 of cash missing
+// from the ledger, reconciled 2026-08-27).
+//
+// The column is owned by the database: record_balance_payment inserts the
+// payment and stamps it, apply_balance_payment_status re-derives it whenever
+// payments or items change. Both compare the VAT-inclusive gross total against
+// private_booking_payments only, so the returnable booking and damage deposit
+// never counts towards the event balance.
 // ---------------------------------------------------------------------------
-
-export async function recordFinalPayment(bookingId: string, method: string, performedByUserId?: string): Promise<{ success: true; smsSideEffects?: PrivateBookingSmsSideEffectSummary[] }> {
-  const supabase = await createClient();
-
-  const { data: booking, error: fetchError } = await supabase
-    .from('private_bookings')
-    .select('id, customer_first_name, customer_last_name, customer_name, event_date, start_time, end_time, end_time_next_day, contact_phone, customer_id, calendar_event_id, status, guest_count, event_type, deposit_paid_date, final_payment_date, date_tbd, internal_notes')
-    .eq('id', bookingId)
-    .single();
-
-  if (fetchError || !booking) throw new Error('Booking not found');
-
-  // D17: Idempotency — if final payment already recorded, return success
-  if (booking.final_payment_date) {
-    return { success: true };
-  }
-
-  // D17: Optimistic lock — only update if final_payment_date is still null
-  const { data: updatedBooking, error } = await supabase
-    .from('private_bookings')
-    .update({
-      final_payment_date: new Date().toISOString(),
-      final_payment_method: method,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', bookingId)
-    .is('final_payment_date', null)
-    .select()
-    .maybeSingle();
-
-  if (error) throw new Error('Failed to record final payment');
-  // D17: If no row returned, another request beat us — idempotent success
-  if (!updatedBooking) return { success: true };
-
-  const smsSideEffects: PrivateBookingSmsSideEffectSummary[] = []
-
-  if (booking.contact_phone || booking.customer_id) {
-    const eventDate = formatEventDate(booking.event_date, booking)
-
-    const smsMessage = finalPaymentMessage({
-      customerFirstName: booking.customer_first_name,
-      eventDate: eventDate,
-    });
-
-     
-    let smsResult: any
-    try {
-      smsResult = await SmsQueueService.queueAndSend({
-        booking_id: bookingId,
-        trigger_type: 'final_payment_received',
-        template_key: 'private_booking_final_payment',
-        message_body: smsMessage,
-        customer_phone: booking.contact_phone,
-        customer_name: booking.customer_name || `${booking.customer_first_name} ${booking.customer_last_name || ''}`.trim(),
-        customer_id: booking.customer_id,
-        created_by: performedByUserId,
-        priority: 1,
-        metadata: {
-          template: 'private_booking_final_payment',
-          first_name: booking.customer_first_name,
-          event_date: eventDate
-        }
-      });
-    } catch (smsError) {
-      smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
-    }
-
-    const smsSafety = normalizeSmsSafetyMeta(smsResult)
-    const smsSummary: PrivateBookingSmsSideEffectSummary = {
-      triggerType: 'final_payment_received',
-      templateKey: 'private_booking_final_payment',
-      queueId: typeof smsResult?.queueId === 'string' ? smsResult.queueId : undefined,
-      sent: smsResult?.sent === true,
-      suppressed: smsResult?.suppressed === true,
-      requiresApproval: smsResult?.requiresApproval === true,
-      code: smsSafety.code,
-      logFailure: smsSafety.logFailure,
-      error: typeof smsResult?.error === 'string' ? smsResult.error : undefined
-    }
-
-    smsSideEffects.push(smsSummary)
-
-    if (smsSummary.logFailure) {
-      logger.error('Private booking SMS logging failed', {
-        metadata: {
-          bookingId: bookingId,
-          triggerType: smsSummary.triggerType,
-          templateKey: smsSummary.templateKey,
-          code: smsSummary.code ?? null
-        }
-      })
-    }
-
-    if (smsSummary.error) {
-      logger.error('Private booking SMS queue/send failed', {
-        metadata: {
-          bookingId: bookingId,
-          triggerType: smsSummary.triggerType,
-          templateKey: smsSummary.templateKey,
-          error: smsSummary.error
-        }
-      })
-    }
-  }
-
-  return smsSideEffects.length > 0 ? { success: true, smsSideEffects } : { success: true };
-}
 
 // ---------------------------------------------------------------------------
 // Record balance payment (partial payments) — caller handles auth check
