@@ -265,7 +265,14 @@ export async function POST(request: NextRequest) {
         event_type: parsed.data.event_type,
         internal_notes: parsed.data.notes,
         status: 'draft',
-        source: 'website'
+        source: 'website',
+        // No date given means the guest does not have one yet. Without this the
+        // service substitutes today, which back-dates the hold and gets the
+        // enquiry cancelled by the very next cron run, with the date the guest
+        // actually wanted recorded nowhere.
+        date_tbd: !eventDate,
+        // Suppresses the hold clock and the deposit SMS. An enquiry is a lead.
+        is_web_enquiry: true
       }, { client: supabase })
       mutationCommitted = true
 

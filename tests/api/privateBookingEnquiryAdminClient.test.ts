@@ -133,6 +133,38 @@ describe('POST /api/private-booking-enquiry', () => {
     })
   })
 
+  it('marks the booking as a web enquiry so it cannot expire itself', async () => {
+    // A website enquiry used to be created with the default £250 deposit, which
+    // started a hold clock, which the expire-holds cron then cancelled.
+    // Production evidence: booking ccc882a6 (26 July 2026) was SMSed
+    // "£250 deposit secures it" one second after the guest pressed submit,
+    // chased twice, and cancelled with reason "Deposit hold expired" three days
+    // later. Nobody had spoken to her. is_web_enquiry suppresses the hold and
+    // the deposit SMS, so a lead waits for a human instead of deleting itself.
+    await POST(enquiry(VALID) as never)
+
+    expect(createBooking.mock.calls[0][0]).toMatchObject({
+      is_web_enquiry: true,
+      status: 'draft',
+      source: 'website',
+    })
+  })
+
+  it('flags a missing date as TBD rather than letting it become today', async () => {
+    // Without this the service substitutes today's date, which back-dates the
+    // hold and gets the enquiry cancelled by the very next cron run, with the
+    // date the guest actually wanted recorded nowhere.
+    const { date, time, ...noDate } = VALID
+    await POST(enquiry(noDate) as never)
+
+    expect(createBooking.mock.calls[0][0]).toMatchObject({ date_tbd: true })
+  })
+
+  it('does not flag a dated enquiry as TBD', async () => {
+    await POST(enquiry(VALID) as never)
+    expect(createBooking.mock.calls[0][0]).toMatchObject({ date_tbd: false })
+  })
+
   it('rejects an absurd party size with wording a guest can act on', async () => {
     const response = await POST(enquiry({ ...VALID, group_size: 5000 }) as never)
     const body = await response.json()

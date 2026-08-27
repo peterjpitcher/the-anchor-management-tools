@@ -249,6 +249,12 @@ export type CreatePrivateBookingInput = {
   special_requirements?: string;
   accessibility_needs?: string;
   source?: string;
+  /**
+   * A web enquiry is a LEAD, not a held date. Nobody has quoted it, nobody has
+   * offered the customer anything, and no deposit has been asked for. Set by
+   * the public enquiry endpoints only. See createBooking for what it suppresses.
+   */
+  is_web_enquiry?: boolean;
   deposit_amount?: number;
   deposit_reduction_reason?: string;
   deposit_waived?: boolean;
