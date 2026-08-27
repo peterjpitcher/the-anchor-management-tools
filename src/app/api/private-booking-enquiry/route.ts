@@ -22,19 +22,31 @@ import { ConsentService } from '@/services/consent'
 import { parseLondonDateTimeLocal } from '@/lib/dateUtils'
 import { getApiKeyAuthState } from '@/lib/api/auth'
 
+// Guest-facing wording. Everything this schema rejects is shown to the person
+// filling in the private-hire form on the brand site, so a raw Zod string like
+// "Number must be less than or equal to 50" is not acceptable copy.
 const EnquirySchema = z.object({
-  phone: z.string().min(5),
+  phone: z.string().min(5, 'Please enter a contact phone number'),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   name: z.string().min(1).max(120).optional(),
+  email: z.string().email('Please enter a valid email address').max(255).optional(),
+  event_type: z.string().max(120).optional(),
   date_time: z.string().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).optional(),
+  // 300 is the venue's largest documented headcount (whole-venue exclusive
+  // hire, standing). The cap exists to reject nonsense, not to size the room:
+  // the previous value of 50 silently 400'd exactly the biggest and most
+  // valuable enquiries, and private hire is advertised at 10-150 guests.
   group_size: z
     .preprocess((value) => {
       if (typeof value === 'number') return value
       if (typeof value === 'string' && value.length > 0) return Number.parseInt(value, 10)
       return undefined
-    }, z.number().int().min(1).max(50))
+    }, z.number({ invalid_type_error: 'Please enter the number of guests' })
+      .int('Please enter the number of guests as a whole number')
+      .min(1, 'Please enter at least one guest')
+      .max(300, 'Please call 01753 682707 so we can plan a party this size with you'))
     .optional(),
   notes: z.string().max(2000).optional(),
   communication_consent: OptionalCommunicationConsentSchema
@@ -192,6 +204,8 @@ export async function POST(request: NextRequest) {
       date: eventDate || null,
       time: startTime || null,
       group_size: parsed.data.group_size || null,
+      email: parsed.data.email || null,
+      event_type: parsed.data.event_type || null,
       notes: parsed.data.notes || null,
       communication_consent: consentHashPayload(parsed.data.communication_consent)
     })
@@ -224,17 +238,35 @@ export async function POST(request: NextRequest) {
     let claimHeld = true
     let mutationCommitted = false
     try {
+      // The admin client is NOT optional here.
+      //
+      // 20260811100100_revoke_anon_execute_and_public_reads.sql revoked anon
+      // EXECUTE on create_private_booking_transaction, on the stated assumption
+      // that this route already reached it through createAdminClient. It did
+      // not: createAdminClient was used for idempotency and analytics only, and
+      // createBooking fell back to its default cookie-session client. An
+      // API-key caller has no session, so that client is the anon role, and
+      // from 11 August 2026 every private-hire enquiry from the brand site died
+      // on "permission denied for function create_private_booking_transaction"
+      // and was returned to the guest as a 500. Enquiries worth four figures
+      // each were lost with no record anywhere that they had been attempted.
+      //
+      // Passing the service-role client is what makes the public flow work.
+      // Do not remove it, and do not add another public caller of
+      // createBooking without it.
       const booking = await PrivateBookingService.createBooking({
         customer_first_name: firstName,
         customer_last_name: lastName,
         contact_phone: normalizedPhone,
+        contact_email: parsed.data.email,
         event_date: eventDate,
         start_time: startTime,
         guest_count: parsed.data.group_size,
+        event_type: parsed.data.event_type,
         internal_notes: parsed.data.notes,
         status: 'draft',
         source: 'website'
-      })
+      }, { client: supabase })
       mutationCommitted = true
 
       if (booking?.customer_id && booking?.id) {

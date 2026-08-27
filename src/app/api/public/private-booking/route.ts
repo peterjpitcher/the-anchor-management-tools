@@ -226,7 +226,11 @@ export async function POST(request: NextRequest) {
                 source: 'website',
             };
 
-            const booking = await PrivateBookingService.createBooking(bookingPayload);
+            // Service-role client required: anon lost EXECUTE on
+            // create_private_booking_transaction in the 11 August 2026 security
+            // migration, and an API-key caller has no session. See the note in
+            // src/app/api/private-booking-enquiry/route.ts.
+            const booking = await PrivateBookingService.createBooking(bookingPayload, { client: supabase });
             createdBookingId = typeof booking?.id === 'string' ? booking.id : null;
 
             if (booking?.customer_id && createdBookingId) {
