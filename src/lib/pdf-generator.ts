@@ -4,7 +4,8 @@ import {
   generateCompactInvoiceHTML,
   type InvoiceDocumentKind,
   type InvoiceRemittanceDetails,
-  type CreditNoteDetails
+  type CreditNoteDetails,
+  type InvoiceDepositNotice
 } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
@@ -38,6 +39,7 @@ type InvoicePdfOptions = ExistingBrowserOptions & {
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
   creditNote?: CreditNoteDetails
+  deposit?: InvoiceDepositNotice
 }
 
 const LOCAL_CHROMIUM_ARGS = [
@@ -154,6 +156,7 @@ export async function generateInvoicePDF(
       documentKind: options.documentKind,
       remittance: options.remittance,
       creditNote: options.creditNote,
+      deposit: options.deposit,
     })
 
     // Generate PDF with A4 format

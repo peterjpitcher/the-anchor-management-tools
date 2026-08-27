@@ -29,12 +29,33 @@ export interface CreditNoteDetails {
   reason: string
 }
 
+/**
+ * A statement about a private booking's deposit, printed alongside the invoice.
+ *
+ * Passed in as a snapshot rather than read live, because the sentence has to
+ * stay true to what the customer was told at the moment of issue. A deposit
+ * that is later refunded or retained must not silently rewrite an invoice that
+ * was already sent.
+ *
+ * It is never part of any total. When the deposit has been applied to the
+ * invoice it appears as a payment in `invoice.payments`, and this notice only
+ * explains it.
+ */
+export interface InvoiceDepositNotice {
+  amount: number
+  paidOn?: string | null
+  method?: string | null
+  /** held_separately: refundable after the event. deducted: applied to this invoice. */
+  treatment: 'held_separately' | 'deducted'
+}
+
 export interface InvoiceTemplateData {
   invoice: InvoiceWithDetails
   logoUrl?: string
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
   creditNote?: CreditNoteDetails
+  deposit?: InvoiceDepositNotice
 }
 
 const BODY_CSS = `    .addresses {
@@ -221,7 +242,7 @@ const BODY_CSS = `    .addresses {
 `
 
 export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
-  const { invoice, logoUrl, documentKind = 'invoice', remittance, creditNote } = data
+  const { invoice, logoUrl, documentKind = 'invoice', remittance, creditNote, deposit } = data
   const isRemittanceAdvice = documentKind === 'remittance_advice'
   const isCreditNote = documentKind === 'credit_note'
 
@@ -338,6 +359,38 @@ export function generateCompactInvoiceHTML(data: InvoiceTemplateData): string {
   const remittancePaymentReference =
     remittance?.paymentReference ?? latestPayment?.reference ?? invoice.reference ?? null
   const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+
+  // An invoice raised for a private booking can be born with payments already
+  // on it, so the plain invoice view has to be able to show a balance rather
+  // than only a total. Without this a part-paid customer is asked for the
+  // whole amount a second time.
+  const hasPaidAmount = Number(invoice.paid_amount || 0) > 0
+
+  // The deposit notice. Never contributes to a total: when the deposit has
+  // been applied it is already counted as a payment, and when it is held
+  // separately it is not part of this invoice at all.
+  const depositNoticeHtml = (() => {
+    if (!deposit || !(deposit.amount > 0)) return ''
+    const paidOn = deposit.paidOn ? formatDate(deposit.paidOn) : null
+    const method = deposit.method ? formatPaymentMethod(deposit.method) : null
+
+    const received = [
+      `Booking and damage deposit of ${formatCurrency(deposit.amount)}`,
+      paidOn ? ` received on ${escapeHtml(paidOn)}` : '',
+      method ? ` by ${escapeHtml(method)}` : '',
+      '.',
+    ].join('')
+
+    const explanation = deposit.treatment === 'deducted'
+      ? 'This has been applied to the invoice above and is included in the payments received.'
+      : 'This is held separately from the event price and will be refunded within 48 hours after your event, less any documented deductions. It is not part of the amount due above.'
+
+    return `
+    <div class="payment-section keep-together">
+      <h3>Your Deposit</h3>
+      <p>${received} ${explanation}</p>
+    </div>`
+  })()
 
   // Internally we still call this "remittance advice", but the customer-facing term is "Receipt".
   const documentTitle = isCreditNote ? 'Credit Note' : isRemittanceAdvice ? 'Receipt' : 'Invoice'
@@ -497,6 +550,19 @@ ${renderDocumentHeader({
           <span>Outstanding Balance</span>
           <span>${formatCurrency(outstandingBalance)}</span>
         </div>
+      ` : hasPaidAmount ? `
+        <div class="summary-row">
+          <span>Invoice Total</span>
+          <span>${formatCurrency(invoice.total_amount)}</span>
+        </div>
+        <div class="summary-row">
+          <span>Payments Received</span>
+          <span>-${formatCurrency(invoice.paid_amount)}</span>
+        </div>
+        <div class="summary-row total">
+          <span>Balance Due</span>
+          <span>${formatCurrency(outstandingBalance)}</span>
+        </div>
       ` : `
         <div class="summary-row total">
           <span>Total Due</span>
@@ -505,6 +571,8 @@ ${renderDocumentHeader({
       `}
     </div>
   </div>` : ''}
+
+  ${depositNoticeHtml}
 
   ${isCreditNote && creditNote ? `
     <div class="payment-section keep-together">
@@ -560,7 +628,7 @@ ${renderDocumentHeader({
         </div>
         <div class="payment-method">
           <h4>Other Methods</h4>
-          <p><strong>Card Payments:</strong> Subject to additional fees</p>
+          <p><strong>Card Payments:</strong> Available on request</p>
           <p>For payment queries or to arrange card payment:</p>
           <p>Contact: ${escapeHtml(CONTACT_NAME)}</p>
           <p>Mobile: ${escapeHtml(CONTACT_PHONE)}</p>

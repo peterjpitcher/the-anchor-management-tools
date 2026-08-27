@@ -189,6 +189,13 @@ export async function storeContractSnapshot(
     mimeType: string
     generatedBy?: string | null
     metadata?: Record<string, unknown>
+    /**
+     * Defaults to 'contract'. Private booking invoices reuse this so the
+     * exact document that reached the customer can be reproduced later: VAT
+     * records must be kept six years and regenerating from live data would
+     * produce a different document after any edit.
+     */
+    documentType?: 'contract' | 'invoice' | 'receipt' | 'correspondence' | 'other'
   },
 ): Promise<void> {
   try {
@@ -205,7 +212,7 @@ export async function storeContractSnapshot(
 
     const { error: docError } = await admin.from('private_booking_documents').insert({
       booking_id: input.bookingId,
-      document_type: 'contract',
+      document_type: input.documentType ?? 'contract',
       file_name: input.fileName,
       storage_path: storagePath,
       mime_type: input.mimeType,
@@ -218,7 +225,7 @@ export async function storeContractSnapshot(
       throw new Error(docError.message)
     }
   } catch (snapshotError) {
-    logger.error('Contract snapshot storage failed (non-blocking)', {
+    logger.error('Booking document snapshot storage failed (non-blocking)', {
       error: snapshotError instanceof Error ? snapshotError : new Error(String(snapshotError)),
       metadata: { bookingId: input.bookingId, version: input.version, fileName: input.fileName },
     })
