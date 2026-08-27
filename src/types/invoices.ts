@@ -2,6 +2,8 @@
 export interface InvoiceVendor {
   id: string
   name: string
+  /** Links this billing party to a customer. The only safe vendor lookup key. */
+  customer_id?: string | null
   contact_name?: string
   email?: string
   phone?: string
@@ -39,6 +41,18 @@ export interface Invoice {
   updated_at: string
   deleted_at?: string
   deleted_by?: string
+  /**
+   * Authoritative delivery state. NULL means never delivered.
+   * `status === 'sent'` is a legacy mirror and is NOT evidence of delivery:
+   * an invoice created with payments on it is born 'partially_paid' or 'paid'
+   * and can never also be 'sent'.
+   */
+  sent_at?: string | null
+  /** Recipient address at first successful delivery. */
+  sent_to?: string | null
+  /** Generated column. Use this rather than `status` for payment questions. */
+  payment_state?: 'unpaid' | 'part_paid' | 'paid'
+  is_fixed_price?: boolean
 }
 
 export interface InvoiceLineItem {
@@ -55,6 +69,12 @@ export interface InvoiceLineItem {
   vat_amount: number
   total_amount: number
   created_at: string
+  /**
+   * Render order. Every query that reads line items must order by this:
+   * without it PostgREST gives no stable order, so the PDF can print lines
+   * differently between generating, retrying and downloading.
+   */
+  display_order?: number
 }
 
 export interface InvoiceLineItemInput {
@@ -64,6 +84,7 @@ export interface InvoiceLineItemInput {
   unit_price: number
   discount_percentage: number
   vat_rate: number
+  display_order?: number
 }
 
 interface InvoicePayment {
@@ -75,6 +96,9 @@ interface InvoicePayment {
   reference?: string
   notes?: string
   created_at: string
+  /** The private_booking_payments row this was copied from, when it was. */
+  source_payment_id?: string | null
+  source_kind?: 'booking_payment' | 'booking_deposit' | null
 }
 
 export interface InvoiceWithDetails extends Invoice {
