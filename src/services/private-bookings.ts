@@ -64,7 +64,6 @@ import {
 
 import {
   recordDeposit,
-  recordFinalPayment,
   recordBalancePayment,
 } from './private-bookings/payments';
 
@@ -106,6 +105,5 @@ export class PrivateBookingService {
   static updateVendor = updateVendor;
   static deleteVendor = deleteVendor;
   static recordDeposit = recordDeposit;
-  static recordFinalPayment = recordFinalPayment;
   static recordBalancePayment = recordBalancePayment;
 }
