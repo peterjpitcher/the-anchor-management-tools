@@ -547,10 +547,22 @@ after the merge lands.
 git checkout main && git merge feat/private-booking-invoice
 ```
 
-### 2. Deploy the code, and wait for it
+### 2. Migrations FIRST, then the code
 
-Push and confirm the production alias actually moved before touching the
-database. A green GitHub check is a preview build, not production.
+**This order was wrong in the first draft of this runbook and it broke
+production for nine minutes.** The code reads `invoice_line_items.display_order`
+and `invoices.sent_at` unconditionally, so against the old schema every invoice
+query returns a 400. A missing column is a hard error, not a graceful degrade.
+
+Apply the migrations in section 3 BEFORE the code deploy. They are additive, so
+the currently deployed code keeps working against the new schema either way.
+
+Cheap pre-push check, using the service key from `.env.local`: fetch the exact
+PostgREST query shape the new code uses and confirm it returns 200 against the
+CURRENT production schema.
+
+Then push, and confirm the production alias actually moved. A green GitHub
+check is a preview build, not production.
 
 ### 3. Apply the migrations, in this order
 
