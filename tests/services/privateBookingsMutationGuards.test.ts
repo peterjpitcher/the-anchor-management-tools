@@ -708,52 +708,15 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).resolves.toEqual({ success: true, alreadyRecorded: true })
   })
 
-  it('recordFinalPayment is idempotent when booking update affects no rows', async () => {
-    const fetchSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: 'booking-1',
-        customer_first_name: 'Alex',
-        customer_last_name: 'Smith',
-        customer_name: 'Alex Smith',
-        event_date: '2026-02-20',
-        start_time: '18:00',
-        end_time: '22:00',
-        end_time_next_day: false,
-        contact_phone: null,
-        customer_id: null,
-        calendar_event_id: null,
-        status: 'confirmed',
-        guest_count: 30,
-        event_type: 'party',
-        deposit_paid_date: '2026-01-10T12:00:00.000Z',
-      },
-      error: null,
-    })
-    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
-
-    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
-    const updateIs = vi.fn().mockReturnValue({ select: updateSelect })
-    const updateEq = vi.fn().mockReturnValue({ is: updateIs })
-
-    mockedCreateClient.mockResolvedValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'private_bookings') {
-          throw new Error(`Unexpected table: ${table}`)
-        }
-
-        return {
-          select: vi.fn().mockReturnValue({ eq: fetchEq }),
-          update: vi.fn().mockReturnValue({ eq: updateEq }),
-        }
-      }),
-    })
-
-    await expect(
-      PrivateBookingService.recordFinalPayment('booking-1', 'bank_transfer')
-    ).resolves.toEqual({ success: true })
-  })
-
+  // recordFinalPayment was removed in "a paid flag with no payment behind it".
+  // It stamped final_payment_date with a direct UPDATE and no payment row
+  // behind it, which is exactly how two live bookings came to read "paid in
+  // full" while owing money. Settlement is now decided inside the
+  // record_balance_payment RPC under a FOR UPDATE lock, so the zero-row
+  // idempotency this test guarded no longer has a code path to guard.
+  // The replacement guarantees are covered by
+  // src/services/private-bookings/final-payment-stamp.test.ts, which asserts
+  // the RPC is used and that nothing in src/ writes final_payment_date directly.
   it('updateVenueSpace throws not-found when update affects no rows', async () => {
     const fetchMaybeSingle = vi.fn().mockResolvedValue({
       data: {
