@@ -23,6 +23,7 @@ export type {
   
   
   ReceiptMonthlyInsights,
+  ReceiptBankBalanceHistory,
   
   ReceiptVendorSummary,
   ReceiptVendorMonthTransaction,
@@ -59,6 +60,7 @@ import {
   queryReceiptSignedUrl,
   queryMonthlyReceiptSummary,
   queryMonthlyReceiptInsights,
+  queryReceiptBankBalanceHistory,
   queryReceiptVendorSummary,
   queryReceiptVendorMonthTransactions,
   queryReceiptVendorDetail,
@@ -109,6 +111,7 @@ import type {
   ReceiptBulkReviewData,
   ReceiptMonthlySummaryItem,
   ReceiptMonthlyInsights,
+  ReceiptBankBalanceHistory,
   ReceiptVendorSummary,
   ReceiptVendorMonthTransaction,
   ReceiptVendorDetail,
@@ -149,6 +152,7 @@ function revalidateReceiptPaths(): void {
   revalidatePath('/receipts/bulk')
   revalidatePath('/receipts/vendors')
   revalidatePath('/receipts/monthly')
+  revalidatePath('/receipts/bank-balance')
   revalidatePath('/receipts/missing-expense')
   revalidatePath('/receipts/pnl')
   revalidateTag('dashboard')
@@ -268,6 +272,14 @@ export async function getMonthlyReceiptInsights(limit = 12): Promise<ReceiptMont
     throw new Error('Insufficient permissions')
   }
   return queryMonthlyReceiptInsights(limit)
+}
+
+export async function getReceiptBankBalanceHistory(): Promise<ReceiptBankBalanceHistory> {
+  const canView = await checkUserPermission('receipts', 'view')
+  if (!canView) {
+    throw new Error('Insufficient permissions')
+  }
+  return queryReceiptBankBalanceHistory()
 }
 
 export async function getReceiptVendorSummary(monthWindow = 12): Promise<ReceiptVendorSummary[]> {

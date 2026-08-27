@@ -1,6 +1,7 @@
 type ReceiptNavView =
   | 'workspace'
   | 'monthly'
+  | 'bank-balance'
   | 'vendors'
   | 'pnl'
   | 'bulk'
@@ -42,6 +43,11 @@ export function getReceiptsNavItems({ canManage = true }: ReceiptsNavOptions = {
       id: 'monthly',
       label: 'Monthly',
       href: '/receipts/monthly',
+    },
+    {
+      id: 'bank-balance',
+      label: 'Bank balance',
+      href: '/receipts/bank-balance',
     },
     {
       id: 'vendors',

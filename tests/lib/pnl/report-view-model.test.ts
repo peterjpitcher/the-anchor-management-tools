@@ -200,4 +200,22 @@ describe('buildPnlReportViewModel', () => {
       invertVariance: true,
     })
   })
+
+  it('shows warnings only for the selected timeframe and marks missing sales as incomplete', () => {
+    const data = createDashboardData()
+    data.dataQuality.warnings = [
+      'No completed cash-up or imported till sales rows found for Last 30 days.',
+      'No completed cash-up or imported till sales rows found for Last 90 days.',
+    ]
+
+    const oneMonth = buildPnlReportViewModel(data, '1m')
+    const twelveMonths = buildPnlReportViewModel(data, '12m')
+
+    expect(oneMonth.dataQualityWarnings).toEqual([
+      'No completed cash-up or imported till sales rows found for Last 30 days.',
+    ])
+    expect(oneMonth.healthStatus).toBe('incomplete')
+    expect(oneMonth.healthLabel).toBe('Data incomplete')
+    expect(twelveMonths.dataQualityWarnings).toEqual([])
+  })
 })

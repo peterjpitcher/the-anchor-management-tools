@@ -17,6 +17,7 @@ import type {
   ReceiptRuleConflict,
   ReceiptRuleSuggestion,
 } from '@/types/database'
+import type { BankBalancePoint } from '@/lib/receipts/bank-balance'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   MAX_RECEIPT_FILE_UPLOAD_BYTES,
@@ -187,6 +188,11 @@ export type ReceiptMonthlyInsightMonth = {
 
 export type ReceiptMonthlyInsights = {
   months: ReceiptMonthlyInsightMonth[]
+}
+
+export type ReceiptBankBalanceHistory = {
+  points: BankBalancePoint[]
+  sourceRowCount: number
 }
 
 export type ReceiptVendorTrendMonth = {
