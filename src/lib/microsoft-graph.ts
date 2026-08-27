@@ -2,7 +2,7 @@
 // import { ClientSecretCredential } from '@azure/identity'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 import { generateInvoicePDF, generateQuotePDF } from '@/lib/pdf-generator'
-import type { InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoice-template-compact'
+import type { InvoiceDepositNotice, InvoiceDocumentKind, InvoiceRemittanceDetails } from '@/lib/invoice-template-compact'
 import { getErrorMessage, getErrorStatusCode } from '@/lib/errors'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
@@ -73,6 +73,8 @@ type InvoiceEmailOptions = {
   documentKind?: InvoiceDocumentKind
   remittance?: InvoiceRemittanceDetails
   pdfFilename?: string
+  /** Private booking deposit statement, printed on the PDF. Never a total. */
+  deposit?: InvoiceDepositNotice
 }
 
 // Send invoice email
@@ -84,7 +86,7 @@ export async function sendInvoiceEmail(
   ccRecipients?: string[],
   additionalAttachments?: Array<{ name: string; contentType: string; buffer: Buffer }>,
   emailOptions?: InvoiceEmailOptions
-): Promise<{ success: boolean; error?: string; messageId?: string }> {
+): Promise<{ success: boolean; error?: string; messageId?: string; pdfBuffer?: Buffer }> {
   try {
     // Generate invoice PDF with 'sent' status if currently draft
     const invoiceForPDF = invoice.status === 'draft'
@@ -96,6 +98,7 @@ export async function sendInvoiceEmail(
     const pdfBuffer = await generateInvoicePDF(invoiceForPDF, {
       documentKind,
       remittance: remittanceData,
+      deposit: emailOptions?.deposit,
     })
 
     const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
@@ -188,7 +191,11 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
     return {
       success: result.success,
       error: result.error,
-      messageId: result.messageId
+      messageId: result.messageId,
+      // Returned so a caller can archive the exact bytes the customer
+      // received, rather than regenerating a document that may since have
+      // drifted.
+      pdfBuffer
     }
   } catch (error: unknown) {
     console.error('Error sending invoice email:', error)

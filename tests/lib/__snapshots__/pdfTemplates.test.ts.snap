@@ -339,6 +339,8 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
   
 
   
+
+  
     <div class="payment-section keep-together">
       <h3>Credit Note Details</h3>
       <div class="payment-grid">
@@ -372,7 +374,7 @@ exports[`invoice PDF template > renders a credit note variant 1`] = `
         </div>
         <div class="payment-method">
           <h4>Other Methods</h4>
-          <p><strong>Card Payments:</strong> Subject to additional fees</p>
+          <p><strong>Card Payments:</strong> Available on request</p>
           <p>For payment queries or to arrange card payment:</p>
           <p>Contact: Peter Pitcher</p>
           <p>Mobile: 07990587315</p>
@@ -799,6 +801,8 @@ exports[`invoice PDF template > renders a stable document 1`] = `
   
 
   
+
+  
     <div class="payment-section keep-together">
       <h3>Payment Information</h3>
       <div class="payment-grid">
@@ -812,7 +816,7 @@ exports[`invoice PDF template > renders a stable document 1`] = `
         </div>
         <div class="payment-method">
           <h4>Other Methods</h4>
-          <p><strong>Card Payments:</strong> Subject to additional fees</p>
+          <p><strong>Card Payments:</strong> Available on request</p>
           <p>For payment queries or to arrange card payment:</p>
           <p>Contact: Peter Pitcher</p>
           <p>Mobile: 07990587315</p>
