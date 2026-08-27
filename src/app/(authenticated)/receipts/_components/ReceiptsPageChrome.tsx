@@ -6,6 +6,7 @@ import { getReceiptsActiveId, getReceiptsNavItems } from '../receiptsNavItems'
 type ReceiptNavView =
   | 'workspace'
   | 'monthly'
+  | 'bank-balance'
   | 'vendors'
   | 'pnl'
   | 'bulk'

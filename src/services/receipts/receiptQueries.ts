@@ -10,6 +10,7 @@ import { classifyReceiptTransaction, summarizeReceiptVendorCostReview } from '@/
 import { getOpenAIConfig } from '@/lib/openai/config'
 import { getRuleMatch } from '@/lib/receipts/rule-matching'
 import { recordAIUsage } from '@/lib/receipts/ai-classification'
+import { buildDailyBankBalanceSeries, type BankBalanceRow } from '@/lib/receipts/bank-balance'
 import type { ReceiptRule, ReceiptTransaction } from '@/types/database'
 
 import type {
@@ -24,6 +25,7 @@ import type {
   ReceiptMonthlySummaryItem,
   ReceiptMonthlyInsights,
   ReceiptMonthlyInsightMonth,
+  ReceiptBankBalanceHistory,
   ReceiptVendorSummary,
   ReceiptVendorTrendMonth,
   ReceiptVendorMonthTransaction,
@@ -80,6 +82,8 @@ import {
   receiptVendorMovementRangeMonths,
 } from './vendorInsights'
 import { queryReceiptGovernanceItems } from './receiptGovernance'
+
+const RECEIPT_HISTORY_PAGE_SIZE = 1000
 
 // ---------------------------------------------------------------------------
 // buildGroupSuggestion — AI-assisted classification for bulk review groups
@@ -595,6 +599,40 @@ export async function queryMonthlyReceiptSummary(limit = 12): Promise<ReceiptMon
     topIncome: parseTopList(row.top_income),
     topOutgoing: parseTopList(row.top_outgoing),
   }))
+}
+
+// ---------------------------------------------------------------------------
+// getReceiptBankBalanceHistory
+// ---------------------------------------------------------------------------
+
+export async function queryReceiptBankBalanceHistory(): Promise<ReceiptBankBalanceHistory> {
+  const supabase = createAdminClient()
+  const rows: BankBalanceRow[] = []
+
+  for (let from = 0; ; from += RECEIPT_HISTORY_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('receipt_transactions')
+      .select('id, transaction_date, amount_in, amount_out, balance')
+      .eq('source_type', 'bank')
+      .not('balance', 'is', null)
+      .order('transaction_date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + RECEIPT_HISTORY_PAGE_SIZE - 1)
+
+    if (error) {
+      console.error('Failed to load bank balance history', error)
+      throw error
+    }
+
+    const pageRows = (data ?? []) as BankBalanceRow[]
+    rows.push(...pageRows)
+    if (pageRows.length < RECEIPT_HISTORY_PAGE_SIZE) break
+  }
+
+  return {
+    points: buildDailyBankBalanceSeries(rows),
+    sourceRowCount: rows.length,
+  }
 }
 
 // ---------------------------------------------------------------------------

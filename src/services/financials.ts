@@ -95,8 +95,8 @@ function timeframeStartDate(timeframe: PnlTimeframeKey): string {
   const config = PNL_TIMEFRAMES.find((item) => item.key === timeframe);
   if (!config) return new Date().toISOString().slice(0, 10);
   const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (config.days - 1));
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - (config.days - 1));
   return start.toISOString().slice(0, 10);
 }
 
@@ -427,7 +427,7 @@ function applyCashupRowsToSummary(
       bucket.foodPlusOtherSales = roundCurrency(bucket.foodPlusOtherSales + foodSales + otherSales);
       bucket.unallocatedSales = roundCurrency(bucket.unallocatedSales + unallocated);
 
-      if (!breakdowns.length || Math.abs(unallocated) > 0.01) {
+      if (!breakdowns.length) {
         bucket.missingSplitCount += 1;
       }
 
@@ -473,6 +473,59 @@ function applyImportedSalesRowsToSummary(
   }
 
   return summary;
+}
+
+function combineSalesSummaries(
+  preferred: CashupSalesSummary,
+  fallback: CashupSalesSummary
+): CashupSalesSummary {
+  const combined = createEmptyCashupSummary();
+
+  PNL_TIMEFRAMES.forEach((timeframe) => {
+    const preferredBucket = preferred[timeframe.key];
+    const fallbackBucket = fallback[timeframe.key];
+    const bucket = combined[timeframe.key];
+
+    bucket.totalRevenue = roundCurrency(preferredBucket.totalRevenue + fallbackBucket.totalRevenue);
+    bucket.drinksSales = roundCurrency(preferredBucket.drinksSales + fallbackBucket.drinksSales);
+    bucket.foodSales = roundCurrency(preferredBucket.foodSales + fallbackBucket.foodSales);
+    bucket.otherSales = roundCurrency(preferredBucket.otherSales + fallbackBucket.otherSales);
+    bucket.foodPlusOtherSales = roundCurrency(
+      preferredBucket.foodPlusOtherSales + fallbackBucket.foodPlusOtherSales
+    );
+    bucket.unallocatedSales = roundCurrency(
+      preferredBucket.unallocatedSales + fallbackBucket.unallocatedSales
+    );
+    bucket.sessionCount = preferredBucket.sessionCount + fallbackBucket.sessionCount;
+    bucket.missingSplitCount = preferredBucket.missingSplitCount + fallbackBucket.missingSplitCount;
+    bucket.excludedDraftCount = preferredBucket.excludedDraftCount + fallbackBucket.excludedDraftCount;
+    bucket.latestSessionDate = [preferredBucket.latestSessionDate, fallbackBucket.latestSessionDate]
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null;
+  });
+
+  return combined;
+}
+
+function applyPreferredSalesRowsToSummary(
+  importedRows: ImportedSalesRow[],
+  cashupRows: CashupSalesRow[],
+  timeframeStartMap: Record<PnlTimeframeKey, string>
+): CashupSalesSummary {
+  const importedDates = new Set(
+    importedRows
+      .map((row) => row.sale_date)
+      .filter((value): value is string => Boolean(value))
+  );
+  const uncoveredCashupRows = cashupRows.filter(
+    (row) => !row.session_date || !importedDates.has(row.session_date)
+  );
+
+  return combineSalesSummaries(
+    applyImportedSalesRowsToSummary(importedRows, timeframeStartMap),
+    applyCashupRowsToSummary(uncoveredCashupRows, timeframeStartMap)
+  );
 }
 
 export class FinancialService {
@@ -541,27 +594,34 @@ export class FinancialService {
     };
 
     let cashupSales = createEmptyCashupSummary();
-    let importedSalesRows: ImportedSalesRow[] = [];
+    const [importedSalesResult, cashupRowsResult] = await Promise.allSettled([
+      fetchImportedSalesRows(supabase, oldestStartDate),
+      fetchCashupSalesRows(supabase, oldestStartDate),
+    ]);
 
-    try {
-      importedSalesRows = await fetchImportedSalesRows(supabase, oldestStartDate);
-    } catch (error) {
+    const importedSalesRows = importedSalesResult.status === 'fulfilled'
+      ? importedSalesResult.value
+      : [];
+    const cashupRows = cashupRowsResult.status === 'fulfilled'
+      ? cashupRowsResult.value
+      : [];
+
+    if (importedSalesResult.status === 'rejected') {
       warnings.push('Imported till sales could not be loaded, so P&L sales may fall back to cash-up data.');
-      console.error('Failed to aggregate imported till sales for P&L dashboard:', error);
+      console.error('Failed to aggregate imported till sales for P&L dashboard:', importedSalesResult.reason);
     }
 
-    try {
-      if (importedSalesRows.length > 0) {
-        cashupSales = applyImportedSalesRowsToSummary(importedSalesRows, timeframeStartMap);
-      } else {
-        const cashupRows = await fetchCashupSalesRows(supabase, oldestStartDate);
-        cashupSales = applyCashupRowsToSummary(cashupRows, timeframeStartMap);
-      }
-    } catch (error) {
+    if (cashupRowsResult.status === 'rejected') {
       cashupAggregationFailed = true;
       warnings.push('Cash-up sales could not be loaded, so actual income may be incomplete.');
-      console.error('Failed to aggregate cash-up sales for P&L dashboard:', error);
+      console.error('Failed to aggregate cash-up sales for P&L dashboard:', cashupRowsResult.reason);
     }
+
+    cashupSales = applyPreferredSalesRowsToSummary(
+      importedSalesRows,
+      cashupRows,
+      timeframeStartMap
+    );
 
     try {
       const rows = await fetchReceiptExpenseRows(supabase, oldestStartDate);
@@ -620,7 +680,13 @@ export class FinancialService {
         warnings.push(`${sales.missingSplitCount} completed cash-up ${sales.missingSplitCount === 1 ? 'session is' : 'sessions are'} missing a matching drinks/food/other split in ${timeframe.label}.`);
       }
       if (Math.abs(sales.unallocatedSales) > 0.01) {
-        warnings.push(`${timeframe.label} has ${roundCurrency(sales.unallocatedSales).toLocaleString('en-GB', { style: 'currency', currency: 'GBP' })} of cash-up sales not allocated cleanly to drinks, food, or other.`);
+        const mismatchAmount = Math.abs(roundCurrency(sales.unallocatedSales)).toLocaleString('en-GB', {
+          style: 'currency',
+          currency: 'GBP',
+        });
+        warnings.push(sales.unallocatedSales > 0
+          ? `${timeframe.label} has ${mismatchAmount} of counted sales not allocated to drinks, food, or other.`
+          : `${timeframe.label} sales splits exceed counted sales by ${mismatchAmount}.`);
       }
       if (sales.excludedDraftCount > 0) {
         warnings.push(`${sales.excludedDraftCount} draft cash-up ${sales.excludedDraftCount === 1 ? 'session was' : 'sessions were'} excluded from ${timeframe.label}.`);

@@ -165,10 +165,15 @@ export function buildPnlReportViewModel(
   timeframe: PnlTimeframeKey,
   generatedAt = new Date()
 ): PnlReportViewModel {
+  const timeframeLabel = PNL_TIMEFRAMES.find((item) => item.key === timeframe)?.label ?? timeframe
+  const timeframeLabels = PNL_TIMEFRAMES.map((item) => item.label)
   const annualTargetValues: Record<string, number | null> = {}
   const actualValues: Record<string, number> = {}
   const timeframeTargetValues: Record<string, number | null> = {}
-  const dataQualityWarnings = [...(data.dataQuality?.warnings ?? [])]
+  const dataQualityWarnings = (data.dataQuality?.warnings ?? []).filter((warning) => {
+    const warningTimeframe = timeframeLabels.find((label) => warning.includes(label))
+    return !warningTimeframe || warningTimeframe === timeframeLabel
+  })
 
   for (const metric of data.metrics) {
     annualTargetValues[metric.key] = toFiniteNumber(data.targets[metric.key]?.[TARGET_TIMEFRAME] ?? null)
@@ -355,11 +360,10 @@ export function buildPnlReportViewModel(
     return section
   })
 
-  const timeframeLabel = PNL_TIMEFRAMES.find((item) => item.key === timeframe)?.label ?? timeframe
   const operatingProfitVariance = roundCurrency(operatingProfitActual - operatingProfitTarget)
   const targetBase = Math.max(Math.abs(operatingProfitTarget), 1)
   const hasCriticalDataGap = dataQualityWarnings.some((warning) =>
-    warning.includes('could not be loaded') || warning.includes('No completed cash-up sessions')
+    warning.includes('could not be loaded') || warning.includes('No completed cash-up')
   )
   const healthStatus = hasCriticalDataGap
     ? 'incomplete'

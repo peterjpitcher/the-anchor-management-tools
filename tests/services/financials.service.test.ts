@@ -18,8 +18,8 @@ type ReceiptExpenseRow = {
 
 function isoDateDaysAgo(daysAgo: number): string {
   const date = new Date()
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() - daysAgo)
+  date.setUTCHours(0, 0, 0, 0)
+  date.setUTCDate(date.getUTCDate() - daysAgo)
   return date.toISOString().slice(0, 10)
 }
 
@@ -312,7 +312,7 @@ describe('FinancialService P&L aggregation correctness', () => {
     expect(result.cashupSales['1m'].excludedDraftCount).toBe(1)
   })
 
-  it('prefers imported till sales rows over cash-up fallback data', async () => {
+  it('prefers imported till rows by date and fills uncovered dates from cash-ups', async () => {
     const cashupRows: CashupSalesRow[] = [
       {
         id: 'cashup-1',
@@ -321,6 +321,16 @@ describe('FinancialService P&L aggregation correctness', () => {
         total_counted_amount: 999,
         cashup_sales_breakdowns: [
           { sales_category: 'drinks_sales', amount: 999 },
+        ],
+      },
+      {
+        id: 'cashup-2',
+        session_date: isoDateDaysAgo(2),
+        status: 'approved',
+        total_counted_amount: 50,
+        cashup_sales_breakdowns: [
+          { sales_category: 'drinks_sales', amount: 30 },
+          { sales_category: 'food_sales', amount: 20 },
         ],
       },
     ]
@@ -341,11 +351,12 @@ describe('FinancialService P&L aggregation correctness', () => {
 
     expect(mocks.importedSalesEqSource).toHaveBeenCalledWith('source', 'till_csv')
     expect(mocks.importedSalesEqSection).toHaveBeenCalledWith('source_section', 'Net sales')
-    expect(mocks.cashupOrder).not.toHaveBeenCalled()
-    expect(result.actuals['1m'].drinks_sales).toBe(80)
-    expect(result.actuals['1m'].food_sales).toBe(19.82)
-    expect(result.cashupSales['1m'].totalRevenue).toBe(99.82)
-    expect(result.cashupSales['1m'].sessionCount).toBe(1)
+    expect(mocks.cashupOrder).toHaveBeenCalled()
+    expect(result.actuals['1m'].drinks_sales).toBe(110)
+    expect(result.actuals['1m'].food_sales).toBe(39.82)
+    expect(result.cashupSales['1m'].totalRevenue).toBe(149.82)
+    expect(result.cashupSales['1m'].sessionCount).toBe(2)
+    expect(result.cashupSales['1m'].latestSessionDate).toBe(isoDateDaysAgo(2))
   })
 
   it('flags completed cash-ups with missing sales split data', async () => {
@@ -367,5 +378,30 @@ describe('FinancialService P&L aggregation correctness', () => {
     expect(result.cashupSales['1m'].missingSplitCount).toBe(1)
     expect(result.cashupSales['1m'].unallocatedSales).toBe(100)
     expect(result.dataQuality.warnings.join(' ')).toContain('missing a matching drinks/food/other split')
+  })
+
+  it('does not label complete but unreconciled sales breakdowns as missing', async () => {
+    const rows: CashupSalesRow[] = [
+      {
+        id: 'cashup-1',
+        session_date: isoDateDaysAgo(3),
+        status: 'submitted',
+        total_counted_amount: 100,
+        cashup_sales_breakdowns: [
+          { sales_category: 'drinks_sales', amount: 90 },
+          { sales_category: 'food_sales', amount: 20 },
+          { sales_category: 'other_sales', amount: 0 },
+        ],
+      },
+    ]
+
+    const { client } = createFinancialDashboardClient([[]], rows)
+    ;(createAdminClient as unknown as vi.Mock).mockReturnValue(client)
+
+    const result = await FinancialService.getPlDashboardData()
+
+    expect(result.cashupSales['1m'].missingSplitCount).toBe(0)
+    expect(result.dataQuality.warnings.join(' ')).not.toContain('missing a matching drinks/food/other split')
+    expect(result.dataQuality.warnings.join(' ')).toContain('sales splits exceed counted sales by £10.00')
   })
 })
