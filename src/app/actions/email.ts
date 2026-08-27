@@ -291,6 +291,19 @@ export async function sendInvoiceViaEmail(formData: FormData) {
         warnings.push('Email sent but delivery log persistence failed')
       }
 
+      // Authoritative delivery record. status is a legacy mirror and cannot
+      // carry delivery for an invoice that is already partially_paid or paid,
+      // so every eligibility check reads sent_at instead.
+      const { error: deliveryStampError } = await admin
+        .from('invoices')
+        .update({ sent_at: new Date().toISOString(), sent_to: toAddress })
+        .eq('id', validatedData.invoiceId)
+        .is('sent_at', null)
+      if (deliveryStampError) {
+        console.error('Error stamping invoice delivery:', deliveryStampError)
+        warnings.push('Email sent but the delivery timestamp was not recorded')
+      }
+
       // Update invoice status if it was draft
       if (invoice.status === 'draft') {
         const { data: statusUpdate, error: updateError } = await admin

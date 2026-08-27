@@ -43,6 +43,7 @@ export async function GET(
       line_items:invoice_line_items(*),
       payments:invoice_payments(*)
     `)
+    .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .single()

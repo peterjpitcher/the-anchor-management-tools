@@ -48,8 +48,14 @@ export async function GET(request: Request) {
       line_items:invoice_line_items(*),
       payments:invoice_payments(*)
     `)
+    .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
     .eq('invoice_date', todayIso)
     .eq('status', 'draft')
+    // Delivery is sent_at, never status. A private booking invoice is sent
+    // explicitly by a person and can still be 'draft' afterwards when it has no
+    // payments on it, so without this guard the cron would email the customer a
+    // second time the next morning.
+    .is('sent_at', null)
     .is('deleted_at', null)
 
   if (error) {
@@ -184,9 +190,21 @@ export async function GET(request: Request) {
         recipientEmail
       )
 
+      if (sendResult.success) {
+        // Record the authoritative delivery state. status was already flipped
+        // above for backwards compatibility, but sent_at is what every
+        // eligibility check reads from now on.
+        await supabase
+          .from('invoices')
+          .update({ sent_at: new Date().toISOString(), sent_to: recipientEmail })
+          .eq('id', invoice.id)
+          .is('sent_at', null)
+      }
+
       if (!sendResult.success) {
         // Email failed but status is already correctly 'sent'. Log the failure
-        // so it can be retried manually — don't roll back the status.
+        // so it can be retried manually. Deliberately NOT stamping sent_at:
+        // nothing reached the customer, so the delivery record must stay empty.
         console.error(
           `[Cron] Email send failed for invoice ${invoice.invoice_number} after status update:`,
           sendResult.error

@@ -26,6 +26,7 @@ export async function loadOjProjectInvoicesPaidInQuarter(
       line_items:invoice_line_items(*),
       payments:invoice_payments(*)
     `)
+    .order('display_order', { ascending: true, foreignTable: 'invoice_line_items' })
     .in('id', invoiceIds)
     .is('deleted_at', null)
     .in('status', ['paid', 'partially_paid'])
