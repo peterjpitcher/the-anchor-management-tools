@@ -564,47 +564,41 @@ CURRENT production schema.
 Then push, and confirm the production alias actually moved. A green GitHub
 check is a preview build, not production.
 
-### 3. Apply the migrations, in this order
+### 3. Migrations: ALL APPLIED 2026-08-27
 
-**Do not run `npx supabase db push`.** Use the Supabase MCP `apply_migration`
-one at a time. Every other file in `supabase/migrations` now matches the
-ledger exactly, so nothing else can be swept along.
+| Applied version | Migration |
+|---|---|
+| `20260827153431` | invoice_line_items_generated_columns (no-op on prod, as designed) |
+| `20260827153456` | private_booking_invoice_foundations |
+| `20260827153544` | private_booking_invoice_atomic |
+| `20260827163643` | settle_two_private_bookings_paid_offline (inserted nothing, rows were already there) |
+| `20260827163658` | close_anon_reads_on_timeclock_and_mis_scoped_tables |
 
-| # | Migration | What it does |
-|---|---|---|
-| 1 | `20260819100000_leave_reminder_ledger` | Pre-existing, see below |
-| 2 | `20260828080000_settle_two_private_bookings_paid_offline` | Corrects two bookings marked paid while owing |
-| 3 | `20260828085000_close_anon_reads_on_timeclock_and_mis_scoped_tables` | Closes the staff pay-data leak |
-| 4 | `20260828090000_invoice_line_items_generated_columns` | Schema drift fix, no-op against production |
-| 5 | `20260828091000_private_booking_invoice_foundations` | Columns and indexes |
-| 6 | `20260828092000_private_booking_invoice_atomic` | The function |
+Filenames were realigned to these versions afterwards, so the directory matches
+the ledger and nothing looks falsely pending. See
+`feedback_migrations_before_code_deploy` for why that matters.
 
-Number 1 is not part of this work but is worth doing while you are here.
-`leave_reminder_log` has never existed in production, and
-`/api/cron/leave-approval-reminders` reads and writes it every morning at
-09:30. Its code shipped on 19 August and its migration did not, so holiday
-approval chasing has been failing silently since. The migration is additive
-only. Skip it if you would rather keep this deploy to one subject.
+**Still pending, and deliberately left:** `20260819100000_leave_reminder_ledger`.
+Not part of this feature. It creates `leave_reminder_log`, which
+`/api/cron/leave-approval-reminders` has been reading at 09:30 every morning
+since 19 August without it existing.
 
-### 4. Check after applying
+### 4. Verified after applying
 
-```sql
--- The function exists and is service-role only.
-SELECT has_function_privilege('anon',  p.oid, 'EXECUTE') AS anon_can,
-       has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_can
-FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public' AND p.proname = 'create_private_booking_invoice_atomic';
--- expect: anon_can false, service_can true
-
--- The generated columns are still generated (migration 4 was a no-op).
-SELECT count(*) FROM information_schema.columns
-WHERE table_name = 'invoice_line_items' AND is_generated = 'ALWAYS';
--- expect: 4
-
--- The three invoice crons still see exactly what they saw before.
-SELECT count(*) FROM invoices WHERE sent_at IS NOT NULL AND deleted_at IS NULL;
--- expect: 45 (43 paid + 2 overdue, backfilled)
-```
+- `create_private_booking_invoice_atomic`: anon EXECUTE false, service_role true.
+- `invoice_line_items` still has its 4 generated columns.
+- All 50 invoices carry a backfilled `sent_at`, so the reminder cron sees the
+  same set it saw before.
+- Invoice sequence still 52, no numbers burnt, no booking accidentally invoiced.
+- 0 bookings read paid-while-owing.
+- Checked from outside with the real public anon key: `timeclock_sessions`,
+  `event_message_templates` and `booking_reminders` all return 401. Before the
+  fix, `timeclock_sessions` returned full rows including `rate_override` and
+  `manager_note` for every clocked-in employee.
+- `authenticated` keeps its `timeclock_sessions` grant, so the staff portal,
+  rota hours and payroll are untouched.
+- Live `/timeclock` returns 200 and renders, with two staff clocked in at the
+  time of the change.
 
 ### 5. Smoke test
 
