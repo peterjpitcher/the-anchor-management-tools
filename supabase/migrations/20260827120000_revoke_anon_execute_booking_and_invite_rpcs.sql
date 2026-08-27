@@ -99,3 +99,43 @@ revoke all on function public.create_event_table_reservation_v05_legacy(
 -- functions from PUBLIC, and add a CI assertion that fails when any function in
 -- public is executable by anon without an explicit allowlist entry.
 -- ---------------------------------------------------------------------------
+
+-- Explicit re-grants. The live ACLs already carry separate authenticated and
+-- service_role entries, so the revokes above cannot strip them, but stating the
+-- service path outright means a future ACL change cannot quietly break every
+-- booking the way the August migration did.
+
+grant execute on function public.create_employee_invite(text, text, date)
+  to service_role, authenticated;
+
+grant execute on function public.create_table_booking_public_v06(
+  uuid, date, time without time zone, integer, text, text, boolean, text,
+  boolean, boolean, boolean, integer, boolean, boolean, uuid, boolean
+)
+  to service_role;
+
+grant execute on function public.create_event_booking_v07(
+  uuid, uuid, text, text, integer, jsonb
+)
+  to service_role;
+
+grant execute on function public.create_sunday_lunch_booking(
+  uuid, date, time without time zone, integer, text, text[], text[], uuid
+)
+  to service_role;
+
+grant execute on function public.create_table_booking_v05(
+  uuid, date, time without time zone, integer, text, text, boolean, text,
+  boolean, boolean, boolean, integer, boolean
+)
+  to service_role;
+
+grant execute on function public.create_table_booking_v05_core(
+  uuid, date, time without time zone, integer, text, text, boolean, text
+)
+  to service_role;
+
+grant execute on function public.create_event_table_reservation_v05_legacy(
+  uuid, uuid, uuid, integer, text, text
+)
+  to service_role;
