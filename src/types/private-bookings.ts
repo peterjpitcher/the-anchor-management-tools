@@ -97,6 +97,17 @@ export interface PrivateBooking {
   paypal_deposit_capture_id?: string
   deposit_waived?: boolean
   deposit_waived_reason?: string
+  /** The invoice raised for this booking, if any. One invoice per booking. */
+  invoice_id?: string | null
+  /** When the invoice email was successfully sent. Mirrors invoices.sent_at. */
+  invoice_sent_at?: string | null
+  /**
+   * How the deposit was treated on the invoice.
+   * `held_separately` is the contract default: refundable, never deducted.
+   * `deducted` applies it to the invoice as a payment, for account customers
+   * who are billed rather than paying upfront.
+   */
+  invoice_deposit_treatment?: 'held_separately' | 'deducted' | null
   contract_sent_at?: string
   contract_sent_to?: string
   contract_accepted_at?: string
