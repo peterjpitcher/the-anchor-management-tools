@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { getBookingPaymentHistory } from '@/services/private-bookings'
+import { currentUserCanInvoicePrivateBookings } from '@/app/actions/privateBookingInvoice'
 import { hasPrivateBookingPermission } from '@/lib/private-bookings/permissions'
 import type { PaymentHistoryEntry } from '@/types/private-bookings'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
@@ -96,6 +97,15 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     errors.push('We could not load this booking.')
   }
 
+  // Invoicing is super_admin only. The server action re-checks this on every
+  // call; asking here just avoids showing a manager a button that will refuse.
+  let canInvoice = false
+  try {
+    canInvoice = await currentUserCanInvoicePrivateBookings()
+  } catch (_err) {
+    // Non-fatal: the button simply stays hidden.
+  }
+
   const initialError = errors.length > 0 ? errors.join(' ') : null
 
   return (
@@ -112,6 +122,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
         canManageVendors,
         canEditPayments,
         canRefund,
+        canInvoice,
       }}
       paymentHistory={paymentHistory}
       initialError={initialError}

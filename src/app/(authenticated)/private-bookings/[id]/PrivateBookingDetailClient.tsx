@@ -92,6 +92,14 @@ import PaymentHistoryTable from './PaymentHistoryTable'
 // Design system components
 import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
 import { Button, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
+import { InvoiceBookingModal } from './InvoiceBookingModal'
+import {
+  generatePrivateBookingInvoice,
+  previewPrivateBookingInvoice,
+  retryPrivateBookingInvoiceEmail,
+  type DepositTreatment,
+  type PrivateBookingInvoicePreview,
+} from '@/app/actions/privateBookingInvoice'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import {
@@ -153,6 +161,8 @@ interface PrivateBookingDetailClientProps {
     canManageVendors: boolean;
     canEditPayments: boolean;
     canRefund: boolean;
+    /** Invoicing is super_admin only; the server action re-checks it. */
+    canInvoice: boolean;
   };
   paymentHistory: PaymentHistoryEntry[];
   initialError?: string | null;
@@ -1719,6 +1729,12 @@ export default function PrivateBookingDetailClient({
   // SOP §11: contract + terms are emailed to the customer before payment
   const [sendingContract, setSendingContract] = useState(false);
   const [downloadingContract, setDownloadingContract] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoicePreview, setInvoicePreview] = useState<PrivateBookingInvoicePreview | null>(null);
+  const [invoicePreviewLoading, setInvoicePreviewLoading] = useState(false);
+  const [invoiceSending, setInvoiceSending] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [retryingInvoiceEmail, setRetryingInvoiceEmail] = useState(false);
   // PayPal deposit state
   const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
   const [paypalCaptureHandled, setPaypalCaptureHandled] = useState(false);
@@ -1769,6 +1785,7 @@ export default function PrivateBookingDetailClient({
     canManageVendors,
     canEditPayments,
     canRefund,
+    canInvoice,
   } = permissions;
 
   // Refund dialog state
@@ -2019,6 +2036,76 @@ export default function PrivateBookingDetailClient({
       setSendingCalendarInvite(false);
     }
   }, [bookingId, sendingCalendarInvite]);
+
+  const handleOpenInvoiceModal = useCallback(async () => {
+    if (!bookingId) return;
+    setInvoiceModalOpen(true);
+    setInvoiceError(null);
+    setInvoicePreview(null);
+    setInvoicePreviewLoading(true);
+    try {
+      const result = await previewPrivateBookingInvoice(bookingId);
+      if (result.error || !result.preview) {
+        setInvoiceError(result.error ?? 'We could not work out the figures for this booking.');
+      } else {
+        setInvoicePreview(result.preview);
+      }
+    } finally {
+      setInvoicePreviewLoading(false);
+    }
+  }, [bookingId]);
+
+  const handleConfirmInvoice = useCallback(
+    async ({ depositTreatment, reference }: { depositTreatment: DepositTreatment; reference: string }) => {
+      if (!bookingId || invoiceSending) return;
+      setInvoiceSending(true);
+      setInvoiceError(null);
+      try {
+        const result = await generatePrivateBookingInvoice({
+          bookingId,
+          depositTreatment,
+          reference,
+          // Binds this confirmation to the figures that were on screen. If the
+          // booking moved underneath the dialog, the send is refused.
+          sourceHash: invoicePreview?.sourceHash,
+        });
+
+        if (result.error) {
+          setInvoiceError(result.error);
+          return;
+        }
+
+        setInvoiceModalOpen(false);
+        if (result.sent) {
+          toast.success(`Invoice ${result.invoiceNumber} sent`);
+        } else {
+          toast.error(
+            `Invoice ${result.invoiceNumber} was created but the email did not send. Use Retry sending.`,
+          );
+        }
+        router.refresh();
+      } finally {
+        setInvoiceSending(false);
+      }
+    },
+    [bookingId, invoiceSending, invoicePreview, router],
+  );
+
+  const handleRetryInvoiceEmail = useCallback(async () => {
+    if (!bookingId || retryingInvoiceEmail) return;
+    setRetryingInvoiceEmail(true);
+    try {
+      const result = await retryPrivateBookingInvoiceEmail(bookingId);
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success('Invoice sent');
+        router.refresh();
+      }
+    } finally {
+      setRetryingInvoiceEmail(false);
+    }
+  }, [bookingId, retryingInvoiceEmail, router]);
 
   const handleSendContract = useCallback(async () => {
     if (!bookingId || sendingContract) return;
@@ -3251,6 +3338,82 @@ export default function PrivateBookingDetailClient({
                   </p>
                 )}
 
+                {canInvoice && (() => {
+                  const alreadyInvoiced = Boolean(booking.invoice_id);
+                  const hasEmail = Boolean(booking.contact_email);
+                  const isConfirmed = booking.status === 'confirmed';
+                  const hasValue = (booking.items ?? []).some(
+                    (bookingItem) => toNumber(bookingItem.line_total, 0) > 0,
+                  );
+
+                  // The reason a button cannot be used is shown as persistent
+                  // text, never a tooltip: this screen is used on an iPad, and
+                  // a tooltip on a disabled button reaches neither touch nor
+                  // keyboard users.
+                  const blockedReason = !isConfirmed
+                    ? 'Only confirmed bookings can be invoiced.'
+                    : !hasValue
+                      ? 'Add priced items before invoicing this booking.'
+                      : !hasEmail
+                        ? 'Add an email address to invoice this booking.'
+                        : null;
+
+                  if (alreadyInvoiced) {
+                    return (
+                      <div className="rounded-lg bg-gray-50 px-4 py-3">
+                        <p className="text-sm font-medium text-gray-700">
+                          {booking.invoice_sent_at
+                            ? `Invoice sent ${formatDateFull(booking.invoice_sent_at)}`
+                            : 'Invoice created but not yet sent'}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {booking.invoice_deposit_treatment === 'deducted'
+                            ? 'Deposit applied to the invoice.'
+                            : 'Deposit held separately.'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-3">
+                          <Link
+                            href={`/invoices/${booking.invoice_id}`}
+                            className="text-sm font-medium text-green-700 hover:underline"
+                          >
+                            View invoice
+                          </Link>
+                          {!booking.invoice_sent_at && (
+                            <button
+                              type="button"
+                              onClick={handleRetryInvoiceEmail}
+                              disabled={retryingInvoiceEmail}
+                              className="text-sm font-medium text-green-700 hover:underline disabled:opacity-50"
+                            >
+                              {retryingInvoiceEmail ? 'Sending…' : 'Retry sending'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={handleOpenInvoiceModal}
+                        disabled={Boolean(blockedReason)}
+                        className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="flex items-center">
+                          <DocumentIcon className="h-5 w-5 mr-3 text-green-600" />
+                          Generate and send invoice
+                        </div>
+                        <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                      </button>
+                      {blockedReason && (
+                        <p className="mt-1 px-1 text-xs text-amber-600">{blockedReason}</p>
+                      )}
+                    </div>
+                  );
+                })()}
+
               </div>
             </Card>
           </Section>
@@ -3388,6 +3551,16 @@ export default function PrivateBookingDetailClient({
       )}
 
       {/* Refund dialog */}
+      <InvoiceBookingModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        preview={invoicePreview}
+        loading={invoicePreviewLoading}
+        sending={invoiceSending}
+        error={invoiceError}
+        onConfirm={handleConfirmInvoice}
+      />
+
       {canRefund && booking && (
         <RefundDialog
           open={showRefundDialog}
