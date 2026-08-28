@@ -7,6 +7,10 @@
 -- morning until somebody snaps, or tries to infer "have I already sent this" from timestamps and
 -- gets it wrong. One row per request per reminder kind, with a unique key, so a second send is
 -- refused by the database rather than by hopeful code.
+--
+-- Applied 2026-08-28. The code for this shipped on 19 August and the migration did not, so
+-- /api/cron/leave-approval-reminders had been failing at 09:30 every morning since. Renumbered
+-- from 20260819100000 to the version actually recorded when it was applied.
 
 create table if not exists public.leave_reminder_log (
   id            uuid        primary key default gen_random_uuid(),
