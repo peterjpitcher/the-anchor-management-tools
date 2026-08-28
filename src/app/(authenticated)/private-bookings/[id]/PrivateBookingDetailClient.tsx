@@ -2161,7 +2161,7 @@ export default function PrivateBookingDetailClient({
       const result = await getBookingPortalLink(bookingId);
       if (result.success && result.url) {
         await navigator.clipboard.writeText(result.url);
-        toast.success('Link copied to clipboard');
+        toast.success('Secure booking link copied — ready to paste into WhatsApp');
       } else {
         toast.error(result.error || 'Failed to generate link');
       }
@@ -3126,6 +3126,16 @@ export default function PrivateBookingDetailClient({
                             loading={paypalDepositLoading}
                           >
                             Pay via PayPal
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleCopyPortalLink}
+                            disabled={isCopyingLink}
+                            loading={isCopyingLink}
+                          >
+                            Copy payment link
                           </Button>
                           <Button
                             type="button"
