@@ -2497,7 +2497,7 @@ export async function resendCalendarInvite(
 /**
  * Generates a shareable, read-only customer portal link for a private booking.
  * The link embeds an HMAC-signed token — no login required for the customer.
- * Requires the caller to have at least 'view' permission on private_bookings.
+ * Requires the caller to be able to edit bookings or manage deposits.
  */
 export async function getBookingPortalLink(
   bookingId: string
@@ -2511,9 +2511,11 @@ export async function getBookingPortalLink(
 
   // Generating a portal link exposes booking data to an external party via a
   // public URL. This is a write-like operation (sharing data outside the app),
-  // so it requires edit permission rather than just view.
+  // so it requires edit/manage permission. Deposit managers may also share it
+  // because this is the stable, scanner-safe customer payment link.
   const hasPermission = await checkUserPermission('private_bookings', 'edit')
     || await checkUserPermission('private_bookings', 'manage')
+    || await checkUserPermission('private_bookings', 'manage_deposits')
   if (!hasPermission) {
     return { error: 'Insufficient permissions' }
   }

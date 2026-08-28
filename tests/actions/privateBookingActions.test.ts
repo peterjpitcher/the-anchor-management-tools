@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
 // ---------------------------------------------------------------------------
@@ -153,6 +153,7 @@ import {
   getPrivateBooking,
   extendBookingHold,
   applyBookingDiscount,
+  getBookingPortalLink,
   editPrivateBookingPayment,
   deletePrivateBookingPayment,
 } from '@/app/actions/privateBookingActions'
@@ -260,11 +261,32 @@ function buildBalanceFormData(overrides: Record<string, string> = {}): FormData 
 // ===========================================================================
 
 describe('privateBookingActions', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockedPermission.mockResolvedValue(true)
     mockedLogAuditEvent.mockResolvedValue(undefined)
     mockAuthenticatedClient()
+  })
+
+  describe('getBookingPortalLink', () => {
+    it('returns the stable customer portal link for staff who manage deposits', async () => {
+      mockedPermission.mockImplementation((_module: string, action: string) =>
+        Promise.resolve(action === 'manage_deposits')
+      )
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://management.example.com')
+
+      const result = await getBookingPortalLink('booking-1')
+
+      expect(result).toEqual({
+        success: true,
+        url: 'https://management.example.com/booking-portal/mock-token',
+      })
+      expect(mockedPermission).toHaveBeenCalledWith('private_bookings', 'manage_deposits')
+    })
   })
 
   // -------------------------------------------------------------------------
