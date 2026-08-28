@@ -5,6 +5,12 @@ import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, createSimplePayPalOrder,
 import { verifyBookingToken } from '@/lib/private-bookings/booking-token'
 import { logger } from '@/lib/logger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim,
+} from '@/lib/api/idempotency'
 
 function getPayPalOrderAmount(order: any): number | null {
   const raw = order?.purchase_units?.[0]?.amount?.value
@@ -19,6 +25,29 @@ function getPayPalOrderCurrency(order: any): string | null {
 
 function amountsMatch(actual: number, expected: number): boolean {
   return Math.abs(actual - expected) <= 0.01
+}
+
+function getPayPalOrderApproveUrl(order: any): string | null {
+  const links = Array.isArray(order?.links) ? order.links : []
+  const link = links.find((candidate: any) => candidate?.rel === 'payer-action')
+    || links.find((candidate: any) => candidate?.rel === 'approve')
+  return typeof link?.href === 'string' && link.href.trim() ? link.href : null
+}
+
+function payPalOrderBelongsToBooking(order: any, bookingId: string): boolean {
+  const purchaseUnit = order?.purchase_units?.[0]
+  return purchaseUnit?.reference_id === bookingId
+    && purchaseUnit?.custom_id === `pb-deposit-${bookingId}`
+}
+
+function isReusablePayPalOrder(order: any): boolean {
+  return ['CREATED', 'PAYER_ACTION_REQUIRED', 'APPROVED'].includes(order?.status)
+    && getPayPalOrderApproveUrl(order) !== null
+}
+
+function paymentOrderRequestId(bookingId: string, updatedAt: string | null | undefined): string {
+  const generation = updatedAt?.replace(/[^0-9]/g, '').slice(0, 17) || 'initial'
+  return `pb-deposit-portal-${bookingId}-${generation}`
 }
 
 async function writePrivateBookingAudit(
@@ -54,7 +83,7 @@ export async function createDepositPaymentOrderByToken(
   const admin = createAdminClient()
   const { data: booking, error: fetchError } = await admin
     .from('private_bookings')
-    .select('id, deposit_amount, deposit_paid_date, status, event_date, event_type')
+    .select('id, deposit_amount, deposit_paid_date, paypal_deposit_order_id, status, event_date, event_type, updated_at')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -83,6 +112,34 @@ export async function createDepositPaymentOrderByToken(
     return { error: 'No deposit is required for this booking' }
   }
 
+  // Reuse a live order. This is important for email security scanners and
+  // customers with several tabs open: creating a new order must not invalidate
+  // the valid link they already have.
+  if (booking.paypal_deposit_order_id) {
+    try {
+      const existingOrder = await getPayPalOrder(booking.paypal_deposit_order_id)
+      const existingAmount = getPayPalOrderAmount(existingOrder)
+      const existingCurrency = getPayPalOrderCurrency(existingOrder)
+      const approveUrl = getPayPalOrderApproveUrl(existingOrder)
+
+      if (
+        isReusablePayPalOrder(existingOrder)
+        && payPalOrderBelongsToBooking(existingOrder, bookingId)
+        && existingAmount !== null
+        && amountsMatch(existingAmount, depositAmount)
+        && existingCurrency === PAYPAL_DEFAULT_CURRENCY
+        && approveUrl
+      ) {
+        return { success: true, approveUrl }
+      }
+    } catch (error) {
+      logger.warn('Portal PayPal order: existing order could not be reused', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { bookingId, orderId: booking.paypal_deposit_order_id },
+      })
+    }
+  }
+
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
     const portalUrl = `${appUrl}/booking-portal/${portalToken}`
@@ -95,7 +152,9 @@ export async function createDepositPaymentOrderByToken(
       cancelUrl: portalUrl,
       currency: PAYPAL_DEFAULT_CURRENCY,
       brandName: 'The Anchor',
-      requestId: `pb-deposit-portal-${bookingId}-${Date.now()}`,
+      // Requests that raced from the same booking version get the same PayPal
+      // idempotency key and therefore the same order.
+      requestId: paymentOrderRequestId(bookingId, booking.updated_at),
     })
 
     const { data: updatedBooking, error: updateError } = await admin
@@ -187,23 +246,34 @@ export async function captureDepositPaymentByToken(
     return { success: true }
   }
 
-  // Verify the order ID matches what we stored
-  if (booking.paypal_deposit_order_id !== paypalOrderId) {
-    logger.error('Portal capture: order ID mismatch', {
-      metadata: { bookingId, expected: booking.paypal_deposit_order_id, received: paypalOrderId }
-    })
-    return { error: 'Payment reference does not match this booking' }
+  const expectedAmount = Number(booking.deposit_amount ?? 0)
+  if (expectedAmount <= 0) {
+    return { error: 'No deposit is required for this booking' }
+  }
+
+  const captureKey = `private-booking-deposit-capture:${bookingId}`
+  const captureHash = computeIdempotencyRequestHash({ bookingId, action: 'capture_deposit' })
+  let captureClaimed = false
+  let paymentCaptured = false
+  const pendingConfirmationResponse = {
+    error: 'Your payment has been received and is being confirmed. Please wait a moment before trying again.',
   }
 
   try {
-    const expectedAmount = Number(booking.deposit_amount ?? 0)
-    if (expectedAmount <= 0) {
-      return { error: 'No deposit is required for this booking' }
-    }
-
     const order = await getPayPalOrder(paypalOrderId)
     const orderAmount = getPayPalOrderAmount(order)
     const orderCurrency = getPayPalOrderCurrency(order)
+
+    // A newer order may have been stored after an email scanner or another tab
+    // opened the portal. Accept the returned order only when PayPal itself says
+    // it belongs to this exact booking.
+    if (!payPalOrderBelongsToBooking(order, bookingId)) {
+      logger.error('Portal capture: order does not belong to booking', {
+        metadata: { bookingId, expected: booking.paypal_deposit_order_id, received: paypalOrderId }
+      })
+      return { error: 'Payment reference does not match this booking' }
+    }
+
     if (
       orderAmount === null ||
       !amountsMatch(orderAmount, expectedAmount) ||
@@ -215,7 +285,40 @@ export async function captureDepositPaymentByToken(
       return { error: 'Payment amount does not match the expected deposit. Please contact us.' }
     }
 
+    const claim = await claimIdempotencyKey(admin, captureKey, captureHash)
+    if (claim.state === 'in_progress') {
+      return { error: 'Your payment is already being confirmed. Please wait a moment.' }
+    }
+    if (claim.state === 'conflict') {
+      return { error: 'We could not safely confirm this payment. Please contact us for assistance.' }
+    }
+    if (claim.state === 'replay') {
+      const replay = claim.response as { success?: boolean; error?: string } | null
+      return replay?.success
+        ? { success: true }
+        : { error: replay?.error || pendingConfirmationResponse.error }
+    }
+    captureClaimed = true
+
     const captureResult = await capturePayPalPayment(paypalOrderId, PAYPAL_DEFAULT_CURRENCY)
+    paymentCaptured = true
+
+    // From this point onward PayPal has taken the money. Persist that fact before
+    // local finalisation so another valid order cannot be captured if this
+    // invocation is interrupted.
+    try {
+      await persistIdempotencyResponse(
+        admin,
+        captureKey,
+        captureHash,
+        pendingConfirmationResponse,
+      )
+    } catch (persistError) {
+      logger.error('Portal capture: failed to persist captured-payment state', {
+        error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+        metadata: { bookingId, paypalOrderId },
+      })
+    }
 
     // Validate captured amount matches expected deposit
     const capturedAmount = parseFloat(captureResult.amount)
@@ -223,7 +326,7 @@ export async function captureDepositPaymentByToken(
       logger.error('Portal capture: amount mismatch', {
         metadata: { bookingId, paypalOrderId, capturedAmount, expectedAmount }
       })
-      return { error: 'Payment amount does not match the expected deposit. Please contact us.' }
+      return pendingConfirmationResponse
     }
 
     const finalizeResult = await finalizeDepositPayment({
@@ -258,12 +361,33 @@ export async function captureDepositPaymentByToken(
       metadata: { bookingId, captureId: captureResult.transactionId }
     })
 
+    try {
+      await persistIdempotencyResponse(admin, captureKey, captureHash, { success: true })
+    } catch (persistError) {
+      logger.error('Portal capture: failed to persist successful capture response', {
+        error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+        metadata: { bookingId, paypalOrderId },
+      })
+    }
     return { success: true }
   } catch (error) {
+    if (captureClaimed && !paymentCaptured) {
+      try {
+        await releaseIdempotencyClaim(admin, captureKey, captureHash)
+      } catch (releaseError) {
+        logger.error('Portal capture: failed to release capture claim', {
+          error: releaseError instanceof Error ? releaseError : new Error(String(releaseError)),
+          metadata: { bookingId, paypalOrderId },
+        })
+      }
+    }
+
     logger.error('Portal capture: PayPal capture failed', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId, paypalOrderId }
     })
-    return { error: 'We could not process your payment. Please contact us for assistance.' }
+    return paymentCaptured
+      ? pendingConfirmationResponse
+      : { error: 'We could not process your payment. Please contact us for assistance.' }
   }
 }

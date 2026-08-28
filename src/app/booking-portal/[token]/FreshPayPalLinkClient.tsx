@@ -1,12 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { createDepositPaymentOrderByToken } from '@/app/actions/portalPayPalActions'
 import { GuestAlert, GuestButton } from '@/components/features/guest'
 
 interface FreshPayPalLinkClientProps {
   portalToken: string
-  autoStart?: boolean
 }
 
 /**
@@ -16,10 +15,9 @@ interface FreshPayPalLinkClientProps {
  * then sends the browser to PayPal's approval URL, so the amount is only ever
  * decided server-side and no figure is passed in here.
  */
-export function FreshPayPalLinkClient({ portalToken, autoStart = false }: FreshPayPalLinkClientProps) {
+export function FreshPayPalLinkClient({ portalToken }: FreshPayPalLinkClientProps) {
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const autoStartedRef = useRef(false)
 
   const createFreshLink = useCallback(async () => {
     setLoading(true)
@@ -39,12 +37,6 @@ export function FreshPayPalLinkClient({ portalToken, autoStart = false }: FreshP
       setLoading(false)
     }
   }, [portalToken])
-
-  useEffect(() => {
-    if (!autoStart || autoStartedRef.current) return
-    autoStartedRef.current = true
-    void createFreshLink()
-  }, [autoStart, createFreshLink])
 
   return (
     <div className="flex flex-col gap-2.5">

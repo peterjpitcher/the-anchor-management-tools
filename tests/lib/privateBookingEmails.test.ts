@@ -29,7 +29,7 @@ describe('private booking deposit emails', () => {
     mockedSendEmail.mockResolvedValue({ success: true })
   })
 
-  it('states PayPal link expiry and includes the fresh-link recovery option', async () => {
+  it('uses a scanner-safe portal link for payment recovery', async () => {
     await sendDepositPaymentLinkEmail(
       {
         id: 'booking-1',
@@ -41,13 +41,14 @@ describe('private booking deposit emails', () => {
         deposit_amount: 250,
       },
       'https://paypal.test/checkout?token=ORDER-123',
-      'https://management.example.com/booking-portal/token?fresh_payment_link=1'
+      'https://management.example.com/booking-portal/token'
     )
 
     expect(mockedSendEmail).toHaveBeenCalledTimes(1)
     const payload = mockedSendEmail.mock.calls[0][0]
     expect(payload.html).toContain('PayPal payment links usually expire 6 hours after this email is sent')
-    expect(payload.html).toContain('Get a fresh payment link')
-    expect(payload.html).toContain('https://management.example.com/booking-portal/token?fresh_payment_link=1')
+    expect(payload.html).toContain('Open your booking and pay')
+    expect(payload.html).toContain('https://management.example.com/booking-portal/token')
+    expect(payload.html).not.toContain('fresh_payment_link=1')
   })
 })

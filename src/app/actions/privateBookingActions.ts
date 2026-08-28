@@ -2580,7 +2580,10 @@ export async function sendDepositPaymentLink(
       .update({ paypal_deposit_order_id: result.orderId })
       .eq('id', bookingId)
 
-    await sendDepositPaymentLinkEmail(booking, result.approveUrl, `${portalUrl}?fresh_payment_link=1`)
+    // The portal page must never create an order just because an email scanner
+    // opened its link. The customer creates/reuses the order with an explicit
+    // button press on the portal instead.
+    await sendDepositPaymentLinkEmail(booking, result.approveUrl, portalUrl)
 
     logger.info('Deposit payment link sent to customer', { metadata: { bookingId, orderId: result.orderId } })
     return { success: true }
