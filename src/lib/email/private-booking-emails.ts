@@ -410,13 +410,13 @@ export async function sendDepositPaymentLinkEmail(booking: {
     const subject = `Deposit payment — ${eventLabel} on ${dateFormatted}`;
     const freshLinkHtml = freshLinkUrl
       ? `
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, use the button below to create a fresh payment link.</p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, open your secure booking page below and choose Pay deposit via PayPal.</p>
   <p style="font-family: ${FONT_FAMILY};">
     <a href="${freshLinkUrl}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 10px 18px; background-color: #f3f4f6; color: #1f2937; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
-      Get a fresh payment link
+      Open your booking and pay
     </a>
   </p>
-  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Fresh link page:<br><a href="${freshLinkUrl}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${freshLinkUrl}</a></p>`
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Secure booking page:<br><a href="${freshLinkUrl}" style="font-family: ${FONT_FAMILY}; color: #0070ba; word-break: break-all;">${freshLinkUrl}</a></p>`
       : `
   <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">PayPal payment links usually expire 6 hours after this email is sent. If the PayPal button no longer works, please contact us and we can send a fresh payment link.</p>`;
 

@@ -31,7 +31,6 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ fresh_payment_link?: string; payment_pending?: string }>
 }
 
 // Status badge labels: customer-friendly language only.
@@ -149,10 +148,8 @@ function PaymentRow({ name, sub, amount, badge }: PaymentRowProps): React.JSX.El
 
 export default async function BookingPortalPage({
   params,
-  searchParams,
 }: PageProps): Promise<React.JSX.Element> {
   const { token } = await params
-  const { fresh_payment_link } = await searchParams
 
   // Verify the HMAC-signed token: this is the access control mechanism
   const bookingId = verifyBookingToken(token)
@@ -287,7 +284,7 @@ export default async function BookingPortalPage({
           {/* Pay now, between the deposit and total rows */}
           {depositDue && (
             <div className="flex flex-col gap-2.5 py-3">
-              <FreshPayPalLinkClient portalToken={token} autoStart={fresh_payment_link === '1'} />
+              <FreshPayPalLinkClient portalToken={token} />
               <TrustLine />
               <p className="font-anchor-body text-[12px] leading-[1.6] text-guest-text-muted">
                 Paying the deposit confirms that you accept the booking terms and conditions in the

@@ -98,12 +98,9 @@ function givenBooking(overrides: Record<string, unknown> = {}): void {
   mocks.db.payments = []
 }
 
-async function renderPortal(
-  searchParams: { fresh_payment_link?: string; payment_pending?: string } = {}
-): Promise<ReturnType<typeof render>> {
+async function renderPortal(): Promise<ReturnType<typeof render>> {
   const element = await BookingPortalPage({
     params: Promise.resolve({ token: 'portal-token' }),
-    searchParams: Promise.resolve(searchParams),
   })
   return render(element)
 }
@@ -381,19 +378,11 @@ describe('FreshPayPalLinkClient', () => {
     )
   })
 
-  it('starts on its own when the guest arrives from an expired link', async () => {
-    const location = stubLocation()
-    mocks.createDepositPaymentOrderByToken.mockResolvedValue({
-      success: true,
-      approveUrl: 'https://www.paypal.com/checkoutnow?token=FRESH',
-    })
+  it('does not create an order just because an email scanner opened the portal', () => {
+    render(<FreshPayPalLinkClient portalToken="portal-token" />)
 
-    render(<FreshPayPalLinkClient portalToken="portal-token" autoStart />)
-
-    await waitFor(() =>
-      expect(location.assignments).toContain('https://www.paypal.com/checkoutnow?token=FRESH')
-    )
-    expect(mocks.createDepositPaymentOrderByToken).toHaveBeenCalledTimes(1)
+    expect(mocks.createDepositPaymentOrderByToken).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Pay deposit via PayPal' })).toBeEnabled()
   })
 
   it('disables the button while the link is being created', async () => {
