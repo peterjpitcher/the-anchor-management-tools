@@ -112,6 +112,31 @@ npx supabase db push   # Apply pending migrations
 - **`src/lib/supabase/admin.ts`** — service role key, bypasses RLS; use for system/cron operations
 - ESLint rule prevents importing the admin singleton in client components
 
+## New database objects and anon access
+
+Since migration `20260828120356`, new objects in `public` no longer inherit
+access for the `anon` role (the public browser key). Two consequences:
+
+- **A new table or view that the public website must read needs its own
+  `GRANT SELECT ... TO anon`** in the same migration. It will otherwise fail
+  closed with a 401. The twelve tables the site reads are listed in
+  `public.v_anon_surface_report`.
+- **A `CREATE OR REPLACE` of an anon-callable RPC must re-issue its
+  `GRANT EXECUTE ... TO anon`** in the same migration.
+
+An event trigger strips the built-in `PUBLIC` EXECUTE grant from any new or
+newly-`SECURITY DEFINER` routine in `public`, because `ALTER DEFAULT PRIVILEGES`
+cannot. A deliberate grant issued after the `CREATE` still wins.
+
+After any migration that adds a table, a view or a SECURITY DEFINER routine:
+
+```bash
+npx tsx scripts/security/assert-anon-surface.ts
+```
+
+It is read-only, exits non-zero on a regression, and checks both directions:
+nothing newly exposed, and the website's own access intact.
+
 ## Permissions (RBAC)
 
 ```typescript
