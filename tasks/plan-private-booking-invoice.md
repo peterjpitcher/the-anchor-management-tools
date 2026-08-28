@@ -578,10 +578,16 @@ Filenames were realigned to these versions afterwards, so the directory matches
 the ledger and nothing looks falsely pending. See
 `feedback_migrations_before_code_deploy` for why that matters.
 
-**Still pending, and deliberately left:** `20260819100000_leave_reminder_ledger`.
-Not part of this feature. It creates `leave_reminder_log`, which
-`/api/cron/leave-approval-reminders` has been reading at 09:30 every morning
-since 19 August without it existing.
+**Nothing is pending.** `leave_reminder_ledger` was applied on 2026-08-28 as
+`20260828081350`, followed by `20260828081429` revoking the anon SELECT grant
+the table inherited from `pg_default_acl` on creation. The 09:30 holiday
+reminder cron reads both its tables successfully again, and the unique index
+was confirmed to refuse a duplicate claim with a 409, which is the whole point
+of the ledger.
+
+The migrations directory now reconciles exactly against production: 647 files,
+647 applied, no file missing from the ledger, no applied migration without a
+file, and no duplicate version prefix.
 
 ### 4. Verified after applying
 
