@@ -28,6 +28,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from './audit'
 import { getErrorMessage } from '@/lib/errors'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { COMPANY_DETAILS } from '@/lib/company-details'
 import { isGraphConfigured, sendInvoiceEmail } from '@/lib/microsoft-graph'
 import {
   InvoiceMappingError,
@@ -440,7 +441,10 @@ async function deliverInvoice(
     return `\nYour booking and damage deposit of £${deposit.amount.toFixed(2)}${paidOn ? ` received on ${paidOn}` : ''} is held separately and will be refunded within 48 hours after your event, less any documented deductions. It is not part of the amount below.\n`
   })()
 
-  const subject = `Invoice ${invoice.invoice_number} for your event at The Anchor`
+  // Owner decision 2026-08-28: every invoice goes out from Orange Jelly
+  // Limited, the official business name, and nothing else. The venue is named
+  // in the body only as a description of the booking, never as the sender.
+  const subject = `Invoice ${invoice.invoice_number} from ${COMPANY_DETAILS.legalName}`
   const body = `Hi ${bookingCustomerName(booking)},
 
 Thanks again for booking with us. Your invoice for ${booking.event_date ? formatDateFull(booking.event_date) : 'your event'} is attached.
@@ -453,7 +457,7 @@ ${depositSentence}
 If anything looks wrong, just reply to this email and we will sort it out.
 
 Many thanks,
-The Anchor`
+${COMPANY_DETAILS.legalName}`
 
   const result = await sendInvoiceEmail(invoice, recipient, subject, body, undefined, undefined, {
     // Snapshotted at issue: a later refund must not rewrite what the customer

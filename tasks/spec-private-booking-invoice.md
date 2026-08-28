@@ -275,8 +275,13 @@ cannot reproduce what was actually issued, and VAT records must be kept six year
 
 ### Copy (fixes C18)
 
-- The email signs off "Orange Jelly Limited". A party host expects The Anchor. Add a
-  private-booking variant using the trading identity the contract uses.
+- **Branding is settled: every invoice goes out from Orange Jelly Limited, and
+  nothing else.** That is the official business name, so it is what appears on
+  the document, in the email subject and in the sign-off, for private bookings
+  and consultancy alike. There is no trading-name variant and no second
+  template. Do not "fix" this to The Anchor later: it was considered and
+  rejected by the owner on 2026-08-28. The venue may still be named in body
+  copy where it describes the booking, never as the sender.
 - The PDF states "Card Payments: Subject to additional fees". Consumer card surcharges are
   restricted in the UK. Get this removed or approved before a consumer ever sees it.
 
@@ -529,4 +534,5 @@ Beyond v1's mapper tests, which stand:
 3. Can a completed or past-dated booking be invoiced? Recommended: yes, 15 of 19 priced
    bookings are already past their balance due date, so blocking them removes most of the
    value.
-4. Who approves the consumer email copy and the removal of the card fee wording?
+4. Who approves the removal of the card fee wording? (Branding is settled:
+   every invoice comes from Orange Jelly Limited, decided 2026-08-28.)

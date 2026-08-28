@@ -432,6 +432,27 @@ describe('generatePrivateBookingInvoice', () => {
       expect(mockedSendInvoiceEmail).not.toHaveBeenCalled()
     })
 
+    it('sends from Orange Jelly Limited, never a trading name', async () => {
+      // Owner decision 2026-08-28: every invoice goes out from the official
+      // business name and nothing else. This was considered and rejected as a
+      // per-booking variant, so the test exists to stop a well-meaning revert.
+      mockedCreateAdminClient.mockReturnValue(
+        makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),
+      )
+
+      await generatePrivateBookingInvoice({
+        bookingId: BOOKING_ID,
+        depositTreatment: 'held_separately',
+      })
+
+      const [, , subject, body] = mockedSendInvoiceEmail.mock.calls[0]
+      expect(subject).toContain('Orange Jelly Limited')
+      expect(subject).not.toContain('The Anchor')
+      expect(body).toContain('Orange Jelly Limited')
+      // The sign-off is the last line, and it must be the legal entity.
+      expect(String(body).trimEnd().endsWith('Orange Jelly Limited')).toBe(true)
+    })
+
     it('passes the deposit statement to the PDF when it is held separately', async () => {
       mockedCreateAdminClient.mockReturnValue(
         makeAdminClient({ booking: buildBooking(), invoice: buildInvoice() }),

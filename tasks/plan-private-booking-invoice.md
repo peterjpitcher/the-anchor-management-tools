@@ -451,8 +451,13 @@ Total, Payments Received and Balance Due.
 
 ### Task 4.4: the copy
 
-- The email signs off "Orange Jelly Limited". A party host expects The Anchor. Add a
-  private-booking variant.
+- **Branding is settled: every invoice goes out from Orange Jelly Limited, and
+  nothing else.** That is the official business name, so it is what appears on
+  the document, in the email subject and in the sign-off, for private bookings
+  and consultancy alike. There is no trading-name variant and no second
+  template. Do not "fix" this to The Anchor later: it was considered and
+  rejected by the owner on 2026-08-28. The venue may still be named in body
+  copy where it describes the booking, never as the sender.
 - The PDF says "Card Payments: Subject to additional fees". Consumer card surcharges are
   restricted in the UK. Remove it or get it approved before a customer sees it.
 
