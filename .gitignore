@@ -106,3 +106,10 @@ tmp/
 analysis/
 backups/
 temp/
+
+# Generated run artefacts: playwright traces, diagnostic dumps, scratch exports.
+# Around 20MB of them accumulate in a working tree and they are reproducible, so
+# they belong nowhere near git history. Ignored mainly so a stray `git add -A`
+# cannot sweep them into a commit alongside real work.
+output/
+outputs/
