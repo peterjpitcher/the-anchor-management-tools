@@ -10,8 +10,8 @@
 
 const TZ = 'Europe/London'
 
-/** London wall-clock date and hour for an instant. */
-function londonParts(instant: Date): { iso: string; hour: number } {
+/** London wall-clock date, hour and minute for an instant. */
+function londonParts(instant: Date): { iso: string; hour: number; minute: number } {
   // hourCycle 'h23' rather than hour12: en-GB with hour12 renders noon as "0pm"
   // on this Node version, which silently corrupts the hour.
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -20,6 +20,7 @@ function londonParts(instant: Date): { iso: string; hour: number } {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(instant)
 
@@ -29,6 +30,7 @@ function londonParts(instant: Date): { iso: string; hour: number } {
   return {
     iso: `${get('year')}-${get('month')}-${get('day')}`,
     hour: Number(get('hour')),
+    minute: Number(get('minute')),
   }
 }
 
@@ -90,4 +92,58 @@ function londonWallClockToUtc(iso: string, hour: number): Date {
   // Spring-forward gap: the wanted hour does not exist on this date. Fall back to
   // the first instant after it, which is the boundary in practice.
   return new Date(`${iso}T${String(hour).padStart(2, '0')}:00:00Z`)
+}
+
+/** Why the staff screen is going to refetch. */
+export type RefreshReason = 'boundary' | 'window'
+
+/**
+ * When the staff screen should next refetch, and why.
+ *
+ * The screen renders a snapshot: the server filters out tasks whose window has not
+ * opened yet, so the list is only correct for the instant it was built. Two things
+ * make it stale: the next task window opening, and the business day rolling over.
+ * Whichever comes first is the deadline.
+ *
+ * `nextWindowStart` is the earliest not-yet-open window the server withheld, or null
+ * when there is nothing further to come today. An unparseable or already-past value is
+ * ignored rather than trusted, so a bad payload can never park the screen on a deadline
+ * in the past and refresh in a loop.
+ */
+export function msUntilNextRefresh(
+  instant: Date,
+  nextWindowStart: string | null,
+  startHour: number,
+): { ms: number; reason: RefreshReason } {
+  const toBoundary = msUntilNextBoundary(instant, startHour)
+
+  if (nextWindowStart) {
+    const at = Date.parse(nextWindowStart)
+    if (Number.isFinite(at)) {
+      const toWindow = Math.max(0, at - instant.getTime())
+      if (toWindow < toBoundary) return { ms: toWindow, reason: 'window' }
+    }
+  }
+
+  return { ms: toBoundary, reason: 'boundary' }
+}
+
+/** A 24-hour clock hour as staff would say it: 0 -> '12am', 12 -> '12pm', 21 -> '9pm'. */
+export function hourLabel(hour24: number): string {
+  const suffix = hour24 < 12 ? 'am' : 'pm'
+  const h = hour24 % 12 === 0 ? 12 : hour24 % 12
+  return `${h}${suffix}`
+}
+
+/**
+ * An instant as a short London wall-clock label: '9pm', '9:30pm', '5am'.
+ *
+ * Built from the same h23 Intl call as the rest of this module rather than from
+ * `hour12`, which renders noon as '0pm' on this Node version.
+ */
+export function londonClockLabel(instant: Date): string {
+  const { hour, minute } = londonParts(instant)
+  const suffix = hour < 12 ? 'am' : 'pm'
+  const h = hour % 12 === 0 ? 12 : hour % 12
+  return minute === 0 ? `${h}${suffix}` : `${h}:${String(minute).padStart(2, '0')}${suffix}`
 }

@@ -6,34 +6,59 @@ import { Modal, Button } from '@/ds'
 import { getDueChecklistPrompts, type DuePrompt } from '@/app/actions/checklists'
 
 // Mid-shift prompt (spec 9.2). Mounted on the FOH screen. Polls the server every 60s for
-// pending during-service checks whose window has opened. getDueChecklistPrompts() returns
-// [] unless both module_enabled and prompts_enabled are on, so this component stays silent
-// until the flags are switched on. It renders nothing when there is nothing to show, takes
-// no required props, and never throws in render.
+// pending checks whose window has opened. getDueChecklistPrompts() returns [] unless both
+// module_enabled and prompts_enabled are on, so this component stays silent until the flags
+// are switched on. It renders nothing when there is nothing to show, takes no required
+// props, and never throws in render.
+//
+// Closing tasks prompt here too. They used to be excluded along with open and anytime, which
+// left the closedown as the one thing nothing in the product ever chased: the last nudge of
+// the night landed at 20:00 and whole closing lists went unticked. The server holds them
+// back until half an hour before close, so this only interrupts service at the point it
+// matters.
 
 const DISMISSED_KEY = 'checklist-prompt-dismissed'
 const POLL_MS = 60_000
 
-// Dismissed instance ids, per device. sessionStorage scope: a dismissed id stays quiet
-// until sessionStorage clears (tab/session end re-arms). A different pending instance still
-// prompts because it carries a new id.
-function readDismissed(): Set<string> {
+// How long "Later" silences the closing prompt before it asks again. A closedown is the one
+// thing worth being a nuisance about, and the FOH iPad's sessionStorage effectively never
+// clears, so a permanent dismissal there would silence it for the whole night.
+const CLOSE_SNOOZE_MS = 30 * 60 * 1000
+
+// Dismissed instance ids, per device, mapped to the epoch millisecond they wake up again.
+// 0 means never, which is the original session-scoped behaviour and stays the default for
+// during-service checks. sessionStorage scope: a dismissal lasts until sessionStorage clears
+// (tab/session end re-arms). A different pending instance still prompts, it carries a new id.
+function readDismissed(): Record<string, number> {
   try {
     const raw = sessionStorage.getItem(DISMISSED_KEY)
-    if (!raw) return new Set()
+    if (!raw) return {}
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set()
+    // Legacy shape: a plain array of ids, all of them permanent.
+    if (Array.isArray(parsed)) {
+      return Object.fromEntries((parsed as string[]).map((id) => [id, 0]))
+    }
+    if (parsed && typeof parsed === 'object') return parsed as Record<string, number>
+    return {}
   } catch {
-    return new Set()
+    return {}
   }
 }
 
-function writeDismissed(ids: Set<string>): void {
+function writeDismissed(entries: Record<string, number>): void {
   try {
-    sessionStorage.setItem(DISMISSED_KEY, JSON.stringify(Array.from(ids)))
+    sessionStorage.setItem(DISMISSED_KEY, JSON.stringify(entries))
   } catch {
     /* sessionStorage unavailable, ignore */
   }
+}
+
+/** Still silenced? Permanent (0) always is; a snoozed one wakes up once its time passes. */
+function isDismissed(entries: Record<string, number>, id: string): boolean {
+  const until = entries[id]
+  if (until === undefined) return false
+  if (until === 0) return true
+  return Date.now() < until
 }
 
 // The guard defers opening: never steal focus while the user is typing/booking or the tab
@@ -69,7 +94,7 @@ export function ChecklistMidShiftPrompt() {
         if (cancelled) return
         if (res.error || !res.data) return
         const dismissed = readDismissed()
-        const visible = res.data.filter((p) => !dismissed.has(p.id))
+        const visible = res.data.filter((p) => !isDismissed(dismissed, p.id))
         setPrompts(visible)
         if (visible.length === 0) {
           // Nothing owed (or everything completed on another device): close the modal.
@@ -92,9 +117,16 @@ export function ChecklistMidShiftPrompt() {
     }
   }, [])
 
+  const closePrompts = prompts.filter((p) => p.slot === 'close')
+  const otherPrompts = prompts.filter((p) => p.slot !== 'close')
+  const closingOnly = closePrompts.length > 0 && otherPrompts.length === 0
+
   function handleLater() {
     const dismissed = readDismissed()
-    for (const p of prompts) dismissed.add(p.id)
+    const snoozeUntil = Date.now() + CLOSE_SNOOZE_MS
+    for (const p of prompts) {
+      dismissed[p.id] = p.slot === 'close' ? snoozeUntil : 0
+    }
     writeDismissed(dismissed)
     setOpen(false)
   }
@@ -110,7 +142,7 @@ export function ChecklistMidShiftPrompt() {
     <Modal
       open={open}
       onClose={handleLater}
-      title="Checks are due"
+      title={closingOnly ? 'Time to start closing' : 'Checks are due'}
       footer={
         <>
           <Button variant="ghost" onClick={handleLater}>
@@ -122,9 +154,23 @@ export function ChecklistMidShiftPrompt() {
         </>
       }
     >
-      <p className="text-sm text-text-muted">These checks are due:</p>
+      <p className="text-sm text-text-muted">
+        {closingOnly ? 'The closing checklist is open:' : 'These checks are due:'}
+      </p>
       <ul className="mt-3 space-y-2">
-        {prompts.map((p) => (
+        {/* The closing list is 22 tasks. One line for the lot, rather than a modal that
+            needs scrolling before anyone can act on it. */}
+        {closePrompts.length > 0 && (
+          <li className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+            <span className="min-w-0 truncate text-sm font-medium text-text">
+              Closing checklist
+            </span>
+            <span className="shrink-0 text-xs text-text-muted">
+              {closePrompts.length} {closePrompts.length === 1 ? 'task' : 'tasks'}
+            </span>
+          </li>
+        )}
+        {otherPrompts.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
             <span className="min-w-0 truncate text-sm font-medium text-text">{p.title}</span>
             <span className="shrink-0 text-xs text-text-muted">{p.slot}</span>
