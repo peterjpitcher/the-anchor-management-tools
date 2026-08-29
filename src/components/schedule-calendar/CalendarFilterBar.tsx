@@ -10,7 +10,7 @@ import {
     type CalendarFilters,
 } from './filters'
 import type { CalendarEntryKind } from './types'
-import { kindColor, kindLabel } from './ScheduleCalendar'
+import { kindColor, kindLabel } from './appearance'
 
 interface CalendarFilterBarProps {
     filters: CalendarFilters

@@ -81,6 +81,7 @@ const ACCEPTANCE_LABEL: Record<string, string> = {
 };
 
 const FIELD_LABELS: Record<string, string> = {
+  name: 'Shift label',
   employee_id: 'Employee',
   shift_date: 'Date',
   start_time: 'Start time',
@@ -170,6 +171,7 @@ export default function ShiftDetailModal({
 }: ShiftDetailModalProps) {
   const [shift, setShift] = useState(initialShift);
   const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(shift.name ?? '');
   const [startTime, setStartTime] = useState(shift.start_time);
   const [endTime, setEndTime] = useState(shift.end_time);
   const [breakMins, setBreakMins] = useState(shift.unpaid_break_minutes.toString());
@@ -212,6 +214,7 @@ export default function ShiftDetailModal({
     setError('');
     startTransition(async () => {
       const result = await updateShift(shift.id, {
+        name: name.trim() || null,
         start_time: startTime,
         end_time: endTime,
         unpaid_break_minutes: parseInt(breakMins) || 0,
@@ -281,6 +284,12 @@ export default function ShiftDetailModal({
               </div>
 
               <dl className="space-y-2">
+                {shift.name && (
+                  <div className="flex justify-between text-sm">
+                    <dt className="text-text-muted">Shift label</dt>
+                    <dd className="max-w-[260px] text-right font-medium text-text-strong">{shift.name}</dd>
+                  </div>
+                )}
                 {!isCouldntWork && (
                   <>
                     <div className="flex justify-between text-sm">
@@ -441,6 +450,15 @@ export default function ShiftDetailModal({
             /* Edit view */
             <div className="space-y-3">
               {error && <Alert variant="error">{error}</Alert>}
+
+              <FormGroup label="Shift label (optional)" htmlFor="sd-name">
+                <Input
+                  id="sd-name"
+                  placeholder='e.g. "Evening Bar"'
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                />
+              </FormGroup>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormGroup label="Start time" htmlFor="sd-start" required>

@@ -6,6 +6,7 @@ import type {
     CalendarNoteCalendarOverview,
 } from '@/app/(authenticated)/events/get-events-command-center'
 import type { CalendarEntry, CalendarEntryStatus } from './types'
+import { kindColor } from './appearance'
 
 // --- Helpers ---
 
@@ -83,7 +84,6 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
     const start = parseLocalDate(event.date, event.time || '00:00')
     const end = addHours(start, 2) // D9 — fixed 2h
     const status = statusFromString(event.eventStatus ?? 'scheduled')
-    const color = event.category?.color ?? '#22c55e'
     return {
         id: `evt:${event.id}`,
         kind: 'event',
@@ -93,7 +93,7 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
         allDay: false,
         spansMultipleDays: false,
         endsNextDay: false,
-        color,
+        color: kindColor('event'),
         subtitle: `${event.bookedSeatsCount ?? 0} booked`,
         status,
         statusLabel: statusLabel(status),
@@ -141,7 +141,7 @@ export function privateBookingToEntry(booking: PrivateBookingCalendarOverview): 
         allDay: false,
         spansMultipleDays: false, // overnight is NOT multi-day — D11
         endsNextDay: Boolean(booking.end_time_next_day),
-        color: '#8b5cf6',
+        color: kindColor('private_booking'),
         subtitle,
         status,
         statusLabel: statusLabel(status),
@@ -182,7 +182,7 @@ export function balanceDueToEntry(booking: DashboardBalanceDueInput): CalendarEn
         allDay: true,
         spansMultipleDays: false,
         endsNextDay: false,
-        color: '#ef4444',
+        color: kindColor('balance_due'),
         subtitle: amount != null && Number.isFinite(amount) ? formatCurrency(amount) : null,
         status: statusFromString(booking.status),
         statusLabel: statusLabel(statusFromString(booking.status)),
@@ -219,7 +219,7 @@ export function employeeBirthdayToEntry(birthday: DashboardEmployeeBirthdayInput
         allDay: true,
         spansMultipleDays: false,
         endsNextDay: false,
-        color: '#ec4899',
+        color: kindColor('birthday'),
         subtitle: birthday.turning_age != null ? `Turns ${birthday.turning_age}` : null,
         status: null,
         statusLabel: null,
@@ -266,7 +266,7 @@ export function specialHoursToEntry(specialHours: DashboardSpecialHoursInput): C
         allDay: true,
         spansMultipleDays: false,
         endsNextDay: false,
-        color: specialHours.is_closed ? '#ef4444' : '#64748b',
+        color: kindColor('special_hours'),
         subtitle: specialHours.is_closed ? 'Closed' : timeRange,
         status: null,
         statusLabel: null,
@@ -307,7 +307,7 @@ export function calendarNoteToEntry(note: CalendarNoteCalendarOverview): Calenda
         allDay: !hasStartTime,
         spansMultipleDays,
         endsNextDay: false,
-        color: note.color || '#0EA5E9',
+        color: note.color || kindColor('calendar_note'),
         subtitle: null,
         status: null,
         statusLabel: null,
@@ -352,7 +352,7 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry {
         allDay: spansMultipleDays,
         spansMultipleDays,
         endsNextDay: spansMultipleDays,
-        color: '#14b8a6',
+        color: kindColor('parking'),
         subtitle: booking.vehicle_registration ?? null,
         status: null,
         statusLabel: null,

@@ -6,6 +6,7 @@ import { applyCalendarFilters, EMPTY_CALENDAR_FILTERS, type CalendarFilters } fr
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { cn } from '@/lib/utils'
 import { CalendarDaysIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
 import { Modal, Button, FormGroup, Input, Textarea, toast } from '@/ds'
 import { createCalendarNote } from '@/app/actions/calendar-notes'
@@ -25,6 +26,7 @@ import type {
   ScheduleCalendarView,
   ScheduleDailyOps,
 } from './types'
+import { CALENDAR_COLOUR_OPTIONS, kindColor } from './appearance'
 
 function toLocalIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -398,13 +400,18 @@ export function VenueCalendar({
   // canCreateCalendarNote. A caller may still pass its own onEmptyDayClick to
   // override this default behaviour.
   const [newNoteDate, setNewNoteDate] = useState<string | null>(null)
-  const [newNoteForm, setNewNoteForm] = useState({ title: '', notes: '', color: '#0EA5E9', end_date: '' })
+  const [newNoteForm, setNewNoteForm] = useState({
+    title: '',
+    notes: '',
+    color: kindColor('calendar_note'),
+    end_date: '',
+  })
   const [isSavingNote, startSavingNote] = useTransition()
 
   function openNewNoteModal(date: Date) {
     const iso = toLocalIsoDate(date)
     setNewNoteDate(iso)
-    setNewNoteForm({ title: '', notes: '', color: '#0EA5E9', end_date: iso })
+    setNewNoteForm({ title: '', notes: '', color: kindColor('calendar_note'), end_date: iso })
   }
 
   function closeNewNoteModal() {
@@ -548,12 +555,33 @@ export function VenueCalendar({
                 autoFocus
               />
             </FormGroup>
-            <FormGroup label="Color">
-              <Input
-                type="color"
-                value={newNoteForm.color}
-                onChange={(e) => setNewNoteForm((f) => ({ ...f, color: e.target.value }))}
-              />
+            <FormGroup label="Colour">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {CALENDAR_COLOUR_OPTIONS.map((option) => {
+                  const selected = newNoteForm.color.toUpperCase() === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setNewNoteForm((f) => ({ ...f, color: option.value }))}
+                      className={cn(
+                        'flex min-h-11 items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-medium transition-colors',
+                        selected
+                          ? 'border-gray-950 bg-gray-100 text-gray-950 ring-2 ring-gray-950 ring-offset-1'
+                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+                      )}
+                    >
+                      <span
+                        className="h-5 w-5 shrink-0 rounded-sm border border-black/20"
+                        style={{ backgroundColor: option.value }}
+                        aria-hidden="true"
+                      />
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
             </FormGroup>
             <FormGroup label="Notes">
               <Textarea

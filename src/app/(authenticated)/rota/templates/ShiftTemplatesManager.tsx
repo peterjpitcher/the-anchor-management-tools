@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/ds';
 import { Input } from '@/ds';
 import { Select } from '@/ds';
@@ -20,6 +20,11 @@ import type { RotaEmployee } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
 import { displayName } from '@/lib/employees/display-name';
 import { calculatePaidHours } from '@/lib/rota/pay-math';
+import {
+  SHIFT_TEMPLATE_COLOURS,
+  getAutomaticShiftColour,
+  getShiftColourLabel,
+} from '@/lib/rota/shift-template-colours';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -73,7 +78,16 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
   const [endTime, setEndTime] = useState(initial?.end_time ?? '');
   const [breakMins, setBreakMins] = useState(initial?.unpaid_break_minutes?.toString() ?? '0');
   const [department, setDepartment] = useState<string>(initial?.department ?? departments[0]?.name ?? 'bar');
-  const [colour, setColour] = useState(initial?.colour ?? '');
+  const initialAutomaticColour = getAutomaticShiftColour(
+    initial?.department ?? departments[0]?.name ?? 'bar',
+    initial?.start_time ?? '',
+  );
+  const [colourMode, setColourMode] = useState<'automatic' | 'manual'>(() => (
+    !initial?.colour || initial.colour.toLowerCase() === initialAutomaticColour?.toLowerCase()
+      ? 'automatic'
+      : 'manual'
+  ));
+  const [manualColour, setManualColour] = useState(initial?.colour ?? SHIFT_TEMPLATE_COLOURS[0].value);
   const [dayOfWeek, setDayOfWeek] = useState<string>(
     initial?.day_of_week !== null && initial?.day_of_week !== undefined
       ? String(initial.day_of_week)
@@ -82,6 +96,8 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
   const [employeeId, setEmployeeId] = useState<string>(initial?.employee_id ?? '');
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+  const automaticColour = getAutomaticShiftColour(department, startTime);
+  const selectedColour = colourMode === 'automatic' ? automaticColour : manualColour;
 
   const handleSubmit = () => {
     if (!name.trim()) { setError('Name is required'); return; }
@@ -96,7 +112,7 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
       endTime,
       unpaidBreakMinutes: breakMinutes,
       department,
-      colour: colour || undefined,
+      colour: selectedColour,
       dayOfWeek: dayOfWeek !== '' ? parseInt(dayOfWeek) : null,
       employeeId: employeeId || null,
     };
@@ -144,19 +160,6 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
           />
         </FormGroup>
 
-        <FormGroup label="Colour (optional)" htmlFor="tmpl-colour">
-          <div className="flex gap-2 items-center">
-            <Input
-              id="tmpl-colour"
-              type="color"
-              value={colour || '#4f86c6'}
-              onChange={e => setColour(e.target.value)}
-              className="h-9 w-14 p-0.5 cursor-pointer"
-            />
-            <Button type="button" size="sm" variant="ghost" onClick={() => setColour('')}>Clear</Button>
-          </div>
-        </FormGroup>
-
         <FormGroup label="Start time" htmlFor="tmpl-start" required>
           <Input
             id="tmpl-start"
@@ -194,6 +197,76 @@ function TemplateForm({ initial, employees, departments, onSave, onCancel }: Tem
           </div>
         )}
       </div>
+
+      <fieldset className="space-y-2 border-t border-border pt-4">
+        <legend className="text-xs font-medium uppercase tracking-wider text-text-muted">
+          Shift colour
+        </legend>
+        <p className="text-xs text-text-subtle">
+          Automatic uses the department and start time. Pick a colour below to override it.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <button
+            id="tmpl-colour-auto"
+            type="button"
+            aria-pressed={colourMode === 'automatic'}
+            onClick={() => setColourMode('automatic')}
+            className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:shadow-ring ${
+              colourMode === 'automatic'
+                ? 'border-primary bg-primary-soft'
+                : 'border-border bg-surface hover:bg-surface-hover'
+            }`}
+          >
+            <span
+              className="h-5 w-5 shrink-0 rounded-full border border-black/20 shadow-xs"
+              style={{ backgroundColor: automaticColour ?? '#E5E7EB' }}
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-medium text-text-strong">Automatic</span>
+              <span className="block truncate text-[10px] text-text-subtle">
+                {getShiftColourLabel(automaticColour) ?? 'No rule'}
+              </span>
+            </span>
+            {colourMode === 'automatic' && <CheckIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-primary" />}
+          </button>
+
+          {SHIFT_TEMPLATE_COLOURS.map(option => {
+            const selected = colourMode === 'manual' && manualColour.toLowerCase() === option.value.toLowerCase();
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => { setManualColour(option.value); setColourMode('manual'); }}
+                className={`relative flex min-h-11 items-center gap-2 rounded-default border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:shadow-ring ${
+                  selected
+                    ? 'border-primary bg-primary-soft'
+                    : 'border-border bg-surface hover:bg-surface-hover'
+                }`}
+              >
+                <span
+                  className="h-5 w-5 shrink-0 rounded-full border border-black/20 shadow-xs"
+                  style={{ backgroundColor: option.value }}
+                />
+                <span className="truncate text-xs font-medium text-text-strong">{option.label}</span>
+                {selected && <CheckIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-primary" />}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <Input
+            id="tmpl-colour-custom"
+            type="color"
+            aria-label="Choose a custom shift colour"
+            value={manualColour}
+            onChange={e => { setManualColour(e.target.value); setColourMode('manual'); }}
+            className="h-9 w-11 cursor-pointer p-0.5"
+          />
+          <span className="text-xs text-text-subtle">Custom colour</span>
+        </div>
+      </fieldset>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 border-t border-border pt-4">
         <div>
@@ -263,7 +336,8 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
     );
   }
 
-  const colourStyle = current.colour ? { borderLeftColor: current.colour, borderLeftWidth: 4 } : {};
+  const rowColour = current.colour ?? getAutomaticShiftColour(current.department, current.start_time);
+  const colourStyle = rowColour ? { borderLeftColor: rowColour, borderLeftWidth: 4 } : {};
   const assignedEmp = current.employee_id
     ? employees.find(e => e.employee_id === current.employee_id)
     : null;
@@ -274,6 +348,13 @@ function TemplateRow({ template, employees, departments, canEdit }: { template: 
       style={colourStyle}
     >
       <div className="flex items-center gap-3 min-w-0">
+        {rowColour && (
+          <span
+            className="h-4 w-4 shrink-0 rounded-full border border-black/20 shadow-xs"
+            style={{ backgroundColor: rowColour }}
+            title={getShiftColourLabel(rowColour) ?? rowColour}
+          />
+        )}
         <div className="min-w-0">
           <p className="text-sm font-medium text-text-strong truncate">{current.name}</p>
           <p className="text-xs text-text-muted">

@@ -1495,7 +1495,7 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
 export async function updateShift(
   shiftId: string,
   updates: Partial<Pick<RotaShift,
-    | 'start_time' | 'end_time' | 'unpaid_break_minutes' | 'notes' | 'status' | 'is_overnight' | 'department'
+    | 'name' | 'start_time' | 'end_time' | 'unpaid_break_minutes' | 'notes' | 'status' | 'is_overnight' | 'department'
     | 'rate_multiplier' | 'rate_override' | 'premium_reason' | 'premium_start_time' | 'premium_end_time'
   >>,
 ): Promise<{ success: true; data: RotaShift } | { success: false; error: string }> {
@@ -1507,7 +1507,7 @@ export async function updateShift(
 
   const { data: current, error: currentError } = await supabase
     .from('rota_shifts')
-    .select('id, employee_id, is_open_shift, status, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
+    .select('id, employee_id, is_open_shift, status, shift_date, name, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, acceptance_status, acceptance_decided_at, acceptance_decided_by, acceptance_note, auto_accept_reason, auto_accept_warning_sent_at, rate_multiplier, rate_override, premium_reason, premium_start_time, premium_end_time')
     .eq('id', shiftId)
     .single();
 

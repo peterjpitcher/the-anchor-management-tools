@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 import type { CalendarEntry } from './types'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
+import { calendarColourNeedsLightText } from './appearance'
+import { CalendarKindBadge } from './CalendarKindBadge'
 
 export interface ScheduleCalendarMonthProps {
     entries: CalendarEntry[]
@@ -110,25 +112,23 @@ export function ScheduleCalendarMonth({
                         {bands.length > 0 && (
                             <div className="col-span-7 bg-white px-1 py-1 flex flex-col gap-1 border-b border-gray-200">
                                 {bands.map(({ entry, startCol, span }) => {
-                                    const isMuted =
-                                        entry.status === 'cancelled' ||
-                                        entry.status === 'postponed' ||
-                                        entry.status === 'rescheduled'
                                     const isCancelled = entry.status === 'cancelled'
+                                    const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
                                     return (
                                         <div
                                             key={entry.id}
                                             className={cn(
-                                                'text-xs rounded-sm px-2 py-1 border-l-[3px] whitespace-normal break-words',
-                                                isMuted && 'text-text-muted/80',
+                                                'flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-medium whitespace-normal break-words',
                                                 isCancelled && 'line-through'
                                             )}
                                             style={{
-                                                borderLeftColor: entry.color,
-                                                background: `${entry.color}15`,
+                                                borderColor: isCancelled ? '#111827' : entry.color,
+                                                backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
+                                                color: lightText ? '#FFFFFF' : '#111827',
                                                 marginLeft: `${(startCol / 7) * 100}%`,
                                                 width: `${(span / 7) * 100}%`,
                                             }}
+                                            data-entry-kind={entry.kind}
                                             data-entry-title
                                             title={
                                                 renderTooltip
@@ -136,7 +136,8 @@ export function ScheduleCalendarMonth({
                                                     : entry.title
                                             }
                                         >
-                                            {entry.title}
+                                            <CalendarKindBadge kind={entry.kind} lightText={lightText} />
+                                            <span>{entry.title}</span>
                                         </div>
                                     )
                                 })}
@@ -229,17 +230,18 @@ interface EntryBlockProps {
 }
 
 function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
-    const isMuted =
-        entry.status === 'cancelled' ||
-        entry.status === 'postponed' ||
-        entry.status === 'rescheduled'
     const isCancelled = entry.status === 'cancelled'
+    const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
+    const secondaryTextClass = lightText ? 'text-white/80' : 'text-black/70'
 
     const content = (
         <>
-            {!entry.allDay && (
-                <div className="font-semibold leading-tight">{format(entry.start, 'HH:mm')}</div>
-            )}
+            <div className="mb-0.5 flex min-w-0 items-center gap-1">
+                <CalendarKindBadge kind={entry.kind} lightText={lightText} />
+                {!entry.allDay && (
+                    <span className="font-semibold leading-none">{format(entry.start, 'HH:mm')}</span>
+                )}
+            </div>
             <div
                 data-entry-title
                 className={cn(
@@ -250,7 +252,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                 {entry.title}
             </div>
             {entry.subtitle && (
-                <div className="text-text-muted text-[11px] leading-tight">{entry.subtitle}</div>
+                <div className={cn('text-[11px] leading-tight', secondaryTextClass)}>{entry.subtitle}</div>
             )}
             {/*
               Status and content gaps on the card itself. The month grid is
@@ -260,14 +262,19 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
             {(entry.statusLabel || entryGaps(entry).length > 0) && (
                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
                     {entry.statusLabel && (
-                        <span className="rounded bg-black/10 px-1 py-px text-[10px] font-semibold uppercase leading-tight tracking-wide">
+                        <span
+                            className={cn(
+                                'rounded px-1 py-px text-[10px] font-semibold uppercase leading-tight tracking-wide',
+                                lightText ? 'bg-white/20 text-white' : 'bg-black/10 text-gray-950',
+                            )}
+                        >
                             {entry.statusLabel}
                         </span>
                     )}
                     {entryGaps(entry).map((gap) => (
                         <span
                             key={gap}
-                            className="rounded bg-amber-100 px-1 py-px text-[10px] font-medium leading-tight text-amber-800"
+                            className="rounded border border-black/20 bg-white px-1 py-px text-[10px] font-medium leading-tight text-gray-950"
                         >
                             {CONTENT_GAP_LABELS[gap]}
                         </span>
@@ -275,19 +282,19 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                 </div>
             )}
             {entry.endsNextDay && (
-                <div className="text-text-muted text-[10px] leading-tight">+1 day</div>
+                <div className={cn('text-[10px] leading-tight', secondaryTextClass)}>+1 day</div>
             )}
         </>
     )
 
     const sharedClass = cn(
-        'block rounded-sm px-2 py-1 text-xs border-l-[3px] bg-surface hover:bg-surface-hover text-left w-full',
-        isMuted && 'text-text-muted/80',
+        'block w-full rounded-sm border px-2 py-1 text-left text-xs transition-[filter,box-shadow] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-1',
         isCancelled && 'line-through'
     )
     const sharedStyle = {
-        borderLeftColor: entry.color,
-        background: `${entry.color}10`,
+        borderColor: isCancelled ? '#111827' : entry.color,
+        backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
+        color: lightText ? '#FFFFFF' : '#111827',
     } as const
 
     if (entry.onClickHref) {
@@ -301,6 +308,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
                 }}
                 className={sharedClass}
                 style={sharedStyle}
+                data-entry-kind={entry.kind}
                 title={renderTooltip ? undefined : entry.title}
             >
                 {content}
@@ -314,6 +322,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
             onClick={() => onClick?.(entry)}
             className={sharedClass}
             style={sharedStyle}
+            data-entry-kind={entry.kind}
             title={renderTooltip ? undefined : entry.title}
         >
             {content}

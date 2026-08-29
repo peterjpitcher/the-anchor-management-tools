@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
+import { calendarColourNeedsLightText } from './appearance'
+import { CalendarKindBadge } from './CalendarKindBadge'
 
 export interface ScheduleCalendarListProps {
     entries: CalendarEntry[]
@@ -72,7 +74,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                         key={group.date.toISOString()}
                         className={cn(
                             'rounded-md border overflow-hidden bg-white shadow-sm',
-                            isTodayGroup ? 'border-green-400' : 'border-gray-200'
+                            isTodayGroup ? 'border-gray-950' : 'border-gray-200'
                         )}
                     >
                         <h2
@@ -84,7 +86,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                 // 56px into the card and bisected the first event row.
                                 'text-sm font-semibold px-3 py-2 border-b',
                                 isTodayGroup
-                                    ? 'bg-green-50 text-green-900 border-green-300'
+                                    ? 'border-gray-950 bg-gray-950 text-white'
                                     : 'bg-gray-100 text-gray-700 border-gray-200'
                             )}
                         >
@@ -111,69 +113,88 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                             </div>
                         )}
                         {group.entries.length > 0 && (
-                            <ul className="divide-y divide-gray-200">
+                            <ul className="space-y-1 p-1">
                                 {group.entries.map((entry) => {
                                     const isPastEntry = isPast(entry.end) && !isTodayGroup
                                     const isCancelled = entry.status === 'cancelled'
-                                    const isFreedStatus =
-                                        entry.status === 'cancelled' ||
-                                        entry.status === 'postponed' ||
-                                        entry.status === 'rescheduled'
+                                    const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
+                                    const secondaryTextClass = lightText ? 'text-white/80' : 'text-black/70'
+                                    const details = (
+                                        <>
+                                            <div
+                                                data-entry-title
+                                                className={cn(
+                                                    'font-semibold',
+                                                    isCancelled && 'line-through'
+                                                )}
+                                            >
+                                                {entry.title}
+                                                {entry.endsNextDay && (
+                                                    <span className={cn('ml-2 text-[10px]', secondaryTextClass)}>+1 day</span>
+                                                )}
+                                            </div>
+                                            {entry.subtitle && (
+                                                <div className={cn('text-xs', secondaryTextClass)}>
+                                                    {entry.subtitle}
+                                                </div>
+                                            )}
+                                            {entryGaps(entry).length > 0 && (
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                    {entryGaps(entry).map((gap) => (
+                                                        <span
+                                                            key={gap}
+                                                            className="rounded border border-black/20 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-950"
+                                                        >
+                                                            {CONTENT_GAP_LABELS[gap]}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
+                                    )
                                     return (
                                         <li
                                             key={entry.id}
                                             data-entry-row={isPastEntry ? 'past' : 'future'}
+                                            data-entry-kind={entry.kind}
                                             className={cn(
-                                                'flex items-start gap-3 py-2 px-3 border-l-[3px] hover:bg-gray-50',
-                                                isPastEntry && 'text-text-muted bg-gray-50/50',
-                                                isFreedStatus && 'text-text-muted bg-gray-50/30'
+                                                'flex items-start gap-3 rounded-sm border px-3 py-2 transition-[filter,opacity] hover:brightness-95',
+                                                isPastEntry && 'opacity-70'
                                             )}
-                                            style={{ borderLeftColor: entry.color }}
+                                            style={{
+                                                borderColor: isCancelled ? '#111827' : entry.color,
+                                                backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
+                                                color: lightText ? '#FFFFFF' : '#111827',
+                                            }}
                                         >
-                                            <span className="text-xs font-mono w-14 shrink-0 text-gray-700 pt-0.5">
-                                                {entry.allDay ? 'All day' : format(entry.start, 'HH:mm')}
-                                            </span>
-                                            <a
-                                                href={entry.onClickHref ?? '#'}
-                                                onClick={(ev) => {
-                                                    if (!entry.onClickHref || !onEntryClick) return
-                                                    ev.preventDefault()
-                                                    onEntryClick(entry)
-                                                }}
-                                                className="flex-1 block"
-                                            >
-                                                <div
-                                                    data-entry-title
+                                            <div className="flex w-20 shrink-0 flex-col items-start gap-1 pt-0.5">
+                                                <CalendarKindBadge kind={entry.kind} lightText={lightText} />
+                                                <span className={cn('font-mono text-xs', secondaryTextClass)}>
+                                                    {entry.allDay ? 'All day' : format(entry.start, 'HH:mm')}
+                                                </span>
+                                            </div>
+                                            {entry.onClickHref ? (
+                                                <a
+                                                    href={entry.onClickHref}
+                                                    onClick={(ev) => {
+                                                        if (!onEntryClick) return
+                                                        ev.preventDefault()
+                                                        onEntryClick(entry)
+                                                    }}
+                                                    className="block flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                >
+                                                    {details}
+                                                </a>
+                                            ) : (
+                                                <div className="min-w-0 flex-1">{details}</div>
+                                            )}
+                                            {entry.statusLabel && (
+                                                <span
                                                     className={cn(
-                                                        'font-medium text-gray-900',
-                                                        isCancelled && 'line-through'
+                                                        'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                                                        lightText ? 'bg-white/20 text-white' : 'bg-black/10 text-gray-950'
                                                     )}
                                                 >
-                                                    {entry.title}
-                                                    {entry.endsNextDay && (
-                                                        <span className="ml-2 text-[10px] text-gray-500">+1 day</span>
-                                                    )}
-                                                </div>
-                                                {entry.subtitle && (
-                                                    <div className="text-xs text-gray-600">
-                                                        {entry.subtitle}
-                                                    </div>
-                                                )}
-                                                {entryGaps(entry).length > 0 && (
-                                                    <div className="mt-1 flex flex-wrap gap-1">
-                                                        {entryGaps(entry).map((gap) => (
-                                                            <span
-                                                                key={gap}
-                                                                className="text-[10px] font-medium text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded"
-                                                            >
-                                                                {CONTENT_GAP_LABELS[gap]}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </a>
-                                            {entry.statusLabel && (
-                                                <span className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                                                     {entry.statusLabel}
                                                 </span>
                                             )}
