@@ -8,6 +8,11 @@ import { getOpenSessions } from './timeclock'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { currentBusinessDate, getChecklistSettings } from '@/lib/checklists/settings'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
+import {
+  CLOSE_PROMPT_LEAD_MINUTES,
+  earliestFutureWindow,
+  isDueNow,
+} from '@/lib/checklists/window'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { buildValueBreachEmail } from '@/lib/checklists/value-breach-email'
 import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
@@ -56,6 +61,15 @@ export interface TodayChecklistResult {
   moduleEnabled: boolean
   generationStatus: 'complete' | 'running' | 'failed' | 'skipped_closed' | 'none'
   groups: ChecklistGroupView[]
+  /**
+   * Earliest task window that has not opened yet, as an ISO instant, or null when
+   * nothing further is coming today. The screen arms a single timer on this so it
+   * refetches the moment its content changes, instead of polling all evening.
+   * Always null when `dueOnly` is off, because nothing was withheld.
+   */
+  nextWindowStart: string | null
+  /** How many tasks `dueOnly` withheld, so the screen can say how many are coming. */
+  hiddenCount: number
 }
 
 export async function getTodayChecklist(
@@ -75,6 +89,8 @@ export async function getTodayChecklist(
         moduleEnabled: false,
         generationStatus: 'none',
         groups: [],
+        nextWindowStart: null,
+        hiddenCount: 0,
       },
     }
   }
@@ -89,26 +105,41 @@ export async function getTodayChecklist(
     .limit(1)
   const generationStatus = (runs?.[0]?.status as TodayChecklistResult['generationStatus']) ?? 'none'
 
-  let query = db
+  // The whole business day, always. The staff screen only shows tasks whose window has
+  // started (open tasks at open, close tasks close_lead_minutes before close), but that
+  // filter is applied below rather than in SQL.
+  //
+  // It used to be `.lte('window_start', now)` on the query, which made the payload a
+  // snapshot of one instant with no way for the client to know when it went stale. A tab
+  // last rendered before the closing window opened therefore never showed the closing
+  // list at all: nothing left on screen to tick, so nothing ever triggered a refetch.
+  // Filtering here instead lets the same pass report the next window and what it withheld.
+  const { data: rows, error } = await db
     .from('checklist_task_instances')
     .select(
       `id, checklist_id, title_snapshot, instruction_snapshot, slot, department,
-       requires_value, value_unit, value_min, value_max, due_at, grace_until, state,
+       requires_value, value_unit, value_min, value_max, window_start, due_at, grace_until, state,
        locked_at, completed_by_employee_id, completed_at, was_late, value_recorded,
        value_breach, notes, skip_reason,
        checklists!inner(name, sort_order),
        employees:completed_by_employee_id(first_name, last_name, preferred_name)`,
     )
     .eq('business_date', businessDate)
-  // Staff screen only shows tasks whose window has started (open tasks at open,
-  // close tasks close_lead_minutes before close). The manage view passes no
-  // filter and sees the whole day.
-  if (opts?.dueOnly) query = query.lte('window_start', new Date().toISOString())
-  const { data: rows, error } = await query.order('due_at', { ascending: true })
+    .order('due_at', { ascending: true })
   if (error) return { error: error.message }
+
+  // One `now` for both the filter and the next-window calculation, so they cannot
+  // disagree about which tasks are due.
+  const now = new Date()
+  const withheld: string[] = []
 
   const groupMap = new Map<string, ChecklistGroupView>()
   for (const row of (rows ?? []) as Record<string, unknown>[]) {
+    const windowStart = row.window_start as string | null
+    if (opts?.dueOnly && !isDueNow(windowStart, now)) {
+      withheld.push(windowStart ?? '')
+      continue
+    }
     const checklist = row.checklists as { name: string; sort_order: number } | null
     const emp = row.employees as {
       first_name: string | null
@@ -161,6 +192,8 @@ export async function getTodayChecklist(
       moduleEnabled: true,
       generationStatus,
       groups,
+      nextWindowStart: earliestFutureWindow(withheld, now),
+      hiddenCount: withheld.length,
     },
   }
 }
@@ -400,8 +433,13 @@ export interface DuePrompt {
 
 // Mid-shift prompts (spec 9.2): pending tasks whose window has opened, for today, but only
 // when prompts_enabled. Returns [] when the flag is off so the FOH prompt component stays
-// silent. Excludes open/close/anytime slots (those live on the dedicated screen); only the
-// during-service every-N and at_times slots prompt.
+// silent.
+//
+// Excludes `open` and `anytime` (those live on the dedicated screen and have no moment worth
+// interrupting service for). `close` IS included, but on its own shorter lead: the closing
+// tasks become visible and tickable an hour before close (close_lead_minutes), and the
+// pop-up starts nudging at CLOSE_PROMPT_LEAD_MINUTES. Before this, closing was the one thing
+// nothing in the product ever chased, which is how whole closing lists went unticked.
 export async function getDueChecklistPrompts(): Promise<{ data?: DuePrompt[]; error?: string }> {
   const canView = await checkUserPermission('checklists', 'view')
   if (!canView) return { error: 'Insufficient permissions' }
@@ -410,26 +448,38 @@ export async function getDueChecklistPrompts(): Promise<{ data?: DuePrompt[]; er
   if (!settings.moduleEnabled || !settings.promptsEnabled) return { data: [] }
 
   const db = createAdminClient()
-  const nowIso = new Date().toISOString()
+  const now = new Date()
   const businessDate = await currentBusinessDate()
   const { data, error } = await db
     .from('checklist_task_instances')
-    .select('id, title_snapshot, slot, due_at')
+    .select('id, title_snapshot, slot, due_at, window_start')
     .eq('business_date', businessDate)
     .eq('state', 'pending')
     .is('locked_at', null)
-    .not('slot', 'in', '(open,close,anytime)')
-    .lte('window_start', nowIso)
+    .not('slot', 'in', '(open,anytime)')
+    .lte('window_start', now.toISOString())
     .order('due_at', { ascending: true })
   if (error) return { error: error.message }
 
+  const closePromptFrom = CLOSE_PROMPT_LEAD_MINUTES * 60 * 1000
+
   return {
-    data: (data ?? []).map((r) => ({
-      id: r.id as string,
-      title: r.title_snapshot as string,
-      slot: r.slot as string,
-      dueAt: r.due_at as string,
-    })),
+    data: (data ?? [])
+      .filter((r) => {
+        if (r.slot !== 'close') return true
+        // Hold the closing pop-up back until CLOSE_PROMPT_LEAD_MINUTES before close, even
+        // though the window opened an hour out. An unparseable due_at prompts rather than
+        // going silent: a noisy nudge beats a missed closedown.
+        const dueAt = Date.parse(r.due_at as string)
+        if (!Number.isFinite(dueAt)) return true
+        return now.getTime() >= dueAt - closePromptFrom
+      })
+      .map((r) => ({
+        id: r.id as string,
+        title: r.title_snapshot as string,
+        slot: r.slot as string,
+        dueAt: r.due_at as string,
+      })),
   }
 }
 

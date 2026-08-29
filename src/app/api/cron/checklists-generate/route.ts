@@ -5,9 +5,18 @@ import { jobQueue } from '@/lib/unified-job-queue'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
 
-// Vercel Cron: 0 4 * * * (UTC). Re-gates on a 04:00-06:00 Europe/London window to absorb
+// Vercel Cron: 0 4,5 * * * (UTC). Re-gates on a 04:00-06:00 Europe/London window to absorb
 // DST, then enqueues the day's checklist jobs into the existing every-minute job queue.
 // All logic lives in the job handlers; this route only knocks on the door.
+//
+// Two firings, because the sweep has to land after the 05:00 London closing grace ends and a
+// single UTC hour cannot do that all year. In BST they are 05:00 and 06:00 London, in GMT
+// 04:00 and 05:00, so one of the pair is always at or after 05:00 local. The earlier one
+// still generates the day on time; the later one catches last night's closing tasks the
+// moment their grace expires instead of leaving them pending for another 23 hours.
+// Both passes are safe to repeat: generation reconciles rather than appends, the sweep is
+// state-guarded and idempotent, and the queue's unique key only blocks a job while it is
+// still pending or processing.
 const TIMEZONE = 'Europe/London'
 
 export async function GET(request: Request) {
@@ -36,11 +45,29 @@ export async function GET(request: Request) {
   // is ending instead of preparing the one about to start.
   const businessDate = formatInTimeZone(nowUtc, TIMEZONE, 'yyyy-MM-dd')
 
-  const generate = await jobQueue.enqueue(
-    'checklist_generate_day',
-    { businessDate },
-    { unique: `checklist_generate:${businessDate}` },
-  )
+  const db = createAdminClient()
+
+  // The second firing of the day only exists to run the sweep after the 05:00 London closing
+  // grace ends, so do not generate again on top of a run that already settled. Generation is
+  // safe to repeat, but a needless second attempt row would become the one the staff screen
+  // reads for its status, so a transient failure at 06:00 would blank a day that is already
+  // correctly generated. A run that FAILED is deliberately not counted here, which turns the
+  // second firing into a free retry.
+  const { data: settledRuns } = await db
+    .from('checklist_generation_runs')
+    .select('id')
+    .eq('business_date', businessDate)
+    .in('status', ['complete', 'skipped_closed'])
+    .limit(1)
+  const alreadyGenerated = (settledRuns?.length ?? 0) > 0
+
+  const generate = alreadyGenerated
+    ? { jobId: null }
+    : await jobQueue.enqueue(
+        'checklist_generate_day',
+        { businessDate },
+        { unique: `checklist_generate:${businessDate}` },
+      )
   const sweep = await jobQueue.enqueue(
     'checklist_sweep',
     {},
@@ -60,7 +87,6 @@ export async function GET(request: Request) {
   if (settings.moduleEnabled) {
     const mmdd = businessDate.slice(5)
     if (mmdd === settings.autumnWinterStart || mmdd === settings.autumnWinterEnd) {
-      const db = createAdminClient()
       const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
       await db.from('checklist_email_outbox').upsert(
         {
@@ -82,6 +108,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: true,
     businessDate,
+    alreadyGenerated,
     enqueued: { generate: generate.jobId ?? null, sweep: sweep.jobId ?? null, outbox: outbox.jobId ?? null },
     seasonReminder,
     localTime: format(nowLocal, 'HH:mm zzz', { timeZone: TIMEZONE }),

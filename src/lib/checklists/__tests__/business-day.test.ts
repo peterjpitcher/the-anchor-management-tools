@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { businessDateOf, msUntilNextBoundary } from '@/lib/checklists/business-day'
+import {
+  businessDateOf,
+  hourLabel,
+  londonClockLabel,
+  msUntilNextBoundary,
+  msUntilNextRefresh,
+} from '@/lib/checklists/business-day'
 
 // Instants are written in UTC and annotated with the London wall clock they
 // produce, because the whole point of these tests is the gap between the two.
@@ -118,5 +124,87 @@ describe('msUntilNextBoundary', () => {
     // because an hour repeats, so seven hours rather than six.
     const ms = msUntilNextBoundary(new Date('2026-10-24T22:00:00Z'), 5)
     expect(ms).toBe(7 * 60 * 60 * 1000)
+  })
+})
+
+// The staff screen renders a snapshot and has to know when that snapshot goes stale. It
+// used to know only about the 05:00 boundary, so a tab last rendered before the closing
+// window opened never showed the closing list at all.
+describe('msUntilNextRefresh', () => {
+  // 2026-08-28 19:13Z = 20:13 BST, the real instant of the last tick on the night the
+  // whole closing checklist went missing. The closing window opened at 21:00 BST.
+  const lastTick = new Date('2026-08-28T19:13:00Z')
+
+  it('waits for the task window when it comes before the boundary', () => {
+    const { ms, reason } = msUntilNextRefresh(lastTick, '2026-08-28T20:00:00Z', 5)
+    expect(reason).toBe('window')
+    expect(ms).toBe(47 * 60 * 1000)
+  })
+
+  it('falls back to the boundary when nothing else is due today', () => {
+    const { ms, reason } = msUntilNextRefresh(lastTick, null, 5)
+    expect(reason).toBe('boundary')
+    // 20:13 BST to 05:00 BST the next morning.
+    expect(ms).toBe(msUntilNextBoundary(lastTick, 5))
+  })
+
+  it('uses the boundary when the next window falls after it', () => {
+    const { reason } = msUntilNextRefresh(lastTick, '2026-08-30T12:00:00Z', 5)
+    expect(reason).toBe('boundary')
+  })
+
+  it('never returns a negative wait for a window that has already opened', () => {
+    const { ms, reason } = msUntilNextRefresh(lastTick, '2026-08-28T18:00:00Z', 5)
+    expect(reason).toBe('window')
+    expect(ms).toBe(0)
+  })
+
+  it('ignores an unparseable window rather than trusting it', () => {
+    const { ms, reason } = msUntilNextRefresh(lastTick, 'not-a-date', 5)
+    expect(reason).toBe('boundary')
+    expect(ms).toBe(msUntilNextBoundary(lastTick, 5))
+  })
+
+  it('is correct on the autumn clock change, where the boundary is seven hours away', () => {
+    // 2026-10-24 22:00Z = 23:00 BST. The boundary is seven hours off, not six, because
+    // an hour repeats. A window at 23:30 BST still wins.
+    const beforeTheChange = new Date('2026-10-24T22:00:00Z')
+    expect(msUntilNextRefresh(beforeTheChange, null, 5)).toEqual({
+      ms: 7 * 60 * 60 * 1000,
+      reason: 'boundary',
+    })
+    expect(msUntilNextRefresh(beforeTheChange, '2026-10-24T22:30:00Z', 5)).toEqual({
+      ms: 30 * 60 * 1000,
+      reason: 'window',
+    })
+  })
+})
+
+describe('clock labels', () => {
+  it('names hours the way staff say them', () => {
+    expect(hourLabel(0)).toBe('12am')
+    expect(hourLabel(5)).toBe('5am')
+    expect(hourLabel(12)).toBe('12pm')
+    expect(hourLabel(21)).toBe('9pm')
+  })
+
+  it('labels an instant in London wall-clock time', () => {
+    // 2026-08-28 20:00Z = 21:00 BST, the closing window on the night in question.
+    expect(londonClockLabel(new Date('2026-08-28T20:00:00Z'))).toBe('9pm')
+    expect(londonClockLabel(new Date('2026-08-28T20:30:00Z'))).toBe('9:30pm')
+    // 04:00Z = 05:00 BST, the business-day boundary.
+    expect(londonClockLabel(new Date('2026-08-29T04:00:00Z'))).toBe('5am')
+  })
+
+  it('renders midday as 12pm, not the 0pm en-GB hour12 produces on this Node', () => {
+    // 2026-08-28 11:00Z = 12:00 BST.
+    expect(londonClockLabel(new Date('2026-08-28T11:00:00Z'))).toBe('12pm')
+    // 2026-08-28 23:00Z = 00:00 BST the next day.
+    expect(londonClockLabel(new Date('2026-08-28T23:00:00Z'))).toBe('12am')
+  })
+
+  it('reads GMT instants against the winter clock', () => {
+    // 2026-12-01 21:00Z = 21:00 GMT.
+    expect(londonClockLabel(new Date('2026-12-01T21:00:00Z'))).toBe('9pm')
   })
 })

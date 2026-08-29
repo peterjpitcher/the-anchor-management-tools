@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alert, Card, CardHeader, CardBody } from '@/ds'
-import { msUntilNextBoundary } from '@/lib/checklists/business-day'
+import {
+  hourLabel,
+  londonClockLabel,
+  msUntilNextRefresh,
+  type RefreshReason,
+} from '@/lib/checklists/business-day'
 import { getAttributionCandidates } from '@/app/actions/checklists'
 import type { TodayChecklistResult, AttributionCandidate } from '@/app/actions/checklists'
 import { AttributionPicker, type Identity } from './AttributionPicker'
@@ -30,11 +35,17 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [showDone, setShowDone] = useState(false)
   const [busyTaskIds, setBusyTaskIds] = useState<Set<string>>(() => new Set())
-  const [boundaryReached, setBoundaryReached] = useState(false)
-  const [rolledOver, setRolledOver] = useState(false)
+  // The instant this screen's content goes stale, and why. Null until the first payload.
+  const [refreshDueAt, setRefreshDueAt] = useState<number | null>(null)
+  const [refreshReason, setRefreshReason] = useState<RefreshReason>('boundary')
+  const [refreshDue, setRefreshDue] = useState(false)
+  const [notice, setNotice] = useState<RefreshReason | null>(null)
+  const lastRefreshAt = useRef(0)
 
   const businessDate = initial?.businessDate
   const startHour = initial?.businessDayStartHour
+  const nextWindowStart = initial?.nextWindowStart ?? null
+  const hiddenCount = initial?.hiddenCount ?? 0
   // Department can vary per group. We seed the picker with the first group's
   // department: getAttributionCandidates returns every active employee, only the
   // clocked-in/rostered ordering is department-specific.
@@ -109,11 +120,6 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
     setPickerOpen(true)
   }, [])
 
-  // Roll the screen over at the business-day boundary.
-  //
-  // These iPads live on the bar and are rarely reloaded by hand. Without this the
-  // fix would only move the stale-screen problem from midnight to 5am: at 05:01
-  // the server has a new day's list and the tab is still showing last night's.
   const handleBusyChange = useCallback((taskId: string, busy: boolean) => {
     setBusyTaskIds(prev => {
       if (busy === prev.has(taskId)) return prev
@@ -124,39 +130,87 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
     })
   }, [])
 
+  // Work out when this screen's content next changes, and why.
+  //
+  // The list the server sent is a snapshot: tasks whose window has not opened yet were
+  // withheld. Two things make it stale, the next window opening and the day rolling over
+  // at 05:00, and the payload tells us when both are. These iPads live on the bar, are
+  // rarely reloaded by hand and are often left on one tab for hours, so the screen has to
+  // notice on its own. It previously only refetched when someone ticked something, which
+  // meant a tab last touched before 21:00 never showed the closing list at all: everything
+  // on it was done, so there was nothing left to tick, so nothing ever refetched.
   useEffect(() => {
-    if (!startHour) return
-    const delay = msUntilNextBoundary(new Date(), startHour)
-    // A second's grace so the server has certainly crossed the boundary too.
-    const timer = setTimeout(() => setBoundaryReached(true), delay + 1000)
-    return () => clearTimeout(timer)
-  }, [startHour, businessDate])
-
-  useEffect(() => {
-    if (!boundaryReached) return
-    // Never yank the page out from under a tick that is still saving. If a write
-    // hangs (lost signal on the bar wifi), give up waiting after 30 seconds
-    // rather than stranding the screen on yesterday indefinitely.
-    if (busyTaskIds.size === 0) {
-      setBoundaryReached(false)
-      setRolledOver(true)
-      refresh()
+    if (!startHour) {
+      setRefreshDueAt(null)
       return
     }
-    const giveUp = setTimeout(() => {
-      setBoundaryReached(false)
-      setRolledOver(true)
-      refresh()
-    }, 30_000)
-    return () => clearTimeout(giveUp)
-  }, [boundaryReached, busyTaskIds, refresh])
+    const { ms, reason } = msUntilNextRefresh(new Date(), nextWindowStart, startHour)
+    // A second's grace so the server has certainly crossed the same line.
+    setRefreshDueAt(Date.now() + ms + 1000)
+    setRefreshReason(reason)
+  }, [startHour, businessDate, nextWindowStart])
 
-  // Clear the notice once the new day's data has actually landed.
+  const checkRefreshDue = useCallback(() => {
+    if (refreshDueAt == null) return
+    if (Date.now() < refreshDueAt) return
+    // A floor against a refresh storm if a payload ever came back with a deadline that is
+    // already past. The deadline is otherwise always in the future, so a second pass for
+    // the same boundary is not reachable.
+    if (Date.now() - lastRefreshAt.current < 10_000) return
+    setRefreshDue(true)
+  }, [refreshDueAt])
+
+  // Three ways to notice, all landing on the same guarded check:
+  //  - a timer armed at the deadline: exactly one wake-up per boundary, no idle network,
+  //  - visibilitychange and pageshow: recovers a tab iPadOS suspended or bfcached through
+  //    the deadline, where the timer never fired,
+  //  - a 60s heartbeat that only compares two numbers: the safety net for Safari throttling
+  //    a long timer to death. It costs no network and no database work, which is why this
+  //    is not a polling refresh.
   useEffect(() => {
-    if (!rolledOver) return
-    const clear = setTimeout(() => setRolledOver(false), 15_000)
+    if (refreshDueAt == null) return
+
+    const timer = setTimeout(checkRefreshDue, Math.max(0, refreshDueAt - Date.now()))
+    const heartbeat = setInterval(checkRefreshDue, 60_000)
+    const onWake = () => {
+      if (document.visibilityState === 'visible') checkRefreshDue()
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('pageshow', onWake)
+
+    return () => {
+      clearTimeout(timer)
+      clearInterval(heartbeat)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('pageshow', onWake)
+    }
+  }, [refreshDueAt, checkRefreshDue])
+
+  useEffect(() => {
+    if (!refreshDue) return
+    // Never yank the page out from under a tick that is still saving. If a write
+    // hangs (lost signal on the bar wifi), give up waiting after 30 seconds
+    // rather than stranding the screen on a stale list indefinitely.
+    const go = () => {
+      lastRefreshAt.current = Date.now()
+      setRefreshDue(false)
+      setNotice(refreshReason)
+      refresh()
+    }
+    if (busyTaskIds.size === 0) {
+      go()
+      return
+    }
+    const giveUp = setTimeout(go, 30_000)
+    return () => clearTimeout(giveUp)
+  }, [refreshDue, refreshReason, busyTaskIds, refresh])
+
+  // Clear the notice once the new data has actually landed.
+  useEffect(() => {
+    if (!notice) return
+    const clear = setTimeout(() => setNotice(null), 15_000)
     return () => clearTimeout(clear)
-  }, [rolledOver, businessDate])
+  }, [notice, businessDate, hiddenCount])
 
   if (error) {
     return (
@@ -197,6 +251,15 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
 
   const toDoCount = allTasks.length - doneCount
 
+  // When the next batch lands, in the words staff use: "9pm", "9:30pm".
+  const nextWindowLabel = nextWindowStart ? londonClockLabel(new Date(nextWindowStart)) : null
+  const dayEndsLabel = hourLabel(startHour ?? 5)
+  // Only promise that the screen updates itself when it actually will.
+  const comingLater =
+    nextWindowLabel && hiddenCount > 0
+      ? `${hiddenCount === 1 ? 'One more task appears' : `${hiddenCount} more tasks appear`} at ${nextWindowLabel}. Leave this screen open and it will update on its own.`
+      : `Nothing else is due before ${dayEndsLabel}.`
+
   return (
     // Same shell as the FOH vouchers screen: centred, capped at max-w-3xl, with
     // a row of count tiles at the top. Both are iPad screens used mid-shift.
@@ -205,28 +268,46 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
           unattended for hours, so whoever picks it up next needs to see that the
           list moved on rather than wonder where last night's tasks went. */}
       <div aria-live="polite" role="status" className="sr-only">
-        {rolledOver ? 'Moved on to today’s checklist.' : ''}
+        {notice === 'boundary' ? 'Moved on to today’s checklist.' : ''}
+        {notice === 'window' ? 'New tasks have just appeared.' : ''}
       </div>
-      {rolledOver && (
+      {notice === 'boundary' && (
         <Alert variant="info" title="Moved on to today&rsquo;s checklist">
           Last night&rsquo;s list has closed. This is today&rsquo;s.
         </Alert>
       )}
+      {notice === 'window' && (
+        <Alert variant="info" title="New tasks have just appeared">
+          They have been added to the list below.
+        </Alert>
+      )}
       {allTasks.length > 0 && (
-        <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-          <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-            <dd className="text-3xl font-extrabold text-gray-900">{toDoCount}</dd>
-            <dt className="mt-1 text-sm font-medium text-gray-600">To do</dt>
-          </div>
-          <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-            <dd className="text-3xl font-extrabold text-gray-900">{doneCount}</dd>
-            <dt className="mt-1 text-sm font-medium text-gray-600">Done</dt>
-          </div>
-          <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
-            <dd className="text-3xl font-extrabold text-gray-900">{allTasks.length}</dd>
-            <dt className="mt-1 text-sm font-medium text-gray-600">Total</dt>
-          </div>
-        </dl>
+        <>
+          <dl className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
+              <dd className="text-3xl font-extrabold text-gray-900">{toDoCount}</dd>
+              <dt className="mt-1 text-sm font-medium text-gray-600">To do</dt>
+            </div>
+            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
+              <dd className="text-3xl font-extrabold text-gray-900">{doneCount}</dd>
+              <dt className="mt-1 text-sm font-medium text-gray-600">Done</dt>
+            </div>
+            {/* Deliberately not labelled "Total": this counts what is showing, and more
+                tasks arrive later in the day. It read "Total 28" on a 50 task day. */}
+            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 text-center">
+              <dd className="text-3xl font-extrabold text-gray-900">{allTasks.length}</dd>
+              <dt className="mt-1 text-sm font-medium text-gray-600">Showing</dt>
+            </div>
+          </dl>
+          {/* Suppressed when everything is ticked, because the all-done alert below says
+              the same thing more fully. */}
+          {hiddenCount > 0 && nextWindowLabel && !allDone && (
+            <p className="text-center text-sm text-text-muted">
+              {hiddenCount === 1 ? 'One more task appears' : `${hiddenCount} more tasks appear`} at{' '}
+              {nextWindowLabel}.
+            </p>
+          )}
+        </>
       )}
 
       {unavailable && (
@@ -275,7 +356,7 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
 
       {allDone && (
         <Alert variant="success" title="All done for now.">
-          Every task that is due has been completed. New tasks appear when they are due.
+          Everything due so far is ticked off. {comingLater}
         </Alert>
       )}
 
@@ -299,7 +380,9 @@ export function ChecklistScreen({ initial, error }: ChecklistScreenProps) {
 
       {groups.length === 0 && !unavailable && generationStatus !== 'skipped_closed' && (
         <Alert variant="info" title="Nothing needs doing right now.">
-          Tasks appear here when they are due.
+          {nextWindowLabel && hiddenCount > 0
+            ? `The first tasks appear at ${nextWindowLabel}. Leave this screen open and it will update on its own.`
+            : `There is nothing else due before ${dayEndsLabel}.`}
         </Alert>
       )}
     </div>

@@ -92,3 +92,58 @@ export function expandInstants(
 
   return { opensAt, closesAt }
 }
+
+/**
+ * How long before close the FOH pop-up starts nudging about the closing checklist.
+ *
+ * Deliberately shorter than `close_lead_minutes` (60), which is when the tasks become
+ * visible and tickable on the checklist screen. Staff can get ahead an hour out if they
+ * want to; the pop-up only interrupts service at the half-hour mark.
+ */
+export const CLOSE_PROMPT_LEAD_MINUTES = 30
+
+/**
+ * Has this task's window opened? The staff screen shows only tasks that answer yes.
+ *
+ * Compares parsed instants, never the raw strings. PostgREST renders timestamptz with
+ * whatever offset the connection uses ('...+00:00') while `toISOString()` produces
+ * '...Z'; a lexical compare of the two is only accidentally correct while that offset
+ * happens to be zero, and silently wrong the moment it is not. The SQL filter this
+ * replaced had no such problem, because Postgres parsed both sides.
+ *
+ * `window_start` is NOT NULL in the database, but a missing or unparseable value is
+ * treated as not-yet-due rather than due, matching the old `.lte('window_start', now)`:
+ * a SQL comparison against NULL is false, so such a row was excluded.
+ */
+export function isDueNow(windowStart: string | null | undefined, now: Date): boolean {
+  if (!windowStart) return false
+  const at = Date.parse(windowStart)
+  if (!Number.isFinite(at)) return false
+  return at <= now.getTime()
+}
+
+/**
+ * The earliest window that has not opened yet, or null when everything is already due.
+ *
+ * This is what lets the screen arm a single timer for the moment its content changes
+ * instead of polling. Past, missing and unparseable values are ignored. The returned
+ * string is the original input, so the caller hands the client exactly what the
+ * database gave it.
+ */
+export function earliestFutureWindow(
+  windowStarts: (string | null | undefined)[],
+  now: Date,
+): string | null {
+  let earliest: string | null = null
+  let earliestAt = Infinity
+  for (const start of windowStarts) {
+    if (!start) continue
+    const at = Date.parse(start)
+    if (!Number.isFinite(at) || at <= now.getTime()) continue
+    if (at < earliestAt) {
+      earliestAt = at
+      earliest = start
+    }
+  }
+  return earliest
+}

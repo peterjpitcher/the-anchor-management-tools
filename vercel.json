@@ -263,7 +263,11 @@
     },
     {
       "path": "/api/cron/checklists-generate",
-      "schedule": "0 4 * * *"
+      "schedule": "0 4,5 * * *"
+    },
+    {
+      "path": "/api/cron/checklists-closing-alert",
+      "schedule": "0 8,9 * * *"
     },
     {
       "path": "/api/cron/checklists-weekly-summary",
