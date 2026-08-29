@@ -42,6 +42,7 @@ import { calculatePaidHours } from '@/lib/rota/pay-math';
 import { isInsideAcceptanceCutoff } from '@/lib/rota/acceptance-cutoff';
 import { countsTowardHours } from '@/lib/rota/shift-counting';
 import { displayName } from '@/lib/employees/display-name';
+import { getAutomaticShiftColour, shiftColourNeedsLightText } from '@/lib/rota/shift-template-colours';
 import ShiftDetailModal from './ShiftDetailModal';
 import CreateShiftModal from './CreateShiftModal';
 import BookHolidayModal from './BookHolidayModal';
@@ -301,11 +302,13 @@ function SummaryPill({
 
 function DraggableShiftBlock({
   shift,
+  colour,
   disabled,
   isDraft,
   onClick,
 }: {
   shift: RotaShift;
+  colour: string | null;
   disabled: boolean;
   isDraft: boolean;
   onClick: () => void;
@@ -320,13 +323,21 @@ function DraggableShiftBlock({
   const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
   const sickColour = shift.status === 'sick' ? 'bg-danger-soft border-danger/25' : '';
   const cancelColour = shift.status === 'cancelled' ? 'bg-surface-2 border-border opacity-60' : '';
-  const colourClass = cancelColour || sickColour || deptColour;
+  const useShiftColour = !cancelColour && !sickColour && colour;
+  const colourClass = cancelColour || sickColour || (useShiftColour ? '' : deptColour);
+  const lightText = useShiftColour ? shiftColourNeedsLightText(colour) : false;
+  const colourStyle = useShiftColour
+    ? {
+        backgroundColor: colour,
+        borderColor: colour === '#FFFFFF' ? 'var(--color-border-strong)' : colour,
+      }
+    : undefined;
   const isCouldntWork = shift.status === 'sick';
 
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
+      style={{ ...colourStyle, transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.3 : 1 }}
       className={`relative rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colourClass} px-2 py-1.5 pr-6 text-xs shadow-xs cursor-grab active:cursor-grabbing select-none transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm`}
       {...attributes}
       {...listeners}
@@ -334,19 +345,19 @@ function DraggableShiftBlock({
     >
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
-        <p className="mb-1 text-[9px] font-bold uppercase leading-none text-warning-fg">
+        <p className={`mb-1 text-[9px] font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>
           Unpublished
         </p>
       )}
       {shift.name && (
-        <p className="truncate font-semibold leading-tight text-text-strong">{shift.name}</p>
+        <p className={`truncate font-semibold leading-tight ${lightText ? 'text-white' : 'text-text-strong'}`}>{shift.name}</p>
       )}
       {isCouldntWork ? (
         <p className="truncate font-medium leading-tight text-danger-fg">Couldn&apos;t Work</p>
       ) : (
-        <p className="truncate font-medium leading-tight text-text">
+        <p className={`truncate font-medium leading-tight ${lightText ? 'text-white' : 'text-text'}`}>
           {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{shift.is_overnight ? '+' : ''}{' '}
-          <span className="font-normal text-text-muted">{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
+          <span className={`font-normal ${lightText ? 'text-white/80' : 'text-text-muted'}`}>{ph.toFixed(1)}h{shift.status !== 'scheduled' ? ` · ${shift.status}` : ''}</span>
         </p>
       )}
     </div>
@@ -354,19 +365,26 @@ function DraggableShiftBlock({
 }
 
 // Shift block displayed in DragOverlay (no interaction)
-function ShiftBlockOverlay({ shift, isDraft }: { shift: RotaShift; isDraft: boolean }) {
+function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colour: string | null; isDraft: boolean }) {
   const ph = calculatePaidHours(shift.start_time, shift.end_time, shift.unpaid_break_minutes, shift.is_overnight);
   const deptColour = shift.department === 'bar' ? 'bg-info-soft border-info/25' : 'bg-warning-soft border-warning/25';
+  const lightText = shiftColourNeedsLightText(colour);
+  const colourStyle = colour
+    ? {
+        backgroundColor: colour,
+        borderColor: colour === '#FFFFFF' ? 'var(--color-border-strong)' : colour,
+      }
+    : undefined;
   return (
-    <div className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
+    <div style={colourStyle} className={`relative w-32 rounded-default ${isDraft ? 'border-2 border-dashed' : 'border'} ${colour ? '' : deptColour} px-2 py-1.5 pr-6 text-xs shadow-lg opacity-95`}>
       <ShiftAcceptanceIcon shift={shift} />
       {isDraft && (
-        <p className="mb-1 text-[9px] font-bold uppercase leading-none text-warning-fg">Unpublished</p>
+        <p className={`mb-1 text-[9px] font-bold uppercase leading-none ${lightText ? 'text-white/90' : 'text-warning-fg'}`}>Unpublished</p>
       )}
-      {shift.name && <p className="font-semibold text-text-strong truncate">{shift.name}</p>}
-      <p className="font-medium text-text truncate">
+      {shift.name && <p className={`font-semibold truncate ${lightText ? 'text-white' : 'text-text-strong'}`}>{shift.name}</p>}
+      <p className={`font-medium truncate ${lightText ? 'text-white' : 'text-text'}`}>
         {formatTime12Hour(shift.start_time)}–{formatTime12Hour(shift.end_time)}{' '}
-        <span className="font-normal text-text-muted">{ph.toFixed(1)}h</span>
+        <span className={`font-normal ${lightText ? 'text-white/80' : 'text-text-muted'}`}>{ph.toFixed(1)}h</span>
       </p>
     </div>
   );
@@ -755,6 +773,24 @@ export default function RotaGrid({
   );
 
   const [showAddShifts, setShowAddShifts] = useState(false);
+
+  const templateById = useMemo(
+    () => new Map(templates.map(template => [template.id, template])),
+    [templates],
+  );
+  const shiftColour = useCallback((shift: RotaShift): string | null => {
+    const automaticColour = getAutomaticShiftColour(shift.department, shift.start_time);
+    if (!shift.template_id) return automaticColour;
+
+    const template = templateById.get(shift.template_id);
+    if (!template?.colour) return automaticColour;
+
+    const templateAutomaticColour = getAutomaticShiftColour(template.department, template.start_time);
+    const hasManualOverride = !templateAutomaticColour
+      || template.colour.toLowerCase() !== templateAutomaticColour.toLowerCase();
+
+    return hasManualOverride ? template.colour : (automaticColour ?? template.colour);
+  }, [templateById]);
 
   // Pre-compute hours per employee so empWeekHours isn't called N times per render
   const empHoursMap = useMemo(() => {
@@ -1287,6 +1323,7 @@ export default function RotaGrid({
                           <DraggableShiftBlock
                             key={s.id}
                             shift={s}
+                            colour={shiftColour(s)}
                             disabled={!canEdit || isPending}
                             isDraft={isShiftUnpublished(s)}
                             onClick={() => setSelectedShift(s)}
@@ -1448,6 +1485,7 @@ export default function RotaGrid({
                                         <DraggableShiftBlock
                                           key={s.id}
                                           shift={s}
+                                          colour={shiftColour(s)}
                                           disabled={!canEdit || isPending || s.status !== 'scheduled'}
                                           isDraft={isShiftUnpublished(s)}
                                           onClick={() => setSelectedShift(s)}
@@ -1474,7 +1512,7 @@ export default function RotaGrid({
         {/* Drag overlay */}
         <DragOverlay dropAnimation={null}>
           {activeItem?.type === 'shift' && (
-            <ShiftBlockOverlay shift={activeItem.shift} isDraft={isShiftUnpublished(activeItem.shift)} />
+            <ShiftBlockOverlay shift={activeItem.shift} colour={shiftColour(activeItem.shift)} isDraft={isShiftUnpublished(activeItem.shift)} />
           )}
         </DragOverlay>
       </DndContext>
@@ -1506,8 +1544,14 @@ export default function RotaGrid({
             </span>
             Rejected
           </span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-info/25 bg-info-soft" /> Bar shift</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-warning/25 bg-warning-soft" /> Kitchen shift</span>
+          <span className="flex items-center gap-1.5">
+            <span className="flex -space-x-0.5">
+              {['#7DD3FC', '#1E3A8A', '#FACC15', '#F97316', '#9333EA', '#16A34A', '#111827', '#FFFFFF'].map(colour => (
+                <span key={colour} className="inline-block h-3 w-2 border border-black/15" style={{ backgroundColor: colour }} />
+              ))}
+            </span>
+            Shift colour follows role and start time
+          </span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger/25 bg-danger-soft" /> Couldn&apos;t Work</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-rose-200 bg-rose-50" /> Rejected shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-success/25 bg-success-soft" /> Holiday approved</span>

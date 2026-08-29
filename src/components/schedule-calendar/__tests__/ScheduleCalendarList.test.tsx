@@ -24,7 +24,7 @@ function makeEntry(overrides: Partial<CalendarEntry> = {}): CalendarEntry {
     allDay: false,
     spansMultipleDays: false,
     endsNextDay: false,
-    color: '#22c55e',
+    color: '#1E3A8A',
     subtitle: null,
     status: 'scheduled',
     statusLabel: null,
@@ -111,5 +111,22 @@ describe('ScheduleCalendarList', () => {
   it('should not scroll when hidePast is true', () => {
     render(<ScheduleCalendarList entries={pastAndFutureEntries} hidePast />)
     expect(scrollSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows an icon-backed item type label as well as the colour', () => {
+    render(<ScheduleCalendarList entries={[makeEntry({ title: 'Accessible event' })]} hidePast />)
+    expect(screen.getByText('Event')).toBeInTheDocument()
+    expect(screen.getByText('Accessible event').closest('[data-entry-kind]')).toHaveAttribute('data-entry-kind', 'event')
+  })
+
+  it('shows cancelled items as white with a black border', () => {
+    render(
+      <ScheduleCalendarList
+        entries={[makeEntry({ title: 'Cancelled event', status: 'cancelled', statusLabel: 'Cancelled' })]}
+        hidePast
+      />
+    )
+    const row = screen.getByText('Cancelled event').closest('[data-entry-kind]')
+    expect(row).toHaveStyle({ backgroundColor: '#FFFFFF', borderColor: '#111827' })
   })
 })

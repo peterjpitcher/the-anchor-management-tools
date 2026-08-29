@@ -32,12 +32,22 @@ describe('ScheduleCalendarList', () => {
         expect(screen.getByRole('heading', { name: /Today/ })).toBeInTheDocument()
     })
 
-    it('past entries carry muted-token class, not opacity-60', () => {
+    // Each row now carries its kind's palette colour as an inline background with
+    // a matching inline text colour, so a `text-*` token can no longer de-emphasise
+    // a past entry: the inline colour wins, and muting text against an arbitrary
+    // background is the wrong effect anyway. Fading the whole row is what reads as
+    // past once the row is coloured. The guard that still matters is that a past
+    // row is marked at all, and that it is fainter than a future one.
+    it('fades a past entry, and leaves a future one at full strength', () => {
         const { container } = render(<ScheduleCalendarList entries={[e({ id: 'past', start: new Date(2026, 3, 10, 19), end: new Date(2026, 3, 10, 21) })]} />)
         const row = container.querySelector('[data-entry-row="past"]')
         expect(row).not.toBeNull()
-        expect(row!.className).not.toMatch(/opacity-60/)
-        expect(row!.className).toMatch(/text-text-muted/)
+        expect(row!.className).toMatch(/opacity-70/)
+
+        const { container: future } = render(<ScheduleCalendarList entries={[e({ id: 'future', start: new Date(2026, 3, 24, 19), end: new Date(2026, 3, 24, 21) })]} />)
+        const futureRow = future.querySelector('[data-entry-row="future"]')
+        expect(futureRow).not.toBeNull()
+        expect(futureRow!.className).not.toMatch(/opacity-/)
     })
 
     it('calls scrollIntoView on Today header on mount', () => {

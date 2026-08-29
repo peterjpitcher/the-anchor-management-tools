@@ -538,6 +538,16 @@ describe('updateShift premium handling', () => {
     expect(captured.row?.notes).toBe('Covering the bar')
   })
 
+  it('updates the shift label', async () => {
+    const captured = newCapture()
+    mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
+    mockCreateAdminClient.mockReturnValue(makeAdmin({ captured }).client as never)
+
+    const result = await updateShift('shift-1', { name: 'Evening Bar' })
+    expect(result.success).toBe(true)
+    expect(captured.row?.name).toBe('Evening Bar')
+  })
+
   it('rejects a premium window that falls outside the edited shift times', async () => {
     const captured = newCapture()
     mockCreateClient.mockResolvedValue(makeUpdateSupabase(CURRENT) as never)
