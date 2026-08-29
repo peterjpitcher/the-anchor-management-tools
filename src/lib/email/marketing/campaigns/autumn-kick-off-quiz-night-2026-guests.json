@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "title": "Quiz Night on Wednesday 16 September",
+  "preheader": "£3 cash entry · teams up to six · free-drink questions · spot prizes · food from 4pm",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9b78f364-7712-4c92-9b09-ffa9132e37e5/square/1787567178991_Untitled_design_4.png",
+          "alt": "Autumn Kick-Off Quiz Night at The Anchor in Stanwell Moor",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Quiz Night artwork · square",
+        "placeholder_caption": "Autumn Kick-Off Quiz Night",
+        "kicker": "Wednesday 16 September · 7pm",
+        "headline": "Round up the team. Quiz Night is back.",
+        "body": [
+          "Bring your smartest mate, your best guesser and the one who always knows the song intro. Our Autumn Kick-Off Quiz Night is packed with lively rounds, free-drink questions, spot prizes and plenty of friendly competition."
+        ],
+        "cta_label": "Book your quiz table",
+        "cta_url": "https://www.the-anchor.pub/events/autumn-kick-off-quiz-night-2026-09-16"
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "What to expect.",
+        "body": "General knowledge · Music · TV and film · Pictures · Random facts · Free-drink questions"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Entry",
+            "value": "£3 cash per person"
+          },
+          {
+            "label": "Teams",
+            "value": "Up to six people"
+          },
+          {
+            "label": "Arrive",
+            "value": "From 6.45pm, ready for a 7pm start"
+          },
+          {
+            "label": "Prizes",
+            "value": "£25 bar voucher for first place, plus free drinks and spot prizes"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "A proper midweek quiz night",
+        "body": [
+          "First-time teams are every bit as welcome as the regulars. Expect quick-fire moments, a phone mini challenge and a room full of teams ready to have a go.",
+          "Come down early for dinner and settle in before the first question. Our full dinner menu is available from 4pm to 9pm."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Team names at the ready",
+        "body": "Book ahead for your team, then all you need to do is agree on a team name.",
+        "cta_label": "Book your quiz table",
+        "cta_url": "https://www.the-anchor.pub/events/autumn-kick-off-quiz-night-2026-09-16",
+        "reassurance_items": [
+          "First-time teams welcome",
+          "Free parking right outside"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}

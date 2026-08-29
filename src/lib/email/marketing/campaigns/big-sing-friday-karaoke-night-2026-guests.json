@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "title": "Karaoke Night on Friday 18 September",
+  "preheader": "Free entry · karaoke from 8pm · huge song choice · solos, duets and groups welcome",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9d03a427-d331-45bd-91af-142b396b82ae/square/1787576195169_ChatGPT_Image_Aug_24_2026_01_46_00_PM.png",
+          "alt": "Karaoke Night singer using a microphone at The Anchor in Stanwell Moor",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Karaoke Night artwork · square",
+        "placeholder_caption": "Big Sing Friday",
+        "kicker": "Friday 18 September · From 8pm",
+        "headline": "What are you singing first?",
+        "body": [
+          "Start the weekend with a huge song choice, a welcoming crowd and plenty of support for every singer. Come for the microphone, come for the music or happily do both. Entry is free."
+        ],
+        "cta_label": "Book your Karaoke Night seats",
+        "cta_url": "https://www.the-anchor.pub/events/big-sing-friday-karaoke-night-2026-09-18"
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "Your night, your song.",
+        "body": "Solo singers · Duets · Groups · First-timers · Confident performers · Happy listeners"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Entry",
+            "value": "Free"
+          },
+          {
+            "label": "Time",
+            "value": "Friday 18 September, 8pm to 11.30pm"
+          },
+          {
+            "label": "Songs",
+            "value": "Request your choice through the host on the night"
+          },
+          {
+            "label": "Seating",
+            "value": "Friendly communal tables"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "A Friday night built for singing",
+        "body": [
+          "Peter will keep the queue moving and the room cheering. Pick a favourite, bring a duet partner or gather the whole group for a chorus. Families are welcome too.",
+          "Make a full evening of it with dinner before the singing starts. Our full dinner menu is available from 4pm to 9pm."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Mic check",
+        "body": "Book everyone coming so we can prepare the communal seating, then start choosing your first song.",
+        "cta_label": "Book your Karaoke Night seats",
+        "cta_url": "https://www.the-anchor.pub/events/big-sing-friday-karaoke-night-2026-09-18",
+        "reassurance_items": [
+          "Free entry",
+          "Free parking right outside"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}

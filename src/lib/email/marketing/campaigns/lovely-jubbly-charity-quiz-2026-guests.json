@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "title": "Only Fools and Horses Charity Quiz on Friday 25 September",
+  "preheader": "£3 cash entry · every entry fee donated to Macmillan · four themed rounds · teams up to six",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "hero_image",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/e9e84ee8-c59b-4f93-80f6-7e7961a03240/square/1787655504304_Untitled_design_6.png",
+          "alt": "Only Fools and Horses charity quiz artwork for The Anchor and Stanwell Moor Community Wellbeing Garden, in aid of Macmillan Cancer Support",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Charity Quiz artwork · square",
+        "placeholder_caption": "Lovely Jubbly Quiz Night",
+        "kicker": "Friday 25 September · 7pm",
+        "headline": "Lovely jubbly. It’s quiz night for a brilliant cause.",
+        "body": [
+          "We are joining forces with the Stanwell Moor Community Wellbeing Garden for an Only Fools and Horses themed quiz in aid of Macmillan Cancer Support. Every penny from the £3 entry fee will be donated."
+        ],
+        "cta_label": "Book your charity quiz table",
+        "cta_url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25"
+      }
+    },
+    {
+      "type": "note_bar",
+      "data": {
+        "label": "Every entry fee donated.",
+        "body": "All prizes are funded separately, so the full £3 entry fee from every player goes to Macmillan Cancer Support."
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          {
+            "label": "Entry",
+            "value": "£3 cash per person"
+          },
+          {
+            "label": "Teams",
+            "value": "Up to six people"
+          },
+          {
+            "label": "Arrive",
+            "value": "From 6.45pm, ready for a 7pm start"
+          },
+          {
+            "label": "Donation",
+            "value": "100% of quiz entry fees to Macmillan Cancer Support"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "He who dares, quizzes",
+        "body": [
+          "Expect four themed rounds covering characters, storylines, famous quotes, Peckham adventures and the deeper details proper fans remember. There is also a quick interactive middle game, spot prizes and a £25 bar voucher for first place.",
+          "Dress-up is welcome, dinner is available from 4pm to 9pm, and the aim is a feel-good Friday night that raises as much as possible for Macmillan.",
+          "This is an independently organised fundraiser and themed fan quiz. It is not an official Only Fools and Horses event."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "You know it makes sense",
+        "body": "Get your team together and book ahead for a Friday night of classic moments, big laughs and a brilliant cause.",
+        "cta_label": "Book your charity quiz table",
+        "cta_url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25",
+        "reassurance_items": [
+          "Every entry fee donated",
+          "Free parking right outside"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "unsubscribe_url": "%%unsubscribe%%",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us.",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "year": "2026"
+      }
+    }
+  ]
+}
