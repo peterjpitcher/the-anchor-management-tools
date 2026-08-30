@@ -4,10 +4,10 @@ import { useState, useTransition } from 'react';
 import toast from 'react-hot-toast';
 import { Modal, ModalActions, ConfirmDialog } from '@/ds';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
-import type { TimeclockSession } from '@/app/actions/timeclock';
+import type { OpenSessionSummary } from '@/app/actions/timeclock';
 import { displayName } from '@/lib/employees/display-name';
 
-type OpenSession = TimeclockSession & { employee_name: string };
+type OpenSession = OpenSessionSummary & { employee_name: string };
 
 interface Employee {
   employee_id: string;

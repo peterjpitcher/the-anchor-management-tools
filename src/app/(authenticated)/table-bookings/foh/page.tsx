@@ -76,7 +76,7 @@ export default async function TableBookingsFohPage() {
     last_name: string | null
     preferred_name: string | null
   }
-  type ClockSession = import('@/app/actions/timeclock').TimeclockSession & { employee_name: string }
+  type ClockSession = import('@/app/actions/timeclock').OpenSessionSummary & { employee_name: string }
   let clockWidgetEmployees: ClockEmployee[] = []
   let clockWidgetSessions: ClockSession[] = []
   if (useManagerKioskStyle) {

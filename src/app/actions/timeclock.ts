@@ -170,13 +170,37 @@ const SESSION_COLUMNS =
   'manager_note, rate_multiplier, rate_override, premium_reason, ' +
   'premium_start_at, premium_end_at, created_at, updated_at';
 
+/**
+ * What the public kiosk and the "who is on shift" displays are allowed to see.
+ *
+ * /timeclock is an unauthenticated route, so anything clockIn, clockOut or
+ * getOpenSessions returns is serialised into a response the browser on a shared
+ * iPad receives, whether or not the component renders it. A full session row
+ * carries manager_note and the premium pay fields (rate_multiplier,
+ * rate_override, premium_reason and its window), which are manager-only, so
+ * those are never selected on these three paths.
+ *
+ * Nothing on the kiosk, the FOH clock widget or the checklist attribution list
+ * reads more than these three columns. Widen this only with a column that is
+ * safe to hand to whoever is standing at the kiosk.
+ *
+ * The authenticated manager screens keep using SESSION_COLUMNS above.
+ */
+export type OpenSessionSummary = {
+  id: string;
+  employee_id: string;
+  clock_in_at: string;
+};
+
+const OPEN_SESSION_COLUMNS = 'id, employee_id, clock_in_at';
+
 // ---------------------------------------------------------------------------
 // Clock in
 // Uses the service-role (admin) client — the public kiosk has no auth session.
 // ---------------------------------------------------------------------------
 
 export async function clockIn(employeeId: string, pin?: string): Promise<
-  { success: true; data: TimeclockSession } | { success: false; error: string }
+  { success: true; data: OpenSessionSummary } | { success: false; error: string }
 > {
   const supabase = await createClient();
 
@@ -218,7 +242,7 @@ export async function clockIn(employeeId: string, pin?: string): Promise<
       clock_in_at: nowUtc.toISOString(),
       work_date: workDate,
     })
-    .select('*')
+    .select(OPEN_SESSION_COLUMNS)
     .single();
 
   if (error) {
@@ -243,7 +267,7 @@ export async function clockIn(employeeId: string, pin?: string): Promise<
 
   revalidatePath('/timeclock');
   revalidatePath('/rota/timeclock');
-  return { success: true, data: data as TimeclockSession };
+  return { success: true, data: data as OpenSessionSummary };
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +275,7 @@ export async function clockIn(employeeId: string, pin?: string): Promise<
 // ---------------------------------------------------------------------------
 
 export async function clockOut(employeeId: string, pin?: string): Promise<
-  { success: true; data: TimeclockSession } | { success: false; error: string }
+  { success: true; data: OpenSessionSummary } | { success: false; error: string }
 > {
   const supabase = await createClient();
 
@@ -289,7 +313,7 @@ export async function clockOut(employeeId: string, pin?: string): Promise<
     .update({ clock_out_at: nowUtc.toISOString() })
     .eq('id', openSession.id)
     .is('clock_out_at', null)
-    .select('*')
+    .select(OPEN_SESSION_COLUMNS)
     .maybeSingle();
 
   if (error) return { success: false, error: error.message };
@@ -307,7 +331,7 @@ export async function clockOut(employeeId: string, pin?: string): Promise<
 
   revalidatePath('/timeclock');
   revalidatePath('/rota/timeclock');
-  return { success: true, data: data as TimeclockSession };
+  return { success: true, data: data as OpenSessionSummary };
 }
 
 // ---------------------------------------------------------------------------
@@ -315,14 +339,14 @@ export async function clockOut(employeeId: string, pin?: string): Promise<
 // ---------------------------------------------------------------------------
 
 export async function getOpenSessions(): Promise<
-  { success: true; data: (TimeclockSession & { employee_name: string })[] } | { success: false; error: string }
+  { success: true; data: (OpenSessionSummary & { employee_name: string })[] } | { success: false; error: string }
 > {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('timeclock_sessions')
     .select(`
-      *,
+      ${OPEN_SESSION_COLUMNS},
       employees!timeclock_sessions_employee_id_fkey(first_name, last_name, preferred_name)
     `)
     .is('clock_out_at', null)
