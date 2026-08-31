@@ -58,6 +58,7 @@ function PrimaryContactCell({ vendor }: { vendor: InvoiceVendor }) {
   )
 }
 import type { InvoiceVendor } from '@/types/invoices'
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 interface VendorContact {
   id: string
@@ -96,7 +97,7 @@ export default function VendorsPage() {
     phone: '',
     address: '',
     vat_number: '',
-    payment_terms: 30,
+    payment_terms: DEFAULT_PAYMENT_TERMS_DAYS,
     notes: ''
   })
   const [formLoading, setFormLoading] = useState(false)
@@ -240,7 +241,7 @@ export default function VendorsPage() {
         phone: vendor.phone || '',
         address: vendor.address || '',
         vat_number: vendor.vat_number || '',
-        payment_terms: vendor.payment_terms ?? 30,
+        payment_terms: vendor.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS,
         notes: vendor.notes || ''
       })
     } else {
@@ -250,7 +251,7 @@ export default function VendorsPage() {
         phone: '',
         address: '',
         vat_number: '',
-        payment_terms: 30,
+        payment_terms: DEFAULT_PAYMENT_TERMS_DAYS,
         notes: ''
       })
     }
