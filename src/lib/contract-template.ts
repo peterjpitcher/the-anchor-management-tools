@@ -1,6 +1,7 @@
 import { PrivateBookingWithDetails, PrivateBookingItem } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { resolveAccessTimes } from '@/lib/private-bookings/access-times'
 import { computeBookingMoney, itemLineTotal } from '@/lib/private-bookings/vat'
 import {
   GROUP_LABELS,
@@ -150,6 +151,21 @@ export function generateContractHTML(data: ContractData): string {
   const endTime = booking.end_time && booking.end_time_next_day ? `${rawEndTime} (+1 day)` : rawEndTime
   const eventType = booking.event_type || 'To be confirmed'
   const guestCount = booking.guest_count || 'To be confirmed'
+
+  // Access times. The terms promise an hour either side unless the booking says
+  // otherwise, so the contract now prints what this booking actually grants
+  // rather than leaving the host to infer it. A time that falls on another day
+  // is labelled, because "01:00" alone would be read as the same morning.
+  const access = resolveAccessTimes(booking)
+  const accessLabel = (window: { time: string | null; isDefault: boolean; dayOffset: number }) => {
+    if (isTbd || !window.time) return 'To be confirmed'
+    const dayNote =
+      window.dayOffset > 0 ? ' (+1 day)' : window.dayOffset < 0 ? ' (day before)' : ''
+    const source = window.isDefault ? ' (standard hour)' : ''
+    return `${formatTime(window.time)}${dayNote}${source}`
+  }
+  const setupAccess = accessLabel(access.setup)
+  const cleardownAccess = accessLabel(access.cleardown)
   // deposit_amount can be NULL in the database (e.g. venue-hosted events that are
   // exempt from deposit rules). Never invent an amount here — a NULL/0 deposit renders
   // as "No deposit required". The £250 default belongs on the booking form only.
@@ -652,6 +668,8 @@ ${scheduleFootnotesHtml}` : ''}</div>
             <div class="drow"><span class="dk">Phone</span><span class="dv">${safePhone}</span></div>
             <div class="drow"><span class="dk">Email</span><span class="dv">${safeEmail}</span></div>
             <div class="drow"><span class="dk">Expected guests</span><span class="dv">${guestCount}</span></div>
+            <div class="drow"><span class="dk">Setup access from</span><span class="dv">${setupAccess}</span></div>
+            <div class="drow"><span class="dk">Clear-down by</span><span class="dv">${cleardownAccess}</span></div>
             <div class="drow" style="grid-column:1 / -1;"><span class="dk">Venue</span><span class="dv">${venue}</span></div>
             ${safeSpecialRequirements ? `<div class="drow" style="grid-column:1 / -1;"><span class="dk">Special requirements</span><span class="dv">${safeSpecialRequirements}</span></div>` : ''}
             ${safeAccessibilityNeeds ? `<div class="drow" style="grid-column:1 / -1;"><span class="dk">Accessibility</span><span class="dv">${safeAccessibilityNeeds}</span></div>` : ''}
@@ -674,7 +692,7 @@ ${scheduleFootnotesHtml}` : ''}</div>
           ${depositCalloutHtml}
 
           <p class="section-label">What&rsquo;s included &mdash; and what&rsquo;s not</p>
-          <p style="font-size:10px; line-height:1.44; color:var(--ink-soft); margin:0 0 1.6mm;">Only the items, services, spaces, packages and vendors listed in this booking are included. Unless the booking says otherwise, standard venue hire includes tables and chairs, basic room layout, bar service, one hour of setup access before the booking, one hour of clear-down access after, use of toilets, use of the booked area, normal cleaning after ordinary use, and the General Manager or duty manager as your event contact.</p>
+          <p style="font-size:10px; line-height:1.44; color:var(--ink-soft); margin:0 0 1.6mm;">Only the items, services, spaces, packages and vendors listed in this booking are included. Unless the booking says otherwise, standard venue hire includes tables and chairs, basic room layout, bar service, the setup and clear-down access shown in your booking details above (one hour either side of the booking unless we have agreed otherwise in writing), use of toilets, use of the booked area, normal cleaning after ordinary use, and the General Manager or duty manager as your event contact.</p>
           <p style="font-size:10px; line-height:1.44; color:var(--ink-soft); margin:0 0 2.4mm;">The following are not included unless explicitly itemised:</p>
           <ul class="points">
             <li>Waiting staff or table service</li>

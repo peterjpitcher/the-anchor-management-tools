@@ -10,6 +10,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { generateEmployeeStarterHTML } from '@/lib/employee-starter-template'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 
 function sanitizeFilename(value: string, fallback: string): string {
   const trimmed = String(value || '').trim()
@@ -186,8 +187,8 @@ export async function GET(
     : null
 
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-    const logoUrl = `${appUrl}/logo-oj.jpg`
+    // Inlined rather than fetched over the network. See getDocumentLogoDataUri.
+    const logoUrl = getDocumentLogoDataUri()
     const footerText = `${COMPANY_DETAILS.legalName} trading as ${COMPANY_DETAILS.tradingName} • ${COMPANY_DETAILS.fullAddress}`
 
     const html = generateEmployeeStarterHTML({

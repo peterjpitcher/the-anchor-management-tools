@@ -159,6 +159,36 @@ describe('generateContractHTML', () => {
   })
 })
 
+describe('access times', () => {
+  it('prints the standard hour either side, and says it is the standard', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { start_time: '18:00:00', end_time: '23:00:00' } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toContain('Setup access from')
+    expect(html).toContain('Clear-down by')
+    expect(html).toContain('5pm (standard hour)')
+    expect(html).toContain('12am (+1 day) (standard hour)')
+  })
+
+  it('prints a bespoke setup time and does not call it standard', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], {
+        start_time: '18:00:00', end_time: '23:00:00', setup_time: '15:00:00',
+      } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).toContain('3pm')
+    expect(html).not.toContain('3pm (standard hour)')
+  })
+
+  it('no longer promises one hour in the terms, which a bespoke setup would contradict', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { start_time: '18:00:00', end_time: '23:00:00', setup_time: '15:00:00' } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(html).not.toContain('one hour of setup access before the booking')
+    expect(html).toContain('setup and clear-down access shown in your booking details above')
+  })
+})
+
 describe('signature block', () => {
   // Either side may be signed by someone other than the named booker or the
   // named manager, so the contract prints ruled lines and lets whoever signs

@@ -102,7 +102,12 @@ export async function sendInvoiceEmail(
     })
 
     const recipientName = invoice.vendor?.contact_name || invoice.vendor?.name || 'there'
-    const outstandingBalance = Math.max(0, invoice.total_amount - invoice.paid_amount)
+    const outstandingBalance = Math.max(0, Number(invoice.total_amount) - Number(invoice.paid_amount))
+    // Asking for the full total on an invoice that has already been part-paid
+    // is the same fault the contract email had with its deposit: it reads as
+    // though the money never arrived. `outstandingBalance` already existed here
+    // but was only used by the remittance branch.
+    const paidAlready = Math.max(0, Number(invoice.paid_amount) || 0)
     const remittancePaymentAmount = remittanceData?.paymentAmount ?? invoice.paid_amount
     const remittancePaymentDate = formatEmailDate(remittanceData?.paymentDate)
     const remittancePaymentMethod = formatEmailPaymentMethod(remittanceData?.paymentMethod)
@@ -141,7 +146,11 @@ I hope you're doing well!
 
 Please find attached invoice ${invoice.invoice_number} with the following details:
 
-Amount Due: £${invoice.total_amount.toFixed(2)}
+${paidAlready > 0
+  ? `Invoice total: £${Number(invoice.total_amount).toFixed(2)}
+Payments received: £${paidAlready.toFixed(2)}
+Balance due: £${outstandingBalance.toFixed(2)}`
+  : `Amount Due: £${Number(invoice.total_amount).toFixed(2)}`}
 Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
 
 ${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!
