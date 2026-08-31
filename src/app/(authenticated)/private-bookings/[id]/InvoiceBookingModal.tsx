@@ -45,7 +45,11 @@ export function InvoiceBookingModal({
 }: InvoiceBookingModalProps) {
   // The contract default. Only an explicit choice moves it.
   const [treatment, setTreatment] = useState<DepositTreatment>('held_separately')
-  const [reference, setReference] = useState('')
+  // Defaults to TBC rather than empty: most bookings have no PO number, and an
+  // empty box invites someone to leave it blank by accident. TBC prints as a
+  // deliberate "not applicable" and is easy to overtype when a business does
+  // supply one.
+  const [reference, setReference] = useState('TBC')
 
   useEffect(() => {
     if (!preview) return

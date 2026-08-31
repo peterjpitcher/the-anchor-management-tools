@@ -8,6 +8,7 @@ import {
   type InvoiceDepositNotice
 } from './invoice-template-compact'
 import { generateCompactQuoteHTML } from './quote-template-compact'
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { InvoiceWithDetails, QuoteWithDetails } from '@/types/invoices'
 
 // Helper to load puppeteer deps dynamically
@@ -147,12 +148,13 @@ export async function generateInvoicePDF(
       browser = await createPdfBrowser()
     }
 
-    // Generate HTML with absolute URL for logo
+    // Logo inlined from the bundle, not fetched over the network. See
+    // getDocumentLogoDataUri: a URL here made the branding depend on this
+    // function reaching its own public domain, and failed silently when it
+    // could not.
     const html = generateCompactInvoiceHTML({
       invoice,
-      logoUrl: process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
-        : undefined,
+      logoUrl: getDocumentLogoDataUri(),
       documentKind: options.documentKind,
       remittance: options.remittance,
       creditNote: options.creditNote,
@@ -195,12 +197,10 @@ export async function generateQuotePDF(
       browser = await createPdfBrowser()
     }
 
-    // Generate HTML with absolute URL for logo
+    // Inlined for the same reason as the invoice above.
     const html = generateCompactQuoteHTML({
       quote,
-      logoUrl: process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
-        : undefined
+      logoUrl: getDocumentLogoDataUri(),
     })
 
     // Generate PDF

@@ -159,6 +159,34 @@ describe('generateContractHTML', () => {
   })
 })
 
+describe('signature block', () => {
+  // Either side may be signed by someone other than the named booker or the
+  // named manager, so the contract prints ruled lines and lets whoever signs
+  // write their own name. A pre-filled name is worse than no name: it invites
+  // a signature that does not match the printed one.
+  it('leaves both name lines blank for whoever actually signs', () => {
+    const html = generateContractHTML(baseData(makeBooking([], { deposit_amount: 100 })))
+
+    expect(html).toContain('Signed by the Host')
+    expect(html).toContain('For The Anchor')
+    // The captions stay: it is the pre-filled values that go.
+    expect(html).toContain('Host name')
+    expect(html).toContain('Name &amp; position')
+
+    expect(html).not.toContain('Billy Summers')
+    expect(html).not.toContain('Tenant &amp; General Manager')
+  })
+
+  it('does not print the booker name onto the host signature line', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking([], { deposit_amount: 100, customer_name: 'Wilhelmina Testcase' } as Partial<PrivateBookingWithDetails>)),
+    )
+    // The name still appears elsewhere (cover, schedule); what must not happen
+    // is it being printed as the signatory on the ruled line.
+    expect(html).not.toContain('<span class="sf-v">Wilhelmina Testcase</span>')
+  })
+})
+
 describe('deposit rendering', () => {
   it('renders the stored deposit amount with a due status', () => {
     const html = generateContractHTML(baseData(makeBooking([], { deposit_amount: 100 })))
@@ -168,13 +196,18 @@ describe('deposit rendering', () => {
     expect(html).not.toContain('No deposit required')
   })
 
-  it('renders a paid status when the deposit has a paid date', () => {
+  it('says a paid deposit was received and when, and never also calls it payable', () => {
     const html = generateContractHTML(
       baseData(makeBooking([], { deposit_amount: 250, deposit_paid_date: '2026-07-01' } as Partial<PrivateBookingWithDetails>)),
     )
     expect(html).toContain('£250.00')
-    expect(html).toContain('Status: paid')
+    expect(html).toContain('Received Wednesday, 1 July 2026')
+    expect(html).toContain('nothing to pay to confirm the booking')
+    // The old copy printed "Status: paid" and then "Payable to confirm the
+    // booking" in the same breath, which reads as though the money never
+    // arrived. Both halves must be gone for a deposit already received.
     expect(html).not.toContain('Status: due')
+    expect(html).not.toContain('Payable to confirm the booking')
   })
 
   it('renders "No deposit required" when deposit_amount is null — never a fabricated £250', () => {

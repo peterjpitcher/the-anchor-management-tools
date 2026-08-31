@@ -188,7 +188,6 @@ export function generateContractHTML(data: ContractData): string {
   const eventDateTime = isTbd
     ? 'Date to be confirmed'
     : `${eventDate}${startTime && startTime !== 'TBC' ? `, ${startTime}&ndash;${endTime}` : ''}`
-  const depositStatus = booking.deposit_paid_date ? `paid ${formatDate(booking.deposit_paid_date)}` : 'due'
   const logo = logoUrl ? encodeURI(logoUrl) : '/logo-black.png'
   const venue = company.address
 
@@ -198,7 +197,9 @@ export function generateContractHTML(data: ContractData): string {
     ? `<div class="deposit-box">
               <span class="db-l">Booking &amp; damage deposit</span>
               <span class="db-r">${formatCurrency(depositAmount)}</span>
-              <small>Status: ${depositStatus}. Payable to confirm the booking. Held separately from the event price and refundable after the event, less any documented deductions.</small>
+              <small>${booking.deposit_paid_date
+                ? `Received ${formatDate(booking.deposit_paid_date)}, so there is nothing to pay to confirm the booking.`
+                : 'Status: due. Payable to confirm the booking.'} Held separately from the event price and refundable after the event, less any documented deductions.</small>
             </div>`
     : `<div class="deposit-box">
               <span class="db-l">Booking &amp; damage deposit</span>
@@ -727,7 +728,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             <div class="sign-card">
               <p class="sign-card-h">Signed by the Host</p>
               <p class="sign-card-sub">The person booking and accepting responsibility for the event</p>
-              <div class="sf"><div class="sf-rule"><span class="sf-v">${safeCustomerName}</span></div><span class="sf-cap">Host name</span></div>
+              <div class="sf"><div class="sf-rule"></div><span class="sf-cap">Host name</span></div>
               <div class="sf-row">
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>
@@ -736,7 +737,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             <div class="sign-card">
               <p class="sign-card-h">For The Anchor</p>
               <p class="sign-card-sub">For and on behalf of Orange Jelly Limited trading as The Anchor Pub</p>
-              <div class="sf"><div class="sf-rule"><span class="sf-v">Billy Summers &middot; Tenant &amp; General Manager</span></div><span class="sf-cap">Name &amp; position</span></div>
+              <div class="sf"><div class="sf-rule"></div><span class="sf-cap">Name &amp; position</span></div>
               <div class="sf-row">
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Signature</span></div>
                 <div class="sf" style="margin-bottom:0;"><div class="sf-rule tall"></div><span class="sf-cap">Date</span></div>

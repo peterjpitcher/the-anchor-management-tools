@@ -5,7 +5,7 @@ import {
   renderDocumentHead,
   renderDocumentHeader,
 } from '@/lib/pdf/document-chrome'
-import { getStatementLogoDataUri } from '@/lib/pdf/document-logo'
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { WorkRecord, WorkRecordLine } from '@/lib/oj-projects/work-record'
 
 /**
@@ -349,7 +349,7 @@ export async function generateWorkRecordPDF(input: WorkRecordPDFInput): Promise<
 
   const html = generateWorkRecordHTML({
     ...input,
-    logoUrl: input.logoUrl ?? getStatementLogoDataUri(),
+    logoUrl: input.logoUrl ?? getDocumentLogoDataUri(),
   })
 
   return generatePDFFromHTML(html, {
