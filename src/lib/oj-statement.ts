@@ -6,7 +6,7 @@ import {
   renderDocumentHead,
   renderDocumentHeader,
 } from '@/lib/pdf/document-chrome'
-import { getStatementLogoDataUri } from '@/lib/pdf/document-logo'
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 import type { StatementTransaction } from '@/app/actions/oj-projects/client-statement'
 import type { StatementAgeing } from '@/lib/oj-projects/statement-ageing'
 
@@ -332,7 +332,7 @@ ${renderDocumentFooter()}
 export async function generateStatementPDF(input: StatementPDFInput): Promise<Buffer> {
   const html = generateStatementHTML({
     ...input,
-    logoUrl: input.logoUrl ?? getStatementLogoDataUri(),
+    logoUrl: input.logoUrl ?? getDocumentLogoDataUri(),
   })
 
   // Same geometry as the invoice. The statement used to set its own 20/25/15/15mm,

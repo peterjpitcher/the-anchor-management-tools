@@ -684,6 +684,7 @@ export async function sendContractEmailToCustomer(booking: {
   event_date: string;
   event_type?: string | null;
   deposit_amount?: number | null;
+  deposit_paid_date?: string | null;
 }, contract: {
   version: number;
   pdf: Buffer;
@@ -701,9 +702,17 @@ export async function sendContractEmailToCustomer(booking: {
   const dateFormatted = formatDate(booking.event_date);
   const subject = `Your booking contract — ${eventLabel} on ${dateFormatted}`;
 
-  const depositLine = booking.deposit_amount && booking.deposit_amount > 0
-    ? `<p style="font-family: ${FONT_FAMILY};">Paying the ${formatCurrency(booking.deposit_amount)} booking and damage deposit confirms that you accept these terms — so please do have a read first, and ask us anything that isn't clear.</p>`
-    : `<p style="font-family: ${FONT_FAMILY};">Please have a read and let us know that you're happy with everything — we're glad to answer any questions.</p>`;
+  // Three cases, because asking someone to pay a deposit they have already paid
+  // reads as though we have lost their money. `deposit_paid_date` is the record
+  // of receipt, so it decides the wording rather than the amount alone.
+  const hasDeposit = Boolean(booking.deposit_amount && booking.deposit_amount > 0);
+  const depositPaidOn = booking.deposit_paid_date ? formatDate(booking.deposit_paid_date) : null;
+
+  const depositLine = !hasDeposit
+    ? `<p style="font-family: ${FONT_FAMILY};">Please have a read and let us know that you're happy with everything — we're glad to answer any questions.</p>`
+    : depositPaidOn
+      ? `<p style="font-family: ${FONT_FAMILY};">We received your ${formatCurrency(booking.deposit_amount!)} booking and damage deposit on ${depositPaidOn}, so there's nothing to pay to hold your date. Paying it confirmed that you accept these terms, so please do have a read, and ask us anything that isn't clear.</p>`
+      : `<p style="font-family: ${FONT_FAMILY};">Paying the ${formatCurrency(booking.deposit_amount!)} booking and damage deposit confirms that you accept these terms — so please do have a read first, and ask us anything that isn't clear.</p>`;
 
   const html = `
 <div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
