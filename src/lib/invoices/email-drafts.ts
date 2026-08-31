@@ -23,13 +23,28 @@ export function buildDefaultInvoiceEmailSubject(invoice: InvoiceWithDetails): st
 }
 
 export function buildDefaultInvoiceEmailBody(invoice: InvoiceWithDetails): string {
+  // An invoice can already be part-paid before it is emailed: a private booking
+  // carries its deposit across as a payment, and any invoice can be chased after
+  // a payment on account. Quoting total_amount then asks for money the customer
+  // has already sent, which reads as though we lost it. Only the outstanding
+  // figure is ever presented as what is owed.
+  const total = Number(invoice.total_amount) || 0
+  const paid = Math.max(0, Number(invoice.paid_amount) || 0)
+  const outstanding = Math.max(0, total - paid)
+
+  const amountLines = paid > 0
+    ? `Invoice total: £${total.toFixed(2)}
+Payments received: £${paid.toFixed(2)}
+Balance due: £${outstanding.toFixed(2)}`
+    : `Amount Due: £${total.toFixed(2)}`
+
   return `Hi ${greetingName(invoice.vendor)},
 
 I hope you're doing well!
 
 Please find attached invoice ${invoice.invoice_number} with the following details:
 
-Amount Due: £${invoice.total_amount.toFixed(2)}
+${amountLines}
 Due Date: ${new Date(invoice.due_date).toLocaleDateString('en-GB')}
 
 ${invoice.notes ? `${invoice.notes}\n\n` : ''}If you have any questions or need anything at all, just let me know - I'm always happy to help!

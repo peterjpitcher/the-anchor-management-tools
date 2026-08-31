@@ -9,6 +9,7 @@ import { generatePnlReportHTML } from '@/lib/pnl/report-template'
 import { generatePnlSpreadsheetBuffer } from '@/lib/pnl/spreadsheet-export'
 import { pnlExportSchema } from '@/lib/validation'
 import { FinancialService } from '@/services/financials'
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -76,8 +77,10 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin
-    const logoUrl = `${appUrl}/logo-oj.jpg`
+    // Inlined from the bundle, not fetched: a renderer that pulls its logo
+    // over the network produces an unbranded document, silently, whenever
+    // that fetch does not complete. See getDocumentLogoDataUri.
+    const logoUrl = getDocumentLogoDataUri()
 
     const html = generatePnlReportHTML(viewModel, { logoUrl })
     const pdfBuffer = await generatePDFFromHTML(html, {

@@ -8,6 +8,7 @@ import { generatePDFFromHTML } from '@/lib/pdf-generator';
 import { generateWeeklyCashupHTML, WeeklyReportRow } from '@/lib/cashing-up-pdf-template';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { PermissionService } from '@/services/permission';
+import { getDocumentLogoDataUri } from '@/lib/pdf/document-logo'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -50,9 +51,8 @@ export async function GET(request: NextRequest) {
       weekData: weekData as WeeklyReportRow[],
       siteName,
       weekStartDate,
-      logoUrl: process.env.NEXT_PUBLIC_APP_URL 
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/logo-oj.jpg`
-        : undefined
+      // Inlined rather than fetched over the network. See getDocumentLogoDataUri.
+      logoUrl: getDocumentLogoDataUri()
     });
 
     // Generate PDF
