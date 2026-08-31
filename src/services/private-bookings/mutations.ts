@@ -1166,6 +1166,25 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     }
   }
 
+  // Reinstating a booking clears the cancellation record rather than only
+  // moving the status. It used to leave `cancelled_at` behind, and three live
+  // confirmed bookings ended up carrying a cancellation date from months
+  // earlier: invisible on screen, but it blocked invoicing, because anything
+  // reading the timestamp instead of the status believed they were cancelled.
+  //
+  // Applied AFTER the immutability check on purpose. That check governs what a
+  // user may change on a cancelled booking, and allows only contact_email.
+  // Clearing the cancellation is a consequence of the status transition, not a
+  // user edit, so adding it above would have made every reinstatement throw
+  // "Cannot edit a cancelled booking".
+  if (input.status && input.status !== 'cancelled' && currentBooking.status === 'cancelled') {
+    updatePayload.cancelled_at = null;
+    updatePayload.cancellation_reason = null;
+    updatePayload.cancellation_channel = null;
+    updatePayload.cancellation_received_at = null;
+    updatePayload.cancelled_by = null;
+  }
+
   // SOP §6/§28: when the event timing moves on a real-dated booking with space
   // items, re-check conflicts against other holds/confirmed bookings.
   const startTimeChanged = input.start_time !== undefined &&
