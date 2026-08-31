@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache'
 import type { InvoiceVendor } from '@/types/invoices'
 import { parsePaymentTermsValue } from '@/lib/vendors/paymentTerms'
 import { VendorService } from '@/services/vendors' // Import the new service
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 // Vendor validation schema
 const VendorSchema = z.object({
@@ -19,7 +20,8 @@ const VendorSchema = z.object({
   phone: z.string().optional().or(z.literal('')),
   address: z.string().optional().or(z.literal('')),
   vat_number: z.string().optional().or(z.literal('')),
-  payment_terms: z.number().min(0).default(30),
+  // Owner rule 2026-08-31: net-7 unless a customer has been given longer.
+  payment_terms: z.number().min(0).default(DEFAULT_PAYMENT_TERMS_DAYS),
   notes: z.string().optional().or(z.literal(''))
 })
 

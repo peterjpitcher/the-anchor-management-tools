@@ -40,6 +40,7 @@ import { storeContractSnapshot } from '@/lib/private-bookings/contract-lifecycle
 import { formatDateFull } from '@/lib/dateUtils'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import type { PrivateBookingWithDetails } from '@/types/private-bookings'
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 export type DepositTreatment = 'held_separately' | 'deducted'
 
@@ -250,7 +251,10 @@ async function resolveInvoiceVendor(
       email,
       phone,
       customer_id: booking.customer_id ?? null,
-      payment_terms: 0,
+      // The booking's own balance_due_date drives this invoice's due date, so
+      // these terms only matter if the customer is invoiced normally later.
+      // Net-7 to match the house default rather than leaving them on 0.
+      payment_terms: DEFAULT_PAYMENT_TERMS_DAYS,
       notes: 'Created automatically from a private booking.',
     })
     .select('id')

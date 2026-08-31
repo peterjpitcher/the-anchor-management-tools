@@ -21,6 +21,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { Modal } from '@/ds'
 import { EmptyState } from '@/ds'
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 type CreateInvoiceActionResult = Awaited<ReturnType<typeof createInvoice>>
 
@@ -71,7 +72,8 @@ export default function NewInvoicePage() {
     }
 
     const vendor = vendors.find((v) => v.id === vendorId)
-    const paymentTerms = vendor?.payment_terms ?? 30
+    // Net-7 is the house default; a customer given longer carries their own terms.
+    const paymentTerms = vendor?.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS
 
     const baseDate = new Date(invoiceDate)
     if (Number.isNaN(baseDate.getTime())) {

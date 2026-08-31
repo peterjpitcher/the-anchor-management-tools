@@ -23,6 +23,7 @@ import {
   getRecurringChargeCoverage,
   getRecurringChargePeriod,
 } from '@/lib/oj-projects/recurring-periods'
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -1867,7 +1868,9 @@ async function buildDryRunPreview(input: {
     lineItems = adjusted.lineItems
     totals = adjusted.totals
   }
-  const paymentTerms = typeof vendor?.payment_terms === 'number' ? vendor.payment_terms : 30
+  // Net-7 is the house default (owner rule 2026-08-31); a client given longer
+  // carries their own payment_terms.
+  const paymentTerms = typeof vendor?.payment_terms === 'number' ? vendor.payment_terms : DEFAULT_PAYMENT_TERMS_DAYS
   const dueDate = addDaysIsoDate(invoiceDate, paymentTerms)
 
   let notes = ''
@@ -3323,7 +3326,8 @@ export async function GET(request: Request) {
       const encoded = (Number(nextSequence) + 5000).toString(36).toUpperCase().padStart(5, '0')
       const invoiceNumber = `INV-${encoded}`
 
-      const paymentTerms = typeof vendor.payment_terms === 'number' ? vendor.payment_terms : 30
+      // Net-7 house default, as above.
+      const paymentTerms = typeof vendor.payment_terms === 'number' ? vendor.payment_terms : DEFAULT_PAYMENT_TERMS_DAYS
       const dueDate = addDaysIsoDate(invoiceDate, paymentTerms)
 
       const notesFull = buildInvoiceNotes({

@@ -51,6 +51,7 @@ import {
 } from '@/app/actions/oj-projects/vendor-settings'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import { addMonthsToIsoDate } from '@/lib/oj-projects/recurring-periods'
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@/lib/vendors/paymentTerms'
 
 function formatCurrency(value: number): string {
   return `£${value.toFixed(2)}`
@@ -120,7 +121,7 @@ const emptyClientForm: ClientForm = {
   phone: '',
   address: '',
   vat_number: '',
-  payment_terms: '30',
+  payment_terms: String(DEFAULT_PAYMENT_TERMS_DAYS),
   notes: '',
 }
 
@@ -185,7 +186,7 @@ function clientToForm(client: OJClientSummary): ClientForm {
     phone: client.phone ?? '',
     address: client.address ?? '',
     vat_number: client.vat_number ?? '',
-    payment_terms: String(client.payment_terms ?? 30),
+    payment_terms: String(client.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS),
     notes: client.notes ?? '',
   }
 }
