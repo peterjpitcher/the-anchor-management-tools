@@ -472,6 +472,66 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Booking not found')
   })
 
+  it('reinstating a cancelled booking clears the cancellation record', async () => {
+    // Reinstatement is cancelled -> draft -> confirmed (ALLOWED_TRANSITIONS
+    // forbids the direct hop), so the clearing has to happen on the first hop.
+    // It used to move only the status and leave cancelled_at behind, and three
+    // live confirmed bookings ended up carrying a months-old cancellation date,
+    // which blocked invoicing because the invoice guard read the timestamp
+    // rather than the status.
+    const cancelledBooking = {
+      status: 'cancelled',
+      contact_phone: null,
+      customer_first_name: 'Alex',
+      customer_last_name: 'Smith',
+      customer_name: 'Alex Smith',
+      event_date: '2026-03-10',
+      start_time: '18:00',
+      setup_date: null,
+      setup_time: null,
+      end_time: null,
+      end_time_next_day: false,
+      customer_id: null,
+      internal_notes: null,
+      balance_due_date: null,
+      calendar_event_id: null,
+      hold_expiry: null,
+      deposit_paid_date: null,
+      cancelled_at: '2026-02-16T11:11:23.573Z',
+      cancellation_reason: 'Cancelled via edit form',
+    }
+
+    const fetchSingle = vi.fn().mockResolvedValue({ data: cancelledBooking, error: null })
+    const fetchEq = vi.fn().mockReturnValue({ single: fetchSingle })
+
+    let written: Record<string, unknown> | null = null
+    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'booking-1' }, error: null })
+    const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle })
+    const updateEq = vi.fn().mockReturnValue({ select: updateSelect })
+
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'private_bookings') {
+          throw new Error(`Unexpected table: ${table}`)
+        }
+        return {
+          select: vi.fn().mockReturnValue({ eq: fetchEq }),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            written = payload
+            return { eq: updateEq }
+          }),
+        }
+      }),
+    })
+
+    await PrivateBookingService.updateBooking('booking-1', { status: 'draft' })
+
+    expect(written).not.toBeNull()
+    expect(written!.status).toBe('draft')
+    expect(written!.cancelled_at).toBeNull()
+    expect(written!.cancellation_reason).toBeNull()
+  })
+
   it('updateBooking throws not-found when booking update affects no rows', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: {
