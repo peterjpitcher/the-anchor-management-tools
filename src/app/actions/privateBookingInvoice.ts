@@ -84,7 +84,38 @@ export interface PrivateBookingInvoicePreview {
   previousTreatment: DepositTreatment | null
 }
 
-type ActionResult<T> = ({ error: string } & Partial<T>) | ({ error?: undefined } & T)
+type ActionResult<T> =
+  | ({ error: string; blocked?: boolean } & Partial<T>)
+  | ({ error?: undefined; blocked?: undefined } & T)
+
+/**
+ * Errors that mean "this booking cannot be invoiced as it stands", as opposed
+ * to "that attempt failed, try again".
+ *
+ * The dialog disables its send button on these, because retrying changes
+ * nothing until the booking itself is fixed. Everything else stays retryable:
+ * a failed email or a dropped connection must not strip the operator of the
+ * one button that would recover it.
+ */
+const BLOCKING_ERROR_CODES = new Set([
+  'booking_not_found',
+  'private_booking_invoice_missing_or_deleted',
+  'booking_not_confirmed',
+  'booking_cancelled',
+  'booking_date_tbd',
+  'booking_has_no_priced_items',
+  'booking_payments_exceed_invoice_total',
+  'invoice_total_reconciliation_failed',
+  'permission_denied',
+])
+
+/** Maps a raised code to its copy, and says whether it blocks outright. */
+function describeBlockingError(code: string): { error: string; blocked: boolean } {
+  return {
+    error: ERROR_COPY[code] ?? code,
+    blocked: BLOCKING_ERROR_CODES.has(code),
+  }
+}
 
 /** Codes the database raises, mapped to something a person can act on. */
 const ERROR_COPY: Record<string, string> = {
@@ -103,11 +134,14 @@ const ERROR_COPY: Record<string, string> = {
   permission_denied: 'You do not have permission to do that.',
 }
 
-function describeDatabaseError(message: string): string {
-  for (const [code, copy] of Object.entries(ERROR_COPY)) {
-    if (message.includes(code)) return copy
+function describeDatabaseError(message: string): { error: string; blocked: boolean } {
+  for (const code of Object.keys(ERROR_COPY)) {
+    if (message.includes(code)) return describeBlockingError(code)
   }
-  return message
+  // An unrecognised database error is treated as retryable: it may well be a
+  // dropped connection, and locking the operator out of the send button on
+  // something transient is worse than letting them try again.
+  return { error: message, blocked: false }
 }
 
 /**
@@ -332,7 +366,7 @@ export async function previewPrivateBookingInvoice(
     if ('error' in gate) return { error: gate.error }
 
     const booking = await loadBooking(bookingId)
-    if (!booking) return { error: ERROR_COPY.booking_not_found }
+    if (!booking) return describeBlockingError('booking_not_found')
 
     const mapped = mapBookingToInvoice({
       items: booking.items ?? [],
@@ -384,7 +418,7 @@ export async function previewPrivateBookingInvoice(
     }
   } catch (error) {
     if (error instanceof InvoiceMappingError) {
-      return { error: ERROR_COPY[error.code] ?? error.message }
+      return describeBlockingError(error.code)
     }
     console.error('[PrivateBookingInvoice] Preview failed', error)
     return { error: getErrorMessage(error) }
@@ -560,7 +594,7 @@ export async function generatePrivateBookingInvoice(
     }
 
     const booking = await loadBooking(input.bookingId)
-    if (!booking) return { error: ERROR_COPY.booking_not_found }
+    if (!booking) return describeBlockingError('booking_not_found')
 
     const recipient = (booking.contact_email || '').trim()
     if (!recipient) {
@@ -603,9 +637,9 @@ export async function generatePrivateBookingInvoice(
     )
 
     if (rpcError || !rpcResult) {
-      const message = describeDatabaseError(rpcError?.message ?? 'Could not create the invoice.')
+      const described = describeDatabaseError(rpcError?.message ?? 'Could not create the invoice.')
       console.error('[PrivateBookingInvoice] RPC failed', rpcError)
-      return { error: message }
+      return described
     }
 
     const invoiceId = String(rpcResult.invoice.id)
@@ -656,7 +690,7 @@ export async function generatePrivateBookingInvoice(
     }
   } catch (error) {
     if (error instanceof InvoiceMappingError) {
-      return { error: ERROR_COPY[error.code] ?? error.message }
+      return describeBlockingError(error.code)
     }
     console.error('[PrivateBookingInvoice] Generate failed', error)
     return { error: getErrorMessage(error) }
@@ -675,14 +709,14 @@ export async function retryPrivateBookingInvoiceEmail(
     if ('error' in gate) return { error: gate.error }
 
     const booking = await loadBooking(bookingId)
-    if (!booking) return { error: ERROR_COPY.booking_not_found }
+    if (!booking) return describeBlockingError('booking_not_found')
     if (!booking.invoice_id) return { error: 'This booking has no invoice to send.' }
 
     const recipient = (booking.contact_email || '').trim()
     if (!recipient) return { error: 'Add an email address to this booking first.' }
 
     const invoice = await loadInvoiceForSending(booking.invoice_id)
-    if (!invoice) return { error: ERROR_COPY.private_booking_invoice_missing_or_deleted }
+    if (!invoice) return describeBlockingError('private_booking_invoice_missing_or_deleted')
 
     const treatment =
       (booking.invoice_deposit_treatment as DepositTreatment | undefined) ?? 'held_separately'

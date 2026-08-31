@@ -1734,6 +1734,7 @@ export default function PrivateBookingDetailClient({
   const [invoicePreviewLoading, setInvoicePreviewLoading] = useState(false);
   const [invoiceSending, setInvoiceSending] = useState(false);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [invoiceBlocked, setInvoiceBlocked] = useState(false);
   const [retryingInvoiceEmail, setRetryingInvoiceEmail] = useState(false);
   // PayPal deposit state
   const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
@@ -2041,12 +2042,14 @@ export default function PrivateBookingDetailClient({
     if (!bookingId) return;
     setInvoiceModalOpen(true);
     setInvoiceError(null);
+    setInvoiceBlocked(false);
     setInvoicePreview(null);
     setInvoicePreviewLoading(true);
     try {
       const result = await previewPrivateBookingInvoice(bookingId);
       if (result.error || !result.preview) {
         setInvoiceError(result.error ?? 'We could not work out the figures for this booking.');
+        setInvoiceBlocked(Boolean(result.blocked));
       } else {
         setInvoicePreview(result.preview);
       }
@@ -2060,6 +2063,7 @@ export default function PrivateBookingDetailClient({
       if (!bookingId || invoiceSending) return;
       setInvoiceSending(true);
       setInvoiceError(null);
+      setInvoiceBlocked(false);
       try {
         const result = await generatePrivateBookingInvoice({
           bookingId,
@@ -2072,6 +2076,7 @@ export default function PrivateBookingDetailClient({
 
         if (result.error) {
           setInvoiceError(result.error);
+          setInvoiceBlocked(Boolean(result.blocked));
           return;
         }
 
@@ -3568,6 +3573,7 @@ export default function PrivateBookingDetailClient({
         loading={invoicePreviewLoading}
         sending={invoiceSending}
         error={invoiceError}
+        blocked={invoiceBlocked}
         onConfirm={handleConfirmInvoice}
       />
 
