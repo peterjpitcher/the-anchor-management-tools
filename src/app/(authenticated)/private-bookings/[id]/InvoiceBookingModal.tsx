@@ -23,6 +23,8 @@ interface InvoiceBookingModalProps {
   loading: boolean
   sending: boolean
   error: string | null
+  /** True when the error means the booking cannot be invoiced at all. */
+  blocked?: boolean
   onConfirm: (input: { depositTreatment: DepositTreatment; reference: string }) => void
 }
 
@@ -41,6 +43,7 @@ export function InvoiceBookingModal({
   loading,
   sending,
   error,
+  blocked = false,
   onConfirm,
 }: InvoiceBookingModalProps) {
   // The contract default. Only an explicit choice moves it.
@@ -71,12 +74,12 @@ export function InvoiceBookingModal({
     treatment === 'deducted' && askAboutDeposit && (preview?.depositWouldOverpay ?? false)
 
   const handleConfirm = useCallback(() => {
-    if (!preview || sending || blockedByOverpayment) return
+    if (!preview || sending || blockedByOverpayment || blocked) return
     onConfirm({
       depositTreatment: askAboutDeposit ? treatment : 'held_separately',
       reference: reference.trim(),
     })
-  }, [preview, sending, blockedByOverpayment, onConfirm, askAboutDeposit, treatment, reference])
+  }, [preview, sending, blockedByOverpayment, blocked, onConfirm, askAboutDeposit, treatment, reference])
 
   return (
     <Modal
@@ -89,10 +92,16 @@ export function InvoiceBookingModal({
           <Button variant="secondary" onClick={onClose} disabled={sending}>
             Cancel
           </Button>
+          {/*
+            `blocked` means the booking itself cannot be invoiced, so clicking
+            again would only repeat the same refusal. A retryable failure (a
+            bounced email, a dropped connection) leaves the button live so the
+            operator can try again.
+          */}
           <Button
             variant="primary"
             onClick={handleConfirm}
-            disabled={!preview || loading || sending || blockedByOverpayment}
+            disabled={!preview || loading || sending || blockedByOverpayment || blocked}
           >
             {sending
               ? 'Sending…'
