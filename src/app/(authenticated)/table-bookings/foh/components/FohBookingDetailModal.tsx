@@ -20,6 +20,7 @@ import {
   getBookingVisualState,
   statusBadgeClass,
   postBookingAction,
+  getFohTimeChangeBlocker,
 } from '../utils'
 
 type FohBookingDetailModalProps = {
@@ -42,6 +43,7 @@ type FohBookingDetailModalProps = {
   onSetShowNoShowConfirmation: (value: boolean) => void
   onOpenPartySizeEdit: (bookingId: string, currentSize: number) => void
   onOpenWalkoutModal: (bookingId: string) => void
+  onOpenChangeTime: (bookingId: string) => void
 }
 
 export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(props: FohBookingDetailModalProps) {
@@ -61,6 +63,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     onSetShowNoShowConfirmation,
     onOpenPartySizeEdit,
     onOpenWalkoutModal,
+    onOpenChangeTime,
   } = props
 
   const selectedBooking = selectedBookingContext?.booking ?? null
@@ -187,6 +190,8 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             onSetShowNoShowConfirmation={onSetShowNoShowConfirmation}
             onOpenPartySizeEdit={onOpenPartySizeEdit}
             onOpenWalkoutModal={onOpenWalkoutModal}
+            onOpenChangeTime={onOpenChangeTime}
+            timeChangeBlocker={getFohTimeChangeBlocker(selectedBooking)}
           />
         )}
 
@@ -283,6 +288,8 @@ function BookingActions(props: {
   onSetShowNoShowConfirmation: (value: boolean) => void
   onOpenPartySizeEdit: (bookingId: string, currentSize: number) => void
   onOpenWalkoutModal: (bookingId: string) => void
+  onOpenChangeTime: (bookingId: string) => void
+  timeChangeBlocker: string | null
 }) {
   const {
     selectedBooking,
@@ -302,6 +309,8 @@ function BookingActions(props: {
     onSetShowNoShowConfirmation,
     onOpenPartySizeEdit,
     onOpenWalkoutModal,
+    onOpenChangeTime,
+    timeChangeBlocker,
   } = props
 
   return (
@@ -320,7 +329,7 @@ function BookingActions(props: {
               if (ok) onClose()
             })()
           }}
-          className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] rounded-md border border-gray-300 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {bookingActionInFlight === 'seated' ? 'Marking...' : 'Mark seated'}
         </button>
@@ -337,7 +346,7 @@ function BookingActions(props: {
               if (ok) onClose()
             })()
           }}
-          className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] rounded-md border border-gray-300 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {bookingActionInFlight === 'left' ? 'Marking...' : 'Mark left'}
         </button>
@@ -348,7 +357,7 @@ function BookingActions(props: {
             onSetShowNoShowConfirmation(!showNoShowConfirmation)
           }}
           className={cn(
-            'rounded-md border px-2 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60',
+            'min-h-[44px] rounded-md border px-2 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60',
             showNoShowConfirmation
               ? 'border-red-400 bg-red-100 text-red-800'
               : 'border-red-300 text-red-700 hover:bg-red-50'
@@ -363,9 +372,24 @@ function BookingActions(props: {
             const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
             onOpenPartySizeEdit(selectedBooking.id, currentSize)
           }}
-          className="rounded-md border border-gray-300 px-2 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] rounded-md border border-gray-300 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Edit party size'}
+        </button>
+        {/* Until this existed, the only way to re-time a booking was to drag it on the
+            timeline, and drag is switched off in kiosk mode, which is what the floor iPad
+            runs. There was no route to a time change at all on that screen. */}
+        <button
+          type="button"
+          disabled={Boolean(bookingActionInFlight) || Boolean(timeChangeBlocker)}
+          title={timeChangeBlocker ?? undefined}
+          onClick={() => {
+            if (timeChangeBlocker) return
+            onOpenChangeTime(selectedBooking.id)
+          }}
+          className="min-h-[44px] rounded-md border border-gray-300 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {bookingActionInFlight === 'change_time' ? 'Changing...' : 'Change time'}
         </button>
         <button
           type="button"
@@ -375,7 +399,7 @@ function BookingActions(props: {
             onSetShowCancelBookingConfirmation(!showCancelBookingConfirmation)
           }}
           className={cn(
-            'rounded-md border px-2 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60',
+            'min-h-[44px] rounded-md border px-2 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60',
             showCancelBookingConfirmation
               ? 'border-red-400 bg-red-100 text-red-800'
               : 'border-red-300 text-red-700 hover:bg-red-50'
@@ -389,7 +413,7 @@ function BookingActions(props: {
           onClick={() => {
             onOpenWalkoutModal(selectedBooking.id)
           }}
-          className="rounded-md border border-red-300 px-2 py-2.5 text-xs font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] rounded-md border border-red-300 px-2 py-2 text-xs font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {bookingActionInFlight === 'walkout' ? 'Saving...' : 'Flag walkout'}
         </button>

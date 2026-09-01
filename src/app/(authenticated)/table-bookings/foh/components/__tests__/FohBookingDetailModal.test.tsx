@@ -51,6 +51,7 @@ function renderModal(booking: FohBooking) {
       onSetShowNoShowConfirmation={vi.fn()}
       onOpenPartySizeEdit={vi.fn()}
       onOpenWalkoutModal={vi.fn()}
+      onOpenChangeTime={vi.fn()}
     />
   )
 }

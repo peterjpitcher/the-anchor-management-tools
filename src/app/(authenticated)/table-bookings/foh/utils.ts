@@ -633,3 +633,218 @@ export function splitName(fullName: string): { firstName?: string; lastName?: st
     lastName: parts.slice(1).join(' ')
   }
 }
+
+// ---------------------------------------------------------------------------
+// Changing a booking's time from the floor.
+//
+// The candidate grid is worked out in the browser from the schedule the page has
+// already loaded, rather than through another request. Every window that can block
+// a table is already in `schedule.lanes[]`: real bookings, private-hire blocks and
+// communal event blocks all arrive with a start and an end. On an iPad mid-service
+// an instant grid beats a round trip, and the database trigger stays the authority
+// either way, so the worst a stale client can do is earn a 409.
+// ---------------------------------------------------------------------------
+
+/**
+ * Does this booking still hold its table?
+ *
+ * Mirrors `public.is_booking_live(status, left_at, hold_expires_at, payment_status)`,
+ * which is what the `enforce_booking_table_assignment_integrity_v05` trigger uses to
+ * decide whether an existing assignment blocks a new one. If the two ever drift, the
+ * grid starts offering times the server then refuses, so keep them in step: the SQL
+ * lives in `supabase/migrations/20260801000600_booking_liveness_helpers.sql`.
+ *
+ * `referenceNow` is passed in rather than read from the clock so the result is stable
+ * across a render and testable without faking time.
+ */
+export function isFohBookingLive(booking: FohBooking, referenceNow: Date): boolean {
+  const status = (booking.status || '').toLowerCase()
+  if (status === 'cancelled' || status === 'no_show') return false
+  if (booking.left_at) return false
+
+  const isHold = status === 'pending_payment' || status === 'pending_card_capture'
+  if (isHold && booking.hold_expires_at) {
+    const expiresMs = Date.parse(booking.hold_expires_at)
+    const paid = (booking.payment_status || '').toLowerCase() === 'completed'
+    if (Number.isFinite(expiresMs) && expiresMs <= referenceNow.getTime() && !paid) {
+      return false
+    }
+  }
+
+  return true
+}
+
+export type TimeSlotBlockReason = 'private' | 'event' | 'taken'
+
+export type TimeSlotOption = {
+  /** Minutes from midnight on the service date. Can exceed 1440 on a late window. */
+  minutes: number
+  /** London clock time, "HH:MM", which is what the endpoint takes. */
+  time: string
+  available: boolean
+  /** Why it cannot be used. Null when it can. */
+  blockedBy: TimeSlotBlockReason | null
+  /** True for the booking's own current time, which is shown but not offered. */
+  isCurrent: boolean
+}
+
+type BusyInterval = { start: number; end: number; reason: TimeSlotBlockReason }
+
+/**
+ * The windows that would block this booking if it moved, across every table it sits on.
+ *
+ * A booking joined across two tables is returned once per lane by the schedule API, so the
+ * lanes are filtered by the booking's own `assigned_table_ids` and the booking itself is
+ * always excluded. A booking with no table (unassigned, or outside seating) has nothing to
+ * clash with and yields no intervals.
+ */
+export function collectBusyIntervals(input: {
+  schedule: FohScheduleResponse['data'] | null
+  booking: FohBooking
+  serviceDateIso: string
+  referenceNow: Date
+}): BusyInterval[] {
+  const { schedule, booking, serviceDateIso, referenceNow } = input
+  if (!schedule) return []
+
+  const tableIds = new Set(booking.assigned_table_ids ?? [])
+  if (tableIds.size === 0) return []
+
+  const intervals: BusyInterval[] = []
+  const seen = new Set<string>()
+
+  for (const lane of schedule.lanes) {
+    if (!tableIds.has(lane.table_id)) continue
+
+    for (const other of lane.bookings) {
+      if (other.id === booking.id) continue
+
+      // Blocks are synthesised per table, so the same private booking legitimately appears
+      // on several lanes. De-duplicate per lane+block so one clash is not counted twice.
+      const key = `${lane.table_id}:${other.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      const reason: TimeSlotBlockReason = other.is_private_block
+        ? 'private'
+        : other.is_communal_event_block
+          ? 'event'
+          : 'taken'
+
+      // Private and communal blocks are not bookings and carry no liveness fields; they
+      // always block. Real bookings block only while they still hold the table.
+      if (reason === 'taken' && !isFohBookingLive(other, referenceNow)) continue
+
+      const window = resolveBookingWindowMinutes(other, serviceDateIso)
+      if (!window) continue
+
+      intervals.push({ start: window.start, end: window.end, reason })
+    }
+  }
+
+  return intervals
+}
+
+/**
+ * Every time this booking could move to, marked free or blocked.
+ *
+ * Slots run on `stepMinutes` across the visible timeline. A candidate is rejected when the
+ * booking's whole window would not fit before the end of the timeline, and when it overlaps
+ * anything busy. Overlap is half-open, `[start, end)`, matching the SQL trigger, so a booking
+ * ending at 19:00 does not block one starting at 19:00.
+ *
+ * The booking's current time is included even when it is off-grid, because live data holds
+ * times like 20:19 and 20:55, and a picker that quietly dropped the current time would look
+ * broken.
+ */
+export function buildTimeChangeOptions(input: {
+  schedule: FohScheduleResponse['data'] | null
+  booking: FohBooking
+  timeline: TimelineRange
+  serviceDateIso: string
+  referenceNow: Date
+  stepMinutes?: number
+}): TimeSlotOption[] {
+  const { schedule, booking, timeline, serviceDateIso, referenceNow, stepMinutes = 15 } = input
+
+  const currentWindow = resolveBookingWindowMinutes(booking, serviceDateIso)
+  if (!currentWindow) return []
+
+  const durationMinutes = Math.max(15, currentWindow.end - currentWindow.start)
+  const busy = collectBusyIntervals({ schedule, booking, serviceDateIso, referenceNow })
+
+  const candidates = new Set<number>()
+  const firstSlot = Math.ceil(timeline.startMin / stepMinutes) * stepMinutes
+  for (let minute = firstSlot; minute + durationMinutes <= timeline.endMin; minute += stepMinutes) {
+    candidates.add(minute)
+  }
+  // Always offer the booking back to where it started, grid-aligned or not.
+  candidates.add(currentWindow.start)
+
+  return Array.from(candidates)
+    .sort((left, right) => left - right)
+    .map((minutes) => {
+      const isCurrent = minutes === currentWindow.start
+      const end = minutes + durationMinutes
+
+      // Reason priority: a private block is the least negotiable thing on the timeline and
+      // an event block the next, so they win over an ordinary clash when windows overlap.
+      const clashes = busy.filter((interval) => interval.start < end && interval.end > minutes)
+      const blockedBy: TimeSlotBlockReason | null =
+        clashes.find((c) => c.reason === 'private')?.reason
+        ?? clashes.find((c) => c.reason === 'event')?.reason
+        ?? clashes.find((c) => c.reason === 'taken')?.reason
+        ?? null
+
+      return {
+        minutes,
+        time: formatMinutesAsClock(minutes),
+        available: blockedBy == null && !isCurrent,
+        blockedBy,
+        isCurrent,
+      }
+    })
+}
+
+/** Minutes from midnight to a London "HH:MM" clock, wrapping past a midnight-crossing window. */
+export function formatMinutesAsClock(minutes: number): string {
+  const wrapped = ((minutes % 1440) + 1440) % 1440
+  const hours = Math.floor(wrapped / 60)
+  const mins = wrapped % 60
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+}
+
+/**
+ * Whether the floor may re-time this booking at all.
+ *
+ * The same rules the endpoint enforces, so the button is never offered for something the
+ * server would refuse. The server is still the authority; this only keeps staff from
+ * tapping into a guaranteed error.
+ */
+export const FOH_TIME_CHANGE_EDITABLE_STATUSES = new Set([
+  'confirmed',
+  'pending_payment',
+  'pending_card_capture',
+  'visited_waiting_for_review',
+  'review_clicked',
+])
+
+export function getFohTimeChangeBlocker(booking: FohBooking): string | null {
+  if (booking.is_private_block) return 'Managed by the private booking.'
+  if (booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-')) {
+    return 'Managed from the event.'
+  }
+  if (booking.left_at) return 'This party has already left.'
+  // The schedule API does not expose event_id, but it rewrites both type and purpose to
+  // 'event' for a booking that has one, and carries the event name. An event diner's table
+  // is tied to their ticket, so re-timing only the table half would split the pair; the
+  // endpoint refuses it too.
+  if (booking.booking_purpose === 'event' || booking.booking_type === 'event' || booking.event_name) {
+    return 'Tied to an event. Change it from the event.'
+  }
+  const status = (booking.status || '').toLowerCase()
+  if (!FOH_TIME_CHANGE_EDITABLE_STATUSES.has(status)) {
+    return 'This booking is closed.'
+  }
+  return null
+}
