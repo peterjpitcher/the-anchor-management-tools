@@ -21,6 +21,7 @@ import {
   getLondonDateIso,
   minutesFromServiceDate,
   postBookingAction,
+  buildTimeChangeOptions,
 } from './utils'
 import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
@@ -35,6 +36,7 @@ import { FohOutsideBookings } from './components/FohOutsideBookings'
 import { FohBookingDetailModal } from './components/FohBookingDetailModal'
 import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
+import { FohChangeTimeModal } from './components/FohChangeTimeModal'
 
 export function FohScheduleClient({
   initialDate,
@@ -65,6 +67,11 @@ export function FohScheduleClient({
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditBookingId, setPartySizeEditBookingId] = useState<string | null>(null)
+  const [changeTimeOpen, setChangeTimeOpen] = useState(false)
+  const [changeTimeBookingId, setChangeTimeBookingId] = useState<string | null>(null)
+  // Kept local to the modal rather than pushed to the page banner: a conflict message that
+  // renders behind an open dialog is a message nobody reads.
+  const [changeTimeError, setChangeTimeError] = useState<string | null>(null)
   const [walkoutModalOpen, setWalkoutModalOpen] = useState(false)
   const [walkoutAmountValue, setWalkoutAmountValue] = useState('')
   const [walkoutBookingId, setWalkoutBookingId] = useState<string | null>(null)
@@ -176,7 +183,7 @@ export function FohScheduleClient({
   const hasActiveFohWork = Boolean(
     bookingActionInFlight || createBooking.submittingBooking || submittingFoodOrderAlert
     || createBooking.isCreateModalOpen || selectedBookingContext || showCancelBookingConfirmation
-    || partySizeEditOpen || walkoutModalOpen
+    || partySizeEditOpen || walkoutModalOpen || changeTimeOpen
   )
 
   useFohDeploymentRefresh({
@@ -317,6 +324,7 @@ export function FohScheduleClient({
     setSelectedBookingContext(null); setBookingActionInFlight(null)
     setShowCancelBookingConfirmation(false); setShowNoShowConfirmation(false)
     setPartySizeEditOpen(false); setWalkoutModalOpen(false)
+    setChangeTimeOpen(false); setChangeTimeError(null)
   }
 
   async function sendFoodOrderAlert() {
@@ -330,6 +338,92 @@ export function FohScheduleClient({
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to send food order alert')
     } finally { setSubmittingFoodOrderAlert(false) }
+  }
+
+
+  // --- Change time ---
+  //
+  // The booking is looked up fresh from the schedule on every render rather than held from
+  // when the modal opened, so a realtime refresh mid-decision re-marks the grid instead of
+  // leaving staff choosing against a stale picture.
+  const changeTimeBooking = useMemo(() => {
+    if (!changeTimeBookingId) return null
+    const fromSchedule = schedule
+      ? [
+          ...schedule.lanes.flatMap((lane) => lane.bookings),
+          ...(schedule.unassigned_bookings || []),
+          ...(schedule.outside_bookings || []),
+        ].find((booking) => booking.id === changeTimeBookingId) ?? null
+      : null
+    if (fromSchedule) return fromSchedule
+    return selectedBookingContext?.booking.id === changeTimeBookingId
+      ? selectedBookingContext.booking
+      : null
+  }, [changeTimeBookingId, schedule, selectedBookingContext])
+
+  const changeTimeOptions = useMemo(() => {
+    if (!changeTimeBooking) return []
+    return buildTimeChangeOptions({
+      schedule,
+      booking: changeTimeBooking,
+      timeline,
+      serviceDateIso: schedule?.date || date,
+      referenceNow: clockNow,
+    })
+  }, [changeTimeBooking, schedule, timeline, date, clockNow])
+
+  async function submitTimeChange(time: string) {
+    const bookingId = changeTimeBookingId
+    if (!bookingId) return
+    setChangeTimeError(null)
+    setErrorMessage(null)
+    setStatusMessage(null)
+    setBookingActionInFlight('change_time')
+    try {
+      const resp = await fetch(`/api/foh/bookings/${bookingId}/time`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time }),
+      })
+      const payload = await resp.json().catch(() => null) as
+        | { error?: string; data?: { state?: string; high_chairs_lost?: number } }
+        | null
+
+      if (resp.status === 409 || resp.status === 422) {
+        // Someone else got there first, or the booking moved on. Keep the modal open so the
+        // message is visible, and refresh so the grid stops offering the time that failed.
+        setChangeTimeError(payload?.error ?? 'That time is no longer available.')
+        await reloadSchedule()
+        return
+      }
+      if (!resp.ok) {
+        throw new Error(payload?.error || 'Failed to change the booking time')
+      }
+
+      setChangeTimeOpen(false)
+      closeBookingDetails()
+      await reloadSchedule()
+
+      const lostChairs = Number(payload?.data?.high_chairs_lost ?? 0)
+      setStatusMessage(
+        payload?.data?.state === 'unchanged'
+          ? 'No change was made.'
+          : lostChairs > 0
+            ? `Moved to ${time}. The guest has been told. ${lostChairs} high chair${lostChairs === 1 ? '' : 's'} could not be held at the new time.`
+            : `Moved to ${time}. The guest has been told.`
+      )
+    } catch (error) {
+      // A network failure leaves the outcome genuinely unknown, so refresh and say so rather
+      // than inviting a retry that could move the booking twice.
+      setChangeTimeError(
+        error instanceof Error
+          ? `${error.message}. Check the timeline before trying again.`
+          : 'The time change could not be confirmed. Check the timeline before trying again.'
+      )
+      await reloadSchedule().catch(() => {})
+    } finally {
+      setBookingActionInFlight(null)
+    }
   }
 
   // --- Render ---
@@ -420,6 +514,7 @@ export function FohScheduleClient({
         onSetShowNoShowConfirmation={setShowNoShowConfirmation}
         onOpenPartySizeEdit={(bid, size) => { setPartySizeEditBookingId(bid); setPartySizeEditValue(String(size)); setPartySizeEditOpen(true) }}
         onOpenWalkoutModal={(bid) => { setWalkoutBookingId(bid); setWalkoutAmountValue(''); setWalkoutModalOpen(true) }}
+        onOpenChangeTime={(bid) => { setChangeTimeBookingId(bid); setChangeTimeError(null); setChangeTimeOpen(true) }}
       />
 
       <FohCreateBookingModal
@@ -497,6 +592,22 @@ export function FohScheduleClient({
             if (ok) closeBookingDetails()
           })()
         }}
+      />
+      <FohChangeTimeModal
+        open={changeTimeOpen && Boolean(changeTimeBooking)}
+        bookingLabel={
+          changeTimeBooking?.guest_name
+          || changeTimeBooking?.booking_reference
+          || changeTimeBooking?.id.slice(0, 8)
+          || 'Booking'
+        }
+        currentTime={(changeTimeBooking?.booking_time || '').slice(0, 5)}
+        isSeated={Boolean(changeTimeBooking?.seated_at)}
+        options={changeTimeOptions}
+        submitting={bookingActionInFlight === 'change_time'}
+        error={changeTimeError}
+        onClose={() => { setChangeTimeOpen(false); setChangeTimeError(null) }}
+        onConfirm={(time) => { void submitTimeChange(time) }}
       />
     </div>
   )

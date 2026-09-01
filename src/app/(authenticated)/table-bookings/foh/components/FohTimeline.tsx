@@ -119,10 +119,10 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     'font-semibold uppercase tracking-wide text-gray-600',
     isManagerKioskStyle ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'
   )
-  const timelineHeaderTrackClass = cn(
-    'relative',
-    isManagerKioskStyle ? 'h-10 px-1.5' : 'h-10 px-2'
-  )
+  // No horizontal padding. The drag snap measures this element and converts a pointer offset
+  // into a time, but the lane tracks below it have no padding, so any here made the header a
+  // few pixels wider than the lanes and skewed every snapped time by that difference.
+  const timelineHeaderTrackClass = 'relative h-10'
   const laneMetaCellClass = cn(
     'space-y-1 bg-white',
     isManagerKioskStyle ? 'px-2 py-1.5' : 'px-3 py-2'
