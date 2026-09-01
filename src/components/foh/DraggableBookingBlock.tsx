@@ -99,6 +99,11 @@ export function DraggableBookingBlock({
         position: 'absolute',
         left: `${leftPct}%`,
         width: `${widthPct}%`,
+        // dnd-kit's PointerSensor needs this on touch devices. Without it the browser claims
+        // the gesture as a pan of the timeline's horizontal scroller and fires pointercancel,
+        // so a touch drag can never start. Only set when the block is actually draggable, so
+        // panning still works by starting the gesture on a locked or non-editable block.
+        ...(canDragThis ? { touchAction: 'none' as const } : null),
         ...style,
       }}
       title={title}
