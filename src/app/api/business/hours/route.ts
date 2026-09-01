@@ -1,6 +1,11 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getActiveVersion, getBusinessHoursForDates, listVersions } from '@/lib/business-hours/effective';
+import {
+  describeKitchenWindows,
+  kitchenWindowAt,
+  resolveKitchenWindows,
+} from '@/lib/business-hours/kitchen-windows';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
@@ -212,11 +217,11 @@ export async function GET(request: NextRequest) {
         ? (currentTime >= todaySpecial.opens || currentTime < todaySpecial.closes)
         : (currentTime >= todaySpecial.opens && currentTime < todaySpecial.closes);
       
-      const isKitchenOpen = todaySpecial.is_kitchen_closed ? false : 
-        !!(todaySpecial.kitchen_opens && todaySpecial.kitchen_closes &&
-        (todaySpecial.kitchen_closes <= todaySpecial.kitchen_opens
-          ? (currentTime >= todaySpecial.kitchen_opens || currentTime < todaySpecial.kitchen_closes)
-          : (currentTime >= todaySpecial.kitchen_opens && currentTime < todaySpecial.kitchen_closes)));
+      // Read the day's sittings, not the kitchen bounds. On a split day the
+      // bounds span the gap between services, which reported the kitchen open
+      // while the booking engine was refusing food bookings at the same minute.
+      const specialKitchenWindows = resolveKitchenWindows(todaySpecial);
+      const isKitchenOpen = !!kitchenWindowAt(specialKitchenWindows, currentTime);
 
       currentStatus = {
         isOpen: isCurrentlyOpen,
@@ -236,12 +241,8 @@ export async function GET(request: NextRequest) {
         ? (currentTime >= todayHours.opens || currentTime < todayHours.closes)
         : (currentTime >= todayHours.opens && currentTime < todayHours.closes);
       
-      let isKitchenOpen = false;
-      if (todayHours.kitchen_opens && todayHours.kitchen_closes) {
-        isKitchenOpen = todayHours.kitchen_closes <= todayHours.kitchen_opens
-          ? (currentTime >= todayHours.kitchen_opens || currentTime < todayHours.kitchen_closes)
-          : (currentTime >= todayHours.kitchen_opens && currentTime < todayHours.kitchen_closes);
-      }
+      const regularKitchenWindows = resolveKitchenWindows(todayHours);
+      const isKitchenOpen = !!kitchenWindowAt(regularKitchenWindows, currentTime);
 
       currentStatus = {
         isOpen: isCurrentlyOpen,
@@ -257,6 +258,10 @@ export async function GET(request: NextRequest) {
 
   // Calculate today's information
   const todayHoursData = todaySpecial || (regularHours?.find(h => h.day_of_week === currentDay));
+  // Today's real kitchen services, shared by the summary and by services.kitchen
+  // below so the two can never disagree about when food stops.
+  const todayKitchenWindows = resolveKitchenWindows(todayHoursData);
+  const activeKitchenWindow = kitchenWindowAt(todayKitchenWindows, currentTime);
   const todaysSundayOverride = sundayOverrides.find(
     (override: any) =>
       override.startDate <= todayDate && override.endDate >= todayDate
@@ -271,9 +276,13 @@ export async function GET(request: NextRequest) {
   const todayInfo = {
     date: todayDate,
     dayName: currentDayName,
-    summary: todayHoursData?.is_closed ? 'Closed' : 
+    // Every sitting, so a split day reads "Kitchen 12:00 - 15:00, 16:00 - 21:00"
+    // rather than claiming one unbroken service across the afternoon closure.
+    summary: todayHoursData?.is_closed ? 'Closed' :
       `Open ${todayHoursData?.opens || 'N/A'} - ${todayHoursData?.closes || 'N/A'}` +
-      (todayHoursData?.kitchen_opens ? `, Kitchen ${todayHoursData.kitchen_opens} - ${todayHoursData.kitchen_closes}` : ''),
+      (todayKitchenWindows.length > 0
+        ? `, Kitchen ${describeKitchenWindows(todayKitchenWindows)}`
+        : ''),
     isSpecialHours: !!todaySpecial,
     events: todayEvents?.map(e => ({
       title: e.name,
@@ -373,8 +382,12 @@ export async function GET(request: NextRequest) {
     },
     kitchen: {
       open: currentStatus.kitchenOpen,
-      closesIn: currentStatus.kitchenOpen ? 
-        (todayHoursData?.kitchen_closes ? calculateTimeUntil(currentTime, todayHoursData.kitchen_closes) : null) : null,
+      // Counts down to the end of the sitting being served, not to the end of
+      // the day. On a split day the latter promised food for hours after the
+      // kitchen had actually stopped.
+      closesIn: currentStatus.kitchenOpen && activeKitchenWindow
+        ? calculateTimeUntil(currentTime, activeKitchenWindow.closes)
+        : null,
     },
     sundayLunch: sundayLunchConfig ? {
       enabled: sundayLunchEnabledToday,
