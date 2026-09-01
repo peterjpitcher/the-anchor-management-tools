@@ -349,4 +349,12 @@ open modal hides. The time change uses its own submit path with modal-local erro
 ### Built
 
 12 files. 122 tests across the FOH surface, up from 55. Lint, types and production build clean.
-Migration is written and dry-run clean but **not applied**.
+
+Shipped 2026-09-01 as PR #116, merge commit `f8272078`. The migration was applied to
+production and verified first (correct signature, `SECURITY DEFINER`, `service_role` only in
+its ACL, `assert-anon-surface` green), with v05 left in place so nothing broke in the gap
+before the code deploy. `management.orangejelly.co.uk` is aliased to the build created four
+seconds after the merge.
+
+Not verified in a browser: the page needs the kiosk login, so the flow has only ever been
+exercised against tests. One real time change on the iPad is still wanted.
