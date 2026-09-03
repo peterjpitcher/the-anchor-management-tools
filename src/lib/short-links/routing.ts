@@ -13,6 +13,7 @@ const RESERVED_TOP_LEVEL_ROUTES = new Set([
   'table-booking',
   'parking',
   'login',
+  'legacy-link',
 
   // Authenticated routes
   'cashing-up',

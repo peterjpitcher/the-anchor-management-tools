@@ -9,10 +9,14 @@ import {
   type ShortLinkInsightsGranularity,
   validateInsightsRange,
 } from '@/lib/short-link-insights-timeframes';
+import { legacyReportLocationLabel } from '@/lib/short-links/legacy-report';
 import type {
   LegacyDomainLinkUsage,
   LegacyDomainRecentClick,
   LegacyDomainUsage,
+  LegacyReportEntry,
+  LegacyReportLocationTally,
+  LegacyReportSummary,
 } from '@/types/short-links';
 
 // Validation schemas
@@ -223,6 +227,115 @@ function isMissingRequestHostColumn(error: unknown): boolean {
   const code = (error as { code?: string }).code;
   const message = String((error as { message?: string }).message || '');
   return code === '42703' || message.includes('request_host');
+}
+
+/** 42P01 is Postgres "undefined_table", i.e. the migration has not been applied here yet. */
+function isMissingRelationError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
+}
+
+type LegacyReportRow = {
+  id: string;
+  requested_code: string;
+  location_key: string;
+  location_detail: string | null;
+  is_staff: boolean;
+  device_type: string | null;
+  created_at: string;
+  short_links: { name: string | null } | { name: string | null }[] | null;
+};
+
+/**
+ * Answers submitted from the legacy-domain interstitial: where somebody says they found
+ * an old vip-club.uk link.
+ *
+ * These are the only evidence of a legacy link's publication surface. Click analytics
+ * cannot supply it, because every legacy click arrives with no referrer.
+ */
+async function fetchLegacyReports(startAt: string): Promise<LegacyReportSummary> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from('short_link_legacy_reports')
+    .select('id,requested_code,location_key,location_detail,is_staff,device_type,created_at,short_links(name)')
+    .gte('created_at', startAt)
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  if (error) {
+    // The dashboard predates this table, so a database without the migration should still
+    // render the click analytics rather than failing the whole page.
+    if (isMissingRelationError(error)) {
+      return {
+        totalReports: 0,
+        customerReports: 0,
+        staffReports: 0,
+        locations: [],
+        recent: [],
+        tableReady: false,
+      };
+    }
+    throw new Error('Failed to load legacy link reports');
+  }
+
+  const rows = (data || []) as unknown as LegacyReportRow[];
+  const tallies = new Map<string, LegacyReportLocationTally>();
+  let customerReports = 0;
+  let staffReports = 0;
+
+  const recent: LegacyReportEntry[] = rows.slice(0, 50).map((row) => {
+    const related = Array.isArray(row.short_links) ? row.short_links[0] : row.short_links;
+    return {
+      id: row.id,
+      requestedCode: row.requested_code,
+      locationKey: row.location_key,
+      label: legacyReportLocationLabel(row.location_key),
+      locationDetail: row.location_detail,
+      isStaff: row.is_staff,
+      deviceType: row.device_type,
+      createdAt: row.created_at,
+      linkName: related?.name ?? null,
+    };
+  });
+
+  for (const row of rows) {
+    if (row.is_staff) staffReports += 1;
+    else customerReports += 1;
+
+    const existing = tallies.get(row.location_key);
+    if (existing) {
+      existing.totalCount += 1;
+      if (row.is_staff) existing.staffCount += 1;
+      else existing.customerCount += 1;
+      if (!existing.lastReportedAt || Date.parse(row.created_at) > Date.parse(existing.lastReportedAt)) {
+        existing.lastReportedAt = row.created_at;
+      }
+      continue;
+    }
+
+    tallies.set(row.location_key, {
+      locationKey: row.location_key,
+      label: legacyReportLocationLabel(row.location_key),
+      customerCount: row.is_staff ? 0 : 1,
+      staffCount: row.is_staff ? 1 : 0,
+      totalCount: 1,
+      lastReportedAt: row.created_at,
+    });
+  }
+
+  const locations = Array.from(tallies.values()).sort((a, b) => {
+    if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+    return a.label.localeCompare(b.label);
+  });
+
+  return {
+    totalReports: rows.length,
+    customerReports,
+    staffReports,
+    locations,
+    recent,
+    tableReady: true,
+  };
 }
 
 async function fetchLegacyUsageClickRows(startAt: string): Promise<{
@@ -881,6 +994,7 @@ export class ShortLinkService {
     }
 
     const topLegacyLinks = sortLinkUsageRows(Array.from(topLegacyByLink.values())).slice(0, 25);
+    const reports = await fetchLegacyReports(startAt);
 
     return {
       generatedAt: generatedAt.toISOString(),
@@ -897,6 +1011,7 @@ export class ShortLinkService {
       untrackedHumanClicks,
       topLegacyLinks,
       recentLegacyClicks,
+      reports,
     };
   }
 }
