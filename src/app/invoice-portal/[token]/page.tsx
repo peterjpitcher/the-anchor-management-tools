@@ -75,9 +75,31 @@ export default async function InvoicePortalPage({
     vendor?: { name?: string | null; contact_name?: string | null } | null
   }).vendor
   const firstName = (vendor?.contact_name || vendor?.name || '').trim().split(' ')[0]
-  const greeting = firstName
-    ? `Hi ${firstName}, here's what's outstanding on this invoice.`
-    : `Here's what's outstanding on this invoice.`
+  // The heading and the headline figure must agree with the state. A cancelled
+  // invoice showing "Pay your invoice" over "Amount due now GBP 975.60"
+  // contradicts the notice sitting directly under it, and the big number is the
+  // part people read first.
+  const heading = settled
+    ? 'This invoice is paid'
+    : withdrawn
+      ? 'This invoice has been cancelled'
+      : notYetIssued
+        ? 'This invoice is not ready yet'
+        : 'Pay your invoice'
+
+  const lead = settled
+    ? 'Thank you, there is nothing left to pay.'
+    : withdrawn
+      ? 'There is nothing to pay on this one.'
+      : notYetIssued
+        ? 'We have not issued this invoice yet.'
+        : firstName
+          ? `Hi ${firstName}, here's what's outstanding on this invoice.`
+          : `Here's what's outstanding on this invoice.`
+
+  // Only shown where a figure genuinely means something: what is owed, or what
+  // was paid. A withdrawn or unissued invoice has no headline amount.
+  const showAmount = payable || settled
 
   const paymentPending = query.payment_pending === '1'
   // PayPal appends its order id as `token`, which collides confusingly with the
@@ -88,10 +110,8 @@ export default async function InvoicePortalPage({
     <GuestShell>
       <div className={GUEST_INTRO_CLASS}>
         <p className={GUEST_KICKER_CLASS}>Invoice {invoice.invoice_number}</p>
-        <h1 className={GUEST_H1_CLASS}>
-          {settled ? 'This invoice is paid' : 'Pay your invoice'}
-        </h1>
-        <p className={GUEST_LEAD_CLASS}>{greeting}</p>
+        <h1 className={GUEST_H1_CLASS}>{heading}</h1>
+        <p className={GUEST_LEAD_CLASS}>{lead}</p>
       </div>
 
       <GuestCard variant="accent">
@@ -101,12 +121,14 @@ export default async function InvoicePortalPage({
           <InvoicePayCaptureClient token={token} paypalOrderId={paypalOrderId} />
         )}
 
-        <GuestAmount
-          label={settled ? 'Paid in full' : 'Amount due now'}
-          value={formatMoney(Math.max(outstanding, 0))}
-        />
+        {showAmount && (
+          <GuestAmount
+            label={settled ? 'Paid in full' : 'Amount due now'}
+            value={formatMoney(settled ? paid : Math.max(outstanding, 0))}
+          />
+        )}
 
-        <div className="mt-[18px]">
+        <div className={showAmount ? 'mt-[18px]' : ''}>
           <DetailRow label="Invoice" value={invoice.invoice_number} />
           <DetailRow label="Invoice total" value={formatMoney(total)} />
           {paid > 0 && <DetailRow label="Already paid" value={formatMoney(paid)} />}
