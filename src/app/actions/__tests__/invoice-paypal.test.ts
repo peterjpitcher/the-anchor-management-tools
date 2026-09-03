@@ -49,6 +49,7 @@ function invoice(overrides: Record<string, unknown> = {}) {
     due_date: '2026-09-10',
     vendor_id: 'vendor-1',
     paypal_order_id: null,
+    sent_at: '2026-09-01T12:05:00Z',
     updated_at: '2026-09-01T12:00:00Z',
     vendor: { name: 'Kim Renyard', email: 'kim@example.com' },
     ...overrides,
@@ -58,7 +59,7 @@ function invoice(overrides: Record<string, unknown> = {}) {
 function mockAdmin(row: Record<string, unknown> | null, rpcResult?: unknown) {
   const update = vi.fn(() => {
     const chain: Record<string, unknown> = {}
-    for (const m of ['eq', 'in', 'is', 'select']) chain[m] = vi.fn().mockReturnValue(chain)
+    for (const m of ['eq', 'in', 'is', 'not', 'select']) chain[m] = vi.fn().mockReturnValue(chain)
     chain.maybeSingle = vi.fn().mockResolvedValue({ data: { id: INVOICE_ID }, error: null })
     // A bare update with no .select() is awaited directly.
     ;(chain as any).then = (resolve: (v: unknown) => void) => resolve({ data: null, error: null })
@@ -124,11 +125,29 @@ describe('getInvoicePortalLink', () => {
     ['void', 'cancelled'],
     ['written_off', 'written off'],
     ['paid', 'already paid'],
-    ['draft', 'not been issued'],
   ])('refuses a %s invoice', async (status, message) => {
     vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ status })))
     const result = await getInvoicePortalLink(INVOICE_ID)
     expect(result.error).toContain(message)
+  })
+
+  it('refuses a draft that has never been emailed', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(
+      mockAdmin(invoice({ status: 'draft', sent_at: null })),
+    )
+    const result = await getInvoicePortalLink(INVOICE_ID)
+    expect(result.error).toContain('not been issued')
+  })
+
+  it('allows a draft that HAS reached the customer, so a failed status flip does not strand them', async () => {
+    // The manual send flips draft -> sent straight after the email goes out,
+    // and that flip can fail while the email has already landed.
+    vi.mocked(createAdminClient).mockReturnValue(
+      mockAdmin(invoice({ status: 'draft', sent_at: '2026-09-01T12:05:00Z' })),
+    )
+    const result = await getInvoicePortalLink(INVOICE_ID)
+    expect(result.error).toBeUndefined()
+    expect(result.url).toContain('/invoice-portal/')
   })
 
   it('refuses when nothing is outstanding even if the status still says overdue', async () => {

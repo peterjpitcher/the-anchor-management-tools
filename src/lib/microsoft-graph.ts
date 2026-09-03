@@ -182,11 +182,24 @@ P.S. The invoice is attached as a PDF for easy viewing and printing.`)
       })
     }
 
+    // Every invoice email that asks for money carries the pay-online link:
+    // the manual send, the chase, the reminder cron and the 07:00 auto-send all
+    // funnel through here, so appending once covers all four rather than
+    // leaving one of them silently without it.
+    //
+    // Appended here rather than in the operator's draft because the draft is
+    // composed in the browser and the signed token must never be minted there.
+    // Receipts are excluded: they confirm money already received.
+    const { withInvoicePaymentLink } = await import('@/lib/invoices/payment-link-footer')
+    const bodyWithPaymentLink = isRemittanceAdvice
+      ? emailBody
+      : withInvoicePaymentLink(emailBody, invoice)
+
     const { sendEmail } = await import('@/lib/email/emailService')
     const result = await sendEmail({
       to: recipientEmail,
       subject: emailSubject,
-      text: emailBody,
+      text: bodyWithPaymentLink,
       cc: ccRecipients,
       attachments,
       commType: isRemittanceAdvice ? 'invoice_receipt' : 'invoice',

@@ -37,7 +37,7 @@ export default async function InvoicePortalPage({
   const admin = createAdminClient()
   const { data: invoice } = await admin
     .from('invoices')
-    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, vendor:invoice_vendors(name)')
+    .select('id, invoice_number, status, total_amount, paid_amount, invoice_date, due_date, sent_at, vendor:invoice_vendors(name)')
     .eq('id', invoiceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -49,7 +49,10 @@ export default async function InvoicePortalPage({
   const outstanding = Math.round((total - paid) * 100) / 100
   const settled = invoice.status === 'paid' || outstanding <= 0
   const withdrawn = invoice.status === 'void' || invoice.status === 'written_off'
-  const notYetIssued = invoice.status === 'draft'
+  // A draft that has actually been emailed is payable: `sent_at` is the
+  // authoritative delivery record, and the manual send's status flip can fail
+  // after the email has already reached the customer.
+  const notYetIssued = invoice.status === 'draft' && !invoice.sent_at
   const payable = !settled && !withdrawn && !notYetIssued
 
   const vendorName = (invoice as unknown as { vendor?: { name?: string | null } | null }).vendor?.name ?? null
