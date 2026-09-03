@@ -464,6 +464,127 @@ export async function captureParkingPayment(
   return updatedBooking
 }
 
+/**
+ * Records a PayPal capture that already happened but never reached the database.
+ *
+ * The window this closes: `captureParkingPayment` takes the money, then the
+ * payment row update fails. Money has moved, the row is still `pending`, and
+ * nothing retries, because capture is only ever triggered by the customer's
+ * return. Nothing else in the system would ever notice.
+ *
+ * Deliberately RECORD ONLY. It never calls capture, so it cannot take money for
+ * a space that has since been resold. That is the same line the return handler
+ * draws, and a sweep that captured APPROVED orders would quietly undo it.
+ *
+ * Returns null when the order has not in fact been captured at PayPal, which is
+ * the ordinary case for a customer who simply walked away.
+ */
+export async function reconcileCapturedParkingPayment(
+  booking: ParkingBooking,
+  paypalOrderId: string,
+  options: { client?: SupabaseClient<any, 'public', any> } = {}
+): Promise<ParkingBooking | null> {
+  const supabase = options.client ?? createAdminClient()
+
+  const { data: paymentRecord, error: lookupError } = await supabase
+    .from('parking_booking_payments')
+    .select('id, status, booking_id, paypal_order_id, amount, currency')
+    .eq('booking_id', booking.id)
+    .eq('paypal_order_id', paypalOrderId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (lookupError) throw new Error(lookupError.message)
+  if (!paymentRecord) return null
+
+  const orderDetails = await getPayPalOrder(paypalOrderId)
+
+  // Only a completed order carries money. CREATED and APPROVED mean the
+  // customer never finished, and with intent=CAPTURE no funds have moved.
+  if (orderDetails?.status !== 'COMPLETED') return null
+
+  const capture = orderDetails?.purchase_units?.[0]?.payments?.captures?.[0]
+  const captureId = typeof capture?.id === 'string' ? capture.id : null
+  const capturedAmount = parsePayPalMoney(capture?.amount?.value)
+  if (!captureId || capturedAmount === null) return null
+
+  // The same ownership and money checks the capture path makes, because this
+  // writes a payment against a booking just as it does.
+  const orderCustomId = orderDetails?.purchase_units?.[0]?.custom_id
+  if (typeof orderCustomId !== 'string' || orderCustomId !== booking.id) {
+    throw new Error('PayPal order does not belong to this booking')
+  }
+
+  const expectedCurrency = (paymentRecord.currency || PAYPAL_DEFAULT_CURRENCY).toUpperCase()
+  const expectedAmount = Number(paymentRecord.amount || 0)
+  const captureCurrency = typeof capture?.amount?.currency_code === 'string'
+    ? capture.amount.currency_code.toUpperCase()
+    : null
+
+  if (!payPalMoneyMatches(capturedAmount, expectedAmount) || captureCurrency !== expectedCurrency) {
+    throw new Error('Captured PayPal amount or currency does not match this booking')
+  }
+
+  const { data: paymentUpdate, error: updateError } = await supabase
+    .from('parking_booking_payments')
+    .update({
+      status: 'paid',
+      paid_at: new Date().toISOString(),
+      transaction_id: captureId,
+      metadata: { ...(capture as any), paypal_order_id: paypalOrderId, reconciled: true }
+    })
+    .eq('id', paymentRecord.id)
+    // Guarded, so racing the customer's own return records the money once.
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+
+  if (updateError) throw new Error(updateError.message)
+  if (!paymentUpdate) return null
+
+  // The space is only still ours to sell while the booking is live. Capacity
+  // counts 'pending_payment' and 'confirmed' only, so an expired or cancelled
+  // booking has already handed its slot back and it may since have been sold to
+  // someone else. Reviving it here would confirm two bookings for one space
+  // with no capacity check, which is the exact failure the capture path refuses.
+  //
+  // The payment row above is still written, deliberately: the money HAS been
+  // taken and must be visible rather than vanishing. What it must not do is
+  // quietly resurrect the booking. This needs a person, to refund or to
+  // re-accommodate, so it is logged as an error rather than handled silently.
+  if (booking.status === 'expired' || booking.status === 'cancelled') {
+    logger.error('Parking payment captured against a booking that had already lapsed', {
+      error: new ParkingBookingNotCapturableError(booking.status),
+      metadata: {
+        bookingId: booking.id,
+        paypalOrderId,
+        captureId,
+        amount: capturedAmount,
+        action: 'refund or re-accommodate this customer'
+      }
+    })
+    return null
+  }
+
+  const updatedBooking = await updateParkingBooking(
+    booking.id,
+    {
+      payment_status: 'paid',
+      status: 'confirmed',
+      confirmed_at: new Date().toISOString(),
+      paid_start_three_day_sms_sent: false,
+      paid_end_three_day_sms_sent: false
+    },
+    supabase
+  )
+
+  // They paid and never got a confirmation, so send it now.
+  await sendConfirmationNotifications(updatedBooking, supabase)
+  return updatedBooking
+}
+
 async function refundParkingPayment(
   booking: ParkingBooking,
   amount: number,

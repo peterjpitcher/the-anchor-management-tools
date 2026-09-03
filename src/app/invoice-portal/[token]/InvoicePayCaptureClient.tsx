@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { GuestAlert } from '@/components/features/guest/GuestAlert'
 import { captureInvoicePaymentByToken } from '@/app/actions/invoicePayPalActions'
 
 type Phase = 'capturing' | 'done' | 'error'
@@ -8,12 +9,9 @@ type Phase = 'capturing' | 'done' | 'error'
 /**
  * Runs on the customer's return from PayPal.
  *
- * PayPal appends the order id as `?token=`, which collides confusingly with our
- * own portal token in the path; the one in the query string is always PayPal's.
- *
- * This is only one of four ways the payment gets recorded (the webhook, the
- * reconciliation cron and a staff-side retry are the others), and all of them
- * key on the same capture id, so arriving second is normal and harmless.
+ * This is only one of the ways a payment gets recorded: the webhook and the
+ * reconciliation cron cover the same ground, and all of them key on the same
+ * capture id, so arriving second is normal and records nothing twice.
  */
 export function InvoicePayCaptureClient({
   token,
@@ -46,7 +44,7 @@ export function InvoicePayCaptureClient({
         setPhase('done')
         setMessage(null)
         // Drop the PayPal query string so a refresh does not look like a second
-        // payment attempt, and so the figures above re-read from the database.
+        // payment attempt, and so the figures re-read from the database.
         setTimeout(() => {
           if (!cancelled) window.location.replace(window.location.pathname)
         }, 1500)
@@ -65,23 +63,23 @@ export function InvoicePayCaptureClient({
 
   if (phase === 'capturing') {
     return (
-      <p role="status" className="mt-6 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <GuestAlert tone="notice" role="status" live="polite" className="mb-[18px]">
         Confirming your payment. Please don&apos;t close this page.
-      </p>
+      </GuestAlert>
     )
   }
 
   if (phase === 'done') {
     return (
-      <p role="status" className="mt-6 rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+      <GuestAlert tone="success" role="status" live="polite" className="mb-[18px]">
         Payment received. Thank you.
-      </p>
+      </GuestAlert>
     )
   }
 
   return (
-    <p role="alert" className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+    <GuestAlert tone="problem" role="alert" className="mb-[18px]">
       {message}
-    </p>
+    </GuestAlert>
   )
 }

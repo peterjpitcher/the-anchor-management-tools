@@ -76,7 +76,13 @@ export async function GET(request: NextRequest) {
           cancelled_at: nowIso,
           cancelled_by: 'system',
           cancellation_reason: 'payment_hold_expired',
-          paypal_deposit_order_id: null,
+          // paypal_deposit_order_id is deliberately KEPT. Clearing it destroyed
+          // the only pointer to the PayPal order, which left no way to check
+          // afterwards whether the guest had in fact paid, and bounded any
+          // future reconciliation sweep to the hour before this cron ran. The
+          // update is already guarded on paypal_deposit_capture_id IS NULL, so
+          // a recorded payment is never cancelled here; keeping the id only
+          // preserves the trail for the ones that were not.
           hold_expires_at: null,
           updated_at: nowIso,
         })
