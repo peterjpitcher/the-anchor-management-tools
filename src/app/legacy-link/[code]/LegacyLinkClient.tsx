@@ -124,6 +124,23 @@ export default function LegacyLinkClient({
               </GuestAlert>
             )}
 
+            {/*
+              Above the options, not below, because tapping an option submits immediately.
+              Always visible rather than gated behind ?staff=1: a staff member sweeping the
+              pub arrives by scanning a QR code and cannot add a query parameter first.
+              `staffMode` still pre-ticks it for anyone who did use the link.
+            */}
+            <label className={GUEST_CHOICE_ROW_CLASS} htmlFor="legacy-link-staff">
+              <input
+                id="legacy-link-staff"
+                type="checkbox"
+                checked={isStaff}
+                onChange={(event) => setIsStaff(event.target.checked)}
+                className="h-[18px] w-[18px] accent-anchor-green"
+              />
+              <span className="text-guest-text-muted">I work here, this is a staff check</span>
+            </label>
+
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {LEGACY_REPORT_LOCATIONS.map((option) => {
                 const active = selected === option.key
@@ -189,24 +206,6 @@ export default function LegacyLinkClient({
               </div>
             )}
 
-            {staffMode && (
-              <div className={GUEST_SUNK_BOX_CLASS}>
-                <label className={GUEST_CHOICE_ROW_CLASS} htmlFor="legacy-link-staff">
-                  <input
-                    id="legacy-link-staff"
-                    type="checkbox"
-                    checked={isStaff}
-                    onChange={(event) => setIsStaff(event.target.checked)}
-                    className="h-[18px] w-[18px] accent-anchor-green"
-                  />
-                  <span>Staff check, not a customer</span>
-                </label>
-                <p className="mt-1 font-anchor-body text-[13px] leading-[1.6] text-guest-text-muted">
-                  Recorded separately so a sweep of the pub does not look like customer traffic.
-                  Add the exact spot under &ldquo;Somewhere else&rdquo; if it helps.
-                </p>
-              </div>
-            )}
           </div>
         </GuestCard>
       )}
