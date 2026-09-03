@@ -32,6 +32,7 @@ vi.mock('@/services/private-bookings/financial', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
@@ -340,6 +341,12 @@ describe('PrivateBookingService SMS side-effect meta', () => {
       }),
       // Settlement is decided inside the RPC now, never by the service
       // stamping final_payment_date itself.
+      rpc: vi.fn().mockResolvedValue({ data: { is_fully_paid: true }, error: null }),
+    })
+
+    // record_balance_payment runs on the service role client, because
+    // `authenticated` no longer holds EXECUTE on it.
+    ;(createAdminClient as unknown as Mock).mockReturnValue({
       rpc: vi.fn().mockResolvedValue({ data: { is_fully_paid: true }, error: null }),
     })
 

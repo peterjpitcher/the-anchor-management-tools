@@ -1014,7 +1014,12 @@ export async function createCreditNote(
       return { error: 'Invoice not found' }
     }
 
-    const { data: creditNoteResult, error: insertError } = await supabase.rpc('create_credit_note_atomic', {
+    // Routed through the service role deliberately. The permission check above
+    // is the gate; calling as `authenticated` gained nothing (the function is
+    // SECURITY DEFINER either way) and forced an EXECUTE grant that also let
+    // any signed-in user POST to the RPC directly, past that check.
+    const adminForCreditNote = createAdminClient()
+    const { data: creditNoteResult, error: insertError } = await adminForCreditNote.rpc('create_credit_note_atomic', {
       p_invoice_id: invoiceId,
       p_amount_ex_vat: amountExVat,
       p_reason: reason.trim(),
