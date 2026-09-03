@@ -97,6 +97,7 @@ import {
   generatePrivateBookingInvoice,
   previewPrivateBookingInvoice,
   retryPrivateBookingInvoiceEmail,
+  cancelPrivateBookingInvoice,
   type DepositTreatment,
   type PrivateBookingInvoicePreview,
 } from '@/app/actions/privateBookingInvoice'
@@ -1736,6 +1737,9 @@ export default function PrivateBookingDetailClient({
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
   const [invoiceBlocked, setInvoiceBlocked] = useState(false);
   const [retryingInvoiceEmail, setRetryingInvoiceEmail] = useState(false);
+  const [showCancelInvoiceModal, setShowCancelInvoiceModal] = useState(false);
+  const [cancelInvoiceReason, setCancelInvoiceReason] = useState('');
+  const [cancellingInvoice, setCancellingInvoice] = useState(false);
   // PayPal deposit state
   const [paypalDepositLoading, setPaypalDepositLoading] = useState(false);
   const [paypalCaptureHandled, setPaypalCaptureHandled] = useState(false);
@@ -2111,6 +2115,33 @@ export default function PrivateBookingDetailClient({
       setRetryingInvoiceEmail(false);
     }
   }, [bookingId, retryingInvoiceEmail, router]);
+
+  const handleCancelInvoice = useCallback(async () => {
+    if (!bookingId || cancellingInvoice) return;
+    const reason = cancelInvoiceReason.trim();
+    if (!reason) {
+      toast.error('Give a reason for cancelling this invoice.');
+      return;
+    }
+    setCancellingInvoice(true);
+    try {
+      const result = await cancelPrivateBookingInvoice(bookingId, reason);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(
+        result.invoiceNumber
+          ? `${result.invoiceNumber} cancelled. Change the items, then invoice again.`
+          : 'Invoice cancelled. Change the items, then invoice again.',
+      );
+      setShowCancelInvoiceModal(false);
+      setCancelInvoiceReason('');
+      router.refresh();
+    } finally {
+      setCancellingInvoice(false);
+    }
+  }, [bookingId, cancelInvoiceReason, cancellingInvoice, router]);
 
   const handleSendContract = useCallback(async () => {
     if (!bookingId || sendingContract) return;
@@ -3403,6 +3434,17 @@ export default function PrivateBookingDetailClient({
                               {retryingInvoiceEmail ? 'Sending…' : 'Retry sending'}
                             </button>
                           )}
+                          {/* The way back when the booked items change after
+                              invoicing. Cancelling voids the invoice and
+                              releases the booking, so the generate button
+                              returns and can raise a corrected invoice. */}
+                          <button
+                            type="button"
+                            onClick={() => setShowCancelInvoiceModal(true)}
+                            className="text-sm font-medium text-red-700 hover:underline"
+                          >
+                            Cancel invoice
+                          </button>
                         </div>
                       </div>
                     );
@@ -3576,6 +3618,61 @@ export default function PrivateBookingDetailClient({
         blocked={invoiceBlocked}
         onConfirm={handleConfirmInvoice}
       />
+
+      <Modal
+        open={showCancelInvoiceModal}
+        onClose={() => {
+          if (!cancellingInvoice) {
+            setShowCancelInvoiceModal(false);
+            setCancelInvoiceReason('');
+          }
+        }}
+        title="Cancel this invoice"
+        mobileFullscreen
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowCancelInvoiceModal(false);
+                setCancelInvoiceReason('');
+              }}
+              disabled={cancellingInvoice}
+            >
+              Keep invoice
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleCancelInvoice}
+              disabled={cancellingInvoice || !cancelInvoiceReason.trim()}
+              loading={cancellingInvoice}
+            >
+              Cancel invoice
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            The invoice is voided and unlinked from this booking. The customer
+            is not emailed, so tell them yourself that the old invoice no longer
+            stands.
+          </p>
+          <p className="text-sm text-gray-700">
+            The deposit stays on the booking and is applied again to the
+            replacement invoice. Change the items first, then use{' '}
+            <span className="font-medium">Generate and send invoice</span>.
+          </p>
+          <Textarea
+            label="Reason"
+            value={cancelInvoiceReason}
+            onChange={(e) => setCancelInvoiceReason(e.target.value)}
+            placeholder="Booked items changed"
+            rows={3}
+            disabled={cancellingInvoice}
+          />
+        </div>
+      </Modal>
 
       {canRefund && booking && (
         <RefundDialog
