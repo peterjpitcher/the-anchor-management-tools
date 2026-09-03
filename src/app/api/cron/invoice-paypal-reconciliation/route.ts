@@ -30,7 +30,10 @@ export const maxDuration = 60
 /** After this many failures the order is dropped and staff issue a new link. */
 const MAX_ATTEMPTS = 5
 
-const PAYABLE_STATUSES = ['sent', 'overdue', 'partially_paid']
+// Drafts are included because an invoice emailed by the auto-send run can carry
+// an order while its status flip is still catching up. Only genuinely
+// uncollectable states are excluded, and the RPC refuses those anyway.
+const PAYABLE_STATUSES = ['draft', 'sent', 'overdue', 'partially_paid']
 
 type PendingInvoice = {
   id: string

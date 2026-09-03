@@ -44,12 +44,13 @@ type PayableInvoice = {
   due_date: string
   vendor_id: string
   paypal_order_id: string | null
+  sent_at: string | null
   updated_at: string | null
   vendor: { name: string | null; email: string | null } | null
 }
 
 const INVOICE_COLUMNS =
-  'id, invoice_number, status, total_amount, paid_amount, due_date, vendor_id, paypal_order_id, updated_at, vendor:invoice_vendors(name, email)'
+  'id, invoice_number, status, total_amount, paid_amount, due_date, vendor_id, paypal_order_id, sent_at, updated_at, vendor:invoice_vendors(name, email)'
 
 function outstanding(invoice: { total_amount: number; paid_amount: number }): number {
   // Rounded to the penny: PayPal will not accept more precision, and a floating
@@ -63,8 +64,17 @@ export async function describeUnpayable(invoice: PayableInvoice | null): Promise
   if (invoice.status === 'void') return 'This invoice has been cancelled, so there is nothing to pay.'
   if (invoice.status === 'written_off') return 'This invoice has been written off, so there is nothing to pay.'
   if (invoice.status === 'paid') return 'This invoice is already paid in full. Thank you.'
-  if (invoice.status === 'draft') return 'This invoice has not been issued yet.'
-  if (!PAYABLE_STATUSES.has(invoice.status)) return 'This invoice cannot be paid online.'
+  // A draft that has demonstrably reached the customer is payable. The manual
+  // send flips the status to `sent` immediately after the email goes out, and
+  // that flip can fail while the email has already landed; refusing here would
+  // hand that customer a dead link for money they genuinely owe. `sent_at` is
+  // the authoritative delivery record, so it is what this trusts.
+  if (invoice.status === 'draft' && !invoice.sent_at) {
+    return 'This invoice has not been issued yet.'
+  }
+  if (invoice.status !== 'draft' && !PAYABLE_STATUSES.has(invoice.status)) {
+    return 'This invoice cannot be paid online.'
+  }
   if (outstanding(invoice) <= 0) return 'There is nothing left to pay on this invoice.'
   return null
 }
@@ -196,7 +206,7 @@ async function ensurePayPalOrder(
       .from('invoices')
       .update({ paypal_order_id: result.orderId, updated_at: new Date().toISOString() })
       .eq('id', invoice.id)
-      .in('status', Array.from(PAYABLE_STATUSES))
+      .not('status', 'in', '("void","written_off","paid")')
       .select('id')
       .maybeSingle()
 
