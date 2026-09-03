@@ -107,6 +107,9 @@ const BLOCKING_ERROR_CODES = new Set([
   'booking_payments_exceed_invoice_total',
   'invoice_total_reconciliation_failed',
   'permission_denied',
+  'booking_not_invoiced',
+  'invoice_has_real_payments',
+  'cancel_reason_required',
 ])
 
 /** Maps a raised code to its copy, and says whether it blocks outright. */
@@ -132,6 +135,10 @@ const ERROR_COPY: Record<string, string> = {
     'The invoice lines do not add up to the booking total, so nothing was created. This needs a look before invoicing.',
   invalid_deposit_treatment: 'Choose how the deposit should be treated.',
   permission_denied: 'You do not have permission to do that.',
+  booking_not_invoiced: 'This booking has no invoice to cancel.',
+  invoice_has_real_payments:
+    'A payment has been received against this invoice, so it cannot be cancelled. Issue a credit note instead.',
+  cancel_reason_required: 'Give a reason for cancelling this invoice.',
 }
 
 function describeDatabaseError(message: string): { error: string; blocked: boolean } {
@@ -738,6 +745,87 @@ export async function retryPrivateBookingInvoiceEmail(
     return { sent: true }
   } catch (error) {
     console.error('[PrivateBookingInvoice] Retry failed', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
+/**
+ * Cancel a booking's invoice so a corrected one can be raised.
+ *
+ * The booked items change after invoicing more often than the original design
+ * allowed for, and until this existed there was no way back: the atomic
+ * generate RPC short circuits on `private_bookings.invoice_id`, so a second
+ * press returned the original invoice rather than a corrected one.
+ *
+ * This voids the invoice and releases the booking in one database call, so a
+ * failure can never leave a live invoice unlinked or a void one still attached.
+ * The deposit is untouched on the booking and is re-applied when the
+ * replacement invoice is generated.
+ *
+ * A real payment blocks this outright. Money received against an invoice is
+ * resolved with a credit note, never by voiding the invoice underneath it.
+ */
+export async function cancelPrivateBookingInvoice(
+  bookingId: string,
+  reason: string,
+): Promise<ActionResult<{ voided: boolean; invoiceNumber: string | null }>> {
+  try {
+    const gate = await requireSuperAdmin()
+    if ('error' in gate) return { error: gate.error }
+
+    const trimmedReason = (reason ?? '').trim()
+    if (!trimmedReason) {
+      return { error: 'Give a reason for cancelling this invoice.' }
+    }
+
+    const booking = await loadBooking(bookingId)
+    if (!booking) return describeBlockingError('booking_not_found')
+    if (!booking.invoice_id) return { error: 'This booking has no invoice to cancel.' }
+
+    const previousInvoiceId = booking.invoice_id
+    const db = createAdminClient()
+
+    const { data: rpcResult, error: rpcError } = await (db.rpc as unknown as (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{
+      data: { unlinked: boolean; voided: boolean; invoice_number: string | null } | null
+      error: { message: string } | null
+    }>)('cancel_private_booking_invoice_atomic', {
+      p_booking_id: bookingId,
+      p_reason: trimmedReason,
+      p_actor_id: gate.userId,
+    })
+
+    if (rpcError || !rpcResult) {
+      const described = describeDatabaseError(rpcError?.message ?? 'Could not cancel the invoice.')
+      console.error('[PrivateBookingInvoice] Cancel RPC failed', rpcError)
+      return described
+    }
+
+    await logAuditEvent({
+      user_id: gate.userId,
+      operation_type: 'update',
+      resource_type: 'private_booking_invoice',
+      resource_id: previousInvoiceId,
+      operation_status: 'success',
+      new_values: {
+        booking_id: bookingId,
+        action: 'cancel_and_unlink',
+        invoice_number: rpcResult.invoice_number,
+        voided: rpcResult.voided,
+        reason: trimmedReason,
+      },
+    })
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath('/private-bookings')
+    revalidatePath('/invoices')
+    revalidatePath(`/invoices/${previousInvoiceId}`)
+
+    return { voided: rpcResult.voided, invoiceNumber: rpcResult.invoice_number }
+  } catch (error) {
+    console.error('[PrivateBookingInvoice] Cancel failed', error)
     return { error: getErrorMessage(error) }
   }
 }
