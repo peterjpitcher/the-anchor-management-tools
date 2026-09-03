@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTablePaymentToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
 import { parseTablePaymentLinkFromUrl } from '@/lib/table-bookings/payment-link'
+import { shouldShowLegacyInterstitial } from '@/lib/short-links/legacy-report'
 import {
   getCityFromHeaders,
   getCountryFromHeaders,
@@ -443,8 +444,24 @@ export async function GET(
       resolvedLink.short_code || shortCode
     )
 
-    // Build redirect response FIRST — send it without waiting for click tracking
-    const response = NextResponse.redirect(finalRedirectDestinationUrl)
+    const requestHost = normalizeRequestHost(request.headers.get('host'))
+    const { deviceType: requestDeviceType } = parseUserAgent(request.headers.get('user-agent'))
+
+    // Legacy-domain traffic is diverted to the retirement interstitial, which carries the
+    // real destination so the onward link needs no second trip through this handler. The
+    // click below is still recorded exactly once, against the legacy host, so the
+    // retirement dashboard keeps counting as before.
+    const redirectTarget = shouldShowLegacyInterstitial({
+      requestHost,
+      deviceType: requestDeviceType,
+      isTablePaymentLink: Boolean(tablePaymentLink),
+      shortCode: resolvedLink.short_code || shortCode,
+    })
+      ? `https://${requestHost}/legacy-link/${encodeURIComponent(resolvedLink.short_code || shortCode)}?to=${encodeURIComponent(finalRedirectDestinationUrl)}`
+      : finalRedirectDestinationUrl
+
+    // Build redirect response FIRST, sending it without waiting for click tracking
+    const response = NextResponse.redirect(redirectTarget)
 
     // Fire click tracking in background — does NOT block the redirect
     waitUntil((async () => {

@@ -193,6 +193,108 @@ function LinkUsageCard({
   )
 }
 
+function ReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] }) {
+  if (!reports.tableReady) {
+    return (
+      <Card className="mb-6 border-warning/25 bg-warning-soft">
+        <CardBody>
+          <p className="text-sm text-warning-fg">
+            The legacy link reports table has not been migrated yet. Apply the pending migration
+            to start collecting answers from the retirement interstitial.
+          </p>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title="Where People Found These Links"
+        subtitle={`${formatNumber(reports.customerReports)} from customers, ${formatNumber(reports.staffReports)} from staff checks`}
+      />
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Place</TableHead>
+            <TableHead align="right">Customers</TableHead>
+            <TableHead align="right">Staff</TableHead>
+            <TableHead align="right" className="hidden md:table-cell">Total</TableHead>
+            <TableHead className="hidden md:table-cell">Last Reported</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {reports.locations.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} align="center" className="py-8 text-text-muted">
+                No answers yet. They appear here as people tap through the retirement page.
+              </TableCell>
+            </TableRow>
+          ) : (
+            reports.locations.map((location) => (
+              <TableRow key={location.locationKey}>
+                <TableCell className="font-medium">{location.label}</TableCell>
+                <TableCell align="right" className="font-mono font-semibold">
+                  {formatNumber(location.customerCount)}
+                </TableCell>
+                <TableCell align="right" className="font-mono">
+                  {formatNumber(location.staffCount)}
+                </TableCell>
+                <TableCell align="right" className="hidden font-mono md:table-cell">
+                  {formatNumber(location.totalCount)}
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  {formatDateTime(location.lastReportedAt)}
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </Card>
+  )
+}
+
+function RecentReportsCard({ reports }: { reports: LegacyDomainUsage['reports'] }) {
+  if (!reports.tableReady || reports.recent.length === 0) return null
+
+  return (
+    <Card className="mb-6">
+      <CardHeader title="Recent Answers" subtitle="Most recent first, including any free-text detail" />
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>When</TableHead>
+            <TableHead>Link</TableHead>
+            <TableHead>Place</TableHead>
+            <TableHead className="hidden md:table-cell">Detail</TableHead>
+            <TableHead className="hidden sm:table-cell">Source</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {reports.recent.map((entry) => (
+            <TableRow key={entry.id}>
+              <TableCell>{formatDateTime(entry.createdAt)}</TableCell>
+              <TableCell>
+                <code className="font-mono text-xs">/{entry.requestedCode}</code>
+              </TableCell>
+              <TableCell className="font-medium">{entry.label}</TableCell>
+              <TableCell className="hidden max-w-sm md:table-cell">
+                {entry.locationDetail || '-'}
+              </TableCell>
+              <TableCell className="hidden sm:table-cell">
+                <Badge tone={entry.isStaff ? 'info' : 'success'}>
+                  {entry.isStaff ? 'Staff' : 'Customer'}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
+  )
+}
+
 export default async function LegacyDomainPage({ searchParams }: PageProps) {
   const canView = await checkUserPermission('short_links', 'view')
   if (!canView) redirect('/unauthorized')
@@ -223,6 +325,9 @@ export default async function LegacyDomainPage({ searchParams }: PageProps) {
           )}
 
           <SummaryCards usage={usage} />
+
+          <ReportsCard reports={usage.reports} />
+          <RecentReportsCard reports={usage.reports} />
 
           <LinkUsageCard
             title="Top Legacy Domain Links"

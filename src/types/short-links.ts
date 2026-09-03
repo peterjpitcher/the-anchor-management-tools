@@ -72,6 +72,38 @@ export interface LegacyDomainRecentClick {
   deviceType: string | null
 }
 
+/** One tally row: how many people said they found a legacy link in a given place. */
+export interface LegacyReportLocationTally {
+  locationKey: string
+  label: string
+  customerCount: number
+  staffCount: number
+  totalCount: number
+  lastReportedAt: string | null
+}
+
+export interface LegacyReportEntry {
+  id: string
+  requestedCode: string
+  locationKey: string
+  label: string
+  locationDetail: string | null
+  isStaff: boolean
+  deviceType: string | null
+  createdAt: string
+  linkName: string | null
+}
+
+export interface LegacyReportSummary {
+  totalReports: number
+  customerReports: number
+  staffReports: number
+  locations: LegacyReportLocationTally[]
+  recent: LegacyReportEntry[]
+  /** False when the migration adding the reports table has not been applied yet. */
+  tableReady: boolean
+}
+
 export interface LegacyDomainUsage {
   generatedAt: string
   startAt: string
@@ -87,4 +119,5 @@ export interface LegacyDomainUsage {
   untrackedHumanClicks: number
   topLegacyLinks: LegacyDomainLinkUsage[]
   recentLegacyClicks: LegacyDomainRecentClick[]
+  reports: LegacyReportSummary
 }

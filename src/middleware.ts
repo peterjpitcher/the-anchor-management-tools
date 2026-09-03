@@ -40,6 +40,10 @@ const PUBLIC_PATH_PREFIXES = [
   '/m',
   '/g',
   '/r',
+  // Retirement interstitial for legacy vip-club.uk short links. Anonymous customers reach
+  // it by following an old link, so it cannot sit behind a session. It reads nothing but
+  // the short link's own destination, which the link already exposes by redirecting there.
+  '/legacy-link',
 ];
 
 const PUBLIC_FILE_EXTENSIONS = [

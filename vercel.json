@@ -72,6 +72,26 @@
       ]
     },
     {
+      "source": "/legacy-link/:code",
+      "destination": "/legacy-link/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "vip-club.uk"
+        }
+      ]
+    },
+    {
+      "source": "/legacy-link/:code",
+      "destination": "/legacy-link/:code",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.vip-club.uk"
+        }
+      ]
+    },
+    {
       "source": "/:code",
       "destination": "/api/redirect/:code",
       "has": [
