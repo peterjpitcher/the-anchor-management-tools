@@ -21,6 +21,11 @@ const PUBLIC_PATH_PREFIXES = [
   '/booking-confirmation',
   '/booking-portal',
   '/booking-success',
+  // Public invoice payment page. Authorisation is the HMAC-signed token in the
+  // path (src/lib/invoices/invoice-token.ts), not a session; the route itself
+  // 404s on a token it cannot verify. Scoped to its own prefix so the staff
+  // /invoices pages stay protected.
+  '/invoice-portal',
   '/feedback',
   '/table-booking',
   '/parking/guest',
