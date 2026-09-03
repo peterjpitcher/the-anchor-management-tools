@@ -603,7 +603,13 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
 
   // Single atomic RPC: inserts payment, recalculates totals, and conditionally
   // stamps final_payment_date -- all within one transaction with a FOR UPDATE lock.
-  const { data: result, error: rpcError } = await supabase
+  // Routed through the service role deliberately. `recordFinalPayment` checks
+  // private_bookings.manage_deposits before reaching here, and that is the
+  // gate. Calling as `authenticated` gained nothing (the function is SECURITY
+  // DEFINER either way) and forced an EXECUTE grant that also let any signed-in
+  // user POST to the RPC directly, past that check. Reads above stay on the
+  // caller's client so RLS behaviour is unchanged.
+  const { data: result, error: rpcError } = await createAdminClient()
     .rpc('record_balance_payment', {
       p_booking_id: bookingId,
       p_amount: amount,

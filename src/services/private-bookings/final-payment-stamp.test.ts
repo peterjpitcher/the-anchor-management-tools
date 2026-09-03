@@ -38,6 +38,7 @@ vi.mock('@/lib/email/private-booking-emails', () => ({
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { recordBalancePayment } from './payments'
 
 const BOOKING = {
@@ -93,6 +94,14 @@ function mockServerClient(rpcResult: RpcResult) {
   }
 
   ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(client)
+
+  // The RPC itself runs on the service role client: `authenticated` no longer
+  // holds EXECUTE on record_balance_payment, so a signed-in user cannot POST to
+  // it directly and skip the permission check in recordFinalPayment. The same
+  // `rpc` spy backs both clients, so the assertions below still describe the
+  // one call that matters.
+  ;(createAdminClient as ReturnType<typeof vi.fn>).mockReturnValue({ ...client, rpc })
+
   return { rpc, updates }
 }
 
