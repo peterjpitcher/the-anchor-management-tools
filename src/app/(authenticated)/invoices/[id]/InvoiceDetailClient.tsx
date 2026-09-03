@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice } from '@/app/actions/invoices'
+import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice, updateInvoiceDueDate } from '@/app/actions/invoices'
 import {
   getOjInvoiceReissuePreview,
   reissueOjInvoice,
@@ -23,7 +23,7 @@ import { ConfirmDialog } from '@/ds'
 import { Modal } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
-import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw, FileMinus, CreditCard, Link as LinkIcon } from 'lucide-react'
+import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw, FileMinus, CreditCard, Link as LinkIcon, CalendarDays } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -262,6 +262,10 @@ export default function InvoiceDetailClient({
   const [creditNoteAmount, setCreditNoteAmount] = useState('')
   const [creditNoteReason, setCreditNoteReason] = useState('')
   const [creditNoteSubmitting, setCreditNoteSubmitting] = useState(false)
+  const [showDueDateModal, setShowDueDateModal] = useState(false)
+  const [newDueDate, setNewDueDate] = useState('')
+  const [dueDateReason, setDueDateReason] = useState('')
+  const [savingDueDate, setSavingDueDate] = useState(false)
   const [copyingPayLink, setCopyingPayLink] = useState(false)
   const [sendingPayLink, setSendingPayLink] = useState(false)
   
@@ -533,6 +537,45 @@ export default function InvoiceDetailClient({
     canEdit &&
     ['sent', 'overdue', 'partially_paid'].includes(invoice.status) &&
     Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0) > 0
+
+  // A due date is a payment term, not a figure, so it stays changeable after
+  // the invoice is issued. Withdrawn and settled invoices are excluded: there
+  // is no payment left to give more time for.
+  const canChangeDueDate =
+    canEdit && !['void', 'written_off', 'paid'].includes(invoice.status)
+
+  function openDueDateModal() {
+    setNewDueDate(invoice.due_date)
+    setDueDateReason('')
+    setShowDueDateModal(true)
+  }
+
+  async function handleSaveDueDate() {
+    if (savingDueDate) return
+    setSavingDueDate(true)
+    try {
+      const formData = new FormData()
+      formData.append('invoiceId', invoice.id)
+      formData.append('dueDate', newDueDate)
+      formData.append('reason', dueDateReason)
+      const result = await updateInvoiceDueDate(formData)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Due date updated')
+      setShowDueDateModal(false)
+      const refreshResult = await getInvoice(invoice.id)
+      if (refreshResult.invoice) {
+        setInvoice(refreshResult.invoice)
+      }
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update the due date')
+    } finally {
+      setSavingDueDate(false)
+    }
+  }
 
   async function handleCopyPaymentLink() {
     if (copyingPayLink) return
@@ -983,6 +1026,18 @@ export default function InvoiceDetailClient({
                 </Button>
               )}
 
+              {canChangeDueDate && (
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  onClick={openDueDateModal}
+                  disabled={actionLoading || savingDueDate}
+                  leftIcon={<CalendarDays className="h-4 w-4" />}
+                >
+                  Change due date
+                </Button>
+              )}
+
               {canShowPaymentLinkActions && (
                 <>
                   <Button
@@ -1038,6 +1093,66 @@ export default function InvoiceDetailClient({
           </Card>
         </div>
       </div>
+
+      <Modal
+        open={showDueDateModal}
+        onClose={() => {
+          if (!savingDueDate) setShowDueDateModal(false)
+        }}
+        title="Change due date"
+        width="md"
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => setShowDueDateModal(false)}
+              disabled={savingDueDate}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSaveDueDate()}
+              disabled={savingDueDate || !newDueDate || newDueDate === invoice.due_date}
+              loading={savingDueDate}
+            >
+              Save due date
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Currently due{' '}
+            <span className="font-medium text-gray-900">
+              {new Date(invoice.due_date).toLocaleDateString('en-GB')}
+            </span>
+            . Changing this does not email the customer, so tell them yourself
+            or re-send the invoice.
+          </p>
+          <Input
+            type="date"
+            label="New due date"
+            value={newDueDate}
+            min={invoice.invoice_date}
+            onChange={(e) => setNewDueDate(e.target.value)}
+            disabled={savingDueDate}
+          />
+          <Input
+            label="Reason (optional)"
+            value={dueDateReason}
+            onChange={(e) => setDueDateReason(e.target.value)}
+            placeholder="Re-issued too close to the event"
+            disabled={savingDueDate}
+          />
+          {invoice.status === 'overdue' && newDueDate >= new Date().toISOString().slice(0, 10) && (
+            <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              This invoice is marked overdue. Giving more time will also stop the
+              overdue chasers.
+            </p>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={showReissueModal}

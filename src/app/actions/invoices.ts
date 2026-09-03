@@ -16,6 +16,7 @@ import type {
   LineItemCatalogItem
 } from '@/types/invoices'
 import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 
 const CONTACT_NAME = process.env.COMPANY_CONTACT_NAME || 'Peter Pitcher'
 const CONTACT_PHONE = process.env.COMPANY_CONTACT_PHONE || '07990587315'
@@ -1153,6 +1154,127 @@ export async function updateInvoice(formData: FormData) {
     if (error instanceof z.ZodError) {
       return { error: error.errors[0].message }
     }
+    return { error: getErrorMessage(error) }
+  }
+}
+
+/**
+ * Change an invoice's due date after it has been issued.
+ *
+ * `updateInvoice` refuses anything that is not a draft, which is right for line
+ * items: the customer holds a document and the figures on it must not move
+ * underneath them. A due date is a payment term rather than a figure, and
+ * extending one is an ordinary, benign thing to do.
+ *
+ * The gap showed up on INV-003WK. An invoice re-issued inside the SOP window
+ * (balance due 14 days before the event) has its due date clamped to the issue
+ * date, because a due date must never be raised in the past. That leaves the
+ * customer no window at all and the invoice goes overdue the next morning, with
+ * nothing in the UI able to correct it.
+ */
+export async function updateInvoiceDueDate(formData: FormData) {
+  try {
+    if (!(await checkUserPermission('invoices', 'edit'))) {
+      return { error: 'You do not have permission to edit invoices' }
+    }
+
+    const invoiceId = String(formData.get('invoiceId') || '')
+    const newDueDate = String(formData.get('dueDate') || '')
+    const reason = String(formData.get('reason') || '').trim()
+
+    if (!invoiceId || !newDueDate) {
+      return { error: 'Invoice ID and a new due date are required' }
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDueDate) || Number.isNaN(Date.parse(newDueDate))) {
+      return { error: 'That is not a valid date' }
+    }
+
+    const supabase = await createClient()
+    const [{ data: { user } }, { data: invoice, error: fetchError }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from('invoices')
+        .select('id, invoice_number, status, invoice_date, due_date, paid_amount, internal_notes')
+        .eq('id', invoiceId)
+        .is('deleted_at', null)
+        .single(),
+    ])
+
+    if (!user) return { error: 'Unauthorized' }
+    if (fetchError || !invoice) return { error: 'Invoice not found' }
+
+    if (invoice.status === 'void' || invoice.status === 'written_off') {
+      return { error: 'This invoice has been withdrawn, so its due date cannot be changed.' }
+    }
+    if (invoice.status === 'paid') {
+      return { error: 'This invoice is already paid, so its due date cannot be changed.' }
+    }
+    if (newDueDate < invoice.invoice_date) {
+      return { error: 'The due date cannot be before the invoice date.' }
+    }
+    if (newDueDate === invoice.due_date) {
+      return { error: 'That is already the due date.' }
+    }
+
+    const today = getTodayIsoDate()
+
+    // An invoice parked at `overdue` keeps being chased by the reminders cron
+    // and keeps reading as overdue in the UI. Giving the customer more time has
+    // to release that too, or the extension is cosmetic.
+    const releasedStatus =
+      invoice.status === 'overdue' && newDueDate >= today
+        ? (Number(invoice.paid_amount || 0) > 0 ? 'partially_paid' : 'sent')
+        : null
+
+    const note = `[${today}] Due date changed from ${invoice.due_date} to ${newDueDate}.${reason ? ` Reason: ${reason}` : ''}`
+    const internalNotes = (invoice.internal_notes || '').trim()
+      ? `${invoice.internal_notes}\n\n${note}`
+      : note
+
+    const admin = createAdminClient()
+    const { data: updated, error: updateError } = await admin
+      .from('invoices')
+      .update({
+        due_date: newDueDate,
+        ...(releasedStatus ? { status: releasedStatus } : {}),
+        internal_notes: internalNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', invoiceId)
+      // Guarded on the date we read, so two people editing at once cannot
+      // silently overwrite each other.
+      .eq('due_date', invoice.due_date)
+      .select('id, due_date, status')
+      .maybeSingle()
+
+    if (updateError || !updated) {
+      return { error: 'The invoice changed while you were editing it. Reload and try again.' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'invoice',
+      resource_id: invoiceId,
+      operation_status: 'success',
+      old_values: { due_date: invoice.due_date, status: invoice.status },
+      new_values: {
+        action: 'due_date_changed',
+        invoice_number: invoice.invoice_number,
+        due_date: newDueDate,
+        status: updated.status,
+        reason: reason || null,
+      },
+    })
+
+    revalidatePath(`/invoices/${invoiceId}`)
+    revalidatePath('/invoices')
+    revalidateTag('dashboard')
+
+    return { success: true, dueDate: updated.due_date, status: updated.status }
+  } catch (error: unknown) {
+    console.error('Error in updateInvoiceDueDate:', error)
     return { error: getErrorMessage(error) }
   }
 }
