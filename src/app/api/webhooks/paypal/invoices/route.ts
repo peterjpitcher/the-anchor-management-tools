@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyPayPalWebhook } from '@/lib/paypal'
+import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { applyInvoicePayPalCapture } from '@/app/actions/invoicePayPalActions'
@@ -88,7 +88,14 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  const webhookId = (process.env.PAYPAL_INVOICES_WEBHOOK_ID || process.env.PAYPAL_WEBHOOK_ID)?.trim()
+  // Deliberately does NOT fall back to PAYPAL_WEBHOOK_ID: that is another
+  // endpoint's id, and verifying against it would reject every genuine event
+  // here. When the id cannot be resolved we fail closed and PayPal retries.
+  const webhookId =
+    process.env.PAYPAL_INVOICES_WEBHOOK_ID?.trim()
+    || (await resolveWebhookIdForUrl(
+      `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/paypal/invoices`,
+    ))
 
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
@@ -96,7 +103,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (!webhookId) {
-      const errorMessage = 'PAYPAL_WEBHOOK_ID not configured'
+      const errorMessage = 'No PayPal webhook is registered for the invoices endpoint'
       logger.error(errorMessage)
       await logWebhook(supabase, { status: 'configuration_error', headers, body, errorMessage })
       return NextResponse.json(
