@@ -8,6 +8,10 @@ import {
   reissueOjInvoice,
   type OjInvoiceReissuePreview,
 } from '@/app/actions/oj-projects/invoice-reissue'
+import {
+  getInvoicePortalLink,
+  sendInvoicePaymentLink,
+} from '@/app/actions/invoicePayPalActions'
 import { PageLayout } from '@/ds'
 import { Card } from '@/ds'
 import { Button } from '@/ds'
@@ -19,7 +23,7 @@ import { ConfirmDialog } from '@/ds'
 import { Modal } from '@/ds'
 import { Input } from '@/ds'
 import { Textarea } from '@/ds'
-import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw, FileMinus } from 'lucide-react'
+import { Download, Mail, Edit, Trash2, Copy, CheckCircle, XCircle, Clock, RefreshCw, FileMinus, CreditCard, Link as LinkIcon } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const EmailInvoiceModal = dynamic(
@@ -258,6 +262,8 @@ export default function InvoiceDetailClient({
   const [creditNoteAmount, setCreditNoteAmount] = useState('')
   const [creditNoteReason, setCreditNoteReason] = useState('')
   const [creditNoteSubmitting, setCreditNoteSubmitting] = useState(false)
+  const [copyingPayLink, setCopyingPayLink] = useState(false)
+  const [sendingPayLink, setSendingPayLink] = useState(false)
   
   const readOnly = !permissionsLoading && !canEdit && !canDelete
 
@@ -520,6 +526,49 @@ export default function InvoiceDetailClient({
     (invoice.status === 'paid' || invoice.status === 'partially_paid' || Number(invoice.paid_amount || 0) > 0) &&
     invoice.status !== 'void' &&
     invoice.status !== 'written_off'
+
+  // Asking a customer for money only makes sense on an issued invoice that
+  // still has something outstanding.
+  const canShowPaymentLinkActions =
+    canEdit &&
+    ['sent', 'overdue', 'partially_paid'].includes(invoice.status) &&
+    Number(invoice.total_amount || 0) - Number(invoice.paid_amount || 0) > 0
+
+  async function handleCopyPaymentLink() {
+    if (copyingPayLink) return
+    setCopyingPayLink(true)
+    try {
+      const result = await getInvoicePortalLink(invoice.id)
+      if (result.error || !result.url) {
+        toast.error(result.error || 'Could not build a payment link')
+        return
+      }
+      await navigator.clipboard.writeText(result.url)
+      toast.success('Payment link copied, ready to paste into WhatsApp or an email')
+    } catch {
+      toast.error('Could not copy the payment link')
+    } finally {
+      setCopyingPayLink(false)
+    }
+  }
+
+  async function handleSendPaymentLink() {
+    if (sendingPayLink) return
+    setSendingPayLink(true)
+    try {
+      const result = await sendInvoicePaymentLink(invoice.id)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`Payment link sent to ${result.sentTo}`)
+      router.refresh()
+    } catch {
+      toast.error('Could not send the payment link')
+    } finally {
+      setSendingPayLink(false)
+    }
+  }
 
   function openCreditNoteModal() {
     setCreditNoteAmount(maxCreditNoteExVat.toFixed(2))
@@ -932,6 +981,34 @@ export default function InvoiceDetailClient({
                 >
                   Reissue OJ Invoice
                 </Button>
+              )}
+
+              {canShowPaymentLinkActions && (
+                <>
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    onClick={() => void handleSendPaymentLink()}
+                    disabled={actionLoading || sendingPayLink || copyingPayLink}
+                    loading={sendingPayLink}
+                    leftIcon={<CreditCard className="h-4 w-4" />}
+                  >
+                    Email payment link
+                  </Button>
+                  {/* Copies our own portal URL, never a raw PayPal one: PayPal
+                      approval links die after a few hours and a stale link
+                      pasted into WhatsApp just fails for the customer. */}
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => void handleCopyPaymentLink()}
+                    disabled={actionLoading || sendingPayLink || copyingPayLink}
+                    loading={copyingPayLink}
+                    leftIcon={<LinkIcon className="h-4 w-4" />}
+                  >
+                    Copy payment link
+                  </Button>
+                </>
               )}
 
               {canShowCreditNoteAction && (
