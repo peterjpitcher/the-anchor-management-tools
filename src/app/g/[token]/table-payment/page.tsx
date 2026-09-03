@@ -15,7 +15,7 @@ import {
   GUEST_LEAD_CLASS,
 } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
+import { createInlinePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
 import { TablePaymentClient } from './TablePaymentClient'
 import { TablePaymentSuccessPanel } from './TablePaymentSuccessPanel'
@@ -147,11 +147,9 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     return <GuestShell>{successContent}</GuestShell>
   }
 
-  // Create or reuse PayPal order (only reuse if still valid on PayPal's side)
-  // Fallback must be a domain that actually resolves: these build the PayPal return and cancel
-  // URLs, so a dead host would strand a guest who has just paid. `app.the-anchor.pub` did not
-  // resolve; `management.orangejelly.co.uk` is the live application domain.
-  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'
+  // Create or reuse a PayPal order (only reuse if still valid on PayPal's side).
+  // No return or cancel URL: the guest pays in the PayPal popup and never leaves
+  // this page, so there is no redirect to come back from.
   let paypalOrderId = ''
   let needsNewOrder = true
 
@@ -175,14 +173,19 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   if (needsNewOrder) {
     let paypalOrder: { orderId: string }
     try {
-      paypalOrder = await createSimplePayPalOrder({
+      // Inline, NOT createSimplePayPalOrder. This order is handed to
+      // <PayPalButtons>, which opens PayPal in a popup, and
+      // createSimplePayPalOrder attaches payment_source redirect URLs that make
+      // that popup close itself the moment it opens (see the note on
+      // createInlinePayPalOrder in src/lib/paypal.ts). onApprove would then
+      // never fire and the deposit would never be captured. The external API
+      // route has always used the inline builder for exactly this reason.
+      paypalOrder = await createInlinePayPalOrder({
         customId: preview.tableBookingId,
         reference: `tb-deposit-${preview.tableBookingId}`,
         description: `Table booking deposit – ${preview.partySize} guests`,
         amount: preview.totalAmount,
         currency: preview.currency,
-        returnUrl: `${appBaseUrl}/g/${token}/table-payment`,
-        cancelUrl: `${appBaseUrl}/g/${token}/table-payment?state=cancelled`,
         requestId: `tb-deposit-${preview.tableBookingId}`,
       })
     } catch {

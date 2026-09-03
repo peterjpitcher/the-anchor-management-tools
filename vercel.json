@@ -142,6 +142,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/parking-paypal-reconciliation",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/private-booking-monitor",
       "schedule": "0 9 * * *"
     },
