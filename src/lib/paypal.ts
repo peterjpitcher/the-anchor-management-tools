@@ -601,3 +601,59 @@ export async function getPayPalOrder(orderId: string) {
 
   return response.json();
 }
+
+/**
+ * Finds the webhook id PayPal assigned to a given endpoint URL.
+ *
+ * Signature verification needs the id of the webhook that received the event,
+ * and each endpoint has its own. Rather than requiring a new environment
+ * variable and a redeploy every time an endpoint is added, this looks the id up
+ * from the account and caches it.
+ *
+ * It also self-heals: if a webhook is deleted and recreated in the PayPal
+ * dashboard, its id changes, and a hardcoded env var would then silently reject
+ * every delivery. This picks the new one up within the cache window.
+ *
+ * Returns null when no webhook is registered for that URL, which is the honest
+ * answer: the caller must then fail closed rather than verify against some
+ * other endpoint's id.
+ */
+const webhookIdCache = new Map<string, { id: string | null; expiresAt: number }>();
+const WEBHOOK_ID_CACHE_MS = 10 * 60 * 1000;
+
+export async function resolveWebhookIdForUrl(url: string): Promise<string | null> {
+  const normalise = (value: string) => value.trim().replace(/\/+$/, '').toLowerCase();
+  const wanted = normalise(url);
+
+  const cached = webhookIdCache.get(wanted);
+  if (cached && cached.expiresAt > Date.now()) return cached.id;
+
+  try {
+    const { baseUrl } = getPayPalConfig();
+    const accessToken = await getAccessToken();
+
+    const response = await fetch(`${baseUrl}/v1/notifications/webhooks`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      // Do not cache a lookup failure: the next delivery should try again
+      // rather than being locked out for the whole cache window.
+      return cached?.id ?? null;
+    }
+
+    const data = await response.json();
+    const match = (data?.webhooks ?? []).find(
+      (webhook: { url?: string }) => typeof webhook?.url === 'string' && normalise(webhook.url) === wanted,
+    );
+    const id = typeof match?.id === 'string' ? match.id : null;
+
+    webhookIdCache.set(wanted, { id, expiresAt: Date.now() + WEBHOOK_ID_CACHE_MS });
+    return id;
+  } catch {
+    return cached?.id ?? null;
+  }
+}
