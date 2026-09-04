@@ -36,7 +36,12 @@ export type ConversationSummary = {
 
 export type InboxResult = {
   conversations: ConversationSummary[]
+  /**
+   * Summed over the fetched rows only. When `unreadIsCapped` is true this is a
+   * lower bound, not a total, and the UI must not present it as exact.
+   */
   totalUnread: number
+  unreadIsCapped: boolean
   hasMoreUnread: boolean
   unmatchedCount: number
 }
@@ -55,6 +60,28 @@ const UNREAD_COMMUNICATION_FETCH_LIMIT = 500
  */
 const INBOX_COLUMNS =
   'id, customer_id, channel, direction, created_at, read_at, staff_read_at, has_attachments, subject, body_text'
+
+/**
+ * Only the columns the thread actually renders. `body_html`, `delivery_history`,
+ * `engagement` and `context` are the expensive ones and none of them reach the
+ * screen, so they stay out of the query.
+ */
+const TIMELINE_COLUMNS =
+  'id, customer_id, channel, direction, status, subject, body_text, created_at, read_at, ' +
+  'staff_read_at, has_attachments, attachments, twilio_message_sid, resend_message_id'
+
+const TIMELINE_PAGE_SIZE = 60
+const TIMELINE_MAX_PAGE_SIZE = 200
+
+const SEARCH_MIN_LENGTH = 2
+const SEARCH_CUSTOMER_LIMIT = 40
+const SEARCH_COMMUNICATION_LIMIT = 400
+
+/**
+ * Sorts a never-messaged customer to the bottom of search results without
+ * needing a nullable timestamp through the whole client.
+ */
+const EMPTY_CONVERSATION_TIMESTAMP = '1970-01-01T00:00:00.000Z'
 
 type InboxRow = Pick<
   CustomerCommunication,
@@ -392,23 +419,54 @@ export class CommunicationsService {
       return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
     })
 
+    const unreadIsCapped = (unreadResult.data?.length ?? 0) >= UNREAD_COMMUNICATION_FETCH_LIMIT
+
     return {
       conversations: sorted,
       totalUnread: sorted.reduce((sum, conversation) => sum + conversation.unreadCount, 0),
-      hasMoreUnread: (unreadResult.data?.length ?? 0) >= UNREAD_COMMUNICATION_FETCH_LIMIT,
+      unreadIsCapped,
+      hasMoreUnread: unreadIsCapped,
       unmatchedCount: unmatchedResult.count ?? 0,
     }
   }
 
-  static async getCustomerTimeline(customerId: string) {
+  /**
+   * One page of a customer's timeline, newest first on the wire and oldest
+   * first in the return value.
+   *
+   * This used to `select('*')` with no limit and the inbox reloaded the whole
+   * result every 30 seconds. A long history carries HTML bodies, delivery
+   * history, engagement and context blobs the thread never renders, so the
+   * query got slower and heavier for every message a customer ever sent.
+   *
+   * `before` pages backwards through older messages. `hasOlder` tells the
+   * client whether a "load older" control is worth showing.
+   */
+  static async getCustomerTimeline(
+    customerId: string,
+    options: { limit?: number; before?: string } = {},
+  ) {
     await requireMessagesView()
     const adminClient = createAdminClient()
 
+    const limit = Math.min(
+      Math.max(options.limit ?? TIMELINE_PAGE_SIZE, 1),
+      TIMELINE_MAX_PAGE_SIZE,
+    )
+
+    // Fetch one extra row purely to answer "is there more?" without a count query.
+    let query = (adminClient.from('customer_communications') as any)
+      .select(TIMELINE_COLUMNS)
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(limit + 1)
+
+    if (options.before) {
+      query = query.lt('created_at', options.before)
+    }
+
     const [communicationsResult, customerResult] = await Promise.all([
-      (adminClient.from('customer_communications') as any)
-        .select('*')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: true }),
+      query,
       adminClient
         .from('customers')
         .select('id, first_name, last_name, mobile_number, email, sms_opt_in, whatsapp_opt_in, whatsapp_status')
@@ -419,7 +477,7 @@ export class CommunicationsService {
     if (communicationsResult.error) {
       logger.error('Error loading customer communications', {
         error: toError(communicationsResult.error),
-        metadata: { customerId },
+        metadata: { customerId, limit, before: options.before ?? null },
       })
       throw new Error('Failed to load conversation')
     }
@@ -431,10 +489,128 @@ export class CommunicationsService {
       })
     }
 
+    const rows = (communicationsResult.data ?? []) as any[]
+    const hasOlder = rows.length > limit
+    const page = hasOlder ? rows.slice(0, limit) : rows
+
     return {
       customer: (customerResult.data as CustomerSummary | null) ?? fallbackCustomer(customerId),
-      communications: ((communicationsResult.data ?? []) as any[]).map(rawCommunication),
+      // The thread renders oldest at the top, so undo the descending order the
+      // limit needed.
+      communications: page.map(rawCommunication).reverse(),
+      hasOlder,
     }
+  }
+
+  /**
+   * Conversation search that is not limited to the inbox page.
+   *
+   * The list only holds the most recent 250 communications, so filtering it in
+   * the browser could not find a customer whose last message fell outside that
+   * window. This resolves customers by name, phone or email first, then reads
+   * their latest communication, so an old conversation is still findable.
+   */
+  static async searchConversations(rawQuery: string): Promise<ConversationSummary[]> {
+    await requireMessagesView()
+
+    const query = rawQuery.trim()
+    if (query.length < SEARCH_MIN_LENGTH) return []
+
+    const adminClient = createAdminClient()
+    // PostgREST `or` splits on commas and treats parentheses as grouping, so a
+    // raw query containing either would change the filter's shape.
+    const safe = query.replace(/[,()*\\]/g, ' ').trim()
+    if (!safe) return []
+
+    const { data: customers, error: customerError } = await adminClient
+      .from('customers')
+      .select('id, first_name, last_name, mobile_number, email, sms_opt_in, whatsapp_opt_in, whatsapp_status')
+      .or(
+        [
+          `first_name.ilike.%${safe}%`,
+          `last_name.ilike.%${safe}%`,
+          `mobile_number.ilike.%${safe}%`,
+          `email.ilike.%${safe}%`,
+        ].join(','),
+      )
+      .limit(SEARCH_CUSTOMER_LIMIT)
+
+    if (customerError) {
+      logger.error('Error searching conversation customers', {
+        error: toError(customerError),
+        metadata: { query: safe },
+      })
+      throw new Error('Failed to search conversations')
+    }
+
+    const matches = (customers ?? []) as CustomerSummary[]
+    if (matches.length === 0) return []
+
+    const { data: rows, error: rowsError } = await (adminClient.from('customer_communications') as any)
+      .select(INBOX_COLUMNS)
+      .in('customer_id', matches.map(customer => customer.id))
+      .order('created_at', { ascending: false })
+      .limit(SEARCH_COMMUNICATION_LIMIT)
+
+    if (rowsError) {
+      logger.error('Error loading searched conversations', {
+        error: toError(rowsError),
+        metadata: { query: safe },
+      })
+      throw new Error('Failed to search conversations')
+    }
+
+    const byCustomer = new Map<string, ConversationSummary>()
+    for (const row of ((rows ?? []) as InboxRow[])) {
+      const customer = matches.find(candidate => candidate.id === row.customer_id)
+      if (!customer) continue
+
+      const current = byCustomer.get(customer.id)
+      if (!current) {
+        byCustomer.set(customer.id, {
+          customer,
+          unreadCount: isUnread(row) ? 1 : 0,
+          channels: [row.channel],
+          lastMessage: buildLastMessage(row),
+          lastMessageAt: row.created_at,
+        })
+        continue
+      }
+
+      if (!current.channels.includes(row.channel)) current.channels.push(row.channel)
+      if (isUnread(row)) current.unreadCount += 1
+      if (new Date(row.created_at).getTime() >= new Date(current.lastMessageAt).getTime()) {
+        current.lastMessage = buildLastMessage(row)
+        current.lastMessageAt = row.created_at
+      }
+    }
+
+    // A matching customer who has never been messaged still deserves a row, so
+    // staff can see the search worked and open the profile.
+    for (const customer of matches) {
+      if (byCustomer.has(customer.id)) continue
+      byCustomer.set(customer.id, {
+        customer,
+        unreadCount: 0,
+        channels: [],
+        lastMessage: {
+          id: `empty:${customer.id}`,
+          body: null,
+          subject: null,
+          channel: 'sms',
+          direction: 'outbound',
+          created_at: EMPTY_CONVERSATION_TIMESTAMP,
+          read_at: null,
+          staff_read_at: null,
+          has_attachments: false,
+        },
+        lastMessageAt: EMPTY_CONVERSATION_TIMESTAMP,
+      })
+    }
+
+    return Array.from(byCustomer.values()).sort(
+      (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime(),
+    )
   }
 
   static async markAllRead() {

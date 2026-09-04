@@ -165,6 +165,11 @@ export class MessageService {
       // sent" for a message the customer never received.
       suppressed: result.suppressed === true,
       suppressionReason: result.suppressionReason,
+      // Quiet hours defer the send to a job queue and still return success. The
+      // inbox reported that as "Message sent", so staff believed a customer had
+      // been texted back when nothing would go out until the morning.
+      deferred: result.deferred === true,
+      scheduledFor: result.scheduledFor ?? null,
     };
   }
 
