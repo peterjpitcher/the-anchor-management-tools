@@ -80,6 +80,14 @@
   --spacing-logo-row: 76px;
   --spacing-pad-card: 14px;
 
+  /* Total vertical padding on AppShell's <main>, so a full-height page can size
+     itself as `calc(100dvh - var(--spacing-page-shell-pad-y))` instead of each
+     one copying the number. Below the shell breakpoint <main> already has a
+     definite height (it is flex-1 inside an h-[100dvh] shell), so pages use a
+     plain h-full there and this only matters from 821px up. Keep in step with
+     the `shell:p-[22px_28px_40px]` on <main> in AppShell.tsx: 22 + 40. */
+  --spacing-page-shell-pad-y: 62px;
+
   /* Shell breakpoint. The app chrome swaps between the mobile surfaces (topbar,
      drawer, bottom tabs) and the desktop sidebar here, and it MUST stay in step
      with the "AMS RESPONSIVE MOBILE LAYER" media query further down (max-width:
@@ -1359,5 +1367,36 @@ nav[aria-label="Mobile navigation"],
     transition-duration: 0.01ms;
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
+  }
+}
+
+/* ================================================
+   TOUCH TARGETS ON LARGE TOUCH SCREENS
+
+   The 44px floor further up is keyed on `max-width: 820px`, which covers phones
+   and iPad portrait but not iPad landscape or an 11" iPad in portrait (834px).
+   Those are the screens the floor staff actually hold, and they were getting
+   25px desktop buttons.
+
+   `pointer: coarse` asks the right question (is the primary input a finger?)
+   rather than inferring it from width. Scoped to `[data-touch-targets]` so it
+   lifts the surfaces that opt in, rather than re-flowing every dense desktop
+   table on a touchscreen.
+   ================================================ */
+@media (pointer: coarse) {
+  [data-touch-targets] button:not([role="switch"]),
+  [data-touch-targets] a[role="button"],
+  [data-touch-targets] [role="button"],
+  [data-touch-targets] [role="option"],
+  [data-touch-targets] select,
+  [data-touch-targets] input:not([type="checkbox"]):not([type="radio"]),
+  [data-touch-targets] textarea {
+    min-height: 44px;
+  }
+
+  [data-touch-targets] button:not([role="switch"]),
+  [data-touch-targets] a[role="button"],
+  [data-touch-targets] [role="button"] {
+    min-width: 44px;
   }
 }
