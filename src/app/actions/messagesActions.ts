@@ -13,6 +13,7 @@ export type InboxResponse =
   | {
       conversations: ConversationSummary[]
       totalUnread: number
+      unreadIsCapped: boolean
       hasMoreUnread: boolean
       unmatchedCount: number
     }
@@ -22,7 +23,12 @@ export type ConversationMessagesResponse =
   | {
       customer: ConversationSummary['customer'] | null
       messages: CustomerCommunication[]
+      hasOlder: boolean
     }
+
+export type ConversationSearchResponse =
+  | { error: string }
+  | { conversations: ConversationSummary[] }
 
 export async function getMessages(): Promise<InboxResponse> {
   try {
@@ -41,15 +47,34 @@ async function getUnreadMessageCount() {
   }
 }
 
-export async function getConversationMessages(customerId: string): Promise<ConversationMessagesResponse> {
+export async function getConversationMessages(
+  customerId: string,
+  options: { limit?: number; before?: string } = {},
+): Promise<ConversationMessagesResponse> {
   try {
-    const result = await CommunicationsService.getCustomerTimeline(customerId)
+    const result = await CommunicationsService.getCustomerTimeline(customerId, options)
     return {
       customer: result.customer,
       messages: result.communications,
+      hasOlder: result.hasOlder,
     }
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to load conversation' }
+  }
+}
+
+/**
+ * Search beyond the inbox page.
+ *
+ * The list only holds the most recent 250 communications, so filtering it in the
+ * browser silently could not find an older conversation. This resolves the
+ * customer server-side first, so "does this person exist" has a truthful answer.
+ */
+export async function searchConversations(query: string): Promise<ConversationSearchResponse> {
+  try {
+    return { conversations: await CommunicationsService.searchConversations(query) }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Failed to search conversations' }
   }
 }
 

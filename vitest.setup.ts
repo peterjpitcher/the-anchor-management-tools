@@ -56,3 +56,15 @@ vi.mock('next/font/google', () => {
     JetBrains_Mono: font,
   }
 })
+
+// jsdom has no ResizeObserver, and Headless UI's Menu constructs one as soon as
+// a dropdown opens. Without this, opening any DS Dropdown in a test throws an
+// unhandled ReferenceError that can fail unrelated assertions in the same file.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+}
