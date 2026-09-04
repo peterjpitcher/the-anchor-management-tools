@@ -1,431 +1,115 @@
-# CLAUDE.md — Anchor Management Tools
+# CLAUDE.md, Anchor Management Tools
 
-This file provides project-specific guidance. See the workspace-level `CLAUDE.md` one directory up for shared conventions (stack, TypeScript rules, Supabase patterns, etc.).
+Project-specific guidance only. Workspace-wide standards (TypeScript, Tailwind, Supabase client patterns, git, testing, quality gates, task tracking) live in `/Users/peterpitcher/Cursor/CLAUDE.md` and `/Users/peterpitcher/Cursor/.claude/rules/`; read those first, they are not repeated here. `AGENTS.md` is a symlink to this file so Codex and Cursor read the same rules. Talk to the user in plain, simple British English and keep replies short.
 
-## Quick Profile
+Reference material (route map, public path list, API surface, cron inventory, env var inventory, RBAC lists, dependency inventory, naming conventions, architecture layers) lives in `docs/agent-reference.md`. The wider docs index is `docs/README.md`.
 
-```yaml
-framework: Next.js 15 App Router + React 19
-test_runner: Vitest (config: vitest.config.ts)
-database: Supabase (PostgreSQL + Auth + RLS)
-integrations: Twilio (SMS), Microsoft Graph or Resend (email, switched by EMAIL_PROVIDER), Stripe, PayPal
-styling: Tailwind CSS v4
-hosting: Vercel
-size: ~600 files, large multi-module management system
-```
+## What this is
 
----
+The live staff and admin app for The Anchor (Stanwell Moor) and Orange Jelly at `https://management.orangejelly.co.uk`. Its Supabase database is the sole source of truth for bookings, customers, employees, rota, payroll, invoices, receipts and messaging. Real customers, real SMS, real money: every send, cron and migration touches production. The public website (`/Users/peterpitcher/Cursor/OJ-The-Anchor.pub`) has no database of its own and reads this app's API with an API key.
 
-## Workflow Orchestration
+## Stack: deviations from the workspace default
 
-(Plan-mode default, subagent strategy and the lessons loop are defined in the workspace CLAUDE.md — not repeated here.)
-
-### Verification Before Done
-Never mark a task complete without proving it works. Diff behaviour between main and your changes when relevant. Ask yourself: "Would a staff engineer approve this?" Run tests, check logs, demonstrate correctness.
-
-### Demand Elegance (Balanced)
-For non-trivial changes, pause and ask "is there a more elegant way?" Skip this for simple, obvious fixes — don't over-engineer. Challenge your own work before presenting it.
-
-### Autonomous Bug Fixing
-When given a bug report, just fix it. Don't ask for hand-holding. Check Supabase logs, Vercel deployment logs, and browser console. Point at errors, then resolve them. Zero context switching from the user.
-
----
-
-## Task Management
-
-1. **Plan First**: Write plan to `tasks/todo.md` with checkable items
-2. **Verify Plan**: Check in before starting implementation
-3. **Track Progress**: Mark items complete as you go
-4. **Explain Changes**: High-level summary at each step
-5. **Document Results**: Add review section to `tasks/todo.md`
-6. **Capture Lessons**: Update `tasks/lessons.md` after corrections
-
----
-
-## Core Principles
-
-(See workspace CLAUDE.md. Project-specific addition: **Test Against Reality** — don't assume code is correct because it exists; trace the actual logic.)
-
----
-
-## Domain Rules
-
-- £10 deposit per person for groups of **15 or more**. NOT credit card holds: that was old
-  functionality. The threshold moved from 10 to 15 on 2026-08-09 because a party of ten is an
-  ordinary family Sunday, not a risk worth putting a payment screen in front of. The single
-  source of truth is `src/lib/table-bookings/deposit.ts`, pinned to the SQL side
-  (`resolve_table_booking_deposit`) by the parity test in `create-path-deposit.test.ts`.
-  Do not duplicate the rule anywhere else.
-- Christmas bookings (`booking_type = 'christmas'`) take a deposit at ANY party size, so a
-  party of 6 owes £60. A manager waiver beats both rules.
-- Events hosted by the venue itself are exceptions to deposit rules
-- Contracts must be generated for private bookings
-- Booking amendments, cancellations, and deletions must track payment state correctly
-- All customer-facing language must reflect current policies, not legacy ones
-- Legacy "credit card hold" language anywhere in code or templates is always a bug
-- Deposits are taken by **PayPal**, which records the capture on the booking itself
-  (`paypal_deposit_capture_id`, `deposit_amount_locked`) and writes NO `payments` row. Stripe
-  deposits are historical only; the last one was 2026-03-14. Any code deciding "was a deposit
-  paid" must read the booking, not the `payments` ledger.
-
-## Receipt Operations
-
-Before any `/receipts` work, read these files:
-
-- `/Users/peterpitcher/Documents/Codex/2026-08-18/i-w/outputs/receipt-runbook.md`
-- `/Users/peterpitcher/Documents/Codex/2026-08-18/i-w/outputs/vendor-login-index.md`
-
-Update both after every receipt run with confirmed URLs, account labels, MFA requirements, matching rules and blockers. Never store passwords, password fragments, recovery answers or one-time codes; keep credentials in Chrome Password Manager.
-
-During every receipt run, also review and update the runbook's VAT recovery watchlist. Compare each vendor with its past VAT treatment and record any unusual missing VAT, rate change, refund, credit note or overseas reverse-charge issue.
-
----
-
-## Prompting Conventions
-
-- **Challenge as reviewer**: "Grill me on these changes and don't make a PR until I pass your test."
-- **Demand proof**: "Prove to me this works" — diff behaviour between main and feature branch.
-- **Force elegance**: "Knowing everything you know now, scrap this and implement the elegant solution."
-- **Section review**: "Do a full review of the /[section-name] section" triggers the fix-function skill.
-- **Autonomous mode**: Point at logs, Slack threads, or failing CI and just say "fix."
-
----
+- Next.js 15 App Router, React 19, TypeScript strict, Tailwind CSS v4 (CSS-first `@theme` in `src/app/globals.css`, no `tailwind.config`), Supabase, Vercel.
+- **Vitest**, not Jest (`vitest.config.ts`, jsdom, `TZ` pinned to `Europe/London`). Tests live mostly in the root `tests/` tree, which mirrors `src/`, plus some co-located `__tests__/` folders and `*.test.ts` files.
+- Node 20 LTS (`.nvmrc`); `engines` is `>=20 <23`. Run `nvm use` first.
+- UI comes from the design-system barrel `@/ds` (`src/ds/`: primitives, composites, shell, icons, tokens, and `compat/` wrappers for legacy components). Navigation is `NAV_GROUPS` in `src/ds/shell/SidebarNav.tsx`.
+- Toasts are `react-hot-toast`, not Sonner. Validation is Zod. There is no React Hook Form.
+- No `fromDb<T>()` helper: map `snake_case` to `camelCase` by hand in each query transform.
+- ESLint flat config: `no-console` is an error (`warn` and `error` allowed); `no-unused-vars`, `no-explicit-any` and `exhaustive-deps` are off, which is not licence to use `any`. `npm run lint` runs with `--max-warnings=0`.
+- OpenAI and PayPal are called over plain `fetch` (`src/lib/openai.ts`, `src/lib/paypal.ts`); there is no OpenAI SDK in `package.json`.
 
 ## Commands
 
 ```bash
-npm run dev      # Start development server
-npm run build    # Production build
-npm run lint     # ESLint (zero warnings enforced)
-npm test         # Run Vitest tests
-npx supabase db push   # Apply pending migrations
+npm run dev             # local server on :3000
+npm run lint            # eslint src --max-warnings=0
+npx tsc --noEmit        # there is no typecheck script
+npm test                # vitest run (coverage floors: lines 42, branches 34, functions 52)
+npm run test:coverage
+npm run knip            # unused files and exports
+npm run build
+npx supabase db push    # read Database and migrations below first
+npx tsx scripts/security/assert-anon-surface.ts   # after any migration adding a table, view or SECURITY DEFINER routine
 ```
 
-**Node version:** Use Node 20 LTS (as pinned in `.nvmrc`). Run `nvm use` before development. The `engines` field in `package.json` enforces `>=20 <23`.
+Operational scripts in `scripts/` are dry-run by default; a mutation only happens when the matching `RUN_<NAME>_MUTATION=true` flag is set (helpers in `src/lib/script-mutation-safety.ts` and the `src/lib/*-safety.ts` files). Keep that pattern for any new script.
 
-## Architecture
+## Architecture in brief
 
-**Additional integrations**: Twilio (SMS), Microsoft Graph/Resend (email), Stripe, PayPal.
+- `src/app/(authenticated)/` holds the staff pages; the layout calls `supabase.auth.getUser()` and `src/middleware.ts` guards everything outside its `PUBLIC_PATH_PREFIXES` list. Other groups: `(staff-portal)/portal`, `(timeclock)` (public kiosk), `(employee-onboarding)`, `(event-kiosk)`, `(feedback)`, `(dev)/guest-preview`.
+- `src/app/actions/`: one `'use server'` file per domain. Validate with Zod, `checkUserPermission()`, call services, `logAuditEvent()` (`src/app/actions/audit.ts`), `revalidatePath()`. Return `{ success?, error?, data? }`; permission failures throw `Insufficient permissions` or `Unauthorized`, validation failures return `{ error }`.
+- `src/services/`: class-based domain services. `src/lib/`: cross-cutting utilities and integration wrappers (`sms/`, `email/`, `payments/`, `table-bookings/`, `private-bookings/`, `invoices/`, `rota/`, `google-calendar*.ts`, `openai*`).
+- `src/app/api/`: webhooks (`webhooks/paypal/*`, `webhooks/twilio`, `webhooks/resend`, `stripe/webhook`), crons (`cron/*`, `jobs/process`), the API the website consumes (`external/*`, `table-bookings`, `event-bookings`, `business-hours`, `menu` and others) and the endpoints behind the public token-gated pages.
+- Supabase clients: `src/lib/supabase/server.ts` `createClient()` (cookie session, respects RLS) and `src/lib/supabase/admin.ts` `createAdminClient()` (service role). The admin client belongs in server actions, route handlers, crons and services only. The ESLint `no-restricted-imports` guard still names `@/lib/supabase-singleton`, a module that no longer exists, so nothing enforces this today; police it by hand.
+- Permissions: `checkUserPermission(module, action, userId?)` in `src/app/actions/rbac.ts`. Module and action names are typed in `src/types/rbac.ts`; roles (`super_admin`, `manager`, `staff`) are database rows. `PermissionContext` (`src/contexts/`) seeds client components; hiding a control in the UI never replaces the server-side check.
+- Dates: `src/lib/dateUtils.ts` (London hardcoded). Phones: `formatPhoneForStorage()` and `generatePhoneVariants()` in `src/lib/utils.ts`, delegating to `src/lib/phone/`.
 
-**Route groups**:
-- `(authenticated)/` — all staff-facing pages, auth enforced at layout level
-- `(staff-portal)/portal/` — employee-only views (shifts, pay)
-- `(timeclock)/timeclock/` — public kiosk access (no auth)
-- `(employee-onboarding)/` — onboarding flows
-- `api/cron/` — Vercel cron endpoints (require `Authorization: Bearer CRON_SECRET`)
-- `api/webhooks/` — Twilio, Stripe, PayPal webhooks
+## Domain rules
 
-**Auth**: Supabase Auth with JWT + HTTP-only cookies. `src/middleware.ts` is active and protects non-public routes; auth is also enforced in `(authenticated)/layout.tsx` via `supabase.auth.getUser()`. Public path prefixes: `/timeclock`, `/parking/guest`, `/table-booking`, `/g/`, `/m/`, `/r/`.
+- **Group deposit: £10 per person for parties of 15 or more**, any day, any booking type. It is a PayPal deposit, NOT a credit card hold; holds were old functionality and any "credit card hold" language in code or templates is a bug. The threshold moved from 10 to 15 on 2026-08-09 because a party of ten is an ordinary family Sunday, not a risk worth putting a payment screen in front of. Single source of truth: `src/lib/table-bookings/deposit.ts`, pinned to the SQL function `resolve_table_booking_deposit` by the parity test `create-path-deposit.test.ts`. Do not duplicate the rule anywhere else.
+- **Christmas bookings** (`booking_type = 'christmas'`) take a deposit at ANY party size, so a party of 6 owes £60. A manager waiver (`deposit_waived`) beats both rules.
+- Events hosted by the venue itself are exceptions to deposit rules (their `deposit_amount` may be NULL).
+- **Deposits are captured by PayPal and recorded on the booking itself** (`paypal_deposit_capture_id`, `deposit_amount_locked`); no `payments` row is written. Code deciding "was a deposit paid" must read the booking, not the `payments` ledger. Stripe deposits are historical only (the last was 2026-03-14); the Stripe webhook and refund paths stay for old records. Build nothing new on Stripe.
+- Contracts must be generated for private bookings. Booking amendments, cancellations and deletions must track payment state correctly.
+- Customer-facing language must reflect current policies, not legacy ones. Brand and operational facts (hours, menu, prices, banned claims) are owned by the website repo's `docs/SSOT.md`; check it before writing customer copy or templates.
 
-## Supabase Clients
+## Integrations and external services
 
-- **`src/lib/supabase/server.ts`** — cookie-based auth, use in server actions and API routes
-- **`src/lib/supabase/admin.ts`** — service role key, bypasses RLS; use for system/cron operations
-- ESLint rule prevents importing the admin singleton in client components
+| Service | Used for | Where |
+|---|---|---|
+| Twilio | SMS and WhatsApp; inbound webhook with signature validation | `src/lib/twilio.ts`, `src/lib/sms/`, `api/webhooks/twilio` |
+| Microsoft Graph | Email for Orange Jelly invoices and quotes; fallback email provider | `src/lib/microsoft-graph.ts` |
+| Resend | Venue email and all B2B marketing email; delivery webhook | `src/lib/email/`, `api/webhooks/resend` |
+| PayPal | Every live payment: table-booking deposits, event bookings, private bookings, parking, invoices | `src/lib/paypal.ts`; one webhook route and `PAYPAL_*_WEBHOOK_ID` per surface under `api/webhooks/paypal/*`; four reconciliation crons |
+| Stripe | Historical only (see Domain rules) | `src/lib/payments/stripe.ts`, `api/stripe/webhook` |
+| Google Calendar | Shared "Pub Ops" calendar: private bookings, birthdays, events, notes, recruitment slots | `src/lib/google-calendar*.ts` |
+| Google Routes API | Mileage distance backfill script only | `npm run mileage:distances:routes` |
+| OpenAI | Receipt parsing, recruitment sweep, event SEO and content, menu parsing | `src/lib/openai*`; per-feature `OPENAI_*_MODEL` vars |
+| Cloudflare Turnstile | Bot check on public booking, enquiry, feedback and recruitment endpoints | `src/lib/turnstile.ts` |
+| Upstash Redis | Distributed rate limiting for public endpoints; without it limits are per-instance memory | `src/lib/distributed-rate-limit.ts` |
+| GitHub | In-app bug reporter raises issues | `src/lib/bug-reporter` |
 
-## New database objects and anon access
+Email transport: `EMAIL_PROVIDER` (`graph` or `resend`) wins; if unset, Resend is used when both `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` are set, otherwise Graph. Marketing never falls back to Graph (it needs idempotency keys and delivery webhooks). `sendEmail(options)` in `src/lib/email/emailService.ts` takes one options object.
 
-Since migration `20260828120356`, new objects in `public` no longer inherit
-access for the `anon` role (the public browser key). Two consequences:
+SMS safety (`src/lib/sms/`): idempotency claims, global and per-recipient hourly and daily limits, quiet hours 21:00 to 09:00 London, and the kill switches `SUSPEND_ALL_SMS`, `SUSPEND_EVENT_SMS`, `SUSPEND_ALL_COMMS`. Never bypass these to get a message out. Treat every local run as production-capable: those flags are the only guard between a script and a customer's phone.
 
-- **A new table or view that the public website must read needs its own
-  `GRANT SELECT ... TO anon`** in the same migration. It will otherwise fail
-  closed with a 401. The twelve tables the site reads are listed in
-  `public.v_anon_surface_report`.
-- **A `CREATE OR REPLACE` of an anon-callable RPC must re-issue its
-  `GRANT EXECUTE ... TO anon`** in the same migration.
+## Scheduled jobs
 
-An event trigger strips the built-in `PUBLIC` EXECUTE grant from any new or
-newly-`SECURITY DEFINER` routine in `public`, because `ALTER DEFAULT PRIVILEGES`
-cannot. A deliberate grant issued after the `CREATE` still wins.
+`vercel.json` is the source of truth for crons; do not trust any list in docs. Counts drift (54 schedules against 56 route folders on 2026-09-04, three folders unscheduled; details in `docs/agent-reference.md`). Every cron route authenticates through `src/lib/cron-auth.ts` (`Authorization: Bearer CRON_SECRET`; `CRON_SECRET` is mandatory in production). Deferred work goes through the job queue (`src/lib/background-jobs.ts`, drained by `/api/jobs/process`). Writes made by webhooks and crons are attributed to `SYSTEM_USER_ID` (nil UUID by default). Cron failures email `CRON_ALERT_EMAIL` when it is set.
 
-After any migration that adds a table, a view or a SECURITY DEFINER routine:
+## Environment variables
 
-```bash
-npx tsx scripts/security/assert-anon-surface.ts
-```
+`.env.example` documents 98 names, grouped and commented; read it before adding anything. Required at boot (`src/lib/env.ts`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`. Everything else is optional at boot but required for its feature. About 50 further names are read in code but missing from `.env.example` (token secrets, WhatsApp, per-feature OpenAI models, script limits); the list is in `docs/agent-reference.md`. Token secrets fall back to other secrets when unset (`PRIVATE_BOOKING_TOKEN_SECRET` to `CRON_SECRET`; `CALENDAR_TOKEN_SECRET` and `OPEN_SHIFT_REQUEST_TOKEN_SECRET` to the service role key), so rotating those invalidates issued tokens.
 
-It is read-only, exits non-zero on a regression, and checks both directions:
-nothing newly exposed, and the website's own access intact.
+## Security rules
 
-## Permissions (RBAC)
+- **Anon access fails closed.** Since migration `20260828120356`, new objects in `public` no longer inherit access for the `anon` role (the public browser key). A new table or view the website must read needs its own `GRANT SELECT ... TO anon` in the same migration, otherwise it fails with a 401. A `CREATE OR REPLACE` of an anon-callable RPC must re-issue its `GRANT EXECUTE ... TO anon` in the same migration. An event trigger strips the built-in `PUBLIC` EXECUTE grant from any new or newly `SECURITY DEFINER` routine in `public` (because `ALTER DEFAULT PRIVILEGES` cannot); a deliberate grant issued after the `CREATE` still wins. The twelve tables the site reads are listed in `public.v_anon_surface_report`. After any migration that adds a table, a view or a SECURITY DEFINER routine, run `npx tsx scripts/security/assert-anon-surface.ts`: read-only, non-zero on regression, and it checks both directions (nothing newly exposed, the website's own access intact).
+- `/api` is public at the middleware level, so every route handler does its own auth: session, API key (`src/lib/api/auth.ts`, hashed keys in `api_keys` with per-key rate limits), cron bearer, webhook signature, or a signed token. Public endpoints must write with the admin client: the private-booking enquiry endpoint went dead when a route kept using the session client after anon EXECUTE was revoked (commits `80257c0f`, `df47a5ca`).
+- Public pages are the `PUBLIC_PATH_PREFIXES` list in `src/middleware.ts` (`/table-booking`, `/parking/guest`, `/timeclock`, `/invoice-portal`, `/recruitment/book`, `/g`, `/r`, `/m`, `/legacy-link` and others). Scope a new public page to its own prefix so the staff pages beside it stay protected.
+- Turnstile verification is skipped when `TURNSTILE_SECRET_KEY` is unset (dev and test), so production must always have it. Our own outages must never be reported to the customer as a failed bot check (commit `78553a9d`).
+- The CSP in `next.config.mjs` allows only PayPal and Supabase as third parties; a new external script or connection needs a CSP change or it is blocked silently.
 
-```typescript
-await checkUserPermission('module', 'action', userId)
-```
+## Database and migrations
 
-Modules: `calendar`, `customers`, `employees`, `events`, `invoices`, `messages`, `parking`, `private-bookings`, `receipts`, `rota`, `leave`, `timeclock`, `payroll`, `settings`, `roles`, etc.
-Actions: `view`, `create`, `edit`, `delete`, `publish`, `request`, `clock`, `manage`.
-Roles: `super_admin`, `manager`, `staff`. Defined in `src/types/rbac.ts`.
+- `supabase/migrations/` holds 661 files: the squashed baseline `20251123120000_squashed.sql`, `*_remote_placeholder.sql` files mirroring production's `schema_migrations` history (keep them), and real migrations after that. A new migration needs a timestamp newer than the latest applied one (`supabase/migrations/README.md`). Pre-squash SQL is in `supabase/migrations-archive/`.
+- Anything destined for production goes through the `prod-migrate` skill; drafting and reviewing are separate from applying, and applying needs the owner's explicit go-ahead every time.
+- Query the live schema and check dependent views before touching a table (workspace rule); views freeze their column lists.
 
-## Key Libraries & Utilities
+## Known gotchas (each has bitten us)
 
-- **`src/lib/dateUtils.ts`** — `getTodayIsoDate()`, `toLocalIsoDate()`, `formatDateInLondon()` etc. London timezone hardcoded.
-- **`src/lib/email/emailService.ts`** — `sendEmail(to, subject, html, cc?, attachments?)`; dual transport (Microsoft Graph or Resend) switched by `EMAIL_PROVIDER` (falls back to Resend when `RESEND_API_KEY` is set)
-- **`src/lib/sms/`** — Twilio wrapper with safety guards (hourly/daily rate limits, idempotency)
-- **`src/services/`** — business logic services (CustomerService, EmployeeService, PermissionService, etc.)
+- **Dead duplicate `*Client.tsx` files.** Several sections have a stale copy. Before fixing or testing a component, confirm which file the route's `page.tsx` actually imports; fixes and tests have repeatedly landed on the dead copy.
+- **Reading the `payments` ledger for deposits** misses every PayPal deposit (see Domain rules).
+- **Production webpack cache is disabled** in `next.config.mjs` because builds intermittently emitted server chunks with stale paths. Do not re-enable it for speed.
+- **Assets read from `public/` at runtime** need an `outputFileTracingIncludes` entry in `next.config.mjs` (the recruitment PDFs do this for the logo) or the serverless bundle ships without them.
+- **Vitest runs in `Europe/London`.** Assertions built from host-local dates pass in London and fail elsewhere; build them with `dateUtils`.
+- **`tasks/lessons.md`** holds the rest (verify the day of the week before any customer message, serialise provider errors field by field, keep audit-log writers aligned with `audit_logs`, grep `tests/` too when deleting a module). Read it at session start.
+- **Test against reality.** Do not assume code is correct because it exists; trace the actual logic, and check Supabase logs, Vercel deployment logs and the browser console before diagnosing.
 
-## UI Components
+## Receipt operations
 
-All UI components are imported from the unified design system barrel at `@/ds` (source: `src/ds/`). This includes primitives (Button, Input, Modal, etc.), composites (Card, Section, Tabs), shell components (Sidebar, Topbar, AppShell), and a compatibility layer (`src/ds/compat/`) for legacy wrapper components. Navigation defined in `src/ds/shell/SidebarNav.tsx` (`NAV_GROUPS`), consumed by `AppShell`, `Sidebar` and `MobileChrome`.
+Before any `/receipts` work, read `/Users/peterpitcher/Documents/Codex/2026-08-18/i-w/outputs/receipt-runbook.md` and `/Users/peterpitcher/Documents/Codex/2026-08-18/i-w/outputs/vendor-login-index.md`. Update both after every receipt run with confirmed URLs, usernames and account labels, MFA requirements, matching rules and blockers. Never store passwords, password fragments, recovery answers or one-time codes; keep credentials in Chrome Password Manager. During every run, also review and update the runbook's VAT recovery watchlist: compare each vendor with its past VAT treatment and record any unusual missing VAT, rate change, refund, credit note or overseas reverse-charge issue.
 
-## Data Conventions
+## Domains
 
-- Server actions body size limit: 20 MB (for file uploads)
-- Dashboard data cached via `loadDashboardSnapshot()` in `src/app/(authenticated)/dashboard/`
-- Date/holiday pre-computation: `buildConfirmedUKDates()` in calendar-notes actions
-
-### Before editing any *Client.tsx or page component
-Several sections have a dead duplicate `*Client.tsx`. Before fixing or testing a component, confirm which file the route's `page.tsx` actually imports — fixes and tests repeatedly land on the dead copy.
-
-## Scheduled Jobs
-
-38 crons are defined in `vercel.json` (41 route dirs under `src/app/api/cron/`). **`vercel.json` is the source of truth** — do not rely on any list in docs. All cron routes require `Authorization: Bearer CRON_SECRET`.
-
-## Key Environment Variables
-
-```
-NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
-NEXT_PUBLIC_APP_URL
-TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER
-MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET / MICROSOFT_TENANT_ID / MICROSOFT_USER_EMAIL
-PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET / PAYPAL_WEBHOOK_ID / PAYPAL_ENVIRONMENT
-STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET
-OPENAI_API_KEY
-CRON_SECRET
-PAYROLL_ACCOUNTANT_EMAIL
-```
-
-See `.env.example` for the full list.
-
-<!-- GSD:project-start source:PROJECT.md -->
-## Project
-
-**AMS UI Redesign**
-
-A comprehensive UI redesign and feature expansion of The Anchor Management Tools (AMS), implementing pixel-perfect designs from a Claude Design handoff bundle. The redesign covers a new design system, collapsible sidebar navigation, topbar, 20+ redesigned existing screens, 6+ new full-stack sections (Events, Performers, Cashing Up, OJ Projects, Short Links, Design System), and an FOH-only chromeless mode. The target is a production Next.js 15 App Router + React 19 + Tailwind CSS v4 + Supabase application.
-
-**Core Value:** Every staff member at The Anchor sees a consistent, modern, professional management interface that matches the design handoff pixel-perfectly — with a collapsible sidebar, unified component library, and seamless navigation across all 34 screens.
-
-### Constraints
-
-- **Max phases**: 4 — user requirement
-- **Tech stack**: Next.js 15 App Router, React 19, Tailwind CSS v4, Supabase — no changes
-- **Backwards compatible**: App is in production; each phase must be independently deployable without breaking existing functionality
-- **No auth changes**: Existing Supabase Auth + RBAC system stays as-is
-- **Existing patterns**: Server actions, manual snake_case→camelCase field mapping (this project has no `fromDb<T>()` helper), audit logging — all preserved
-- **Node version**: 20 LTS as pinned in `.nvmrc`
-<!-- GSD:project-end -->
-
-<!-- GSD:stack-start source:codebase/STACK.md -->
-## Technology Stack
-
-## Languages
-- TypeScript 5.8 — all source files under `src/`; strict mode enabled
-- SQL — Supabase migrations in `supabase/migrations/`
-## Runtime
-- Node.js >=20 <23 (pinned to Node 20 LTS via `.nvmrc`)
-- npm (implicit — no lock file override)
-- Lockfile: `package-lock.json` present
-## Frameworks
-- Next.js ^15.5.14 — App Router, React Server Components, API routes, cron handlers
-- React ^19.1.0 — UI layer (Server and Client Components)
-- Vitest ^4.0.17 — test runner (config: `vitest.config.ts`)
-- @testing-library/react ^16.0.1 — component testing
-- @testing-library/user-event ^14.5.2 — user interaction simulation
-- jsdom ^25.0.0 — DOM environment for Vitest
-- TypeScript ^5.8.3 — type checking (`npx tsc --noEmit`)
-- ESLint ^9.39.2 — linting (`eslint.config.js`); zero warnings enforced
-- PostCSS `postcss.config.mjs` — Tailwind processing
-- tsx ^4.21.0 — for running utility scripts directly (e.g., `scripts/`)
-- patch-package ^8.0.1 — postinstall patches to `node_modules`
-## Key Dependencies
-- Tailwind CSS ^4.3.0 — CSS-first config via `@theme` in `src/app/globals.css` (no tailwind.config file); processed by `@tailwindcss/postcss`. Plus tailwindcss-animate ^1.0.7
-- tailwind-merge ^3.3.1 — merging class names without conflicts
-- lucide-react ^0.522.0 — icon library
-- @heroicons/react ^2.2.0 — additional icons
-- @headlessui/react ^2.2.4 — accessible headless UI primitives
-- react-hook-form ^7.66.1 + @hookform/resolvers ^5.2.2 — form management
-- zod ^3.25.56 — schema validation
-- react-hot-toast ^2.5.2 — toast notifications
-- @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities — drag-and-drop (rota, menu)
-- clsx ^2.1.1 — conditional class name utility
-- @supabase/supabase-js ^2.55.0 — Supabase client (all DB operations)
-- @supabase/ssr ^0.10.0 — cookie-based auth for Next.js SSR
-- pdfkit ^0.18.0 — server-side PDF generation (invoices, contracts, payroll)
-- pdf-lib ^1.17.1 — PDF manipulation
-- pdf2json ^4.0.0 — PDF parsing
-- pdfjs-dist ^5.4.530 — PDF rendering (browser)
-- puppeteer ^24.12.1 + @sparticuz/chromium ^143.0.4 — headless browser PDF (quotes, invoices)
-- @napi-rs/canvas ^0.1.88 — server-side canvas rendering
-- sharp ^0.34.5 — image processing/compression
-- exceljs ^4.4.0 — Excel export
-- archiver ^7.0.1 — ZIP archive creation
-- jszip ^3.10.1 — ZIP handling on client/server
-- papaparse ^5.5.3 — CSV parsing
-- mammoth ^1.11.0 — DOCX to HTML conversion
-- twilio ^5.10.6 — SMS sending and webhook validation
-- openai ^6.15.0 — OpenAI API client (receipt classification)
-- @microsoft/microsoft-graph-client ^3.0.7 — Microsoft Graph (email via Outlook)
-- @azure/identity ^4.10.2 — Azure AD credential for Graph auth
-- googleapis ^171.4.0 — Google Calendar API
-- @paypal/react-paypal-js ^9.0.1 — PayPal JS SDK (client-side payment buttons)
-- @vercel/functions ^3.4.3 — Vercel serverless function utilities
-- date-fns ^4.1.0 + date-fns-tz ^3.2.0 — date manipulation (London timezone)
-- libphonenumber-js ^1.12.37 — phone number normalisation to E.164
-- qrcode ^1.5.4 — QR code generation (server + client)
-- franc ^6.2.0 — language detection
-- @zxing/browser + @zxing/library — barcode/QR scanning (timeclock kiosk)
-## Configuration
-- Configured via `.env.local` (local) and Vercel environment variables (production)
-- `.env.example` documents all required and optional vars
-- Path alias: `@/*` → `./src/*` (tsconfig.json)
-- `next.config.mjs` — Next.js configuration
-- `postcss.config.mjs` — PostCSS/Tailwind pipeline
-- Tailwind v4 theme tokens live in `src/app/globals.css` under `@theme`
-- `vitest.config.ts` — test runner configuration
-- `eslint.config.js` — ESLint flat config
-## Platform Requirements
-- Node 20 LTS (`.nvmrc` pins to `20`); run `nvm use` before development
-- Supabase CLI (`supabase` devDependency ^2.58.5) for migrations
-- Vercel (hosting + serverless functions + cron jobs)
-- Supabase (PostgreSQL + Auth + RLS + Storage)
-- Custom domains: `the-anchor.pub`, `vip-club.uk` (short links), `l.the-anchor.pub`
-<!-- GSD:stack-end -->
-
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
-## Conventions
-
-## Naming Patterns
-- React page files: `page.tsx` (Next.js App Router convention)
-- React component files: `PascalCase.tsx` (e.g., `MileageClient.tsx`, `DishExpandedRow.tsx`)
-- Server action files: `camelCase.ts` (e.g., `mileage.ts`, `quotes.ts`, `employeeDetails.ts`)
-- Test files: co-located with source in `__tests__/` subdirectory (e.g., `src/lib/__tests__/dateUtils.test.ts`) or co-located directly (e.g., `src/services/private-bookings.test.ts`)
-- Library/utility files: `camelCase.ts` (e.g., `hmrcRates.ts`, `dateUtils.ts`, `audit-helpers.ts`)
-- Exported server actions: `camelCase` async functions (e.g., `getDestinations`, `createTrip`, `deleteTrip`)
-- Internal helpers: `camelCase` (e.g., `requireMileagePermission`, `revalidateMileagePaths`, `validateManualTripLegs`)
-- Constants: `SCREAMING_SNAKE_CASE` (e.g., `STANDARD_RATE`, `REDUCED_RATE`, `THRESHOLD_MILES`)
-- All TypeScript variables: `camelCase`
-- Zod schema objects: `camelCase` with `Schema` suffix (e.g., `destinationSchema`, `tripLegSchema`, `createTripSchema`)
-- Interfaces: `PascalCase` with named exports (e.g., `MileageDestination`, `MileageTrip`, `MileageTripLeg`)
-- Type aliases: `PascalCase` (e.g., `MileageGranularity`, `GenericClient`)
-- Exported from action files alongside the functions they relate to
-- DB columns: `snake_case` (as stored in Supabase)
-- TypeScript representations: `camelCase` with manual mapping in query results
-- No `fromDb<T>()` generic helper used in this project — manual field-by-field mapping in query result transforms
-## Code Style
-- No Prettier config detected — formatting enforced via ESLint
-- Single quotes for strings
-- No semicolons at end of statements in most files (some legacy files use semicolons)
-- Two-space indentation
-- ESLint v9 flat config (`eslint.config.js`)
-- Extends `next/core-web-vitals` + `next/typescript`
-- `no-console` is an error — `console.warn` and `console.error` are the only permitted console calls
-- `@typescript-eslint/no-unused-vars`: off (not enforced)
-- `@typescript-eslint/no-explicit-any`: off (not enforced, but should still be avoided)
-- `react-hooks/exhaustive-deps`: off
-- `@next/next/no-img-element`: off
-- ESLint rule prevents importing `@/lib/supabase-singleton` in any `src/components/**` file — admin client must only be used in server actions and route handlers
-- Zero warnings enforced via `--max-warnings=0` in `npm run lint`
-## Import Organization
-- `@/` maps to `src/` (configured in `vitest.config.ts` and `tsconfig.json`)
-## Error Handling
-- Permission failures: throw `new Error('Insufficient permissions')` or `new Error('Unauthorized')` inside permission helper
-- Validation failures: return `{ error: parsed.error.issues[0]?.message }` immediately (no throw)
-- DB errors: `if (dbError) throw dbError` — caught by outer try/catch
-- Catch block always extracts message: `error instanceof Error ? error.message : 'Fallback message'`
-- Service layer (non-action) functions may throw directly (caller handles)
-## Component Design
-- Default to server components for page-level data fetching
-- `'use client'` added for interactivity, hooks, and browser APIs
-- Data passed from server parents as props to client children
-- All UI components import from `@/ds` (unified design system barrel at `src/ds/`)
-- Design tokens defined in `src/ds/tokens.ts` — primary green `#16a34a`, neutral grays
-- Compat layer at `src/ds/compat/` for legacy wrapper components (FormGroup, EmptyState, TabNav, etc.)
-- Tailwind classes only — no inline hex colors in components
-- Never use dynamic Tailwind class construction (e.g., no `bg-${color}-500`)
-## Module Design
-- Named exports everywhere (no default exports from utility/service files)
-- Default exports used only for Next.js page/layout components
-- `src/ds/index.ts` is the single export point for the UI library (re-exports primitives, composites, shell, compat)
-- Service and action files do not use barrel exports — import directly from specific files
-## Date Handling
-- Always use `src/lib/dateUtils.ts` utilities for user-facing dates
-- Key functions: `getTodayIsoDate()`, `toLocalIsoDate()`, `formatDateInLondon()`, `formatTime12Hour()`
-- London timezone hardcoded (`Europe/London`) throughout
-- Never use raw `new Date()` or `.toISOString()` for display
-## Phone Numbers
-- Normalise to E.164 format via `formatPhoneForStorage()` from `src/lib/utils.ts` (delegates to `src/lib/phone/`)
-- `generatePhoneVariants()` used for search matching across formats
-<!-- GSD:conventions-end -->
-
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
-## Architecture
-
-## Pattern Overview
-- Server Components as default; `'use client'` only for interactivity, forms, and browser APIs
-- All mutations go through `'use server'` actions in `src/app/actions/`; direct DB access from pages is server-only and read-focused
-- Business logic lives in `src/services/` (domain services) and `src/lib/` (cross-cutting utilities), not in route handlers or components
-- Auth enforced by middleware and authenticated layout; RBAC enforced server-side in every action
-- Comprehensive audit logging via `logAuditEvent()` on every mutation
-## Layers
-- Purpose: Render UI, handle user events, call server actions
-- Location: `src/app/(authenticated)/**/*.tsx`, `src/components/`
-- Contains: Server Components (pages, layouts), Client Components (`*Client.tsx`), modal components
-- Depends on: Server actions, context, hooks
-- Used by: End users (browser)
-- Purpose: Handle all mutations, enforce auth/RBAC, coordinate business logic, revalidate cache
-- Location: `src/app/actions/` (~60+ action files, one per domain)
-- Contains: `'use server'` functions that validate input, check permissions, call services, log audit events, and call `revalidatePath()`
-- Depends on: Services layer, lib utilities, Supabase clients
-- Used by: Client components (via Next.js Server Actions RPC)
-- Purpose: Domain business logic, data access encapsulation, complex queries
-- Location: `src/services/` (flat files: `customers.ts`, `employees.ts`, `private-bookings.ts`, `parking.ts`, etc.)
-- Contains: Class-based services (e.g. `CustomerService`, `PrivateBookingService`) with methods that query Supabase directly
-- Depends on: Supabase clients, lib utilities, type definitions
-- Used by: Server actions, cron routes, API routes
-- Purpose: Cross-cutting utilities and integration wrappers
-- Location: `src/lib/` (large flat directory + domain sub-folders)
-- Contains: Supabase clients, email service, SMS service, PDF generator, date utilities, validation schemas, payments, OpenAI wrappers, rate limiting
-- Depends on: External SDKs (Twilio, Microsoft Graph, Stripe, PayPal, OpenAI)
-- Used by: Services, server actions, API routes, cron jobs
-- Purpose: Webhooks, public-facing APIs, cron triggers
-- Location: `src/app/api/`
-- Contains: Webhook handlers (`/webhooks/paypal`, `/webhooks/twilio`), cron jobs (`/cron/*` — 35+ scheduled jobs), public/external endpoints
-- Depends on: Services, lib utilities
-- Used by: External services (Twilio, PayPal webhooks), Vercel Cron scheduler
-- Purpose: Shared TypeScript interfaces
-- Location: `src/types/` (flat files: `database.ts`, `database.generated.ts`, `rbac.ts`, `customers.ts`, etc.)
-- Contains: DB row types, domain model types, RBAC types, generated Supabase types
-- Depends on: Nothing (pure types)
-- Used by: All other layers
-## Data Flow
-- Server state via Supabase + Next.js cache (`unstable_cache`, `revalidatePath`, `revalidateTag`)
-- Client state via React Context: `PermissionContext` (`src/contexts/PermissionContext.tsx`) provides RBAC data to all client components without prop drilling
-- Form state via React Hook Form (where configured)
-- No Redux, Zustand, or global client state stores
-## Key Abstractions
-- Purpose: Expose pre-loaded RBAC permissions to all client components without repeated server round-trips
-- Location: `src/contexts/PermissionContext.tsx`
-- Pattern: Seeded at layout level with `initialPermissions` from server, consumed by client components to show/hide UI elements
-- Purpose: Consistent mutation response shape
-- Pattern: `Promise<{ success?: boolean; error?: string; data?: T }>` across all action files
-- Purpose: Cookie-based client for user-scoped operations (respects RLS); admin/service-role client for system operations
-- Location: `src/lib/supabase/server.ts` (anon+cookie), `src/lib/supabase/admin.ts` (service role)
-- Purpose: Encapsulate complex multi-step business operations, reusable across server actions and API routes
-- Examples: `src/services/customers.ts` (CustomerService), `src/services/private-bookings.ts` (PrivateBookingService), `src/services/employees.ts` (EmployeeService)
-- Pattern: Class with static or instance methods; direct Supabase queries; no HTTP calls
-- Purpose: Complex domain logic that doesn't fit services (calculations, templates, external calls)
-- Examples: `src/lib/rota/`, `src/lib/mileage/`, `src/lib/private-bookings/`, `src/lib/invoices/`, `src/lib/menu/`
-- Pattern: Flat function exports or small focused files
-## Entry Points
-(See the Route groups list under Architecture above — same information. Root `src/app/layout.tsx` holds global providers, PWA manifest, SEO robot blocking, service-worker registration.)
-## Error Handling
-- Server actions return `{ error: string }` for expected failures (validation, permission denied, not found)
-- Server actions throw for unexpected failures (let Next.js error boundary catch)
-- `src/lib/errors.ts` contains typed error helpers
-- `src/lib/dbErrorHandler.ts` normalises Supabase DB errors
-- `src/lib/retry.ts` wraps flaky external calls (SMS, email) with retry logic
-- `src/lib/supabase-retry.ts` adds retry wrapper for Supabase queries
-- `error.tsx` files at route group level catch rendering errors
-<!-- GSD:architecture-end -->
+`management.orangejelly.co.uk` (the app); `l.the-anchor.pub` and `the-anchor.pub/l/:code` (short links, served by `/api/redirect`); `vip-club.uk` (legacy short-link domain being retired, shows the `/legacy-link` interstitial). Rewrites live in `vercel.json`.
