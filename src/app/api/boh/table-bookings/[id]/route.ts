@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { fromZonedTime } from 'date-fns-tz'
 import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
-import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -241,7 +241,10 @@ export async function DELETE(
   }
 
   const { data: existing, error: loadError } = await auth.supabase.from('table_bookings')
-    .select('id, customer_id, booking_reference, booking_date, status, payment_status, cancelled_at, cancellation_reason')
+    // The PayPal columns are selected so the delete can be guarded on them and so the audit
+    // row's old_values still carries the transaction pointer. Without them the audit trail
+    // for a deleted paid booking named no way to find the money again.
+    .select('id, customer_id, booking_reference, booking_date, status, payment_status, cancelled_at, cancellation_reason, paypal_deposit_capture_id, paypal_deposit_order_id, deposit_amount, deposit_amount_locked, deposit_refund_status')
     .eq('id', id)
     .maybeSingle()
 
@@ -256,6 +259,49 @@ export async function DELETE(
   const nowIso = new Date().toISOString()
 
   if (existing.status === 'cancelled') {
+    /*
+     * Refuse to destroy a booking that still holds a guest's money.
+     *
+     * This delete cascades: payments, table_booking_payments, booking_holds, charge_requests,
+     * guest_tokens, booking_audit and feedback all go with it. Combined with the refund path
+     * that used to silently skip PayPal deposits, the sequence "guest pays, staff cancel,
+     * staff delete" erased both the money and every trace of it, including the capture id
+     * needed to refund by hand.
+     *
+     * Deleting is still allowed once the deposit has been returned, or where none was taken.
+     */
+    const depositSettled =
+      existing.deposit_refund_status === 'refunded' ||
+      existing.payment_status === 'refunded'
+    const holdsGuestMoney =
+      Boolean(existing.paypal_deposit_capture_id) ||
+      existing.payment_status === 'completed' ||
+      existing.payment_status === 'partial_refund'
+
+    if (holdsGuestMoney && !depositSettled) {
+      await logAuditEvent({
+        user_id: auth.userId,
+        operation_type: 'delete',
+        resource_type: 'table_booking',
+        resource_id: id,
+        operation_status: 'failure',
+        error_message: 'Refused: booking still holds a captured deposit',
+        additional_info: {
+          booking_reference: existing.booking_reference,
+          payment_status: existing.payment_status,
+          deposit_refund_status: existing.deposit_refund_status,
+          paypal_deposit_capture_id: existing.paypal_deposit_capture_id,
+        },
+      })
+      return NextResponse.json(
+        {
+          error:
+            'This booking still holds a paid deposit. Refund it first, then delete. Deleting now would destroy the payment record.',
+        },
+        { status: 409 },
+      )
+    }
+
     const { data: deletedBooking, error: deleteError } = await auth.supabase.from('table_bookings')
       .delete()
       .eq('id', id)
@@ -340,7 +386,9 @@ export async function DELETE(
       cancelled_at: nowIso,
       cancelled_by: 'staff',
       cancellation_reason: cancellationReason,
-      paypal_deposit_order_id: null,
+      // paypal_deposit_order_id is deliberately KEPT: it is the only pointer to the PayPal
+      // order, and the reconciliation cron needs it to find a capture that was taken but
+      // never recorded.
       hold_expires_at: null,
       updated_at: nowIso
     })
@@ -379,18 +427,14 @@ export async function DELETE(
   }).catch(() => {})
 
   // Tiered deposit refund + cancellation SMS (never fail the delete)
-  try {
-    const bookingDate = new Date(`${existing.booking_date}T12:00:00`)
-    const refundResult = await refundTableBookingDeposit(existing.id, bookingDate)
-    await sendTableBookingCancelledSmsIfAllowed(auth.supabase, {
-      customerId: existing.customer_id,
+  if (existing.booking_date && existing.customer_id) {
+    await refundAndNotifyOnCancel(auth.supabase, {
+      bookingId: existing.id,
       bookingReference: existing.booking_reference || id,
       bookingDate: existing.booking_date,
-      refundResult,
-      tableBookingId: existing.id,
+      customerId: existing.customer_id,
+      source: 'boh_soft_delete',
     })
-  } catch (err) {
-    console.error('[table-booking-delete] refund/SMS error:', err)
   }
 
   return NextResponse.json({

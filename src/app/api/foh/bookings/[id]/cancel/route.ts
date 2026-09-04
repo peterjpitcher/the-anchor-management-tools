@@ -3,8 +3,9 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
-import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { logAuditEvent } from '@/app/actions/audit'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -74,8 +75,11 @@ export async function POST(
 
   const { data, error } = await auth.supabase.from('table_bookings')
     .update({
+      // paypal_deposit_order_id is deliberately KEPT. It is the only pointer to the PayPal
+      // order, and the reconciliation cron needs it to find a capture that was taken but
+      // never recorded. The deposit-timeout cron learned this already; the cancel paths
+      // were the siblings that never got the same fix.
       ...transition.plan.update,
-      paypal_deposit_order_id: null,
       hold_expires_at: null,
     })
     .eq('id', id)
@@ -97,21 +101,26 @@ export async function POST(
     )
   }
 
-  try {
-    if (booking.booking_date && booking.customer_id) {
-      const bookingDate = new Date(`${booking.booking_date}T12:00:00`)
-      const refundResult = await refundTableBookingDeposit(booking.id, bookingDate)
-      await sendTableBookingCancelledSmsIfAllowed(auth.supabase, {
-        customerId: booking.customer_id,
-        bookingReference: booking.booking_reference || booking.id,
-        bookingDate: booking.booking_date,
-        refundResult,
-        tableBookingId: booking.id,
-      })
-    }
-  } catch (err) {
-    console.error('[foh-cancel] refund/SMS error:', err)
+  if (booking.booking_date && booking.customer_id) {
+    await refundAndNotifyOnCancel(auth.supabase, {
+      bookingId: booking.id,
+      bookingReference: booking.booking_reference || booking.id,
+      bookingDate: booking.booking_date,
+      customerId: booking.customer_id,
+      source: 'foh_cancel',
+    })
   }
+
+  // Staff status changes are auditable mutations. These FOH routes cancel bookings,
+  // free tables and trigger refunds, and none of them recorded who did it.
+  await logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'table_booking.cancelled',
+    resource_type: 'table_booking',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: { source: 'foh' },
+  }).catch(() => {})
 
   return NextResponse.json({ success: true, booking: data, data })
 }
