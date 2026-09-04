@@ -50,12 +50,23 @@ When given a bug report, just fix it. Don't ask for hand-holding. Check Supabase
 
 ## Domain Rules
 
-- £10 deposit per person for groups of 10 or more (NOT credit card holds — that was old functionality)
+- £10 deposit per person for groups of **15 or more**. NOT credit card holds: that was old
+  functionality. The threshold moved from 10 to 15 on 2026-08-09 because a party of ten is an
+  ordinary family Sunday, not a risk worth putting a payment screen in front of. The single
+  source of truth is `src/lib/table-bookings/deposit.ts`, pinned to the SQL side
+  (`resolve_table_booking_deposit`) by the parity test in `create-path-deposit.test.ts`.
+  Do not duplicate the rule anywhere else.
+- Christmas bookings (`booking_type = 'christmas'`) take a deposit at ANY party size, so a
+  party of 6 owes £60. A manager waiver beats both rules.
 - Events hosted by the venue itself are exceptions to deposit rules
 - Contracts must be generated for private bookings
 - Booking amendments, cancellations, and deletions must track payment state correctly
 - All customer-facing language must reflect current policies, not legacy ones
 - Legacy "credit card hold" language anywhere in code or templates is always a bug
+- Deposits are taken by **PayPal**, which records the capture on the booking itself
+  (`paypal_deposit_capture_id`, `deposit_amount_locked`) and writes NO `payments` row. Stripe
+  deposits are historical only; the last one was 2026-03-14. Any code deciding "was a deposit
+  paid" must read the booking, not the `payments` ledger.
 
 ## Receipt Operations
 
