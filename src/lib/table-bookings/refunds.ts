@@ -1,4 +1,5 @@
 import { createStripeRefund } from '@/lib/payments/stripe'
+import { PAYPAL_DEFAULT_CURRENCY, refundPayPalPayment } from '@/lib/paypal'
 import { createClient } from '@/lib/supabase/server'
 import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
@@ -13,8 +14,16 @@ export type RefundResult =
       /**
        * `terms_unreadable` means the seasonal refund snapshot could not be read, so nothing was
        * refunded on purpose. It is a refusal, not a "no deposit found": a person has to look.
+       *
+       * `refund_failed` means a deposit WAS paid and we tried to return it and could not. It is the
+       * one reason that means money is owed, so it must never be reported to the guest as if no
+       * deposit existed.
        */
-      reason: 'no_deposit' | 'zero_tier' | 'already_refunded' | 'terms_unreadable'
+      reason: 'no_deposit' | 'zero_tier' | 'already_refunded' | 'terms_unreadable' | 'refund_failed'
+      /** True when the guest has money with us that this call did not return. */
+      depositOwed?: boolean
+      /** Pence still held, when known, so the caller can say so. */
+      amountOwedPence?: number
     }
   | { refunded: true; amountPence: number; refundId: string; tier: RefundTier }
 
@@ -37,9 +46,22 @@ function calculateRefundTier(bookingDate: Date): { percent: number; tier: Refund
 }
 
 /**
- * Issues a Stripe refund for a table booking deposit if one was paid.
- * Looks up the succeeded deposit payment, calculates the refund tier,
- * issues the refund via Stripe, and updates the payment record in the DB.
+ * Refunds a table booking deposit if one was paid, on whichever provider took it.
+ *
+ * WHY THIS READS TWO LEDGERS
+ *
+ * Deposits used to be taken by Stripe, which wrote a `payments` row carrying a
+ * `stripe_payment_intent_id`. They are now taken by PayPal, which writes nothing to
+ * `payments` at all: the capture is recorded on the booking itself, as
+ * `paypal_deposit_capture_id` plus `deposit_amount_locked`.
+ *
+ * This function only ever looked at the Stripe ledger, so from the day the flow moved it
+ * returned `no_deposit` for every real deposit. Cancelling a booking silently kept the
+ * guest's money, and because `no_deposit` is also what a genuinely deposit-free booking
+ * returns, the cancellation SMS told them nothing at all. The last Stripe deposit was
+ * 2026-03-14; everything since has been PayPal.
+ *
+ * The Stripe branch is kept for those historical rows, which can still be cancelled.
  *
  * amount in the payments table is stored in pounds (e.g. 70.00 for £70).
  * Stripe refund amounts are in pence (minor units).
@@ -58,7 +80,11 @@ export async function refundTableBookingDeposit(
     .eq('status', 'succeeded')
     .maybeSingle()
 
-  if (!payment?.stripe_payment_intent_id) return { refunded: false, reason: 'no_deposit' }
+  if (!payment?.stripe_payment_intent_id) {
+    // No Stripe deposit. Before concluding there is no deposit at all, check the
+    // ledger the money actually lives in now.
+    return await refundPayPalDeposit(supabase, tableBookingId, bookingDate)
+  }
   if (payment.status === 'refunded') return { refunded: false, reason: 'already_refunded' }
 
   // A booking that snapshotted a seasonal refund cutoff is governed by the promise the guest was
@@ -200,4 +226,204 @@ async function issueStripeRefund(
   }
 
   return { refunded: true, amountPence: refundAmountPence, refundId: stripeRefund.id, tier }
+}
+
+/* ------------------------------------------------------------------ */
+/*  PayPal deposits                                                     */
+/* ------------------------------------------------------------------ */
+
+type PayPalDepositBooking = {
+  paypal_deposit_capture_id: string | null
+  deposit_amount_locked: number | string | null
+  deposit_amount: number | string | null
+  payment_status: string | null
+  deposit_refund_status: string | null
+  booking_date: string | null
+  deposit_refund_cutoff_days: number | null
+  booking_period_code: string | null
+}
+
+function toGbp(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Refunds a deposit that PayPal took, using the same entitlement rules as the Stripe path.
+ *
+ * The money is recorded on the booking, not in `payments`, so that is what this reads. A
+ * failure here returns `refund_failed` with `depositOwed`, never `no_deposit`: the caller
+ * has to be able to tell "there was nothing to refund" apart from "we owe this guest money
+ * and could not send it", because those two produce very different messages to a customer.
+ */
+async function refundPayPalDeposit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tableBookingId: string,
+  bookingDate: Date,
+): Promise<RefundResult> {
+  const { data: booking, error: bookingError } = await supabase
+    .from('table_bookings')
+    .select(
+      'paypal_deposit_capture_id, deposit_amount_locked, deposit_amount, payment_status, deposit_refund_status, booking_date, deposit_refund_cutoff_days, booking_period_code',
+    )
+    .eq('id', tableBookingId)
+    .maybeSingle<PayPalDepositBooking>()
+
+  // Same fail-closed reasoning as the Stripe path: an unreadable booking is not evidence
+  // that no deposit was taken.
+  if (bookingError) {
+    logger.error('Could not read the booking to check for a PayPal deposit, so no refund was issued', {
+      metadata: { tableBookingId, error: bookingError.message },
+    })
+    return { refunded: false, reason: 'terms_unreadable' }
+  }
+
+  const captureId = booking?.paypal_deposit_capture_id
+  if (!captureId) return { refunded: false, reason: 'no_deposit' }
+
+  const depositGbp = toGbp(booking?.deposit_amount_locked) ?? toGbp(booking?.deposit_amount)
+  if (depositGbp === null || depositGbp <= 0) {
+    // A capture id with no amount is a broken record, not an absent deposit. Say so.
+    logger.error('Booking has a PayPal capture but no readable deposit amount, so no refund was issued', {
+      metadata: { tableBookingId, captureId },
+    })
+    return { refunded: false, reason: 'refund_failed', depositOwed: true }
+  }
+
+  const alreadyRefunded = booking?.deposit_refund_status === 'refunded'
+  if (alreadyRefunded) return { refunded: false, reason: 'already_refunded' }
+
+  // Entitlement: the seasonal promise the guest was shown wins over the sliding tier,
+  // exactly as on the Stripe path.
+  let refundGbp: number
+  let tier: RefundTier
+  const seasonalCutoff = booking?.deposit_refund_cutoff_days
+
+  if (seasonalCutoff !== null && seasonalCutoff !== undefined) {
+    const decision = resolveSeasonalDepositRefund({
+      bookingDate: booking?.booking_date ?? toLocalIsoDate(bookingDate),
+      refundCutoffDays: Number(seasonalCutoff),
+      depositAmount: depositGbp,
+    })
+    if (!decision.entitled) {
+      logger.info('Seasonal PayPal deposit not refunded: inside the window the guest was told about', {
+        metadata: {
+          tableBookingId,
+          bookingPeriodCode: booking?.booking_period_code ?? null,
+          daysBefore: decision.daysBefore,
+          cutoffDays: decision.cutoffDays,
+        },
+      })
+      return { refunded: false, reason: 'zero_tier' }
+    }
+    refundGbp = decision.amount
+    tier = 'full'
+  } else {
+    const { percent, tier: sliding } = calculateRefundTier(bookingDate)
+    if (percent === 0) return { refunded: false, reason: 'zero_tier' }
+    refundGbp = Math.round(depositGbp * percent) / 100
+    tier = sliding
+  }
+
+  if (refundGbp <= 0) return { refunded: false, reason: 'zero_tier' }
+
+  let refund: Awaited<ReturnType<typeof refundPayPalPayment>>
+  try {
+    refund = await refundPayPalPayment(
+      captureId,
+      refundGbp,
+      // Deterministic, so a retry of the same cancellation cannot refund twice.
+      `tbl-paypal-refund-${tableBookingId}-${tier}`,
+      PAYPAL_DEFAULT_CURRENCY,
+    )
+  } catch (error) {
+    // The guest's money is still with us and the caller is about to cancel their booking.
+    // Record it loudly and tell the caller money is owed.
+    logger.error('PayPal deposit refund failed, so the guest is owed money', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId, captureId, refundGbp, tier },
+    })
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.refund_failed_deposit_owed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      error_message: error instanceof Error ? error.message : String(error),
+      additional_info: {
+        paypal_capture_id: captureId,
+        amount_gbp: refundGbp,
+        tier,
+        action_needed: 'Refund this guest manually: the booking was cancelled but the deposit was not returned',
+      },
+    })
+    return {
+      refunded: false,
+      reason: 'refund_failed',
+      depositOwed: true,
+      amountOwedPence: Math.round(refundGbp * 100),
+    }
+  }
+
+  const isFull = Math.abs(refundGbp - depositGbp) < 0.005
+
+  /*
+   * Reconcile BOTH columns.
+   *
+   * `deposit_refund_status` alone was not enough: `payment_status` stayed `completed`, so a
+   * fully refunded booking still read as paid to `hasUnpaidRequiredDeposit` and to the
+   * deposit-timeout cron's `hasCapturedDeposit`. The parking flow already updates both; table
+   * bookings were left out of that same fix in two files.
+   */
+  const { error: updateError } = await supabase
+    .from('table_bookings')
+    .update({
+      deposit_refund_status: isFull ? 'refunded' : 'partially_refunded',
+      payment_status: isFull ? 'refunded' : 'partial_refund',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', tableBookingId)
+
+  if (updateError) {
+    // Money HAS gone back. Do not report failure to the caller, or a retry would refund
+    // again; record it for reconciliation instead.
+    logger.error('PayPal refund succeeded but the booking update failed, so manual reconciliation is required', {
+      metadata: { tableBookingId, captureId, refundId: refund.refundId, dbError: updateError.message },
+    })
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.refund_paypal_success_db_failed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      error_message: updateError.message,
+      additional_info: {
+        paypal_refund_id: refund.refundId,
+        paypal_capture_id: captureId,
+        amount_gbp: refundGbp,
+        tier,
+        action_needed: 'PayPal refund succeeded but the booking row was not updated',
+      },
+    })
+  }
+
+  await AuditService.logAuditEvent({
+    operation_type: 'table_booking.deposit_refunded',
+    resource_type: 'table_booking',
+    resource_id: tableBookingId,
+    operation_status: 'success',
+    additional_info: {
+      provider: 'paypal',
+      paypal_refund_id: refund.refundId,
+      paypal_capture_id: captureId,
+      amount_gbp: refundGbp,
+      tier,
+    },
+  })
+
+  return {
+    refunded: true,
+    amountPence: Math.round(refundGbp * 100),
+    refundId: refund.refundId,
+    tier,
+  }
 }

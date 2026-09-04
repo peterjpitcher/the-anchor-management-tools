@@ -841,7 +841,9 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   }, [booking.id, canEdit])
 
   return (
-    <div className="space-y-6">
+    // data-touch-targets: reached from BOH on a tablet, and its Danger Zone buttons are the
+    // smallest destructive controls in the section. See the note in FohScheduleClient.
+    <div className="space-y-6" data-touch-targets>
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">

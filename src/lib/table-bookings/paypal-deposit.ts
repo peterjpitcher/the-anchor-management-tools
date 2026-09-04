@@ -106,6 +106,12 @@ export function buildPayPalDepositCompletedUpdate(
     paypal_deposit_capture_id: input.captureId,
     deposit_amount_locked: input.lockedAmountGbp,
     card_capture_completed_at: capturedAtIso,
+    // `status` and `confirmed_at` are a pair, and nothing in the database keeps
+    // them together. This writer set the status and not the timestamp, so every
+    // PayPal-paid booking read as confirmed with a blank Confirmed time on the
+    // detail screen, permanently: the only other writer of confirmed_at is a
+    // cron that never looks at these rows.
+    confirmed_at: capturedAtIso,
     hold_expires_at: null,
   }
 }

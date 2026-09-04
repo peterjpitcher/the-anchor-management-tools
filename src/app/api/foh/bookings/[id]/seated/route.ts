@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh, hasUnpaidRequiredDeposit } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
+import { logAuditEvent } from '@/app/actions/audit'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -76,6 +77,17 @@ export async function POST(
       { status: currentBooking ? 409 : 404 }
     )
   }
+
+  // Staff status changes are auditable mutations. These FOH routes cancel bookings,
+  // free tables and trigger refunds, and none of them recorded who did it.
+  await logAuditEvent({
+    user_id: auth.userId,
+    operation_type: 'table_booking.seated',
+    resource_type: 'table_booking',
+    resource_id: id,
+    operation_status: 'success',
+    additional_info: { source: 'foh' },
+  }).catch(() => {})
 
   return NextResponse.json({ success: true, booking: data, data })
 }

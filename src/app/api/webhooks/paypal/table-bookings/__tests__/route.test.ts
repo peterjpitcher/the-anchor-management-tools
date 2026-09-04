@@ -5,6 +5,9 @@ import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/paypal', () => ({
   verifyPayPalWebhook: vi.fn(),
+  // The route resolves the webhook id from PayPal by endpoint URL when no env var is set,
+  // so signature verification can never run against another endpoint's id.
+  resolveWebhookIdForUrl: vi.fn(async () => 'WEBHOOK-ID-FROM-PAYPAL'),
 }))
 
 vi.mock('@/lib/logger', () => ({

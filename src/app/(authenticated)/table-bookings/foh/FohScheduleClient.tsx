@@ -430,7 +430,14 @@ export function FohScheduleClient({
   const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-2 rounded-xl bg-sidebar p-2 sm:p-3' : 'space-y-6')
 
   return (
-    <div className={pageWrapperClass}>
+    /*
+     * data-touch-targets opts this screen into the `pointer: coarse` rule in globals.css,
+     * which lifts every button, select, input and textarea inside it to 44px on a touch
+     * device at ANY width. The existing 44px floor is keyed on max-width 820px, so FOH,
+     * which runs on an iPad in landscape at 1024px+, was getting 25px desktop controls
+     * mid-service. The manager kiosk variant shrinks them further still.
+     */
+    <div className={pageWrapperClass} data-touch-targets>
       <FohHeader
         date={date}
         setDate={setDate as (date: string | ((current: string) => string)) => void}

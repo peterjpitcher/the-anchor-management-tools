@@ -270,6 +270,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/table-booking-paypal-reconciliation",
+      "schedule": "50 * * * *"
+    },
+    {
       "path": "/api/cron/recruitment-reminders",
       "schedule": "0 * * * *"
     },
