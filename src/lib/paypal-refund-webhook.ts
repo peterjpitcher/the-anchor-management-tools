@@ -389,6 +389,26 @@ async function updateBookingRefundStatus(
     throw new Error(`Failed to update ${sourceType} refund status: ${updateError.message}`)
   }
 
+  // A table booking carries its own payment_status on the same row, and leaving it at
+  // 'completed' means a refunded booking still reads as paid to hasUnpaidRequiredDeposit
+  // and to the deposit-timeout cron. The parking branch below already reconciles its
+  // parent; table bookings were left out of the same fix here too.
+  if (sourceType === 'table_booking') {
+    const { error: paymentStatusError } = await (supabase.from('table_bookings') as any)
+      .update({
+        payment_status: refundStatusValue === 'refunded' ? 'refunded' : 'partial_refund',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sourceId)
+
+    if (paymentStatusError) {
+      logger.error('Failed to reconcile table_bookings.payment_status after a refund', {
+        error: new Error(paymentStatusError.message),
+        metadata: { sourceId, refundStatusValue },
+      })
+    }
+  }
+
   // Also update the parent parking_bookings.payment_status when fully refunded
   if (sourceType === 'parking' && refundStatusValue === 'refunded') {
     const { data: paymentRow } = await supabase

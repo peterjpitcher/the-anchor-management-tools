@@ -196,12 +196,26 @@ export async function isCustomerSmsSendAllowed(
       return { allowed: false, reason: 'customer_phone_mismatch' };
     }
 
-    if (options?.allowTransactionalOverride === true) {
-      return { allowed: true };
-    }
-
+    /*
+     * An explicit STOP is never overridable.
+     *
+     * This check used to sit BELOW the transactional override, so any caller passing
+     * `allowTransactionalOverride` texted people who had replied STOP. A STOP reply sets
+     * both `sms_opt_in = false` and `sms_status = 'opted_out'` (see the Twilio inbound
+     * webhook), and honouring it is a legal obligation under PECR, not a preference. The
+     * override exists to bypass the softer `sms_status` gate for genuinely transactional
+     * messages, so it now sits between the two rather than above both.
+     */
     if ((customer as any).sms_opt_in === false) {
       return { allowed: false, reason: 'sms_opt_in_blocked' };
+    }
+
+    if ((customer as any).sms_status === 'opted_out') {
+      return { allowed: false, reason: 'sms_status_blocked' };
+    }
+
+    if (options?.allowTransactionalOverride === true) {
+      return { allowed: true };
     }
 
     if (customer.sms_status === null || customer.sms_status === 'active') {

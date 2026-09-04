@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyPayPalWebhook } from '@/lib/paypal'
+import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import {
@@ -95,7 +95,18 @@ export async function POST(request: NextRequest): Promise<Response> {
   const supabase = createAdminClient()
   const body = await request.text()
   const headers = Object.fromEntries(request.headers.entries())
-  const webhookId = (process.env.PAYPAL_EVENT_BOOKINGS_WEBHOOK_ID || process.env.PAYPAL_WEBHOOK_ID)?.trim()
+  // Deliberately does NOT fall back to PAYPAL_WEBHOOK_ID: that is another endpoint's
+  // id, and verifying against it rejects every genuine event here. The env var is kept
+  // as an override but is no longer required, because a webhook deleted and recreated
+  // in the dashboard gets a NEW id that a stale env var would silently reject forever.
+  // That had already happened here: the registered endpoint and the configured id did
+  // not match. Resolving by URL self-heals. When it cannot be resolved we fail closed
+  // and PayPal retries.
+  const webhookId =
+    process.env.PAYPAL_EVENT_BOOKINGS_WEBHOOK_ID?.trim()
+    || (await resolveWebhookIdForUrl(
+      `${process.env.NEXT_PUBLIC_APP_URL || 'https://management.orangejelly.co.uk'}/api/webhooks/paypal/event-bookings`,
+    ))
   let idempotencyKey: string | null = null
   let requestHash: string | null = null
   let claimHeld = false
@@ -103,7 +114,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   try {
     if (!webhookId) {
       return NextResponse.json(
-        { received: false, error: 'PAYPAL_EVENT_BOOKINGS_WEBHOOK_ID not configured' },
+        { received: false, error: 'No PayPal webhook is registered for the event-bookings endpoint' },
         { status: process.env.NODE_ENV === 'production' ? 500 : 200 }
       )
     }

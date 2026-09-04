@@ -251,7 +251,19 @@ async function updateRefundStatus(
   if (sourceType === 'private_booking') {
     await db.from('private_bookings').update({ deposit_refund_status: status }).eq('id', sourceId)
   } else if (sourceType === 'table_booking') {
-    await db.from('table_bookings').update({ deposit_refund_status: status }).eq('id', sourceId)
+    // Both columns, not just the refund one. `payment_status` left at 'completed' means a
+    // fully refunded booking still reads as paid to hasUnpaidRequiredDeposit and to the
+    // deposit-timeout cron's hasCapturedDeposit, so the venue believes it holds money it
+    // has already returned. The parking branch below already reconciles its parent; table
+    // bookings were left out of that same fix.
+    await db
+      .from('table_bookings')
+      .update({
+        deposit_refund_status: status,
+        payment_status: status === 'refunded' ? 'refunded' : 'partial_refund',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sourceId)
   } else if (sourceType === 'parking') {
     await db.from('parking_booking_payments').update({ refund_status: status }).eq('id', sourceId)
 

@@ -153,7 +153,46 @@ describe('sendSMS customer safety guards', () => {
     expect(twilio as unknown as vi.Mock).not.toHaveBeenCalled()
   })
 
-  it('allows critical transactional sends when override is enabled', async () => {
+  /*
+   * EXPECTATION DELIBERATELY CHANGED, 2026-09-04.
+   *
+   * This test previously asserted that `allowTransactionalOverride` sent to a customer with
+   * `sms_opt_in: false` and `sms_status: 'opted_out'`, i.e. someone who had replied STOP.
+   * That was the bug, written down as a requirement: the Sunday lunch pre-order chase passes
+   * the override, so opted-out guests were still being texted. Honouring STOP is a legal
+   * obligation under PECR, not a preference, so the override no longer outranks it.
+   *
+   * The override still has a job, covered by the test below it: bypassing the softer
+   * `sms_status` gate for a genuinely transactional message.
+   */
+  it('never sends to an opted-out customer, even with the transactional override', async () => {
+    const create = vi.fn()
+    ;(twilio as unknown as vi.Mock).mockReturnValue({ messages: { create } })
+
+    mockCustomerLookup({
+      data: {
+        sms_status: 'opted_out',
+        sms_opt_in: false,
+        mobile_e164: '+447700900123',
+        mobile_number: '+447700900123',
+      },
+      error: null,
+    })
+
+    const result = await sendSMS('+447700900123', 'hello', {
+      customerId: 'customer-override',
+      createCustomerIfMissing: false,
+      skipSafetyGuards: true,
+      skipQuietHours: true,
+      skipMessageLogging: true,
+      allowTransactionalOverride: true,
+    })
+
+    expect(result).toEqual(expect.objectContaining({ success: false }))
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('still lets the override bypass a non-active status that is not an opt-out', async () => {
     const create = vi.fn().mockResolvedValue({
       sid: 'SM-override',
       from: '+15555555555',
@@ -165,8 +204,8 @@ describe('sendSMS customer safety guards', () => {
 
     mockCustomerLookup({
       data: {
-        sms_status: 'opted_out',
-        sms_opt_in: false,
+        sms_status: 'bounced',
+        sms_opt_in: true,
         mobile_e164: '+447700900123',
         mobile_number: '+447700900123',
       },

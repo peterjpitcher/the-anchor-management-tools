@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logAuditEvent } from '@/app/actions/audit'
 import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
@@ -170,6 +171,15 @@ export async function POST(
         })
       }
     }
+
+    await logAuditEvent({
+      user_id: auth.userId,
+      operation_type: 'table_booking.party_size_changed',
+      resource_type: 'table_booking',
+      resource_id: id,
+      operation_status: 'success',
+      additional_info: { source: 'foh', previousPartySize, newPartySize },
+    }).catch(() => {})
 
     return NextResponse.json({
       success: true,
