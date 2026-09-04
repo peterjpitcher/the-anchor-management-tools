@@ -796,7 +796,9 @@ export function BohBookingsClient({
   }
 
   return (
-    <div className="space-y-4">
+    // data-touch-targets: BOH is also used on a tablet, and the 44px floor in globals.css
+    // only applies below 821px. See the note in FohScheduleClient.
+    <div className="space-y-4" data-touch-targets>
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
@@ -939,6 +941,26 @@ export function BohBookingsClient({
         )}
       </div>
 
+      {/* A failed load zeroes the arrays, and these cards render unconditionally, so an
+          outage painted "Total bookings 0" and "-100.0%" in large type at the top of the
+          page. A manager reads that as a dead service, not a broken request. The error
+          banner lived further down, below five full-width cards on a narrow screen. */}
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p className="font-semibold">These figures could not be loaded</p>
+          <p className="mt-0.5">{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadBookings()}
+            className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {metricsCards.map((card) => {
           const delta = getDeltaDisplay(card.value, card.previous, {
@@ -960,6 +982,7 @@ export function BohBookingsClient({
           )
         })}
       </div>
+      )}
 
       {isDayView && dishTotals && dishTotals.coverCount > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white">

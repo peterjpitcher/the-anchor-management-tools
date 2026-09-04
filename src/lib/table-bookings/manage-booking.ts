@@ -3,6 +3,7 @@ import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { formatCancellationReason } from './cancellation-reasons'
+import { applyPartySizeDepositTransition } from './staff-deposit-transitions'
 
 export type TableManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -625,6 +626,49 @@ export async function updateTableBookingByRawToken(
       state: 'blocked',
       reason: 'booking_not_confirmed'
     }
+  }
+
+  /*
+   * Re-price the deposit, exactly as the staff party-size routes do.
+   *
+   * The guest manage link accepts party sizes up to the online maximum, so a guest could
+   * take a booking from six to twenty and cross the deposit threshold without ever being
+   * asked for one, and without anybody being told. The staff path has always called this;
+   * the guest path never did.
+   *
+   * A failure here must not fail the amendment: the size is already saved, and the
+   * transition raises its own manual-review state for cases a person has to decide.
+   */
+  try {
+    // Read the deposit state separately rather than widening the preview: that preview is
+    // serialised straight to the guest-facing page, and it must not start carrying the
+    // venue's internal payment state.
+    const { data: depositState } = await supabase
+      .from('table_bookings')
+      .select(
+        'id, customer_id, party_size, status, payment_status, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name',
+      )
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    if (depositState) {
+      await applyPartySizeDepositTransition(supabase, {
+        booking: {
+          ...(depositState as Record<string, unknown>),
+          // The row now carries the NEW size; the transition needs the old one as its base.
+          party_size: oldPartySize,
+        } as Parameters<typeof applyPartySizeDepositTransition>[1]['booking'],
+        previousPartySize: oldPartySize,
+        newPartySize,
+        sendSms: true,
+        appBaseUrl: resolveAppBaseUrl(input.appBaseUrl),
+      })
+    }
+  } catch (depositError) {
+    logger.error('Guest party-size amendment saved but the deposit transition failed', {
+      error: depositError instanceof Error ? depositError : new Error(String(depositError)),
+      metadata: { bookingId, oldPartySize, newPartySize },
+    })
   }
 
   return {

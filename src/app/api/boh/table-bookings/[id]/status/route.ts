@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
-import { refundTableBookingDeposit } from '@/lib/table-bookings/refunds'
+import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -107,8 +107,10 @@ export async function POST(
   const { data: updatedRow, error: updateError } = await auth.supabase.from('table_bookings')
     .update(action === 'cancelled'
       ? {
+          // paypal_deposit_order_id is deliberately KEPT: it is the only pointer to the
+          // PayPal order, and the reconciliation cron needs it to find a capture that was
+          // taken but never recorded.
           ...transition.plan.update,
-          paypal_deposit_order_id: null,
           hold_expires_at: null,
         }
       : transition.plan.update)
@@ -133,18 +135,13 @@ export async function POST(
 
   // Tiered deposit refund + cancellation SMS when staff cancel a booking (never fail the status change)
   if (action === 'cancelled' && booking.booking_date && booking.customer_id) {
-    try {
-      const bookingDate = new Date(`${booking.booking_date}T12:00:00`)
-      const refundResult = await refundTableBookingDeposit(booking.id, bookingDate)
-      await sendTableBookingCancelledSmsIfAllowed(auth.supabase, {
-        customerId: booking.customer_id,
-        bookingReference: booking.booking_reference || booking.id,
-        bookingDate: booking.booking_date,
-        refundResult,
-      })
-    } catch (err) {
-      console.error('[table-booking-status] refund/SMS error:', err)
-    }
+    await refundAndNotifyOnCancel(auth.supabase, {
+      bookingId: booking.id,
+      bookingReference: booking.booking_reference || booking.id,
+      bookingDate: booking.booking_date,
+      customerId: booking.customer_id,
+      source: 'boh_status_cancel',
+    })
   }
 
   // Audit log the status transition (fire-and-forget)

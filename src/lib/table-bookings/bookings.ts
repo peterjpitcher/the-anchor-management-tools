@@ -1470,7 +1470,9 @@ export async function sendTableBookingCancelledSmsIfAllowed(
     customerId: string
     bookingReference: string
     bookingDate: string // YYYY-MM-DD format
-    refundResult: { refunded: false; reason: string } | { refunded: true; amountPence: number; tier: string }
+    refundResult:
+      | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number }
+      | { refunded: true; amountPence: number; tier: string }
     tableBookingId?: string
   }
 ): Promise<void> {
@@ -1501,15 +1503,29 @@ export async function sendTableBookingCancelledSmsIfAllowed(
 
     const firstName = getSmartFirstName(customer.first_name)
     let smsBody: string
-    if (params.refundResult.refunded) {
-      const amountGbp = new Intl.NumberFormat('en-GB', {
-        style: 'currency',
-        currency: 'GBP',
-      }).format(params.refundResult.amountPence / 100)
+    const formatGbp = (pence: number) =>
+      new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
 
-      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
+    if (params.refundResult.refunded) {
+      const amountGbp = formatGbp(params.refundResult.amountPence)
+
+      // Name the half tier. Saying only "your £75 refund" to someone who paid £150 reads as a
+      // full refund of a £75 deposit, so the one number they can check looks wrong.
+      smsBody =
+        params.refundResult.tier === 'half'
+          ? `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. As it's within a week, half the deposit is refundable: your ${amountGbp} refund will land within 5-10 days.`
+          : `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
     } else if (params.refundResult.reason === 'zero_tier') {
       smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. As it's within 3 days, the deposit can't be refunded. Hope to see you another time!`
+    } else if (params.refundResult.reason === 'refund_failed' || params.refundResult.depositOwed) {
+      // Never go quiet about money we still hold. Silence here is what made a failed refund
+      // indistinguishable from a booking that never had a deposit.
+      const owed = params.refundResult.amountOwedPence
+      smsBody = owed
+        ? `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. We couldn't process your ${formatGbp(owed)} deposit refund automatically, so we'll sort it by hand and be in touch.`
+        : `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. We couldn't process your deposit refund automatically, so we'll sort it by hand and be in touch.`
+    } else if (params.refundResult.reason === 'terms_unreadable') {
+      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. We'll check your deposit and be in touch about it shortly.`
     } else {
       smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Hope to see you again soon!`
     }
