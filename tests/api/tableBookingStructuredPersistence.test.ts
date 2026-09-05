@@ -60,6 +60,7 @@ vi.mock('@/lib/api/auth', () => ({
 }))
 
 vi.mock('@/lib/api/idempotency', () => ({
+  lookupIdempotencyKey: vi.fn(),
   claimIdempotencyKey: vi.fn().mockResolvedValue({ state: 'claimed' }),
   computeIdempotencyRequestHash: vi.fn(() => 'hash'),
   getIdempotencyKey: vi.fn(() => 'idem-1'),
@@ -291,5 +292,51 @@ describe('POST /api/table-bookings — structured persistence', () => {
 
     expect(response.status).toBeLessThan(500)
     expect(saveSundayPreorderByBookingId).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('fixture replay-only booking recovery', () => {
+  const fixtureId = '10000000-0000-4000-8000-000000000001'
+  async function recover(state: unknown, fields = {}, replayHeader = true) {
+    const { lookupIdempotencyKey } = await import('@/lib/api/idempotency')
+    vi.mocked(lookupIdempotencyKey).mockResolvedValue(state as Awaited<ReturnType<typeof lookupIdempotencyKey>>)
+    const request = buildRequest({ replay_request: { phone: '+447000000000', date: '2026-11-07', time: '12:00', party_size: 2, purpose: 'food', fixture_id: fixtureId, notes: `Nations Championship: [${fixtureId}]\nNear the screen`, ...fields } })
+    if (replayHeader) request.headers.set('X-Idempotency-Replay-Only', 'true')
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(request as Parameters<typeof POST>[0])
+    const { claimIdempotencyKey } = await import('@/lib/api/idempotency')
+    expect(claimIdempotencyKey).not.toHaveBeenCalled()
+    expect(ensureCustomerForPhone).not.toHaveBeenCalled()
+    expect(supabase.rpc).not.toHaveBeenCalled()
+    expect(supabase.from).not.toHaveBeenCalled()
+    return response
+  }
+  beforeEach(() => { vi.clearAllMocks() })
+  it('rejects the envelope as a normal creation request with zero writes', async () => {
+    expect((await recover({ state: 'new' }, {}, false)).status).toBe(400)
+  })
+  it('returns NOT_FOUND with zero claims or booking writes', async () => {
+    expect((await recover({ state: 'new' })).status).toBe(404)
+  })
+  it.each(['confirmed', 'pending_payment'])('returns stored %s response without creating', async state => {
+    const response = await recover({ state: 'replay', response: { success: true, data: { state, booking_reference: 'ORIGINAL' }, meta: { status_code: 201 } } })
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({ data: { state, booking_reference: 'ORIGINAL' } })
+  })
+  it('does not reclaim a processing request', async () => {
+    expect((await recover({ state: 'replay', response: { state: 'processing' } })).status).toBe(409)
+  })
+  it('does not disclose a different intent', async () => {
+    expect((await recover({ state: 'conflict' })).status).toBe(409)
+  })
+  it('requires an authenticated API key before replay', async () => {
+    const { getApiKeyAuthState } = await import('@/lib/api/auth')
+    vi.mocked(getApiKeyAuthState).mockResolvedValueOnce('anonymous')
+    expect((await recover({ state: 'replay', response: { data: { state: 'confirmed' } } })).status).toBe(401)
+  })
+  it('rejects notes belonging to another fixture', async () => {
+    expect((await recover({ state: 'new' }, { notes: 'Nations Championship: [10000000-0000-4000-8000-000000000002]' })).status).toBe(400)
   })
 })

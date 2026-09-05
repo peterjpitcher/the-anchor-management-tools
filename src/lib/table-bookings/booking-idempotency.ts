@@ -17,6 +17,7 @@ export type TableBookingIdempotencyFields = {
   time: string
   party_size: number
   purpose: string
+  fixture_id?: string
   notes?: string | null
   dietary_requirements?: string[] | null
   allergies?: string[] | null
@@ -72,6 +73,13 @@ function preorderHashPayload(
  * field that changes what is booked varies the hash, so a retry with a changed
  * intent is a conflict rather than a silent replay of the earlier booking.
  */
+export function canonicalFixtureBookingNotes(fixtureId: string, notes: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fixtureId)) throw new Error('Invalid fixture ID')
+  const [prefix, ...customerNotes] = notes.split('\n')
+  if (!prefix.startsWith('Nations Championship: ') || !prefix.endsWith(`[${fixtureId}]`)) throw new Error('Fixture notes do not match fixture ID')
+  return [`Nations Championship: [${fixtureId}]`, ...customerNotes].join('\n')
+}
+
 export function computeTableBookingRequestHash(fields: TableBookingIdempotencyFields): string {
   return computeIdempotencyRequestHash({
     phone: fields.phone,
@@ -82,7 +90,8 @@ export function computeTableBookingRequestHash(fields: TableBookingIdempotencyFi
     time: fields.time,
     party_size: fields.party_size,
     purpose: fields.purpose,
-    notes: fields.notes || null,
+    fixture_id: fields.fixture_id || undefined,
+    notes: fields.fixture_id ? canonicalFixtureBookingNotes(fields.fixture_id, fields.notes || '') : fields.notes || null,
     dietary_requirements: fields.dietary_requirements ?? null,
     allergies: fields.allergies ?? null,
     // Vary the idempotency key when the chair/outside request changes so a
