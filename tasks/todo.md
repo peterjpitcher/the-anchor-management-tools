@@ -102,3 +102,66 @@ override path. Staff are told to use Add booking instead. Verified on `main`:
 typecheck, lint and diff checks are clean. The production build compiled and
 typechecked, but its final page-data step could not be checked while the live
 development server was writing to the same `.next` directory.
+
+# Public citation baseline, 4 September 2026
+
+## Tasks
+
+- [x] Confirm the canonical public identity, contact details and live hours source
+- [x] Research current official standards for core maps and directory platforms
+- [x] Find and verify existing public listings across maps, social, hospitality and local directories
+- [x] Record missing, incorrect, duplicate and inaccessible listings with confidence and evidence
+- [x] Produce a prioritised baseline for a later change plan, without changing any live listing
+
+## Review
+
+Completed a read-only audit of 45 public surfaces, passive references and
+realistic placement opportunities. The
+baseline, standards, evidence limits and priority findings are recorded in
+`tasks/seo-powerhouse/2026-09-04-the-anchor-citations/`. No live listing was
+changed.
+
+# Public citation corrections, 4 September 2026
+
+## Tasks
+
+- [x] Record the owner's batched approval and account guardrails
+- [x] Correct the dead CAMRA URL in the website SSOT
+- [x] Retire the obsolete Tabology ordering profile
+- [ ] Submit the prepared Tabology support request to replace its residual public `orders@the-anchor.pub` email
+- [ ] Retire the obsolete Uber Eats ordering profile
+- [ ] Correct P0 misinformation on Cylex, SquareMeal and inapub
+- [x] Claim Apple Maps and submit its corrected location, actions and brand media
+- [x] Correct OpenTable hours and verify its dietary options
+- [x] Submit TripAdvisor business information and menu corrections
+- [ ] Correct or claim Bing and Yell listings
+- [x] Correct the claimed Yelp listing
+- [x] Find and claim the existing free Nextdoor Business Page
+- [x] Correct OpenStreetMap and submit corrections for dependent local listings
+- [ ] Work through remaining actionable P2 and P3 citations
+- [ ] Verify every submitted or live change and update the change log
+
+## Review
+
+In progress. OpenStreetMap and Pubs Galore corrections are live. Apple is claimed
+and verified, with four gallery photos published and its location, actions, logo
+and cover photo in review. SquareMeal,
+CAMRA, Yell, Restaurant Guru, Useyourlocal, inapub, Barrel & Stone and Staines
+Online corrections are submitted. Uber Eats retirement is with support. OpenTable
+hours are corrected and its accurate gluten-free and vegan options are published.
+Cylex is submitted and awaiting moderation. The beerintheevening registration
+email did not arrive, so its direct support form is prepared and awaits one
+owner CAPTCHA. TripAdvisor's canonical hours, address, tenant description and cuisines
+are submitted and processing. Its false Buffet attribute is removed, both stale
+2025 rich menus are unpublished, and its link now points to the live menu.
+Nextdoor is claimed without a duplicate and now publishes the correct logo,
+cover photo, public contact details, website, hours, categories and tenant
+description. Its public page is confirmed accessible while signed out. Yelp's
+canonical hours and tenant description are now live, and its payment attributes
+have been checked. Tabology Mobile Ordering and click and collect are disabled,
+both signed-out ordering routes refuse orders, and its public address, hours and
+social links are corrected. Its information page still shows
+`orders@the-anchor.pub` because the Venue details contact fields reject input in
+the current owner session. Its support request is prepared and awaits the visible
+reCAPTCHA and Submit. Bing remains locked pending verification. Paid placements
+remain excluded.

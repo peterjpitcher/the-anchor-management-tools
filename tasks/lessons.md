@@ -185,3 +185,24 @@ Before renaming anything customer-facing in the database:
 
 Prefer matching on shape or on a stable id over exact display strings, so the next
 rename cannot break it.
+
+## 2026-09-05: Verify ownership wording before publishing
+
+**Mistake:** The citation baseline described The Anchor as independent, but the
+business is operated as a Greene King tenanted pub.
+
+**Rule:** Never describe The Anchor as independent. Use neutral venue wording by
+default, and record the Greene King tenancy only where ownership is relevant.
+
+## 2026-09-05: Do not remove owner-confirmed dietary options from directory attributes
+
+**Mistake:** The citation baseline treated OpenTable's `Gluten-free Options`
+attribute as inaccurate because the website uses the more precise NGCI wording.
+That led to the valid OpenTable attribute being removed briefly before the owner
+corrected it and it was restored.
+
+**Rule:** The Anchor does have gluten-free options. Retain accurate
+platform-controlled dietary attributes such as `Gluten-free Options`. In
+free-form customer copy, continue to use NGCI with the approved
+cross-contamination caveat. Never remove a venue capability based only on a
+wording distinction; verify it with the owner or an operational source first.
