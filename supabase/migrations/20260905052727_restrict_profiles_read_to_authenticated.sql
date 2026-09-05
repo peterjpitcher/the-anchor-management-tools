@@ -1,7 +1,6 @@
 -- Restrict public.profiles reads to signed-in users.
 --
--- NOT YET APPLIED. Drafted 4 September 2026, awaiting the owner's approval
--- before `supabase db push`.
+-- Applied to production on 5 September 2026, recorded as version 20260905052727.
 --
 -- Why: the policy "Allow public read access to profiles" grants SELECT where
 -- auth.role() = 'authenticated' OR auth.role() = 'anon'. The anon branch means
