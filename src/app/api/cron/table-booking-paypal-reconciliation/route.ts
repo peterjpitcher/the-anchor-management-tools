@@ -9,8 +9,10 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import {
   buildPayPalDepositCompletedUpdate,
   parsePayPalAmountGbp,
+  payPalAmountsMatch,
   sendTableBookingDepositCapturedNotifications,
 } from '@/lib/table-bookings/paypal-deposit'
+import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
 
 /**
  * Settles table-booking deposits that PayPal took but this app never recorded.
@@ -59,6 +61,13 @@ type Candidate = {
   payment_status: string | null
   paypal_deposit_order_id: string | null
   paypal_deposit_capture_id: string | null
+  // Read only to work out what this booking actually owes, so a capture can be
+  // checked against it before the figure is locked in.
+  party_size: number | null
+  deposit_amount: number | null
+  deposit_amount_locked: number | null
+  deposit_waived: boolean | null
+  booking_type: string | null
 }
 
 export async function GET(request: NextRequest) {
@@ -81,7 +90,7 @@ export async function GET(request: NextRequest) {
     const { data: candidates, error } = await supabase
       .from('table_bookings')
       .select(
-        'id, booking_reference, customer_id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id',
+        'id, booking_reference, customer_id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type',
       )
       .not('paypal_deposit_order_id', 'is', null)
       .is('paypal_deposit_capture_id', null)
@@ -119,6 +128,56 @@ export async function GET(request: NextRequest) {
       )
       if (!capture?.id) continue
 
+      /*
+       * The order must belong to THIS booking before anything from it is written.
+       * custom_id here is the bare booking id, with no prefix. Without this check a
+       * mis-stored order id would quietly record another booking's payment against
+       * this one, and the browser capture path checks it for exactly that reason.
+       */
+      const orderCustomId = order?.purchase_units?.[0]?.custom_id
+      if (typeof orderCustomId !== 'string' || orderCustomId !== booking.id) {
+        needsAttention.push(booking.booking_reference ?? booking.id)
+        await logAuditEvent({
+          operation_type: 'payment.capture_booking_mismatch',
+          resource_type: 'table_booking',
+          resource_id: booking.id,
+          operation_status: 'failure',
+          additional_info: {
+            source: 'reconciliation_cron',
+            order_id: orderId,
+            capture_id: capture.id,
+            actual_custom_id: orderCustomId ?? null,
+            action_needed:
+              'PayPal order custom_id does not match this booking. Manual investigation required.',
+          },
+        }).catch(() => undefined)
+        continue
+      }
+
+      // Everything downstream assumes pounds: deposit_amount_locked has no currency
+      // column, so a non-GBP capture would be stored as though it were sterling.
+      const captureCurrency = typeof capture?.amount?.currency_code === 'string'
+        ? capture.amount.currency_code.toUpperCase()
+        : null
+      if (captureCurrency !== 'GBP') {
+        needsAttention.push(booking.booking_reference ?? booking.id)
+        await logAuditEvent({
+          operation_type: 'payment.capture_currency_mismatch',
+          resource_type: 'table_booking',
+          resource_id: booking.id,
+          operation_status: 'failure',
+          additional_info: {
+            source: 'reconciliation_cron',
+            order_id: orderId,
+            capture_id: capture.id,
+            currency: captureCurrency,
+            action_needed:
+              'PayPal captured in a currency other than GBP, so it was not recorded.',
+          },
+        }).catch(() => undefined)
+        continue
+      }
+
       // PayPal took the money and we never recorded it.
       const lockedAmountGbp = parsePayPalAmountGbp(capture?.amount?.value ?? null)
       if (lockedAmountGbp === null) {
@@ -135,6 +194,47 @@ export async function GET(request: NextRequest) {
             raw_amount: capture?.amount?.value ?? null,
             action_needed:
               'PayPal shows a completed capture but the amount was unreadable, so it was not recorded',
+          },
+        }).catch(() => undefined)
+        continue
+      }
+
+      /*
+       * The captured figure is about to be written into deposit_amount_locked, which is
+       * what the venue then treats as owed and what any refund is measured against. It
+       * must agree with what this booking actually owes: a stale order created before the
+       * party size changed would otherwise lock the old, wrong amount. The browser capture
+       * path refuses this case, so the sweep backing it up must refuse it too rather than
+       * being the more permissive of the two.
+       */
+      const expectedAmount = Number(
+        getCanonicalDeposit({
+          party_size: Math.max(1, Number(booking.party_size || 1)),
+          deposit_amount: booking.deposit_amount ?? null,
+          deposit_amount_locked: booking.deposit_amount_locked ?? null,
+          status: booking.status ?? null,
+          payment_status: booking.payment_status ?? null,
+          deposit_waived: booking.deposit_waived ?? null,
+          // Christmas bookings owe a deposit at any party size.
+          booking_type: booking.booking_type ?? null,
+        }).toFixed(2),
+      )
+
+      if (!payPalAmountsMatch(lockedAmountGbp, expectedAmount)) {
+        needsAttention.push(booking.booking_reference ?? booking.id)
+        await logAuditEvent({
+          operation_type: 'payment.capture_amount_mismatch',
+          resource_type: 'table_booking',
+          resource_id: booking.id,
+          operation_status: 'failure',
+          additional_info: {
+            source: 'reconciliation_cron',
+            order_id: orderId,
+            capture_id: capture.id,
+            captured_amount: lockedAmountGbp,
+            expected_amount: expectedAmount,
+            action_needed:
+              'PayPal captured an amount that does not match this booking. Manual reconciliation required.',
           },
         }).catch(() => undefined)
         continue
