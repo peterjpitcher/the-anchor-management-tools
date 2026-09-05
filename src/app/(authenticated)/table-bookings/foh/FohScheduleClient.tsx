@@ -65,6 +65,7 @@ export function FohScheduleClient({
   const [showCancelBookingConfirmation, setShowCancelBookingConfirmation] = useState(false)
   const [showNoShowConfirmation, setShowNoShowConfirmation] = useState(false)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
+  const [christmasCourseCounts, setChristmasCourseCounts] = useState<number[] | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
   const [partySizeEditBookingId, setPartySizeEditBookingId] = useState<string | null>(null)
   const [changeTimeOpen, setChangeTimeOpen] = useState(false)
@@ -564,6 +565,8 @@ export function FohScheduleClient({
       />
 
       <FohPartySizeModal
+        bookingId={partySizeEditBookingId}
+        onCoursesChange={setChristmasCourseCounts}
         open={partySizeEditOpen}
         bookingActionInFlight={bookingActionInFlight}
         partySizeEditValue={partySizeEditValue}
@@ -576,7 +579,7 @@ export function FohScheduleClient({
           if (!bid) return
           setPartySizeEditOpen(false)
           void (async () => {
-            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true }), 'Party size updated', 'party_size')
+            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasCourseCounts }), 'Party size updated', 'party_size')
             if (ok) closeBookingDetails()
           })()
         }}

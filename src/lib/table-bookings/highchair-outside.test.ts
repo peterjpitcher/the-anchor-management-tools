@@ -317,6 +317,19 @@ describe('sendTableBookingCreatedSmsIfAllowed — wording', () => {
     }
   }
 
+  it('renders the recorded Christmas tiers consistently in SMS and both email formats', async () => {
+    await sendTableBookingCreatedSmsIfAllowed(customerClient(), {
+      customerId: 'cust-1', normalizedPhone: '+447700900123',
+      bookingResult: confirmedResult({ christmas_course_counts: [1, 1, 1, 1, 2, 3] }),
+    })
+    const rendered = await capture()
+    for (const content of [rendered.sms, rendered.html, rendered.text]) {
+      expect(content).toContain('Christmas courses: 4 x 1 course, 1 x 2 courses, 1 x 3 courses.')
+      expect(content).toContain('One course needs no pre-order.')
+      expect(content).not.toMatch(/undefined|Invalid Date|NaN/)
+    }
+  })
+
   it('should use outside/booking wording (not "your table") for an outside booking', async () => {
     await sendTableBookingCreatedSmsIfAllowed(customerClient(), {
       customerId: 'cust-1',

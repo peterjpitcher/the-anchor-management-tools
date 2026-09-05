@@ -5,6 +5,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
   PartySizeUpdateFailedAfterMoveError,
+  ChristmasCourseValidationError,
   mapSeatUpdateBlockedReason,
   updateTableBookingPartySizeWithLinkedEventSeats
 } from '@/lib/events/staff-seat-updates'
@@ -18,6 +19,7 @@ import {
 } from '@/lib/table-bookings/preorder'
 
 const UpdatePartySizeSchema = z.object({
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(6).max(20).optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
@@ -75,6 +77,7 @@ export async function POST(
     const result = await updateTableBookingPartySizeWithLinkedEventSeats(auth.supabase, {
       tableBookingId: id,
       partySize: newPartySize,
+      christmasCourseCounts: parsed.data.christmas_course_counts,
       actor: 'foh',
       sendSms: parsed.data.send_sms,
       appBaseUrl: process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin,
@@ -190,6 +193,7 @@ export async function POST(
       preorderRemoved,
     })
   } catch (error) {
+    if (error instanceof ChristmasCourseValidationError) return NextResponse.json({ error: error.message }, { status: 409 })
     logger.error('FOH table-booking party-size update failed', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { tableBookingId: id },

@@ -135,8 +135,11 @@ export function mapPreorderCoverRow(
  * and chosen no main is NOT complete, and a seat with a main and no add-ons IS. Anything else would
  * mean the chase cron nagged a guest for not buying an extra.
  */
-export function isCoverComplete(cover: Pick<PreorderCover, 'selections'>): boolean {
-  return cover.selections.some((selection) => selection.course === 'main')
+export function isCoverComplete(cover: Pick<PreorderCover, 'selections' | 'courseCount'>): boolean {
+  if (cover.courseCount === 1) return true
+  const hasMain = cover.selections.some((selection) => selection.course === 'main')
+  if (!cover.courseCount) return hasMain // Existing records retain their recorded policy.
+  return hasMain && cover.selections.filter((selection) => isPreorderCourse(selection.course)).length === cover.courseCount
 }
 
 /**
@@ -206,7 +209,7 @@ export function describePreorderGaps(completeness: PreorderCompleteness): string
     )
   }
   if (completeness.ordinalsMissingMain.length > 0) {
-    parts.push(`no main chosen for seat ${completeness.ordinalsMissingMain.join(', ')}`)
+    parts.push(`course choices incomplete for seat ${completeness.ordinalsMissingMain.join(', ')}`)
   }
   return parts.length > 0 ? `${parts.join(', and ')}.` : 'Something is missing from this pre-order.'
 }
@@ -501,10 +504,8 @@ export async function loadPreorderOrder(
 ): Promise<PreorderOrder | null> {
   const { data: bookingRow, error: bookingError } = await supabase
     .from('table_bookings')
-    .select(
-      'id, booking_reference, booking_date, booking_time, party_size, allergies, ' +
-        'booking_period_id, booking_period_name, booking_period_answer, booking_period_requires_preorder',
-    )
+    // Select the row so the optional snapshot remains compatible before its migration.
+    .select('*')
     .eq('id', tableBookingId)
     .maybeSingle()
 
@@ -522,6 +523,7 @@ export async function loadPreorderOrder(
     booking_period_name: string | null
     booking_period_answer: boolean | null
     booking_period_requires_preorder: boolean | null
+    christmas_course_counts?: Array<1 | 2 | 3> | null
   }
 
   const [covers, preorderCutoffDays] = await Promise.all([
@@ -543,7 +545,7 @@ export async function loadPreorderOrder(
     periodId: booking.booking_period_id ?? null,
     periodName: booking.booking_period_name ?? null,
     preorderCutoffDays,
-    covers,
+    covers: covers.map(cover => ({ ...cover, courseCount: booking.christmas_course_counts?.[cover.ordinal - 1] ?? null })),
   }
 }
 

@@ -1,0 +1,16 @@
+{
+  "status": "prepared, not applied",
+  "reason": "Replace generated editorial instructions with the verified existing dish name. No ingredients, names, prices or dietary flags change.",
+  "changes": [
+    {"id":"3953fc58-b528-45af-adc0-56dc5a345160","name":"Mayonnaise","description":"Mayonnaise."},
+    {"id":"862e843a-7600-46fc-b3f0-c2f4a4d0e320","name":"Bisto Gravy","description":"Bisto gravy."},
+    {"id":"71086b08-9c25-4ecb-9b4b-d8375dfaff9b","name":"Burger Sauce","description":"Burger sauce."},
+    {"id":"8302b994-3ce5-48bb-b43c-b75a852edbe8","name":"Mint Sauce","description":"Mint sauce."},
+    {"id":"512e9811-cd69-40f3-92a3-ebe3e8ef0c5c","name":"Strawberry Sauce","description":"Strawberry sauce."},
+    {"id":"b3f74a39-ced7-4731-a699-665ab87aeeb8","name":"Broccoli Cheese","description":"Broccoli cheese."},
+    {"id":"d9772619-85eb-481c-8e7c-9795f177e6b9","name":"Add crispy bacon","description":"Add crispy bacon."},
+    {"id":"a0f4aed4-2b4f-4b82-8f12-e12fd6ad1114","name":"Add hash brown","description":"Add hash brown."}
+  ],
+  "expected_description_template": "{name} keeps the existing menu flavour clear and concise, using the current dish wording without adding new ingredients. It is written for guests choosing food from The Anchor menu.",
+  "application_guard": "Re-read each current description and only replace it if it still equals the captured template. Use the authorised menu edit path and preserve prior values for rollback. No record should be changed by ID alone."
+}
