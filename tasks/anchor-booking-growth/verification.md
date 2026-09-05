@@ -1,6 +1,6 @@
 # Booking growth implementation evidence
 
-Status: local implementation, awaiting completed release checks and exact production migration approval. No production data, customer communication or campaign changed.
+Status: implementation pushed to the paired codex/anchor-booking-growth branches, awaiting exact production approval. Release checks completed; production application remains blocked on approval. No production data, customer communication or campaign changed.
 
 ## Implemented scope
 
@@ -63,3 +63,7 @@ Page-specific persistent actions: 18 checks passed in Chromium and WebKit across
 Sanitised evidence is in /tmp/anchor-growth/private-hire and /tmp/anchor-growth/tables. Browser scripts are saved in the website scripts directory. The temporary fixture has a copied app root and separate cache, guards upstream sockets/fetch, and never targets production for writes.
 
 Christmas browser check passed with the two-screen feature enabled, matching the read-only live flag. Six one-course guests were not asked for dishes. Mixed one/two/three-course choices blocked progression until the required dishes were selected, then allowed progression. After the cutoff, two/three-course options were disabled. External requests and all POST requests were blocked; expected blocked telemetry errors were recorded. Screenshots and sanitised evidence: /tmp/anchor-growth/christmas/.
+
+The enabled two-screen full table form also completed synthetic bookings in Chromium and WebKit. The actual website proxy forwarded purpose=drinks, four guests and the retained date/time. Both enabled and fallback full-form variants therefore have browser confirmation evidence.
+
+Draft pull requests: management #122 and the paired website booking-growth pull request. No production merge, migration, activation, menu edit or campaign has occurred.
