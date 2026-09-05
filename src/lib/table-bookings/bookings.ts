@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
-import { sendEmail } from '@/lib/email/emailService'
+import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 import { notifyCustomer } from '@/lib/notifications/notify'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -505,7 +505,7 @@ export async function sendManagerTableBookingCreatedEmailIfAllowed(
     fallbackCustomerId?: string | null
     createdVia?: string
   }
-): Promise<{ sent: boolean; skipped?: boolean; reason?: string; error?: string }> {
+): Promise<{ sent: boolean; queued?: boolean; skipped?: boolean; reason?: string; error?: string }> {
   if (!input.tableBookingId) {
     return {
       sent: false,
@@ -610,21 +610,28 @@ export async function sendManagerTableBookingCreatedEmailIfAllowed(
     '</ul>'
   ].join('')
 
-  const emailResult = await sendEmail({
+  const emailResult = await queueManagerReportEmail({
+    section: 'table_bookings',
+    key: booking.id,
     to: MANAGER_TABLE_BOOKING_EMAIL,
     subject,
-    html
+    html,
+    metadata: {
+      table_booking_id: booking.id,
+      summary: `${customerName}: ${partySize} guests, ${bookingMoment}, ${bookingReference}`,
+    },
   })
 
   if (!emailResult.success) {
     return {
       sent: false,
-      error: emailResult.error || 'Failed to send manager booking email'
+      error: emailResult.error || 'Failed to queue manager booking email'
     }
   }
 
   return {
-    sent: true
+    sent: false,
+    queued: true
   }
 }
 

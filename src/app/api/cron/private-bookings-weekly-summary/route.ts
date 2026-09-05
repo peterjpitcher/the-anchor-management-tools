@@ -10,7 +10,7 @@ import {
 } from '@/lib/api/idempotency'
 import { logger } from '@/lib/logger'
 import {
-  sendManagerPrivateBookingsWeeklyDigestEmail,
+  queueManagerPrivateBookingsWeeklyDigestEmail,
   type PrivateBookingWeeklyDigestEvent,
   type PrivateBookingWeeklyDigestStaleOutcome
 } from '@/lib/private-bookings/manager-notifications'
@@ -26,7 +26,8 @@ import { AuditService } from '@/services/audit'
 export const maxDuration = 60
 
 const LONDON_TIMEZONE = 'Europe/London'
-const DEFAULT_DIGEST_HOUR = 9
+// Prepare the snapshot one hour before the combined Friday report.
+const SNAPSHOT_HOUR = 8
 
 type PendingSmsRow = {
   id: string
@@ -77,31 +78,16 @@ function normalizeCustomerName(input: {
   return joined || 'Guest'
 }
 
-function parseDigestHour(): number {
-  const raw = process.env.PRIVATE_BOOKINGS_WEEKLY_DIGEST_HOUR_LONDON
-  if (!raw) return DEFAULT_DIGEST_HOUR
-  const parsed = Number.parseInt(raw, 10)
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 23) {
-    return DEFAULT_DIGEST_HOUR
-  }
-  return parsed
+function getEndOfWeekDateKey(dateKey: string): string {
+  const date = new Date(`${dateKey}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + (7 - date.getUTCDay()) % 7)
+  return date.toISOString().slice(0, 10)
 }
 
-function getEndOfWeekDateKey(mondayDateKey: string): string {
-  const monday = new Date(`${mondayDateKey}T00:00:00Z`)
-  const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000)
-  return sunday.toISOString().slice(0, 10)
-}
-
-function formatWeekLabel(mondayDateKey: string): string {
-  const monday = new Date(`${mondayDateKey}T12:00:00.000Z`)
-  return `w/c ${new Intl.DateTimeFormat('en-GB', {
-    timeZone: LONDON_TIMEZONE,
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric'
-  }).format(monday)}`
+function formatWeekLabel(dateKey: string): string {
+  return `snapshot ${new Intl.DateTimeFormat('en-GB', {
+    timeZone: LONDON_TIMEZONE, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+  }).format(new Date(`${dateKey}T12:00:00Z`))}`
 }
 
 export async function GET(request: Request) {
@@ -117,7 +103,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url)
     const force = url.searchParams.get('force') === 'true'
-    const digestHour = parseDigestHour()
+    const digestHour = SNAPSHOT_HOUR
     const now = new Date()
     const { dateKey: londonDateKey, hour: londonHour, dayOfWeek } = getLondonDateParts(now)
 
@@ -132,11 +118,11 @@ export async function GET(request: Request) {
       })
     }
 
-    if (!force && dayOfWeek !== 'Monday') {
+    if (!force && dayOfWeek !== 'Friday') {
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: 'not_monday',
+        reason: 'not_friday',
         londonDate: londonDateKey,
         dayOfWeek
       })
@@ -263,7 +249,7 @@ export async function GET(request: Request) {
       })
     }
 
-    const emailResult = await sendManagerPrivateBookingsWeeklyDigestEmail({
+    const emailResult = await queueManagerPrivateBookingsWeeklyDigestEmail({
       runDateKey: londonDateKey,
       weekLabel: formatWeekLabel(londonDateKey),
       appBaseUrl,
@@ -273,10 +259,10 @@ export async function GET(request: Request) {
       stalePendingOutcomes
     })
 
-    if (!emailResult.sent) {
+    if (!emailResult.queued) {
       await releaseIdempotencyClaim(supabase, claimKey, claimHash)
       claimHeld = false
-      logger.error('Failed to send private bookings weekly digest email', {
+      logger.error('Failed to queue private bookings weekly summary', {
         error: new Error(emailResult.error || 'unknown'),
         metadata: {
           runDate: londonDateKey,
@@ -284,7 +270,7 @@ export async function GET(request: Request) {
           actionCount: emailResult.actionCount ?? 0
         }
       })
-      return new NextResponse('Failed to send email', { status: 500 })
+      return new NextResponse('Failed to queue summary', { status: 500 })
     }
 
     // Audit log — failure should not break the cron
@@ -306,7 +292,8 @@ export async function GET(request: Request) {
 
     const responsePayload = {
       success: true,
-      sent: true,
+      sent: false,
+      queued: true,
       londonDate: londonDateKey,
       events: digestEvents.length,
       actions: emailResult.actionCount ?? 0
