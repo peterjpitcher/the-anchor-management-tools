@@ -166,3 +166,19 @@ describe('computeTableBookingRequestHash with a pre-order', () => {
     )
   })
 })
+
+describe('fixture booking intent', () => {
+  const fixture_id = '10000000-0000-4000-8000-000000000001'
+  const notes = `Nations Championship: Italy v South Africa [${fixture_id}]\nNear the screen`
+  const original = makeFields({ fixture_id, notes })
+  it('keeps the same hash after a trusted fixture label refresh', () => {
+    expect(computeTableBookingRequestHash({ ...original, notes: `Nations Championship: Updated teams [${fixture_id}]\nNear the screen` })).toBe(computeTableBookingRequestHash(original))
+    expect(computeTableBookingRequestHash({ ...original, notes: `Nations Championship: [${fixture_id}]\nNear the screen` })).toBe(computeTableBookingRequestHash(original))
+  })
+  it.each([{ date: '2026-11-08' }, { time: '13:00:00' }, { party_size: 5 }, { phone: '+447700900222' }, { first_name: 'Different' }, { notes: notes + ' please' }])('keeps changed customer intent conflicting: %p', changes => {
+    expect(computeTableBookingRequestHash({ ...original, ...changes })).not.toBe(computeTableBookingRequestHash(original))
+  })
+  it('does not normalise fixture labels without an explicit ID', () => {
+    expect(computeTableBookingRequestHash(makeFields({ notes }))).not.toBe(computeTableBookingRequestHash(makeFields({ notes: notes.replace('Italy', 'France') })))
+  })
+})

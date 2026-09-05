@@ -10,10 +10,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getIdempotencyKey,
   claimIdempotencyKey,
+  lookupIdempotencyKey,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
-import { computeTableBookingRequestHash } from '@/lib/table-bookings/booking-idempotency'
+import { computeTableBookingRequestHash, canonicalFixtureBookingNotes } from '@/lib/table-bookings/booking-idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -63,6 +64,7 @@ type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllow
 type NotificationChannelMeta = TableBookingNotificationChannel
 
 const CreateTableBookingSchema = z.object({
+  fixture_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32),
   first_name: z.string().trim().min(1).max(100).optional(),
   last_name: z.string().trim().max(100).optional(),
@@ -336,7 +338,15 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Invalid JSON body', 'VALIDATION_ERROR', 400)
     }
 
-    const parsed = CreateTableBookingSchema.safeParse(body)
+    const replayOnly = req.headers.get('X-Idempotency-Replay-Only') === 'true'
+    if (replayOnly && authState !== 'authenticated') {
+      return createErrorResponse('API key required for booking recovery', 'UNAUTHORIZED', 401)
+    }
+    // The envelope makes an older server reject a recovery probe before it can create a booking.
+    const candidate = replayOnly && body && typeof body === 'object' && 'replay_request' in body
+      ? (body as { replay_request: unknown }).replay_request
+      : replayOnly ? null : body
+    const parsed = CreateTableBookingSchema.safeParse(candidate)
     if (!parsed.success) {
       return createErrorResponse(
         parsed.error.issues[0]?.message || 'Invalid table booking payload',
@@ -347,6 +357,14 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = parsed.data
+    if ((replayOnly || payload.fixture_id) && authState !== 'authenticated') {
+      return createErrorResponse('API key required for fixture booking recovery', 'UNAUTHORIZED', 401)
+    }
+    if (payload.fixture_id) {
+      try { canonicalFixtureBookingNotes(payload.fixture_id, payload.notes || '') } catch {
+        return createErrorResponse('Fixture notes do not match fixture ID', 'VALIDATION_ERROR', 400)
+      }
+    }
 
     let normalizedPhone: string
     try {
@@ -383,6 +401,7 @@ export async function POST(request: NextRequest) {
       party_size: payload.party_size,
       purpose: payload.purpose,
       notes: payload.notes,
+      fixture_id: payload.fixture_id,
       dietary_requirements: payload.dietary_requirements,
       allergies: payload.allergies,
       high_chair_count: payload.high_chair_count,
@@ -399,7 +418,16 @@ export async function POST(request: NextRequest) {
     })
 
     const supabase = createAdminClient()
-    const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+    const idempotencyState = replayOnly
+      ? await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
+      : await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+
+    if (idempotencyState.state === 'new' && replayOnly) {
+      return createErrorResponse('No previous booking attempt found', 'IDEMPOTENCY_KEY_NOT_FOUND', 404)
+    }
+    if (idempotencyState.state === 'replay' && (idempotencyState.response as { state?: string })?.state === 'processing') {
+      return createErrorResponse('This request is already being processed. Please retry shortly.', 'IDEMPOTENCY_KEY_IN_PROGRESS', 409)
+    }
 
     if (idempotencyState.state === 'conflict') {
       return createErrorResponse(
