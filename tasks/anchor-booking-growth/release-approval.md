@@ -1,6 +1,6 @@
 # Production release approval package
 
-Prepared only. Production project: the-anchor-management-tools, tfcasgxopxegwrabvwat, tfcasgxopxegwrabvwat.supabase.co. No production changes have been applied.
+Approved by the owner on 5 September 2026. Production project: the-anchor-management-tools, tfcasgxopxegwrabvwat, tfcasgxopxegwrabvwat.supabase.co. Both migrations, eight menu corrections and 15 dated capacities have been applied. See release-result.md for deployment and activation evidence. This packet preserves the exact reviewed SQL and checksums.
 
 ## Changes requiring exact approval
 

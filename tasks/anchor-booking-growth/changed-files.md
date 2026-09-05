@@ -208,3 +208,12 @@ Application edits are in isolated codex/anchor-booking-growth worktrees. Origina
 ## Deliberately unchanged
 
 Existing allocation RPCs v06/v07, ordinary table availability API purpose rules, waitlist machinery, payment capture/refund arithmetic, event booking-sheet renderer and published operating hours remain unchanged. The new wrappers call the existing allocators. The sheet already reads notes. Existing private-hire queues are reused. Latest unrelated main-branch API fixes were incorporated without conflict.
+
+## Production evidence added after approval
+
+- `tasks/anchor-booking-growth/release-result.md`
+- `tasks/anchor-booking-growth/capacity-apply.sql`
+- `tasks/anchor-booking-growth/live-event-capacities.json`
+- `tasks/lessons.md`
+
+The existing review, approval, verification and task records were updated to distinguish their historical pre-apply findings from the completed production actions. Approved migration and activation SQL files were not changed.

@@ -1,6 +1,6 @@
 # Christmas course policy implementation and migration review
 
-Status: local only, not applied, feature disabled by default. No customer records, payments, communications or production settings were changed.
+Status: exact migration applied to production on 5 September 2026 as version `20260905124506`, after owner approval. The review below records the pre-apply state. See `release-result.md` for activation, deployment and post-apply evidence. No customer bookings, payments or communications were created for testing.
 
 ## Verified current contract
 

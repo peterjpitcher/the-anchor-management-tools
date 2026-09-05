@@ -1,6 +1,6 @@
 # Dated event capacity review
 
-Read-only snapshot: production events, 5 September 2026. No values changed.
+Applied to production on 5 September 2026 after the owner confirmed 60 places for all reviewed events, except Halloween at 150 and Tasting Night at 25. The table retains the before-values for rollback. All 15 resulting booking-capacity snapshots match the approved totals.
 
 | Date | Event | Booking mode | Capacity |
 |---|---|---|---|
@@ -22,13 +22,13 @@ Read-only snapshot: production events, 5 September 2026. No values changed.
 
 Seated and standing capacities are also unset on these records. The one existing capacity is recorded configuration, not an independent physical safety assessment. Table and communal allocation rules must be checked separately; a generic capacity number does not prove a room layout can accommodate it.
 
-The report's quiz 80, cash bingo 60 and music bingo 90 figures are operating guidance, not approval to set each dated event. Exact sellable values require venue confirmation after layout, holds and staff constraints. Keep truthful availability based on the existing allocator; do not add scarcity to unset records.
+The owner's dated-event values supersede the report's generic quiz 80 and music bingo 90 figures. No changes were made to booking mode, physical tables, seated/standing limits, dates, pricing or existing bookings.
 
 The live September karaoke record predates the report's proposed 2027 programme. Preserve it and flag the discrepancy for the owner; do not cancel or promote it automatically.
 
 ## Exact record mapping
 
-The table above is in the same order as these verified event IDs. No after-values are proposed until the venue confirms each layout.
+The table above is in the same order as these verified event IDs. After-values are 60, except record 8 at 150 and record 12 at 25.
 
 1. `5cdadf74-97c1-4ec0-b495-d369a7304494`
 2. `9b78f364-7712-4c92-9b09-ffa9132e37e5`
@@ -45,3 +45,7 @@ The table above is in the same order as these verified event IDs. No after-value
 13. `ccbe8b82-15b0-4261-b58e-2ac4d7210e25`
 14. `9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a`
 15. `b9334958-76b4-4504-a64a-0d47145bd75e`
+
+## Applied update
+
+`capacity-apply.sql` records the exact guarded transaction. The staff editor exposes only seated and standing limits, so the approved total field was updated directly, with one existing audit-log entry per event. The transaction checked every old capacity and rejected changes to any other event field. All 15 updates and audit entries were verified. The production booking snapshot reports 55 remaining for September quiz, 46 for karaoke and 148 for Halloween after existing reservations; other reviewed events retain their full approved capacity. This is an observation at release time, not a promise of future availability.
