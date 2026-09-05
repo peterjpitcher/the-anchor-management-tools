@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { sendEmail } from '@/lib/email/emailService';
+import { queueManagerReportEmail } from '@/lib/manager-report/queue';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { getTodayIsoDate, formatDateInLondon } from '@/lib/dateUtils';
 import { displayName } from '@/lib/employees/display-name';
@@ -13,16 +13,8 @@ import {
 } from '@/lib/leave/pending-reminders';
 
 /**
- * Daily nudge about holiday requests nobody has approved.
- *
- * Eight were sitting unapproved when this was written, the oldest raised on 17 July for leave
- * that had already started. The employee gets a "request received" email and then silence.
- *
- * The ledger table is what makes this safe to run daily: one row per request per reminder kind,
- * behind a unique index, so the same request cannot be chased twice. The row is written BEFORE
- * the email is sent, because sending twice is worse than not sending at all. A manager who never
- * hears about a request will still see it in the queue; one who gets the same nag every morning
- * will filter the sender.
+ * Collect pending holiday reminders for the Friday report. Queue keys suppress duplicates
+ * while the delivery ledger records only reminders actually included in a sent report.
  */
 export async function GET(request: NextRequest) {
   const auth = authorizeCronRequest(request);
@@ -36,6 +28,7 @@ export async function GET(request: NextRequest) {
   const result = {
     considered: 0,
     sent: 0,
+    queued: 0,
     skippedAlreadySent: 0,
     truncated: false,
     errors: [] as string[],
@@ -89,22 +82,6 @@ export async function GET(request: NextRequest) {
       const leaveRequest = byId.get(reminder.requestId);
       if (!leaveRequest) continue;
 
-      // Claim it FIRST. If the insert loses the race with another run, the unique index rejects
-      // it and we skip, rather than sending a duplicate.
-      const { error: claimError } = await supabase
-        .from('leave_reminder_log')
-        .insert({
-          request_id: reminder.requestId,
-          reminder_kind: reminder.kind,
-          sent_to: [recipient],
-        });
-
-      if (claimError) {
-        if (claimError.code === '23505') continue; // Another run already has it.
-        result.errors.push(`Could not claim reminder for ${reminder.requestId}: ${claimError.message}`);
-        continue;
-      }
-
       const who = nameFor(leaveRequest.employee_id);
       const dates = leaveRequest.start_date === leaveRequest.end_date
         ? formatDateInLondon(leaveRequest.start_date)
@@ -118,17 +95,24 @@ export async function GET(request: NextRequest) {
         ? `${who} has holiday booked for ${dates}, starting in ${reminder.daysUntilStart} day${reminder.daysUntilStart === 1 ? '' : 's'}, and it still has not been approved.`
         : `${who} asked for holiday ${dates}. It has been waiting ${reminder.daysWaiting} days.`;
 
-      const emailResult = await sendEmail({
+      const emailResult = await queueManagerReportEmail({
+        section: 'holiday_reminders',
+        key: `${reminder.requestId}:${reminder.kind}`,
         to: recipient,
         subject,
         html: buildReminderHtml(lead, who, dates),
+        metadata: {
+          leave_request_id: reminder.requestId,
+          leave_reminder_kind: reminder.kind,
+          summary: lead,
+        },
       });
 
       if (!emailResult.success) {
-        result.errors.push(`Email failed for ${reminder.requestId}: ${emailResult.error ?? 'unknown'}`);
+        result.errors.push(`Queue failed for ${reminder.requestId}: ${emailResult.error ?? 'unknown'}`);
         continue;
       }
-      result.sent += 1;
+      result.queued += 1;
     }
 
     return NextResponse.json(result);
