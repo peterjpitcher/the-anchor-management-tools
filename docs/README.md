@@ -23,6 +23,7 @@ Use this index to find the canonical documentation for The Anchor Management Too
 - [Testing](./TESTING.md) – current automated test status, manual smoke checks, and how to add new coverage.
 
 ## Operations & Support
+- [Friday manager report](./manager-weekly-report.md): notification policy, scheduling and delivery recovery.
 - [Deployment](./DEPLOYMENT.md) – environment configuration, release workflow, and monitoring checklist.
 - [Troubleshooting](./TROUBLESHOOTING.md) – quick diagnostics for auth, database, SMS, and build issues.
 - **Setup guides** (`/setup/`):

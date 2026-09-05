@@ -223,7 +223,7 @@
     },
     {
       "path": "/api/cron/private-bookings-weekly-summary",
-      "schedule": "0 * * * *"
+      "schedule": "0 7,8 * * 5"
     },
     {
       "path": "/api/cron/generate-slots",
@@ -251,7 +251,7 @@
     },
     {
       "path": "/api/cron/rota-manager-alert",
-      "schedule": "0 18 * * 0"
+      "schedule": "0 7,8 * * 5"
     },
     {
       "path": "/api/cron/rota-unfilled-urgent",
@@ -303,7 +303,7 @@
     },
     {
       "path": "/api/cron/checklists-weekly-summary",
-      "schedule": "0 * * * 1"
+      "schedule": "0 7,8 * * 5"
     },
     {
       "path": "/api/cron/checklists-retention",
@@ -328,6 +328,10 @@
     {
       "path": "/api/cron/marketing-campaigns",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/manager-weekly-report",
+      "schedule": "0 * * * 5"
     }
   ]
 }
