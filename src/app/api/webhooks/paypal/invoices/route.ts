@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveWebhookIdForUrl, verifyPayPalWebhook } from '@/lib/paypal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { applyInvoicePayPalCapture } from '@/app/actions/invoicePayPalActions'
+import { applyInvoicePayPalCapture, positivePennies } from '@/lib/invoices/paypal-capture'
 import { INVOICE_PAYMENT_CUSTOM_ID_PREFIX } from '@/lib/invoices/paypal-custom-id'
 import {
   claimIdempotencyKey,
@@ -157,9 +157,12 @@ export async function POST(request: NextRequest) {
       IDEMPOTENCY_TTL_HOURS,
     )
 
-    // Anything but a fresh claim means this event is already being handled or
-    // has been: acknowledge so PayPal stops retrying, and do no work.
-    if (claim.state !== 'claimed') {
+    // Only a completed delivery can be acknowledged as a duplicate. A held
+    // claim may still fail, so PayPal must retry it.
+    if (claim.state === 'in_progress' || claim.state === 'conflict') {
+      return NextResponse.json({ error: 'Webhook processing has not completed' }, { status: 503 })
+    }
+    if (claim.state === 'replay') {
       await logWebhook(supabase, { status: 'duplicate', headers, body, eventId, eventType })
       return NextResponse.json({ received: true, duplicate: true })
     }
@@ -173,7 +176,8 @@ export async function POST(request: NextRequest) {
       case 'PAYMENT.CAPTURE.COMPLETED': {
         const captureId = typeof event?.resource?.id === 'string' ? event.resource.id : null
         const rawAmount = event?.resource?.amount?.value
-        const amount = typeof rawAmount === 'string' ? Number.parseFloat(rawAmount) : NaN
+        const pennies = positivePennies(rawAmount)
+        const amount = pennies === null ? NaN : pennies / 100
         const currency = event?.resource?.amount?.currency_code
 
         if (!captureId || !Number.isFinite(amount) || amount <= 0) {
@@ -181,22 +185,25 @@ export async function POST(request: NextRequest) {
             error: new Error('invoice_capture_unreadable'),
             metadata: { eventId, invoiceId, captureId, rawAmount },
           })
-          break
+          throw new Error('invoice_capture_unreadable')
         }
 
-        if (currency && String(currency).toUpperCase() !== 'GBP') {
+        if (currency !== 'GBP') {
           logger.error('[InvoicePayPal webhook] Capture was not in GBP, not applied', {
             error: new Error('invoice_capture_wrong_currency'),
             metadata: { eventId, invoiceId, currency },
           })
-          break
+          throw new Error('invoice_capture_wrong_currency')
         }
+        if (event.resource.status !== 'COMPLETED') throw new Error('invoice_capture_not_completed')
 
         const result = await applyInvoicePayPalCapture({
           invoiceId,
           amount,
           captureId,
           source: 'webhook',
+          capturedAt: event.resource.create_time ?? null,
+          orderId: event.resource.supplementary_data?.related_ids?.order_id ?? null,
         })
 
         if (result.error) {
@@ -204,6 +211,7 @@ export async function POST(request: NextRequest) {
             error: new Error(result.error),
             metadata: { eventId, invoiceId, captureId },
           })
+          throw new Error(result.error)
         }
         break
       }
@@ -217,20 +225,22 @@ export async function POST(request: NextRequest) {
           : null
 
         if (orderId) {
-          await supabase
+          const { error: releaseError } = await supabase
             .from('invoices')
             .update({ paypal_order_id: null, updated_at: new Date().toISOString() })
             .eq('id', invoiceId)
             .eq('paypal_order_id', orderId)
+          if (releaseError) throw releaseError
         }
 
-        await supabase.from('audit_logs').insert({
+        const { error: auditError } = await supabase.from('audit_logs').insert({
           operation_type: 'paypal_capture_denied',
           resource_type: 'invoice',
           resource_id: invoiceId,
           operation_status: 'failure',
           additional_info: { event_id: eventId, event_type: eventType, order_id: orderId },
         })
+        if (auditError) throw auditError
         break
       }
 
