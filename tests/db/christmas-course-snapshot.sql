@@ -4,7 +4,10 @@ BEGIN;
 CREATE ROLE anon;
 CREATE ROLE authenticated;
 CREATE ROLE service_role;
-CREATE FUNCTION public.get_setting_bool(text, boolean) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
+CREATE TABLE public.system_settings(key text PRIMARY KEY, value jsonb);
+CREATE FUNCTION public.get_setting_bool(p_key text, p_default boolean) RETURNS boolean LANGUAGE sql AS $$
+  SELECT coalesce((SELECT (value->>'value')::boolean FROM public.system_settings WHERE key=p_key), p_default)
+$$;
 CREATE TABLE public.booking_periods(period_kind text, is_active boolean, archived_at timestamptz,
   starts_on date, ends_on date, preorder_cutoff_days integer);
 CREATE TABLE public.booking_period_menu_items(id uuid, period_id uuid, course text, is_active boolean);
@@ -33,6 +36,8 @@ BEGIN
     'deposit_amount', p_party_size * 10, 'booking_period_requires_preorder', true);
 END; $$;
 \ir ../../supabase/migrations/20260905100155_christmas_course_snapshot.sql
+DO $$ BEGIN ASSERT christmas_course_policy_v01(current_date+30) IS NULL; END $$;
+INSERT INTO public.system_settings VALUES ('christmas_course_policy_enabled', '{"value":true}');
 DO $$
 DECLARE
   r jsonb;
