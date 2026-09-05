@@ -165,3 +165,7 @@ social links are corrected. Its information page still shows
 the current owner session. Its support request is prepared and awaits the visible
 reCAPTCHA and Submit. Bing remains locked pending verification. Paid placements
 remain excluded.
+
+## API connections, 5 September 2026
+
+See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated remediation run, verified fixes and production rollout.
