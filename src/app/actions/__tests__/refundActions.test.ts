@@ -55,6 +55,30 @@ describe('refundActions', () => {
   })
 
   describe('processPayPalRefund', () => {
+    it.each(['paypal', 'manual'] as const)('does not refund an applied invoice deposit through the %s bond flow', async (method) => {
+      vi.mocked(createClient).mockResolvedValue({
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      } as never)
+      const db = mockSupabaseChain({
+        id: 'booking-1',
+        deposit_amount: 250,
+        deposit_paid_date: new Date().toISOString(),
+        paypal_deposit_capture_id: 'CAPTURE-1',
+        invoice_id: 'invoice-1',
+        invoice_deposit_treatment: 'deducted',
+      })
+      vi.mocked(createAdminClient).mockReturnValue(db as never)
+
+      const actions = await import('../refundActions')
+      const result = method === 'paypal'
+        ? await actions.processPayPalRefund('private_booking', 'booking-1', 250, 'Return deposit')
+        : await actions.processManualRefund('private_booking', 'booking-1', 250, 'Return deposit', 'cash')
+
+      expect(result).toEqual({ error: expect.stringContaining('applied to the invoice') })
+      expect(db.rpc).not.toHaveBeenCalled()
+      expect(refundPayPalPayment).not.toHaveBeenCalled()
+    })
+
     it('should reject if user lacks refund permission', async () => {
       vi.mocked(checkUserPermission).mockResolvedValue(false)
 

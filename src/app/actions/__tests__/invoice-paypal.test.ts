@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
@@ -16,6 +17,7 @@ vi.mock('@/lib/paypal', () => ({
   createSimplePayPalOrder: vi.fn(),
   capturePayPalPayment: vi.fn(),
   getPayPalOrder: vi.fn(),
+  isPayPalOrderAlreadyCapturedError: vi.fn().mockReturnValue(false),
 }))
 vi.mock('@/lib/email/invoice-payment-emails', () => ({
   sendInvoicePaymentLinkEmail: vi.fn().mockResolvedValue({ success: true }),
@@ -28,12 +30,15 @@ import {
   getInvoicePortalLink,
   sendInvoicePaymentLink,
   createInvoicePaymentOrderByToken,
-  applyInvoicePayPalCapture,
+  captureInvoicePaymentByToken,
 } from '@/app/actions/invoicePayPalActions'
+import { applyInvoicePayPalCapture } from '@/lib/invoices/paypal-capture'
+import { logger } from '@/lib/logger'
+import { logAuditEvent } from '@/app/actions/audit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
+import { createSimplePayPalOrder, getPayPalOrder, capturePayPalPayment, isPayPalOrderAlreadyCapturedError } from '@/lib/paypal'
 import { generateInvoiceToken } from '@/lib/invoices/invoice-token'
 import { sendInvoicePaymentLinkEmail } from '@/lib/email/invoice-payment-emails'
 
@@ -228,9 +233,10 @@ describe('createInvoicePaymentOrderByToken', () => {
   })
 
   it('opens a new order when the outstanding amount has moved since', async () => {
-    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ paypal_order_id: 'ORDER-STALE' })))
+    const admin = mockAdmin(invoice({ paypal_order_id: 'ORDER-STALE' }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
     vi.mocked(getPayPalOrder).mockResolvedValue({
-      status: 'APPROVED',
+      status: 'CREATED',
       purchase_units: [{
         reference_id: INVOICE_ID,
         custom_id: `inv-pay-${INVOICE_ID}`,
@@ -246,6 +252,7 @@ describe('createInvoicePaymentOrderByToken', () => {
       expect.objectContaining({ amount: 725.6 }),
     )
     expect(result.approveUrl).toContain('ORDER-1')
+    expect(admin.update).toHaveBeenCalledTimes(1)
   })
 
   it('refuses to bill an order belonging to a different invoice', async () => {
@@ -262,8 +269,8 @@ describe('createInvoicePaymentOrderByToken', () => {
 
     await createInvoicePaymentOrderByToken(generateInvoiceToken(INVOICE_ID))
 
-    // Not reused: a fresh order is opened for this invoice instead.
-    expect(createSimplePayPalOrder).toHaveBeenCalled()
+    // Keep uncertain references available for investigation.
+    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
   })
 })
 
@@ -286,6 +293,7 @@ describe('applyInvoicePayPalCapture', () => {
       p_amount: 725.6,
       p_capture_id: 'CAPTURE-1',
       p_order_id: 'ORDER-1',
+      p_captured_at: null,
     })
   })
 
@@ -308,5 +316,157 @@ describe('applyInvoicePayPalCapture', () => {
 
     expect(result.success).toBe(true)
     expect(result.alreadyRecorded).toBe(true)
+  })
+})
+
+function paypalOrder(status = 'APPROVED', amount = '725.60', captureStatus = 'COMPLETED') {
+  return {
+    id: 'ORDER-1', status,
+    purchase_units: [{
+      reference_id: INVOICE_ID, custom_id: `inv-pay-${INVOICE_ID}`,
+      amount: { value: amount, currency_code: 'GBP' },
+      ...(status === 'COMPLETED' ? { payments: { captures: [{
+        id: 'CAPTURE-1', status: captureStatus,
+        create_time: '2026-09-04T13:38:30Z',
+        amount: { value: amount, currency_code: 'GBP' },
+      }] } } : {}),
+    }],
+  }
+}
+
+describe('invoice capture recovery and guards', () => {
+  it.each(['void', 'written_off', 'paid', 'draft'])('does not capture an approved order for a %s invoice', async status => {
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice({ status, sent_at: null })))
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder())
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.error).toBeTruthy()
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('refuses even a one penny stale amount before capture', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(mockAdmin(invoice()))
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('APPROVED', '725.61'))
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.error).toContain('amount due has changed')
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('recovers an already captured payment without taking money again', async () => {
+    const admin = mockAdmin(invoice())
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('COMPLETED'))
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.success).toBe(true)
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+    expect(admin.rpc).toHaveBeenCalledWith('record_invoice_paypal_payment_atomic', expect.objectContaining({
+      p_capture_id: 'CAPTURE-1', p_amount: 725.6, p_captured_at: '2026-09-04T13:38:30Z',
+    }))
+  })
+
+  it('does not credit a pending capture on a completed order', async () => {
+    const admin = mockAdmin(invoice())
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('COMPLETED', '725.60', 'PENDING'))
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.error).toBeTruthy()
+    expect(admin.rpc).not.toHaveBeenCalled()
+  })
+
+  it('re-reads the actual capture after taking an approved payment', async () => {
+    const admin = mockAdmin(invoice())
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValueOnce(paypalOrder()).mockResolvedValueOnce(paypalOrder('COMPLETED'))
+    vi.mocked(capturePayPalPayment).mockResolvedValue({ transactionId: 'CAPTURE-1', amount: '725.60', status: 'COMPLETED' } as never)
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.success).toBe(true)
+    expect(capturePayPalPayment).toHaveBeenCalledTimes(1)
+    expect(getPayPalOrder).toHaveBeenCalledTimes(2)
+  })
+
+  it('recovers when another path captured the same order first', async () => {
+    const admin = mockAdmin(invoice())
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValueOnce(paypalOrder()).mockResolvedValueOnce(paypalOrder('COMPLETED'))
+    vi.mocked(capturePayPalPayment).mockRejectedValueOnce(new Error('ORDER_ALREADY_CAPTURED'))
+    vi.mocked(isPayPalOrderAlreadyCapturedError).mockReturnValueOnce(true)
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.success).toBe(true)
+    expect(admin.rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['PENDING', 'REFUNDED', 'DECLINED'])('does not credit a %s capture returned after approval', async status => {
+    const admin = mockAdmin(invoice())
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValueOnce(paypalOrder()).mockResolvedValueOnce(paypalOrder('COMPLETED', '725.60', status))
+    vi.mocked(capturePayPalPayment).mockResolvedValue({ status: 'COMPLETED' } as never)
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.error).toBeTruthy()
+    expect(admin.rpc).not.toHaveBeenCalled()
+  })
+
+  it('retains all money from an already completed overpayment and flags the excess', async () => {
+    const admin = mockAdmin(invoice(), {
+      recorded: true, already_recorded: false, status: 'paid', invoice_number: 'INV-003WJ', overpaid_amount: 74.4,
+    })
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('COMPLETED', '800.00'))
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.success).toBe(true)
+    expect(result.error).toBeUndefined()
+    expect(admin.rpc).toHaveBeenCalledWith('record_invoice_paypal_payment_atomic', expect.objectContaining({ p_amount: 800 }))
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('exceeds the invoice total'), expect.objectContaining({ metadata: expect.objectContaining({ overpaidAmount: 74.4 }) }))
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ new_values: expect.objectContaining({ overpaid_amount: 74.4 }) }))
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('does not raise the excess alert again on an idempotent replay', async () => {
+    const admin = mockAdmin(invoice(), {
+      recorded: false, already_recorded: true, status: 'paid', invoice_number: 'INV-003WJ', overpaid_amount: 74.4,
+    })
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    const result = await applyInvoicePayPalCapture({ invoiceId: INVOICE_ID, amount: 800, captureId: 'CAPTURE-1', source: 'webhook' })
+    expect(result.success).toBe(true)
+    expect(result.overpaidAmount).toBeUndefined()
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('reports a recording failure after capture without offering another payment', async () => {
+    const admin = mockAdmin(invoice())
+    admin.rpc.mockResolvedValue({ data: null, error: { message: 'constraint failed' } })
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('COMPLETED'))
+    const result = await captureInvoicePaymentByToken(generateInvoiceToken(INVOICE_ID), 'ORDER-1')
+    expect(result.error).toContain('could not record')
+    expect(capturePayPalPayment).not.toHaveBeenCalled()
+  })
+
+  it('records a completed old order before allowing any new payment link', async () => {
+    const admin = mockAdmin(invoice({ paypal_order_id: 'ORDER-1' }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('COMPLETED'))
+    const result = await createInvoicePaymentOrderByToken(generateInvoiceToken(INVOICE_ID))
+    expect(result.error).toContain('previous payment has been recorded')
+    expect(admin.rpc).toHaveBeenCalledTimes(1)
+    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
+  })
+
+  it('does not replace an approved order with a changed amount', async () => {
+    const admin = mockAdmin(invoice({ paypal_order_id: 'ORDER-1' }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockResolvedValue(paypalOrder('APPROVED', '975.60'))
+    const result = await createInvoicePaymentOrderByToken(generateInvoiceToken(INVOICE_ID))
+    expect(result.error).toContain('previous payment needs checking')
+    expect(admin.update).not.toHaveBeenCalled()
+    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
+  })
+
+  it('retains the existing reference on a provider lookup failure', async () => {
+    const admin = mockAdmin(invoice({ paypal_order_id: 'ORDER-1' }))
+    vi.mocked(createAdminClient).mockReturnValue(admin)
+    vi.mocked(getPayPalOrder).mockRejectedValueOnce(new Error('PayPal unavailable'))
+    const result = await createInvoicePaymentOrderByToken(generateInvoiceToken(INVOICE_ID))
+    expect(result.error).toContain('could not check')
+    expect(admin.update).not.toHaveBeenCalled()
+    expect(createSimplePayPalOrder).not.toHaveBeenCalled()
   })
 })

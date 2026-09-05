@@ -675,3 +675,25 @@ describe('matchesSelfCateringPackageName', () => {
     expect(matchesSelfCateringPackageName(undefined)).toBe(false)
   })
 })
+
+
+describe('linked invoice settlement in rendered contracts', () => {
+  it('shows the applied deposit within the event price and zero outstanding once paid', () => {
+    const booking = makeBooking([makeItem({ quantity: 1, unit_price: 829, line_total: 829, vat_rate: 20 })], {
+      invoice_id: 'invoice-id',
+      invoice_deposit_treatment: 'deducted',
+      deposit_amount: 250,
+      deposit_paid_date: '2026-08-28',
+      applied_deposit_amount: 250,
+      payments: [{ id: 'paypal-payment', booking_id: 'booking-id', amount: 744.8, method: 'paypal', created_at: '2026-09-05', source: 'invoice', readonly: true }],
+    })
+    const html = generateContractHTML(baseData(booking))
+    expect(html).toContain('Deposit applied to invoice')
+    expect(html).toContain('Total to pay before the event</span><span class="fv">£994.80')
+    expect(html).toContain('Event balance outstanding</span><span class="fv">£0.00')
+    expect(html).not.toContain('£1,244.80')
+    expect(html).not.toContain('process the deposit refund within')
+    expect(html).not.toContain('deposit refund is processed within')
+    expect(html).not.toContain('deposit is separate from and additional to the event price')
+  })
+})
