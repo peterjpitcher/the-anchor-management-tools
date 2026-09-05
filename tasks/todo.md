@@ -1,3 +1,12 @@
+# Friday manager report, 5 September 2026
+
+Detailed plan: [Friday manager report](./plan-2026-09-05-friday-manager-report.md).
+
+- [x] Discover existing manager emails and record the owner's timing decisions.
+- [x] Implement the report queue, renderer and protected delivery route without a migration.
+- [x] Connect selected manager notifications and Friday snapshots.
+- [ ] Complete regression checks and release verification.
+
 # Nav pills: make every pill a clearable to-do
 
 Goal: a pill means "there is something here you can action now", and working
