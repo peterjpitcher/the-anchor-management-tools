@@ -206,3 +206,7 @@ platform-controlled dietary attributes such as `Gluten-free Options`. In
 free-form customer copy, continue to use NGCI with the approved
 cross-contamination caveat. Never remove a venue capability based only on a
 wording distinction; verify it with the owner or an operational source first.
+
+## 5 September 2026: dated event capacities
+
+Use the owner-confirmed dated capacities: 60 for the reviewed events, Halloween 150 and Tasting Night 25. Report-level genre examples are not live sellable-capacity instructions. Check the actual booking snapshot before reporting a configured limit.

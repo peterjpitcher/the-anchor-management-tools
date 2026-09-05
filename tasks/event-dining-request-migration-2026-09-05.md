@@ -1,4 +1,6 @@
-# Event dining request migration, not applied
+# Event dining request migration, applied
+
+Applied after exact owner approval as production version `20260905124510`. The review below records the pre-apply state. Post-apply checks and deployment evidence are in `anchor-booking-growth/release-result.md`.
 
 Production target: `the-anchor-management-tools` (connected project name verified), project `tfcasgxopxegwrabvwat`, host `tfcasgxopxegwrabvwat.supabase.co`. Identity verified from this repository's `supabase/.temp/project-ref` and `.env.local` host, then the connected SQL catalogue.
 

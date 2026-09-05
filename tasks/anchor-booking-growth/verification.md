@@ -1,6 +1,6 @@
 # Booking growth implementation evidence
 
-Status: implementation pushed to the paired codex/anchor-booking-growth branches, awaiting exact production approval. Release checks completed; production application remains blocked on approval. No production data, customer communication or campaign changed.
+Status: exact production approval received and paired PRs merged. This document records the completed implementation checks; `release-result.md` records production migrations, data changes, activation and serving deployments. No customer communication or campaign was sent.
 
 ## Implemented scope
 
@@ -66,4 +66,4 @@ Christmas browser check passed with the two-screen feature enabled, matching the
 
 The enabled two-screen full table form also completed synthetic bookings in Chromium and WebKit. The actual website proxy forwarded purpose=drinks, four guests and the retained date/time. Both enabled and fallback full-form variants therefore have browser confirmation evidence.
 
-Draft pull requests: management #122 and the paired website booking-growth pull request. No production merge, migration, activation, menu edit or campaign has occurred.
+Management PR #122 and website PR #135 are merged after all hosted checks passed. Production application and verification evidence is recorded in `release-result.md`. No outbound campaign was run.

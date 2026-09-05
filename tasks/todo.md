@@ -176,6 +176,6 @@ See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated rem
 - [x] Complete independent SQL/code review and isolated migration/rollback tests.
 - [x] Save baseline, guarded menu corrections, dated-capacity review and release approval package in `tasks/anchor-booking-growth/`.
 - [x] Complete paired browser verification and refreshed integration gates.
-- [ ] Obtain approval of exact production migration, activation and menu payloads before application.
-- [ ] Deploy the paired approved release and verify production aliases.
-- [ ] Configure only venue-confirmed dated capacities; campaign remains a prepared brief.
+- [x] Obtain approval of exact production migration, activation and menu payloads before application.
+- [x] Deploy the paired approved release, verify production aliases, activate Christmas courses and exercise the live one-course journey without customer submission.
+- [x] Configure the 15 venue-confirmed dated capacities, with matching live booking snapshots and audit records; campaign remains a prepared brief.
