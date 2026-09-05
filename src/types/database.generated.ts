@@ -19124,6 +19124,10 @@ export type Database = {
         Args: { p_campaign_id: string; p_user_id: string }
         Returns: number
       }
+      cancel_private_booking_invoice_atomic: {
+        Args: { p_actor_id: string; p_booking_id: string; p_reason: string }
+        Returns: Json
+      }
       categorize_historical_events: { Args: never; Returns: number }
       check_and_reserve_capacity: {
         Args: {
@@ -20122,6 +20126,10 @@ export type Database = {
           space_name: string
         }[]
       }
+      get_private_booking_settlement_total: {
+        Args: { p_booking_id: string }
+        Returns: number
+      }
       get_quarter_date_range: {
         Args: { p_quarter: number; p_year: number }
         Returns: {
@@ -20342,6 +20350,10 @@ export type Database = {
         Args: { p_auth_user_id: string; p_token: string }
         Returns: Json
       }
+      lock_invoice_settlement: {
+        Args: { p_invoice_id: string }
+        Returns: string
+      }
       log_audit_event: {
         Args: {
           p_additional_info?: Json
@@ -20555,6 +20567,14 @@ export type Database = {
           unsubscribed_count: number
         }[]
       }
+      private_booking_settlement_rows: {
+        Args: { p_booking_id: string }
+        Returns: {
+          amount: number
+          method: string
+          paid_at: string
+        }[]
+      }
       process_pending_jobs: {
         Args: never
         Returns: {
@@ -20594,6 +20614,10 @@ export type Database = {
         Returns: Json
       }
       rebuild_customer_category_stats: { Args: never; Returns: number }
+      recalculate_invoice_settlement: {
+        Args: { p_invoice_id: string }
+        Returns: undefined
+      }
       recalculate_mileage_tax_year_v01: {
         Args: { p_trip_date: string }
         Returns: undefined
@@ -20633,6 +20657,26 @@ export type Database = {
         Args: { p_payment_data: Json }
         Returns: Json
       }
+      record_invoice_paypal_payment_atomic:
+        | {
+            Args: {
+              p_amount: number
+              p_capture_id: string
+              p_invoice_id: string
+              p_order_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_amount: number
+              p_capture_id: string
+              p_captured_at: string
+              p_invoice_id: string
+              p_order_id: string
+            }
+            Returns: Json
+          }
       record_table_cash_deposit_v05: {
         Args: {
           p_amount?: number

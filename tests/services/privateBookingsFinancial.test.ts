@@ -45,13 +45,13 @@ function mockSupabase(opts: {
     error: opts.bookingError ?? (opts.booking ? null : { message: 'not found' }),
   })
   const bookingEq = vi.fn().mockReturnValue({ single: bookingSingle })
-  const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
+  const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq, in: vi.fn(async (_key: string, ids: string[]) => ({ data: opts.booking ? ids.map(id => ({ id, invoice_id: null })) : [], error: opts.bookingError ?? null })) })
 
   const paymentsEq = vi.fn().mockResolvedValue({
     data: opts.payments ?? [],
     error: opts.paymentsError ?? null,
   })
-  const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
+  const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq, in: vi.fn(async (_key: string, ids: string[]) => ({ data: (opts.payments ?? []).map((payment, index) => ({ ...payment, id: String(index), booking_id: ids[0], method: 'cash', created_at: '2026-01-10' })), error: opts.paymentsError ?? null })) })
 
   mockedCreateAdminClient.mockReturnValue({
     from: vi.fn((table: string) => {
@@ -145,21 +145,13 @@ describe('getPrivateBookingPaidTotals', () => {
     expect(totals.has_open_dispute).toBe(false)
   })
 
-  it('returns safe zeros when booking cannot be loaded', async () => {
+  it('fails closed when booking cannot be loaded', async () => {
     mockSupabase({
       booking: null,
       bookingError: { message: 'not found' },
     })
 
-    const totals = await getPrivateBookingPaidTotals('missing-booking')
-
-    expect(totals).toEqual({
-      deposit_paid: 0,
-      balance_payments_total: 0,
-      total_paid: 0,
-      has_open_dispute: false,
-      event_date: null,
-    })
+    await expect(getPrivateBookingPaidTotals('missing-booking')).rejects.toThrow('Could not load booking payment totals')
   })
 })
 

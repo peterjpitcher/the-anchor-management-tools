@@ -174,7 +174,16 @@ export function generateContractHTML(data: ContractData): string {
   const depositAmount = Number.isFinite(rawDepositAmount) ? Number(rawDepositAmount) : 0
   const depositRequired = depositAmount > 0
   const eventPriceGross = money.grossTotal
-  const totalToPay = round2(eventPriceGross + depositAmount)
+  const appliedDepositAmount = booking.invoice_id && booking.invoice_deposit_treatment === 'deducted'
+    ? Number(booking.applied_deposit_amount ?? 0)
+    : 0
+  const depositApplied = appliedDepositAmount > 0
+  const separateDepositAmount = depositApplied ? 0 : depositAmount
+  const eventPaidAmount = round2((booking.payments ?? []).reduce(
+    (sum: number, payment: { amount: number }) => sum + Number(payment.amount), 0,
+  ) + appliedDepositAmount)
+  const eventOutstanding = Math.max(0, round2(eventPriceGross - eventPaidAmount))
+  const totalToPay = round2(eventPriceGross + separateDepositAmount)
 
   // Balance-due date — the stored column is the single source of truth. The contract
   // never computes its own date: a stored date wins even over a stale TBD marker,
@@ -209,7 +218,13 @@ export function generateContractHTML(data: ContractData): string {
 
   // ---- deposit-dependent fragments ----
   // When no deposit is stored the contract must not demand one; wording stays calm.
-  const depositBoxHtml = depositRequired
+  const depositBoxHtml = depositApplied
+    ? `<div class="deposit-box">
+              <span class="db-l">Deposit applied to invoice</span>
+              <span class="db-r">${formatCurrency(appliedDepositAmount)}</span>
+              <small>The deposit has been applied towards the event price at the operator's instruction. It is not an additional amount payable or a separate refundable bond.</small>
+            </div>`
+    : depositRequired
     ? `<div class="deposit-box">
               <span class="db-l">Booking &amp; damage deposit</span>
               <span class="db-r">${formatCurrency(depositAmount)}</span>
@@ -223,7 +238,9 @@ export function generateContractHTML(data: ContractData): string {
               <small>No booking deposit is payable for this event.${booking.deposit_paid_date ? ` A deposit payment was recorded on ${formatDate(booking.deposit_paid_date)}.` : ''}</small>
             </div>`
   // Customer note (rewording pack §31)
-  const depositCalloutHtml = depositRequired
+  const depositCalloutHtml = depositApplied
+    ? `<p class="callout">For this booking, ${formatCurrency(appliedDepositAmount)} of the deposit has been applied to the invoice at the operator's instruction. This recorded arrangement replaces references in these terms to that amount being held separately or excluded from the event balance. Any refund requires review against the invoice.</p>`
+    : depositRequired
     ? `<p class="callout">The booking and damage deposit is separate from the event price. It cannot be used towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. If the event proceeds as booked, the deposit will be processed for refund within 48 hours after the event, less any documented deductions.</p>`
     : `<p class="callout">No booking and damage deposit is payable for this event. The full event balance remains payable by the due date.</p>`
 
@@ -406,7 +423,9 @@ export function generateContractHTML(data: ContractData): string {
   // will read the schedule total as everything owed. It is named in words only.
   const scheduleFootnotesHtml = `
             <p class="callout">All values in the table above exclude VAT. The VAT shown is the VAT included in the event price on page 1, and the event price, excluding deposit, is the same figure as the financial summary on page 1.${bookingDiscountSentence}</p>
-            <p class="callout" style="margin-bottom:0;">${depositRequired
+            <p class="callout" style="margin-bottom:0;">${depositApplied
+              ? `This schedule covers the event price. The deposit of ${formatCurrency(appliedDepositAmount)} has been applied towards that price and is not an additional charge.`
+              : depositRequired
               ? `This schedule covers the event price only. The booking and damage deposit of ${formatCurrency(depositAmount)} is not part of the event price and is not included in the figures above. It is shown separately on page 1, where it is added to give the total to pay before the event.`
               : 'This schedule covers the event price only. No booking and damage deposit is payable for this event.'}</p>`
 
@@ -532,7 +551,7 @@ ${scheduleFootnotesHtml}` : ''}</div>
   /* financial summary + deposit side by side */
   .money{ display:grid; grid-template-columns:1fr 1fr; gap:6mm; margin:0 0 4mm; align-items:start; }
   .fin{ border:1px solid var(--ink); }
-  .fin-row{ display:flex; justify-content:space-between; align-items:baseline; padding:2.2mm 3.6mm; border-bottom:1px solid var(--rule); font-size:11px; color:var(--ink-soft); }
+  .fin-row{ display:flex; justify-content:space-between; align-items:baseline; padding:1.4mm 3.6mm; border-bottom:1px solid var(--rule); font-size:11px; color:var(--ink-soft); }
   .fin-row:last-child{ border-bottom:0; }
   .fin-row .fv{ font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .fin-row.total{ background:#f4f1ea; }
@@ -683,9 +702,11 @@ ${scheduleFootnotesHtml}` : ''}</div>
               <div class="fin-row"><span class="fk">Discounts (excl. VAT)</span><span class="fv">${discountTotal > 0 ? `&minus;${formatCurrency(discountTotal)}` : formatCurrency(0)}</span></div>
               <div class="fin-row"><span class="fk">Event price, excluding deposit</span><span class="fv">${formatCurrency(eventPriceGross)}</span></div>
               <div class="fin-row"><span class="fk">VAT included in event price</span><span class="fv">${formatCurrency(money.vatAmount)}</span></div>
-              <div class="fin-row"><span class="fk">Booking and damage deposit (held separately)</span><span class="fv">${depositRequired ? formatCurrency(depositAmount) : 'None'}</span></div>
+              <div class="fin-row"><span class="fk">${depositApplied ? 'Deposit applied to invoice' : 'Booking and damage deposit (held separately)'}</span><span class="fv">${depositRequired ? formatCurrency(depositApplied ? appliedDepositAmount : depositAmount) : 'None'}</span></div>
               <div class="fin-row total"><span class="fk">Total to pay before the event</span><span class="fv">${formatCurrency(totalToPay)}</span></div>
-              <div class="fin-row"><span class="fk">Amount potentially returnable after the event</span><span class="fv">${formatCurrency(depositAmount)}</span></div>
+              <div class="fin-row"><span class="fk">Event payments received</span><span class="fv">${formatCurrency(eventPaidAmount)}</span></div>
+              <div class="fin-row"><span class="fk">Event balance outstanding</span><span class="fv">${formatCurrency(eventOutstanding)}</span></div>
+              <div class="fin-row"><span class="fk">Amount potentially returnable after the event</span><span class="fv">${formatCurrency(separateDepositAmount)}</span></div>
             </div>
             ${depositBoxHtml}
           </div>
@@ -723,8 +744,8 @@ ${scheduleSheetsHtml}
           <div class="tc">
 ${depositRequired ? `            <p>A booking and damage deposit is required to secure the date and time shown in this contract. The deposit secures the booking, removes the date and time from general availability, and protects The Anchor against reasonable cancellation losses, damage, missing items, specialist cleaning, unauthorised overtime, unpaid charges, supplier costs, special-order items and other sums arising from the event.</p>
             <p>The booking is not confirmed until the deposit has been received in cleared funds and The Anchor has issued written confirmation. Before payment, The Anchor may place a provisional hold on the date and time. A provisional hold is not a confirmed booking and may be released if the deposit is not received in cleared funds by the hold expiry date, unless The Anchor agrees otherwise in writing.</p>
-            <p>The deposit is separate from and additional to the event price. It cannot be used as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost.</p>
-            <p>If the event proceeds as booked, The Anchor will process the deposit refund within <b>48 hours</b> after the event, provided the full balance has been paid, all agreed charges have been settled, and no deductions are required. The Anchor may use this 48-hour period to inspect the premises and complete cleaning checks.</p>
+            ${depositApplied ? '<p>The recorded arrangement for this booking applies the deposit towards the invoice. It is not held as a separate refundable bond. Any refund requires review against the invoice.</p>' : '<p>The deposit is separate from and additional to the event price. It cannot be used as payment towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost.</p>'}
+            ${depositApplied ? '' : '<p>If the event proceeds as booked, The Anchor will process the deposit refund within <b>48 hours</b> after the event, provided the full balance has been paid, all agreed charges have been settled, and no deductions are required. The Anchor may use this 48-hour period to inspect the premises and complete cleaning checks.</p>'}
             <p>Any proposed deduction will be documented and discussed with the Host before it is made. Ordinary incidental wear and minor glass breakages are not charged. Where sums owed exceed the deposit, the Host must pay the balance on demand.</p>` : `            <p>No booking deposit is required for this event. The booking is confirmed once agreed in writing with The Anchor.</p>
             <p>The Host remains responsible for reasonable costs arising from the event, including damage, missing items, specialist cleaning, unauthorised overtime, unpaid charges, supplier costs and special-order items, which are payable on demand. Ordinary incidental wear and minor glass breakages are not charged. Any proposed charge will be documented and discussed with the Host before it is made.</p>`}
           </div>
@@ -732,7 +753,9 @@ ${depositRequired ? `            <p>A booking and damage deposit is required to 
           <p class="section-label gap">Agreement</p>
           <div class="tc">
 ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited trading as The Anchor Pub to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
-            <p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT) and the separate booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>. I understand that the deposit is separate from and additional to the event price and cannot be used towards the event balance or any other charge.</p>
+            ${depositApplied
+              ? `<p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT). The deposit of <b>${formatCurrency(appliedDepositAmount)}</b> has been applied towards the invoice under the recorded arrangement for this booking.</p>`
+              : `<p>I agree to pay the event price of <b>${formatCurrency(eventPriceGross)}</b> (including VAT) and the separate booking and damage deposit of <b>${formatCurrency(depositAmount)}</b>. I understand that the deposit is separate from and additional to the event price and cannot be used towards the event balance or any other charge.</p>`}
             <p>The full event balance, final guest numbers, catering choices, supplier details, entertainment details, decoration plans, running order, allergy information, dietary requirements and accessibility requirements are due no later than <b>${balanceDueDate}</b>, unless The Anchor has agreed a different written deadline.</p>
             <p>If I provide final details late, I understand The Anchor will try to help where reasonably possible, but preferred menus, suppliers, layouts, timings, equipment or other options may no longer be available. If essential details or payment remain outstanding after reminder and General Manager review, The Anchor may treat the booking as cancelled by me.</p>
             <p>By signing below, paying the deposit, or otherwise confirming the booking in writing after receiving this Agreement, I confirm that I have read, understood and agree to be bound by this Agreement and its terms and conditions.</p>` : `            <p>I, <b>${safeCustomerName}</b>, agree to engage Orange Jelly Limited trading as The Anchor Pub to host my event described as <b>&ldquo;${safeEventType}&rdquo;</b> on <b>${eventDate}</b> from <b>${startTime}</b> to <b>${endTime}</b> at ${venue}.</p>
@@ -781,7 +804,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             <div class="tc-sec">
               <p class="tc-h">Reservation and deposit</p>
               <p>A booking and damage deposit is required to secure the date and time shown in the booking schedule, unless the financial summary states that no deposit is payable. Before payment, The Anchor may place a provisional hold on the date and time. A provisional hold is not a confirmed booking and may be released if the deposit is not received in cleared funds by the hold expiry date, unless The Anchor agrees otherwise in writing. The booking is confirmed only when the deposit has been received in cleared funds and The Anchor has issued written confirmation.</p>
-              <p>The deposit is separate from and additional to the event price and cannot be used towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. If the event proceeds as booked, the deposit refund is processed within 48 hours after the event, provided the full balance has been paid, all agreed charges have been settled and no deductions are required. The Anchor may use this 48-hour period to inspect the premises and complete cleaning checks.</p>
+              ${depositApplied ? '<p>The recorded arrangement for this booking applies the deposit towards the invoice. It is not held as a separate refundable bond. Any refund requires review against the invoice.</p>' : '<p>The deposit is separate from and additional to the event price and cannot be used towards the event balance, bar spend, catering, entertainment, venue hire, supplier charges or any other event cost. If the event proceeds as booked, the deposit refund is processed within 48 hours after the event, provided the full balance has been paid, all agreed charges have been settled and no deductions are required. The Anchor may use this 48-hour period to inspect the premises and complete cleaning checks.</p>'}
               <p>Any proposed deduction will be documented and discussed with the Host before it is made. Ordinary incidental wear and minor glass breakages are not charged. Where sums owed exceed the deposit, the Host must pay the balance on demand.</p>
             </div>
             <div class="tc-sec">

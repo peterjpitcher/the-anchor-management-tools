@@ -1,0 +1,298 @@
+[
+  {
+    "table_name": "payment_refunds",
+    "column_name": "id",
+    "data_type": "uuid",
+    "column_default": "gen_random_uuid()",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "source_type",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "source_id",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "paypal_capture_id",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "paypal_refund_id",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "paypal_request_id",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "paypal_status",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "paypal_status_details",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "refund_method",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "amount",
+    "data_type": "numeric",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "original_amount",
+    "data_type": "numeric",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "reason",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "status",
+    "data_type": "text",
+    "column_default": "'pending'::text",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "initiated_by",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "initiated_by_type",
+    "data_type": "text",
+    "column_default": "'staff'::text",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "notification_status",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "completed_at",
+    "data_type": "timestamp with time zone",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "failed_at",
+    "data_type": "timestamp with time zone",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "failure_message",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "payment_refunds",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "column_default": "now()",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "id",
+    "data_type": "uuid",
+    "column_default": "gen_random_uuid()",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "booking_id",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "item_type",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "space_id",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "package_id",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "vendor_id",
+    "data_type": "uuid",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "description",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "quantity",
+    "data_type": "numeric",
+    "column_default": "1",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "unit_price",
+    "data_type": "numeric",
+    "column_default": null,
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "discount_type",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "discount_value",
+    "data_type": "numeric",
+    "column_default": "0",
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "discount_reason",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "notes",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "column_default": "timezone('utc'::text, now())",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "display_order",
+    "data_type": "integer",
+    "column_default": "0",
+    "is_nullable": "NO",
+    "generation_expression": null
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "line_total",
+    "data_type": "numeric",
+    "column_default": null,
+    "is_nullable": "YES",
+    "generation_expression": "GREATEST((0)::numeric,\nCASE\n    WHEN (discount_type = 'percent'::text) THEN ((quantity * unit_price) * ((1)::numeric - (COALESCE(discount_value, (0)::numeric) / (100)::numeric)))\n    WHEN (discount_type = 'fixed'::text) THEN ((quantity * unit_price) - COALESCE(discount_value, (0)::numeric))\n    ELSE (quantity * unit_price)\nEND)"
+  },
+  {
+    "table_name": "private_booking_items",
+    "column_name": "vat_rate",
+    "data_type": "numeric",
+    "column_default": "20",
+    "is_nullable": "NO",
+    "generation_expression": null
+  }
+]
