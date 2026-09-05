@@ -15,6 +15,8 @@ type SeatUpdateSmsMeta = {
   logFailure: boolean
 }
 
+export class ChristmasCourseValidationError extends Error {}
+
 export type UpdatedTableBookingRow = {
   id: string
   party_size: number | null
@@ -141,6 +143,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   input: {
     tableBookingId: string
     partySize: number
+    christmasCourseCounts?: number[]
     actor?: string
     sendSms?: boolean
     appBaseUrl?: string
@@ -154,7 +157,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   }
 ): Promise<TableBookingSeatUpdateResult> {
   const { data: tableBooking, error: tableBookingError } = await supabase.from('table_bookings')
-    .select('id, status, party_size, event_booking_id, event_id, booking_date, booking_time, start_datetime, end_datetime, duration_minutes')
+    .select('*')
     .eq('id', input.tableBookingId)
     .maybeSingle()
 
@@ -190,13 +193,31 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
 
   const oldPartySize = Math.max(1, Number(tableBooking.party_size || 1))
   const newPartySize = Math.max(1, Number(input.partySize || 1))
+  const recordedCourses: number[] | null = tableBooking.christmas_course_counts ?? null
+  const nextCourses = recordedCourses ? (input.christmasCourseCounts ?? recordedCourses) : null
+  const coursesChanged = JSON.stringify(recordedCourses) !== JSON.stringify(nextCourses)
+  if (recordedCourses) {
+    // Before looking for or moving tables. The database repeats these checks on the final update.
+    if (newPartySize < 6 || newPartySize > 20 || nextCourses?.length !== newPartySize
+        || nextCourses.some(course => !Number.isInteger(course) || course < 1 || course > 3)) {
+      throw new ChristmasCourseValidationError('Choose one, two or three courses for every Christmas guest before changing the party size.')
+    }
+    if (coursesChanged && nextCourses.some(course => course > 1)) {
+      const { data: policy, error } = await supabase.rpc('christmas_course_policy_v01', { p_booking_date: tableBooking.booking_date })
+      if (error || policy?.multiple_courses_available !== true) {
+        throw new ChristmasCourseValidationError('The Christmas pre-order deadline has passed. New course choices cannot be accepted for this date.')
+      }
+    }
+  } else if (input.christmasCourseCounts) {
+    throw new ChristmasCourseValidationError('This booking retains its original course policy. Refresh before making changes.')
+  }
   let autoMovedTableIds: string[] | null = null
   let autoMovedTableName: string | null = null
   let autoMovedFromTableIds: string[] | null = null
   let autoMoveWindow: { startIso: string; endIso: string } | null = null
 
   if (!tableBooking.event_booking_id) {
-    if (oldPartySize === newPartySize) {
+    if (oldPartySize === newPartySize && !coursesChanged) {
       return {
         state: 'unchanged',
         table_booking_id: tableBooking.id,
@@ -295,6 +316,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     const { data: updatedTableBooking, error: tableUpdateError } = await supabase.from('table_bookings')
       .update({
         party_size: newPartySize,
+        ...(nextCourses ? { christmas_course_counts: nextCourses } : {}),
         committed_party_size: newPartySize,
         updated_at: nowIso
       })

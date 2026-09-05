@@ -9,6 +9,7 @@ import type { CommunicationConsentPayload } from '@/lib/consent/types'
  * intent posted twice hashes identically regardless of input formatting.
  */
 export type TableBookingIdempotencyFields = {
+  christmas_course_counts?: number[]
   phone: string
   first_name?: string | null
   last_name?: string | null
@@ -119,6 +120,7 @@ export function computeTableBookingRequestHash(fields: TableBookingIdempotencyFi
     // the old choice. Same undefined-when-absent trick as the fields above, so a
     // client that sends no pre-order hashes exactly as it did before this field.
     preorder: preorderHashPayload(fields.preorder),
+    christmas_course_counts: fields.christmas_course_counts ?? undefined,
     communication_consent: consentHashPayload(fields.communication_consent)
   })
 }
