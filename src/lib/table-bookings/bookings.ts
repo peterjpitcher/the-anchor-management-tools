@@ -74,6 +74,7 @@ export type TableBookingRpcResult = {
   booking_period_name?: string | null
   booking_period_answer?: boolean | null
   booking_period_requires_preorder?: boolean | null
+  christmas_course_counts?: number[] | null
 }
 
 /**
@@ -331,6 +332,15 @@ function formatBookingTimeLabel(booking: TableBookingNotificationRow): string {
   return 'Unknown time'
 }
 
+export function describeChristmasCourseCounts(counts?: number[] | null): string {
+  if (!counts?.length) return ''
+  const summary = [1, 2, 3].map(course => {
+    const guests = counts.filter(count => count === course).length
+    return guests ? `${guests} x ${course} course${course === 1 ? '' : 's'}` : null
+  }).filter(Boolean).join(', ')
+  return `Christmas courses: ${summary}. One course needs no pre-order.`
+}
+
 function buildTableBookingCustomerEmail(input: {
   firstName: string
   bookingMoment: string
@@ -341,6 +351,7 @@ function buildTableBookingCustomerEmail(input: {
   manageLink?: string | null
   paymentLink?: string | null
   depositLabel?: string | null
+  christmasCourseSummary?: string
   highChairCount?: number | null
   isOutsideSeating?: boolean | null
 }): { subject: string; html: string; text: string } {
@@ -386,6 +397,7 @@ function buildTableBookingCustomerEmail(input: {
       : '',
     isOutside ? '<li><strong>Outside seating</strong> (weather permitting)</li>' : '',
     '</ul>',
+    input.christmasCourseSummary ? `<p>${escapeHtml(input.christmasCourseSummary)}</p>` : '',
     cta,
     '<p>If you need to change anything, reply to this email or call the pub.</p>',
     '<p>The Anchor</p>',
@@ -399,6 +411,7 @@ function buildTableBookingCustomerEmail(input: {
     input.bookingReference ? `Reference: ${input.bookingReference}` : null,
     `When: ${input.bookingMoment}`,
     `Party size: ${input.partySize} ${input.seatWord}`,
+    input.christmasCourseSummary || null,
     grantedHighChairs > 0 ? `High chair reserved x${grantedHighChairs}` : null,
     isOutside ? 'Outside seating (weather permitting)' : null,
     isPendingPayment
@@ -1032,6 +1045,9 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     smsBody = `The Anchor: Hi ${firstName}, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${highChairSuffix}${outsideSuffix}${linkSuffix}`
   }
 
+  const christmasCourseSummary = describeChristmasCourseCounts(input.bookingResult.christmas_course_counts)
+  if (christmasCourseSummary) smsBody += ` ${christmasCourseSummary}`
+
   const templateKey = input.bookingResult.state === 'pending_payment'
     ? 'table_booking_pending_payment'
     : 'table_booking_confirmed'
@@ -1045,6 +1061,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     manageLink,
     paymentLink: input.nextStepUrl || null,
     depositLabel,
+    christmasCourseSummary,
     highChairCount: grantedHighChairs,
     isOutsideSeating: isOutside,
   })
@@ -1187,7 +1204,7 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
 ): Promise<SmsSafetyMeta> {
   const { data: booking, error: bookingError } = await supabase
     .from('table_bookings')
-    .select('id, customer_id, party_size, booking_date, booking_time, start_datetime, status, booking_type, high_chair_count, is_outside_seating')
+    .select('*')
     .eq('id', tableBookingId)
     .maybeSingle()
 
@@ -1238,7 +1255,8 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
   const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
   const bookingNoun = isOutside ? 'outside booking' : 'table'
-  const composedMessage = `The Anchor: ${firstName}! Deposit sorted — your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${highChairSuffix}${outsideSuffix}${manageLink ? ` ${manageLink}` : ''}`
+  const christmasCourseSummary = describeChristmasCourseCounts(booking.christmas_course_counts)
+  const composedMessage = `The Anchor: ${firstName}! Deposit sorted, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${highChairSuffix}${outsideSuffix}${manageLink ? ` ${manageLink}` : ''}${christmasCourseSummary ? ` ${christmasCourseSummary}` : ''}`
   const templateKey = 'table_booking_deposit_confirmed'
 
   const body = ensureReplyInstruction(composedMessage, supportPhone)

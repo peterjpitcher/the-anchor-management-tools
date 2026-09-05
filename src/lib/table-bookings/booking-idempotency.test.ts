@@ -182,3 +182,15 @@ describe('fixture booking intent', () => {
     expect(computeTableBookingRequestHash(makeFields({ notes }))).not.toBe(computeTableBookingRequestHash(makeFields({ notes: notes.replace('Italy', 'France') })))
   })
 })
+
+
+describe('Christmas course snapshot retries', () => {
+  it('keeps old requests stable and conflicts when a seat changes tier', () => {
+    const old = makeFields()
+    expect(computeTableBookingRequestHash({ ...old, christmas_course_counts: undefined })).toBe(computeTableBookingRequestHash(old))
+    const counts = [1, 1, 1, 1, 1, 1]
+    const first = computeTableBookingRequestHash({ ...old, christmas_course_counts: counts })
+    expect(first).toBe(computeTableBookingRequestHash({ ...old, christmas_course_counts: [...counts] }))
+    expect(first).not.toBe(computeTableBookingRequestHash({ ...old, christmas_course_counts: [1, 1, 1, 1, 1, 2] }))
+  })
+})

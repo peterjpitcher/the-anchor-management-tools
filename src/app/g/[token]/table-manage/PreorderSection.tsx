@@ -147,8 +147,9 @@ export function PreorderSection({
           Your food choices
         </h2>
         <p className="font-anchor-body text-[14px] leading-[1.6] text-guest-text-muted">
-          Everyone eating from the {menuName} menu chooses their main course in advance so the kitchen can
-          prepare it. A starter and a pudding are optional.
+          {order.covers.some(cover => cover.courseCount != null)
+            ? `Guests having two or three courses from the ${menuName} menu choose their dishes in advance. One course needs no pre-order.`
+            : `Everyone eating from the ${menuName} menu chooses their main course in advance so the kitchen can prepare it. A starter and a pudding are optional.`}
         </p>
       </div>
 
@@ -182,6 +183,7 @@ export function PreorderSection({
 
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
+              if (cover?.courseCount === 1) return <p key={ordinal}>Guest {ordinal}: 1 course, no pre-order required.</p>
               const withdrawn = withdrawnChoices(cover)
               const hasError = errorSeat === ordinal
               const noteIds = [
@@ -383,6 +385,7 @@ export function PreorderSection({
           <ul className="flex flex-col gap-[14px]">
             {seats.map((ordinal) => {
               const cover = coversByOrdinal.get(ordinal)
+              if (cover?.courseCount === 1) return <p key={ordinal}>Guest {ordinal}: 1 course, no pre-order required.</p>
               const chosen = PREORDER_COURSES.map((course) => {
                 const selection = cover ? getCoverCourse(cover, course) : null
                 return selection ? `${PREORDER_COURSE_LABELS[course]}: ${selection.itemName}` : null

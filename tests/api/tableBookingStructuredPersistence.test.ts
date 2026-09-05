@@ -130,7 +130,7 @@ function buildSupabase() {
   const tableBookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
   const tableBookingsUpdate = vi.fn(() => ({ eq: tableBookingsUpdateEq }))
 
-  const rpc = vi.fn(async () => ({
+  const rpc = vi.fn(async (): Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> => ({
     data: {
       state: 'pending_payment',
       table_booking_id: BOOKING_ID,
@@ -172,6 +172,35 @@ describe('POST /api/table-bookings — structured persistence', () => {
     vi.clearAllMocks()
     ensureCustomerForPhone.mockResolvedValue({ customerId: 'cust-1' })
     saveSundayPreorderByBookingId.mockResolvedValue({ state: 'saved', item_count: 2, booking_id: BOOKING_ID })
+  })
+
+  it('routes explicit Christmas course choices through the atomic snapshot RPC', async () => {
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', last_name: 'Guest', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1, 1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(response.status).toBeLessThan(400)
+    expect(supabase.rpc).toHaveBeenCalledWith('create_table_booking_christmas_v01', expect.objectContaining({
+      p_course_counts: [1, 1, 1, 1, 1, 1],
+      p_request: expect.objectContaining({ customer_id: 'cust-1', party_size: 6 }),
+    }))
+  })
+
+  it('fails visibly if the course RPC cannot run, without silently using the legacy create path', async () => {
+    const supabase = buildSupabase()
+    supabase.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Course capability unavailable' } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1, 1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(response.status).toBe(500)
+    expect((await response.json()).error).toBeTruthy()
+    expect(supabase.rpc).toHaveBeenCalledTimes(1)
   })
 
   it('persists dietary_requirements and allergies arrays on the booking row', async () => {
