@@ -37,12 +37,14 @@ function mockAdminClient({ booking, payments, paymentsError = false }: MockAdmin
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({ data: booking, error: null }),
+          in: vi.fn(async (_key: string, ids: string[]) => ({ data: booking ? ids.map(id => ({ ...booking, id, invoice_id: null })) : [], error: null })),
         }
       }
       if (table === 'private_booking_payments') {
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
+          in: vi.fn(async (_key: string, ids: string[]) => ({ data: payments.map(payment => ({ ...payment, booking_id: ids[0] })), error: paymentsError ? { message: 'db error' } : null })),
           order: vi.fn().mockResolvedValue({
             data: paymentsError ? null : payments,
             error: paymentsError ? { message: 'db error' } : null,
