@@ -283,6 +283,13 @@ export const QR_MIN_WIDTH_FRAC_EXACT = QR_MIN_MM / A4_WIDTH_MM
 export const QR_MAX_WIDTH_FRAC = 0.4
 
 /**
+ * What a new QR starts at before anyone changes it: 0.20 of the width, which is
+ * 42mm on A4. Comfortably over the 40mm floor without dominating the poster.
+ * The previous 0.22 (46mm) started larger than most artwork wanted.
+ */
+export const QR_DEFAULT_WIDTH_FRAC = 0.2
+
+/**
  * The 40mm print minimum in pixels for a poster of a given pixel width.
  *
  * Rounded UP, on purpose. On the 2480px A4 canvas the exact figure is
@@ -368,11 +375,14 @@ export function validateQrPlacement(
     return { ok: false, reason: 'The QR code has no size.' }
   }
 
+  // The BLOCK is what lands on the artwork: the code plus its BOOK NOW strip.
+  // Validating the code alone would let the strip hang off the edge.
+  const block = qrBlockRect(qr)
   if (
-    qr.x < 0 ||
-    qr.y < 0 ||
-    qr.x + qr.width > posterW ||
-    qr.y + qr.height > posterH
+    block.x < 0 ||
+    block.y < 0 ||
+    block.x + block.width > posterW ||
+    block.y + block.height > posterH
   ) {
     return { ok: false, reason: 'The QR code falls outside the poster.' }
   }
@@ -385,9 +395,214 @@ export function validateQrPlacement(
     }
   }
 
-  if (logo && rectsOverlap(qr, logo, insetPx(posterW, posterH))) {
+  if (logo && rectsOverlap(block, logo, insetPx(posterW, posterH))) {
     return { ok: false, reason: 'The QR code is too close to the logo.' }
   }
 
   return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Logo drop shadow
+//
+// A white logo disappears on pale artwork and a black one disappears on dark
+// artwork, so each carries a shadow in the opposite colour. It is the contrast
+// that does the work, not decoration: without it the mark is invisible on
+// exactly the artwork where it matters most.
+//
+// The measurements are fractions of the LOGO width, not the canvas, so the
+// shadow scales with the mark rather than growing on a poster and vanishing on
+// a story.
+// ---------------------------------------------------------------------------
+
+/** How far the shadow is pushed down and right, as a fraction of logo width. */
+export const LOGO_SHADOW_OFFSET_FRAC = 0.025
+
+/** Gaussian sigma for the shadow, as a fraction of logo width. */
+export const LOGO_SHADOW_BLUR_FRAC = 0.035
+
+/** Deliberately short of opaque, so the shadow reads as depth and not an outline. */
+export const LOGO_SHADOW_OPACITY = 0.55
+
+export type LogoColour = 'white' | 'black'
+
+/** The shadow is always the opposite of the mark, which is the entire point. */
+export function shadowColourFor(logoColour: LogoColour): '#000000' | '#ffffff' {
+  return logoColour === 'white' ? '#000000' : '#ffffff'
+}
+
+export interface LogoShadowSpec {
+  colour: '#000000' | '#ffffff'
+  offsetXPx: number
+  offsetYPx: number
+  blurPx: number
+  opacity: number
+}
+
+/**
+ * The shadow measurements in pixels for a given logo rectangle.
+ *
+ * Both the server compositor and the browser preview call this, so what is seen
+ * on screen is what gets rendered. `blurPx` is a Gaussian sigma: sharp takes it
+ * directly, and CSS `drop-shadow` takes roughly twice it as its blur radius,
+ * which `cssDropShadow` below already accounts for.
+ */
+export function logoShadowSpec(logo: Rect, logoColour: LogoColour): LogoShadowSpec {
+  const offset = Math.max(1, Math.round(logo.width * LOGO_SHADOW_OFFSET_FRAC))
+  return {
+    colour: shadowColourFor(logoColour),
+    offsetXPx: offset,
+    offsetYPx: offset,
+    blurPx: Math.max(1, Math.round(logo.width * LOGO_SHADOW_BLUR_FRAC)),
+    opacity: LOGO_SHADOW_OPACITY,
+  }
+}
+
+/**
+ * The same shadow as a CSS `drop-shadow` filter value, for the preview.
+ *
+ * CSS expresses blur as a radius of about twice the Gaussian sigma sharp uses,
+ * so the sigma is doubled here rather than in the caller. The two will never be
+ * pixel identical (different rasterisers), but they agree on placement, colour
+ * and weight, which is what someone positioning a logo is judging.
+ */
+export function cssDropShadow(spec: LogoShadowSpec): string {
+  const rgb = spec.colour === '#000000' ? '0, 0, 0' : '255, 255, 255'
+  return `drop-shadow(${spec.offsetXPx}px ${spec.offsetYPx}px ${spec.blurPx * 2}px rgba(${rgb}, ${spec.opacity}))`
+}
+
+// ---------------------------------------------------------------------------
+// The BOOK NOW strip
+//
+// A bare QR on a poster tells nobody what it is for. A labelled strip beside it
+// does. It sits ALONGSIDE the code and never over it: error correction H would
+// survive some occlusion, but a strip down one side removes a whole column of
+// modules, which is far worse for a scanner than the centred logos that
+// occlusion budget is usually spent on.
+//
+// `qr_width_frac` keeps meaning the CODE width, so the 40mm print minimum and
+// the database CHECK constraints all still mean what they say. The strip makes
+// the placed BLOCK wider than the code, and it is the block that has to fit on
+// the canvas and clear the logo.
+// ---------------------------------------------------------------------------
+
+/** Strip width as a fraction of the code width. */
+export const QR_STRIP_WIDTH_FRAC_OF_CODE = 0.22
+
+/** The label. Short, imperative, and legible rotated at small sizes. */
+export const QR_STRIP_LABEL = 'BOOK NOW'
+
+/**
+ * Which side of the code the strip sits on.
+ *
+ * Left, so the label is read before the code on a left-to-right poster. One
+ * constant, so moving it to the right is a single edit.
+ */
+export const QR_STRIP_SIDE: 'left' | 'right' = 'left'
+
+/** The strip beside a given code rectangle. */
+export function qrStripRect(code: Rect): Rect {
+  const width = Math.max(1, Math.round(code.width * QR_STRIP_WIDTH_FRAC_OF_CODE))
+  return {
+    x: QR_STRIP_SIDE === 'left' ? code.x - width : code.x + code.width,
+    y: code.y,
+    width,
+    height: code.height,
+  }
+}
+
+/**
+ * The code and its strip as one rectangle.
+ *
+ * This is what gets validated and what the preview draws a box around, because
+ * it is what actually lands on the artwork.
+ */
+export function qrBlockRect(code: Rect): Rect {
+  const strip = qrStripRect(code)
+  return {
+    x: Math.min(code.x, strip.x),
+    y: code.y,
+    width: code.width + strip.width,
+    height: code.height,
+  }
+}
+
+/**
+ * Place the code so that the whole BLOCK, strip included, stays on the canvas.
+ *
+ * `qrRect` positions the code alone, which would let the strip hang off the
+ * edge when the code is pushed hard against it. This shifts the code back by
+ * however much the strip overhangs.
+ */
+export function qrCodeRectWithinCanvas(
+  posterW: number,
+  posterH: number,
+  centreXFrac: number,
+  centreYFrac: number,
+  widthFrac: number
+): Rect {
+  const inset = insetPx(posterW, posterH)
+  const code = qrRect(posterW, posterH, centreXFrac, centreYFrac, widthFrac)
+  const block = qrBlockRect(code)
+
+  let dx = 0
+  if (block.x < inset) dx = inset - block.x
+  const blockRight = block.x + block.width
+  if (blockRight > posterW - inset) dx = Math.min(dx, posterW - inset - blockRight)
+
+  return { ...code, x: code.x + dx }
+}
+
+// ---------------------------------------------------------------------------
+// Snapping
+//
+// Dragging to a visual centre by eye is guesswork, and being one pixel out is
+// obvious once printed. Snap targets pull a drag onto the exact centre when it
+// is already close, and let go as soon as the drag moves past the threshold, so
+// a deliberate off-centre placement is still possible.
+// ---------------------------------------------------------------------------
+
+/** Centre of the canvas on each axis. Thirds were considered and left out: on
+ *  artwork this small they produce more false snaps than useful ones. */
+export const SNAP_TARGETS_FRAC: readonly number[] = [0.5]
+
+/** How close a drag has to get before it snaps, as a fraction of the edge. */
+export const SNAP_THRESHOLD_FRAC = 0.02
+
+export interface SnapResult {
+  /** The value to use, snapped when within the threshold. */
+  value: number
+  /** The target it snapped to, or null when it did not snap. Drives the guide. */
+  snappedTo: number | null
+}
+
+/**
+ * Snap a 0-to-1 position onto the nearest target when it is close enough.
+ *
+ * Pure, so the preview and any test agree. Returns which target it caught so
+ * the caller can draw a guide line exactly where the snap happened rather than
+ * guessing.
+ */
+export function snapFrac(
+  value: number,
+  targets: readonly number[] = SNAP_TARGETS_FRAC,
+  threshold: number = SNAP_THRESHOLD_FRAC
+): SnapResult {
+  let best: number | null = null
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  // A hair of tolerance, because 0.5 + 0.02 is 0.5200000000000001 in binary
+  // floating point and a drag that lands exactly on the threshold should snap
+  // rather than fall through on a rounding artefact.
+  const limit = threshold + 1e-9
+
+  for (const target of targets) {
+    const distance = Math.abs(value - target)
+    if (distance <= limit && distance < bestDistance) {
+      best = target
+      bestDistance = distance
+    }
+  }
+
+  return best === null ? { value, snappedTo: null } : { value: best, snappedTo: best }
 }

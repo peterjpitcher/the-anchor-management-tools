@@ -32,7 +32,16 @@
  *
  * 4. The QR code is rasterised straight at its final pixel width and its white
  *    quiet zone is left alone. Both are scanning requirements, explained at
- *    `renderQrAtWidth` below.
+ *    `renderQrAtWidth` below. Its BOOK NOW strip is drawn ALONGSIDE the code and
+ *    never over it: error correction H would survive some occlusion, but a strip
+ *    down one side takes out a whole column of modules, which is far worse for a
+ *    scanner than the centred marks that occlusion budget usually pays for.
+ *
+ * 5. The logo carries a drop shadow in the OPPOSITE colour, because a white mark
+ *    disappears on pale artwork and a black one disappears on dark artwork. The
+ *    shadow is the logo's own shape taken from its alpha channel, never a
+ *    rectangle, and it is clipped to the canvas so branding cannot change the
+ *    image's size.
  *
  * Output is always PNG, lossless, because these images are re-encoded again
  * downstream (storage, the poster PDF, social crops) and stacking lossy passes
@@ -48,12 +57,14 @@ import { QR_OPTIONS } from '@/lib/export/qr-pack'
 import type { EventImageVariant } from '@/lib/events/imageVariants'
 import { PRINT_POSTER_DENSITY_DPI } from './output'
 import {
-  logoRect,
   resolveLogoRect,
   type LogoPlacement,
-  qrRect,
+  logoShadowSpec,
+  type LogoShadowSpec,
+  qrCodeRectWithinCanvas,
+  qrStripRect,
   validateQrPlacement,
-  type Corner,
+  QR_STRIP_LABEL,
   type Rect,
 } from './geometry'
 
@@ -127,6 +138,239 @@ interface Overlay {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * How far past the silhouette the shadow's own canvas is padded, in Gaussian
+ * sigmas. Three is where the tail is under half a percent of the peak, so the
+ * blur falls away inside its own frame. Without the padding the Gaussian is cut
+ * off at the silhouette's edge and the shadow ends in a hard line, which is the
+ * one thing a shadow must not do.
+ */
+const SHADOW_BLUR_SIGMAS = 3
+
+/** Fully transparent, used to pad the shadow's frame. */
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 }
+
+/**
+ * The BOOK NOW strip, in plain black and white on purpose.
+ *
+ * The design briefs have not supplied a brand colour for this, and flat white on
+ * flat black is what survives a photocopier, a cheap poster print and a phone
+ * camera in a dim corridor. Nothing here is decorative.
+ */
+const QR_STRIP_BACKGROUND = '#000000'
+const QR_STRIP_INK = '#ffffff'
+
+/**
+ * The font family written into the strip's SVG.
+ *
+ * A generic family, not a named face. Vercel's runtime carries a different set
+ * of fonts from a developer laptop, and naming a face that is absent there would
+ * silently fall back to something with different metrics, which is exactly the
+ * drift the strip sizing below is built to avoid.
+ */
+const QR_STRIP_FONT_STACK = 'sans-serif'
+
+/**
+ * Text size as a fraction of the strip WIDTH, which is the strip's short edge
+ * and therefore what the rotated label's height has to fit inside.
+ *
+ * 0.55 leaves the label at roughly two thirds of the strip's length in the
+ * fonts we have measured, so a fallback face up to about a third wider still
+ * fits without touching the ends. At the 40mm print minimum on A4 the strip is
+ * 104px wide and this gives a 57px label, which is comfortably legible.
+ */
+const QR_STRIP_FONT_FRAC_OF_STRIP_WIDTH = 0.55
+
+/** Letter spacing as a fraction of the font size. Enough to read as a label. */
+const QR_STRIP_TRACKING_FRAC_OF_FONT = 0.06
+
+/**
+ * How far below the strip's centre line the text baseline sits, as a fraction of
+ * the font size, so the label is optically centred across the strip.
+ *
+ * Roughly half a capital's height. `dominant-baseline` would say this more
+ * directly but is not honoured by every SVG rasteriser, and a label that drifts
+ * to one edge on the server while looking centred locally is worse than an
+ * approximation that both agree on.
+ */
+const QR_STRIP_BASELINE_FRAC_OF_FONT = 0.35
+
+/** Below this the label is not worth drawing at all. */
+const QR_STRIP_MIN_FONT_PX = 8
+
+/**
+ * How far the shadow's own frame is padded beyond the logo rectangle, in pixels.
+ *
+ * Exported so a test can work out how far outside the logo rect the shadow may
+ * legitimately paint without hard coding `SHADOW_BLUR_SIGMAS` in two places.
+ * Combined with the spec's offset it gives the reach on each edge: `pad +
+ * offset` down and right, `pad - offset` up and left.
+ */
+export function logoShadowPaddingPx(spec: LogoShadowSpec): number {
+  return Math.max(1, Math.round(spec.blurPx * SHADOW_BLUR_SIGMAS))
+}
+
+/** A rectangle cut down to what actually lands on the canvas. */
+interface ClippedOverlay {
+  /** Where the visible part goes on the canvas. */
+  x: number
+  y: number
+  width: number
+  height: number
+  /** Where that visible part starts inside the overlay itself. */
+  sourceX: number
+  sourceY: number
+}
+
+/**
+ * Cut an overlay rectangle down to the part that lands on the canvas.
+ *
+ * A blurred shadow beside a logo in a corner reaches past the canvas edge by
+ * design. sharp does trim an overhanging overlay itself, but it refuses one
+ * larger than the base image outright, and neither behaviour is worth leaning on
+ * for something whose failure mode is a resized poster. Cutting the overlay here
+ * keeps the output the same size as the input, which `validateCompositeOutput`
+ * asserts and a printed poster would reveal.
+ *
+ * Returns null when nothing of the rectangle is on the canvas.
+ */
+function clipToCanvas(
+  rect: Rect,
+  canvas: { width: number; height: number }
+): ClippedOverlay | null {
+  const x = Math.max(rect.x, 0)
+  const y = Math.max(rect.y, 0)
+  const right = Math.min(rect.x + rect.width, canvas.width)
+  const bottom = Math.min(rect.y + rect.height, canvas.height)
+
+  if (right <= x || bottom <= y) return null
+
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+    sourceX: x - rect.x,
+    sourceY: y - rect.y,
+  }
+}
+
+/**
+ * The logo's drop shadow as a ready-to-composite overlay, or null when it falls
+ * entirely off the canvas.
+ *
+ * Built in four steps, none of them optional:
+ *
+ * 1. The logo is resized to its final rectangle and padded with transparency so
+ *    the blur has room to fall away (see `SHADOW_BLUR_SIGMAS`).
+ * 2. Its ALPHA channel becomes the mask. That is what makes the shadow the
+ *    logo's shape rather than a rectangle over the artwork.
+ * 3. That mask is faded to the spec's opacity, then joined as the alpha channel
+ *    of a flat plate in the shadow colour.
+ * 4. The result is offset and clipped to the canvas.
+ *
+ * Each of those is its own sharp call rather than one chained pipeline, and both
+ * PNG round trips are load bearing. sharp flags a freshly extracted alpha band
+ * as premultiplied and then silently ignores tone operations applied to it, so
+ * fading the mask in that state is a no-op and the shadow comes out fully
+ * opaque; re-encoding clears the flag. Chaining also reorders operations into
+ * sharp's own fixed pipeline order rather than the order they are written in,
+ * which is how an earlier attempt ended up compositing a four band overlay onto
+ * a three band plate and failing with `images do not have same numbers of
+ * bands`.
+ *
+ * `spec.blurPx` is a Gaussian sigma, which is what `.blur()` takes directly.
+ */
+async function renderLogoShadow(
+  logoBuffer: Buffer,
+  logo: Rect,
+  spec: LogoShadowSpec,
+  canvas: { width: number; height: number }
+): Promise<Overlay | null> {
+  const sharp = (await import('sharp')).default
+
+  const pad = logoShadowPaddingPx(spec)
+  const width = logo.width + pad * 2
+  const height = logo.height + pad * 2
+
+  const padded = await sharp(logoBuffer)
+    .resize(logo.width, logo.height, { fit: 'fill', kernel: 'lanczos3' })
+    .ensureAlpha()
+    .extend({ top: pad, bottom: pad, left: pad, right: pad, background: TRANSPARENT })
+    .png()
+    .toBuffer()
+
+  const mask = await sharp(padded).extractChannel('alpha').png().toBuffer()
+  const blurred = await sharp(mask).blur(spec.blurPx).png().toBuffer()
+  const faded = await sharp(blurred).linear(spec.opacity, 0).raw().toBuffer()
+
+  const shadow = await sharp({
+    create: { width, height, channels: 3, background: spec.colour },
+  })
+    .joinChannel(faded, { raw: { width, height, channels: 1 } })
+    .png()
+    .toBuffer()
+
+  const clipped = clipToCanvas(
+    {
+      x: logo.x - pad + spec.offsetXPx,
+      y: logo.y - pad + spec.offsetYPx,
+      width,
+      height,
+    },
+    canvas
+  )
+  if (!clipped) return null
+
+  const input = await sharp(shadow)
+    .extract({
+      left: clipped.sourceX,
+      top: clipped.sourceY,
+      width: clipped.width,
+      height: clipped.height,
+    })
+    .png()
+    .toBuffer()
+
+  return { input, left: clipped.x, top: clipped.y }
+}
+
+/**
+ * The BOOK NOW strip as an SVG, sized to the rectangle `qrStripRect` returned.
+ *
+ * The label runs vertically and reads bottom to top, the usual convention for a
+ * vertical label, which is what `rotate(-90)` about the strip's centre gives.
+ * Exported so a test can rasterise it on its own rather than only ever seeing it
+ * through a full composite.
+ *
+ * `QR_STRIP_LABEL` is plain capitals with a single space, so there is nothing
+ * here to escape for XML. Anything else would need escaping before it went into
+ * the markup.
+ */
+export function qrStripSvg(strip: Rect): Buffer {
+  const fontSize = Math.max(
+    QR_STRIP_MIN_FONT_PX,
+    Math.round(strip.width * QR_STRIP_FONT_FRAC_OF_STRIP_WIDTH)
+  )
+  const tracking = Math.max(1, Math.round(fontSize * QR_STRIP_TRACKING_FRAC_OF_FONT))
+  const centreX = strip.width / 2
+  const centreY = strip.height / 2
+  const baselineY = centreY + Math.round(fontSize * QR_STRIP_BASELINE_FRAC_OF_FONT)
+
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${strip.width}" height="${strip.height}" ` +
+      `viewBox="0 0 ${strip.width} ${strip.height}">` +
+      `<rect x="0" y="0" width="${strip.width}" height="${strip.height}" fill="${QR_STRIP_BACKGROUND}"/>` +
+      `<g transform="rotate(-90 ${centreX} ${centreY})">` +
+      `<text x="${centreX}" y="${baselineY}" fill="${QR_STRIP_INK}" ` +
+      `font-family="${QR_STRIP_FONT_STACK}" font-size="${fontSize}" font-weight="700" ` +
+      `letter-spacing="${tracking}" text-anchor="middle">${QR_STRIP_LABEL}</text>` +
+      `</g>` +
+      `</svg>`,
+    'utf8'
+  )
 }
 
 /**
@@ -240,8 +484,17 @@ export async function compositeArtwork(
     ? resolveLogoRect(imageW, imageH, spec.logo.placement)
     : null
 
+  // `qrCodeRectWithinCanvas`, not `qrRect`: the code is only half of what gets
+  // drawn, and a code pushed hard against an edge would otherwise hang its BOOK
+  // NOW strip off the canvas. `validateQrPlacement` checks the whole block too.
   const qrPlacement: Rect | null = spec.qr
-    ? qrRect(imageW, imageH, spec.qr.centreXFrac, spec.qr.centreYFrac, spec.qr.widthFrac)
+    ? qrCodeRectWithinCanvas(
+        imageW,
+        imageH,
+        spec.qr.centreXFrac,
+        spec.qr.centreYFrac,
+        spec.qr.widthFrac
+      )
     : null
 
   if (qrPlacement) {
@@ -305,6 +558,17 @@ export async function compositeArtwork(
         .png()
         .toBuffer()
 
+      // The shadow goes on first so the mark sits over it, and its colour is the
+      // opposite of the mark's: that contrast is the only reason a white logo
+      // survives pale artwork and a black one survives dark artwork.
+      const shadow = await renderLogoShadow(
+        logoBuffer,
+        logoPlacement,
+        logoShadowSpec(logoPlacement, spec.logo.colour),
+        { width: imageW, height: imageH }
+      )
+      if (shadow) overlays.push(shadow)
+
       overlays.push({ input: resized, left: logoPlacement.x, top: logoPlacement.y })
     } catch (error) {
       return {
@@ -320,6 +584,17 @@ export async function compositeArtwork(
   if (spec.qr && qrPlacement) {
     try {
       const qrBuffer = await renderQrAtWidth(spec.qr.url, qrPlacement.width)
+
+      // A bare code tells nobody what it is for. The strip is placed by
+      // `qrStripRect`, which puts it beside the code and never over it, and
+      // `validateQrPlacement` has already confirmed the pair fits on the canvas,
+      // so there is nothing here to clip. It shares the QR's catch on purpose:
+      // if the SVG cannot be rasterised the whole composite fails visibly rather
+      // than quietly shipping a code with no label on it.
+      const strip = qrStripRect(qrPlacement)
+      const stripBuffer = await sharp(qrStripSvg(strip)).png().toBuffer()
+
+      overlays.push({ input: stripBuffer, left: strip.x, top: strip.y })
       overlays.push({ input: qrBuffer, left: qrPlacement.x, top: qrPlacement.y })
     } catch (error) {
       return {
