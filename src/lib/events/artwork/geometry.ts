@@ -130,6 +130,74 @@ export function logoRect(
 }
 
 /**
+ * The logo rectangle when it is positioned freely rather than snapped to a
+ * corner, from a centre point given as a fraction of each edge.
+ *
+ * Clamped exactly the way `qrRect` is, so a centre parked on an edge pulls the
+ * logo back inside the inset margin rather than letting it hang off the canvas.
+ * A centre of 0 or 1 is therefore a legitimate request, not a corrupt value.
+ *
+ * The width is clamped to the same bounds `logoRect` uses, so a freely placed
+ * logo can never be larger than a cornered one and can never exceed the 934px
+ * the logo file actually contains.
+ */
+export function logoRectFree(
+  imageW: number,
+  imageH: number,
+  centreXFrac: number,
+  centreYFrac: number,
+  widthFrac: number
+): Rect {
+  const inset = insetPx(imageW, imageH)
+  const frac = clamp(widthFrac, LOGO_MIN_WIDTH_FRAC, LOGO_MAX_WIDTH_FRAC)
+
+  // Fit the logo inside the inset margin on both axes before placing it, so an
+  // oversized request on a narrow canvas degrades rather than overflowing.
+  const maxWidth = Math.max(1, imageW - inset * 2)
+  const maxHeight = Math.max(1, imageH - inset * 2)
+  let width = clamp(Math.round(imageW * frac), 1, maxWidth)
+  let height = Math.round(width / LOGO_ASPECT)
+  if (height > maxHeight) {
+    height = maxHeight
+    width = Math.round(height * LOGO_ASPECT)
+  }
+
+  const maxX = Math.max(inset, imageW - inset - width)
+  const maxY = Math.max(inset, imageH - inset - height)
+  const x = clamp(Math.round(imageW * centreXFrac - width / 2), inset, maxX)
+  const y = clamp(Math.round(imageH * centreYFrac - height / 2), inset, maxY)
+
+  return { x, y, width, height }
+}
+
+/**
+ * How the logo is placed. Exactly one of the two shapes, mirroring the
+ * `event_images_logo_placement_exclusive` constraint in the database: storing
+ * both a corner and a centre would leave the compositor guessing which the
+ * person meant.
+ */
+export type LogoPlacement =
+  | { mode: 'corner'; corner: Corner; widthFrac: number }
+  | { mode: 'free'; centreXFrac: number; centreYFrac: number; widthFrac: number }
+
+/** Resolve either placement shape to a rectangle, so callers need one path. */
+export function resolveLogoRect(
+  imageW: number,
+  imageH: number,
+  placement: LogoPlacement
+): Rect {
+  return placement.mode === 'corner'
+    ? logoRect(imageW, imageH, placement.corner, placement.widthFrac)
+    : logoRectFree(
+        imageW,
+        imageH,
+        placement.centreXFrac,
+        placement.centreYFrac,
+        placement.widthFrac
+      )
+}
+
+/**
  * The keep-clear region for a corner: the corner itself, its inset margin, and
  * the LARGEST logo permitted on this canvas.
  *

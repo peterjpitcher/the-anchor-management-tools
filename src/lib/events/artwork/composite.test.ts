@@ -25,7 +25,7 @@ import {
   type CompositeSpec,
   type LogoColour,
 } from './composite'
-import { logoRect, qrRect, qrMinWidthPx, type Corner } from './geometry'
+import { logoRect, logoRectFree, qrRect, qrMinWidthPx, type Corner } from './geometry'
 import { EVENT_IMAGE_VARIANTS } from '@/lib/events/imageVariants'
 
 const POSTER = EVENT_IMAGE_VARIANTS.print_poster
@@ -145,6 +145,69 @@ describe('LOGO_SOURCES', () => {
 describe('compositeArtwork, logo placement', () => {
   const CORNERS: Corner[] = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
 
+  // Free placement exists because plenty of artwork leaves no usable corner.
+  // Same pixel-level proof as the corner cases: the only thing that may differ
+  // from the untouched background is what geometry.ts said would be painted.
+  it.each([
+    [0.5, 0.5],
+    [0.2, 0.8],
+    [0.0, 0.0],
+    [1.0, 1.0],
+  ])('draws a freely placed logo exactly where logoRectFree says, at %s,%s', async (cx, cy) => {
+    const widthFrac = 0.22
+    const source = await createSource(SQUARE.targetWidth, SQUARE.targetHeight)
+
+    const buffer = unwrap(
+      await compositeArtwork(source, {
+        variant: 'square',
+        logo: {
+          placement: { mode: 'free', centreXFrac: cx, centreYFrac: cy, widthFrac },
+          colour: 'white',
+        },
+        qr: null,
+      })
+    )
+
+    const image = await decode(buffer)
+    const expected = logoRectFree(
+      SQUARE.targetWidth,
+      SQUARE.targetHeight,
+      cx,
+      cy,
+      widthFrac
+    )
+    const bounds = changedBounds(image)
+
+    expect(bounds.count).toBeGreaterThan(0)
+    expect(bounds.minX).toBeGreaterThanOrEqual(expected.x)
+    expect(bounds.minY).toBeGreaterThanOrEqual(expected.y)
+    expect(bounds.maxX).toBeLessThanOrEqual(expected.x + expected.width - 1)
+    expect(bounds.maxY).toBeLessThanOrEqual(expected.y + expected.height - 1)
+    expect(bounds.minX - expected.x).toBeLessThanOrEqual(2)
+    expect(bounds.minY - expected.y).toBeLessThanOrEqual(2)
+  })
+
+  it('places a centred logo somewhere a corner never could', async () => {
+    const source = await createSource(SQUARE.targetWidth, SQUARE.targetHeight)
+    const centred = logoRectFree(SQUARE.targetWidth, SQUARE.targetHeight, 0.5, 0.5, 0.22)
+    for (const corner of CORNERS) {
+      const cornered = logoRect(SQUARE.targetWidth, SQUARE.targetHeight, corner, 0.22)
+      expect(centred).not.toEqual(cornered)
+    }
+    // And it really composites, rather than only computing a rect.
+    const buffer = unwrap(
+      await compositeArtwork(source, {
+        variant: 'square',
+        logo: {
+          placement: { mode: 'free', centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.22 },
+          colour: 'white',
+        },
+        qr: null,
+      })
+    )
+    expect(changedBounds(await decode(buffer)).count).toBeGreaterThan(0)
+  })
+
   it.each(CORNERS)('draws the logo exactly where logoRect says for %s', async (corner) => {
     const widthFrac = 0.22
     const source = await createSource(SQUARE.targetWidth, SQUARE.targetHeight)
@@ -152,7 +215,7 @@ describe('compositeArtwork, logo placement', () => {
     const buffer = unwrap(
       await compositeArtwork(source, {
         variant: 'square',
-        logo: { corner, colour: 'white', widthFrac },
+        logo: { placement: { mode: 'corner', corner, widthFrac }, colour: 'white' },
         qr: null,
       })
     )
@@ -196,7 +259,7 @@ describe('compositeArtwork, logo placement', () => {
       unwrap(
         await compositeArtwork(source, {
           variant: 'square',
-          logo: { corner: 'top_left', colour: 'white', widthFrac: 0.12 },
+          logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.12  }, colour: 'white' },
           qr: null,
         })
       )
@@ -205,7 +268,7 @@ describe('compositeArtwork, logo placement', () => {
       unwrap(
         await compositeArtwork(source, {
           variant: 'square',
-          logo: { corner: 'top_left', colour: 'white', widthFrac: 0.32 },
+          logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.32  }, colour: 'white' },
           qr: null,
         })
       )
@@ -225,7 +288,7 @@ describe('compositeArtwork, logo placement', () => {
     const source = await createSource(SQUARE.targetWidth, SQUARE.targetHeight)
     const spec = (colour: LogoColour): CompositeSpec => ({
       variant: 'square',
-      logo: { corner: 'top_left', colour, widthFrac: 0.24 },
+      logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.24 }, colour },
       qr: null,
     })
 
@@ -263,7 +326,7 @@ describe('compositeArtwork, logo failures are visible', () => {
       source,
       {
         variant: 'square',
-        logo: { corner: 'top_left', colour: 'white', widthFrac: 0.22 },
+        logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.22  }, colour: 'white' },
         qr: null,
       },
       {
@@ -287,7 +350,7 @@ describe('compositeArtwork, logo failures are visible', () => {
       source,
       {
         variant: 'square',
-        logo: { corner: 'top_left', colour: 'black', widthFrac: 0.22 },
+        logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.22  }, colour: 'black' },
         qr: null,
       },
       // The real file someone would reach for by name. It is 400x180 with three
@@ -313,7 +376,7 @@ describe('compositeArtwork, logo failures are visible', () => {
         source,
         {
           variant: 'square',
-          logo: { corner: 'top_left', colour: 'white', widthFrac: 0.22 },
+          logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.22  }, colour: 'white' },
           qr: null,
         },
         { logoSources: { white: rubbish, black: rubbish } }
@@ -362,7 +425,7 @@ describe('renderQrAtWidth', () => {
 describe('compositeArtwork, QR code on the poster', () => {
   const posterSpec = (overrides: Partial<CompositeSpec> = {}): CompositeSpec => ({
     variant: 'print_poster',
-    logo: { corner: 'top_left', colour: 'white', widthFrac: 0.22 },
+    logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.22  }, colour: 'white' },
     qr: { centreXFrac: 0.5, centreYFrac: 0.82, widthFrac: 0.25, url: BOOKING_URL },
     ...overrides,
   })
@@ -465,7 +528,7 @@ describe('compositeArtwork, output contract', () => {
     const poster = unwrap(
       await compositeArtwork(await createSource(POSTER.targetWidth, POSTER.targetHeight), {
         variant: 'print_poster',
-        logo: { corner: 'bottom_right', colour: 'white', widthFrac: 0.22 },
+        logo: { placement: { mode: 'corner', corner: 'bottom_right', widthFrac: 0.22  }, colour: 'white' },
         qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.25, url: BOOKING_URL },
       })
     )
@@ -478,7 +541,7 @@ describe('compositeArtwork, output contract', () => {
     const square = unwrap(
       await compositeArtwork(await createSource(SQUARE.targetWidth, SQUARE.targetHeight), {
         variant: 'square',
-        logo: { corner: 'bottom_right', colour: 'white', widthFrac: 0.22 },
+        logo: { placement: { mode: 'corner', corner: 'bottom_right', widthFrac: 0.22  }, colour: 'white' },
         qr: null,
       })
     )
@@ -489,7 +552,7 @@ describe('compositeArtwork, output contract', () => {
     const source = await createSource(POSTER.targetWidth, POSTER.targetHeight)
     const spec: CompositeSpec = {
       variant: 'print_poster',
-      logo: { corner: 'top_right', colour: 'black', widthFrac: 0.27 },
+      logo: { placement: { mode: 'corner', corner: 'top_right', widthFrac: 0.27  }, colour: 'black' },
       qr: { centreXFrac: 0.5, centreYFrac: 0.8, widthFrac: 0.22, url: BOOKING_URL },
     }
 
@@ -502,7 +565,7 @@ describe('compositeArtwork, output contract', () => {
   it('fails with source_invalid on artwork it cannot decode', async () => {
     const result = await compositeArtwork(Buffer.from('not an image at all'), {
       variant: 'square',
-      logo: { corner: 'top_left', colour: 'white', widthFrac: 0.22 },
+      logo: { placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.22  }, colour: 'white' },
       qr: null,
     })
 
@@ -534,7 +597,8 @@ describe('composite.ts implementation guarantees', () => {
 
   it('takes its geometry from geometry.ts instead of reimplementing it', () => {
     expect(sourceText).toMatch(/from '\.\/geometry'/)
-    expect(sourceText).toContain('logoRect(')
+    // Either the direct corner helper or the union resolver; both live in geometry.ts.
+    expect(sourceText).toMatch(/\b(logoRect|resolveLogoRect)\(/)
     expect(sourceText).toContain('qrRect(')
     expect(sourceText).toContain('validateQrPlacement(')
 
