@@ -25,10 +25,11 @@ What survives from wave 1:
 
 | Built | Fate |
 |---|---|
-| `geometry.ts` (286 lines, 37 tests) | **Survives untouched.** It is exactly this feature. |
+| `geometry.ts` (45 tests) | **Survives**, and has since gained free logo placement. It is exactly this feature. |
+| `composite.ts` (31 tests) | **Survives.** Was always about placing a logo and a QR, never about generating anything. |
 | `poster-link.ts` (16 tests) | **Survives untouched.** The QR still needs a validated short link. |
 | Timezone harness, `npm run test:utc` | **Survives.** Independently valuable, already green in both zones. |
-| `resize.ts` | **Partially survives.** Its output-validation half is reused; its resize half is not needed. |
+| `resize.ts` | **Replaced by `output.ts`.** Its validator asserted each variant's nominal target size, which would have rejected every real upload: production posters are around 1055x1491, not 2480x3508, because the upload path has only ever checked aspect ratio. The new check is that branding did not change the dimensions. |
 | `sizes.ts`, `prompt.ts`, `pricing.ts` | **Deleted.** Purely about generation. Nothing outside them imported them. |
 | Migration `20260906120000` | **Deleted and replaced** by a much smaller additive one. Never applied to anything. |
 
@@ -57,9 +58,9 @@ Both are mechanical, both are easy to get subtly wrong (a QR too small, or with 
 | story 1080x1920 | yes | no |
 | print_poster 2480x3508 | yes | **yes** |
 
-`isPrintVariant(variant)` returns true only for `print_poster` today, in one helper, so adding a future print variant is a one-line change. Restricting the logo to the poster later is likewise a one-line change to this table.
+`isPrintVariant(variant)` returns true only for `print_poster` today, in one helper, so adding a future print variant is a one-line change.
 
-The logo is allowed on every variant because the owner's original complaint was adding it by hand to every image before upload. The QR is poster-only.
+**Confirmed by the owner on 2026-09-06: the logo goes on all five variants, and must be placeable freely as well as snapped into a corner.** The QR stays poster-only.
 
 ## 4. Flow
 
@@ -89,12 +90,20 @@ One small additive migration on `event_images`. No new tables, no new bucket.
 | Column | Type | Notes |
 |---|---|---|
 | `original_storage_path` | text null | the uploaded file before compositing; null means no branding was applied and `storage_path` IS the original |
-| `logo_corner` | text null | CHECK in the four corners |
-| `logo_colour` | text null | CHECK in (`white`,`black`); table CHECK requires it whenever `logo_corner` is set |
+| `logo_corner` | text null | CHECK in the four corners; set only when the logo is snapped to a corner |
+| `logo_centre_x_frac`, `logo_centre_y_frac` | numeric null | CHECK between 0 and 1; set only when the logo is freely positioned |
+| `logo_colour` | text null | CHECK in (`white`,`black`) |
 | `logo_width_frac` | numeric null | CHECK between 0.08 and 0.35 |
 | `qr_centre_x_frac`, `qr_centre_y_frac` | numeric null | CHECK between 0 and 1 |
 | `qr_width_frac` | numeric null | CHECK >= 0.1905 (40mm at A4) and <= 0.40 |
 | `qr_short_link_id` | uuid null | references `short_links(id)` on delete set null |
+
+Ten columns. Two table-level CHECKs carry the invariants:
+
+- `event_images_logo_placement_exclusive`: a corner, **or** a centre pair, **or** neither. Never both. Storing both would leave the compositor guessing which one was meant.
+- `event_images_logo_colour_required_with_placement`: a placed logo must have a colour and a width, whichever way it was placed. There is no safe default colour: white over a dark poster, black over a light one, and the wrong choice is invisible until it prints.
+
+The QR trio is likewise all-or-nothing, since a code needs both a centre and a size before it can be drawn at all.
 
 All nullable, so every existing row stays valid and the existing RPCs keep working untouched. Coordinates are **fractions of the image edge, 0 to 1**, and every name ends in `_frac`.
 
@@ -113,7 +122,17 @@ Sources: `public/guest/anchor-logo-white.png` and `public/guest/anchor-logo-blac
 - `public/logo-black.png` has **no alpha** and would stamp an opaque white rectangle. A test asserts the chosen source has an alpha channel.
 - The composite route needs an `outputFileTracingIncludes` entry naming **both** files, or the serverless bundle ships without them. The white one has never shipped through a server-render path.
 - **A missing or invalid logo asset fails visibly.** It must never quietly produce unbranded output. Only an explicit "no logo" choice omits a logo.
-- Geometry: width `logo_width_frac` of the image width, clamped 0.08 to 0.35; height from the 934/421 aspect; inset 4% of the short edge from the chosen corner. The 0.35 ceiling keeps the logo inside its 934px native resolution on every canvas.
+
+**Two placement modes**, exactly one per image, mirroring the database constraint:
+
+| Mode | Geometry |
+|---|---|
+| `corner` | `logoRect`: inset 4% of the short edge from the chosen corner |
+| `free` | `logoRectFree`: centred on `logo_centre_x_frac` and `logo_centre_y_frac`, then clamped inside the same inset margin so a centre parked on an edge pulls the logo back on-canvas rather than letting it hang off |
+
+Free placement exists because plenty of artwork leaves no usable corner. Both modes share the width rule: `logo_width_frac` of the image width, clamped 0.08 to 0.35, height from the 934/421 aspect. The 0.35 ceiling keeps the logo inside its 934px native resolution on every canvas, so free placement can never be larger, or softer in print, than a cornered one.
+
+`resolveLogoRect(imageW, imageH, placement)` takes the union and gives callers one path, so neither the browser preview nor the compositor branches on mode itself.
 
 ### 6.2 QR
 
@@ -134,7 +153,7 @@ Each tile gains a **Branding** action, enabled once a file exists. It opens a pl
 Editor contents:
 
 - Live preview of the image at a scaled size.
-- Logo: 2x2 corner picker, white/black segmented control, size slider, and a "no logo" option.
+- Logo: a Corner / Free mode toggle; a 2x2 corner picker in corner mode and drag in free mode; white/black control; size slider; and a "no logo" option. Drag is an enhancement only: arrow-key nudges and numeric X, Y and size fields do the same job.
 - QR, print variants only: drag to position, size slider, and the resolved short URL shown as text so the owner can see where it points before printing.
 - Save, which composites and replaces the live variant; Revert to original, which restores the uploaded file and clears the branding.
 
@@ -157,7 +176,7 @@ The panel's contradictory copy is fixed regardless: `EventImagePanel.tsx:495-497
 
 ## 9. Testing
 
-Unit: geometry (done, 37 tests); QR minimum derived from millimetres, asserting 473 not 472; logo source has an alpha channel; QR and logo overlap rejection; preview and server geometry producing identical numbers.
+Unit: geometry (done, 45 tests, covering both placement modes); QR minimum derived from millimetres, asserting 473 not 472; logo source has an alpha channel; QR and logo overlap rejection; preview and server geometry producing identical numbers.
 
 Integration: composite determinism, so the same input and placement produce byte-identical output; a missing logo asset fails visibly; the quiet zone survives; poster density is 300; **re-placing composites from the original rather than from the previous composite**, otherwise branding compounds on itself, which is the worst bug available here; Revert restores the original exactly.
 
@@ -185,7 +204,7 @@ No feature flag: there is no spend and no external dependency beyond a short lin
 ## 11. Acceptance criteria
 
 1. Uploading a file to a tile behaves exactly as it does today when no branding is applied.
-2. Choosing a corner and colourway places the logo at that corner on any variant, with no upscaling above 0.35 of image width.
+2. On any variant, the logo can be snapped to a corner OR positioned freely, in the chosen colourway, with no upscaling above 0.35 of image width. A freely placed logo never hangs off the canvas.
 3. A missing logo asset fails visibly and leaves the existing image untouched, rather than publishing unbranded.
 4. On the poster, a QR can be positioned freely, is at least 40mm at A4 (473px), keeps its white quiet zone, carries `utm_source=poster&utm_medium=print&utm_content=poster_qr`, resolves to the event's current canonical URL, and scans off a printed sheet on two phones.
 5. Re-placing branding composites from the stored original, so branding never compounds.
