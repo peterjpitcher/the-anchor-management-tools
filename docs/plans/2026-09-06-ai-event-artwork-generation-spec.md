@@ -107,7 +107,14 @@ The QR trio is likewise all-or-nothing, since a code needs both a centre and a s
 
 All nullable, so every existing row stays valid and the existing RPCs keep working untouched. Coordinates are **fractions of the image edge, 0 to 1**, and every name ends in `_frac`.
 
-`upsert_event_image_variant` and `delete_event_image_variant` are **not** modified. The composite path calls the existing upsert for the composited file, which already returns the replaced object to delete, then issues one small UPDATE for the branding columns. The two are not atomic; the failure mode is branding metadata missing while the image itself is correct, which is benign and is documented in the code.
+`upsert_event_image_variant` and `delete_event_image_variant` are **not** modified. The composite path calls the existing upsert for the composited file, which already returns the replaced object to delete, then issues one small UPDATE for the branding columns.
+
+The two are not atomic, and the earlier claim that the gap is benign was **wrong**. Losing the placement is harmless, but losing `original_storage_path` is not: a branded image with no recorded original is precisely the state in which the next edit stamps a second logo onto an image that already has one, and nothing can recover it. So a failed branding write **republishes the original and returns a 500** rather than leaving that state behind.
+
+Two related hazards, both handled in the service:
+
+- **Composites live under `events/{id}/{variant}/branded/`.** A staff upload can never land in that folder, so an original can be told from a composite by its path without trusting a column that a failed write may have left behind.
+- **Re-uploading over branded artwork.** `confirmEventImageUpload` replaces `storage_path` without clearing the branding columns, so a fresh upload would otherwise leave a stale `original_storage_path` pointing at the previous picture, and the next branding pass would re-brand and republish the OLD image. The service detects the mismatch, adopts the new upload as the original, and deletes the stale one.
 
 When an original is replaced, the previous original is deleted explicitly, since nothing else references it.
 
