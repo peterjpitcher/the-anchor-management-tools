@@ -1091,6 +1091,22 @@ describe('POST /api/events/[id]/artwork/composite', () => {
     expect(revertedBody.originalStoragePath).toBeNull()
   })
 
+  it('saves a poster QR at exactly 10% through the HTTP route', async () => {
+    await seedVariant('print_poster')
+    const response = await POST(
+      request({
+        variant: 'print_poster',
+        logo: null,
+        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.1 },
+      }) as never,
+      context()
+    )
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.success).toBe(true)
+    expect(body.placementSaved).toBe(true)
+  })
+
   it('rejects a malformed placement with a stable code', async () => {
     const tooWide = await POST(
       request({
@@ -1107,7 +1123,7 @@ describe('POST /api/events/[id]/artwork/composite', () => {
       request({
         variant: 'print_poster',
         logo: null,
-        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.19 },
+        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.09 },
       }) as never,
       context()
     )

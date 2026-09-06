@@ -488,7 +488,7 @@ describe('renderQrAtWidth', () => {
   it('renders at exactly the requested width, never resampled from 1200', async () => {
     const sharp = (await import('sharp')).default
 
-    for (const width of [473, 620, 900]) {
+    for (const width of [106, 248, 473, 620, 900]) {
       const metadata = await sharp(await renderQrAtWidth(BOOKING_URL, width)).metadata()
       expect(metadata.width).toBe(width)
       expect(metadata.height).toBe(width)
@@ -577,14 +577,14 @@ describe('compositeArtwork, QR code on the poster', () => {
     expect(result.failure.detail).toContain('logo')
   })
 
-  it('rejects a QR under the 40mm print minimum', async () => {
+  it('rejects a QR under the 10% width minimum', async () => {
     const source = await createSource(POSTER.targetWidth, POSTER.targetHeight)
     const minimum = qrMinWidthPx(POSTER.targetWidth)
 
     const result = await compositeArtwork(
       source,
       posterSpec({
-        qr: { centreXFrac: 0.5, centreYFrac: 0.82, widthFrac: 0.1, url: BOOKING_URL },
+        qr: { centreXFrac: 0.5, centreYFrac: 0.82, widthFrac: 0.09, url: BOOKING_URL },
       })
     )
 
@@ -1007,18 +1007,49 @@ describe('compositeArtwork, the BOOK NOW strip', () => {
     expect((middle[0] + middle[1] + middle[2]) / 3).toBeLessThan(40)
   })
 
-  it('states its font family and takes its label from geometry.ts', () => {
+  it('uses font-independent outlines and takes its label from geometry.ts', () => {
     const svg = qrStripSvg(STRIP).toString('utf8')
 
     expect(svg).toContain(QR_STRIP_LABEL)
-    // A generic family, never a named face that may be absent on Vercel.
-    expect(svg).toContain('font-family="sans-serif"')
+    // Serverless runtimes can have no fonts at all.
+    expect(svg).not.toContain('<text')
+    expect(svg).not.toContain('font-family')
+    expect(svg.match(/<path /g)).toHaveLength(7)
     // Reads bottom to top, the usual convention for a vertical label.
     expect(svg).toContain('rotate(-90')
     // Sized to the rect geometry.ts computed, so the rasterised strip lands
     // exactly where the block says it does.
     expect(svg).toContain(`width="${STRIP.width}"`)
     expect(svg).toContain(`height="${STRIP.height}"`)
+  })
+
+  it.each([0.1, 0.25])('renders seven distinct letters, not missing-font boxes, at %s width', async (widthFrac) => {
+    const sharp = (await import('sharp')).default
+    const code = qrCodeRectWithinCanvas(POSTER.targetWidth, POSTER.targetHeight, 0.5, 0.5, widthFrac)
+    const strip = qrStripRect(code)
+    // Rotate the real raster back to a horizontal word to separate its glyphs.
+    const image = await decode(await sharp(qrStripSvg(strip)).rotate(90).png().toBuffer())
+    const letterWidths: number[] = []
+    let currentWidth = 0
+    for (let x = 0; x < image.width; x += 1) {
+      let hasInk = false
+      for (let y = 0; y < image.height; y += 1) {
+        if (pixelAt(image, x, y)[0] > 200) hasInk = true
+      }
+      if (hasInk) currentWidth += 1
+      else if (currentWidth > 0) {
+        letterWidths.push(currentWidth)
+        currentWidth = 0
+      }
+    }
+    if (currentWidth > 0) letterWidths.push(currentWidth)
+
+    expect(letterWidths).toHaveLength(7)
+    // Missing-glyph squares previously passed a white-pixel coverage check.
+    // A real W is substantially wider than an O; identical boxes cannot pass.
+    expect(letterWidths[6]).toBeGreaterThan(letterWidths[1] * 1.25)
+    expect(Math.abs(letterWidths[1] - letterWidths[2])).toBeLessThanOrEqual(1)
+    expect(Math.abs(letterWidths[1] - letterWidths[5])).toBeLessThanOrEqual(1)
   })
 
   it('rasterises the strip at exactly the rect size, with a legible label', async () => {
@@ -1029,7 +1060,7 @@ describe('compositeArtwork, the BOOK NOW strip', () => {
     expect(metadata.width).toBe(STRIP.width)
     expect(metadata.height).toBe(STRIP.height)
 
-    // At the 40mm print minimum on A4 the strip is narrower than this one, so
+    // At the 10% width minimum on A4 the strip is narrower than this one, so
     // check the label is still worth printing there too.
     const smallest = qrStripRect({
       x: 0,
@@ -1092,7 +1123,7 @@ describe('composite.ts implementation guarantees', () => {
     expect(sourceText).not.toContain('0.22')
 
     // The numbers geometry.ts owns must not appear here at all: the inset
-    // fraction, the logo aspect ratio, the 40mm minimum and the A4 width.
+    // fraction, the logo aspect ratio, the 10% minimum and the A4 width.
     expect(sourceText).not.toContain('0.04')
     expect(sourceText).not.toContain('934 / 421')
     expect(sourceText).not.toContain('/ 210')

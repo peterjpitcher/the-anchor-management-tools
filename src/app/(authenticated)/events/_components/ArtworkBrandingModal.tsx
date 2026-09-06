@@ -121,14 +121,7 @@ const NOMINAL_PREVIEW_WIDTH_PX = 600
 /** How much of the strip's displayed width the label glyphs take. */
 const QR_STRIP_FONT_FRAC = 0.6
 
-/**
- * The QR size controls work in whole percent, and these are their bounds.
- *
- * The floor is the first whole percent at or above the 40mm print minimum.
- * `qrMinWidthFrac()` is the enforced floor (0.1905, rounded up from 40/210 so a
- * code can never print under 40mm) and matches both the route's Zod bound and
- * the database CHECK, so the exact minimum is now accepted rather than 400ing.
- */
+/** Whole-percent controls share the server's minimum width. */
 const MIN_QR_WIDTH_PERCENT = Math.ceil(qrMinWidthFrac() * 100)
 const MAX_QR_WIDTH_PERCENT = 40
 
@@ -227,7 +220,7 @@ export function ArtworkBrandingModal({
   const config = EVENT_IMAGE_VARIANTS[variant]
   const imageW = config.targetWidth
   const imageH = config.targetHeight
-  // The QR is a print device: a 40mm minimum only means anything on the poster.
+  // The QR is a print device: a 21mm minimum only means anything on the poster.
   const isPoster = variant === 'print_poster'
 
   /**
@@ -340,7 +333,7 @@ export function ArtworkBrandingModal({
 
   /**
    * The scannable square. `qr_width_frac` and the stored centre both describe
-   * THIS rect and nothing else, which is what keeps the 40mm print minimum and
+   * THIS rect and nothing else, which is what keeps the 21mm print minimum and
    * the database CHECK meaning what they say. `qrCodeRectWithinCanvas` shifts it
    * back when the BOOK NOW strip beside it would otherwise hang off the edge.
    */

@@ -15,7 +15,7 @@
  *   the naming rule exists to prevent.
  * - Every pixel output is an integer. Sizes and positions use `Math.round`; the
  *   single exception is `qrMinWidthPx`, which uses `Math.ceil` so the printed
- *   code can never come out under the stated 40mm minimum (see below).
+ *   code can never come out under the stated 21mm minimum (see below).
  * - Rects are `{ x, y, width, height }` in pixels, x and y being the top-left
  *   corner, y growing downwards, which is what both a canvas and Sharp expect.
  * - Pure functions only. No I/O, no state, no imports.
@@ -52,12 +52,8 @@ export const LOGO_DEFAULT_WIDTH_FRAC = 0.22
  */
 export const INSET_FRAC = 0.04
 
-/**
- * The smallest a QR code may be printed. The app's designer README states a 40mm
- * minimum for a poster QR, which is the size a phone camera reliably locks onto
- * from arm's length on a wall.
- */
-export const QR_MIN_MM = 40
+/** Minimum QR width on an A4 poster when set to 10% of the page width. */
+export const QR_MIN_MM = 21
 
 /** A4 portrait is 210mm wide. The print poster canvas is A4 at 300dpi. */
 export const A4_WIDTH_MM = 210
@@ -239,38 +235,15 @@ export function reservedLogoRect(imageW: number, imageH: number, corner: Corner)
   }
 }
 
-/**
- * The 40mm print minimum expressed as a fraction of an A4 page width.
- * 40 / 210 = 0.19047...
- */
+/** The same minimum is used by the editor and server validation. */
 export function qrMinWidthFrac(): number {
   return QR_MIN_WIDTH_FRAC
 }
 
-/**
- * The enforced minimum QR width as a fraction of the image width.
- *
- * The exact ratio is 40 / 210 = 0.190476..., but this is deliberately the
- * rounded-UP 0.1905, and the fourth decimal place is the whole point.
- *
- * Rounding down would admit a code that prints fractionally under the 40mm
- * minimum, and a QR that is too small is only ever discovered after it has been
- * printed. Rounding up costs 0.005mm of width and cannot.
- *
- * This exact value is duplicated in two other places that must agree with it:
- * the `event_images_qr_width_frac_check` constraint in
- * `20260906095746_event_image_branding.sql`, and the Zod bound on the composite
- * route. Returning the unrounded ratio here (as this function once did) meant
- * the geometric minimum was fractionally BELOW the stored floor, so posting the
- * smallest legal code was rejected with a 400 before it ever reached the
- * compositor. Keep all three the same number.
- */
-export const QR_MIN_WIDTH_FRAC = 0.1905
+/** Keep this aligned with the event_images QR width constraint. */
+export const QR_MIN_WIDTH_FRAC = 0.1
 
-/**
- * The unrounded ratio, exported for documentation and tests rather than for
- * validation. Use `QR_MIN_WIDTH_FRAC` to bound an input.
- */
+/** The A4 physical size expressed as a width fraction. */
 export const QR_MIN_WIDTH_FRAC_EXACT = QR_MIN_MM / A4_WIDTH_MM
 
 /**
@@ -284,20 +257,14 @@ export const QR_MAX_WIDTH_FRAC = 0.4
 
 /**
  * What a new QR starts at before anyone changes it: 0.20 of the width, which is
- * 42mm on A4. Comfortably over the 40mm floor without dominating the poster.
+ * 42mm on A4. Comfortably over the 21mm floor without dominating the poster.
  * The previous 0.22 (46mm) started larger than most artwork wanted.
  */
 export const QR_DEFAULT_WIDTH_FRAC = 0.2
 
-/**
- * The 40mm print minimum in pixels for a poster of a given pixel width.
- *
- * Rounded UP, on purpose. On the 2480px A4 canvas the exact figure is
- * 2480 * 40 / 210 = 472.38px; rounding down to 472 prints at 39.9mm, which is
- * under the minimum we tell designers we hold to. So this returns 473.
- */
+/** Round up so the rendered QR never falls below 10% of the poster width. */
 export function qrMinWidthPx(posterWidthPx: number): number {
-  return Math.ceil((posterWidthPx * QR_MIN_MM) / A4_WIDTH_MM)
+  return Math.ceil(posterWidthPx * QR_MIN_WIDTH_FRAC)
 }
 
 /**
@@ -319,10 +286,7 @@ export function qrRect(
 ): Rect {
   const inset = insetPx(posterW, posterH)
   const maxSide = Math.max(1, Math.min(posterW, posterH) - inset * 2)
-  // Ceil, not round. The failure mode for a printed QR is being too small, and
-  // at the enforced minimum fraction Math.round would give 472px on the 2480px
-  // A4 canvas, which prints at 39.97mm and is under the 40mm floor the whole
-  // constraint exists to hold. Rounding up costs at most a pixel.
+  // Round up to preserve the requested width on every canvas size.
   const side = clamp(Math.ceil(posterW * widthFrac), 1, maxSide)
 
   const maxX = Math.max(inset, posterW - inset - side)
@@ -354,7 +318,7 @@ export function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
  *
  * Three ways it can fail, checked in the order a person would notice them:
  *   1. any part of the code is off the canvas, or it has no area;
- *   2. it is smaller than the 40mm print minimum for this poster width;
+ *   2. it is smaller than the 21mm print minimum for this poster width;
  *   3. it comes within one inset of the logo's keep-clear region.
  *
  * The gap used against the logo is `insetPx` for the canvas, the same margin
@@ -362,7 +326,7 @@ export function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
  * clears it.
  *
  * Pass `logo` as null when the artwork carries no logo. This validator is for
- * the print poster path: the 40mm rule is a print rule and has no meaning on a
+ * the print poster path: the 21mm rule is a print rule and has no meaning on a
  * screen-only variant.
  */
 export function validateQrPlacement(
@@ -480,7 +444,7 @@ export function cssDropShadow(spec: LogoShadowSpec): string {
 // modules, which is far worse for a scanner than the centred logos that
 // occlusion budget is usually spent on.
 //
-// `qr_width_frac` keeps meaning the CODE width, so the 40mm print minimum and
+// `qr_width_frac` keeps meaning the CODE width, so the 21mm print minimum and
 // the database CHECK constraints all still mean what they say. The strip makes
 // the placed BLOCK wider than the code, and it is the block that has to fit on
 // the canvas and clear the logo.
