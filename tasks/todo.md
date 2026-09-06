@@ -1,3 +1,14 @@
+# AI event copy builder layout, 6 September 2026
+
+- [x] Inspect live panel and trace card padding.
+- [x] Apply spacing inside CardBody, align with app tokens and wrap narrow-screen content.
+- [x] Verify desktop/mobile layout and existing copy controls with fixtures.
+  Browser checks: desktop, 390px and 320px; no horizontal overflow. Switched to GBP, selected a custom link, generated fixture copy and copied it successfully.
+- [x] Run quality gates: lint, typecheck, 734 test files (6,331 tests passed, two existing skips), production build.
+- [ ] Merge and verify production deployment.
+
+Scope: UI only. Existing generation prompts and server action unchanged. The card previously combined outer padding with its automatic inner padding, while outer space-y never reached the form sections.
+
 # Event checklist rapid completion, 6 September 2026
 
 - [x] Confirm the active event detail card reloads after each completion.

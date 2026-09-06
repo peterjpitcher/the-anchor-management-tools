@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Card } from '@/ds'
+import { Card, CardBody } from '@/ds'
 import { Textarea } from '@/ds'
 import { Input } from '@/ds'
 import { Button } from '@/ds'
@@ -260,25 +260,26 @@ export function EventPromotionContentCard({
   const selectedTypeMeta = CONTENT_TYPES.find((item) => item.value === contentType)
 
   return (
-    <Card className="p-6 space-y-6">
+    <Card>
+      <CardBody className="flex min-w-0 flex-col gap-6">
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-gray-900">AI Event Copy Builder</h2>
-        <p className="text-sm text-gray-500">
+        <h2 className="text-lg font-semibold text-text-strong">AI Event Copy Builder</h2>
+        <p className="text-sm text-text-muted">
           Generate channel-specific event copy. Generated copy is not saved automatically.
         </p>
       </div>
 
       {brief && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Brief snapshot</p>
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Brief snapshot</p>
+          <div className="rounded-lg border border-border bg-surface-2 p-3 text-sm text-text whitespace-pre-wrap max-h-48 overflow-y-auto">
             {brief}
           </div>
         </div>
       )}
 
       <div className="space-y-2">
-        <label htmlFor="content_type" className="block text-sm font-medium text-gray-900">
+        <label htmlFor="content_type" className="block text-sm font-medium text-text-strong">
           Content type
         </label>
         <Select
@@ -294,12 +295,12 @@ export function EventPromotionContentCard({
           ))}
         </Select>
         {selectedTypeMeta?.help && (
-          <p className="text-xs text-gray-500">{selectedTypeMeta.help}</p>
+          <p className="text-xs text-text-muted">{selectedTypeMeta.help}</p>
         )}
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="cta_link_option" className="block text-sm font-medium text-gray-900">
+        <label htmlFor="cta_link_option" className="block text-sm font-medium text-text-strong">
           CTA link
         </label>
         {orderedDigitalLinks.length > 0 ? (
@@ -322,18 +323,20 @@ export function EventPromotionContentCard({
               ))}
               <option value="custom">Custom link…</option>
             </Select>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-text-muted">
               Defaults to the best-fit UTM link for this channel. The URL is not included in the generated copy.
             </p>
           </>
         ) : (
-          <p className="text-xs text-gray-500">
-            No marketing links yet—refresh links above or enter a custom URL below.
+          <p className="text-xs text-text-muted">
+            No marketing links yet. Refresh links above or enter a custom URL below.
           </p>
         )}
         {(ctaState.selectedLinkId === 'custom' || !orderedDigitalLinks.length) && (
           <Input
             id="cta_link_custom"
+            aria-label="Custom booking link"
+            type="url"
             value={ctaState.customUrl}
             onChange={(event) =>
               setCtaStateByType((previous) => ({
@@ -348,15 +351,15 @@ export function EventPromotionContentCard({
         )}
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div className="rounded-lg border border-border bg-surface-2 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">CTA link (copy/paste)</p>
-            <p className="mt-1 text-xs text-gray-500">{resolveCtaLabel(contentType)}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">CTA link (copy/paste)</p>
+            <p className="mt-1 text-xs text-text-muted">{resolveCtaLabel(contentType)}</p>
             {selectedCtaUrl ? (
-              <p className="mt-2 font-mono text-sm text-blue-700 break-all">{selectedCtaUrl}</p>
+              <p className="mt-2 font-mono text-sm text-primary break-all">{selectedCtaUrl}</p>
             ) : (
-              <p className="mt-2 text-sm text-gray-600">Select a marketing link or enter a custom URL.</p>
+              <p className="mt-2 text-sm text-text-muted">Select a marketing link or enter a custom URL.</p>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -372,25 +375,26 @@ export function EventPromotionContentCard({
           </div>
         </div>
         {selectedMarketingLink && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span className="rounded-full bg-white px-2 py-1">source: {selectedMarketingLink.utm.utm_source}</span>
-            <span className="rounded-full bg-white px-2 py-1">medium: {selectedMarketingLink.utm.utm_medium}</span>
-            <span className="rounded-full bg-white px-2 py-1">campaign: {selectedMarketingLink.utm.utm_campaign}</span>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+            <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">source: {selectedMarketingLink.utm.utm_source}</span>
+            <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">medium: {selectedMarketingLink.utm.utm_medium}</span>
+            <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">campaign: {selectedMarketingLink.utm.utm_campaign}</span>
             {selectedMarketingLink.utm.utm_content && (
-              <span className="rounded-full bg-white px-2 py-1">content: {selectedMarketingLink.utm.utm_content}</span>
+              <span className="min-w-0 break-all rounded-full bg-surface px-2 py-1">content: {selectedMarketingLink.utm.utm_content}</span>
             )}
           </div>
         )}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-500">
-          Generates fresh copy every time—run it again if you need a new angle.
+      <div className="flex flex-col items-start gap-3 border-t border-border pt-4">
+        <p className="text-sm text-text-muted">
+          Generates fresh copy every time. Run it again if you need a new angle.
         </p>
         <Button
           type="button"
-          variant="secondary"
-          size="sm"
+          variant="primary"
+          size="md"
+          className="h-auto min-h-[var(--spacing-btn-h)] w-full whitespace-normal py-2 sm:w-auto"
           onClick={handleGenerate}
           disabled={isGenerating || Boolean(aiUnavailableMessage)}
           leftIcon={isGenerating ? <Spinner size="sm" color="gray" /> : <ArrowPathIcon className="h-4 w-4" />}
@@ -400,7 +404,7 @@ export function EventPromotionContentCard({
       </div>
 
       {aiUnavailableMessage && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="rounded-lg border border-warning/30 bg-warning-soft p-4 text-sm text-warning-fg">
           {aiUnavailableMessage}
         </div>
       )}
@@ -412,8 +416,8 @@ export function EventPromotionContentCard({
               const content = currentResult as FacebookEventContent
               return (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Facebook Event</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Facebook Event</h3>
                     <Button
                       size="xs"
                       variant="ghost"
@@ -426,7 +430,7 @@ export function EventPromotionContentCard({
                   <div className="space-y-2">
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Event name</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Event name</p>
                         <Button
                           size="xs"
                           variant="ghost"
@@ -438,13 +442,13 @@ export function EventPromotionContentCard({
                           leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
                         />
                       </div>
-                      <p className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                      <p className="break-words rounded-lg border border-border bg-surface p-3 text-sm text-text-strong">
                         {content.name}
                       </p>
                     </div>
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                           Description ({content.description.length} chars)
                         </p>
                         <Button
@@ -461,6 +465,7 @@ export function EventPromotionContentCard({
                       <Textarea
                         value={content.description}
                         readOnly
+                        aria-label={`${selectedTypeMeta?.label} description`}
                         rows={8}
                         fullWidth
                       />
@@ -476,8 +481,8 @@ export function EventPromotionContentCard({
               const copyLabel = 'GBP copy'
               return (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{titleLabel}</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">{titleLabel}</h3>
                     <Button
                       size="xs"
                       variant="ghost"
@@ -490,7 +495,7 @@ export function EventPromotionContentCard({
                   <div className="space-y-2">
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Title</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Title</p>
                         <Button
                           size="xs"
                           variant="ghost"
@@ -502,13 +507,13 @@ export function EventPromotionContentCard({
                           leftIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
                         />
                       </div>
-                      <p className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-900">
+                      <p className="break-words rounded-lg border border-border bg-surface p-3 text-sm text-text-strong">
                         {content.title}
                       </p>
                     </div>
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                           Description ({content.description.length} chars)
                         </p>
                         <Button
@@ -525,6 +530,7 @@ export function EventPromotionContentCard({
                       <Textarea
                         value={content.description}
                         readOnly
+                        aria-label={`${selectedTypeMeta?.label} description`}
                         rows={8}
                         fullWidth
                       />
@@ -536,6 +542,7 @@ export function EventPromotionContentCard({
           )}
         </div>
       )}
+      </CardBody>
     </Card>
   )
 }
