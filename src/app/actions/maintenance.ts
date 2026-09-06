@@ -15,6 +15,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { formBooleanSchema } from '@/lib/forms/formBoolean'
+import { revalidateMaintenanceCounts } from '@/lib/maintenance/counts'
 import {
   isMaintenanceKind,
   isMaintenancePriority,
@@ -140,6 +141,10 @@ function toFailure<T>(error: unknown, fallback: string): MaintenanceActionResult
 function revalidateMaintenance(itemId?: string): void {
   revalidatePath('/maintenance')
   if (itemId) revalidatePath(`/maintenance/${itemId}`)
+  // The nav badge is served from an unstable_cache entry, which revalidatePath does
+  // not clear. Without this the badge lags a mutation by up to its cache lifetime,
+  // so an item you just closed still shows as outstanding.
+  revalidateMaintenanceCounts()
 }
 
 // ---------------------------------------------------------------------------

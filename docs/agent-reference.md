@@ -33,10 +33,10 @@ Turnstile-checked endpoints: `event-bookings`, `table-bookings`, `feedback`, `pr
 
 External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up in `api_keys` (permissions, `rate_limit`, `is_active`, `expires_at`); `checkRateLimit()` is per key.
 
-## 2. Scheduled jobs inventory (2026-09-04)
+## 2. Scheduled jobs inventory (2026-09-06)
 
-- `vercel.json` has 54 schedules: 53 under `/api/cron/*` plus `/api/jobs/process?process=true&batch=30`, which drains the job queue.
-- `src/app/api/cron/` has 56 route folders. Three have no schedule: `backfill-marketing-links`, `sunday-lunch-prep`, `sunday-preorder`.
+- `vercel.json` has 57 schedules: 56 under `/api/cron/*` plus `/api/jobs/process?process=true&batch=30`, which drains the job queue.
+- `src/app/api/cron/` has 59 route folders. Three have no schedule: `backfill-marketing-links`, `sunday-lunch-prep`, `sunday-preorder`.
 - Every cron route authenticates with `Authorization: Bearer CRON_SECRET` through `src/lib/cron-auth.ts`. Failures email `CRON_ALERT_EMAIL` when set; run outcomes go through `src/lib/cron-run-results.ts`.
 - Regenerate the comparison:
 
