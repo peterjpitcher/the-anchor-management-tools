@@ -163,42 +163,40 @@ const QR_STRIP_BACKGROUND = '#000000'
 const QR_STRIP_INK = '#ffffff'
 
 /**
- * The font family written into the strip's SVG.
- *
- * A generic family, not a named face. Vercel's runtime carries a different set
- * of fonts from a developer laptop, and naming a face that is absent there would
- * silently fall back to something with different metrics, which is exactly the
- * drift the strip sizing below is built to avoid.
+ * Original vector outlines for the fixed label, in a 100-unit cap height.
+ * Sharp's SVG renderer cannot rely on system fonts being installed on Vercel:
+ * even generic sans-serif can render missing-glyph squares there. Paths keep
+ * the exported lettering identical in every runtime, without a font asset.
  */
-const QR_STRIP_FONT_STACK = 'sans-serif'
+const QR_LABEL_GLYPHS: Record<string, { width: number; path: string }> = {
+  B: {
+    width: 70,
+    path: 'M0 0H36Q66 0 66 25Q66 41 53 48Q70 54 70 74Q70 100 37 100H0Z ' +
+      'M19 17V40H34Q47 40 47 28Q47 17 34 17Z M19 57V83H36Q50 83 50 70Q50 57 36 57Z',
+  },
+  O: {
+    width: 70,
+    path: 'M35 0Q70 0 70 50Q70 100 35 100Q0 100 0 50Q0 0 35 0Z ' +
+      'M35 18Q19 18 19 50Q19 82 35 82Q51 82 51 50Q51 18 35 18Z',
+  },
+  K: {
+    width: 70,
+    path: 'M0 0H19V40L47 0H70L35 48L70 100H47L19 59V100H0Z',
+  },
+  N: {
+    width: 70,
+    path: 'M0 100V0H20L51 64V0H70V100H50L19 36V100Z',
+  },
+  W: {
+    width: 100,
+    path: 'M0 0H20L31 69L42 12H58L69 69L80 0H100L80 100H60L50 48L40 100H20Z',
+  },
+}
 
-/**
- * Text size as a fraction of the strip WIDTH, which is the strip's short edge
- * and therefore what the rotated label's height has to fit inside.
- *
- * 0.55 leaves the label at roughly two thirds of the strip's length in the
- * fonts we have measured, so a fallback face up to about a third wider still
- * fits without touching the ends. At the 40mm print minimum on A4 the strip is
- * 104px wide and this gives a 57px label, which is comfortably legible.
- */
-const QR_STRIP_FONT_FRAC_OF_STRIP_WIDTH = 0.55
-
-/** Letter spacing as a fraction of the font size. Enough to read as a label. */
-const QR_STRIP_TRACKING_FRAC_OF_FONT = 0.06
-
-/**
- * How far below the strip's centre line the text baseline sits, as a fraction of
- * the font size, so the label is optically centred across the strip.
- *
- * Roughly half a capital's height. `dominant-baseline` would say this more
- * directly but is not honoured by every SVG rasteriser, and a label that drifts
- * to one edge on the server while looking centred locally is worse than an
- * approximation that both agree on.
- */
-const QR_STRIP_BASELINE_FRAC_OF_FONT = 0.35
-
-/** Below this the label is not worth drawing at all. */
-const QR_STRIP_MIN_FONT_PX = 8
+const QR_LABEL_CAP_HEIGHT = 100
+const QR_LABEL_TRACKING = 10
+const QR_LABEL_SPACE_WIDTH = 40
+const QR_LABEL_HEIGHT_FRAC_OF_STRIP_WIDTH = 0.55
 
 /**
  * How far the shadow's own frame is padded beyond the logo rectangle, in pixels.
@@ -350,24 +348,35 @@ async function renderLogoShadow(
  * the markup.
  */
 export function qrStripSvg(strip: Rect): Buffer {
-  const fontSize = Math.max(
-    QR_STRIP_MIN_FONT_PX,
-    Math.round(strip.width * QR_STRIP_FONT_FRAC_OF_STRIP_WIDTH)
+  let labelWidth = 0
+  const paths = Array.from(QR_STRIP_LABEL, (letter) => {
+    const x = labelWidth
+    if (letter === ' ') {
+      labelWidth += QR_LABEL_SPACE_WIDTH + QR_LABEL_TRACKING
+      return ''
+    }
+    const glyph = QR_LABEL_GLYPHS[letter]
+    if (!glyph) throw new Error(`No vector outline for QR label character: ${letter}`)
+    labelWidth += glyph.width + QR_LABEL_TRACKING
+    return `<path transform="translate(${x} 0)" d="${glyph.path}"/>`
+  }).join('')
+  labelWidth -= QR_LABEL_TRACKING
+
+  const scale = Math.min(
+    strip.width * QR_LABEL_HEIGHT_FRAC_OF_STRIP_WIDTH / QR_LABEL_CAP_HEIGHT,
+    strip.height * 0.9 / labelWidth
   )
-  const tracking = Math.max(1, Math.round(fontSize * QR_STRIP_TRACKING_FRAC_OF_FONT))
   const centreX = strip.width / 2
   const centreY = strip.height / 2
-  const baselineY = centreY + Math.round(fontSize * QR_STRIP_BASELINE_FRAC_OF_FONT)
 
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${strip.width}" height="${strip.height}" ` +
       `viewBox="0 0 ${strip.width} ${strip.height}">` +
+      `<title>${QR_STRIP_LABEL}</title>` +
       `<rect x="0" y="0" width="${strip.width}" height="${strip.height}" fill="${QR_STRIP_BACKGROUND}"/>` +
-      `<g transform="rotate(-90 ${centreX} ${centreY})">` +
-      `<text x="${centreX}" y="${baselineY}" fill="${QR_STRIP_INK}" ` +
-      `font-family="${QR_STRIP_FONT_STACK}" font-size="${fontSize}" font-weight="700" ` +
-      `letter-spacing="${tracking}" text-anchor="middle">${QR_STRIP_LABEL}</text>` +
-      `</g>` +
+      `<g transform="translate(${centreX} ${centreY}) rotate(-90) scale(${scale}) ` +
+      `translate(${-labelWidth / 2} ${-QR_LABEL_CAP_HEIGHT / 2})" ` +
+      `fill="${QR_STRIP_INK}" fill-rule="evenodd">${paths}</g>` +
       `</svg>`,
     'utf8'
   )
@@ -448,7 +457,7 @@ export async function renderQrAtWidth(url: string, widthPx: number): Promise<Buf
  * The QR placement is validated here, server side, before anything is drawn.
  * The slider in the browser is a convenience, not the enforcement point: it can
  * be bypassed, it can be out of date, and an unscannable poster is only
- * discovered after it has been printed. The 40mm print minimum is applied to
+ * discovered after it has been printed. The 10% width minimum is applied to
  * every variant that asks for a QR code, not just the poster, on the grounds
  * that a code too small to scan is a defect on any medium.
  */

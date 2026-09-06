@@ -338,7 +338,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     fireEvent.change(slider, { target: { value: '5' } })
 
     // data-code-rect, not data-rect: the footprint that is dragged and outlined
-    // is the code plus its BOOK NOW strip, and the 40mm minimum is about the
+    // is the code plus its BOOK NOW strip, and the 21mm minimum is about the
     // scannable square alone.
     const [, , width] = (screen.getByTestId('qr-overlay').getAttribute('data-code-rect') ?? '')
       .split(',')
@@ -363,10 +363,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     renderModal()
 
     const slider = screen.getByLabelText('QR size') as HTMLInputElement
-    // The route's own schema is z.number().min(0.1905).max(0.4). Sending
-    // qrMinWidthFrac() itself (0.190476...) would be refused with a 400, so the
-    // control floor has to sit above it, not on it.
-    expect(Number(slider.min) / 100).toBeGreaterThanOrEqual(0.1905)
+    expect(Number(slider.min) / 100).toBeGreaterThanOrEqual(0.1)
     expect(Number(slider.max) / 100).toBeLessThanOrEqual(0.4)
 
     // A typed value outside the range is pulled back in rather than posted.
@@ -375,8 +372,23 @@ describe('ArtworkBrandingModal, QR code', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
-    expect(body.qr.widthFrac).toBeGreaterThanOrEqual(0.1905)
+    expect(body.qr.widthFrac).toBeGreaterThanOrEqual(0.1)
     expect(body.qr.widthFrac).toBeLessThanOrEqual(0.4)
+  })
+
+  it('saves a 10% QR from either size control', async () => {
+    const user = userEvent.setup()
+    renderModal()
+    const slider = screen.getByLabelText('QR size') as HTMLInputElement
+    expect(slider.min).toBe('10')
+    fireEvent.change(slider, { target: { value: '10' } })
+    expect((screen.getByLabelText('QR width (%)') as HTMLInputElement).value).toBe('10')
+    fireEvent.change(screen.getByLabelText('QR width (%)'), { target: { value: '9' } })
+    expect(slider.value).toBe('10')
+    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(body.qr.widthFrac).toBe(0.1)
   })
 
   it('shows the destination the printed code will point at', () => {
@@ -386,7 +398,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     expect(screen.getByText('https://l.the-anchor.pub/po3f2a1b')).toBeInTheDocument()
   })
 
-  it('shows the printed millimetre size so 40mm can be checked by eye', () => {
+  it('shows the printed millimetre size can be checked by eye', () => {
     renderModal()
     expect(screen.getByText(/mm on the A4 poster/)).toBeInTheDocument()
   })
@@ -514,7 +526,7 @@ describe('ArtworkBrandingModal, what the preview shows', () => {
     expect(strip.style.width).toBe(`${(stripRect.width / block.width) * 100}%`)
 
     // The whole block is the drag footprint; the stored width still means the
-    // code, which is what the 40mm print minimum is measured against.
+    // code, which is what the 21mm print minimum is measured against.
     const overlay = screen.getByTestId('qr-overlay')
     expect(overlay).toHaveAttribute('data-rect', rectString(block))
     expect(overlay).toHaveAttribute('data-code-rect', rectString(code))
