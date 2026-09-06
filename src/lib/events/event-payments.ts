@@ -793,7 +793,7 @@ export async function sendEventPaymentConfirmationSms(
 ): Promise<EventPaymentSmsMeta> {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, customer_id, event_id, seats, events(id, name, start_datetime, date, time)')
+    .select('id, customer_id, event_id, seats, event_seating_type, events(id, name, start_datetime, date, time)')
     .eq('id', input.bookingId)
     .maybeSingle()
 
@@ -872,7 +872,9 @@ export async function sendEventPaymentConfirmationSms(
   const eventRow = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
   const eventName = eventRow?.name || input.eventName
   const seats = Math.max(1, Number((booking as any).seats ?? input.seats))
-  const seatLabel = seats === 1 ? 'seat' : 'seats'
+  const seatLabel = booking.event_seating_type === 'standing'
+    ? (seats === 1 ? 'standing ticket' : 'standing tickets')
+    : (seats === 1 ? 'seat' : 'seats')
   const datePart = eventDateFormatted ? ` on ${eventDateFormatted}` : ''
 
   // Multi-type bookings get a compact per-type note (e.g. " (1x Regular, 1x Non-Alcohol)").
