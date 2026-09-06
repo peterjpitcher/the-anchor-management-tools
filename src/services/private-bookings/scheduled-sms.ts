@@ -1,3 +1,4 @@
+import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
@@ -166,15 +167,8 @@ export async function getBookingScheduledSms(
     .select('idempotency_key')
     .eq('booking_id', bookingId)
 
-  const { data: balancePaymentRows } = await db
-    .from('private_booking_payments')
-    .select('amount')
-    .eq('booking_id', bookingId)
-
-  const balancePaymentsTotal = (balancePaymentRows ?? []).reduce(
-    (sum, row) => sum + Number(row.amount ?? 0),
-    0,
-  )
+  const ledger = await readBookingPaymentLedger(bookingId)
+  const balancePaymentsTotal = ledger.eventPaidTotal
 
   const alreadySent = new Set(
     (idempRows ?? []).map((r) => String(r.idempotency_key)),
@@ -293,7 +287,7 @@ export async function getBookingScheduledSms(
       booking.gross_total ?? booking.calculated_total ?? booking.total_amount ?? 0,
     )
     const balanceOutstanding =
-      !booking.final_payment_date && totalAmount > 0
+      totalAmount > 0
         ? Math.max(0, totalAmount - balancePaymentsTotal)
         : 0
 

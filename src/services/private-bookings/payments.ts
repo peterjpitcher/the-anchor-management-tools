@@ -1,3 +1,4 @@
+import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
@@ -568,9 +569,9 @@ export async function recordDeposit(bookingId: string, amount: number, method: s
 //
 // The column is owned by the database: record_balance_payment inserts the
 // payment and stamps it, apply_balance_payment_status re-derives it whenever
-// payments or items change. Both compare the VAT-inclusive gross total against
-// private_booking_payments only, so the returnable booking and damage deposit
-// never counts towards the event balance.
+// payments or items change. Settlement includes booking and linked invoice
+// payments once, plus any deposit actually applied to the linked invoice.
+// A separately held deposit never counts towards the event balance.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -774,25 +775,22 @@ export async function getBookingPaymentHistory(bookingId: string): Promise<Payme
 
   const { data: booking, error: bookingError } = await db
     .from('private_bookings')
-    .select('deposit_paid_date, deposit_amount, deposit_payment_method')
+    .select('deposit_paid_date, deposit_amount, deposit_payment_method, invoice_id, invoice_deposit_treatment')
     .eq('id', bookingId)
     .single()
 
   if (bookingError) throw new Error(`Failed to fetch booking: ${bookingError.message}`)
 
-  const { data: payments, error: paymentsError } = await db
-    .from('private_booking_payments')
-    .select('id, amount, method, created_at')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: true })
-
-  if (paymentsError) throw new Error(`Failed to fetch payments: ${paymentsError.message}`)
+  const ledger = await readBookingPaymentLedger(bookingId)
 
   const entries: PaymentHistoryEntry[] = []
 
   if (booking.deposit_paid_date) {
     entries.push({
       id: 'deposit',
+      appliedAmount: ledger.appliedDepositAmount,
+      readonly: Boolean(booking.invoice_id),
+      invoice_id: booking.invoice_id ?? undefined,
       type: 'deposit',
       amount: booking.deposit_amount,
       method: booking.deposit_payment_method as DepositPaymentEntry['method'],
@@ -800,9 +798,11 @@ export async function getBookingPaymentHistory(bookingId: string): Promise<Payme
     })
   }
 
-  for (const payment of payments ?? []) {
+  for (const payment of ledger.payments) {
     entries.push({
       id: payment.id,
+      readonly: payment.readonly,
+      invoice_id: payment.invoice_id,
       type: 'balance',
       amount: payment.amount,
       method: payment.method as BalancePaymentEntry['method'],

@@ -1,0 +1,5 @@
+{
+  "source": "/Users/peterpitcher/Cursor/OJ-AnchorManagementTools",
+  "base_commit": "759f1471357ae3a7d5e5b59f51bc4593e8aba2c8",
+  "dirty": " M src/app/api/cron/oj-projects-billing/route.ts\n M tasks/todo.md\n?? docs/design/brief-orange-jelly.md\n?? docs/design/brief-the-anchor.md\n?? docs/design/pdf-branding-audit.md\n?? docs/design/pdf-house-style-brief.md\n?? docs/design/sample-pack.zip\n?? docs/design/sample-pack/\n?? scripts/design/\n?? src/lib/invoices/__tests__/delivery-state.test.ts\n?? src/lib/invoices/delivery-state.ts\n?? src/lib/oj-projects/__tests__/billing-run-guard.test.ts\n?? src/lib/oj-projects/billing-run-guard.ts\n?? tasks/plan-2026-09-05-anchor-booking-growth.md\n?? tasks/seo-powerhouse/\n"
+}

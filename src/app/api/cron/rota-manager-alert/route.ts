@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { toZonedTime, format, formatInTimeZone } from 'date-fns-tz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { sendEmail } from '@/lib/email/emailService';
+import { queueManagerReportEmail } from '@/lib/manager-report/queue';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { displayName } from '@/lib/employees/display-name';
 import {
@@ -20,7 +20,7 @@ import {
 import type { PublishedShiftSnapshot, RotaPublishShift } from '@/lib/rota/publish-status';
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 
-// Vercel Cron: runs at 18:00 Europe/London every Sunday
+// Prepare a fresh snapshot at 08:00 London on Friday, before the combined manager report.
 const TIMEZONE = 'Europe/London';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
@@ -427,8 +427,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   const nowUtc = new Date();
   const nowLocal = toZonedTime(nowUtc, TIMEZONE);
 
-  if (nowLocal.getDay() !== 0) {
-    return NextResponse.json({ skipped: true, reason: 'Not Sunday' });
+  if (nowLocal.getDay() !== 5 || nowLocal.getHours() !== 8) {
+    return NextResponse.json({ skipped: true, reason: 'Not Friday 08:00 London' });
   }
 
   const firstWeekStart = getNextMondayIso(nowUtc);
@@ -447,15 +447,6 @@ export async function GET(request: Request): Promise<NextResponse> {
   );
   const unfilledShifts = unfilledResult.shifts;
   const pendingLeave = leaveResult.leave;
-
-  const hasSomethingToSay =
-    weeksNeedingAttention.length > 0 || unfilledShifts.length > 0 || pendingLeave.length > 0;
-
-  // A failed query is itself worth an email. Treating one as "nothing to report" is
-  // exactly how a database fault used to suppress the alert without a trace.
-  if (!hasSomethingToSay && failures.length === 0) {
-    return NextResponse.json({ ok: true, action: 'no_alert_needed', firstWeekStart });
-  }
 
   const managerEmailResult = await resolveRotaManagerEmail(supabase);
   if ('error' in managerEmailResult) {
@@ -489,30 +480,22 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (failures.length > 0) {
     subjectParts.push('some checks failed');
   }
-  const subject = `Rota Alert: ${subjectParts.join(', ')}`;
+  const subject = `Rota summary: ${subjectParts.join(', ') || 'no outstanding issues found'}`;
 
-  const emailResult = await sendEmail({
+  const emailResult = await queueManagerReportEmail({
+    section: 'rota',
+    key: todayIso,
+    metadata: { snapshot_date: todayIso, weeks_needing_attention: weeksNeedingAttention.length,
+      unfilled_shifts: unfilledShifts.length, pending_leave: pendingLeave.length, failed_checks: failures.length },
     to: managerEmail,
     subject,
     html: buildRotaAlertEmailHtml({ weeksNeedingAttention, unfilledShifts, pendingLeave, failures }),
   });
 
-  await supabase.from('rota_email_log').insert({
-    email_type: 'manager_alert',
-    entity_type: 'rota_week',
-    entity_id: weeksNeedingAttention.length
-      ? (readinessResult.weekIdByStart.get(weeksNeedingAttention[0].weekStart) ?? null)
-      : null,
-    to_addresses: [managerEmail],
-    subject,
-    status: emailResult.success ? 'sent' : 'failed',
-    error_message: emailResult.success ? null : (emailResult.error ?? null),
-  });
-
   return NextResponse.json(
     {
       ok: failures.length === 0 && emailResult.success,
-      action: 'alert_sent',
+      action: emailResult.success ? 'summary_queued' : 'queue_failed',
       firstWeekStart,
       horizonWeeks: HORIZON_WEEKS,
       weeksNeedingAttention: weeksNeedingAttention.map(readiness => ({
@@ -524,7 +507,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       unfilledShifts: unfilledShifts.length,
       rejectedUnfilled: unfilledShifts.filter(shift => shift.rejectedByName).length,
       pendingLeave: pendingLeave.length,
-      emailSent: emailResult.success,
+      emailSent: false,
+      queued: emailResult.success,
       failures,
       localTime: format(nowLocal, 'HH:mm zzz', { timeZone: TIMEZONE }),
     },

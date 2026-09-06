@@ -5,6 +5,7 @@ import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
   PartySizeUpdateFailedAfterMoveError,
+  ChristmasCourseValidationError,
   mapSeatUpdateBlockedReason,
   updateTableBookingPartySizeWithLinkedEventSeats
 } from '@/lib/events/staff-seat-updates'
@@ -20,6 +21,7 @@ import {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const UpdatePartySizeSchema = z.object({
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(6).max(20).optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(20)
@@ -82,6 +84,7 @@ export async function POST(
     const result = await updateTableBookingPartySizeWithLinkedEventSeats(auth.supabase, {
       tableBookingId: id,
       partySize: newPartySize,
+      christmasCourseCounts: parsed.data.christmas_course_counts,
       actor: 'boh',
       sendSms: parsed.data.send_sms,
       appBaseUrl,
@@ -199,6 +202,7 @@ export async function POST(
       smsSent: depositTransition?.state === 'deposit_required' ? depositTransition.smsSent : false,
     })
   } catch (error) {
+    if (error instanceof ChristmasCourseValidationError) return NextResponse.json({ error: error.message }, { status: 409 })
     logger.error('BOH table-booking party-size update failed', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { tableBookingId: id },

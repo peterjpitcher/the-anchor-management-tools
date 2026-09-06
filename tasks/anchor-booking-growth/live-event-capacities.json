@@ -1,0 +1,77 @@
+[
+  {
+    "id": "5cdadf74-97c1-4ec0-b495-d369a7304494",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "9b78f364-7712-4c92-9b09-ffa9132e37e5",
+    "capacity": 60,
+    "remaining": 55
+  },
+  {
+    "id": "9d03a427-d331-45bd-91af-142b396b82ae",
+    "capacity": 60,
+    "remaining": 46
+  },
+  {
+    "id": "e9e84ee8-c59b-4f93-80f6-7e7961a03240",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "d81512e7-5e99-48fd-a153-3400c2f6f009",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "76ec328b-48f8-47c0-b041-cc405e085deb",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "c3ac7e18-e562-4ef8-bea7-cae29f6e96ac",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "d52cbd18-d293-4516-beca-e151eaa90180",
+    "capacity": 150,
+    "remaining": 148
+  },
+  {
+    "id": "8acfe965-ade6-4a9f-a666-e90ecdea2b7b",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "c3e9fbbd-df4a-41f2-a1c6-8194a5979735",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "6e761f65-8b17-4bc9-8a01-d032b77f6a66",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "5bd854ce-48e7-4ca8-8e7c-c52cc7ec1e65",
+    "capacity": 25,
+    "remaining": 25
+  },
+  {
+    "id": "ccbe8b82-15b0-4261-b58e-2ac4d7210e25",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a",
+    "capacity": 60,
+    "remaining": 60
+  },
+  {
+    "id": "b9334958-76b4-4504-a64a-0d47145bd75e",
+    "capacity": 60,
+    "remaining": 60
+  }
+]

@@ -618,6 +618,7 @@ export async function updateInvoiceStatus(formData: FormData) {
 
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${invoiceId}`)
+    revalidatePath('/private-bookings', 'layout')
     revalidateTag('dashboard')
 
     return { success: true }
@@ -877,6 +878,7 @@ export async function recordPayment(formData: FormData) {
     revalidatePath(`/invoices/${invoiceId}`)
     revalidateTag('dashboard')
 
+    revalidatePath('/private-bookings', 'layout')
     return { payment, success: true, remittanceAdvice }
   } catch (error: unknown) {
     console.error('Error in recordPayment:', error)

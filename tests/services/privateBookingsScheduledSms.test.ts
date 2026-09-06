@@ -28,6 +28,7 @@ function mockSupabase(opts: {
   bookingError?: { message: string } | null
   idempRows?: IdempRow[]
   paymentRows?: Array<{ amount: number }>
+  invoicePayments?: Array<Record<string, unknown>>
 }): void {
   const bookingSingle = vi.fn().mockResolvedValue({
     data: opts.booking ?? null,
@@ -35,7 +36,7 @@ function mockSupabase(opts: {
       opts.bookingError ?? (opts.booking ? null : { message: 'not found' }),
   })
   const bookingEq = vi.fn().mockReturnValue({ single: bookingSingle })
-  const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
+  const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq, in: vi.fn(async (_key: string, ids: string[]) => ({ data: ids.map(id => ({ id, invoice_id: opts.booking?.invoice_id ?? null, invoice_deposit_treatment: opts.booking?.invoice_deposit_treatment ?? null })), error: null })) })
 
   const idempEq = vi.fn().mockResolvedValue({
     data: opts.idempRows ?? [],
@@ -46,7 +47,7 @@ function mockSupabase(opts: {
     data: opts.paymentRows ?? [],
     error: null,
   })
-  const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq })
+  const paymentsSelect = vi.fn().mockReturnValue({ eq: paymentsEq, in: vi.fn(async (_key: string, ids: string[]) => ({ data: (opts.paymentRows ?? (opts.booking?.final_payment_date ? [{ amount: Number(opts.booking.gross_total ?? opts.booking.calculated_total ?? opts.booking.total_amount ?? 0) }] : [])).map((payment, index) => ({ ...payment, id: String(index), booking_id: ids[0], method: 'cash', created_at: '2026-01-10' })), error: null })) })
 
   // getGoogleReviewLink (review-request preview) reads system_settings and
   // falls back to the feedback funnel URL when the row is absent.
@@ -59,6 +60,8 @@ function mockSupabase(opts: {
       if (table === 'private_bookings' || table === 'private_bookings_with_details') {
         return { select: bookingSelect }
       }
+      if (table === 'invoices') return { select: () => ({ in: async () => ({ data: [{ id: opts.booking?.invoice_id, status: 'paid', deleted_at: null }], error: null }) }) }
+      if (table === 'invoice_payments') return { select: () => ({ in: async () => ({ data: opts.invoicePayments ?? [], error: null }) }) }
       if (table === 'private_booking_send_idempotency')
         return { select: idempSelect }
       if (table === 'private_booking_payments') return { select: paymentsSelect }
@@ -333,4 +336,18 @@ describe('getBookingScheduledSms', () => {
     )
     expect(balance).toBeUndefined()
   })
+})
+
+
+it('suppresses a balance reminder when the linked invoice is settled before its booking stamp refreshes', async () => {
+  process.env.PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED = 'true'
+  mockSupabase({
+    booking: confirmedBooking({ invoice_id: 'invoice', invoice_deposit_treatment: 'deducted', final_payment_date: null }),
+    invoicePayments: [
+      { id: 'deposit', invoice_id: 'invoice', amount: 250, source_kind: 'booking_deposit' },
+      { id: 'paypal', invoice_id: 'invoice', amount: 950, source_kind: 'paypal', payment_method: 'paypal', payment_date: '2026-05-01' },
+    ],
+  })
+  const result = await getBookingScheduledSms(BOOKING_ID, NOW)
+  expect(result.some(reminder => reminder.trigger_type.startsWith('balance_reminder_'))).toBe(false)
 })

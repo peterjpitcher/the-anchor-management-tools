@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createAdminClientMock = vi.fn()
 const sendEmailMock = vi.fn()
+const queueManagerReportEmailMock = vi.fn()
 const authorizeCronRequestMock = vi.fn()
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -10,6 +11,10 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 vi.mock('@/lib/email/emailService', () => ({
   sendEmail: (...args: unknown[]) => sendEmailMock(...args),
+}))
+
+vi.mock('@/lib/manager-report/queue', () => ({
+  queueManagerReportEmail: (...args: unknown[]) => queueManagerReportEmailMock(...args),
 }))
 
 vi.mock('@/lib/cron-auth', () => ({
@@ -56,6 +61,31 @@ function makeSystemSettings(email: string | null = 'manager@the-anchor.pub') {
   }
 }
 
+function makeWarningLog(insert = vi.fn().mockResolvedValue({ error: null }), rows: Array<Record<string, unknown>> = []) {
+  const query: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'like', 'order']) query[method] = vi.fn(() => query);
+  query.limit = vi.fn(async () => ({ data: rows.filter(row => String(row.error_message).startsWith('manager-report-retry:')), error: null }));
+  return {
+    ...query,
+    insert,
+    upsert: vi.fn(async (row: Record<string, unknown>) => {
+      if (!rows.some(existing => existing.id === row.id)) rows.push({ ...row });
+      return { error: null };
+    }),
+    update: vi.fn((patch: Record<string, unknown>) => {
+      let rowId: unknown;
+      const updateQuery = {
+        eq: vi.fn((field: string, value: unknown) => { if (field === 'id') rowId = value; return updateQuery; }),
+        like: vi.fn(async () => {
+          for (const row of rows) if (row.id === rowId) Object.assign(row, patch);
+          return { error: null };
+        }),
+      };
+      return updateQuery;
+    }),
+  };
+}
+
 describe('/api/cron/rota-shift-acceptance', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -63,6 +93,7 @@ describe('/api/cron/rota-shift-acceptance', () => {
     vi.setSystemTime(new Date('2026-06-01T00:00:00Z'))
     authorizeCronRequestMock.mockReturnValue({ authorized: true })
     sendEmailMock.mockResolvedValue({ success: true, messageId: 'email-1' })
+    queueManagerReportEmailMock.mockResolvedValue({ success: true, queued: true })
   })
 
   afterEach(() => {
@@ -158,7 +189,7 @@ describe('/api/cron/rota-shift-acceptance', () => {
         }
 
         if (table === 'rota_email_log') {
-          return { insert: emailLogInsert }
+          return makeWarningLog(emailLogInsert)
         }
 
         if (table === 'audit_logs') {
@@ -177,15 +208,24 @@ describe('/api/cron/rota-shift-acceptance', () => {
     expect(payload.autoAccepted).toBe(1)
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({
       to: 'alex@example.com',
-      cc: ['manager@the-anchor.pub'],
+
     }))
+    expect(sendEmailMock.mock.calls[0][0]).not.toHaveProperty('cc')
+    expect(queueManagerReportEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      section: 'staff_shift_reminders',
+      key: 'employee-1:shift-warning',
+      to: 'manager@the-anchor.pub',
+      subject: expect.stringContaining('Alex'),
+      html: expect.stringContaining('09:00'),
+    }))
+    expect(payload.managerCopiesQueued).toBe(1)
     expect(rotaPublishedUpdate).toHaveBeenCalledWith(expect.objectContaining({
       acceptance_status: 'auto_accepted',
       acceptance_decided_by: 'employee-2',
     }))
     expect(emailLogInsert).toHaveBeenCalledWith(expect.objectContaining({
       email_type: 'shift_auto_accept_warning',
-      cc_addresses: ['manager@the-anchor.pub'],
+      cc_addresses: [],
     }))
     expect(auditLogInsert).toHaveBeenCalledWith(expect.objectContaining({
       operation_type: 'auto_accept',
@@ -258,7 +298,7 @@ describe('/api/cron/rota-shift-acceptance', () => {
         }
 
         if (table === 'rota_email_log') {
-          return { insert: vi.fn().mockResolvedValue({ error: null }) }
+          return makeWarningLog()
         }
 
         if (table === 'audit_logs') {
@@ -337,8 +377,8 @@ describe('/api/cron/rota-shift-acceptance', () => {
             }
           }
           if (table === 'rota_shifts') return { update: rotaShiftsUpdate }
-          if (table === 'rota_email_log') return { insert: vi.fn().mockResolvedValue({ error: null }) }
-          if (table === 'audit_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+          if (table === 'rota_email_log') return makeWarningLog()
+          if (table === 'audit_logs') return makeWarningLog()
           throw new Error(`Unexpected table: ${table}`)
         }),
       })
@@ -415,8 +455,8 @@ describe('/api/cron/rota-shift-acceptance', () => {
           }
         }
         if (table === 'rota_shifts') return { update: vi.fn(() => makeEqUpdateSelect(2, { data: { id: 'shift-on-time' }, error: null })) }
-        if (table === 'rota_email_log') return { insert: vi.fn().mockResolvedValue({ error: null }) }
-        if (table === 'audit_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        if (table === 'rota_email_log') return makeWarningLog()
+        if (table === 'audit_logs') return makeWarningLog()
         throw new Error(`Unexpected table: ${table}`)
       }),
     })
@@ -426,4 +466,67 @@ describe('/api/cron/rota-shift-acceptance', () => {
     expect(payload.autoAccepted).toBe(1)
     expect(payload.heldForLatePublishGrace).toBe(0)
   })
+  it.each(['queue failure', 'same mailbox', 'shared mailbox queue failure', 'retry storage failure'])('keeps staff and manager delivery independent after %s', async (scenario) => {
+    if (scenario.includes('failure')) queueManagerReportEmailMock.mockResolvedValue({ success: false, error: 'queue unavailable' })
+    const shift = {
+      id: 'shift-warning', week_id: 'week-1', employee_id: 'employee-1', shift_date: '2026-06-16',
+      start_time: '09:00', end_time: '17:00', department: 'bar', name: 'Bar', auto_accept_warning_sent_at: null,
+    }
+    const update = vi.fn(() => ({ in: vi.fn().mockResolvedValue({ error: null }) }))
+    const insert = vi.fn().mockResolvedValue({ error: null })
+    const retryRows: Array<Record<string, unknown>> = []
+    const log = makeWarningLog(insert, retryRows)
+    if (scenario === 'retry storage failure') log.upsert.mockRejectedValueOnce(new Error('Database unavailable'))
+    const shiftQuery: Record<string, unknown> = {}
+    for (const method of ['select', 'eq', 'not', 'lte']) shiftQuery[method] = vi.fn(() => shiftQuery)
+    shiftQuery.order = vi.fn().mockReturnValueOnce(shiftQuery).mockResolvedValueOnce({ data: [shift], error: null })
+    createAdminClientMock.mockReturnValue({ from: (table: string) => {
+      if (table === 'system_settings') return makeSystemSettings()
+      if (table === 'rota_published_shifts') return { ...shiftQuery, update }
+      if (table === 'employees') return { select: () => ({ in: async () => ({ data: [{
+        employee_id: 'employee-1', first_name: 'Alex', last_name: 'Rowe',
+        email_address: scenario.includes('mailbox') ? ' MANAGER@the-anchor.pub ' : 'alex@example.com',
+      }], error: null }) }) }
+      if (table === 'rota_shifts') return { update }
+      if (table === 'rota_email_log') return log
+      throw new Error(`Unexpected table ${table}`)
+    } })
+    const response = await GET(new Request('https://example.test/api/cron/rota-shift-acceptance'))
+    const payload = await response.json()
+    if (!scenario.includes('mailbox')) {
+      expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({ to: 'alex@example.com' }))
+      expect(sendEmailMock.mock.calls[0][0]).not.toHaveProperty('cc')
+      expect(insert).toHaveBeenCalledWith(expect.objectContaining({ status: 'sent', cc_addresses: [] }))
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ auto_accept_warning_sent_at: expect.any(String) }))
+      expect(payload.warningEmailsSent).toBe(1)
+    } else {
+      expect(sendEmailMock).not.toHaveBeenCalled()
+      expect(insert).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+      expect(payload.warningEmailsSent).toBe(0)
+    }
+    expect(payload.managerCopiesFailed).toBe(scenario.includes('failure') ? 1 : 0)
+    expect(payload.managerCopiesQueued).toBe(scenario === 'same mailbox' ? 1 : 0)
+    expect(payload.managerRetryStorageErrors).toBe(scenario === 'retry storage failure' ? 1 : 0)
+    expect(response.status).toBe(scenario === 'retry storage failure' ? 500 : 200)
+    if (scenario.includes('queue failure')) {
+      expect(log.upsert).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'failed', to_addresses: ['manager@the-anchor.pub'], cc_addresses: [],
+        error_message: expect.stringContaining('manager-report-retry:'),
+      }), expect.any(Object))
+      // The shift can leave the pending scan after acceptance, reassignment or deletion.
+      // Its saved manager payload must still be recovered without another staff send.
+      const originalQueuedInput = queueManagerReportEmailMock.mock.calls[0][0]
+      queueManagerReportEmailMock.mockResolvedValue({ success: true, queued: true })
+      sendEmailMock.mockClear()
+      shiftQuery.order = vi.fn().mockReturnValueOnce(shiftQuery).mockResolvedValueOnce({ data: [], error: null })
+      const retryResponse = await GET(new Request('https://example.test/api/cron/rota-shift-acceptance'))
+      const retryPayload = await retryResponse.json()
+      expect(sendEmailMock).not.toHaveBeenCalled()
+      expect(queueManagerReportEmailMock).toHaveBeenLastCalledWith(originalQueuedInput)
+      expect(retryPayload).toMatchObject({ warningEmailsSent: 0, managerCopiesQueued: 1, managerRetryStorageErrors: 0 })
+      expect(retryRows[0]).toMatchObject({ status: 'failed', error_message: 'Manager report collection recovered; entry queued for Friday delivery.' })
+    }
+  })
+
 })

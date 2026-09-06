@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PencilIcon, TrashIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { formatDateInLondon } from '@/lib/dateUtils'
@@ -41,9 +42,8 @@ export default function PaymentHistoryTable({
   // Global lock: while any save or delete is in flight, all action buttons are disabled
   const isLocked = savingId !== null || deletingId !== null
 
-  // Summary figures — computed regardless of payments.length
-  // Booking and damage deposit — separate from event balance, only balance payments reduce outstanding
-  const paidToDate = payments.filter(p => p.type === 'balance').reduce((sum, p) => sum + p.amount, 0)
+  // Held deposits stay separate; only an actual invoice deposit credit reduces the event balance.
+  const paidToDate = payments.reduce((sum, payment) => sum + (payment.type === 'balance' ? payment.amount : payment.appliedAmount ?? 0), 0)
   const outstanding = Math.max(0, totalAmount - paidToDate)
 
   function formatMethodLabel(method: string): string {
@@ -52,6 +52,9 @@ export default function PaymentHistoryTable({
       card: 'Card',
       invoice: 'Invoice',
       paypal: 'PayPal',
+      bank_transfer: 'Bank transfer',
+      cheque: 'Cheque',
+      other: 'Other',
     }
     return labels[method] ?? method
   }
@@ -237,14 +240,17 @@ export default function PaymentHistoryTable({
               >
                 <span className="min-w-0">
                   {formatDateInLondon(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
-                  {' — '}
-                  <span className="capitalize">{entry.type}</span>
+                  {' - '}
+                  <span className="capitalize">{entry.type === 'deposit' && (entry.appliedAmount ?? 0) > 0 ? 'Deposit applied to invoice' : entry.type}</span>
                   {' · '}
                   {formatMethodLabel(entry.method)}
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{formatCurrency(entry.amount)}</span>
-                  {canEditPayments && (
+                  {entry.invoice_id && (
+                    <Link href={`/invoices/${entry.invoice_id}`} className="text-blue-600 underline">View invoice</Link>
+                  )}
+                  {canEditPayments && !entry.readonly && (
                     <div className="flex gap-1">
                       <button
                         type="button"

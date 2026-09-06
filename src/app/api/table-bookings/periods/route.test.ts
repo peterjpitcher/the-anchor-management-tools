@@ -25,6 +25,7 @@ const state = {
   /** The system_settings row as stored: the jsonb column wraps the value, {"value": true}. */
   settingsRow: { value: { value: true } } as Record<string, unknown> | null,
   settingsError: null as unknown,
+  coursePolicy: null as unknown,
 }
 
 /** Every filter the route applies, so the test can prove the live-only query was really built. */
@@ -54,6 +55,7 @@ function chainFor(table: string, resolve: () => QueryResult) {
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
+    rpc: vi.fn(async () => ({ data: state.coursePolicy, error: state.coursePolicy ? null : { code: "PGRST202" } })),
     from: vi.fn((table: string) => {
       calls.tables.push(table)
       return {
@@ -345,5 +347,19 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.period.period_kind).toBe('christmas')
     expect(json.data.period.code).toBe('christmas-2026')
     expect(json.data.deposit.if_accepted.amount).toBe(160)
+  })
+})
+
+
+describe('Christmas course capability', () => {
+  it('only advertises course selection when the database supports it', async () => {
+    state.period = CHRISTMAS_ROW
+    state.menu = [{ id: 'menu-main', course: 'main', name: 'Main', is_active: true }]
+    state.coursePolicy = { version: 1, preorder_closes_at: '2026-11-28T12:00:00Z', multiple_courses_available: true }
+    const response = await GET(makeRequest('?date=2026-12-05&party_size=6'))
+    expect((await response.json()).data.period.course_policy).toEqual(state.coursePolicy)
+    state.coursePolicy = null
+    const oldResponse = await GET(makeRequest('?date=2026-12-05&party_size=6'))
+    expect((await oldResponse.json()).data.period.course_policy).toBeNull()
   })
 })

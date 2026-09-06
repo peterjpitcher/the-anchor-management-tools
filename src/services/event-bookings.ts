@@ -53,6 +53,7 @@ type EventBookingRpcResult = {
   table_name?: string | null
   table_names?: string[]
   table_ids?: string[]
+  requests_recorded?: boolean
 }
 
 type EventTableReservationRpcResult = {
@@ -137,6 +138,8 @@ export type CreateBookingParams = {
    * gate — when the flag is off it must not pass multi/non-default selections here.
    */
   ticketSelections?: TicketSelectionInput[]
+  diningRequest?: 'before_event' | 'during_event' | 'not_sure'
+  earlyArrivalRequest?: boolean
 }
 
 export type CreateBookingResult = {
@@ -520,7 +523,9 @@ export class EventBookingService {
       attendeeNames,
       attribution = null,
       paymentHoldMinutes,
-      ticketSelections
+      ticketSelections,
+      diningRequest,
+      earlyArrivalRequest
     } = params
 
     // A multi-type basket (more than one line, or any line whose ticket_type_id is
@@ -536,7 +541,20 @@ export class EventBookingService {
 
     // ── 1. Call the create RPC (v06 legacy single-type, or v07 multi-type) ─────
     const holdMinutes = paymentHoldMinutes ?? (source === 'brand_site' ? 15 : 24 * 60)
-    const { data: rpcResultRaw, error: rpcError } = useTicketSelections
+    const hasRequests = Boolean(diningRequest || earlyArrivalRequest)
+    const { data: rpcResultRaw, error: rpcError } = hasRequests
+      ? await supabase.rpc('create_event_booking_with_requests_v01', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_seats: seats,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes,
+          p_ticket_selections: useTicketSelections ? ticketSelections as unknown as object : null,
+          p_dining_request: diningRequest ?? null,
+          p_early_arrival_request: earlyArrivalRequest ?? false
+        })
+      : useTicketSelections
       ? await supabase.rpc('create_event_booking_v07', {
           p_event_id: eventId,
           p_customer_id: customerId,
@@ -556,7 +574,7 @@ export class EventBookingService {
 
     if (rpcError) {
       const rpcErrorCode = classifyBookingRpcError(rpcError.message)
-      logger.error(`${useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
+      logger.error(`${hasRequests ? 'create_event_booking_with_requests_v01' : useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
         error: new Error(rpcError.message),
         metadata: { eventId, customerId, source, rpcErrorCode }
       })

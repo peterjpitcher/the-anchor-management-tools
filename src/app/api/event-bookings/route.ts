@@ -59,6 +59,8 @@ const CreateEventBookingSchema = z.object({
   event_price: z.number().min(0).optional(),
   event_value: z.number().min(0).optional(),
   food_intent: z.string().trim().min(1).max(80).optional(),
+  dining_request: z.enum(['before_event', 'during_event', 'not_sure']).optional(),
+  early_arrival_request: z.boolean().optional(),
   communication_consent: OptionalCommunicationConsentSchema,
   // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
   // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
@@ -187,6 +189,8 @@ export async function POST(request: NextRequest) {
       seating_preference: parsed.data.seating_preference || 'seated',
       expected_event_date: parsed.data.expected_event_date || null,
       ...(attendeeNames.length > 0 ? { attendee_names: attendeeNames } : {}),
+      ...(parsed.data.dining_request ? { dining_request: parsed.data.dining_request } : {}),
+      ...(parsed.data.early_arrival_request === true ? { early_arrival_request: true } : {}),
       communication_consent: consentHashPayload(parsed.data.communication_consent),
     })
     const attribution = buildBookingAttribution(parsed.data)
@@ -374,7 +378,9 @@ export async function POST(request: NextRequest) {
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
         attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
         attribution,
-        ticketSelections
+        ticketSelections,
+        diningRequest: parsed.data.dining_request,
+        earlyArrivalRequest: parsed.data.early_arrival_request
       })
 
       if (result.rpcFailed) {
@@ -444,7 +450,8 @@ export async function POST(request: NextRequest) {
           total_remaining: rpcResult.total_remaining ?? null,
           event_seating_type: eventSeatingType,
           next_step_url: nextStepUrl,
-          manage_booking_url: manageUrl
+          manage_booking_url: manageUrl,
+          requests_recorded: (resolvedState === 'confirmed' || resolvedState === 'pending_payment') && rpcResult.requests_recorded === true
         },
         meta: {
           status_code: responseStatus,

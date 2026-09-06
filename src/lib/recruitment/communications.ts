@@ -1,3 +1,4 @@
+import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, type EmailAttachment } from '@/lib/email/emailService'
@@ -450,8 +451,11 @@ export async function sendRecruitmentManagerAlert(
       edited_by: input.currentUserId ?? null,
       sent_by: input.currentUserId ?? null,
       delivery_status: 'queued',
+      sent_at: null,
+      provider_message_id: null,
       provider: 'email_service',
       metadata: {
+        recipient_email: to,
         alert_type: input.alertType,
         role_title: application ? roleTitle(application) : null,
       },
@@ -461,41 +465,40 @@ export async function sendRecruitmentManagerAlert(
 
   if (commError) throw commError
 
-  const result = await sendEmail({
+  const result = await queueManagerReportEmail({
+    section: 'recruitment',
+    key: communication.id,
     to,
     subject,
     text: body,
-    provider: 'graph',
-    from: recruitmentFromEmail(),
-    graphSender: recruitmentFromEmail(),
-    replyTo: recruitmentFromEmail(),
-    commType: 'recruitment_manager_alert',
     metadata: {
       application_id: input.applicationId ?? null,
       candidate_id: candidateId,
       communication_id: communication.id,
+      summary: body,
     },
   })
 
-  await supabase
-    .from('recruitment_communications')
-    .update({
-      delivery_status: result.success ? 'sent' : 'failed',
-      provider_message_id: result.messageId ?? null,
-      sent_at: result.success ? new Date().toISOString() : null,
-      metadata: {
-        alert_type: input.alertType,
-        role_title: application ? roleTitle(application) : null,
-        error: result.error ?? null,
-      },
-    })
-    .eq('id', communication.id)
-
   if (!result.success) {
+    const { error: updateError } = await supabase
+      .from('recruitment_communications')
+      .update({
+        delivery_status: 'failed',
+        provider_message_id: null,
+        sent_at: null,
+        metadata: {
+          recipient_email: to,
+          alert_type: input.alertType,
+          role_title: application ? roleTitle(application) : null,
+          error: result.error ?? null,
+        },
+      })
+      .eq('id', communication.id)
+    if (updateError) throw updateError
     throw new Error(result.error || 'Recruitment manager alert failed.')
   }
 
-  return { success: true, communicationId: communication.id, messageId: result.messageId ?? null }
+  return { success: true, communicationId: communication.id, queued: true, messageId: null }
 }
 
 export async function draftRecruitmentEmailForApplication(
@@ -970,6 +973,35 @@ export async function retryRecruitmentCommunication(
 
   if (error) throw error
   if (!original) throw new Error('Communication not found.')
+
+  if (original.channel === 'email' && original.type === 'manager_alert') {
+    if (original.delivery_status === 'sent') {
+      return { success: true as const, communicationId: original.id, retryOfCommunicationId: communicationId }
+    }
+    const result = await queueManagerReportEmail({
+      section: 'recruitment',
+      key: original.id,
+      to: original.metadata?.recipient_email || process.env.RECRUITMENT_NOTIFICATION_EMAIL || 'manager@the-anchor.pub',
+      subject: original.subject || 'Recruitment alert',
+      text: original.final_body,
+      metadata: {
+        application_id: original.application_id,
+        candidate_id: original.candidate_id,
+        communication_id: original.id,
+        summary: original.final_body,
+      },
+    })
+    if (!result.success) throw new Error(result.error || 'Recruitment manager alert queue failed.')
+    // A retry reuses its source row and cannot create a second report entry.
+    if (original.delivery_status !== 'queued') {
+      const { error: updateError } = await supabase.from('recruitment_communications')
+        .update({ delivery_status: 'queued', provider_message_id: null, sent_at: null })
+        .eq('id', original.id)
+        .eq('delivery_status', original.delivery_status)
+      if (updateError) throw updateError
+    }
+    return { success: true as const, queued: true, communicationId: original.id, retryOfCommunicationId: communicationId }
+  }
 
   const candidate = original.candidate as any
   const retryBody = original.channel === 'email' && original.type !== 'manager_alert'

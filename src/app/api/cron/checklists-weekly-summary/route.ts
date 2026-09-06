@@ -3,12 +3,9 @@ import { toZonedTime, format, formatInTimeZone } from 'date-fns-tz'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getChecklistSettings } from '@/lib/checklists/settings'
-import { jobQueue } from '@/lib/unified-job-queue'
+import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 
-// Vercel Cron: 0 * * * 1 (hourly on Mondays, UTC). Gates on 09:00 Europe/London so it fires
-// once per Monday regardless of DST; the weekly idempotency key makes any double-fire or
-// retry harmless. Builds one weekly_summary outbox row for the previous 7 locked business
-// days and lets the outbox processor deliver it. No individual scores in the email (spec 7).
+// Prepare the checklist snapshot at 08:00 London on Friday for the combined 09:00 report.
 const TIMEZONE = 'Europe/London'
 
 function esc(s: string): string {
@@ -23,13 +20,13 @@ export async function GET(request: Request) {
 
   const nowUtc = new Date()
   const nowLocal = toZonedTime(nowUtc, TIMEZONE)
-  if (nowLocal.getDay() !== 1 || nowLocal.getHours() !== 9) {
-    return NextResponse.json({ skipped: true, reason: 'Not Monday 09:00 London' })
+  if (nowLocal.getDay() !== 5 || nowLocal.getHours() !== 8) {
+    return NextResponse.json({ skipped: true, reason: 'Not Friday 08:00 London' })
   }
 
   const settings = await getChecklistSettings()
-  if (!settings.moduleEnabled) {
-    return NextResponse.json({ skipped: true, reason: 'Module disabled' })
+  if (!settings.moduleEnabled || !settings.emailsEnabled) {
+    return NextResponse.json({ skipped: true, reason: 'Checklist module or emails disabled' })
   }
 
   const db = createAdminClient()
@@ -38,13 +35,14 @@ export async function GET(request: Request) {
   const isoWeek = formatInTimeZone(nowUtc, TIMEZONE, "RRRR-'W'II")
 
   // Locked instances over the previous week (locked = the business day has closed).
-  const { data: instances } = await db
+  const { data: instances, error: instancesError } = await db
     .from('checklist_task_instances')
     .select('state, was_late, value_breach, value_recorded, value_unit, title_snapshot, business_date')
     .gte('business_date', from)
     .lt('business_date', today)
     .not('locked_at', 'is', null)
 
+  if (instancesError) return NextResponse.json({ error: 'Could not read checklist completion' }, { status: 500 })
   const rows = instances ?? []
   const done = rows.filter((r) => r.state === 'done').length
   const missed = rows.filter((r) => r.state === 'missed').length
@@ -53,19 +51,22 @@ export async function GET(request: Request) {
   const completionPct = denom > 0 ? Math.round((done / denom) * 100) : null
   const breaches = rows.filter((r) => r.value_breach)
 
-  const { data: expectations } = await db
+  const { data: expectations, error: expectationsError } = await db
     .from('checklist_spot_check_expectations')
     .select('expected')
     .gte('business_date', from)
     .lt('business_date', today)
+  if (expectationsError) return NextResponse.json({ error: 'Could not read checklist expectations' }, { status: 500 })
   const expected = (expectations ?? []).reduce((sum, e) => sum + (e.expected as number), 0)
 
-  const { count: recorded } = await db
+  const { count: recorded, error: recordedError } = await db
     .from('checklist_spot_checks')
     .select('id', { count: 'exact', head: true })
     .gte('business_date', from)
     .lt('business_date', today)
     .eq('state', 'recorded')
+
+  if (recordedError) return NextResponse.json({ error: 'Could not read spot checks' }, { status: 500 })
 
   const breachRows = breaches
     .map(
@@ -83,27 +84,22 @@ export async function GET(request: Request) {
   </div>`
 
   const to = process.env.CHECKLIST_MANAGER_EMAIL || 'manager@the-anchor.pub'
-  await db.from('checklist_email_outbox').upsert(
-    {
-      email_type: 'weekly_summary',
-      source_type: 'week',
-      source_id: isoWeek,
-      idempotency_key: `weekly_summary:${isoWeek}`,
-      to_addresses: [to],
-      subject: `The Anchor checklists, weekly summary (${isoWeek})`,
-      body_html: bodyHtml,
-      status: settings.emailsEnabled ? 'pending' : 'held',
-      next_attempt_at: nowUtc.toISOString(),
-    },
-    { onConflict: 'idempotency_key', ignoreDuplicates: true },
-  )
-
-  if (settings.emailsEnabled) {
-    await jobQueue.enqueue('checklist_email_outbox_process', {}, { unique: `checklist_outbox:weekly:${isoWeek}` })
+  const queued = await queueManagerReportEmail({
+    section: 'checklist_summary',
+    key: today,
+    to,
+    subject: `The Anchor checklists, week to ${today}`,
+    html: bodyHtml,
+    metadata: { snapshot_date: today, completion_percent: completionPct, done, missed, late,
+      breaches: breaches.length, spot_checks_recorded: recorded ?? 0, spot_checks_expected: expected },
+  })
+  if (!queued.success) {
+    return NextResponse.json({ error: queued.error || 'Could not queue checklist summary' }, { status: 500 })
   }
 
   return NextResponse.json({
     ok: true,
+    queued: true,
     isoWeek,
     completionPct,
     breaches: breaches.length,

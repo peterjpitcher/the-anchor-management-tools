@@ -72,6 +72,9 @@ export default async function Layout({ children }: { children: React.ReactNode }
     .filter((roleName): roleName is string => Boolean(roleName));
 
   const userRoleLabel = roleLabelFromNames(roleNames);
+  // Read from the role rows themselves, not from the display label, so renaming a
+  // label can never quietly hand out or withhold a super-admin-only nav item.
+  const isSuperAdmin = roleNames.includes('super_admin');
 
   // Staff portal employees have no management permissions — redirect them before rendering anything.
   if (permissionsResult.success && initialPermissions.length === 0) {
@@ -102,7 +105,11 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <AuthenticatedLayout initialPermissions={initialPermissions} userRoleLabel={userRoleLabel}>
+    <AuthenticatedLayout
+      initialPermissions={initialPermissions}
+      userRoleLabel={userRoleLabel}
+      isSuperAdmin={isSuperAdmin}
+    >
       {children}
     </AuthenticatedLayout>
   );

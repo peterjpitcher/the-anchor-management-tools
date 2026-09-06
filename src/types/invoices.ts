@@ -18,7 +18,7 @@ export interface InvoiceVendor {
 
 export type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'overdue' | 'void' | 'written_off'
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'
-export type PaymentMethod = 'bank_transfer' | 'card' | 'cash' | 'cheque' | 'other'
+export type PaymentMethod = 'bank_transfer' | 'card' | 'cash' | 'cheque' | 'other' | 'paypal'
 export type RecurringFrequency = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 
 export interface Invoice {
@@ -98,7 +98,7 @@ interface InvoicePayment {
   created_at: string
   /** The private_booking_payments row this was copied from, when it was. */
   source_payment_id?: string | null
-  source_kind?: 'booking_payment' | 'booking_deposit' | null
+  source_kind?: 'booking_payment' | 'booking_deposit' | 'paypal' | null
 }
 
 export interface InvoiceWithDetails extends Invoice {

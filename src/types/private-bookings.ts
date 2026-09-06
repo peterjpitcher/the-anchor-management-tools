@@ -294,14 +294,18 @@ export interface PrivateBookingPayment {
   id: string
   booking_id: string
   amount: number
-  method: PaymentMethod
+  method: PaymentMethod | 'bank_transfer' | 'cheque' | 'other'
   notes?: string
   recorded_by?: string
   created_at: string
+  source?: 'booking' | 'invoice'
+  invoice_id?: string
+  readonly?: boolean
 }
 
 // Extended types with relations
 export interface PrivateBookingWithDetails extends PrivateBooking {
+  applied_deposit_amount?: number
   items?: PrivateBookingItem[]
   customer?: {
     id: string
@@ -388,14 +392,19 @@ export type DepositPaymentEntry = {
   amount: number
   method: 'cash' | 'card' | 'invoice' | 'paypal'  // all methods valid for deposit
   date: string  // YYYY-MM-DD (London timezone)
+  appliedAmount?: number
+  readonly?: boolean
+  invoice_id?: string
 }
 
 export type BalancePaymentEntry = {
   id: string    // UUID from private_booking_payments.id
   type: 'balance'
   amount: number
-  method: 'cash' | 'card' | 'invoice'  // paypal never appears on balance; enforced by DB CHECK constraint
+  method: PrivateBookingPayment['method']
   date: string  // YYYY-MM-DD (London timezone)
+  readonly?: boolean
+  invoice_id?: string
 }
 
 export type PaymentHistoryEntry = DepositPaymentEntry | BalancePaymentEntry
