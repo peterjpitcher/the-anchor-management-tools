@@ -21,9 +21,11 @@ import {
   logoRectFree,
   qrRect,
   insetPx,
+  logoShadowSpec,
   type Corner,
   type Rect,
 } from './geometry'
+import { logoShadowPaddingPx } from './composite'
 import type { CompositeResult, CompositeSpec, LogoColour } from './composite'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
 
@@ -355,16 +357,33 @@ async function changedBounds(
   return { count, minX, minY, maxX, maxY }
 }
 
-/** Every changed pixel sits inside this rect, allowing for anti-aliased edges. */
+/**
+ * Every changed pixel sits inside this rect, allowing for anti-aliased edges
+ * AND for the logo's drop shadow.
+ *
+ * The logo now carries a shadow in the opposite colour, so the painted area is
+ * legitimately larger than `logoRect`. The blur pads the shape on all four
+ * sides by `logoShadowPaddingPx`, and the offset then pushes it down and right.
+ * So the extra room needed is `pad + offset` on the bottom and right, and only
+ * whatever the blur reaches beyond the offset on the top and left.
+ *
+ * Widened rather than dropped: the assertion still proves the logo landed where
+ * geometry said and that nothing else was painted, which is the whole point of
+ * it. `composite.test.ts` proves the mark itself is pixel exact by separating it
+ * from its shadow by colour.
+ */
 function expectWithin(
   bounds: { count: number; minX: number; minY: number; maxX: number; maxY: number },
   rect: Rect
 ): void {
+  const spec = logoShadowSpec(rect, 'white')
+  const pad = logoShadowPaddingPx(spec)
+
   expect(bounds.count).toBeGreaterThan(0)
-  expect(bounds.minX).toBeGreaterThanOrEqual(rect.x - 1)
-  expect(bounds.minY).toBeGreaterThanOrEqual(rect.y - 1)
-  expect(bounds.maxX).toBeLessThanOrEqual(rect.x + rect.width)
-  expect(bounds.maxY).toBeLessThanOrEqual(rect.y + rect.height)
+  expect(bounds.minX).toBeGreaterThanOrEqual(rect.x - 1 - Math.max(0, pad - spec.offsetXPx))
+  expect(bounds.minY).toBeGreaterThanOrEqual(rect.y - 1 - Math.max(0, pad - spec.offsetYPx))
+  expect(bounds.maxX).toBeLessThanOrEqual(rect.x + rect.width + pad + spec.offsetXPx + 1)
+  expect(bounds.maxY).toBeLessThanOrEqual(rect.y + rect.height + pad + spec.offsetYPx + 1)
 }
 
 // ---------------------------------------------------------------------------
