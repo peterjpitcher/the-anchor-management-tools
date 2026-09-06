@@ -32,6 +32,7 @@ import {
   validateEventImageFile,
   type ImageDimensions,
 } from './eventImageUploadClient'
+import { ArtworkBrandingModal } from './ArtworkBrandingModal'
 
 /** At most two uploads in flight, so five large files queue rather than compete. */
 const MAX_CONCURRENT_UPLOADS = 2
@@ -86,6 +87,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     { variant: EventImageVariant; queued: QueuedFile } | null
   >(null)
   const [dragOver, setDragOver] = useState<EventImageVariant | null>(null)
+  const [brandingVariant, setBrandingVariant] = useState<EventImageVariant | null>(null)
   const inputRefs = useRef<Partial<Record<EventImageVariant, HTMLInputElement | null>>>({})
   const inFlight = useRef(0)
 
@@ -342,8 +344,14 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           const tile = tileFor(variant)
           const state = stateFor(variant)
           const previewUrl = tile.queued?.previewUrl ?? state?.url ?? null
-          const isPdf = !tile.queued && state?.mimeType === 'application/pdf'
+          const isPdf =
+            (!tile.queued && state?.mimeType === 'application/pdf') ||
+            Boolean(state?.url?.split('?')[0]?.toLowerCase().endsWith('.pdf'))
           const inputId = `event-image-${variant}`
+          // Branding composites the stored file, so it needs an event to hang
+          // off, a file already uploaded, and something an image library can
+          // actually open. A queued file has not reached storage yet.
+          const canBrand = Boolean(eventId && state?.url && !isPdf && !tile.queued)
 
           return (
             <div
@@ -486,15 +494,37 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     <span className="sr-only">Delete {config.label}</span>
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setBrandingVariant(variant)}
+                  disabled={!canBrand || tile.uploading}
+                  title={
+                    canBrand
+                      ? undefined
+                      : isPdf
+                        ? 'A PDF cannot be branded here. Upload the poster as an image instead.'
+                        : 'Upload a file for this size first.'
+                  }
+                  className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Branding
+                  <span className="sr-only"> for {config.label}</span>
+                </button>
               </div>
             </div>
           )
         })}
       </div>
 
-      <p className="text-xs text-gray-500">
-        Images upload as soon as you choose them, and are not undone by Cancel.
-      </p>
+      {/* Only true once the event exists. On a new event the files are held
+          until save, which the notice at the top of the panel says, and running
+          both lines at once contradicted itself on screen. */}
+      {eventId && (
+        <p className="text-xs text-gray-500">
+          Images upload as soon as you choose them, and are not undone by Cancel.
+        </p>
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -517,6 +547,25 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
         tone="danger"
         closeOnConfirm={false}
       />
+
+      {/* One editor for the whole panel, opened against whichever tile asked
+          for it, so five modals are not mounted at once. */}
+      {eventId && brandingVariant && stateFor(brandingVariant)?.url && (
+        <ArtworkBrandingModal
+          open
+          onClose={() => setBrandingVariant(null)}
+          eventId={eventId}
+          variant={brandingVariant}
+          imageUrl={stateFor(brandingVariant)?.url ?? ''}
+          onApplied={(variant, url) => {
+            setVariants((current) =>
+              current.map((entry) =>
+                entry.variant === variant ? { ...entry, url, owned: true } : entry
+              )
+            )
+          }}
+        />
+      )}
     </div>
   )
 }
