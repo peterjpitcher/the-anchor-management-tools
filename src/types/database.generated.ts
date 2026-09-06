@@ -20556,6 +20556,14 @@ export type Database = {
         Returns: string
       }
       normalize_receipt_vendor_key: { Args: { input: string }; Returns: string }
+      outside_private_hire_windows: {
+        Args: { p_booking_id?: string }
+        Returns: {
+          blocked_end: string
+          blocked_start: string
+          booking_id: string
+        }[]
+      }
       preorder_sync_covers: { Args: { p_booking_id: string }; Returns: Json }
       preview_customer_marketing_audience: {
         Args: never
