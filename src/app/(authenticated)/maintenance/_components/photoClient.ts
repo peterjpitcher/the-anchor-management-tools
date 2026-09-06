@@ -57,9 +57,20 @@ export type UploadMaintenancePhotoResult =
   | { error: string }
   | { photo: MaintenancePhotoView }
 
+/** What uploadToSignedUrl resolves to, so the call can be wrapped in a try. */
+type SignedUploadResponse = Awaited<
+  ReturnType<ReturnType<SupabaseClient['storage']['from']>['uploadToSignedUrl']>
+>
+
 const UPLOAD_FAILED = 'That photo could not be uploaded. Please try again.'
 const CONFIRM_LOST =
   'The photo uploaded but saving it did not finish. Please try again in a moment.'
+/**
+ * Shown when a call never comes back at all, typically pub wifi dropping mid
+ * request. A rejected promise is as ordinary a failure here as a returned error,
+ * so it gets a plain message rather than a hang.
+ */
+const CONNECTION_LOST = 'Could not upload that photo. Check your connection and try again.'
 
 /** Confirm is idempotent, so retrying a lost confirm promotes the same row. */
 const CONFIRM_ATTEMPTS = 3
@@ -84,15 +95,26 @@ export async function uploadMaintenancePhoto(
     return { error: maintenancePhotoErrorMessage(error) }
   }
 
-  const requested = await deps.requestUpload({
-    itemId,
-    fileName: normalised.originalFileName,
-    mimeType: normalised.mimeType,
-    sizeBytes: normalised.byteSize,
-    width: normalised.width,
-    height: normalised.height,
-    caption,
-  })
+  let requested: Awaited<ReturnType<typeof requestMaintenancePhotoUpload>>
+
+  try {
+    requested = await deps.requestUpload({
+      itemId,
+      fileName: normalised.originalFileName,
+      mimeType: normalised.mimeType,
+      sizeBytes: normalised.byteSize,
+      width: normalised.width,
+      height: normalised.height,
+      caption,
+    })
+  } catch (error) {
+    // The request never came back. No signed URL reached the browser, so no
+    // object exists; if the pending row was written before the connection died,
+    // the 24 hour cleanup pass retires it.
+    console.error('[maintenance-photos] requesting an upload failed:', error)
+    onStage?.('failed')
+    return { error: CONNECTION_LOST }
+  }
 
   if ('error' in requested) {
     onStage?.('failed')
@@ -102,12 +124,21 @@ export async function uploadMaintenancePhoto(
   onStage?.('uploading')
 
   const supabase = deps.getSupabase()
-  const upload = await supabase.storage
-    .from(MAINTENANCE_PHOTO_BUCKET)
-    .uploadToSignedUrl(requested.path, requested.token, normalised.file, {
-      upsert: false,
-      contentType: normalised.mimeType,
-    })
+  let upload: SignedUploadResponse
+
+  try {
+    upload = await supabase.storage
+      .from(MAINTENANCE_PHOTO_BUCKET)
+      .uploadToSignedUrl(requested.path, requested.token, normalised.file, {
+        upsert: false,
+        contentType: normalised.mimeType,
+      })
+  } catch (error) {
+    // The pending row stays behind and the 24 hour cleanup pass retires it.
+    console.error('[maintenance-photos] signed upload threw:', error)
+    onStage?.('failed')
+    return { error: CONNECTION_LOST }
+  }
 
   if (upload.error) {
     // The pending row stays behind and the 24 hour cleanup pass retires it.

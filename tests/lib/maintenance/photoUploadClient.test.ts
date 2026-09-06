@@ -406,6 +406,72 @@ describe('uploadMaintenancePhoto round trip', () => {
     expect(confirmUpload).not.toHaveBeenCalled()
   })
 
+  it('settles when the request for an upload URL never comes back', async () => {
+    const backend = buildBackend()
+    mockedCreateAdminClient.mockReturnValue(backend.admin)
+
+    // A rejected promise, not a returned error: the connection dropped mid call.
+    const requestUpload = vi.fn().mockRejectedValue(new Error('Failed to fetch'))
+    const confirmUpload = vi.fn()
+    const file = new File([new Uint8Array(4096)], 'IMG_0042.JPG', { type: 'image/jpeg' })
+    const stages: MaintenancePhotoUploadStage[] = []
+
+    const result = await uploadMaintenancePhoto(
+      { itemId: ITEM_ID, file, onStage: (stage) => stages.push(stage) },
+      {
+        normalise: (input) =>
+          normaliseMaintenancePhoto(input, canvasDeps({ width: 1200, height: 900 })),
+        requestUpload: requestUpload as never,
+        confirmUpload: confirmUpload as never,
+        getSupabase: () => backend.browserSupabase as never,
+        wait: async () => undefined,
+      }
+    )
+
+    expect(result).toEqual({
+      error: 'Could not upload that photo. Check your connection and try again.',
+    })
+    // The stage is settled, so nothing is left showing "Preparing" for ever.
+    expect(stages).toEqual(['preparing', 'failed'])
+    expect(confirmUpload).not.toHaveBeenCalled()
+    expect(uploaded.size).toBe(0)
+  })
+
+  it('settles when the browser-direct upload itself throws', async () => {
+    const backend = buildBackend()
+    mockedCreateAdminClient.mockReturnValue(backend.admin)
+
+    const confirmUpload = vi.fn()
+    const throwingSupabase = {
+      storage: {
+        from: vi.fn(() => ({
+          uploadToSignedUrl: vi.fn().mockRejectedValue(new Error('Failed to fetch')),
+        })),
+      },
+    }
+
+    const file = new File([new Uint8Array(4096)], 'IMG_0042.JPG', { type: 'image/jpeg' })
+    const stages: MaintenancePhotoUploadStage[] = []
+
+    const result = await uploadMaintenancePhoto(
+      { itemId: ITEM_ID, file, onStage: (stage) => stages.push(stage) },
+      {
+        normalise: (input) =>
+          normaliseMaintenancePhoto(input, canvasDeps({ width: 1200, height: 900 })),
+        requestUpload: requestMaintenancePhotoUpload,
+        confirmUpload: confirmUpload as never,
+        getSupabase: () => throwingSupabase as never,
+        wait: async () => undefined,
+      }
+    )
+
+    expect(result).toEqual({
+      error: 'Could not upload that photo. Check your connection and try again.',
+    })
+    expect(stages).toEqual(['preparing', 'uploading', 'failed'])
+    expect(confirmUpload).not.toHaveBeenCalled()
+  })
+
   it('refuses at the request step when the caller is not a super admin', async () => {
     const backend = buildBackend()
     backend.admin.rpc = vi.fn(async () => ({ data: false, error: null }))

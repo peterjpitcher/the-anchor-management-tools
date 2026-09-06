@@ -109,31 +109,41 @@ export function MaintenanceNewClient({ areas }: MaintenanceNewClientProps): Reac
     }
 
     setSaving(true)
-    const result = await createMaintenanceItem({
-      kind: form.kind,
-      title: form.title.trim(),
-      areaId: form.areaId,
-      priority: form.priority,
-      responsibility: form.responsibility,
-      description: form.description.trim() ? form.description.trim() : null,
-      targetDate: form.targetDate ? form.targetDate : null,
-      estimatedCost: form.estimatedCost.trim() ? Number(form.estimatedCost) : null,
-      contractorName: form.contractorName.trim() ? form.contractorName.trim() : null,
-      contractorContact: form.contractorContact.trim() ? form.contractorContact.trim() : null,
-    })
+    try {
+      const result = await createMaintenanceItem({
+        kind: form.kind,
+        title: form.title.trim(),
+        areaId: form.areaId,
+        priority: form.priority,
+        responsibility: form.responsibility,
+        description: form.description.trim() ? form.description.trim() : null,
+        targetDate: form.targetDate ? form.targetDate : null,
+        estimatedCost: form.estimatedCost.trim() ? Number(form.estimatedCost) : null,
+        contractorName: form.contractorName.trim() ? form.contractorName.trim() : null,
+        contractorContact: form.contractorContact.trim() ? form.contractorContact.trim() : null,
+      })
 
-    if (!result.success || !result.data) {
+      if (!result.success || !result.data) {
+        setSaving(false)
+        // Nothing the user typed is thrown away on a failure.
+        setFormError(result.error ?? 'Could not save that item. Please try again.')
+        window.setTimeout(() => errorRef.current?.focus(), 0)
+        return
+      }
+
+      toast.success(`${result.data.reference} logged`)
+      // Stay disabled through the navigation so a second submit cannot create a
+      // duplicate while the route is loading. That is why saving is not reset here,
+      // and why there is no finally block.
+      router.push(`/maintenance/${result.data.id}`)
+    } catch {
+      // The create never got an answer: a dropped connection or an expired session
+      // walking round the pub. Re-enable the button and keep every field, or the
+      // whole thing has to be typed again.
       setSaving(false)
-      // Nothing the user typed is thrown away on a failure.
-      setFormError(result.error ?? 'Could not save that item. Please try again.')
+      setFormError('Could not save. Check your connection and try again.')
       window.setTimeout(() => errorRef.current?.focus(), 0)
-      return
     }
-
-    toast.success(`${result.data.reference} logged`)
-    // Stay disabled through the navigation so a second submit cannot create a
-    // duplicate while the route is loading.
-    router.push(`/maintenance/${result.data.id}`)
   }
 
   return (

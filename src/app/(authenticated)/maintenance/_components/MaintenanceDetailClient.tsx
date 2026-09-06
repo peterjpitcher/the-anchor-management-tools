@@ -48,6 +48,7 @@ interface FormState {
   responsibility: MaintenanceResponsibility
   reportedOn: string
   targetDate: string
+  completedOn: string
   estimatedCost: string
   actualCost: string
   contractorName: string
@@ -55,10 +56,14 @@ interface FormState {
 }
 
 type FieldErrors = Partial<
-  Record<'title' | 'areaId' | 'estimatedCost' | 'actualCost' | 'targetDate', string>
+  Record<'title' | 'areaId' | 'estimatedCost' | 'actualCost' | 'targetDate' | 'completedOn', string>
 >
 
 type UpdatePayload = Parameters<typeof updateMaintenanceItem>[0]
+
+/** Shown when a saved write never came back at all, rather than came back refused. */
+const SAVE_UNREACHABLE =
+  'Could not save. Check your connection and try again. Nothing you typed has been lost.'
 
 function formFromItem(item: MaintenanceItem): FormState {
   return {
@@ -71,6 +76,7 @@ function formFromItem(item: MaintenanceItem): FormState {
     responsibility: item.responsibility,
     reportedOn: item.reportedOn,
     targetDate: item.targetDate ?? '',
+    completedOn: item.completedOn ?? '',
     estimatedCost: item.estimatedCost === null ? '' : String(item.estimatedCost),
     actualCost: item.actualCost === null ? '' : String(item.actualCost),
     contractorName: item.contractorName ?? '',
@@ -100,6 +106,11 @@ function isValidMoney(value: string): boolean {
  * back as expectedUpdatedAt, and a write against a moved record is refused rather
  * than applied. When that happens the typing stays exactly where it is and the
  * user is offered the newer version to reapply on to.
+ *
+ * Only fields the user actually edited are ever written. A diff against the
+ * baseline is not enough on its own: after loading a newer version, a field
+ * somebody else changed differs from what is on screen, and sending that diff
+ * would quietly put their change back the way it was.
  */
 export function MaintenanceDetailClient({
   item,
@@ -109,8 +120,14 @@ export function MaintenanceDetailClient({
   // The record as we last saw it saved. expectedUpdatedAt always comes from here.
   const [baseline, setBaseline] = useState<MaintenanceItem>(item)
   const [form, setForm] = useState<FormState>(() => formFromItem(item))
+  // The fields this person has edited since the form was last in step with the
+  // server. Nothing outside this set is ever written.
+  const [touched, setTouched] = useState<ReadonlySet<keyof FormState>>(() => new Set())
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Kept apart from saveError: the write is still stale, so that warning has to
+  // stay up while this explains why fetching the newer version did not work.
+  const [reloadError, setReloadError] = useState<string | null>(null)
   const [stale, setStale] = useState(false)
   const [reloaded, setReloaded] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -121,22 +138,68 @@ export function MaintenanceDetailClient({
   const estimateRef = useRef<HTMLInputElement>(null)
   const actualRef = useRef<HTMLInputElement>(null)
   const targetRef = useRef<HTMLInputElement>(null)
+  const completedRef = useRef<HTMLInputElement>(null)
   const alertRef = useRef<HTMLDivElement>(null)
 
   const savedForm = useMemo(() => formFromItem(baseline), [baseline])
-  const dirty = useMemo(
-    () => (Object.keys(savedForm) as Array<keyof FormState>).some(key => form[key] !== savedForm[key]),
-    [form, savedForm]
+  const changedKeys = useMemo(
+    () =>
+      (Object.keys(savedForm) as Array<keyof FormState>).filter(
+        key => touched.has(key) && form[key] !== savedForm[key]
+      ),
+    [form, savedForm, touched]
   )
+  const dirty = changedKeys.length > 0
 
   const overdue = isMaintenanceItemOverdue(
     { status: form.status, targetDate: form.targetDate || null },
     todayIsoDate
   )
 
-  const set = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setForm(current => ({ ...current, [key]: value }))
+  const markTouched = useCallback((key: keyof FormState) => {
+    setTouched(current => {
+      if (current.has(key)) return current
+      const next = new Set(current)
+      next.add(key)
+      return next
+    })
   }, [])
+
+  const set = useCallback(
+    <K extends keyof FormState>(key: K, value: FormState[K]) => {
+      markTouched(key)
+      setForm(current => ({ ...current, [key]: value }))
+    },
+    [markTouched]
+  )
+
+  /**
+   * Status carries the completion date with it. Moving to done shows the date the
+   * service would stamp, so the screen and the saved record agree; moving off done
+   * clears it, because the database refuses a completion date on any other status.
+   * Neither counts as the user editing the date, so an untouched date is still
+   * derived server side.
+   */
+  const setStatus = useCallback(
+    (status: MaintenanceStatus) => {
+      markTouched('status')
+      setForm(current => ({
+        ...current,
+        status,
+        completedOn:
+          status === 'done'
+            ? savedForm.completedOn || current.completedOn || todayIsoDate
+            : '',
+      }))
+      setTouched(current => {
+        if (!current.has('completedOn')) return current
+        const next = new Set(current)
+        next.delete('completedOn')
+        return next
+      })
+    },
+    [markTouched, savedForm.completedOn, todayIsoDate]
+  )
 
   function validate(): FieldErrors {
     const errors: FieldErrors = {}
@@ -151,6 +214,20 @@ export function MaintenanceDetailClient({
     if (form.targetDate && form.targetDate < form.reportedOn) {
       errors.targetDate = 'The target date cannot be before the date this was reported'
     }
+    // Only checked when one of the three inputs that decide the completion date is
+    // actually in play. A row that already breaks the rule must not block an edit
+    // to something else entirely.
+    const completionInPlay =
+      touched.has('status') || touched.has('completedOn') || touched.has('reportedOn')
+    if (form.status === 'done' && completionInPlay) {
+      if (!form.completedOn) {
+        errors.completedOn = 'Enter the date this was completed'
+      } else if (form.completedOn > todayIsoDate) {
+        errors.completedOn = 'The completion date cannot be in the future'
+      } else if (form.completedOn < form.reportedOn) {
+        errors.completedOn = 'The completion date cannot be before the date this was reported'
+      }
+    }
     return errors
   }
 
@@ -158,47 +235,54 @@ export function MaintenanceDetailClient({
     if (errors.title) return titleRef.current?.focus()
     if (errors.areaId) return areaRef.current?.focus()
     if (errors.targetDate) return targetRef.current?.focus()
+    if (errors.completedOn) return completedRef.current?.focus()
     if (errors.estimatedCost) return estimateRef.current?.focus()
     if (errors.actualCost) return actualRef.current?.focus()
   }
 
   function buildPatch(): UpdatePayload {
-    // Only what actually changed is sent, so an untouched field is never rewritten
-    // and never appears in the history trail.
+    // Only fields this person edited, and only where the value actually differs.
+    // A field they never touched cannot appear here, so reloading a newer version
+    // and saving can never push somebody else's change back.
     //
-    // completedOn is deliberately absent. The service derives it from the status
-    // change: today in London when an item is marked done, cleared when it is
-    // reopened. Sending it from here would put two rules in play.
+    // completedOn is sent only when the date itself was edited. Left alone, the
+    // service derives it from the status change: today in London when an item is
+    // marked done, cleared when it is reopened.
     const patch: UpdatePayload = {
       id: baseline.id,
       expectedUpdatedAt: baseline.updatedAt,
     }
 
-    if (form.kind !== savedForm.kind) patch.kind = form.kind
-    if (form.title !== savedForm.title) patch.title = form.title.trim()
-    if (form.description !== savedForm.description) {
+    const edited = (key: keyof FormState): boolean => changedKeys.includes(key)
+
+    if (edited('kind')) patch.kind = form.kind
+    if (edited('title')) patch.title = form.title.trim()
+    if (edited('description')) {
       patch.description = form.description.trim() ? form.description.trim() : null
     }
-    if (form.areaId !== savedForm.areaId) patch.areaId = form.areaId
-    if (form.status !== savedForm.status) patch.status = form.status
-    if (form.priority !== savedForm.priority) patch.priority = form.priority
-    if (form.responsibility !== savedForm.responsibility) {
+    if (edited('areaId')) patch.areaId = form.areaId
+    if (edited('status')) patch.status = form.status
+    if (edited('priority')) patch.priority = form.priority
+    if (edited('responsibility')) {
       patch.responsibility = form.responsibility
     }
-    if (form.reportedOn !== savedForm.reportedOn) patch.reportedOn = form.reportedOn
-    if (form.targetDate !== savedForm.targetDate) {
+    if (edited('reportedOn')) patch.reportedOn = form.reportedOn
+    if (edited('targetDate')) {
       patch.targetDate = form.targetDate ? form.targetDate : null
     }
-    if (form.estimatedCost !== savedForm.estimatedCost) {
+    if (edited('completedOn')) {
+      patch.completedOn = form.completedOn ? form.completedOn : null
+    }
+    if (edited('estimatedCost')) {
       patch.estimatedCost = moneyOrNull(form.estimatedCost)
     }
-    if (form.actualCost !== savedForm.actualCost) {
+    if (edited('actualCost')) {
       patch.actualCost = moneyOrNull(form.actualCost)
     }
-    if (form.contractorName !== savedForm.contractorName) {
+    if (edited('contractorName')) {
       patch.contractorName = form.contractorName.trim() ? form.contractorName.trim() : null
     }
-    if (form.contractorContact !== savedForm.contractorContact) {
+    if (edited('contractorContact')) {
       patch.contractorContact = form.contractorContact.trim()
         ? form.contractorContact.trim()
         : null
@@ -212,6 +296,7 @@ export function MaintenanceDetailClient({
     if (saving || !dirty) return
 
     setSaveError(null)
+    setReloadError(null)
     setReloaded(false)
     const errors = validate()
     setFieldErrors(errors)
@@ -221,57 +306,88 @@ export function MaintenanceDetailClient({
     }
 
     setSaving(true)
-    const result = await updateMaintenanceItem(buildPatch())
-    setSaving(false)
+    try {
+      const result = await updateMaintenanceItem(buildPatch())
 
-    if (result.success && result.data) {
-      setStale(false)
-      setBaseline(result.data)
-      setForm(formFromItem(result.data))
-      toast.success('Changes saved')
-      return
-    }
+      if (result.success && result.data) {
+        setStale(false)
+        setBaseline(result.data)
+        setForm(formFromItem(result.data))
+        setTouched(new Set())
+        toast.success('Changes saved')
+        return
+      }
 
-    // Nothing typed is discarded on any failure path.
-    if (result.code === 'stale_write') {
-      setStale(true)
+      // Nothing typed is discarded on any failure path.
+      if (result.code === 'stale_write') {
+        setStale(true)
+        window.setTimeout(() => alertRef.current?.focus(), 0)
+        return
+      }
+
+      if (result.code === 'area_inactive') {
+        setFieldErrors({
+          areaId: result.error ?? 'That area is no longer available. Pick another one.',
+        })
+        areaRef.current?.focus()
+        return
+      }
+
+      setSaveError(result.error ?? 'Could not save your changes. Please try again.')
       window.setTimeout(() => alertRef.current?.focus(), 0)
-      return
+    } catch {
+      // The write never got an answer: a dropped connection, an expired session or
+      // a gateway error. Without this the button would spin for ever and the guard
+      // above would block the retry.
+      setSaveError(SAVE_UNREACHABLE)
+      window.setTimeout(() => alertRef.current?.focus(), 0)
+    } finally {
+      setSaving(false)
     }
-
-    if (result.code === 'area_inactive') {
-      setFieldErrors({ areaId: result.error ?? 'That area is no longer available. Pick another one.' })
-      areaRef.current?.focus()
-      return
-    }
-
-    setSaveError(result.error ?? 'Could not save your changes. Please try again.')
-    window.setTimeout(() => alertRef.current?.focus(), 0)
   }
 
   /**
-   * Fetch the newer version and move the baseline on to it, keeping every value
-   * the user typed. They can then check their changes and save again.
+   * Fetch the newer version and move the baseline on to it. Fields this person
+   * edited keep what they typed; everything else takes the newer value, so what is
+   * on screen is what will be saved.
    */
   const handleReload = useCallback(async () => {
     setReloading(true)
-    const result = await getMaintenanceItem(baseline.id)
-    setReloading(false)
+    setReloadError(null)
+    try {
+      const result = await getMaintenanceItem(baseline.id)
 
-    if (!result.success || !result.data) {
-      setSaveError(result.error ?? 'Could not load the newer version. Please reload the page.')
-      return
+      if (!result.success || !result.data) {
+        setReloadError(result.error ?? 'Could not load the newer version. Please reload the page.')
+        return
+      }
+
+      const fresh = result.data
+      setBaseline(fresh)
+      setForm(current => {
+        const merged = formFromItem(fresh)
+        for (const key of touched) {
+          Object.assign(merged, { [key]: current[key] })
+        }
+        return merged
+      })
+      setStale(false)
+      setReloaded(true)
+    } catch {
+      setReloadError(
+        'Could not load the newer version. Check your connection and try again. Nothing you typed has been lost.'
+      )
+    } finally {
+      setReloading(false)
     }
-
-    setBaseline(result.data)
-    setStale(false)
-    setReloaded(true)
-  }, [baseline.id])
+  }, [baseline.id, touched])
 
   const handleCancel = useCallback(() => {
     setForm(formFromItem(baseline))
+    setTouched(new Set())
     setFieldErrors({})
     setSaveError(null)
+    setReloadError(null)
     setStale(false)
     setReloaded(false)
   }, [baseline])
@@ -310,7 +426,8 @@ export function MaintenanceDetailClient({
               <dd className="text-text">
                 {formatMaintenanceDate(baseline.completedOn)}
                 <span className="block text-xs text-text-muted">
-                  Set automatically when the status becomes done
+                  Defaults to today when the status becomes done, and can be changed for work
+                  written up late.
                 </span>
               </dd>
             </div>
@@ -336,7 +453,7 @@ export function MaintenanceDetailClient({
         </CardBody>
       </Card>
 
-      {(stale || saveError || reloaded) && (
+      {(stale || saveError || reloadError || reloaded) && (
         <div ref={alertRef} tabIndex={-1}>
           {stale && (
             <Alert tone="warning" title="Someone else changed this while you were editing">
@@ -349,12 +466,22 @@ export function MaintenanceDetailClient({
                   Load the newer version
                 </Button>
               </p>
+              {reloadError && (
+                <p className="mt-2 text-danger" role="alert">
+                  {reloadError}
+                </p>
+              )}
+            </Alert>
+          )}
+          {reloadError && !stale && (
+            <Alert tone="danger" title="Could not load the newer version">
+              {reloadError}
             </Alert>
           )}
           {reloaded && !stale && (
             <Alert tone="info" title="Loaded the newer version">
-              Your changes are still in the form. Check them against the details above, then save
-              again.
+              Your own changes are still in the form. Anything you did not change now shows the
+              newer value. Check it over, then save again.
             </Alert>
           )}
           {saveError && !stale && (
@@ -402,9 +529,18 @@ export function MaintenanceDetailClient({
                 error={fieldErrors.areaId}
               >
                 <option value="">Choose an area</option>
+                {/*
+                  Switched-off areas are listed so an item already in one still reads
+                  correctly. They cannot be picked for anything else: the database
+                  refuses a move on to an inactive area.
+                */}
                 {areas.map(area => (
-                  <option key={area.id} value={area.id}>
-                    {area.name}
+                  <option
+                    key={area.id}
+                    value={area.id}
+                    disabled={!area.active && area.id !== savedForm.areaId}
+                  >
+                    {area.active ? area.name : `${area.name} (off)`}
                   </option>
                 ))}
               </Select>
@@ -412,8 +548,8 @@ export function MaintenanceDetailClient({
               <Select
                 label="Status"
                 value={form.status}
-                onChange={event => set('status', event.target.value as MaintenanceStatus)}
-                hint="Marking this done stamps today's date automatically"
+                onChange={event => setStatus(event.target.value as MaintenanceStatus)}
+                hint="Marking this done sets the completion date to today, which you can change"
               >
                 {MAINTENANCE_STATUSES.map(status => (
                   <option key={status} value={status}>
@@ -464,6 +600,24 @@ export function MaintenanceDetailClient({
                 error={fieldErrors.targetDate}
                 hint="Leave blank if there is no date to work to"
               />
+
+              {/*
+                Only meaningful on a completed item, and the database refuses a
+                completion date on any other status. Work finished weeks ago and
+                logged today is dated truthfully by editing this.
+              */}
+              {form.status === 'done' && (
+                <Input
+                  ref={completedRef}
+                  label="Completed on"
+                  type="date"
+                  value={form.completedOn}
+                  max={todayIsoDate}
+                  onChange={event => set('completedOn', event.target.value)}
+                  error={fieldErrors.completedOn}
+                  hint="Defaults to today. Change it if the work was finished earlier."
+                />
+              )}
 
               <Input
                 ref={estimateRef}

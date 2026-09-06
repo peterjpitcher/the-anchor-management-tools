@@ -199,4 +199,53 @@ describe('MaintenanceListClient', () => {
     })
     expect(screen.queryByText('Nothing logged yet')).not.toBeInTheDocument()
   })
+
+  it('reports a list request that never came back, rather than spinning for ever', async () => {
+    getMaintenanceItemsMock.mockRejectedValue(new Error('Failed to fetch'))
+
+    renderList()
+    fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'critical' } })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Could not load the maintenance list. Check your connection and try again.')
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Loading the list')).not.toBeInTheDocument()
+  })
+
+  it('keeps a switched-off area in the filter, so the control never lies about the list', async () => {
+    const signage: MaintenanceArea = {
+      id: '44444444-4444-4444-8444-444444444444',
+      name: 'Signage',
+      sortOrder: 2,
+      active: false,
+      createdAt: '2026-09-01T09:00:00.000Z',
+      updatedAt: '2026-09-01T09:00:00.000Z',
+    }
+
+    renderList({
+      areas: [areas[0], signage],
+      initialFilters: { ...DEFAULT_MAINTENANCE_FILTERS, areaId: signage.id },
+    })
+
+    const areaFilter = screen.getByLabelText('Area') as HTMLSelectElement
+    // The filter still reads as Signage, not as "All areas" over a filtered list.
+    expect(areaFilter.value).toBe(signage.id)
+    expect(screen.getByRole('option', { name: 'Signage (off)' })).toBeInTheDocument()
+
+    // And it is still selectable, so the filter can be moved off it and back.
+    fireEvent.change(areaFilter, { target: { value: areas[0].id } })
+    await waitFor(() => {
+      expect(getMaintenanceItemsMock).toHaveBeenCalledWith({
+        filters: { statuses: expect.any(Array), areaId: areas[0].id },
+      })
+    })
+    fireEvent.change(areaFilter, { target: { value: signage.id } })
+    await waitFor(() => {
+      expect(getMaintenanceItemsMock).toHaveBeenLastCalledWith({
+        filters: { statuses: expect.any(Array), areaId: signage.id },
+      })
+    })
+  })
 })
