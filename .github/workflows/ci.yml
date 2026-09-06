@@ -37,6 +37,12 @@ jobs:
       - name: Test
         run: npm run test:coverage
 
+      # The serverless runtime is UTC while the business runs in Europe/London, so the
+      # same suite has to pass in both. Without this step the UTC half of the gate only
+      # runs when someone types it locally, which is how a timezone bug reaches production.
+      - name: Test (UTC)
+        run: npm run test:utc
+
       - name: Build
         run: npm run build
         env:

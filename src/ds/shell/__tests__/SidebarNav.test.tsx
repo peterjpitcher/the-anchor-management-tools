@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { OutstandingCounts } from '@/actions/get-outstanding-counts'
 
@@ -22,9 +22,13 @@ vi.mock('@/hooks/useUnreadMessageCount', () => ({
   useUnreadMessageCount: () => 3,
 }))
 
+// Mutable so a test can put the provider into a real failure state rather than
+// only asserting the pure helper.
+const hoisted = vi.hoisted(() => ({ counts: null as OutstandingCounts | null }))
+
 vi.mock('@/hooks/useOutstandingCounts', () => ({
   useOutstandingCounts: () => ({
-    counts: {
+    counts: hoisted.counts ?? {
       events: 2,
       menu_management: 0,
       private_bookings: 0,
@@ -34,13 +38,22 @@ vi.mock('@/hooks/useOutstandingCounts', () => ({
       rota: 0,
       checklists: 0,
       feedback: 0,
-    } satisfies OutstandingCounts,
+      // Absent for anyone who is not a super-admin. The server strips it, so this
+      // fixture is what an ordinary member of staff's payload actually looks like.
+      maintenance: undefined,
+    },
     loading: false,
     error: null,
   }),
 }))
 
-import { SidebarNav, navCount, filterNavGroupsForPermissions, NAV_GROUPS } from '../SidebarNav'
+import {
+  SidebarNav,
+  navBadgeText,
+  navCount,
+  filterNavGroupsForPermissions,
+  NAV_GROUPS,
+} from '../SidebarNav'
 import type { NavGroup } from '../SidebarNav'
 import { NavCountsProvider } from '../NavCountsContext'
 
@@ -54,6 +67,7 @@ const FULL_COUNTS: OutstandingCounts = {
   rota: 12,
   checklists: 13,
   feedback: 14,
+  maintenance: 15,
 }
 
 describe('NAV_GROUPS', () => {
@@ -126,9 +140,83 @@ describe('navCount', () => {
   it('returns undefined for an uncounted section', () => {
     expect(navCount({ id: 'customers' }, 0, FULL_COUNTS)).toBeUndefined()
   })
+
+  describe('the maintenance badge', () => {
+    it('shows the live count to a super-admin', () => {
+      expect(navCount({ id: 'maintenance' }, 0, FULL_COUNTS)).toBe(15)
+    })
+
+    it('shows nothing when the count was stripped from the payload', () => {
+      // A user who may not see maintenance never receives the number, so the key
+      // is missing rather than zero.
+      const { maintenance: _stripped, ...withoutMaintenance } = FULL_COUNTS
+      expect(navCount({ id: 'maintenance' }, 0, withoutMaintenance)).toBeUndefined()
+    })
+
+    it('reports a failed read as unavailable rather than as zero', () => {
+      const failed: OutstandingCounts = { ...FULL_COUNTS, maintenance: null }
+      expect(navCount({ id: 'maintenance' }, 0, failed)).toBe('unavailable')
+      expect(navCount({ id: 'maintenance' }, 0, failed)).not.toBe(0)
+    })
+
+    it('still shows a real zero as zero', () => {
+      const none: OutstandingCounts = { ...FULL_COUNTS, maintenance: 0 }
+      expect(navCount({ id: 'maintenance' }, 0, none)).toBe(0)
+    })
+  })
+})
+
+describe('navBadgeText', () => {
+  it('marks an unavailable count instead of printing a number', () => {
+    expect(navBadgeText('unavailable')).toBe('!')
+  })
+
+  it('caps a large count', () => {
+    expect(navBadgeText(4)).toBe('4')
+    expect(navBadgeText(100)).toBe('99+')
+  })
+})
+
+describe('the maintenance nav entry', () => {
+  const allowEverything = () => true
+
+  it('is hidden from everyone who is not a super-admin', () => {
+    const filtered = filterNavGroupsForPermissions(NAV_GROUPS, allowEverything)
+    const ids = filtered.flatMap((group) => group.items.map((item) => item.id))
+
+    // Even with every permission granted. That is the point: an RBAC module
+    // cannot express a super-admin-only restriction, so it is not used here.
+    expect(ids).not.toContain('maintenance')
+  })
+
+  it('appears for a super-admin, under Operations, pointing at /maintenance', () => {
+    const filtered = filterNavGroupsForPermissions(NAV_GROUPS, allowEverything, {
+      isSuperAdmin: true,
+    })
+
+    const operations = filtered.find((group) => group.label === 'Operations')
+    const maintenance = operations?.items.find((item) => item.id === 'maintenance')
+
+    expect(maintenance?.href).toBe('/maintenance')
+    expect(maintenance?.label).toBe('Maintenance')
+    // No permission gate on purpose; superAdminOnly is the whole of the rule.
+    expect(maintenance?.permission).toBeUndefined()
+    expect(maintenance?.superAdminOnly).toBe(true)
+  })
+
+  it('carries no RBAC module named maintenance anywhere in the nav', () => {
+    const modules = NAV_GROUPS.flatMap((group) =>
+      group.items.map((item) => item.permission?.module),
+    )
+    expect(modules).not.toContain('maintenance')
+  })
 })
 
 describe('SidebarNav', () => {
+  afterEach(() => {
+    hoisted.counts = null
+  })
+
   const items: NavGroup[] = [
     {
       label: null,
@@ -153,5 +241,40 @@ describe('SidebarNav', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
     // Customers has no count → no badge.
     expect(screen.queryByText('0')).not.toBeInTheDocument()
+  })
+
+  it('renders a failed maintenance read as unavailable, not as a zero badge', () => {
+    hoisted.counts = {
+      events: 2,
+      menu_management: 0,
+      private_bookings: 0,
+      cashing_up: 0,
+      invoices: 0,
+      receipts: 0,
+      rota: 0,
+      checklists: 0,
+      feedback: 0,
+      maintenance: null,
+    }
+
+    const withMaintenance: NavGroup[] = [
+      {
+        label: null,
+        items: [
+          { id: 'maintenance', label: 'Maintenance', icon: 'alertTriangle', href: '/maintenance' },
+        ],
+      },
+    ]
+
+    render(
+      <NavCountsProvider>
+        <SidebarNav items={withMaintenance} />
+      </NavCountsProvider>,
+    )
+
+    expect(screen.getByText('!')).toBeInTheDocument()
+    expect(screen.queryByText('0')).not.toBeInTheDocument()
+    // Spelled out, so the state is not carried by a glyph alone.
+    expect(screen.getByLabelText('Maintenance count unavailable')).toBeInTheDocument()
   })
 })

@@ -85,6 +85,23 @@ describe('isCoverComplete', () => {
   })
 })
 
+describe('snapshotted Christmas course completeness', () => {
+  it('exempts one course but preserves old missing-tier records', () => {
+    expect(isCoverComplete({ ...cover(1, []), courseCount: 1 })).toBe(true)
+    expect(isCoverComplete({ ...cover(1, []), courseCount: null })).toBe(false)
+  })
+  it('requires the exact chosen number of courses, including a main', () => {
+    const main = selection('main', 'Fixture main')
+    const starter = selection('starter', 'Fixture starter')
+    const dessert = selection('dessert', 'Fixture dessert')
+    expect(isCoverComplete({ ...cover(1, [main]), courseCount: 2 })).toBe(false)
+    expect(isCoverComplete({ ...cover(1, [main, starter]), courseCount: 2 })).toBe(true)
+    expect(isCoverComplete({ ...cover(1, [starter, dessert]), courseCount: 2 })).toBe(false)
+    expect(isCoverComplete({ ...cover(1, [main, starter]), courseCount: 3 })).toBe(false)
+    expect(isCoverComplete({ ...cover(1, [main, starter, dessert]), courseCount: 3 })).toBe(true)
+  })
+})
+
 describe('getPreorderCompleteness', () => {
   it('treats a party with mixed course counts as complete when every seat has a main', () => {
     const order = {
@@ -121,7 +138,7 @@ describe('getPreorderCompleteness', () => {
 
     expect(completeness.complete).toBe(false)
     expect(completeness.ordinalsMissingMain).toEqual([2, 3])
-    expect(describePreorderGaps(completeness)).toBe('no main chosen for seat 2, 3.')
+    expect(describePreorderGaps(completeness)).toBe('course choices incomplete for seat 2, 3.')
   })
 
   it('is incomplete when there are fewer seats than the party size, even if every seat has a main', () => {

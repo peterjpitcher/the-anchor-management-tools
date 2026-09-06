@@ -23,7 +23,6 @@ import { logger } from '@/lib/logger'
 import { getErrorMessage } from '@/lib/errors'
 import {
   PAYPAL_DEFAULT_CURRENCY,
-  capturePayPalPayment,
   createSimplePayPalOrder,
   getPayPalOrder,
 } from '@/lib/paypal'
@@ -31,6 +30,7 @@ import { generateInvoiceToken, verifyInvoiceToken } from '@/lib/invoices/invoice
 import { sendInvoicePaymentLinkEmail } from '@/lib/email/invoice-payment-emails'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { invoicePaymentCustomId } from '@/lib/invoices/paypal-custom-id'
+import { settleInvoicePayPalOrder } from '@/lib/invoices/paypal-capture'
 
 /** Statuses where asking the customer for money is legitimate. */
 const PAYABLE_STATUSES = new Set(['sent', 'overdue', 'partially_paid'])
@@ -118,7 +118,7 @@ function approveUrl(order: any): string | null {
 }
 
 function amountsMatch(actual: number, expected: number): boolean {
-  return Math.abs(actual - expected) <= 0.01
+  return Math.round(actual * 100) === Math.round(expected * 100)
 }
 
 function orderBelongsToInvoice(order: any, invoiceId: string): boolean {
@@ -155,6 +155,17 @@ async function ensurePayPalOrder(
   if (invoice.paypal_order_id) {
     try {
       const existing = await getPayPalOrder(invoice.paypal_order_id)
+      if (!orderBelongsToInvoice(existing, invoice.id)) {
+        return { error: 'The previous payment reference does not match this invoice. Please contact us before paying again.' }
+      }
+      if (existing?.status === 'COMPLETED') {
+        const recovered = await settleInvoicePayPalOrder(invoice, invoice.paypal_order_id, 'portal', existing)
+        if (recovered.error) return { error: recovered.error }
+        return { error: 'Your previous payment has been recorded. Reload to see the updated balance before paying again.' }
+      }
+      if (existing?.purchase_units?.some((unit: { payments?: { captures?: unknown[] } }) => unit.payments?.captures?.length)) {
+        return { error: 'Your previous payment is still being checked. Please contact us before paying again.' }
+      }
       const amount = orderAmount(existing)
       const url = approveUrl(existing)
 
@@ -169,17 +180,21 @@ async function ensurePayPalOrder(
         return { approveUrl: url, orderId: invoice.paypal_order_id }
       }
 
-      // Stale: the amount moved, or PayPal has retired it. Drop the link so the
-      // reconciliation cron stops polling something nobody can pay.
-      await admin
-        .from('invoices')
-        .update({ paypal_order_id: null, updated_at: new Date().toISOString() })
-        .eq('id', invoice.id)
-        .eq('paypal_order_id', invoice.paypal_order_id)
+      if (!['CREATED', 'PAYER_ACTION_REQUIRED', 'APPROVED', 'VOIDED'].includes(existing?.status)) {
+        return { error: 'Your previous payment is still being checked. Please contact us before paying again.' }
+      }
+      if (existing.status === 'APPROVED') {
+        return { error: 'Your previous payment needs checking. Please contact us before paying again.' }
+      }
+
+      // Keep the previous reference until a replacement order is attached by
+      // the conditional update below. Failed creation leaves it recoverable.
     } catch (error) {
-      logger.warn?.('[InvoicePayPal] Could not read the existing order, creating a new one', {
+      logger.error('[InvoicePayPal] Could not verify the existing order', {
+        error: error instanceof Error ? error : new Error(String(error)),
         metadata: { invoiceId: invoice.id, orderId: invoice.paypal_order_id },
       })
+      return { error: 'We could not check your previous payment. Please try again shortly before paying again.' }
     }
   }
 
@@ -206,6 +221,9 @@ async function ensurePayPalOrder(
       .from('invoices')
       .update({ paypal_order_id: result.orderId, updated_at: new Date().toISOString() })
       .eq('id', invoice.id)
+      .eq('updated_at', invoice.updated_at)
+      .eq('paid_amount', invoice.paid_amount)
+      .eq('total_amount', invoice.total_amount)
       .not('status', 'in', '("void","written_off","paid")')
       .select('id')
       .maybeSingle()
@@ -415,33 +433,8 @@ export async function captureInvoicePaymentByToken(
     const invoice = await loadInvoice(invoiceId)
     if (!invoice) return { error: 'That invoice could not be found.' }
 
-    const order = await getPayPalOrder(paypalOrderId)
-    if (!orderBelongsToInvoice(order, invoiceId)) {
-      logger.error('[InvoicePayPal] Order does not belong to this invoice', {
-        error: new Error('paypal_order_invoice_mismatch'),
-        metadata: { invoiceId, paypalOrderId },
-      })
-      return { error: 'That payment does not match this invoice.' }
-    }
+    return await settleInvoicePayPalOrder(invoice, paypalOrderId, 'portal')
 
-    if (orderCurrency(order) !== PAYPAL_DEFAULT_CURRENCY) {
-      return { error: 'That payment was not in pounds, so it has not been applied.' }
-    }
-
-    const capture = await capturePayPalPayment(paypalOrderId, PAYPAL_DEFAULT_CURRENCY)
-    const amount = Number(capture.amount)
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return { error: 'PayPal reported a payment we could not read. We will chase it up.' }
-    }
-
-    return await applyInvoicePayPalCapture({
-      invoiceId,
-      amount,
-      captureId: capture.transactionId,
-      orderId: paypalOrderId,
-      source: 'portal',
-    })
   } catch (error) {
     logger.error('[InvoicePayPal] Portal capture failed', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -449,59 +442,4 @@ export async function captureInvoicePaymentByToken(
     })
     return { error: 'We could not confirm that payment. Please contact us before paying again.' }
   }
-}
-
-/**
- * The one writer. The portal, the webhook and the reconciliation cron all come
- * through here so the capture id stays the single idempotency key.
- */
-export async function applyInvoicePayPalCapture(params: {
-  invoiceId: string
-  amount: number
-  captureId: string
-  orderId?: string | null
-  source: 'portal' | 'webhook' | 'reconciliation'
-}): Promise<{ success?: boolean; alreadyRecorded?: boolean; error?: string }> {
-  const admin = createAdminClient()
-
-  const { data, error } = await (admin.rpc as unknown as (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => Promise<{
-    data: { recorded: boolean; already_recorded: boolean; status: string; invoice_number: string } | null
-    error: { message: string } | null
-  }>)('record_invoice_paypal_payment_atomic', {
-    p_invoice_id: params.invoiceId,
-    p_amount: params.amount,
-    p_capture_id: params.captureId,
-    p_order_id: params.orderId ?? null,
-  })
-
-  if (error || !data) {
-    logger.error('[InvoicePayPal] Could not record the capture', {
-      error: error instanceof Error ? error : new Error(error?.message || 'unknown'),
-      metadata: { ...params },
-    })
-    return { error: 'The payment was taken but we could not record it. We will sort this out.' }
-  }
-
-  await logAuditEvent({
-    operation_type: 'payment',
-    resource_type: 'invoice',
-    resource_id: params.invoiceId,
-    operation_status: 'success',
-    new_values: {
-      action: `invoice_paypal_captured_via_${params.source}`,
-      invoice_number: data.invoice_number,
-      amount: params.amount,
-      capture_id: params.captureId,
-      already_recorded: data.already_recorded,
-      status: data.status,
-    },
-  })
-
-  revalidatePath(`/invoices/${params.invoiceId}`)
-  revalidatePath('/invoices')
-
-  return { success: true, alreadyRecorded: data.already_recorded }
 }

@@ -10,10 +10,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getIdempotencyKey,
   claimIdempotencyKey,
+  lookupIdempotencyKey,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
-import { computeTableBookingRequestHash } from '@/lib/table-bookings/booking-idempotency'
+import { computeTableBookingRequestHash, canonicalFixtureBookingNotes } from '@/lib/table-bookings/booking-idempotency'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -63,6 +64,7 @@ type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllow
 type NotificationChannelMeta = TableBookingNotificationChannel
 
 const CreateTableBookingSchema = z.object({
+  fixture_id: z.string().uuid().optional(),
   phone: z.string().trim().min(7).max(32),
   first_name: z.string().trim().min(1).max(100).optional(),
   last_name: z.string().trim().max(100).optional(),
@@ -87,6 +89,7 @@ const CreateTableBookingSchema = z.object({
   // normal terms. See GET /api/table-bookings/periods for what to show the guest.
   booking_period_id: z.string().uuid().optional(),
   booking_period_answer: z.boolean().optional(),
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(6).max(20).optional(),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.
@@ -336,7 +339,15 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Invalid JSON body', 'VALIDATION_ERROR', 400)
     }
 
-    const parsed = CreateTableBookingSchema.safeParse(body)
+    const replayOnly = req.headers.get('X-Idempotency-Replay-Only') === 'true'
+    if (replayOnly && authState !== 'authenticated') {
+      return createErrorResponse('API key required for booking recovery', 'UNAUTHORIZED', 401)
+    }
+    // The envelope makes an older server reject a recovery probe before it can create a booking.
+    const candidate = replayOnly && body && typeof body === 'object' && 'replay_request' in body
+      ? (body as { replay_request: unknown }).replay_request
+      : replayOnly ? null : body
+    const parsed = CreateTableBookingSchema.safeParse(candidate)
     if (!parsed.success) {
       return createErrorResponse(
         parsed.error.issues[0]?.message || 'Invalid table booking payload',
@@ -347,6 +358,14 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = parsed.data
+    if ((replayOnly || payload.fixture_id) && authState !== 'authenticated') {
+      return createErrorResponse('API key required for fixture booking recovery', 'UNAUTHORIZED', 401)
+    }
+    if (payload.fixture_id) {
+      try { canonicalFixtureBookingNotes(payload.fixture_id, payload.notes || '') } catch {
+        return createErrorResponse('Fixture notes do not match fixture ID', 'VALIDATION_ERROR', 400)
+      }
+    }
 
     let normalizedPhone: string
     try {
@@ -383,6 +402,7 @@ export async function POST(request: NextRequest) {
       party_size: payload.party_size,
       purpose: payload.purpose,
       notes: payload.notes,
+      fixture_id: payload.fixture_id,
       dietary_requirements: payload.dietary_requirements,
       allergies: payload.allergies,
       high_chair_count: payload.high_chair_count,
@@ -395,11 +415,21 @@ export async function POST(request: NextRequest) {
       // byte-for-byte the hash this route produced before the fields existed.
       booking_period_id: payload.booking_period_id,
       booking_period_answer: payload.booking_period_answer,
-      preorder: payload.preorder
+      preorder: payload.preorder,
+      christmas_course_counts: payload.christmas_course_counts
     })
 
     const supabase = createAdminClient()
-    const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+    const idempotencyState = replayOnly
+      ? await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
+      : await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
+
+    if (idempotencyState.state === 'new' && replayOnly) {
+      return createErrorResponse('No previous booking attempt found', 'IDEMPOTENCY_KEY_NOT_FOUND', 404)
+    }
+    if (idempotencyState.state === 'replay' && (idempotencyState.response as { state?: string })?.state === 'processing') {
+      return createErrorResponse('This request is already being processed. Please retry shortly.', 'IDEMPOTENCY_KEY_IN_PROGRESS', 409)
+    }
 
     if (idempotencyState.state === 'conflict') {
       return createErrorResponse(
@@ -445,7 +475,12 @@ export async function POST(request: NextRequest) {
       //
       // v06 falls back to v05 internally while table_allocation_v06_enabled is false, so
       // this switch is inert until the flag is turned on.
-      const { data: rpcResultRaw, error: rpcError } = await supabase.rpc('create_table_booking_public_v06', {
+      const { data: rpcResultRaw, error: rpcError } = await (payload.christmas_course_counts
+        ? supabase.rpc('create_table_booking_christmas_v01', {
+            p_request: { ...payload, customer_id: customerResolution.customerId, time: bookingTime, source: 'brand_site' },
+            p_course_counts: payload.christmas_course_counts
+          })
+        : supabase.rpc('create_table_booking_public_v06', {
         p_customer_id: customerResolution.customerId,
         p_booking_date: payload.date,
         p_booking_time: bookingTime,
@@ -468,7 +503,7 @@ export async function POST(request: NextRequest) {
         // period for the date is refused rather than priced.
         p_booking_period_id: payload.booking_period_id ?? null,
         p_booking_period_answer: payload.booking_period_answer ?? null
-      })
+      }))
 
       let bookingResult: TableBookingRpcResult
       if (rpcError) {
@@ -554,7 +589,8 @@ export async function POST(request: NextRequest) {
       // there is no menu to choose from, and every dish id is validated against
       // that period before anything is written.
       let preorderResult: PreorderPersistResult | null = null
-      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0) {
+      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
+          && !(payload.christmas_course_counts && bookingResult.booking_period_requires_preorder === false)) {
         const entries = payload.preorder ?? []
 
         if (entries.length > payload.party_size) {

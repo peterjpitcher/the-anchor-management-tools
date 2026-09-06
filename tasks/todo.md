@@ -1,3 +1,35 @@
+# AI event copy builder layout, 6 September 2026
+
+- [x] Inspect live panel and trace card padding.
+- [x] Apply spacing inside CardBody, align with app tokens and wrap narrow-screen content.
+- [x] Verify desktop/mobile layout and existing copy controls with fixtures.
+  Browser checks: desktop, 390px and 320px; no horizontal overflow. Switched to GBP, selected a custom link, generated fixture copy and copied it successfully.
+- [x] Run quality gates: lint, typecheck, 734 test files (6,331 tests passed, two existing skips), production build.
+- [ ] Merge and verify production deployment.
+
+Scope: UI only. Existing generation prompts and server action unchanged. The card previously combined outer padding with its automatic inner padding, while outer space-y never reached the form sections.
+
+# Event checklist rapid completion, 6 September 2026
+
+- [x] Confirm the active event detail card reloads after each completion.
+- [x] Update only the changed task, with independent pending and rollback state.
+- [x] Verify overlapping saves, failures and reopening in six component tests and browser fixtures.
+- [x] Complete build gate: lint, typecheck, 734 test files (6,331 passed) and production build passed.
+- [ ] Merge, deploy and verify the production release.
+
+Browser evidence: five ticks produced four saved tasks and one isolated rollback; checklist reads stayed at one while other tasks remained usable.
+
+No database migration. Assumption: completing prep tasks refers to the event detail checklist. Other checklist views already update local state without explicitly reloading the checklist.
+
+# Friday manager report, 5 September 2026
+
+Detailed plan: [Friday manager report](./plan-2026-09-05-friday-manager-report.md).
+
+- [x] Discover existing manager emails and record the owner's timing decisions.
+- [x] Implement the report queue, renderer and protected delivery route without a migration.
+- [x] Connect selected manager notifications and Friday snapshots.
+- [ ] Complete regression checks and release verification.
+
 # Nav pills: make every pill a clearable to-do
 
 Goal: a pill means "there is something here you can action now", and working
@@ -165,3 +197,17 @@ social links are corrected. Its information page still shows
 the current owner session. Its support request is prepared and awaits the visible
 reCAPTCHA and Submit. Bing remains locked pending verification. Paid placements
 remain excluded.
+
+## API connections, 5 September 2026
+
+See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated remediation run, verified fixes and production rollout.
+
+## 5 September 2026: Anchor booking growth
+
+- [x] Implement event dining requests and Christmas course snapshots in the isolated booking-growth branch.
+- [x] Complete independent SQL/code review and isolated migration/rollback tests.
+- [x] Save baseline, guarded menu corrections, dated-capacity review and release approval package in `tasks/anchor-booking-growth/`.
+- [x] Complete paired browser verification and refreshed integration gates.
+- [x] Obtain approval of exact production migration, activation and menu payloads before application.
+- [x] Deploy the paired approved release, verify production aliases, activate Christmas courses and exercise the live one-course journey without customer submission.
+- [x] Configure the 15 venue-confirmed dated capacities, with matching live booking snapshots and audit records; campaign remains a prepared brief.

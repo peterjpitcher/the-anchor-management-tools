@@ -88,8 +88,10 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
   if (bookingData) {
     try {
       paymentHistory = await getBookingPaymentHistory(bookingData.id)
-    } catch (_err) {
-      // Non-fatal: page still renders, payment history will be empty
+    } catch (error) {
+      console.error('Failed to load booking payment history', error)
+      errors.push('Payment history could not be loaded. Refresh before recording a payment.')
+      bookingData = null
     }
   }
 
