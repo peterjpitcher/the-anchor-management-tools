@@ -6,7 +6,16 @@ const MAX_VISIBLE_ENTRIES = 12
 // Leave room for headings, links and the notice below the usual inbox clipping
 // threshold. Count encoded bytes, since escaped names can expand substantially.
 const MAX_ENTRY_HTML_BYTES = 65_000
-const SECTIONS: Record<ManagerReportSection, { title: string; path: string; snapshot?: boolean }> = {
+// Per-section cap on the visible body. Snapshot sections get 900 characters and
+// event sections 420, with the remainder carried in the attachment. Maintenance
+// opts out of that: the owner asked for every outstanding job to be readable in
+// the email itself, since a list that sends you to an attachment to find out what
+// is outstanding does not do the one job it exists for. MAX_ENTRY_HTML_BYTES
+// still bounds the whole email, so a runaway list overflows to the attachment
+// rather than producing a message the inbox clips.
+const MAINTENANCE_INLINE_LIMIT = 20_000
+
+const SECTIONS: Record<ManagerReportSection, { title: string; path: string; snapshot?: boolean; inlineLimit?: number }> = {
   table_bookings: { title: 'New table bookings', path: '/table-bookings' },
   staff_shift_reminders: { title: 'Staff shift reminders', path: '/rota' },
   holiday_reminders: { title: 'Holiday approval reminders', path: '/rota/leave' },
@@ -15,7 +24,7 @@ const SECTIONS: Record<ManagerReportSection, { title: string; path: string; snap
   recruitment: { title: 'Recruitment', path: '/recruitment' },
   private_bookings: { title: 'Private-booking summary', path: '/private-bookings', snapshot: true },
   rota: { title: 'Rota summary', path: '/rota', snapshot: true },
-  maintenance: { title: 'Maintenance', path: '/maintenance', snapshot: true },
+  maintenance: { title: 'Maintenance', path: '/maintenance', snapshot: true, inlineLimit: MAINTENANCE_INLINE_LIMIT },
 }
 
 function escapeHtml(value: string): string {
@@ -151,7 +160,8 @@ export function renderManagerReport(input: ManagerReportRenderInput): ManagerRep
       const body = bodyText(entry)
       const metrics = snapshotMetrics(entry)
       const fullBody = [metrics, body].filter(Boolean).join('\n\n')
-      const concise = clip([metrics, summarise(entry, body)].filter(Boolean).join('\n\n'), definition.snapshot ? 900 : 420)
+      const inlineLimit = definition.inlineLimit ?? (definition.snapshot ? 900 : 420)
+      const concise = clip([metrics, summarise(entry, body)].filter(Boolean).join('\n\n'), inlineLimit)
       const item = (details: string, itemTitle: string): string => `<article style="margin:0 0 18px"><h3 style="font-size:15px;margin:0 0 3px">${escapeHtml(itemTitle)}</h3><p style="font-size:12px;color:#6b7280;margin:0 0 6px">${escapeHtml(recorded)}</p><p style="margin:0;white-space:pre-line">${escapeHtml(details || 'See the management app for details.')}</p></article>`
       full.push(item(fullBody, title))
       const visibleTitle = clip(title, 150)
