@@ -211,3 +211,15 @@ See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated rem
 - [x] Obtain approval of exact production migration, activation and menu payloads before application.
 - [x] Deploy the paired approved release, verify production aliases, activate Christmas courses and exercise the live one-course journey without customer submission.
 - [x] Configure the 15 venue-confirmed dated capacities, with matching live booking snapshots and audit records; campaign remains a prepared brief.
+
+
+# QR branding fixes, 6 September 2026
+
+- [x] Check live schema and current production code in an isolated worktree.
+- [x] Lower editor and geometry minimum to 10%; draft and locally validate storage constraint.
+- [x] Render BOOK NOW without runtime font dependencies.
+- [ ] Validate migration and run checks, then deploy and verify the actual download.
+
+Scope: QR branding only. Existing artwork unchanged until saved again. Database constraint update is an independently deployable prerequisite; application changes follow. No new columns, grants, functions or data rewrites. Website and unrelated checkout work unchanged.
+
+QR verification: Node 20 lint, uncached typecheck, all 759 test files (6832 tests passed, two skipped) and clean production build passed. Actual minimum-size rendered image visually inspected with readable vector lettering. Isolated PostgreSQL validates boundaries and rollback. Production migration approval pending; no live changes applied.

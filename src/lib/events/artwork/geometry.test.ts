@@ -255,33 +255,18 @@ describe('reservedLogoRect', () => {
 })
 
 describe('qrMinWidthPx and qrMinWidthFrac', () => {
-  it('rounds UP on the A4 poster, 473 not 472', () => {
-    // 2480 * 40 / 210 = 472.38. A floor would print at 39.9mm, under the minimum.
-    expect(qrMinWidthPx(2480)).toBe(473)
-    expect(Math.floor((2480 * QR_MIN_MM) / A4_WIDTH_MM)).toBe(472)
+  it('allows exactly 10% on an A4 poster', () => {
+    expect(qrMinWidthPx(2480)).toBe(248)
+    expect(qrMinWidthFrac()).toBe(0.1)
   })
 
-  it('never returns a width that prints under 40mm', () => {
+  it('rounds up fractional pixels at the 10% minimum', () => {
     for (const posterWidth of [1080, 1240, 1920, 2480, 4961]) {
       const px = qrMinWidthPx(posterWidth)
       expect(Number.isInteger(px)).toBe(true)
-      expect((px * A4_WIDTH_MM) / posterWidth).toBeGreaterThanOrEqual(QR_MIN_MM)
+      expect(px).toBeGreaterThanOrEqual(posterWidth * 0.1)
+      expect(qrRect(posterWidth, posterWidth * 2, 0.5, 0.5, 0.1).width).toBe(px)
     }
-  })
-
-  it('expresses the same minimum as the ENFORCED fraction, rounded up', () => {
-    // Deliberately 0.1905 and not the exact 40/210 = 0.190476. The enforced
-    // floor has to sit at or above the exact ratio, never below it, or the
-    // smallest legal code prints under 40mm. It also has to match the database
-    // CHECK and the route's Zod bound, both of which use 0.1905; returning the
-    // unrounded ratio here meant the geometric minimum was rejected with a 400.
-    expect(qrMinWidthFrac()).toBe(0.1905)
-    expect(qrMinWidthFrac()).toBeGreaterThan(40 / 210)
-    expect(qrMinWidthPx(2480)).toBe(473)
-    // And the rect built at that fraction is at least the minimum pixel width.
-    expect(qrRect(2480, 3508, 0.5, 0.5, qrMinWidthFrac()).width).toBeGreaterThanOrEqual(
-      qrMinWidthPx(2480)
-    )
   })
 })
 
@@ -431,15 +416,15 @@ describe('validateQrPlacement', () => {
     }
   })
 
-  it('rejects a code under the 40mm print minimum', () => {
-    const tooSmall = qrMinWidthPx(posterW) - 1 // 472px prints at 39.9mm
+  it('rejects a code under the 21mm print minimum', () => {
+    const tooSmall = qrMinWidthPx(posterW) - 1 // one pixel below 10%
     const qr: Rect = { x: 1000, y: 2000, width: tooSmall, height: tooSmall }
     const result = validateQrPlacement(posterW, posterH, qr, null)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toContain('40mm')
+    if (!result.ok) expect(result.reason).toContain('21mm')
   })
 
-  it('accepts a code at exactly the 40mm minimum', () => {
+  it('accepts a code at exactly the 21mm minimum', () => {
     const side = qrMinWidthPx(posterW)
     const qr: Rect = { x: 1000, y: 2000, width: side, height: side }
     expect(validateQrPlacement(posterW, posterH, qr, null)).toEqual({ ok: true })
@@ -539,18 +524,15 @@ describe('resolveLogoRect', () => {
 })
 
 describe('the QR minimum width floor agrees everywhere it is written down', () => {
-  it('is the rounded-up 0.1905, not the exact 40/210 ratio', () => {
-    expect(qrMinWidthFrac()).toBe(0.1905)
-    expect(QR_MIN_WIDTH_FRAC).toBe(0.1905)
-    expect(QR_MIN_WIDTH_FRAC_EXACT).toBeCloseTo(0.190476, 6)
-    // The rounding direction is the safety property: the enforced floor must
-    // never be below the exact ratio, or a code could print under 40mm.
-    expect(QR_MIN_WIDTH_FRAC).toBeGreaterThan(QR_MIN_WIDTH_FRAC_EXACT)
+  it('uses the exact 10% ratio', () => {
+    expect(qrMinWidthFrac()).toBe(0.1)
+    expect(QR_MIN_WIDTH_FRAC).toBe(0.1)
+    expect(QR_MIN_WIDTH_FRAC_EXACT).toBe(0.1)
   })
 
   it('matches the database CHECK constraint in the branding migration', () => {
     const sql = readFileSync(
-      resolve(__dirname, '../../../../supabase/migrations/20260906095746_event_image_branding.sql'),
+      resolve(__dirname, '../../../../supabase/migrations/20260906155438_event_image_qr_ten_percent.sql'),
       'utf8'
     )
     // If someone changes one and not the other, the smallest legal code either
@@ -558,10 +540,10 @@ describe('the QR minimum width floor agrees everywhere it is written down', () =
     expect(sql).toContain(`qr_width_frac >= ${QR_MIN_WIDTH_FRAC}`)
   })
 
-  it('a QR at exactly the floor still clears 40mm on the A4 canvas', () => {
+  it('a QR at exactly the floor still clears 21mm on the A4 canvas', () => {
     const widthPx = qrRect(2480, 3508, 0.5, 0.5, QR_MIN_WIDTH_FRAC).width
     const mm = (widthPx / 2480) * 210
-    expect(mm).toBeGreaterThanOrEqual(40)
+    expect(mm).toBeGreaterThanOrEqual(21)
     expect(widthPx).toBeGreaterThanOrEqual(qrMinWidthPx(2480))
   })
 })
@@ -603,7 +585,7 @@ describe('the BOOK NOW strip', () => {
     expect(rectsOverlap(strip, CODE, 0)).toBe(false)
   })
 
-  it('does not reduce the scannable code, so the 40mm rule still holds', () => {
+  it('does not reduce the scannable code, so the 21mm rule still holds', () => {
     // qr_width_frac keeps meaning the CODE width. The block is simply wider.
     expect(CODE.width).toBeGreaterThanOrEqual(qrMinWidthPx(2480))
     expect(qrBlockRect(CODE).width).toBeGreaterThan(CODE.width)
