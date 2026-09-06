@@ -75,13 +75,29 @@ CREATE SEQUENCE IF NOT EXISTS public.maintenance_item_ref_seq
 GRANT USAGE ON SEQUENCE public.maintenance_item_ref_seq TO authenticated;
 GRANT USAGE ON SEQUENCE public.maintenance_item_ref_seq TO service_role;
 
+-- lpad TRUNCATES when the input is longer than the target width, so a bare
+-- lpad(n, 4, '0') turns 10000 into '1000', which item 1000 already holds. The
+-- insert then fails on the unique index and never recovers, because reference is
+-- immutable. This pads to four digits and widens beyond them instead. nextval is
+-- called once, by the caller, so the value cannot be consumed twice.
+CREATE OR REPLACE FUNCTION public.maintenance_format_reference(n bigint)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT 'M-' || CASE WHEN n < 10000 THEN lpad(n::text, 4, '0') ELSE n::text END
+$$;
+
+GRANT EXECUTE ON FUNCTION public.maintenance_format_reference(bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.maintenance_format_reference(bigint) TO service_role;
+
 -- =====================================================================
 -- 3. Items
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS public.maintenance_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  reference text NOT NULL DEFAULT ('M-' || lpad(nextval('public.maintenance_item_ref_seq')::text, 4, '0')),
+  reference text NOT NULL DEFAULT public.maintenance_format_reference(nextval('public.maintenance_item_ref_seq')),
   kind text NOT NULL,
   title text NOT NULL,
   description text,

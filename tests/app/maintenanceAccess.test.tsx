@@ -131,4 +131,59 @@ describe('maintenance pages, server-side access', () => {
     expect(JSON.stringify(broken)).toContain('Could not load this item')
     expect(redirectMock).not.toHaveBeenCalled()
   })
+
+  it('loads switched-off areas on the list and the item, but not on the new-item form', async () => {
+    currentUserCanUseMaintenanceMock.mockResolvedValue(true)
+    getMaintenanceItemMock.mockResolvedValue({
+      success: true,
+      data: {
+        id: ITEM_ID,
+        reference: 'MNT-0001',
+        kind: 'issue',
+        title: 'Signage light out',
+        description: null,
+        areaId: '11111111-1111-4111-8111-111111111111',
+        areaName: 'Signage',
+        status: 'reported',
+        priority: 'medium',
+        responsibility: 'us',
+        reportedOn: '2026-09-01',
+        targetDate: null,
+        completedOn: null,
+        estimatedCost: null,
+        actualCost: null,
+        contractorName: null,
+        contractorContact: null,
+        createdBy: null,
+        createdByEmail: 'peter@example.com',
+        createdAt: '2026-09-01T09:00:00.000Z',
+        updatedAt: '2026-09-01T09:00:00.000Z',
+      },
+    })
+    getMaintenanceAreasMock.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'Signage',
+          sortOrder: 1,
+          active: false,
+          createdAt: '2026-09-01T09:00:00.000Z',
+          updatedAt: '2026-09-01T09:00:00.000Z',
+        },
+      ],
+    })
+
+    // The list keeps an inactive area so the filter can still name it.
+    await MaintenancePage({ searchParams: Promise.resolve({}) })
+    expect(getMaintenanceAreasMock).toHaveBeenLastCalledWith(true)
+
+    // The item keeps it so the area it sits in is shown rather than blank.
+    await MaintenanceItemPage({ params: Promise.resolve({ id: ITEM_ID }) })
+    expect(getMaintenanceAreasMock).toHaveBeenLastCalledWith(true)
+
+    // Nothing new may be logged against one, so the form asks for active areas only.
+    await NewMaintenanceItemPage()
+    expect(getMaintenanceAreasMock).toHaveBeenLastCalledWith()
+  })
 })

@@ -161,26 +161,33 @@ export function MaintenanceListClient({
       setError(null)
 
       const input = maintenanceFiltersToInput(nextFilters)
-      const [itemsResult, costsResult] = await Promise.all([
-        getMaintenanceItems({ filters: input }),
-        getMaintenanceCosts(input),
-      ])
+      try {
+        const [itemsResult, costsResult] = await Promise.all([
+          getMaintenanceItems({ filters: input }),
+          getMaintenanceCosts(input),
+        ])
 
-      // A later request has already answered; drop this one.
-      if (id !== requestId.current) return
+        // A later request has already answered; drop this one.
+        if (id !== requestId.current) return
 
-      if (!itemsResult.success || !itemsResult.data) {
-        setError(itemsResult.error ?? 'Could not load the maintenance list.')
+        if (!itemsResult.success || !itemsResult.data) {
+          setError(itemsResult.error ?? 'Could not load the maintenance list.')
+          setLoading(false)
+          return
+        }
+
+        setItems(itemsResult.data.items)
+        setCursor(itemsResult.data.nextCursor)
+        setHasMore(itemsResult.data.hasMore)
+        // A totals failure must not blank the list, so it is reported on its own.
+        setCosts(costsResult.success && costsResult.data ? costsResult.data : null)
         setLoading(false)
-        return
+      } catch {
+        // A request that never came back leaves the spinner up for ever otherwise.
+        if (id !== requestId.current) return
+        setError('Could not load the maintenance list. Check your connection and try again.')
+        setLoading(false)
       }
-
-      setItems(itemsResult.data.items)
-      setCursor(itemsResult.data.nextCursor)
-      setHasMore(itemsResult.data.hasMore)
-      // A totals failure must not blank the list, so it is reported on its own.
-      setCosts(costsResult.success && costsResult.data ? costsResult.data : null)
-      setLoading(false)
     },
     []
   )
@@ -204,20 +211,25 @@ export function MaintenanceListClient({
   const handleLoadMore = useCallback(async () => {
     if (!cursor) return
     setLoadingMore(true)
-    const result = await getMaintenanceItems({
-      filters: maintenanceFiltersToInput(filters),
-      cursor,
-    })
-    setLoadingMore(false)
+    try {
+      const result = await getMaintenanceItems({
+        filters: maintenanceFiltersToInput(filters),
+        cursor,
+      })
 
-    if (!result.success || !result.data) {
-      setError(result.error ?? 'Could not load any more items.')
-      return
+      if (!result.success || !result.data) {
+        setError(result.error ?? 'Could not load any more items.')
+        return
+      }
+
+      setItems(current => [...current, ...result.data!.items])
+      setCursor(result.data.nextCursor)
+      setHasMore(result.data.hasMore)
+    } catch {
+      setError('Could not load any more items. Check your connection and try again.')
+    } finally {
+      setLoadingMore(false)
     }
-
-    setItems(current => [...current, ...result.data!.items])
-    setCursor(result.data.nextCursor)
-    setHasMore(result.data.hasMore)
   }, [cursor, filters])
 
   const update = useCallback(<K extends keyof MaintenanceFilterState>(
@@ -353,9 +365,14 @@ export function MaintenanceListClient({
                 onChange={event => update('areaId', event.target.value)}
               >
                 <option value="">All areas</option>
+                {/*
+                  Switched-off areas stay in this list. Items logged against one are
+                  still real work, and dropping the option would leave the control
+                  reading "All areas" while the list was still filtered to it.
+                */}
                 {areas.map(area => (
                   <option key={area.id} value={area.id}>
-                    {area.name}
+                    {area.active ? area.name : `${area.name} (off)`}
                   </option>
                 ))}
               </Select>

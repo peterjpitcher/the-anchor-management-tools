@@ -31,8 +31,11 @@ export default async function MaintenancePage({
   const filters = parseMaintenanceFilters(resolvedParams)
   const filterInput = maintenanceFiltersToInput(filters)
 
+  // Inactive areas are included on purpose. Existing items still sit in them, and
+  // a filter set to an area that has since been switched off has to keep showing
+  // that area, or the control reads "All areas" over a filtered list.
   const [areasResult, itemsResult, costsResult] = await Promise.all([
-    getMaintenanceAreas(),
+    getMaintenanceAreas(true),
     getMaintenanceItems({ filters: filterInput }),
     getMaintenanceCosts(filterInput),
   ])

@@ -610,6 +610,140 @@ export async function listMaintenancePhotos(itemId: string): Promise<ListMainten
 }
 
 // ---------------------------------------------------------------------------
+// Exceptional removal. Spec section 5: a distinct, attributed, super-admin only
+// action that deletes the stored bytes and keeps the metadata row marked as
+// redacted with who did it, when and why. The row is never deleted, because the
+// trail is the whole point, and redaction is never presented as deletion.
+// ---------------------------------------------------------------------------
+
+const redactSchema = z.object({
+  photoId: z.string().uuid(),
+  reason: z.string().trim().min(3).max(500),
+})
+
+export type RedactMaintenancePhotoResult =
+  | { error: string }
+  | { success: true; photoId: string }
+
+const REDACT_REASON_REQUIRED = 'Please say briefly why this photo is being removed.'
+const REDACT_NOT_FOUND = 'That photo could not be found.'
+const REDACT_FAILED = 'That photo could not be removed. Please try again.'
+const REDACT_HALF_DONE =
+  'The photo file was removed but the record could not be updated. Please try again.'
+
+export async function redactMaintenancePhoto(
+  photoId: string,
+  reason: string
+): Promise<RedactMaintenancePhotoResult> {
+  try {
+    const actor = await currentSuperAdmin()
+    if (!actor) return { error: DENIED }
+
+    const parsed = redactSchema.safeParse({ photoId, reason })
+    if (!parsed.success) {
+      const field = parsed.error.issues[0]?.path[0]
+      return { error: field === 'reason' ? REDACT_REASON_REQUIRED : REDACT_NOT_FOUND }
+    }
+
+    const supabase = createAdminClient()
+
+    const { data, error: rowError } = await supabase
+      .from('maintenance_photos')
+      .select(PHOTO_COLUMNS)
+      .eq('id', parsed.data.photoId)
+      .maybeSingle()
+
+    if (rowError) {
+      console.error('[maintenance-photos] could not load the photo to redact:', rowError)
+      return { error: REDACT_FAILED }
+    }
+
+    const row = (data as unknown as MaintenancePhotoRow | null) ?? null
+    if (!row) return { error: REDACT_NOT_FOUND }
+
+    // Already redacted. The bytes are gone and the row already names who removed
+    // them, so this is a no-op rather than a second redaction that would rewrite
+    // the attribution.
+    if (row.redacted_at) return { success: true, photoId: row.id }
+
+    // The bytes go first, on purpose. If storage refuses, the row is left exactly
+    // as it was, so a record can never claim a redaction that did not happen.
+    const { error: removeError } = await supabase.storage
+      .from(MAINTENANCE_PHOTO_BUCKET)
+      .remove([row.storage_path])
+
+    if (removeError) {
+      console.error('[maintenance-photos] could not delete the stored object:', removeError)
+      await logAuditEvent({
+        user_id: actor.userId,
+        user_email: actor.email,
+        operation_type: 'redact',
+        resource_type: 'maintenance_photo',
+        resource_id: row.id,
+        operation_status: 'failure',
+        error_message: 'the stored object could not be deleted, so the photo was not redacted',
+        additional_info: { item_id: row.item_id, storage_path: row.storage_path },
+      })
+      return { error: REDACT_FAILED }
+    }
+
+    const redactedAt = new Date().toISOString()
+
+    const { error: updateError } = await supabase
+      .from('maintenance_photos')
+      .update({
+        redacted_at: redactedAt,
+        redacted_by: actor.userId,
+        redacted_by_email: actor.email,
+        redaction_reason: parsed.data.reason,
+      })
+      .eq('id', row.id)
+      // Only an unredacted row is marked, so two redactions racing cannot both win.
+      .is('redacted_at', null)
+
+    if (updateError) {
+      // The bytes have gone but the row does not say so yet. Retrying is safe:
+      // removing an object that is already absent succeeds, and the update runs
+      // again. Logged as a failure so the gap is visible either way.
+      console.error('[maintenance-photos] could not mark the photo redacted:', updateError)
+      await logAuditEvent({
+        user_id: actor.userId,
+        user_email: actor.email,
+        operation_type: 'redact',
+        resource_type: 'maintenance_photo',
+        resource_id: row.id,
+        operation_status: 'failure',
+        error_message: 'the stored object was deleted but the row could not be marked redacted',
+        additional_info: { item_id: row.item_id, storage_path: row.storage_path },
+      })
+      return { error: REDACT_HALF_DONE }
+    }
+
+    await logAuditEvent({
+      user_id: actor.userId,
+      user_email: actor.email,
+      operation_type: 'redact',
+      resource_type: 'maintenance_photo',
+      resource_id: row.id,
+      operation_status: 'success',
+      additional_info: {
+        item_id: row.item_id,
+        storage_path: row.storage_path,
+        redacted_at: redactedAt,
+        reason: parsed.data.reason,
+      },
+    })
+
+    revalidatePath(`/maintenance/${row.item_id}`)
+
+    return { success: true, photoId: row.id }
+  } catch (error) {
+    console.error('[maintenance-photos] unexpected error redacting a photo:', error)
+    return { error: REDACT_FAILED }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Stale pending cleanup. A signed URL that was issued and never used leaves a
 // pending row behind; after 24 hours it and any object it points at go.
 // ---------------------------------------------------------------------------

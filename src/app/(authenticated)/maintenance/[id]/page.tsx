@@ -22,9 +22,12 @@ export default async function MaintenanceItemPage({
 
   const { id } = await params
 
+  // Inactive areas are included so an item sitting in one still shows the area it
+  // is in. The form offers them for display only; the database refuses a move on
+  // to an area that has been switched off.
   const [itemResult, areasResult] = await Promise.all([
     getMaintenanceItem(id),
-    getMaintenanceAreas(),
+    getMaintenanceAreas(true),
   ])
 
   const header = (

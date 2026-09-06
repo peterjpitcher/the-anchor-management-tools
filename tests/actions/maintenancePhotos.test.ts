@@ -14,6 +14,7 @@ import {
   cleanupStaleMaintenancePhotoUploads,
   confirmMaintenancePhotoUpload,
   listMaintenancePhotos,
+  redactMaintenancePhoto,
   requestMaintenancePhotoUpload,
 } from '@/app/actions/maintenance-photos'
 
@@ -541,6 +542,171 @@ describe('listMaintenancePhotos', () => {
     const result = await listMaintenancePhotos(ITEM_ID)
 
     expect(result).toEqual({ error: 'The photos could not be loaded. Please try again.' })
+  })
+})
+
+describe('redactMaintenancePhoto', () => {
+  const REASON = 'A payslip is readable on the worktop behind the tap.'
+
+  it('deletes the stored bytes, keeps the row and records who removed it', async () => {
+    const read = queryStub({ data: readyRow() })
+    const update = queryStub({ data: null })
+    const { admin, storage } = makeAdmin({ photos: [read, update] })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+    expect(result).toEqual({ success: true, photoId: PHOTO_ID })
+    expect(storage.remove).toHaveBeenCalledWith([STORAGE_PATH])
+
+    // The row is never deleted: keeping the trail is the whole point.
+    expect(update.calls.some((call) => call.method === 'delete')).toBe(false)
+
+    const patch = update.calls.find((call) => call.method === 'update')?.args[0] as Record<
+      string,
+      unknown
+    >
+    expect(patch.redacted_by).toBe(USER_ID)
+    expect(patch.redacted_by_email).toBe('owner@example.com')
+    expect(patch.redaction_reason).toBe(REASON)
+    expect(typeof patch.redacted_at).toBe('string')
+    expect(Number.isNaN(Date.parse(String(patch.redacted_at)))).toBe(false)
+
+    // Only an unredacted row is marked, so a racing redaction cannot rewrite it.
+    expect(update.calls).toEqual(
+      expect.arrayContaining([{ method: 'is', args: ['redacted_at', null] }])
+    )
+
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation_type: 'redact',
+        resource_type: 'maintenance_photo',
+        resource_id: PHOTO_ID,
+        operation_status: 'success',
+      })
+    )
+  })
+
+  it('refuses a caller who is not a super admin and touches nothing', async () => {
+    const { admin, storage } = makeAdmin({ isSuperAdmin: false })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+    expect(result).toEqual({ error: 'You do not have permission to manage maintenance photos.' })
+    expect(admin.from).not.toHaveBeenCalled()
+    expect(storage.remove).not.toHaveBeenCalled()
+  })
+
+  it.each([['manager'], ['staff']])(
+    'refuses a %s when the RPC is unavailable',
+    async (roleName) => {
+      const { admin, storage } = makeAdmin({ isSuperAdmin: null, roleNames: [roleName] })
+      mockedCreateAdminClient.mockReturnValue(admin)
+
+      const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+      expect(result).toEqual({ error: 'You do not have permission to manage maintenance photos.' })
+      expect(storage.remove).not.toHaveBeenCalled()
+    }
+  )
+
+  it('requires a reason', async () => {
+    const { admin, storage } = makeAdmin()
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, '   ')
+
+    expect(result).toEqual({ error: 'Please say briefly why this photo is being removed.' })
+    expect(storage.remove).not.toHaveBeenCalled()
+  })
+
+  it('leaves the row untouched when the stored object cannot be deleted', async () => {
+    const read = queryStub({ data: readyRow() })
+    const update = queryStub({ data: null })
+    const { admin } = makeAdmin({
+      photos: [read, update],
+      storage: { remove: vi.fn(async () => ({ error: { message: 'storage unavailable' } })) },
+    })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+    expect(result).toEqual({ error: 'That photo could not be removed. Please try again.' })
+    // No write at all, so the row never claims a redaction that did not happen.
+    expect(update.calls).toHaveLength(0)
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ operation_type: 'redact', operation_status: 'failure' })
+    )
+  })
+
+  it('says so when the bytes went but the row could not be marked', async () => {
+    const read = queryStub({ data: readyRow() })
+    const update = queryStub({ data: null, error: { message: 'update failed' } })
+    const { admin, storage } = makeAdmin({ photos: [read, update] })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+    expect(result).toEqual({
+      error: 'The photo file was removed but the record could not be updated. Please try again.',
+    })
+    expect(storage.remove).toHaveBeenCalledWith([STORAGE_PATH])
+    expect(mockedLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ operation_type: 'redact', operation_status: 'failure' })
+    )
+  })
+
+  it('is a no-op on an already redacted photo rather than rewriting the attribution', async () => {
+    const read = queryStub({
+      data: readyRow({
+        redacted_at: '2026-09-05T12:00:00.000Z',
+        redacted_by: USER_ID,
+        redacted_by_email: 'someone.else@example.com',
+        redaction_reason: 'Already dealt with.',
+      }),
+    })
+    const update = queryStub({ data: null })
+    const { admin, storage } = makeAdmin({ photos: [read, update] })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+    expect(result).toEqual({ success: true, photoId: PHOTO_ID })
+    expect(storage.remove).not.toHaveBeenCalled()
+    expect(update.calls).toHaveLength(0)
+  })
+
+  it('refuses an unknown photo', async () => {
+    const read = queryStub({ data: null })
+    const { admin, storage } = makeAdmin({ photos: [read] })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await redactMaintenancePhoto(PHOTO_ID, REASON)
+
+    expect(result).toEqual({ error: 'That photo could not be found.' })
+    expect(storage.remove).not.toHaveBeenCalled()
+  })
+
+  it('drops a redacted photo from the gallery even if the query returns it', async () => {
+    // Belt and braces beside the redacted_at filter: a redacted row is not
+    // signed, so the bytes are never handed out even by mistake.
+    const rows = queryStub({
+      data: [
+        readyRow({
+          redacted_at: '2026-09-05T12:00:00.000Z',
+          redacted_by_email: 'owner@example.com',
+          redaction_reason: 'A payslip was in frame.',
+        }),
+      ],
+    })
+    const { admin, storage } = makeAdmin({ photos: [rows] })
+    mockedCreateAdminClient.mockReturnValue(admin)
+
+    const result = await listMaintenancePhotos(ITEM_ID)
+
+    expect(result).toEqual({ photos: [] })
+    expect(storage.createSignedUrl).not.toHaveBeenCalled()
   })
 })
 

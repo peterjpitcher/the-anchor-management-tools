@@ -100,4 +100,40 @@ describe('MaintenanceNewClient', () => {
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Gents tap dripping')
     expect(routerPushMock).not.toHaveBeenCalled()
   })
+
+  it('re-enables the button and keeps every field when the save never comes back', async () => {
+    // Logging something on a phone by the car park: the request rejects instead of
+    // resolving, so nothing after the await would run without a catch.
+    createMaintenanceItemMock.mockRejectedValue(new Error('Failed to fetch'))
+
+    render(<MaintenanceNewClient areas={areas} />)
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Gents tap dripping' } })
+    fireEvent.change(screen.getByLabelText('Area'), { target: { value: areas[0].id } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add more detail' }))
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Been dripping since the weekend.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Could not save. Check your connection and try again.')
+      ).toBeInTheDocument()
+    )
+    expect(screen.getByRole('button', { name: 'Save and open' })).not.toBeDisabled()
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Gents tap dripping')
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe(
+      'Been dripping since the weekend.'
+    )
+    expect(routerPushMock).not.toHaveBeenCalled()
+
+    // The retry is not blocked by a saving flag that was never reset.
+    createMaintenanceItemMock.mockResolvedValue({
+      success: true,
+      data: { id: '22222222-2222-4222-8222-222222222222', reference: 'MNT-0007' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and open' }))
+    await waitFor(() => expect(createMaintenanceItemMock).toHaveBeenCalledTimes(2))
+  })
 })

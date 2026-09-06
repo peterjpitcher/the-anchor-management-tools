@@ -42,17 +42,24 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
   const loadFirstPage = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
-    const result = await getMaintenanceTimeline({ itemId })
-    setLoading(false)
+    try {
+      const result = await getMaintenanceTimeline({ itemId })
 
-    if (!result.success || !result.data) {
-      setLoadError(result.error ?? 'Could not load the history for this item.')
-      return
+      if (!result.success || !result.data) {
+        setLoadError(result.error ?? 'Could not load the history for this item.')
+        return
+      }
+
+      setEntries(result.data.entries)
+      setCursor(result.data.nextCursor)
+      setHasMore(result.data.hasMore)
+    } catch {
+      // A read that never came back is still a read that failed, and must not be
+      // drawn as an empty trail.
+      setLoadError('Could not load the history. Check your connection and try again.')
+    } finally {
+      setLoading(false)
     }
-
-    setEntries(result.data.entries)
-    setCursor(result.data.nextCursor)
-    setHasMore(result.data.hasMore)
   }, [itemId])
 
   useEffect(() => {
@@ -62,17 +69,22 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
   const loadOlder = useCallback(async () => {
     if (!cursor) return
     setLoadingOlder(true)
-    const result = await getMaintenanceTimeline({ itemId, cursor })
-    setLoadingOlder(false)
+    try {
+      const result = await getMaintenanceTimeline({ itemId, cursor })
 
-    if (!result.success || !result.data) {
-      setLoadError(result.error ?? 'Could not load older entries.')
-      return
+      if (!result.success || !result.data) {
+        setLoadError(result.error ?? 'Could not load older entries.')
+        return
+      }
+
+      setEntries(current => [...current, ...result.data!.entries])
+      setCursor(result.data.nextCursor)
+      setHasMore(result.data.hasMore)
+    } catch {
+      setLoadError('Could not load older entries. Check your connection and try again.')
+    } finally {
+      setLoadingOlder(false)
     }
-
-    setEntries(current => [...current, ...result.data!.entries])
-    setCursor(result.data.nextCursor)
-    setHasMore(result.data.hasMore)
   }, [cursor, itemId])
 
   async function handleAddNote(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -88,30 +100,39 @@ export function MaintenanceTimeline({ itemId }: MaintenanceTimelineProps): React
 
     setNoteError(null)
     setSavingNote(true)
-    const result = await addMaintenanceNote({ itemId, content })
-    setSavingNote(false)
+    try {
+      const result = await addMaintenanceNote({ itemId, content })
 
-    if (!result.success || !result.data) {
-      // The draft is kept so a retry does not mean typing it again.
-      setNoteError(result.error ?? 'Could not save that note. Please try again.')
+      if (!result.success || !result.data) {
+        // The draft is kept so a retry does not mean typing it again.
+        setNoteError(result.error ?? 'Could not save that note. Please try again.')
+        noteRef.current?.focus()
+        return
+      }
+
+      const note = result.data
+      setEntries(current => [
+        {
+          kind: 'note',
+          id: note.id,
+          occurredAt: note.createdAt,
+          actorEmail: note.createdByEmail,
+          note,
+        },
+        ...current,
+      ])
+      setNoteDraft('')
+      setAnnouncement('Note added')
+      toast.success('Note added')
+    } catch {
+      // On half a bar of signal the promise rejects rather than resolving. Without
+      // this the button would spin for ever, the guard above would block the retry,
+      // and the note would be lost on the next reload.
+      setNoteError('Could not save the note. Check your connection and try again.')
       noteRef.current?.focus()
-      return
+    } finally {
+      setSavingNote(false)
     }
-
-    const note = result.data
-    setEntries(current => [
-      {
-        kind: 'note',
-        id: note.id,
-        occurredAt: note.createdAt,
-        actorEmail: note.createdByEmail,
-        note,
-      },
-      ...current,
-    ])
-    setNoteDraft('')
-    setAnnouncement('Note added')
-    toast.success('Note added')
   }
 
   const notes = entries.filter(

@@ -9,6 +9,8 @@ export default async function NewMaintenanceItemPage(): Promise<React.JSX.Elemen
     redirect('/unauthorized')
   }
 
+  // Active areas only. A switched-off area stays visible on items that already use
+  // it, but nothing new can be logged against one.
   const areasResult = await getMaintenanceAreas()
 
   const header = (
