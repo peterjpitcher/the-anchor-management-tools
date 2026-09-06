@@ -30,7 +30,7 @@ import {
 } from '@/lib/events/artwork/branding-service'
 // The placement bounds come from geometry.ts rather than being written out
 // again here. They are the same numbers as the CHECK constraints in
-// 20260906140000_event_image_branding.sql, and a copy that drifts would either
+// 20260906095746_event_image_branding.sql, and a copy that drifts would either
 // reject a legal placement with a 400 or accept one the database then refuses.
 import {
   LOGO_MAX_WIDTH_FRAC,
@@ -61,7 +61,7 @@ const variantSchema = z.enum(
 
 /**
  * Every bound below matches a CHECK constraint in
- * `20260906140000_event_image_branding.sql` exactly.
+ * `20260906095746_event_image_branding.sql` exactly.
  *
  * Kept in step on purpose: a value that passes here is guaranteed to survive the
  * UPDATE that records it, so the only way to hit a constraint violation is a

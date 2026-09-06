@@ -259,7 +259,7 @@ export function qrMinWidthFrac(): number {
  *
  * This exact value is duplicated in two other places that must agree with it:
  * the `event_images_qr_width_frac_check` constraint in
- * `20260906140000_event_image_branding.sql`, and the Zod bound on the composite
+ * `20260906095746_event_image_branding.sql`, and the Zod bound on the composite
  * route. Returning the unrounded ratio here (as this function once did) meant
  * the geometric minimum was fractionally BELOW the stored floor, so posting the
  * smallest legal code was rejected with a 400 before it ever reached the

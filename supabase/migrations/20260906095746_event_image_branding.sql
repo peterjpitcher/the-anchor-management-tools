@@ -317,22 +317,29 @@ begin
   end if;
 
   -- Both variant RPCs must still be present with their original signatures.
+  --
+  -- oidvectortypes, not pg_get_function_identity_arguments. The latter includes
+  -- PARAMETER NAMES ('p_event_id uuid, p_variant text, ...'), so comparing it
+  -- against a bare type list never matches. This assertion was originally
+  -- written the other way and passed against a local stub whose parameters
+  -- happened to be unnamed, then failed the moment it met the real functions.
+  -- Types are what a caller actually binds to, so types are what is asserted.
   select count(*) into v_rpcs
   from pg_catalog.pg_proc p
   join pg_catalog.pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
     and (
       (p.proname = 'upsert_event_image_variant'
-        and pg_catalog.pg_get_function_identity_arguments(p.oid)
+        and pg_catalog.oidvectortypes(p.proargtypes)
             = 'uuid, text, text, text, text, text, integer, uuid')
       or
       (p.proname = 'delete_event_image_variant'
-        and pg_catalog.pg_get_function_identity_arguments(p.oid) = 'uuid, text')
+        and pg_catalog.oidvectortypes(p.proargtypes) = 'uuid, text')
     );
 
   if v_rpcs <> 2 then
     raise exception 'the event image variant RPCs are not both intact (found %)', v_rpcs;
   end if;
 
-  raise notice 'event image branding: 8 nullable columns, 8 checks, anon read intact, both RPCs untouched';
+  raise notice 'event image branding: 10 nullable columns, 11 checks, anon read intact, both RPCs untouched';
 end $$;

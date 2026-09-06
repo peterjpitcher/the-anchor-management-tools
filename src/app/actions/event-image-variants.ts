@@ -423,7 +423,7 @@ export interface EventImageVariantState {
 /**
  * The `event_images` columns this action reads, hand written.
  *
- * Migration `20260906140000_event_image_branding.sql` adds the ten branding
+ * Migration `20260906095746_event_image_branding.sql` adds the ten branding
  * columns and has not been applied to any database, so
  * `src/types/database.generated.ts` does not carry them and the generated row
  * type cannot describe this select. `snake_case` to `camelCase` is mapped by
