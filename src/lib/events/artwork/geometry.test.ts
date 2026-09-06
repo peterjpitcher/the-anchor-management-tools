@@ -17,7 +17,10 @@ import {
   validateQrPlacement,
   type Corner,
   type Rect,
+  logoRectFree,
+  resolveLogoRect,
 } from './geometry'
+import { EVENT_IMAGE_VARIANTS, EVENT_IMAGE_VARIANT_ORDER } from '@/lib/events/imageVariants'
 import {
   EVENT_IMAGE_VARIANTS,
   EVENT_IMAGE_VARIANT_ORDER,
@@ -416,5 +419,91 @@ describe('validateQrPlacement', () => {
     const result = validateQrPlacement(posterW, posterH, { x: 100, y: 100, width: 0, height: 0 }, null)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toMatch(/no size/i)
+  })
+})
+
+describe('logoRectFree', () => {
+  const CANVASES = EVENT_IMAGE_VARIANT_ORDER.map((variant) => ({
+    variant,
+    w: EVENT_IMAGE_VARIANTS[variant].targetWidth,
+    h: EVENT_IMAGE_VARIANTS[variant].targetHeight,
+  }))
+
+  it('centres the logo on the requested point when there is room', () => {
+    const rect = logoRectFree(1920, 1080, 0.5, 0.5, 0.22)
+    expect(rect.x + rect.width / 2).toBeCloseTo(960, 0)
+    expect(rect.y + rect.height / 2).toBeCloseTo(540, 0)
+  })
+
+  it('keeps the 934:421 aspect of the logo file', () => {
+    const rect = logoRectFree(1920, 1080, 0.5, 0.5, 0.3)
+    expect(rect.width / rect.height).toBeCloseTo(LOGO_ASPECT, 1)
+  })
+
+  it('never hangs off the canvas, at any centre on any variant', () => {
+    for (const { variant, w, h } of CANVASES) {
+      for (const cx of [0, 0.25, 0.5, 0.75, 1]) {
+        for (const cy of [0, 0.25, 0.5, 0.75, 1]) {
+          for (const wf of [0.08, 0.22, 0.35]) {
+            const r = logoRectFree(w, h, cx, cy, wf)
+            const inset = insetPx(w, h)
+            expect(r.x, `${variant} x at ${cx},${cy}`).toBeGreaterThanOrEqual(inset)
+            expect(r.y, `${variant} y at ${cx},${cy}`).toBeGreaterThanOrEqual(inset)
+            expect(r.x + r.width, `${variant} right at ${cx},${cy}`).toBeLessThanOrEqual(w - inset)
+            expect(r.y + r.height, `${variant} bottom at ${cx},${cy}`).toBeLessThanOrEqual(h - inset)
+          }
+        }
+      }
+    }
+  })
+
+  it('clamps the width to the same bounds as a cornered logo', () => {
+    const tooWide = logoRectFree(1920, 1080, 0.5, 0.5, 0.9)
+    const atMax = logoRectFree(1920, 1080, 0.5, 0.5, LOGO_MAX_WIDTH_FRAC)
+    expect(tooWide.width).toBe(atMax.width)
+
+    const tooNarrow = logoRectFree(1920, 1080, 0.5, 0.5, 0.001)
+    const atMin = logoRectFree(1920, 1080, 0.5, 0.5, LOGO_MIN_WIDTH_FRAC)
+    expect(tooNarrow.width).toBe(atMin.width)
+  })
+
+  it('returns whole pixels', () => {
+    const r = logoRectFree(1055, 1491, 0.33, 0.67, 0.19)
+    for (const value of [r.x, r.y, r.width, r.height]) {
+      expect(Number.isInteger(value)).toBe(true)
+    }
+  })
+})
+
+describe('resolveLogoRect', () => {
+  it('matches logoRect for a corner placement', () => {
+    const viaUnion = resolveLogoRect(1920, 1080, {
+      mode: 'corner',
+      corner: 'bottom_right',
+      widthFrac: 0.22,
+    })
+    expect(viaUnion).toEqual(logoRect(1920, 1080, 'bottom_right', 0.22))
+  })
+
+  it('matches logoRectFree for a free placement', () => {
+    const viaUnion = resolveLogoRect(1920, 1080, {
+      mode: 'free',
+      centreXFrac: 0.4,
+      centreYFrac: 0.6,
+      widthFrac: 0.22,
+    })
+    expect(viaUnion).toEqual(logoRectFree(1920, 1080, 0.4, 0.6, 0.22))
+  })
+
+  it('lets a freely placed logo be rejected against a QR the same way a cornered one is', () => {
+    const logo = resolveLogoRect(2480, 3508, {
+      mode: 'free',
+      centreXFrac: 0.5,
+      centreYFrac: 0.5,
+      widthFrac: 0.3,
+    })
+    const qr = qrRect(2480, 3508, 0.5, 0.5, 0.25)
+    const verdict = validateQrPlacement(2480, 3508, qr, logo)
+    expect(verdict.ok).toBe(false)
   })
 })

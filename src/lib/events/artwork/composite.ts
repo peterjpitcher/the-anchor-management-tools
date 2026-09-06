@@ -49,6 +49,8 @@ import type { EventImageVariant } from '@/lib/events/imageVariants'
 import { PRINT_POSTER_DENSITY_DPI } from './output'
 import {
   logoRect,
+  resolveLogoRect,
+  type LogoPlacement,
   qrRect,
   validateQrPlacement,
   type Corner,
@@ -80,8 +82,14 @@ export const LOGO_SOURCES: Record<LogoColour, string> = {
 
 export interface CompositeSpec {
   variant: EventImageVariant
-  /** Null means the staff member deliberately chose no logo. */
-  logo: { corner: Corner; colour: LogoColour; widthFrac: number } | null
+  /**
+   * Null means the staff member deliberately chose no logo.
+   *
+   * `placement` is either a corner with a standard inset or a free centre
+   * point, never both, mirroring the database constraint. Free placement exists
+   * because plenty of artwork leaves no usable corner.
+   */
+  logo: { placement: LogoPlacement; colour: LogoColour } | null
   /** Null means no QR code. In practice only the print poster carries one. */
   qr: { centreXFrac: number; centreYFrac: number; widthFrac: number; url: string } | null
 }
@@ -229,7 +237,7 @@ export async function compositeArtwork(
   }
 
   const logoPlacement: Rect | null = spec.logo
-    ? logoRect(imageW, imageH, spec.logo.corner, spec.logo.widthFrac)
+    ? resolveLogoRect(imageW, imageH, spec.logo.placement)
     : null
 
   const qrPlacement: Rect | null = spec.qr
