@@ -244,8 +244,43 @@ export function reservedLogoRect(imageW: number, imageH: number, corner: Corner)
  * 40 / 210 = 0.19047...
  */
 export function qrMinWidthFrac(): number {
-  return QR_MIN_MM / A4_WIDTH_MM
+  return QR_MIN_WIDTH_FRAC
 }
+
+/**
+ * The enforced minimum QR width as a fraction of the image width.
+ *
+ * The exact ratio is 40 / 210 = 0.190476..., but this is deliberately the
+ * rounded-UP 0.1905, and the fourth decimal place is the whole point.
+ *
+ * Rounding down would admit a code that prints fractionally under the 40mm
+ * minimum, and a QR that is too small is only ever discovered after it has been
+ * printed. Rounding up costs 0.005mm of width and cannot.
+ *
+ * This exact value is duplicated in two other places that must agree with it:
+ * the `event_images_qr_width_frac_check` constraint in
+ * `20260906140000_event_image_branding.sql`, and the Zod bound on the composite
+ * route. Returning the unrounded ratio here (as this function once did) meant
+ * the geometric minimum was fractionally BELOW the stored floor, so posting the
+ * smallest legal code was rejected with a 400 before it ever reached the
+ * compositor. Keep all three the same number.
+ */
+export const QR_MIN_WIDTH_FRAC = 0.1905
+
+/**
+ * The unrounded ratio, exported for documentation and tests rather than for
+ * validation. Use `QR_MIN_WIDTH_FRAC` to bound an input.
+ */
+export const QR_MIN_WIDTH_FRAC_EXACT = QR_MIN_MM / A4_WIDTH_MM
+
+/**
+ * The widest a QR may be drawn, as a fraction of the image width.
+ *
+ * A sanity guard rather than a print rule: a code wider than two fifths of the
+ * image is not a placement, it is a mistake. Matches the
+ * `event_images_qr_width_frac_check` ceiling and the route's Zod bound.
+ */
+export const QR_MAX_WIDTH_FRAC = 0.4
 
 /**
  * The 40mm print minimum in pixels for a poster of a given pixel width.
@@ -277,7 +312,11 @@ export function qrRect(
 ): Rect {
   const inset = insetPx(posterW, posterH)
   const maxSide = Math.max(1, Math.min(posterW, posterH) - inset * 2)
-  const side = clamp(Math.round(posterW * widthFrac), 1, maxSide)
+  // Ceil, not round. The failure mode for a printed QR is being too small, and
+  // at the enforced minimum fraction Math.round would give 472px on the 2480px
+  // A4 canvas, which prints at 39.97mm and is under the 40mm floor the whole
+  // constraint exists to hold. Rounding up costs at most a pixel.
+  const side = clamp(Math.ceil(posterW * widthFrac), 1, maxSide)
 
   const maxX = Math.max(inset, posterW - inset - side)
   const maxY = Math.max(inset, posterH - inset - side)
