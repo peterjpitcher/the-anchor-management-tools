@@ -71,6 +71,9 @@ import {
   qrBlockRect,
   qrCodeRectWithinCanvas,
   qrMinWidthFrac,
+  QR_MIN_WIDTH_FRAC,
+  QR_MAX_WIDTH_FRAC,
+  isBelowPrintGuidance,
   qrStripRect,
   resolveLogoRect,
   snapFrac,
@@ -129,8 +132,11 @@ const QR_STRIP_FONT_FRAC = 0.6
  * code can never print under 40mm) and matches both the route's Zod bound and
  * the database CHECK, so the exact minimum is now accepted rather than 400ing.
  */
-const MIN_QR_WIDTH_PERCENT = Math.ceil(qrMinWidthFrac() * 100)
-const MAX_QR_WIDTH_PERCENT = 40
+// Both ends come from geometry, which the composite route and the database
+// CHECK also follow, so the slider cannot offer a value the save then refuses.
+// Floor rounds UP and ceiling rounds DOWN, so neither end can step outside.
+const MIN_QR_WIDTH_PERCENT = Math.ceil(QR_MIN_WIDTH_FRAC * 100)
+const MAX_QR_WIDTH_PERCENT = Math.floor(QR_MAX_WIDTH_FRAC * 100)
 
 const CORNER_OPTIONS: readonly { value: Corner; label: string }[] = [
   { value: 'top_left', label: 'Top left' },
@@ -927,7 +933,11 @@ export function ArtworkBrandingModal({
                         max={MAX_QR_WIDTH_PERCENT}
                         value={toPercent(qrWidthFrac)}
                         valueLabel={`${toPercent(qrWidthFrac)}% of the width`}
-                        hint={`Never smaller than the ${QR_MIN_MM}mm print minimum.`}
+                        hint={
+                          isBelowPrintGuidance(qrWidthFrac)
+                            ? `Under the ${QR_MIN_MM}mm poster guidance, so it wants scanning from closer to. Allowed.`
+                            : `At or above the ${QR_MIN_MM}mm poster guidance.`
+                        }
                         onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next) / 100)}
                       />
 

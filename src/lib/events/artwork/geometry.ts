@@ -265,7 +265,21 @@ export function qrMinWidthFrac(): number {
  * smallest legal code was rejected with a 400 before it ever reached the
  * compositor. Keep all three the same number.
  */
-export const QR_MIN_WIDTH_FRAC = 0.1905
+export const QR_MIN_WIDTH_FRAC = 0.12
+
+/**
+ * The 40mm poster guidance, as a fraction of A4 width.
+ *
+ * This WAS the hard floor. It is now advisory: the editor warns below it and
+ * still lets the code be placed, because at 42mm the code was dominating busy
+ * artwork and the owner needs 20% to sit mid-range rather than at the bottom.
+ *
+ * The guidance is not arbitrary, so the warning stays. 40mm gives roughly 1mm
+ * modules, which a phone locks onto from about arm's length. The hard floor of
+ * 0.12 is 25mm, roughly 0.6mm modules, which still prints and scans but wants
+ * the reader closer to the poster, nearer 25cm.
+ */
+export const QR_ADVISORY_MIN_WIDTH_FRAC = 0.1905
 
 /**
  * The unrounded ratio, exported for documentation and tests rather than for
@@ -280,7 +294,7 @@ export const QR_MIN_WIDTH_FRAC_EXACT = QR_MIN_MM / A4_WIDTH_MM
  * image is not a placement, it is a mistake. Matches the
  * `event_images_qr_width_frac_check` ceiling and the route's Zod bound.
  */
-export const QR_MAX_WIDTH_FRAC = 0.4
+export const QR_MAX_WIDTH_FRAC = 0.28
 
 /**
  * What a new QR starts at before anyone changes it: 0.20 of the width, which is
@@ -288,6 +302,12 @@ export const QR_MAX_WIDTH_FRAC = 0.4
  * The previous 0.22 (46mm) started larger than most artwork wanted.
  */
 export const QR_DEFAULT_WIDTH_FRAC = 0.2
+
+/**
+ * 0.20 is deliberately the exact midpoint of [0.12, 0.28], so the slider opens
+ * in the middle of its travel and moves the same distance either way. Changing
+ * either bound without moving this breaks that.
+ */
 
 /**
  * The 40mm print minimum in pixels for a poster of a given pixel width.
@@ -387,11 +407,14 @@ export function validateQrPlacement(
     return { ok: false, reason: 'The QR code falls outside the poster.' }
   }
 
-  const minWidth = qrMinWidthPx(posterW)
-  if (qr.width < minWidth) {
+  // The HARD floor, not the 40mm guidance. Below the guidance the editor warns
+  // and still allows the placement; below this the code is too small to be
+  // worth printing at all.
+  const hardMin = qrHardMinWidthPx(posterW)
+  if (qr.width < hardMin) {
     return {
       ok: false,
-      reason: `The QR code is smaller than the ${QR_MIN_MM}mm print minimum (${minWidth}px on this poster).`,
+      reason: `The QR code is too small to scan reliably (${hardMin}px, about ${Math.round(QR_MIN_WIDTH_FRAC * A4_WIDTH_MM)}mm, is the smallest that prints).`,
     }
   }
 
@@ -605,4 +628,23 @@ export function snapFrac(
   }
 
   return best === null ? { value, snappedTo: null } : { value: best, snappedTo: best }
+}
+
+
+/** The smallest width that may be saved at all, in pixels. */
+export function qrHardMinWidthPx(posterWidthPx: number): number {
+  return Math.ceil(posterWidthPx * QR_MIN_WIDTH_FRAC)
+}
+
+/**
+ * True when a code is legal but under the 40mm print guidance, so the editor
+ * can say so without refusing the placement.
+ */
+export function isBelowPrintGuidance(widthFrac: number): boolean {
+  return widthFrac < QR_ADVISORY_MIN_WIDTH_FRAC
+}
+
+/** The printed width in millimetres on an A4 sheet, for the editor's readout. */
+export function qrWidthMm(widthFrac: number): number {
+  return widthFrac * A4_WIDTH_MM
 }

@@ -1107,7 +1107,9 @@ describe('POST /api/events/[id]/artwork/composite', () => {
       request({
         variant: 'print_poster',
         logo: null,
-        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.19 },
+        // 0.19 used to be under the floor and is now legal, so this reaches for
+        // a width that is genuinely outside the range the route accepts.
+        qr: { centreXFrac: 0.5, centreYFrac: 0.5, widthFrac: 0.05 },
       }) as never,
       context()
     )

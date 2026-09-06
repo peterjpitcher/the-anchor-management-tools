@@ -31,6 +31,12 @@ import {
   qrCodeRectWithinCanvas,
   snapFrac,
   SNAP_THRESHOLD_FRAC,
+  QR_ADVISORY_MIN_WIDTH_FRAC,
+  QR_DEFAULT_WIDTH_FRAC,
+  QR_MAX_WIDTH_FRAC,
+  qrHardMinWidthPx,
+  isBelowPrintGuidance,
+  qrWidthMm,
 } from './geometry'
 import { EVENT_IMAGE_VARIANTS, EVENT_IMAGE_VARIANT_ORDER } from '@/lib/events/imageVariants'
 import {
@@ -275,13 +281,16 @@ describe('qrMinWidthPx and qrMinWidthFrac', () => {
     // smallest legal code prints under 40mm. It also has to match the database
     // CHECK and the route's Zod bound, both of which use 0.1905; returning the
     // unrounded ratio here meant the geometric minimum was rejected with a 400.
-    expect(qrMinWidthFrac()).toBe(0.1905)
-    expect(qrMinWidthFrac()).toBeGreaterThan(40 / 210)
+    // The 40mm guidance is now ADVISORY, not the enforced floor. It still has
+    // to round UP, or the warning would let a code under 40mm through silently.
+    expect(QR_ADVISORY_MIN_WIDTH_FRAC).toBe(0.1905)
+    expect(QR_ADVISORY_MIN_WIDTH_FRAC).toBeGreaterThan(40 / 210)
     expect(qrMinWidthPx(2480)).toBe(473)
+    // The ENFORCED floor is lower, so 0.20 can sit mid-range.
+    expect(qrMinWidthFrac()).toBe(0.12)
     // And the rect built at that fraction is at least the minimum pixel width.
-    expect(qrRect(2480, 3508, 0.5, 0.5, qrMinWidthFrac()).width).toBeGreaterThanOrEqual(
-      qrMinWidthPx(2480)
-    )
+    expect(qrRect(2480, 3508, 0.5, 0.5, QR_ADVISORY_MIN_WIDTH_FRAC).width)
+      .toBeGreaterThanOrEqual(qrMinWidthPx(2480))
   })
 })
 
@@ -431,12 +440,32 @@ describe('validateQrPlacement', () => {
     }
   })
 
-  it('rejects a code under the 40mm print minimum', () => {
-    const tooSmall = qrMinWidthPx(posterW) - 1 // 472px prints at 39.9mm
+  it('ALLOWS a code under the 40mm guidance, and flags it instead', () => {
+    // 40mm is now advisory. The editor warns; it does not refuse. Refusing was
+    // what made the smallest allowed code still too big for busy artwork.
+    const underGuidance = qrMinWidthPx(posterW) - 1 // 472px, prints at 39.9mm
+    const qr: Rect = { x: 1000, y: 2000, width: underGuidance, height: underGuidance }
+    expect(validateQrPlacement(posterW, posterH, qr, null).ok).toBe(true)
+    expect(isBelowPrintGuidance(underGuidance / posterW)).toBe(true)
+  })
+
+  it('rejects a code under the HARD floor, which is what still cannot print', () => {
+    const tooSmall = qrHardMinWidthPx(posterW) - 1
     const qr: Rect = { x: 1000, y: 2000, width: tooSmall, height: tooSmall }
     const result = validateQrPlacement(posterW, posterH, qr, null)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toContain('40mm')
+    if (!result.ok) expect(result.reason).toContain('too small')
+  })
+
+  it('puts the default at the exact midpoint of the range', () => {
+    // The slider opens mid-travel and moves the same distance either way.
+    expect(QR_DEFAULT_WIDTH_FRAC).toBeCloseTo((QR_MIN_WIDTH_FRAC + QR_MAX_WIDTH_FRAC) / 2, 10)
+  })
+
+  it('reports the printed width in millimetres for the readout', () => {
+    expect(qrWidthMm(QR_MIN_WIDTH_FRAC)).toBeCloseTo(25.2, 1)
+    expect(qrWidthMm(QR_DEFAULT_WIDTH_FRAC)).toBeCloseTo(42, 1)
+    expect(qrWidthMm(QR_MAX_WIDTH_FRAC)).toBeCloseTo(58.8, 1)
   })
 
   it('accepts a code at exactly the 40mm minimum', () => {
@@ -539,27 +568,28 @@ describe('resolveLogoRect', () => {
 })
 
 describe('the QR minimum width floor agrees everywhere it is written down', () => {
-  it('is the rounded-up 0.1905, not the exact 40/210 ratio', () => {
-    expect(qrMinWidthFrac()).toBe(0.1905)
-    expect(QR_MIN_WIDTH_FRAC).toBe(0.1905)
+  it('keeps the 40mm advisory rounded up, separate from the enforced floor', () => {
+    expect(QR_ADVISORY_MIN_WIDTH_FRAC).toBe(0.1905)
+    expect(QR_MIN_WIDTH_FRAC).toBe(0.12)
     expect(QR_MIN_WIDTH_FRAC_EXACT).toBeCloseTo(0.190476, 6)
     // The rounding direction is the safety property: the enforced floor must
     // never be below the exact ratio, or a code could print under 40mm.
-    expect(QR_MIN_WIDTH_FRAC).toBeGreaterThan(QR_MIN_WIDTH_FRAC_EXACT)
+    expect(QR_ADVISORY_MIN_WIDTH_FRAC).toBeGreaterThan(QR_MIN_WIDTH_FRAC_EXACT)
   })
 
   it('matches the database CHECK constraint in the branding migration', () => {
     const sql = readFileSync(
-      resolve(__dirname, '../../../../supabase/migrations/20260906095746_event_image_branding.sql'),
+      resolve(__dirname, '../../../../supabase/migrations/20260906160000_qr_width_range.sql'),
       'utf8'
     )
     // If someone changes one and not the other, the smallest legal code either
     // fails validation or prints too small. Both are silent until it is printed.
     expect(sql).toContain(`qr_width_frac >= ${QR_MIN_WIDTH_FRAC}`)
+    expect(sql).toContain(`qr_width_frac <= ${QR_MAX_WIDTH_FRAC}`)
   })
 
-  it('a QR at exactly the floor still clears 40mm on the A4 canvas', () => {
-    const widthPx = qrRect(2480, 3508, 0.5, 0.5, QR_MIN_WIDTH_FRAC).width
+  it('a QR at the ADVISORY floor still clears 40mm on the A4 canvas', () => {
+    const widthPx = qrRect(2480, 3508, 0.5, 0.5, QR_ADVISORY_MIN_WIDTH_FRAC).width
     const mm = (widthPx / 2480) * 210
     expect(mm).toBeGreaterThanOrEqual(40)
     expect(widthPx).toBeGreaterThanOrEqual(qrMinWidthPx(2480))

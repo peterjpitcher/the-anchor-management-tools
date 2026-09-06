@@ -11,6 +11,9 @@ import {
   qrCodeRectWithinCanvas,
   qrMinWidthFrac,
   qrMinWidthPx,
+  qrHardMinWidthPx,
+  QR_MIN_WIDTH_FRAC,
+  QR_MAX_WIDTH_FRAC,
   qrStripRect,
 } from '@/lib/events/artwork/geometry'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
@@ -329,7 +332,7 @@ describe('ArtworkBrandingModal, QR code', () => {
     expect(screen.queryByTestId('qr-overlay')).toBeNull()
   })
 
-  it('will not let the QR size go below the print minimum', () => {
+  it('will not let the QR size go below the hard minimum', () => {
     renderModal()
 
     const slider = screen.getByLabelText('QR size') as HTMLInputElement
@@ -343,7 +346,9 @@ describe('ArtworkBrandingModal, QR code', () => {
     const [, , width] = (screen.getByTestId('qr-overlay').getAttribute('data-code-rect') ?? '')
       .split(',')
       .map(Number)
-    expect(width).toBeGreaterThanOrEqual(qrMinWidthPx(POSTER_W))
+    // The HARD floor now, not the 40mm guidance. 40mm is advisory and the
+    // slider is allowed to go under it, which is the point of the change.
+    expect(width).toBeGreaterThanOrEqual(qrHardMinWidthPx(POSTER_W))
   })
 
   it('starts a new QR at the shared default width', () => {
@@ -363,10 +368,11 @@ describe('ArtworkBrandingModal, QR code', () => {
     renderModal()
 
     const slider = screen.getByLabelText('QR size') as HTMLInputElement
-    // The route's own schema is z.number().min(0.1905).max(0.4). Sending
+    // The route's schema imports the same bounds from geometry. Sending
     // qrMinWidthFrac() itself (0.190476...) would be refused with a 400, so the
     // control floor has to sit above it, not on it.
-    expect(Number(slider.min) / 100).toBeGreaterThanOrEqual(0.1905)
+    expect(Number(slider.min) / 100).toBeGreaterThanOrEqual(QR_MIN_WIDTH_FRAC)
+    expect(Number(slider.max) / 100).toBeLessThanOrEqual(QR_MAX_WIDTH_FRAC)
     expect(Number(slider.max) / 100).toBeLessThanOrEqual(0.4)
 
     // A typed value outside the range is pulled back in rather than posted.
@@ -375,7 +381,7 @@ describe('ArtworkBrandingModal, QR code', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
-    expect(body.qr.widthFrac).toBeGreaterThanOrEqual(0.1905)
+    expect(body.qr.widthFrac).toBeGreaterThanOrEqual(QR_MIN_WIDTH_FRAC)
     expect(body.qr.widthFrac).toBeLessThanOrEqual(0.4)
   })
 

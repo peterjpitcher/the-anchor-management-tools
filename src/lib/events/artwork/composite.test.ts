@@ -34,6 +34,7 @@ import {
   qrBlockRect,
   qrCodeRectWithinCanvas,
   qrMinWidthPx,
+  qrHardMinWidthPx,
   qrStripRect,
   QR_STRIP_LABEL,
   type Corner,
@@ -577,9 +578,11 @@ describe('compositeArtwork, QR code on the poster', () => {
     expect(result.failure.detail).toContain('logo')
   })
 
-  it('rejects a QR under the 40mm print minimum', async () => {
+  it('rejects a QR under the hard minimum width', async () => {
     const source = await createSource(POSTER.targetWidth, POSTER.targetHeight)
-    const minimum = qrMinWidthPx(POSTER.targetWidth)
+    // The hard floor, not the 40mm guidance: 0.1 is under both, but only the
+    // hard floor still refuses a placement.
+    const minimum = qrHardMinWidthPx(POSTER.targetWidth)
 
     const result = await compositeArtwork(
       source,
@@ -592,6 +595,7 @@ describe('compositeArtwork, QR code on the poster', () => {
     if (result.ok) throw new Error('unreachable')
     expect(result.failure.code).toBe('placement_invalid')
     expect(result.failure.detail).toContain(String(minimum))
+    expect(result.failure.detail).toContain('too small')
 
     // The same placement one pixel over the minimum is accepted, so the
     // rejection is the size rule and not something else about the position.
