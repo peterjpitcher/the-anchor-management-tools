@@ -30,6 +30,36 @@ describe('renderManagerReport', () => {
     expect(report.text).not.toContain('Recorded: 29 Oct 2026')
   })
 
+  // The owner asked for every outstanding job to be readable in the email itself.
+  // A maintenance list that sends you to an attachment to find out what is
+  // outstanding fails the one job the section exists for. Other sections keep
+  // their existing caps, so this must not widen them.
+  it('keeps a long maintenance list in the email body, while other sections stay capped', () => {
+    const items = Array.from({ length: 40 }, (_, i) =>
+      `M-${String(i + 1).padStart(4, '0')} Broken thing number ${i + 1}, Cellar, With Greene King, high, target not set`
+    ).join('\n')
+    const longBody = `<p>${items.split('\n').join('</p><p>')}</p>`
+
+    const report = renderManagerReport({ ...input, entries: [
+      entry({ id: 'm1', key: 'm1', section: 'maintenance', subject: '40 outstanding maintenance items', html: longBody }),
+      entry({ id: 'p1', key: 'p1', section: 'private_bookings', subject: 'Private bookings', html: longBody }),
+    ] })
+
+    // Every maintenance reference is visible in the body, not only the attachment.
+    for (const ref of ['M-0001', 'M-0020', 'M-0040']) {
+      expect(report.text).toContain(ref)
+      expect(report.html).toContain(ref)
+    }
+
+    // The private-booking snapshot is still clipped at its existing 900 characters,
+    // so this change did not widen a section the owner did not ask about.
+    const pbVisible = report.text.split('Private-booking summary')[1] ?? ''
+    expect(pbVisible).toContain('...')
+
+    // The whole email still sits under the inbox clipping threshold.
+    expect(new TextEncoder().encode(report.html).byteLength).toBeLessThan(85_000)
+  })
+
   it('renders all nine categories with truthful counts, detail, snapshot dates and management links', () => {
     const entries = MANAGER_REPORT_SECTIONS.map((section, index) => entry({
       id: `synthetic-${index}`, key: `synthetic-${index}`, section,
