@@ -223,8 +223,14 @@ async function fetchSummaries(
   return summaries
 }
 
+export type MarketingCampaignSort = 'newest' | 'oldest' | 'scheduled_asc' | 'scheduled_desc' | 'name_asc' | 'name_desc'
+
 export interface ListCampaignsOptions {
   status?: MarketingCampaignStatus
+  statuses?: MarketingCampaignStatus[]
+  search?: string
+  audienceType?: MarketingAudienceType
+  sort?: MarketingCampaignSort
   page?: number
   pageSize?: number
 }
@@ -245,9 +251,26 @@ export async function listCampaigns(
 
   let query = supabase.from('marketing_campaigns').select('*', { count: 'exact' })
   if (options.status) query = query.eq('status', options.status)
+  if (options.statuses?.length) query = query.in('status', options.statuses)
+  if (options.audienceType) query = query.eq('audience_type', options.audienceType)
+  const search = options.search?.trim()
+  if (search) {
+    // Quote the PostgREST value so punctuation cannot add another filter; escape LIKE wildcards.
+    const pattern = JSON.stringify(`%${search.replace(/[\\%_]/g, '\\$&')}%`)
+    query = query.or(`name.ilike.${pattern},subject.ilike.${pattern}`)
+  }
+
+  switch (options.sort) {
+    case 'oldest': query = query.order('created_at', { ascending: true }); break
+    case 'scheduled_asc': query = query.order('scheduled_for', { ascending: true, nullsFirst: false }); break
+    case 'scheduled_desc': query = query.order('scheduled_for', { ascending: false, nullsFirst: false }); break
+    case 'name_asc': query = query.order('name', { ascending: true }); break
+    case 'name_desc': query = query.order('name', { ascending: false }); break
+    default: query = query.order('created_at', { ascending: false })
+  }
 
   const { data, error, count } = await query
-    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
     .range(from, from + pageSize - 1)
 
   if (error) throw new Error(error.message)
