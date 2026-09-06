@@ -4,7 +4,7 @@
  * Places the venue logo, and on the A4 poster a booking QR code, onto artwork
  * that has already been uploaded for an event.
  *
- * Four decisions here that later edits must not undo:
+ * Five decisions here that later edits must not undo:
  *
  * 1. GEOMETRY IS NEVER RECOMPUTED. Every rectangle on screen comes from
  *    `src/lib/events/artwork/geometry.ts`, which the server compositor also
@@ -29,6 +29,12 @@
  *    route re-runs it server side and refuses the composite regardless. Do not
  *    remove the server check on the grounds that the button is disabled.
  *
+ * 5. SNAPPING IS A DRAG AND KEYBOARD AID, NOT A CONSTRAINT. `snapFrac` pulls a
+ *    move onto the exact centre when it lands close, draws a guide line while
+ *    it holds, and lets go the moment the move passes the threshold. The
+ *    numeric fields deliberately bypass it: they are the exact-entry escape
+ *    hatch, and silently turning a typed 49% into 50% would be a bug.
+ *
  * The surface is a full-screen dialog rather than a route or the DS Modal.
  * Navigating away from the event drawer would discard unsaved event edits, and
  * the DS Modal caps at 800px while an A4 preview 600px wide is about 848px
@@ -43,6 +49,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
 } from '@dnd-kit/core'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { XMarkIcon } from '@heroicons/react/24/outline'
@@ -55,11 +62,18 @@ import {
   LOGO_DEFAULT_WIDTH_FRAC,
   LOGO_MAX_WIDTH_FRAC,
   LOGO_MIN_WIDTH_FRAC,
+  QR_DEFAULT_WIDTH_FRAC,
   QR_MIN_MM,
+  QR_STRIP_LABEL,
+  cssDropShadow,
   logoRectFree,
+  logoShadowSpec,
+  qrBlockRect,
+  qrCodeRectWithinCanvas,
   qrMinWidthFrac,
-  qrRect,
+  qrStripRect,
   resolveLogoRect,
+  snapFrac,
   validateQrPlacement,
   type Corner,
   type LogoPlacement,
@@ -78,7 +92,34 @@ type LogoMode = 'none' | 'corner' | 'free'
 const DEFAULT_CORNER: Corner = 'bottom_right'
 const DEFAULT_FREE_CENTRE = { x: 0.5, y: 0.85 }
 const DEFAULT_QR_CENTRE = { x: 0.5, y: 0.8 }
-const DEFAULT_QR_WIDTH_FRAC = 0.22
+
+/**
+ * Which axes are currently held on a snap target, and where.
+ *
+ * `x` and `y` carry the target fraction so the guide can be drawn exactly where
+ * the snap landed rather than assuming it was the centre.
+ */
+interface SnapAxes {
+  x: number | null
+  y: number | null
+}
+
+/** One shared "nothing is snapped" value, so clearing the guide twice does not
+ *  hand React a new object and force a pointless re-render. */
+const NO_SNAP: SnapAxes = { x: null, y: null }
+
+/**
+ * The preview width in CSS pixels assumed until the element has been measured.
+ *
+ * Only the drop shadow uses it, and only for a frame: a `ResizeObserver` takes
+ * over as soon as there is a layout. It matters because the shadow is computed
+ * from the DISPLAYED logo, so an unmeasured preview must not fall back to the
+ * full-resolution canvas and paint a shadow ten times too heavy.
+ */
+const NOMINAL_PREVIEW_WIDTH_PX = 600
+
+/** How much of the strip's displayed width the label glyphs take. */
+const QR_STRIP_FONT_FRAC = 0.6
 
 /**
  * The QR size controls work in whole percent, and these are their bounds.
@@ -162,6 +203,17 @@ function centreOf(rect: Rect, imageW: number, imageH: number): { x: number; y: n
   return { x: (rect.x + rect.width / 2) / imageW, y: (rect.y + rect.height / 2) / imageH }
 }
 
+/** A length as a CSS percentage of the box it is being placed inside. */
+function percentOf(length: number, total: number): string {
+  return `${(length / total) * 100}%`
+}
+
+/** Do two snap states describe the same thing? Used to hold object identity so
+ *  a pointer move that changes nothing does not re-render the editor. */
+function sameSnap(a: SnapAxes, b: SnapAxes): boolean {
+  return a.x === b.x && a.y === b.y
+}
+
 export function ArtworkBrandingModal({
   open,
   onClose,
@@ -200,28 +252,70 @@ export function ArtworkBrandingModal({
   const [corner, setCorner] = useState<Corner>(
     savedPlacement?.mode === 'corner' ? savedPlacement.corner : DEFAULT_CORNER
   )
-  const [logoCentre, setLogoCentre] = useState(
+  const initialLogoCentre =
     savedPlacement?.mode === 'free'
       ? { x: savedPlacement.centreXFrac, y: savedPlacement.centreYFrac }
       : DEFAULT_FREE_CENTRE
-  )
+  const [logoCentre, setLogoCentre] = useState(initialLogoCentre)
   const [logoWidthFrac, setLogoWidthFrac] = useState(
     savedPlacement?.widthFrac ?? LOGO_DEFAULT_WIDTH_FRAC
   )
   const [colour, setColour] = useState<LogoColour>(savedLogo?.colour ?? 'white')
 
   const [qrOn, setQrOn] = useState(isPoster && (branding ? savedQr !== null : true))
-  const [qrCentre, setQrCentre] = useState(
-    savedQr ? { x: savedQr.centreXFrac, y: savedQr.centreYFrac } : DEFAULT_QR_CENTRE
-  )
-  const [qrWidthFrac, setQrWidthFrac] = useState(savedQr?.widthFrac ?? DEFAULT_QR_WIDTH_FRAC)
+  const initialQrCentre = savedQr
+    ? { x: savedQr.centreXFrac, y: savedQr.centreYFrac }
+    : DEFAULT_QR_CENTRE
+  const [qrCentre, setQrCentre] = useState(initialQrCentre)
+  const [qrWidthFrac, setQrWidthFrac] = useState(savedQr?.widthFrac ?? QR_DEFAULT_WIDTH_FRAC)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   const [busy, setBusy] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [confirmRevert, setConfirmRevert] = useState(false)
 
+  /**
+   * The guide belongs to whatever is being moved right now, which is why there
+   * is one of these and not one per overlay: moving the QR replaces the logo's
+   * guide, exactly as a manager expects when their attention has moved on.
+   */
+  const [snapGuide, setSnapGuide] = useState<SnapAxes>(NO_SNAP)
+
+  /**
+   * Where each item really is, before snapping rounded it off.
+   *
+   * Without this a snap becomes a trap: from dead centre, every 1% arrow press
+   * would land back inside the 2% threshold and be pulled straight back, so the
+   * logo could never be nudged off the middle at all. Moves accumulate against
+   * the true position and the snapped value is only what gets stored and drawn,
+   * which is how a second press escapes.
+   */
+  const rawCentreRef = useRef<Record<'logo' | 'qr', { x: number; y: number }>>({
+    logo: initialLogoCentre,
+    qr: initialQrCentre,
+  })
+
   const previewRef = useRef<HTMLDivElement | null>(null)
+  const [previewWidthPx, setPreviewWidthPx] = useState(NOMINAL_PREVIEW_WIDTH_PX)
+
+  /**
+   * Measure the preview so the drop shadow can be drawn at the size it is being
+   * looked at. The observer is optional: without one the nominal width above
+   * still gives a shadow of roughly the right weight, which beats none at all.
+   */
+  useEffect(() => {
+    const node = previewRef.current
+    if (!node) return
+    const measure = (): void => {
+      const width = node.getBoundingClientRect().width
+      if (width > 0) setPreviewWidthPx(width)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [open])
 
   const sensors = useSensors(
     // A short distance threshold so a tap that was meant as a tap is still a tap.
@@ -244,21 +338,84 @@ export function ArtworkBrandingModal({
     [placement, imageW, imageH]
   )
 
-  const qrBox = useMemo(
+  /**
+   * The scannable square. `qr_width_frac` and the stored centre both describe
+   * THIS rect and nothing else, which is what keeps the 40mm print minimum and
+   * the database CHECK meaning what they say. `qrCodeRectWithinCanvas` shifts it
+   * back when the BOOK NOW strip beside it would otherwise hang off the edge.
+   */
+  const qrCodeBox = useMemo(
     () =>
-      isPoster && qrOn ? qrRect(imageW, imageH, qrCentre.x, qrCentre.y, qrWidthFrac) : null,
+      isPoster && qrOn
+        ? qrCodeRectWithinCanvas(imageW, imageH, qrCentre.x, qrCentre.y, qrWidthFrac)
+        : null,
     [isPoster, qrOn, imageW, imageH, qrCentre, qrWidthFrac]
   )
 
+  /** The strip, and the code plus strip: what actually lands on the artwork, and
+   *  therefore what is dragged and outlined. */
+  const qrStripBox = useMemo(() => (qrCodeBox ? qrStripRect(qrCodeBox) : null), [qrCodeBox])
+  const qrBlockBox = useMemo(() => (qrCodeBox ? qrBlockRect(qrCodeBox) : null), [qrCodeBox])
+
+  /** The label has to fit the strip at the size it is being looked at, so this
+   *  comes off the displayed width rather than the poster's pixels. */
+  const qrStripFontPx = qrStripBox
+    ? Math.max(5, Math.round((qrStripBox.width / imageW) * previewWidthPx * QR_STRIP_FONT_FRAC))
+    : 0
+
   const qrCheck = useMemo(
     () =>
-      qrBox
-        ? validateQrPlacement(imageW, imageH, qrBox, logoBox)
+      qrCodeBox
+        ? // The CODE goes in, not the block: the validator grows it into the
+          // block itself, and handing it a block would measure a block of a
+          // block and reject placements the compositor is happy with.
+          validateQrPlacement(imageW, imageH, qrCodeBox, logoBox)
         : ({ ok: true } as const),
-    [qrBox, imageW, imageH, logoBox]
+    [qrCodeBox, imageW, imageH, logoBox]
   )
 
-  const qrMillimetres = qrBox ? (qrBox.width * A4_WIDTH_MM) / imageW : 0
+  // Still the code, deliberately: the printed-size readout is about the thing a
+  // phone has to scan, and the strip is not part of that measurement.
+  const qrMillimetres = qrCodeBox ? (qrCodeBox.width * A4_WIDTH_MM) / imageW : 0
+
+  /**
+   * The composited logo carries a shadow in the opposite colour, so the preview
+   * has to as well or someone positions the mark against a picture that is not
+   * the file they get.
+   *
+   * The spec is computed from the DISPLAYED logo, not the full-resolution one.
+   * `logoShadowSpec` returns pixels as a fraction of the logo width, and on the
+   * 2480px poster that is an 87px blur: correct on the file, and absurd over a
+   * preview a quarter of the size. Scaling the rect first keeps the shadow the
+   * same relative weight on screen as it is on the artwork.
+   */
+  const logoShadowFilter = useMemo(() => {
+    if (!logoBox) return undefined
+    const scale = previewWidthPx / imageW
+    return cssDropShadow(
+      logoShadowSpec(
+        {
+          x: logoBox.x * scale,
+          y: logoBox.y * scale,
+          width: logoBox.width * scale,
+          height: logoBox.height * scale,
+        },
+        colour
+      )
+    )
+  }, [logoBox, previewWidthPx, imageW, colour])
+
+  /**
+   * Said once, when an axis catches, and cleared when it lets go. `snapGuide`
+   * only changes identity on a real transition, so a drag across the centre
+   * announces once instead of on every pointer move.
+   */
+  const snapMessage = useMemo(() => {
+    const axes: string[] = []
+    if (snapGuide.x !== null) axes.push('horizontal centre')
+    if (snapGuide.y !== null) axes.push('vertical centre')
+    return axes.length === 0 ? '' : `Snapped to the ${axes.join(' and ')}.`
+  }, [snapGuide])
 
   /**
    * Where the printed code will point. Derived from the event id, not the slug,
@@ -290,60 +447,141 @@ export function ArtworkBrandingModal({
     }
   }, [open, isPoster, qrOn, posterShortUrl])
 
-  const nudgeLogo = useCallback(
-    (dx: number, dy: number) => {
-      setLogoCentre((current) => {
-        // Settle against the geometry module's own clamped result first, so
-        // pressing left at the margin ten times does not bank ten presses that
-        // have to be undone before the logo moves right again.
-        const settled = centreOf(
-          logoRectFree(imageW, imageH, current.x, current.y, logoWidthFrac),
-          imageW,
-          imageH
-        )
-        return { x: clampFraction(settled.x + dx), y: clampFraction(settled.y + dy) }
-      })
+  /**
+   * Where a move lands, and which axes the snap caught.
+   *
+   * The current position is settled against the geometry module's own clamped
+   * rect first, so pressing left at the margin ten times does not bank ten
+   * presses that have to be undone before the item moves right again. Both the
+   * pointer drag and the arrow keys arrive here, which is exactly why keyboard
+   * users get the same snapping help as a mouse.
+   */
+  const resolveMove = useCallback(
+    (
+      target: 'logo' | 'qr',
+      dx: number,
+      dy: number
+    ): {
+      centre: { x: number; y: number }
+      raw: { x: number; y: number }
+      snap: SnapAxes
+    } => {
+      const current = rawCentreRef.current[target]
+      const settled = centreOf(
+        target === 'logo'
+          ? logoRectFree(imageW, imageH, current.x, current.y, logoWidthFrac)
+          : qrCodeRectWithinCanvas(imageW, imageH, current.x, current.y, qrWidthFrac),
+        imageW,
+        imageH
+      )
+      const raw = { x: clampFraction(settled.x + dx), y: clampFraction(settled.y + dy) }
+      const x = snapFrac(raw.x)
+      const y = snapFrac(raw.y)
+      return { centre: { x: x.value, y: y.value }, raw, snap: { x: x.snappedTo, y: y.snappedTo } }
     },
-    [imageW, imageH, logoWidthFrac]
+    [imageW, imageH, logoWidthFrac, qrWidthFrac]
   )
 
-  const nudgeQr = useCallback(
-    (dx: number, dy: number) => {
-      setQrCentre((current) => {
-        const settled = centreOf(
-          qrRect(imageW, imageH, current.x, current.y, qrWidthFrac),
-          imageW,
-          imageH
-        )
-        return { x: clampFraction(settled.x + dx), y: clampFraction(settled.y + dy) }
-      })
+  /** Hold the object identity when nothing changed, so a pointer move that is
+   *  still inside the same snap does not re-render the editor. */
+  const showSnap = useCallback((snap: SnapAxes): void => {
+    setSnapGuide((current) => (sameSnap(current, snap) ? current : snap))
+  }, [])
+
+  const nudge = useCallback(
+    (target: 'logo' | 'qr', dx: number, dy: number): void => {
+      const { centre, raw, snap } = resolveMove(target, dx, dy)
+      // Only a committed move updates the true position. A drag in progress
+      // must not, or the guide flickering past the centre would drag the
+      // starting point along with it.
+      rawCentreRef.current[target] = raw
+      if (target === 'logo') setLogoCentre(centre)
+      else setQrCentre(centre)
+      showSnap(snap)
     },
-    [imageW, imageH, qrWidthFrac]
+    [resolveMove, showSnap]
+  )
+
+  /**
+   * Set one axis to exactly what was typed, with no snapping at all.
+   *
+   * Deliberate, and the reason the true position is written here too: a typed
+   * 49% has to stay 49% and has to be where the next arrow press starts from.
+   */
+  const setExactCentre = useCallback(
+    (target: 'logo' | 'qr', axis: 'x' | 'y', value: number): void => {
+      const next = clampFraction(value)
+      rawCentreRef.current[target] = { ...rawCentreRef.current[target], [axis]: next }
+      const apply = target === 'logo' ? setLogoCentre : setQrCentre
+      apply((current) => ({ ...current, [axis]: next }))
+      setSnapGuide(NO_SNAP)
+    },
+    []
+  )
+
+  const nudgeLogo = useCallback((dx: number, dy: number): void => nudge('logo', dx, dy), [nudge])
+  const nudgeQr = useCallback((dx: number, dy: number): void => nudge('qr', dx, dy), [nudge])
+
+  const dragMove = useCallback(
+    (
+      event: DragEndEvent | DragMoveEvent
+    ): { target: 'logo' | 'qr'; dx: number; dy: number } | null => {
+      const id = event.active.id
+      if (id !== 'logo' && id !== 'qr') return null
+      const box = previewRef.current?.getBoundingClientRect()
+      // No measurable preview means no reliable conversion from pixels to
+      // fractions, so the drag is dropped rather than guessed at.
+      if (!box || box.width === 0 || box.height === 0) return null
+      return { target: id, dx: event.delta.x / box.width, dy: event.delta.y / box.height }
+    },
+    []
+  )
+
+  /**
+   * The guide follows the pointer, so the snap is visible before the button is
+   * released. Only the guide: the position itself is still committed once, on
+   * drop, exactly as decision 2 above requires.
+   */
+  const handleDragMove = useCallback(
+    (event: DragMoveEvent) => {
+      const move = dragMove(event)
+      if (!move) return
+      showSnap(resolveMove(move.target, move.dx, move.dy).snap)
+    },
+    [dragMove, resolveMove, showSnap]
   )
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const box = previewRef.current?.getBoundingClientRect()
-      // No measurable preview means no reliable conversion from pixels to
-      // fractions, so the drag is dropped rather than guessed at.
-      if (!box || box.width === 0 || box.height === 0) return
-      const dx = event.delta.x / box.width
-      const dy = event.delta.y / box.height
-      if (event.active.id === 'logo') nudgeLogo(dx, dy)
-      if (event.active.id === 'qr') nudgeQr(dx, dy)
+      const move = dragMove(event)
+      if (!move) return
+      nudge(move.target, move.dx, move.dy)
     },
-    [nudgeLogo, nudgeQr]
+    [dragMove, nudge]
   )
+
+  /**
+   * A cancelled drag (Escape, or a lost pointer) fires this instead of drag end,
+   * so the guide the pointer left behind has to go: nothing moved, and a line
+   * still sitting there would claim a snap that was never committed.
+   */
+  const handleDragCancel = useCallback((): void => {
+    setSnapGuide(NO_SNAP)
+  }, [])
 
   function resetLogoPlacement(): void {
     setCorner(DEFAULT_CORNER)
     setLogoCentre(DEFAULT_FREE_CENTRE)
+    rawCentreRef.current.logo = DEFAULT_FREE_CENTRE
     setLogoWidthFrac(LOGO_DEFAULT_WIDTH_FRAC)
+    setSnapGuide(NO_SNAP)
   }
 
   function resetQrPlacement(): void {
     setQrCentre(DEFAULT_QR_CENTRE)
-    setQrWidthFrac(DEFAULT_QR_WIDTH_FRAC)
+    rawCentreRef.current.qr = DEFAULT_QR_CENTRE
+    setQrWidthFrac(QR_DEFAULT_WIDTH_FRAC)
+    setSnapGuide(NO_SNAP)
   }
 
   async function post(body: Record<string, unknown>, successMessage: string): Promise<void> {
@@ -435,7 +673,12 @@ export function ArtworkBrandingModal({
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <DndContext
+              sensors={sensors}
+              onDragMove={handleDragMove}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
               <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-surface-2 p-4">
                 <div
                   ref={previewRef}
@@ -464,39 +707,99 @@ export function ArtworkBrandingModal({
                       <img
                         src={`/guest/anchor-logo-${colour}.png`}
                         alt=""
+                        data-testid="logo-preview-image"
                         className="pointer-events-none h-full w-full object-contain"
                         draggable={false}
+                        style={{ filter: logoShadowFilter }}
                       />
                     </PlacementOverlay>
                   )}
 
-                  {qrBox && (
+                  {qrBlockBox && qrCodeBox && qrStripBox && (
                     <PlacementOverlay
                       id="qr"
                       testId="qr-overlay"
                       label="QR code position"
-                      rect={qrBox}
+                      // The BLOCK is dragged and outlined, because the block is
+                      // what lands on the artwork. `codeRect` carries the code
+                      // on its own, which is what the stored width still means.
+                      rect={qrBlockBox}
+                      codeRect={qrCodeBox}
                       imageW={imageW}
                       imageH={imageH}
                       draggable
                       invalid={!qrCheck.ok}
                       onNudge={nudgeQr}
                     >
-                      {qrDataUrl && (
-                        <img
-                          src={qrDataUrl}
-                          alt=""
-                          className="pointer-events-none h-full w-full object-contain"
-                          draggable={false}
-                        />
-                      )}
-                      {/* The caption sits ON the code deliberately. It labels the
-                          preview as a guide and makes it unscannable, so nobody
-                          points a phone at a screen and books from a draft. */}
-                      <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-text/75 px-1 py-0.5 text-center text-[10px] font-medium leading-tight text-surface">
-                        Guide only
+                      <span
+                        data-testid="qr-strip"
+                        className="pointer-events-none absolute top-0 flex items-center justify-center overflow-hidden font-semibold leading-none"
+                        style={{
+                          left: percentOf(qrStripBox.x - qrBlockBox.x, qrBlockBox.width),
+                          width: percentOf(qrStripBox.width, qrBlockBox.width),
+                          height: '100%',
+                          // Deliberately literal black and white rather than
+                          // design tokens: this is a picture of what the
+                          // compositor prints, and printing it in the app's
+                          // theme colours would make the preview a lie.
+                          backgroundColor: '#000000',
+                          color: '#ffffff',
+                          // vertical-rl plus a half turn reads bottom to top,
+                          // which is the convention for a spine label.
+                          writingMode: 'vertical-rl',
+                          transform: 'rotate(180deg)',
+                          fontSize: `${qrStripFontPx}px`,
+                          letterSpacing: '0.08em',
+                        }}
+                      >
+                        {QR_STRIP_LABEL}
+                      </span>
+
+                      <span
+                        className="pointer-events-none absolute top-0"
+                        style={{
+                          left: percentOf(qrCodeBox.x - qrBlockBox.x, qrBlockBox.width),
+                          width: percentOf(qrCodeBox.width, qrBlockBox.width),
+                          height: '100%',
+                        }}
+                      >
+                        {qrDataUrl && (
+                          <img
+                            src={qrDataUrl}
+                            alt=""
+                            className="pointer-events-none h-full w-full object-contain"
+                            draggable={false}
+                          />
+                        )}
+                        {/* The caption sits ON the code deliberately. It labels
+                            the preview as a guide and makes it unscannable, so
+                            nobody points a phone at a screen and books from a
+                            draft. */}
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-text/75 px-1 py-0.5 text-center text-[10px] font-medium leading-tight text-surface">
+                          Guide only
+                        </span>
                       </span>
                     </PlacementOverlay>
+                  )}
+
+                  {/* The guides sit above the overlays so a snapped edge is
+                      still visible against the artwork, and are decorative:
+                      the polite region below says the same thing in words. */}
+                  {snapGuide.x !== null && (
+                    <div
+                      data-testid="snap-guide-x"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary ring-1 ring-surface/70"
+                      style={{ left: `${snapGuide.x * 100}%` }}
+                    />
+                  )}
+                  {snapGuide.y !== null && (
+                    <div
+                      data-testid="snap-guide-y"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-x-0 h-0.5 -translate-y-1/2 bg-primary ring-1 ring-surface/70"
+                      style={{ top: `${snapGuide.y * 100}%` }}
+                    />
                   )}
                 </div>
               </div>
@@ -550,6 +853,11 @@ export function ArtworkBrandingModal({
                       onChange={(next) => setLogoWidthFrac(next / 100)}
                     />
 
+                    {/* Typed positions are NOT snapped, on purpose. These fields
+                        are the exact-entry escape hatch from the snapping the
+                        drag and arrow keys apply, and quietly turning a typed
+                        49% into 50% would make the number on screen a lie.
+                        Setting one clears the guide for the same reason. */}
                     <div className="grid grid-cols-3 gap-2">
                       <NumberField
                         id={`${fieldId}-logo-x`}
@@ -559,9 +867,7 @@ export function ArtworkBrandingModal({
                         max={100}
                         value={toPercent(logoCentre.x)}
                         disabled={logoMode !== 'free'}
-                        onChange={(next) =>
-                          setLogoCentre((current) => ({ ...current, x: clampFraction(next / 100) }))
-                        }
+                        onChange={(next) => setExactCentre('logo', 'x', next / 100)}
                       />
                       <NumberField
                         id={`${fieldId}-logo-y`}
@@ -571,9 +877,7 @@ export function ArtworkBrandingModal({
                         max={100}
                         value={toPercent(logoCentre.y)}
                         disabled={logoMode !== 'free'}
-                        onChange={(next) =>
-                          setLogoCentre((current) => ({ ...current, y: clampFraction(next / 100) }))
-                        }
+                        onChange={(next) => setExactCentre('logo', 'y', next / 100)}
                       />
                       <NumberField
                         id={`${fieldId}-logo-width`}
@@ -627,6 +931,7 @@ export function ArtworkBrandingModal({
                         onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next) / 100)}
                       />
 
+                      {/* Exact entry, so these are not snapped either. */}
                       <div className="grid grid-cols-3 gap-2">
                         <NumberField
                           id={`${fieldId}-qr-x`}
@@ -635,9 +940,7 @@ export function ArtworkBrandingModal({
                           min={0}
                           max={100}
                           value={toPercent(qrCentre.x)}
-                          onChange={(next) =>
-                            setQrCentre((current) => ({ ...current, x: clampFraction(next / 100) }))
-                          }
+                          onChange={(next) => setExactCentre('qr', 'x', next / 100)}
                         />
                         <NumberField
                           id={`${fieldId}-qr-y`}
@@ -646,9 +949,7 @@ export function ArtworkBrandingModal({
                           min={0}
                           max={100}
                           value={toPercent(qrCentre.y)}
-                          onChange={(next) =>
-                            setQrCentre((current) => ({ ...current, y: clampFraction(next / 100) }))
-                          }
+                          onChange={(next) => setExactCentre('qr', 'y', next / 100)}
                         />
                         <NumberField
                           id={`${fieldId}-qr-width`}
@@ -661,10 +962,10 @@ export function ArtworkBrandingModal({
                         />
                       </div>
 
-                      {qrBox && (
+                      {qrCodeBox && (
                         <p className="text-xs text-text-muted">
-                          Printed size: {qrBox.width} px, {qrMillimetres.toFixed(0)} mm on the A4
-                          poster.
+                          Printed size: {qrCodeBox.width} px, {qrMillimetres.toFixed(0)} mm on the
+                          A4 poster. The {QR_STRIP_LABEL} strip is printed beside it.
                         </p>
                       )}
 
@@ -682,6 +983,14 @@ export function ArtworkBrandingModal({
                   not talked over while someone is still moving things. */}
               <p role="status" aria-live="polite" className="min-h-[1.25rem] text-sm text-danger">
                 {qrCheck.ok ? '' : qrCheck.reason}
+              </p>
+
+              {/* The guide line is the sighted signal; this is the same news for
+                  anyone who cannot see it. It changes only when an axis catches
+                  or lets go, so a drag across the centre is announced once
+                  rather than on every pointer move. */}
+              <p role="status" aria-live="polite" className="sr-only">
+                {snapMessage}
               </p>
 
               {apiError && (
@@ -726,7 +1035,14 @@ interface PlacementOverlayProps {
   id: 'logo' | 'qr'
   testId: string
   label: string
+  /** The footprint: what is dragged, outlined and reported as `data-rect`. */
   rect: Rect
+  /**
+   * For the QR, the scannable square inside that footprint, published as
+   * `data-code-rect`. The stored width fraction still describes this rect and
+   * not the wider block, so the two are kept separately readable.
+   */
+  codeRect?: Rect
   imageW: number
   imageH: number
   draggable: boolean
@@ -747,6 +1063,7 @@ function PlacementOverlay({
   testId,
   label,
   rect,
+  codeRect,
   imageW,
   imageH,
   draggable,
@@ -780,6 +1097,11 @@ function PlacementOverlay({
       // The pixel rect the geometry module resolved, so a test can compare the
       // preview against the same function the server composites with.
       data-rect={`${rect.x},${rect.y},${rect.width},${rect.height}`}
+      data-code-rect={
+        codeRect
+          ? `${codeRect.x},${codeRect.y},${codeRect.width},${codeRect.height}`
+          : undefined
+      }
       aria-label={label}
       disabled={!draggable}
       {...listeners}

@@ -23,6 +23,14 @@ import {
   resolveLogoRect,
   QR_MIN_WIDTH_FRAC,
   QR_MIN_WIDTH_FRAC_EXACT,
+  shadowColourFor,
+  logoShadowSpec,
+  cssDropShadow,
+  qrStripRect,
+  qrBlockRect,
+  qrCodeRectWithinCanvas,
+  snapFrac,
+  SNAP_THRESHOLD_FRAC,
 } from './geometry'
 import { EVENT_IMAGE_VARIANTS, EVENT_IMAGE_VARIANT_ORDER } from '@/lib/events/imageVariants'
 import {
@@ -394,7 +402,15 @@ describe('validateQrPlacement', () => {
     const side = qrMinWidthPx(posterW)
     // Sat just below the reservation, inside the gap, so it does not intersect
     // the logo itself but is still too close to it.
-    const qr: Rect = { x: reserved.x, y: reserved.y + reserved.height + Math.floor(gap / 2), width: side, height: side }
+    // Shifted right by the strip width so the whole BLOCK stays on the canvas.
+    // Without that the bounds check fires first and this stops testing the gap.
+    const stripWidth = qrStripRect({ x: 0, y: 0, width: side, height: side }).width
+    const qr: Rect = {
+      x: reserved.x + insetPx(posterW, posterH) + stripWidth,
+      y: reserved.y + reserved.height + Math.floor(gap / 2),
+      width: side,
+      height: side,
+    }
     expect(rectsOverlap(qr, logo, 0)).toBe(false)
     const result = validateQrPlacement(posterW, posterH, qr, logo)
     expect(result.ok).toBe(false)
@@ -547,5 +563,105 @@ describe('the QR minimum width floor agrees everywhere it is written down', () =
     const mm = (widthPx / 2480) * 210
     expect(mm).toBeGreaterThanOrEqual(40)
     expect(widthPx).toBeGreaterThanOrEqual(qrMinWidthPx(2480))
+  })
+})
+
+describe('logo drop shadow', () => {
+  it('shadows a white logo in black and a black logo in white', () => {
+    expect(shadowColourFor('white')).toBe('#000000')
+    expect(shadowColourFor('black')).toBe('#ffffff')
+  })
+
+  it('scales with the logo, not the canvas', () => {
+    const small = logoShadowSpec(logoRect(1080, 1080, 'top_left', 0.08), 'white')
+    const large = logoShadowSpec(logoRect(2480, 3508, 'top_left', 0.35), 'white')
+    expect(large.offsetXPx).toBeGreaterThan(small.offsetXPx)
+    expect(large.blurPx).toBeGreaterThan(small.blurPx)
+  })
+
+  it('never collapses to a zero offset or blur on a tiny logo', () => {
+    const spec = logoShadowSpec({ x: 0, y: 0, width: 10, height: 5 }, 'black')
+    expect(spec.offsetXPx).toBeGreaterThanOrEqual(1)
+    expect(spec.blurPx).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders a CSS filter that doubles the sigma for the blur radius', () => {
+    const spec = logoShadowSpec(logoRect(1920, 1080, 'top_left', 0.22), 'white')
+    const css = cssDropShadow(spec)
+    expect(css).toContain(`${spec.blurPx * 2}px`)
+    expect(css).toContain('rgba(0, 0, 0,')
+    expect(cssDropShadow(logoShadowSpec(logoRect(1920, 1080, 'top_left', 0.22), 'black')))
+      .toContain('rgba(255, 255, 255,')
+  })
+})
+
+describe('the BOOK NOW strip', () => {
+  const CODE = qrRect(2480, 3508, 0.5, 0.5, 0.2)
+
+  it('sits beside the code and never over it', () => {
+    const strip = qrStripRect(CODE)
+    expect(rectsOverlap(strip, CODE, 0)).toBe(false)
+  })
+
+  it('does not reduce the scannable code, so the 40mm rule still holds', () => {
+    // qr_width_frac keeps meaning the CODE width. The block is simply wider.
+    expect(CODE.width).toBeGreaterThanOrEqual(qrMinWidthPx(2480))
+    expect(qrBlockRect(CODE).width).toBeGreaterThan(CODE.width)
+  })
+
+  it('makes the block exactly code plus strip, at the code height', () => {
+    const strip = qrStripRect(CODE)
+    const block = qrBlockRect(CODE)
+    expect(block.width).toBe(CODE.width + strip.width)
+    expect(block.height).toBe(CODE.height)
+  })
+
+  it('keeps the whole block on the canvas even when pushed into the edge', () => {
+    for (const [cx, cy] of [[0, 0], [1, 1], [0, 1], [1, 0], [0.5, 0.5]] as const) {
+      const code = qrCodeRectWithinCanvas(2480, 3508, cx, cy, 0.2)
+      const block = qrBlockRect(code)
+      const inset = insetPx(2480, 3508)
+      expect(block.x, `block left at ${cx},${cy}`).toBeGreaterThanOrEqual(inset)
+      expect(block.x + block.width, `block right at ${cx},${cy}`).toBeLessThanOrEqual(2480 - inset)
+    }
+  })
+
+  it('rejects a placement whose STRIP falls off, not just the code', () => {
+    // A code hard against the left edge is legal on its own; with a strip to its
+    // left it is not, and that is the case this guard exists for.
+    const code = qrRect(2480, 3508, 0, 0.5, 0.2)
+    const verdict = validateQrPlacement(2480, 3508, code, null)
+    expect(verdict.ok).toBe(false)
+    if (verdict.ok) throw new Error('expected a rejection')
+    expect(verdict.reason).toContain('outside the poster')
+  })
+})
+
+describe('snapFrac', () => {
+  it('snaps onto the centre when close', () => {
+    expect(snapFrac(0.49)).toEqual({ value: 0.5, snappedTo: 0.5 })
+    expect(snapFrac(0.51)).toEqual({ value: 0.5, snappedTo: 0.5 })
+  })
+
+  it('leaves a deliberate off-centre placement alone', () => {
+    expect(snapFrac(0.3)).toEqual({ value: 0.3, snappedTo: null })
+    expect(snapFrac(0.8)).toEqual({ value: 0.8, snappedTo: null })
+  })
+
+  it('releases as soon as the drag passes the threshold', () => {
+    const justInside = snapFrac(0.5 + SNAP_THRESHOLD_FRAC)
+    const justOutside = snapFrac(0.5 + SNAP_THRESHOLD_FRAC + 0.001)
+    expect(justInside.snappedTo).toBe(0.5)
+    expect(justOutside.snappedTo).toBeNull()
+    expect(justOutside.value).toBeCloseTo(0.521, 3)
+  })
+
+  it('reports which target it caught, so a guide can be drawn there', () => {
+    expect(snapFrac(0.2, [0.2, 0.5, 0.8]).snappedTo).toBe(0.2)
+    expect(snapFrac(0.79, [0.2, 0.5, 0.8]).snappedTo).toBe(0.8)
+  })
+
+  it('picks the nearest target when two are in range', () => {
+    expect(snapFrac(0.51, [0.5, 0.53], 0.05).snappedTo).toBe(0.5)
   })
 })
