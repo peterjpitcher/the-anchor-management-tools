@@ -227,21 +227,24 @@ function buildEventBookingSms(
     seats: number
     eventStart: string
     paymentMode?: EventBookingRpcResult['payment_mode']
+    seatingType?: EventBookingRpcResult['event_seating_type']
     paymentLink?: string | null
     manageLink?: string | null
   }
 ): string {
-  const seatWord = payload.seats === 1 ? 'seat' : 'seats'
+  const seatWord = payload.seatingType === 'standing'
+    ? (payload.seats === 1 ? 'standing ticket' : 'standing tickets')
+    : (payload.seats === 1 ? 'seat' : 'seats')
 
   if (state === 'pending_payment') {
     const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
     if (payload.paymentLink) {
-      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart} — nice one! Pay here: ${payload.paymentLink}.${managePart}`
+      return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one! Pay here: ${payload.paymentLink}.${managePart}`
     }
-    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart} — nice one! We'll ping you a payment link shortly.${managePart}`
+    return `The Anchor: ${payload.firstName}! ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one! We'll ping you a payment link shortly.${managePart}`
   }
 
-  return `The Anchor: ${payload.firstName}! You're in — ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
+  return `The Anchor: ${payload.firstName}! You're in, ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
 }
 
 async function sendBookingSmsIfAllowed(
@@ -294,6 +297,7 @@ async function sendBookingSmsIfAllowed(
       seats,
       eventStart,
       paymentMode: bookingResult.payment_mode,
+      seatingType: bookingResult.event_seating_type,
       paymentLink,
       manageLink
     }),

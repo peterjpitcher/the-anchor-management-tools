@@ -37,10 +37,11 @@ vi.mock('@/lib/logger', () => ({
 import { sendSMS } from '@/lib/twilio'
 import { sendEventPaymentConfirmationSms, sendEventPaymentRetrySms } from '@/lib/events/event-payments'
 
-function buildSupabaseForConfirmation() {
+function buildSupabaseForConfirmation(seatingType: 'seated' | 'standing' = 'seated') {
   const bookingMaybeSingle = vi.fn().mockResolvedValue({
     data: {
       id: 'booking-1',
+      event_seating_type: seatingType,
       customer_id: 'customer-1',
       event_id: 'event-1',
     },
@@ -144,6 +145,17 @@ function buildSupabaseForRetry() {
 describe('event payment SMS safety meta logging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+
+  it.each([1, 2])('labels %i standing tickets in payment confirmation', async (seats) => {
+    vi.mocked(sendSMS).mockResolvedValueOnce({ success: true })
+    await sendEventPaymentConfirmationSms(buildSupabaseForConfirmation('standing') as never, {
+      bookingId: 'booking-1', eventName: 'Test Event', seats
+    })
+    const body = vi.mocked(sendSMS).mock.calls[0][1]
+    expect(body).toContain(`${seats} standing ticket${seats === 1 ? '' : 's'}`)
+    expect(body).not.toMatch(/undefined|Invalid Date|NaN|\bseats?\b/)
   })
 
   it('logs an error when event payment confirmation SMS returns logging_failed', async () => {

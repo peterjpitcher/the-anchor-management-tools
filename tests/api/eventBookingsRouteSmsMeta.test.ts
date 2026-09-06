@@ -93,6 +93,24 @@ describe('event booking route SMS safety meta', () => {
     vi.clearAllMocks()
   })
 
+  it.each(['seated_capacity_changed', 'standing_not_available_until_seated_full'])('releases capacity retry claim for %s', async (reason) => {
+    const eventId = '11111111-1111-4111-8111-111111111111'
+    vi.mocked(ensureCustomerForPhone).mockResolvedValue({ customerId: '22222222-2222-4222-8222-222222222222' })
+    const supabase = {
+      from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { id: eventId, booking_mode: 'communal' }, error: null }) })) })) })),
+      rpc: vi.fn().mockResolvedValue({ data: { state: 'blocked', reason, seated_remaining: 0, standing_remaining: 3, total_remaining: 3 }, error: null })
+    }
+    vi.mocked(createAdminClient).mockReturnValue(supabase as never)
+    const response = await POST(new NextRequest('https://example.com/api/event-bookings', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'capacity-retry' },
+      body: JSON.stringify({ event_id: eventId, phone: '+447700900123', first_name: 'Pat', seats: 2 })
+    }))
+    expect(await response.json()).toMatchObject({ data: { state: 'blocked', reason, seated_remaining: 0, standing_remaining: 3 } })
+    expect(persistIdempotencyResponse).not.toHaveBeenCalled()
+    expect(releaseIdempotencyClaim).toHaveBeenCalledOnce()
+    expect(sendSMS).not.toHaveBeenCalled()
+  })
+
   it('surfaces logging_failed meta without returning a retry-triggering 500', async () => {
     const eventId = '11111111-1111-4111-8111-111111111111'
     const customerId = '22222222-2222-4222-8222-222222222222'
