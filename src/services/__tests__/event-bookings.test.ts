@@ -494,6 +494,20 @@ describe('EventBookingService.createBooking', () => {
     expect(result.smsMeta).toMatchObject({ success: true })
   })
 
+
+  it.each(['confirmed', 'pending_payment'] as const)('names standing tickets in %s SMS', async (state) => {
+    const rpcResult = state === 'confirmed' ? CONFIRMED_RPC_RESULT : PENDING_PAYMENT_RPC_RESULT
+    const supabase = makeSupabaseMock({
+      rpcResults: { create_event_booking_v05: { data: { ...rpcResult, event_seating_type: 'standing' }, error: null } },
+      fromResults: { customers: { data: ACTIVE_CUSTOMER_ROW, error: null } }
+    })
+    vi.mocked(createAdminClient).mockReturnValue(supabase)
+    await EventBookingService.createBooking({ ...BASE_PARAMS, bookingMode: 'communal', seatingPreference: 'standing', shouldSendSms: true })
+    const body = vi.mocked(sendSMS).mock.calls[0][1]
+    expect(body).toContain('2 standing tickets')
+    expect(body).not.toMatch(/undefined|Invalid Date|NaN|\bseats?\b/)
+  })
+
   it('does not send SMS when shouldSendSms=false', async () => {
     const supabase = makeSupabaseMock({
       rpcResults: {
