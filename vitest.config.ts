@@ -10,11 +10,14 @@ export default defineConfig({
     globals: true,
     css: false,
     exclude: [...configDefaults.exclude, '**/.claude/worktrees/**'],
-    // The app hardcodes Europe/London, so the suite runs there too, whatever timezone the
+    // The app hardcodes Europe/London, so the suite defaults to there too, whatever timezone the
     // developer or CI machine is on. Without this, any assertion built from a host-local Date
     // shifts by a day outside the UK, and the same suite passes in London but fails elsewhere.
+    // An explicit TZ from the environment must win, otherwise `npm run test:utc` would be
+    // silently overridden by this config and would keep running in London while claiming UTC.
+    // UTC matters because that is what the Vercel serverless runtime actually runs in.
     env: {
-      TZ: 'Europe/London',
+      TZ: process.env.TZ ?? 'Europe/London',
     },
     coverage: {
       provider: 'v8',

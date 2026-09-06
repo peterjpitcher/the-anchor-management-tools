@@ -295,14 +295,18 @@ logoH = round(logoW / 2.2185)
 inset = round(min(imageW, imageH) * 0.04)
 ```
 
-Reserved rectangle passed to the prompt is derived from the **maximum permitted** logo at that corner, not a fixed 30% by 18%:
+Reserved rectangle passed to the prompt is derived from the **maximum permitted** logo at that corner, not a fixed 30% by 18%. It runs from the canvas edge to the far side of the largest permitted logo, so the inset is added **once**, not twice:
 
 ```
-reservedW = (imageW * 0.35) + 2*inset
-reservedH = ((imageW * 0.35) / 2.2185) + 2*inset
+reservedW = round(imageW * 0.35) + inset
+reservedH = round(round(imageW * 0.35) / 2.2185) + inset
 ```
 
-On a 1920x1080 landscape that is 723px by 346px, which is 37.7% of width and 32.0% of height. v1's fixed 30%/18% understated the height badly.
+On a 1920x1080 landscape: `inset = round(1080 * 0.04) = 43`, max logo `672 x 303`, so reserved is **715 x 346**, which is 37.2% of width and 32.0% of height. On the A4 poster: `inset = 99`, max logo `868 x 391`, reserved `967 x 490`.
+
+The review quoted 723 x 346. That figure is not reachable from these constants: it needs either a 35.4% maximum logo or a 51px horizontal inset beside a 43px vertical one, and it adds the inset twice on width while adding it once on height. **715 is correct**; the heights agree, which confirms the single-inset basis. Keeping dead space beyond the logo is the job of the `gap` argument to `validateQrPlacement`, not of the reservation.
+
+The binding invariant, asserted for all four corners on all five canvases, is that a logo at the maximum width **fits inside** its reserved rectangle. v1's fixed 30% by 18% violated it outright.
 
 Upper bound 0.35 keeps the logo within its 934px native resolution on every variant.
 

@@ -15,7 +15,8 @@
     "mileage:distances:routes": "tsx --tsconfig tsconfig.json scripts/mileage/backfill-distance-cache-from-google-routes.ts",
     "postinstall": "patch-package",
     "eval:seo": "tsx scripts/eval-event-seo-generation.ts",
-    "test": "VITE_CJS_IGNORE_WARNING=true vitest run",
+    "test": "TZ=Europe/London HARNESS_EXPECTED_TZ=Europe/London VITE_CJS_IGNORE_WARNING=true vitest run",
+    "test:utc": "TZ=UTC HARNESS_EXPECTED_TZ=UTC VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
