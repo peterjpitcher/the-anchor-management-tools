@@ -102,11 +102,14 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
     }))
   }, [])
 
-  const load = useCallback(async (id: string) => {
-    setStatus('loading')
+  const load = useCallback(async (id: string, options?: { quiet?: boolean }) => {
+    // A quiet load refreshes what is on screen without throwing the panel back
+    // to skeletons, which is what a refresh after branding needs: the tiles are
+    // already correct and only the saved placement has moved on.
+    if (!options?.quiet) setStatus('loading')
     const result = await getEventImageVariants(id)
     if (result.error || !result.data) {
-      setStatus('failed')
+      if (!options?.quiet) setStatus('failed')
       return
     }
     setVariants(result.data)
@@ -168,6 +171,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   fileName: queued.file.name,
                   sizeBytes: queued.file.size,
                   mimeType: queued.file.type,
+                  // The file on screen is the raw upload, so it carries no
+                  // branding whatever the tile said a moment ago.
+                  branding: null,
                 }
               : entry
           )
@@ -266,7 +272,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
       setVariants((current) =>
         current.map((entry) =>
           entry.variant === variant
-            ? { ...entry, url: null, owned: false, categoryName: null, fileName: null, sizeBytes: null, mimeType: null }
+            ? { ...entry, url: null, owned: false, categoryName: null, fileName: null, sizeBytes: null, mimeType: null, branding: null }
             : entry
         )
       )
@@ -352,6 +358,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           // off, a file already uploaded, and something an image library can
           // actually open. A queued file has not reached storage yet.
           const canBrand = Boolean(eventId && state?.url && !isPdf && !tile.queued)
+          // A queued file has not been composited, so it is never branded
+          // whatever is recorded against the file it is about to replace.
+          const isBranded = Boolean(state?.branding && !tile.queued)
 
           return (
             <div
@@ -426,6 +435,16 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-xs font-medium text-gray-700">
                     Uploading...
                   </div>
+                )}
+                {/* So a manager can see at a glance which artwork already
+                    carries the logo, without opening the editor on each tile. */}
+                {isBranded && (
+                  <span
+                    data-testid={`branded-badge-${variant}`}
+                    className="absolute left-1 top-1 rounded bg-gray-900/70 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white"
+                  >
+                    Branded
+                  </span>
                 )}
               </div>
               </div>
@@ -557,12 +576,17 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           eventId={eventId}
           variant={brandingVariant}
           imageUrl={stateFor(brandingVariant)?.url ?? ''}
+          branding={stateFor(brandingVariant)?.branding ?? null}
           onApplied={(variant, url) => {
             setVariants((current) =>
               current.map((entry) =>
                 entry.variant === variant ? { ...entry, url, owned: true } : entry
               )
             )
+            // The new placement lives on the server, so read it back. Without
+            // this the next opening of the editor would show the placement from
+            // before the save that just happened.
+            void load(eventId, { quiet: true })
           }}
         />
       )}

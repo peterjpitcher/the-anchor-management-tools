@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -28,6 +28,9 @@ vi.mock('@/lib/supabase/server', () => ({
 
 const state = {
   eventExists: true,
+  eventRow: { id: 'e1' } as Record<string, unknown>,
+  imageRows: [] as Record<string, unknown>[],
+  imageRowsError: null as unknown,
   signedUpload: { data: { path: 'signed/path', token: 'tok' }, error: null } as {
     data: { path: string; token: string } | null
     error: unknown
@@ -36,21 +39,49 @@ const state = {
   rpcCalls: [] as Array<{ fn: string; args: Record<string, unknown> }>,
   removed: [] as string[][],
   removeError: null as unknown,
+  // The branding row read back by clearBrandingForFreshUpload, plus a record of
+  // every update it issues, so the clear-on-replace behaviour can be asserted.
+  brandingRow: null as Record<string, unknown> | null,
+  brandingReadError: null as unknown,
+  updates: [] as Array<{ table: string; values: Record<string, unknown> }>,
+  updateError: null as unknown,
 }
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
-    from: () => ({
+    from: (table: string) => ({
       select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: state.eventExists ? { id: 'e1' } : null,
-            error: null,
-          }),
-        }),
-        // getEventImageVariants awaits the eq() directly for event_images.
-        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve),
+        // `events` is read with maybeSingle; `event_images` is a list the caller
+        // awaits straight off eq(), so the same object answers both.
+        eq: () => {
+          const result =
+            table === 'event_images'
+              ? { data: state.imageRows, error: state.imageRowsError }
+              : { data: state.eventExists ? state.eventRow : null, error: null }
+          return {
+            maybeSingle: async () => result,
+            then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+            // A second eq narrows event_images to one variant, which is how the
+            // branding clear-down reads the row it is about to wipe.
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: state.brandingRow,
+                error: state.brandingReadError,
+              }),
+            }),
+          }
+        },
       }),
+      update: (values: Record<string, unknown>) => {
+        state.updates.push({ table, values })
+        const result = { data: null, error: state.updateError }
+        return {
+          eq: () => ({
+            eq: () => Promise.resolve(result),
+            then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+          }),
+        }
+      },
     }),
     rpc: async (fn: string, args: Record<string, unknown>) => {
       state.rpcCalls.push({ fn, args })
@@ -74,6 +105,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 import {
   confirmEventImageUpload,
   deleteEventImageVariant,
+  getEventImageVariants,
   requestEventImageUpload,
 } from '../event-image-variants'
 
@@ -82,6 +114,13 @@ const EVENT_ID = '11111111-1111-1111-1111-111111111111'
 beforeEach(() => {
   permission.granted = true
   state.eventExists = true
+  state.eventRow = { id: 'e1' }
+  state.imageRows = []
+  state.imageRowsError = null
+  state.brandingRow = null
+  state.brandingReadError = null
+  state.updates = []
+  state.updateError = null
   state.signedUpload = { data: { path: 'signed/path', token: 'tok' }, error: null }
   state.rpcResults = {}
   state.rpcCalls = []
@@ -333,5 +372,304 @@ describe('deleteEventImageVariant', () => {
   it('refuses without permission', async () => {
     permission.granted = false
     expect((await deleteEventImageVariant(EVENT_ID, 'square')).error).toContain('permission')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getEventImageVariants, reading branding back
+// ---------------------------------------------------------------------------
+
+const SQUARE_PATH = `events/${EVENT_ID}/square/1_a.png`
+const SQUARE_URL = `https://p.supabase.co/storage/v1/object/public/event-images/${SQUARE_PATH}`
+
+/** An event_images row with every branding column empty, to override piecemeal. */
+function imageRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    image_type: 'square',
+    storage_path: SQUARE_PATH,
+    file_name: 'a.png',
+    file_size_bytes: 1000,
+    mime_type: 'image/png',
+    updated_at: '2026-09-06T10:00:00Z',
+    original_storage_path: null,
+    logo_corner: null,
+    logo_centre_x_frac: null,
+    logo_centre_y_frac: null,
+    logo_colour: null,
+    logo_width_frac: null,
+    qr_centre_x_frac: null,
+    qr_centre_y_frac: null,
+    qr_width_frac: null,
+    qr_short_link_id: null,
+    ...overrides,
+  }
+}
+
+async function readSquare() {
+  const result = await getEventImageVariants(EVENT_ID)
+  const square = result.data?.find((entry) => entry.variant === 'square')
+  if (!square) throw new Error('the square variant was not returned')
+  return square
+}
+
+describe('getEventImageVariants branding', () => {
+  let warn: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    state.eventRow = { hero_image_url: SQUARE_URL, category: null }
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    warn.mockRestore()
+  })
+
+  it('reads a corner placement back as a corner placement', async () => {
+    state.imageRows = [
+      imageRow({
+        original_storage_path: `events/${EVENT_ID}/square/0_original.png`,
+        logo_corner: 'top_left',
+        logo_colour: 'black',
+        logo_width_frac: 0.3,
+      }),
+    ]
+
+    const square = await readSquare()
+
+    expect(square.branding).toEqual({
+      originalStoragePath: `events/${EVENT_ID}/square/0_original.png`,
+      logo: {
+        placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.3 },
+        colour: 'black',
+      },
+      qr: null,
+    })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reads centre fractions back as a free placement', async () => {
+    state.imageRows = [
+      imageRow({
+        original_storage_path: `events/${EVENT_ID}/square/0_original.png`,
+        logo_centre_x_frac: 0.25,
+        logo_centre_y_frac: 0.6,
+        logo_colour: 'white',
+        logo_width_frac: 0.18,
+      }),
+    ]
+
+    const square = await readSquare()
+
+    expect(square.branding?.logo).toEqual({
+      placement: { mode: 'free', centreXFrac: 0.25, centreYFrac: 0.6, widthFrac: 0.18 },
+      colour: 'white',
+    })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('reports no branding at all as null', async () => {
+    state.imageRows = [imageRow()]
+
+    const square = await readSquare()
+
+    expect(square.branding).toBeNull()
+    expect(square.url).toBe(SQUARE_URL)
+  })
+
+  it('distinguishes branded with no logo from never branded', async () => {
+    // A deliberate "no logo" still went through the editor, so the original is
+    // kept. Reporting this as null would reopen the editor at the defaults and
+    // put a logo back on a poster somebody chose to leave clean.
+    state.imageRows = [
+      imageRow({ original_storage_path: `events/${EVENT_ID}/square/0_original.png` }),
+    ]
+
+    const square = await readSquare()
+
+    expect(square.branding).not.toBeNull()
+    expect(square.branding?.logo).toBeNull()
+    expect(square.branding?.originalStoragePath).toBe(`events/${EVENT_ID}/square/0_original.png`)
+  })
+
+  it('refuses to guess when a row holds both a corner and centre fractions', async () => {
+    state.imageRows = [
+      imageRow({
+        original_storage_path: `events/${EVENT_ID}/square/0_original.png`,
+        logo_corner: 'bottom_right',
+        logo_centre_x_frac: 0.4,
+        logo_centre_y_frac: 0.4,
+        logo_colour: 'white',
+        logo_width_frac: 0.22,
+      }),
+    ]
+
+    const square = await readSquare()
+
+    expect(square.branding).not.toBeNull()
+    expect(square.branding?.logo).toBeNull()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('treating the logo as unplaced'),
+      expect.objectContaining({ eventId: EVENT_ID, variant: 'square' })
+    )
+  })
+
+  it('refuses to guess when only half a centre pair is set', async () => {
+    state.imageRows = [
+      imageRow({
+        original_storage_path: `events/${EVENT_ID}/square/0_original.png`,
+        logo_centre_x_frac: 0.4,
+        logo_colour: 'white',
+        logo_width_frac: 0.22,
+      }),
+    ]
+
+    const square = await readSquare()
+
+    expect(square.branding?.logo).toBeNull()
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a placement with no colour or width as unplaced', async () => {
+    state.imageRows = [imageRow({ logo_corner: 'top_right' })]
+
+    const square = await readSquare()
+
+    expect(square.branding?.logo).toBeNull()
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the QR centre, width and short link id back', async () => {
+    state.imageRows = [
+      imageRow({
+        image_type: 'print_poster',
+        storage_path: `events/${EVENT_ID}/print_poster/1_a.png`,
+        qr_centre_x_frac: 0.5,
+        qr_centre_y_frac: 0.82,
+        qr_width_frac: 0.24,
+        qr_short_link_id: '99999999-9999-4999-8999-999999999999',
+      }),
+    ]
+    state.eventRow = { print_poster_url: SQUARE_URL, category: null }
+
+    const result = await getEventImageVariants(EVENT_ID)
+    const poster = result.data?.find((entry) => entry.variant === 'print_poster')
+
+    expect(poster?.branding?.qr).toEqual({
+      centreXFrac: 0.5,
+      centreYFrac: 0.82,
+      widthFrac: 0.24,
+      shortLinkId: '99999999-9999-4999-8999-999999999999',
+    })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('drops a half-written QR placement rather than printing a guess', async () => {
+    state.imageRows = [imageRow({ qr_centre_x_frac: 0.5, qr_width_frac: 0.24 })]
+
+    const square = await readSquare()
+
+    expect(square.branding?.qr).toBeNull()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('treating the code as unplaced'),
+      expect.objectContaining({ eventId: EVENT_ID, variant: 'square' })
+    )
+  })
+
+  it('leaves every unbranded variant null', async () => {
+    state.imageRows = [
+      imageRow({ logo_corner: 'top_left', logo_colour: 'white', logo_width_frac: 0.2 }),
+    ]
+
+    const result = await getEventImageVariants(EVENT_ID)
+
+    expect(result.data?.filter((entry) => entry.branding !== null)).toHaveLength(1)
+  })
+
+  it('refuses without permission', async () => {
+    permission.granted = false
+    expect((await getEventImageVariants(EVENT_ID)).error).toContain('permission')
+  })
+})
+
+describe('confirmEventImageUpload clears branding when a file is replaced', () => {
+  const BRANDED_ROW = {
+    original_storage_path: `events/${EVENT_ID}/print_poster/original-1.png`,
+    logo_corner: 'top_left',
+    logo_colour: 'white',
+    logo_width_frac: 0.22,
+  }
+
+  function confirm() {
+    return confirmEventImageUpload({
+      eventId: EVENT_ID,
+      variant: 'print_poster',
+      storagePath: `events/${EVENT_ID}/print_poster/999_new.png`,
+      fileName: 'new.png',
+      mimeType: 'image/png',
+      sizeBytes: 1000,
+    })
+  }
+
+  it('nulls every branding column, so a fresh upload is not shown as branded', async () => {
+    state.brandingRow = { ...BRANDED_ROW }
+    const result = await confirm()
+    expect(result.success).toBe(true)
+
+    const update = state.updates.find((u) => u.table === 'event_images')
+    expect(update).toBeDefined()
+    // All ten, not just the ones the UI happens to read today.
+    for (const column of [
+      'original_storage_path',
+      'logo_corner',
+      'logo_centre_x_frac',
+      'logo_centre_y_frac',
+      'logo_colour',
+      'logo_width_frac',
+      'qr_centre_x_frac',
+      'qr_centre_y_frac',
+      'qr_width_frac',
+      'qr_short_link_id',
+    ]) {
+      expect(update?.values, `${column} should be cleared`).toHaveProperty(column, null)
+    }
+  })
+
+  it('removes the superseded original, which nothing else deletes', async () => {
+    state.brandingRow = { ...BRANDED_ROW }
+    await confirm()
+    expect(state.removed.flat()).toContain(BRANDED_ROW.original_storage_path)
+  })
+
+  it('never removes an original the event does not own', async () => {
+    state.brandingRow = {
+      ...BRANDED_ROW,
+      original_storage_path: 'categories/other/original-1.png',
+    }
+    await confirm()
+    expect(state.removed.flat()).not.toContain('categories/other/original-1.png')
+  })
+
+  it('does nothing when the previous file carried no branding', async () => {
+    state.brandingRow = { original_storage_path: null }
+    await confirm()
+    expect(state.removed.flat()).not.toContain(null as never)
+  })
+
+  it('still reports success when the branding clear-down fails', async () => {
+    // The upload has already committed and the new image is live, so a failure
+    // here is cosmetic and must never surface as a failed upload.
+    state.brandingRow = { ...BRANDED_ROW }
+    state.updateError = new Error('column does not exist')
+    const result = await confirm()
+    expect(result.success).toBe(true)
+    expect(result.error).toBeUndefined()
+    // And the original is NOT deleted, since the row still references it.
+    expect(state.removed.flat()).not.toContain(BRANDED_ROW.original_storage_path)
+  })
+
+  it('still reports success when the branding read fails', async () => {
+    state.brandingReadError = new Error('unreachable')
+    const result = await confirm()
+    expect(result.success).toBe(true)
   })
 })

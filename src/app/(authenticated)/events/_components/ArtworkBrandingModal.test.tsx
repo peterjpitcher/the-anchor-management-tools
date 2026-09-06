@@ -8,7 +8,7 @@ import {
   qrMinWidthFrac,
   qrMinWidthPx,
 } from '@/lib/events/artwork/geometry'
-import { EVENT_IMAGE_VARIANTS } from '@/lib/events/imageVariants'
+import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
 
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
@@ -83,6 +83,10 @@ vi.mock('@/app/actions/event-image-variants', () => ({
   deleteEventImageVariant: vi.fn(),
 }))
 
+import {
+  getEventImageVariants,
+  type EventImageVariantState,
+} from '@/app/actions/event-image-variants'
 import { ArtworkBrandingModal } from './ArtworkBrandingModal'
 import { EventImagePanel } from './EventImagePanel'
 
@@ -409,5 +413,174 @@ describe('EventImagePanel upload copy', () => {
       await screen.findByText(/It uploads automatically when you save the event\./)
     ).toBeInTheDocument()
     expect(screen.queryByText(/Images upload as soon as you choose them/)).toBeNull()
+  })
+})
+
+describe('ArtworkBrandingModal, reopening on branded artwork', () => {
+  it('opens at the saved corner, colour and size', () => {
+    renderModal({
+      branding: {
+        originalStoragePath: 'events/x/print_poster/0_original.png',
+        logo: {
+          placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.3 },
+          colour: 'black',
+        },
+        qr: null,
+      },
+    })
+
+    expect(screen.getByRole('radio', { name: 'Corner' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Top left' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Black logo' })).toHaveAttribute('aria-checked', 'true')
+    expect((screen.getByLabelText('Logo size') as HTMLInputElement).value).toBe('30')
+    expect(screen.getByTestId('logo-overlay')).toHaveAttribute(
+      'data-rect',
+      rectString(logoRect(POSTER_W, POSTER_H, 'top_left', 0.3))
+    )
+  })
+
+  it('opens at the saved free placement', () => {
+    renderModal({
+      branding: {
+        originalStoragePath: 'events/x/print_poster/0_original.png',
+        logo: {
+          placement: { mode: 'free', centreXFrac: 0.25, centreYFrac: 0.6, widthFrac: 0.18 },
+          colour: 'white',
+        },
+        qr: null,
+      },
+    })
+
+    expect(screen.getByRole('radio', { name: 'Free' })).toHaveAttribute('aria-checked', 'true')
+    expect((screen.getByLabelText('Logo X (%)') as HTMLInputElement).value).toBe('25')
+    expect((screen.getByLabelText('Logo Y (%)') as HTMLInputElement).value).toBe('60')
+    expect(screen.getByTestId('logo-overlay')).toHaveAttribute(
+      'data-rect',
+      rectString(logoRectFree(POSTER_W, POSTER_H, 0.25, 0.6, 0.18))
+    )
+  })
+
+  it('reopens on a deliberate no-logo poster with No logo still selected', () => {
+    // Branded with no logo is an answer somebody gave, not an empty editor.
+    renderModal({
+      branding: {
+        originalStoragePath: 'events/x/print_poster/0_original.png',
+        logo: null,
+        qr: null,
+      },
+    })
+
+    expect(screen.getByRole('radio', { name: 'No logo' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByTestId('logo-overlay')).toBeNull()
+    expect(screen.getByRole('checkbox', { name: /Put a QR code on the poster/ })).not.toBeChecked()
+    expect(screen.queryByTestId('qr-overlay')).toBeNull()
+  })
+
+  it('opens at the saved QR placement', () => {
+    renderModal({
+      branding: {
+        originalStoragePath: 'events/x/print_poster/0_original.png',
+        logo: null,
+        qr: { centreXFrac: 0.5, centreYFrac: 0.82, widthFrac: 0.24, shortLinkId: null },
+      },
+    })
+
+    expect(screen.getByRole('checkbox', { name: /Put a QR code on the poster/ })).toBeChecked()
+    expect((screen.getByLabelText('QR X (%)') as HTMLInputElement).value).toBe('50')
+    expect((screen.getByLabelText('QR Y (%)') as HTMLInputElement).value).toBe('82')
+    expect((screen.getByLabelText('QR size') as HTMLInputElement).value).toBe('24')
+  })
+
+  it('still opens at the defaults when the artwork has never been branded', () => {
+    renderModal({ branding: null })
+
+    expect(screen.getByRole('radio', { name: 'Corner' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'White logo' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('checkbox', { name: /Put a QR code on the poster/ })).toBeChecked()
+    expect(screen.getByTestId('logo-overlay')).toHaveAttribute(
+      'data-rect',
+      rectString(logoRect(POSTER_W, POSTER_H, 'bottom_right', LOGO_DEFAULT_WIDTH_FRAC))
+    )
+  })
+
+  it('posts the saved placement back unchanged when nothing is touched', async () => {
+    const user = userEvent.setup()
+    renderModal({
+      branding: {
+        originalStoragePath: 'events/x/print_poster/0_original.png',
+        logo: {
+          placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.3 },
+          colour: 'black',
+        },
+        qr: { centreXFrac: 0.4, centreYFrac: 0.7, widthFrac: 0.25, shortLinkId: null },
+      },
+    })
+
+    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(body.logo).toEqual({
+      placement: { mode: 'corner', corner: 'top_left', widthFrac: 0.3 },
+      colour: 'black',
+    })
+    expect(body.qr).toEqual({ centreXFrac: 0.4, centreYFrac: 0.7, widthFrac: 0.25 })
+  })
+})
+
+describe('EventImagePanel branded indicator', () => {
+  function variantState(
+    overrides: Partial<EventImageVariantState> & { variant: EventImageVariant }
+  ): EventImageVariantState {
+    return {
+      url: `https://storage.test/${overrides.variant}.png`,
+      owned: true,
+      categoryName: null,
+      fileName: 'a.png',
+      sizeBytes: 1000,
+      mimeType: 'image/png',
+      updatedAt: null,
+      branding: null,
+      ...overrides,
+    }
+  }
+
+  it('marks only the tile whose artwork carries branding', async () => {
+    vi.mocked(getEventImageVariants).mockResolvedValue({
+      data: [
+        variantState({
+          variant: 'square',
+          branding: {
+            originalStoragePath: 'events/x/square/0_original.png',
+            logo: {
+              placement: { mode: 'corner', corner: 'bottom_right', widthFrac: 0.22 },
+              colour: 'white',
+            },
+            qr: null,
+          },
+        }),
+        variantState({ variant: 'landscape' }),
+        variantState({ variant: 'social' }),
+        variantState({ variant: 'story' }),
+        variantState({ variant: 'print_poster' }),
+      ],
+    })
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+
+    expect(await screen.findByTestId('branded-badge-square')).toHaveTextContent('Branded')
+    expect(screen.getAllByText('Branded')).toHaveLength(1)
+    expect(screen.queryByTestId('branded-badge-print_poster')).toBeNull()
+  })
+
+  it('shows no indicator at all when nothing is branded', async () => {
+    vi.mocked(getEventImageVariants).mockResolvedValue({
+      data: [variantState({ variant: 'square' })],
+    })
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+
+    expect(await screen.findByText('Event artwork')).toBeInTheDocument()
+    expect(screen.queryByText('Branded')).toBeNull()
   })
 })
