@@ -52,7 +52,37 @@ nav-pills plan with uncommitted changes.
 - [x] Reverted the `imageModel` field added to `src/lib/openai/config.ts`.
 - [x] Replaced `resize.ts` with `output.ts`.
 
-## Remaining
+## Done since
+
+- [x] **A. Migration.** `supabase/migrations/20260906140000_event_image_branding.sql`.
+      Ten nullable columns, eleven CHECKs, proved against a throwaway local
+      Postgres cluster. **Drafted only, never applied.**
+- [x] **B. Composite route and revert.** `branding-service.ts` plus
+      `/api/events/[id]/artwork/composite`. Composites always from the stored
+      original, geometry from real decoded dimensions, failed branding write
+      republishes the original.
+- [x] **C. Placement editor.** Full-screen `ArtworkBrandingModal`, corner and
+      free logo placement, QR drag on the poster, keyboard and numeric fields
+      throughout.
+- [x] **D. Read path and clear-down.** Saved placement is read back and seeds the
+      editor; a replacement upload clears all ten columns and removes the
+      superseded original.
+- [x] **E. Full gate.** 6368 tests green in both zones, lint clean, typecheck
+      clean, production build succeeds with the route present and both logo files
+      traced.
+
+## Not covered by any test, and only a human can close these
+
+- [ ] **Print and scan a branded A4 poster.** The 40mm minimum is enforced in
+      three places and asserted arithmetically, but no sheet has been printed and
+      no phone has scanned one. This is the acceptance criterion that matters
+      most and it is not met.
+- [ ] **Drive the editor on a real iPad.** Keyboard operation is tested in jsdom;
+      pointer drag on iPadOS Safari is not, and HTML5 file drag is already known
+      dead there.
+- [ ] **Apply the migration**, which must land before this code deploys.
+
+## Superseded
 
 - [ ] **A. Migration.** New `supabase/migrations/<ts>_event_image_branding.sql`,
       timestamp newer than the latest applied. Additive only: eight nullable
