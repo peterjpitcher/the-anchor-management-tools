@@ -66,6 +66,7 @@ import {
   type Rect,
 } from '@/lib/events/artwork/geometry'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
+import type { EventImageBrandingState } from '@/app/actions/event-image-variants'
 import { EVENT_MARKETING_CHANNEL_MAP, buildShortCode } from '@/lib/event-marketing-links'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import { NumberField, OptionButtons, SliderField } from './branding/BrandingControls'
@@ -131,6 +132,12 @@ export interface ArtworkBrandingModalProps {
   variant: EventImageVariant
   /** Public URL of the file already uploaded for this variant. */
   imageUrl: string
+  /**
+   * What is already stamped on this image, so the editor opens showing the
+   * placement that is on the file rather than the defaults. Null, or omitted,
+   * for artwork that has never been branded.
+   */
+  branding?: EventImageBrandingState | null
   /** Handed the new public URL once the server has composited or reverted. */
   onApplied: (variant: EventImageVariant, url: string) => void
 }
@@ -161,6 +168,7 @@ export function ArtworkBrandingModal({
   eventId,
   variant,
   imageUrl,
+  branding = null,
   onApplied,
 }: ArtworkBrandingModalProps): React.JSX.Element {
   const fieldId = useId()
@@ -170,15 +178,43 @@ export function ArtworkBrandingModal({
   // The QR is a print device: a 40mm minimum only means anything on the poster.
   const isPoster = variant === 'print_poster'
 
-  const [logoMode, setLogoMode] = useState<LogoMode>('corner')
-  const [corner, setCorner] = useState<Corner>(DEFAULT_CORNER)
-  const [logoCentre, setLogoCentre] = useState(DEFAULT_FREE_CENTRE)
-  const [logoWidthFrac, setLogoWidthFrac] = useState(LOGO_DEFAULT_WIDTH_FRAC)
-  const [colour, setColour] = useState<LogoColour>('white')
+  /**
+   * Reopening the editor on artwork that is already branded must show what is
+   * on the file, not the defaults. The panel unmounts this dialog when it
+   * closes, so these initialisers run once per opening and the controls stay
+   * free to move afterwards.
+   *
+   * A null `branding` is artwork nobody has branded, which keeps today's
+   * defaults. A non-null `branding` with a null `logo` is a deliberate "no
+   * logo", which is a different answer and is honoured as one.
+   */
+  const savedLogo = branding?.logo ?? null
+  const savedQr = branding?.qr ?? null
+  const savedPlacement = savedLogo?.placement ?? null
 
-  const [qrOn, setQrOn] = useState(isPoster)
-  const [qrCentre, setQrCentre] = useState(DEFAULT_QR_CENTRE)
-  const [qrWidthFrac, setQrWidthFrac] = useState(DEFAULT_QR_WIDTH_FRAC)
+  const [logoMode, setLogoMode] = useState<LogoMode>(() => {
+    if (!branding) return 'corner'
+    if (!savedPlacement) return 'none'
+    return savedPlacement.mode
+  })
+  const [corner, setCorner] = useState<Corner>(
+    savedPlacement?.mode === 'corner' ? savedPlacement.corner : DEFAULT_CORNER
+  )
+  const [logoCentre, setLogoCentre] = useState(
+    savedPlacement?.mode === 'free'
+      ? { x: savedPlacement.centreXFrac, y: savedPlacement.centreYFrac }
+      : DEFAULT_FREE_CENTRE
+  )
+  const [logoWidthFrac, setLogoWidthFrac] = useState(
+    savedPlacement?.widthFrac ?? LOGO_DEFAULT_WIDTH_FRAC
+  )
+  const [colour, setColour] = useState<LogoColour>(savedLogo?.colour ?? 'white')
+
+  const [qrOn, setQrOn] = useState(isPoster && (branding ? savedQr !== null : true))
+  const [qrCentre, setQrCentre] = useState(
+    savedQr ? { x: savedQr.centreXFrac, y: savedQr.centreYFrac } : DEFAULT_QR_CENTRE
+  )
+  const [qrWidthFrac, setQrWidthFrac] = useState(savedQr?.widthFrac ?? DEFAULT_QR_WIDTH_FRAC)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   const [busy, setBusy] = useState(false)
