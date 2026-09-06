@@ -459,6 +459,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Capacity can change before the guest retries. No booking exists for
+      // these results, so let finally release the claim instead of caching it.
+      if (resolvedState === 'blocked' && (
+        resolvedReason === 'seated_capacity_changed' ||
+        resolvedReason === 'standing_not_available_until_seated_full'
+      )) {
+        return createApiResponse(responsePayload, responseStatus)
+      }
+
       try {
         await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
         claimHeld = false
