@@ -21,6 +21,7 @@ export const MAINTENANCE_STATUS_TONES: Record<MaintenanceStatus, MaintenanceBadg
   reported: 'info',
   quoting: 'info',
   awaiting_landlord: 'warning',
+  with_third_party: 'warning',
   scheduled: 'primary',
   in_progress: 'primary',
   on_hold: 'warning',
