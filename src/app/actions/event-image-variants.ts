@@ -18,6 +18,7 @@ import {
   storagePathFromPublicUrl,
   type EventImageVariant,
 } from '@/lib/events/imageVariants'
+import type { Corner, LogoPlacement } from '@/lib/events/artwork/geometry'
 
 /**
  * Uploads go browser-direct to storage via a signed URL rather than through a
@@ -122,6 +123,70 @@ export async function requestEventImageUpload(
   }
 }
 
+/**
+ * Wipe the branding recorded against a variant after a fresh file is uploaded
+ * over it, and remove the original that branding referred to.
+ *
+ * Deliberately best effort. The upload itself has already succeeded and the new
+ * image is live and correct, so a failure here must never be reported to the
+ * person uploading as a failed upload. The worst case is a stale badge and an
+ * orphaned object, both cosmetic, and the compositor independently re-adopts a
+ * newer upload as its original if it ever sees the mismatch.
+ */
+async function clearBrandingForFreshUpload(
+  supabase: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  variant: EventImageVariant
+): Promise<void> {
+  const { data: row, error: readError } = await supabase
+    .from('event_images')
+    .select('original_storage_path')
+    .eq('event_id', eventId)
+    .eq('image_type', variant)
+    .maybeSingle()
+
+  if (readError) {
+    console.error('Could not read the previous branding to clear it:', readError)
+    return
+  }
+
+  const staleOriginal = (row as { original_storage_path?: string | null } | null)
+    ?.original_storage_path ?? null
+
+  const { error: updateError } = await supabase
+    .from('event_images')
+    .update({
+      original_storage_path: null,
+      logo_corner: null,
+      logo_centre_x_frac: null,
+      logo_centre_y_frac: null,
+      logo_colour: null,
+      logo_width_frac: null,
+      qr_centre_x_frac: null,
+      qr_centre_y_frac: null,
+      qr_width_frac: null,
+      qr_short_link_id: null,
+    })
+    .eq('event_id', eventId)
+    .eq('image_type', variant)
+
+  if (updateError) {
+    console.error('Could not clear branding after a replacement upload:', updateError)
+    return
+  }
+
+  // Only after the row no longer references it, so a failed delete leaves an
+  // orphan rather than a row pointing at a file that is gone.
+  if (staleOriginal && isOwnedByEvent(staleOriginal, eventId)) {
+    const { error: removeError } = await supabase.storage
+      .from(EVENT_IMAGE_BUCKET)
+      .remove([staleOriginal])
+    if (removeError) {
+      console.error('Could not remove the superseded original:', removeError)
+    }
+  }
+}
+
 const confirmSchema = z.object({
   eventId: z.string().uuid(),
   variant: variantSchema,
@@ -200,6 +265,25 @@ export async function confirmEventImageUpload(
       if (removeError) {
         console.error('Failed to remove replaced event image:', removeError)
       }
+    }
+
+    // A fresh upload is unbranded by definition, so any branding recorded
+    // against the previous file has to go with it.
+    //
+    // The RPC above replaces storage_path and deletes the object it replaced,
+    // but it knows nothing about the branding columns. Left alone they would
+    // describe artwork that no longer exists: the tile would show a "Branded"
+    // badge over a plainly unbranded picture, and original_storage_path would
+    // still point at the ORIGINAL of the previous upload. That old original is
+    // not the object the RPC returned, so nothing else deletes it either.
+    //
+    // Its own try/catch, not the outer one. The upload has already committed and
+    // the new image is live, so nothing this does may turn a successful upload
+    // into a reported failure.
+    try {
+      await clearBrandingForFreshUpload(supabase, eventId, variant)
+    } catch (brandingError) {
+      console.error('Could not clear branding after a replacement upload:', brandingError)
     }
 
     if (user) {
@@ -296,6 +380,32 @@ export async function deleteEventImageVariant(
   }
 }
 
+export type EventImageLogoColour = 'white' | 'black'
+
+/**
+ * What is already stamped on an image, read back so the branding editor opens
+ * showing the placement that is actually on the file.
+ *
+ * `logo` and `qr` are independently nullable, and the whole object is null when
+ * the image has never been branded. That is the distinction the editor needs:
+ * "never branded" opens at the defaults, "branded with no logo" opens with No
+ * logo selected, and the two are not the same thing.
+ */
+export interface EventImageBrandingState {
+  /**
+   * The untouched upload kept behind the composite, so a re-brand is always
+   * composited from the original. Null on an image that has never been branded.
+   */
+  originalStoragePath: string | null
+  logo: { placement: LogoPlacement; colour: EventImageLogoColour } | null
+  qr: {
+    centreXFrac: number
+    centreYFrac: number
+    widthFrac: number
+    shortLinkId: string | null
+  } | null
+}
+
 export interface EventImageVariantState {
   variant: EventImageVariant
   url: string | null
@@ -306,6 +416,169 @@ export interface EventImageVariantState {
   sizeBytes: number | null
   mimeType: string | null
   updatedAt: string | null
+  /** Null when this image carries no branding at all. */
+  branding: EventImageBrandingState | null
+}
+
+/**
+ * The `event_images` columns this action reads, hand written.
+ *
+ * Migration `20260906095746_event_image_branding.sql` adds the ten branding
+ * columns and has not been applied to any database, so
+ * `src/types/database.generated.ts` does not carry them and the generated row
+ * type cannot describe this select. `snake_case` to `camelCase` is mapped by
+ * hand below, as everywhere else in this repo. Do not regenerate the types to
+ * make this go away: that would claim the migration is applied when it is not.
+ */
+interface EventImageMetadataRow {
+  image_type: string | null
+  storage_path: string | null
+  file_name: string | null
+  file_size_bytes: number | null
+  mime_type: string | null
+  updated_at: string | null
+  original_storage_path: string | null
+  logo_corner: string | null
+  logo_centre_x_frac: number | null
+  logo_centre_y_frac: number | null
+  logo_colour: string | null
+  logo_width_frac: number | null
+  qr_centre_x_frac: number | null
+  qr_centre_y_frac: number | null
+  qr_width_frac: number | null
+  qr_short_link_id: string | null
+}
+
+const EVENT_IMAGE_SELECT =
+  'image_type, storage_path, file_name, file_size_bytes, mime_type, updated_at, original_storage_path, logo_corner, logo_centre_x_frac, logo_centre_y_frac, logo_colour, logo_width_frac, qr_centre_x_frac, qr_centre_y_frac, qr_width_frac, qr_short_link_id'
+
+const LOGO_CORNERS: readonly Corner[] = [
+  'top_left',
+  'top_right',
+  'bottom_left',
+  'bottom_right',
+]
+
+function isFraction(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+/**
+ * Rebuild the logo placement union from the columns.
+ *
+ * The database stores a corner XOR a centre pair, held apart by
+ * `event_images_logo_placement_exclusive`, and requires a colour and a width
+ * alongside either. Anything else can only come from a write that went round
+ * the constraint, so it is reported as unplaced and warned about rather than
+ * guessed at: inventing a placement would silently move a logo the next time
+ * someone pressed Save.
+ */
+function readLogo(
+  row: EventImageMetadataRow,
+  eventId: string,
+  variant: EventImageVariant
+): { placement: LogoPlacement; colour: EventImageLogoColour } | null {
+  const corner = row.logo_corner
+  const hasCorner = typeof corner === 'string' && corner.length > 0
+  const hasCentreX = isFraction(row.logo_centre_x_frac)
+  const hasCentreY = isFraction(row.logo_centre_y_frac)
+
+  if (!hasCorner && !hasCentreX && !hasCentreY) return null
+
+  const colour =
+    row.logo_colour === 'white' || row.logo_colour === 'black' ? row.logo_colour : null
+  const widthFrac = isFraction(row.logo_width_frac) ? row.logo_width_frac : null
+  const contradictory = (hasCorner && (hasCentreX || hasCentreY)) || hasCentreX !== hasCentreY
+  const cornerKnown = hasCorner && LOGO_CORNERS.includes(corner as Corner)
+
+  if (contradictory || colour === null || widthFrac === null || (hasCorner && !cornerKnown)) {
+    console.warn('Unusable logo branding on an event image, treating the logo as unplaced.', {
+      eventId,
+      variant,
+      logoCorner: corner,
+      hasCentreX,
+      hasCentreY,
+      hasColour: colour !== null,
+      hasWidth: widthFrac !== null,
+    })
+    return null
+  }
+
+  if (hasCorner) {
+    return { placement: { mode: 'corner', corner: corner as Corner, widthFrac }, colour }
+  }
+
+  return {
+    placement: {
+      mode: 'free',
+      centreXFrac: row.logo_centre_x_frac as number,
+      centreYFrac: row.logo_centre_y_frac as number,
+      widthFrac,
+    },
+    colour,
+  }
+}
+
+/** The three QR columns are written together or not at all, so read them that way. */
+function readQr(
+  row: EventImageMetadataRow,
+  eventId: string,
+  variant: EventImageVariant
+): EventImageBrandingState['qr'] {
+  const hasCentreX = isFraction(row.qr_centre_x_frac)
+  const hasCentreY = isFraction(row.qr_centre_y_frac)
+  const hasWidth = isFraction(row.qr_width_frac)
+
+  if (!hasCentreX && !hasCentreY && !hasWidth) return null
+
+  if (!hasCentreX || !hasCentreY || !hasWidth) {
+    console.warn('Incomplete QR branding on an event image, treating the code as unplaced.', {
+      eventId,
+      variant,
+      hasCentreX,
+      hasCentreY,
+      hasWidth,
+    })
+    return null
+  }
+
+  return {
+    centreXFrac: row.qr_centre_x_frac as number,
+    centreYFrac: row.qr_centre_y_frac as number,
+    widthFrac: row.qr_width_frac as number,
+    shortLinkId: row.qr_short_link_id ?? null,
+  }
+}
+
+function readBranding(
+  row: EventImageMetadataRow | undefined,
+  eventId: string,
+  variant: EventImageVariant
+): EventImageBrandingState | null {
+  if (!row) return null
+
+  // Any branding column carrying a value means this image has been through the
+  // editor, even when the answer was "no logo and no QR code".
+  const branded = [
+    row.original_storage_path,
+    row.logo_corner,
+    row.logo_centre_x_frac,
+    row.logo_centre_y_frac,
+    row.logo_colour,
+    row.logo_width_frac,
+    row.qr_centre_x_frac,
+    row.qr_centre_y_frac,
+    row.qr_width_frac,
+    row.qr_short_link_id,
+  ].some((value) => value !== null && value !== undefined)
+
+  if (!branded) return null
+
+  return {
+    originalStoragePath: row.original_storage_path ?? null,
+    logo: readLogo(row, eventId, variant),
+    qr: readQr(row, eventId, variant),
+  }
 }
 
 export async function getEventImageVariants(
@@ -327,10 +600,7 @@ export async function getEventImageVariants(
           )
           .eq('id', eventId)
           .maybeSingle(),
-        supabase
-          .from('event_images')
-          .select('image_type, storage_path, file_name, file_size_bytes, mime_type, updated_at')
-          .eq('event_id', eventId),
+        supabase.from('event_images').select(EVENT_IMAGE_SELECT).eq('event_id', eventId),
       ])
 
     if (eventError || rowsError) {
@@ -341,8 +611,9 @@ export async function getEventImageVariants(
       return { error: 'Event not found.' }
     }
 
+    const metadataRows = (rows ?? []) as unknown as EventImageMetadataRow[]
     const metadataByVariant = new Map(
-      (rows ?? []).map((row) => [row.image_type as string, row])
+      metadataRows.map((row) => [row.image_type as string, row])
     )
 
     // `events` is authoritative for which file an event is using: 51 events have a
@@ -372,6 +643,7 @@ export async function getEventImageVariants(
         sizeBytes: metadata?.file_size_bytes ?? null,
         mimeType: metadata?.mime_type ?? null,
         updatedAt: metadata?.updated_at ?? null,
+        branding: readBranding(metadata, eventId, variant),
       }
     })
 
