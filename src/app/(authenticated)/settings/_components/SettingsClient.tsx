@@ -35,6 +35,8 @@ interface SettingsClientProps {
   canManageRoles: boolean
   canManageSettings: boolean
   siteSettings: SiteSettings | null
+  /** Super-admin only, resolved on the server. The page behind it re-checks. */
+  canManageMaintenanceAreas: boolean
 }
 
 const SECTION_ITEMS = [
@@ -55,11 +57,30 @@ const SETTINGS_LINKS = [
   { href: '/settings/gdpr', title: 'GDPR', description: 'Data export and deletion tools', icon: 'eyeOff' },
 ] as const
 
+/**
+ * Shown only to a super-admin. The maintenance tracker has no RBAC module on
+ * purpose, so it cannot be listed alongside the tiles above, which are ungated.
+ */
+const MAINTENANCE_AREAS_LINK = {
+  href: '/settings/maintenance',
+  title: 'Maintenance Areas',
+  description: 'Parts of the pub a maintenance item can belong to',
+  icon: 'alertTriangle',
+} as const
+
 /* ------------------------------------------------------------------ */
 /*  General Section                                                    */
 /* ------------------------------------------------------------------ */
 
-function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; canEdit: boolean }) {
+function GeneralSection({
+  settings,
+  canEdit,
+  canManageMaintenanceAreas,
+}: {
+  settings: SiteSettings | null
+  canEdit: boolean
+  canManageMaintenanceAreas: boolean
+}) {
   const [saving, setSaving] = useState(false)
   const [toggleSaving, setToggleSaving] = useState<string | null>(null)
 
@@ -339,7 +360,10 @@ function GeneralSection({ settings, canEdit }: { settings: SiteSettings | null; 
         <CardHeader title="Settings Pages" subtitle="Specialised configuration areas" />
         <CardBody>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {SETTINGS_LINKS.map((item) => (
+            {[
+              ...SETTINGS_LINKS,
+              ...(canManageMaintenanceAreas ? [MAINTENANCE_AREAS_LINK] : []),
+            ].map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -395,6 +419,7 @@ export function SettingsClient({
   canManageRoles,
   canManageSettings,
   siteSettings,
+  canManageMaintenanceAreas,
 }: SettingsClientProps) {
   const [activeSection, setActiveSection] = useState<ActiveSection>('general')
 
@@ -413,7 +438,13 @@ export function SettingsClient({
         className="mb-6"
       />
 
-      {activeSection === 'general' && <GeneralSection settings={siteSettings} canEdit={canManageSettings} />}
+      {activeSection === 'general' && (
+        <GeneralSection
+          settings={siteSettings}
+          canEdit={canManageSettings}
+          canManageMaintenanceAreas={canManageMaintenanceAreas}
+        />
+      )}
       {activeSection === 'users' && (
         <UsersContent users={users} roles={roles} canManageRoles={canManageRoles} />
       )}
