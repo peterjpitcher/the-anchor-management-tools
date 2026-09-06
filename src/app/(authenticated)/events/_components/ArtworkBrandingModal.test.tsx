@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   LOGO_DEFAULT_WIDTH_FRAC,
+  QR_DEFAULT_WIDTH_FRAC,
+  QR_STRIP_LABEL,
   logoRect,
   logoRectFree,
+  qrBlockRect,
+  qrCodeRectWithinCanvas,
   qrMinWidthFrac,
   qrMinWidthPx,
+  qrStripRect,
 } from '@/lib/events/artwork/geometry'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
 
@@ -19,6 +24,49 @@ vi.mock('react-hot-toast', () => ({
 vi.mock('qrcode', () => {
   const toDataURL = vi.fn().mockResolvedValue('data:image/png;base64,QUJD')
   return { default: { toDataURL }, toDataURL }
+})
+
+/**
+ * dnd-kit is swapped for a fake that renders its children and hands the drag
+ * callbacks back to the test.
+ *
+ * Its `PointerSensor` needs real `PointerEvent`s and a laid-out document, and
+ * jsdom has neither, so driving the library here would test jsdom rather than
+ * this component. What is worth asserting is what the modal does with a drag:
+ * snap the axis, show the guide, and commit the position exactly once on drop.
+ */
+const dnd = vi.hoisted(() => ({
+  onDragMove: null as ((event: unknown) => void) | null,
+  onDragEnd: null as ((event: unknown) => void) | null,
+}))
+
+vi.mock('@dnd-kit/core', async () => {
+  const React = await import('react')
+  return {
+    DndContext: ({
+      children,
+      onDragMove,
+      onDragEnd,
+    }: {
+      children: React.ReactNode
+      onDragMove: (event: unknown) => void
+      onDragEnd: (event: unknown) => void
+    }) => {
+      dnd.onDragMove = onDragMove
+      dnd.onDragEnd = onDragEnd
+      return React.createElement(React.Fragment, null, children)
+    },
+    PointerSensor: class PointerSensorStub {},
+    useSensor: () => ({}),
+    useSensors: (...sensors: unknown[]) => sensors,
+    useDraggable: () => ({
+      attributes: {},
+      listeners: {},
+      setNodeRef: () => {},
+      transform: null,
+      isDragging: false,
+    }),
+  }
 })
 
 // Lightweight stand-ins for the design system so the test does not pull in the
@@ -99,6 +147,43 @@ function rectString(rect: { x: number; y: number; width: number; height: number 
   return `${rect.x},${rect.y},${rect.width},${rect.height}`
 }
 
+/** The preview the drag maths is done against. Any size works: the handler
+ *  converts pixels to fractions of it, so only the ratio matters. */
+const PREVIEW_W = 600
+const PREVIEW_H = 848
+
+function stubPreviewSize(): void {
+  const preview = screen.getByTestId('artwork-preview')
+  vi.spyOn(preview, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: PREVIEW_W,
+    bottom: PREVIEW_H,
+    width: PREVIEW_W,
+    height: PREVIEW_H,
+    toJSON: () => ({}),
+  } as DOMRect)
+}
+
+/** One drag, as fractions of the preview: a move and then a drop, which is the
+ *  order dnd-kit fires them in. */
+function drag(target: 'logo' | 'qr', dxFrac: number, dyFrac: number): void {
+  const event = {
+    active: { id: target },
+    delta: { x: dxFrac * PREVIEW_W, y: dyFrac * PREVIEW_H },
+  }
+  act(() => {
+    dnd.onDragMove?.(event)
+    dnd.onDragEnd?.(event)
+  })
+}
+
+function qrXPercent(): string {
+  return (screen.getByLabelText('QR X (%)') as HTMLInputElement).value
+}
+
 function renderModal(
   overrides: Partial<React.ComponentProps<typeof ArtworkBrandingModal>> = {}
 ) {
@@ -162,6 +247,10 @@ describe('ArtworkBrandingModal, logo placement', () => {
     renderModal()
 
     await user.click(screen.getByRole('radio', { name: 'Free' }))
+    // Away from the middle on purpose: the default free placement sits on the
+    // centre, which is a snap target, and this test is about the step size
+    // rather than about snapping. The snap behaviour has its own tests.
+    fireEvent.change(screen.getByLabelText('Logo X (%)'), { target: { value: '30' } })
     const overlay = screen.getByTestId('logo-overlay')
     const xField = screen.getByLabelText('Logo X (%)') as HTMLInputElement
 
@@ -248,10 +337,25 @@ describe('ArtworkBrandingModal, QR code', () => {
 
     fireEvent.change(slider, { target: { value: '5' } })
 
-    const [, , width] = (screen.getByTestId('qr-overlay').getAttribute('data-rect') ?? '')
+    // data-code-rect, not data-rect: the footprint that is dragged and outlined
+    // is the code plus its BOOK NOW strip, and the 40mm minimum is about the
+    // scannable square alone.
+    const [, , width] = (screen.getByTestId('qr-overlay').getAttribute('data-code-rect') ?? '')
       .split(',')
       .map(Number)
     expect(width).toBeGreaterThanOrEqual(qrMinWidthPx(POSTER_W))
+  })
+
+  it('starts a new QR at the shared default width', () => {
+    renderModal()
+
+    expect((screen.getByLabelText('QR size') as HTMLInputElement).value).toBe(
+      String(Math.round(QR_DEFAULT_WIDTH_FRAC * 100))
+    )
+    expect(screen.getByTestId('qr-overlay')).toHaveAttribute(
+      'data-code-rect',
+      rectString(qrCodeRectWithinCanvas(POSTER_W, POSTER_H, 0.5, 0.8, QR_DEFAULT_WIDTH_FRAC))
+    )
   })
 
   it('keeps every reachable QR width inside the bounds the route accepts', async () => {
@@ -298,6 +402,131 @@ describe('ArtworkBrandingModal, QR code', () => {
   })
 })
 
+describe('ArtworkBrandingModal, snapping to the centre', () => {
+  it('snaps a drag that lands near the centre onto it exactly, and shows the guide', () => {
+    renderModal()
+    stubPreviewSize()
+
+    // 40% across, set exactly, so the drag starts well clear of the centre.
+    fireEvent.change(screen.getByLabelText('QR X (%)'), { target: { value: '40' } })
+    expect(screen.queryByTestId('snap-guide-x')).toBeNull()
+
+    // Nine percent to the right lands on 49%, inside the two percent threshold.
+    drag('qr', 0.09, 0)
+
+    expect(qrXPercent()).toBe('50')
+    expect(screen.getByTestId('snap-guide-x')).toBeInTheDocument()
+    expect(screen.getByTestId('qr-overlay')).toHaveAttribute(
+      'data-code-rect',
+      rectString(qrCodeRectWithinCanvas(POSTER_W, POSTER_H, 0.5, 0.8, QR_DEFAULT_WIDTH_FRAC))
+    )
+    // The vertical position was never near the centre, so only one guide shows.
+    expect(screen.queryByTestId('snap-guide-y')).toBeNull()
+  })
+
+  it('lets the snap go once the drag carries on past the threshold', () => {
+    renderModal()
+    stubPreviewSize()
+
+    fireEvent.change(screen.getByLabelText('QR X (%)'), { target: { value: '40' } })
+    drag('qr', 0.09, 0)
+    expect(qrXPercent()).toBe('50')
+
+    drag('qr', 0.05, 0)
+
+    // 54, not 55: the pointer had really reached 49% when the snap showed 50%,
+    // so another five percent of travel lands on 54%. The snap moves what is
+    // stored and drawn, never where the next move is measured from, which is
+    // what stops it becoming a trap around the centre.
+    expect(qrXPercent()).toBe('54')
+    expect(screen.queryByTestId('snap-guide-x')).toBeNull()
+  })
+
+  it('snaps an arrow-key nudge the same way, so a keyboard gets the same help', () => {
+    renderModal()
+
+    fireEvent.change(screen.getByLabelText('QR X (%)'), { target: { value: '48' } })
+    expect(screen.queryByTestId('snap-guide-x')).toBeNull()
+
+    // One press is a single percent, which would land on 49 without snapping.
+    fireEvent.keyDown(screen.getByTestId('qr-overlay'), { key: 'ArrowRight' })
+
+    expect(qrXPercent()).toBe('50')
+    expect(screen.getByTestId('snap-guide-x')).toBeInTheDocument()
+  })
+
+  it('never snaps a typed position, because the field is the exact-entry route', () => {
+    renderModal()
+
+    fireEvent.change(screen.getByLabelText('QR X (%)'), { target: { value: '49' } })
+
+    expect(qrXPercent()).toBe('49')
+    expect(screen.queryByTestId('snap-guide-x')).toBeNull()
+    expect(screen.getByTestId('qr-overlay')).toHaveAttribute(
+      'data-code-rect',
+      rectString(qrCodeRectWithinCanvas(POSTER_W, POSTER_H, 0.49, 0.8, QR_DEFAULT_WIDTH_FRAC))
+    )
+  })
+
+  it('snaps the logo as well when it is placed freely', () => {
+    renderModal()
+    stubPreviewSize()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Free' }))
+    fireEvent.change(screen.getByLabelText('Logo X (%)'), { target: { value: '40' } })
+
+    drag('logo', 0.09, 0)
+
+    expect((screen.getByLabelText('Logo X (%)') as HTMLInputElement).value).toBe('50')
+    expect(screen.getByTestId('snap-guide-x')).toBeInTheDocument()
+  })
+})
+
+describe('ArtworkBrandingModal, what the preview shows', () => {
+  it('gives the preview logo the shadow the compositor will print', async () => {
+    const user = userEvent.setup()
+    renderModal()
+
+    // The shadow is always the opposite of the mark, which is what makes a
+    // white logo readable on pale artwork and a black one on dark artwork.
+    expect(screen.getByTestId('logo-preview-image').getAttribute('style')).toContain('rgba(0, 0, 0')
+
+    await user.click(screen.getByRole('radio', { name: 'Black logo' }))
+
+    expect(screen.getByTestId('logo-preview-image').getAttribute('style')).toContain(
+      'rgba(255, 255, 255'
+    )
+  })
+
+  it('draws the BOOK NOW strip beside the poster code', () => {
+    renderModal()
+
+    const strip = screen.getByTestId('qr-strip')
+    expect(strip).toHaveTextContent(QR_STRIP_LABEL)
+
+    // Laid out from the geometry module, so the strip sits where the compositor
+    // will actually print it rather than wherever a percentage guessed here
+    // happens to land.
+    const code = qrCodeRectWithinCanvas(POSTER_W, POSTER_H, 0.5, 0.8, QR_DEFAULT_WIDTH_FRAC)
+    const block = qrBlockRect(code)
+    const stripRect = qrStripRect(code)
+    expect(strip.style.left).toBe(`${((stripRect.x - block.x) / block.width) * 100}%`)
+    expect(strip.style.width).toBe(`${(stripRect.width / block.width) * 100}%`)
+
+    // The whole block is the drag footprint; the stored width still means the
+    // code, which is what the 40mm print minimum is measured against.
+    const overlay = screen.getByTestId('qr-overlay')
+    expect(overlay).toHaveAttribute('data-rect', rectString(block))
+    expect(overlay).toHaveAttribute('data-code-rect', rectString(code))
+  })
+
+  it('draws no strip on a variant that carries no QR code', () => {
+    renderModal({ variant: 'square', imageUrl: 'https://storage.test/square.png' })
+
+    expect(screen.queryByTestId('qr-strip')).toBeNull()
+  })
+})
+
 describe('ArtworkBrandingModal, saving', () => {
   it('posts exactly the documented body shape', async () => {
     const user = userEvent.setup()
@@ -318,7 +547,13 @@ describe('ArtworkBrandingModal, saving', () => {
       placement: { mode: 'corner', corner: 'bottom_right', widthFrac: LOGO_DEFAULT_WIDTH_FRAC },
       colour: 'white',
     })
-    expect(body.qr).toEqual({ centreXFrac: 0.5, centreYFrac: 0.8, widthFrac: 0.22 })
+    // Exactly three keys: the BOOK NOW strip is a rendering concern the server
+    // derives from the code, so nothing about it may appear in the payload.
+    expect(body.qr).toEqual({
+      centreXFrac: 0.5,
+      centreYFrac: 0.8,
+      widthFrac: QR_DEFAULT_WIDTH_FRAC,
+    })
     expect(body.action).toBeUndefined()
 
     await waitFor(() =>
