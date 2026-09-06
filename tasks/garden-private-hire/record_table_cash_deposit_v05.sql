@@ -1,0 +1,135 @@
+CREATE OR REPLACE FUNCTION public.record_table_cash_deposit_v05(p_table_booking_id uuid, p_amount numeric DEFAULT NULL::numeric, p_currency text DEFAULT 'GBP'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_booking RECORD;
+  v_payment_id uuid;
+  v_now timestamptz := NOW();
+  v_party_size integer := 1;
+  v_expected_amount numeric(10, 2) := 10.00;
+  v_amount numeric(10, 2);
+BEGIN
+  SELECT
+    tb.id,
+    tb.customer_id,
+    tb.status,
+    tb.party_size,
+    tb.committed_party_size,
+    tb.booking_reference,
+    tb.booking_type
+  INTO v_booking
+  FROM public.table_bookings tb
+  WHERE tb.id = p_table_booking_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'state', 'blocked',
+      'reason', 'booking_not_found'
+    );
+  END IF;
+
+  v_party_size := GREATEST(1, COALESCE(v_booking.committed_party_size, v_booking.party_size, 1));
+  v_expected_amount := ROUND((v_party_size::numeric) * 10.0, 2);
+  v_amount := COALESCE(p_amount, v_expected_amount);
+
+  UPDATE public.payments
+  SET
+    status = 'succeeded',
+    amount = COALESCE(v_amount, amount),
+    currency = COALESCE(NULLIF(TRIM(COALESCE(p_currency, '')), ''), currency),
+    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+      'confirmed_at', v_now,
+      'source', 'foh_cash',
+      'deposit_per_person', 10,
+      'party_size', v_party_size
+    )
+  WHERE table_booking_id = p_table_booking_id
+    AND charge_type = 'table_deposit'
+    AND status = 'pending'
+  RETURNING id INTO v_payment_id;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.payments (
+      table_booking_id,
+      charge_type,
+      amount,
+      currency,
+      status,
+      metadata,
+      created_at
+    ) VALUES (
+      p_table_booking_id,
+      'table_deposit',
+      COALESCE(v_amount, v_expected_amount),
+      COALESCE(NULLIF(TRIM(COALESCE(p_currency, '')), ''), 'GBP'),
+      'succeeded',
+      jsonb_build_object(
+        'confirmed_at', v_now,
+        'source', 'foh_cash',
+        'deposit_per_person', 10,
+        'party_size', v_party_size
+      ),
+      v_now
+    )
+    RETURNING id INTO v_payment_id;
+  END IF;
+
+  IF v_booking.status = 'pending_payment' THEN
+    UPDATE public.table_bookings
+    SET
+      status = 'confirmed'::public.table_booking_status,
+      confirmed_at = COALESCE(confirmed_at, v_now),
+      hold_expires_at = NULL,
+      payment_method = 'cash'::public.table_booking_payment_method,
+      payment_status = 'completed'::public.payment_status,
+      updated_at = v_now
+    WHERE id = p_table_booking_id;
+
+    UPDATE public.booking_holds
+    SET
+      status = 'consumed',
+      consumed_at = v_now,
+      updated_at = v_now
+    WHERE table_booking_id = p_table_booking_id
+      AND hold_type = 'payment_hold'
+      AND status = 'active';
+
+    UPDATE public.guest_tokens
+    SET consumed_at = v_now
+    WHERE table_booking_id = p_table_booking_id
+      AND action_type = 'payment'
+      AND consumed_at IS NULL;
+
+    RETURN jsonb_build_object(
+      'state', 'confirmed',
+      'table_booking_id', p_table_booking_id,
+      'customer_id', v_booking.customer_id,
+      'booking_reference', v_booking.booking_reference,
+      'party_size', v_party_size,
+      'payment_id', v_payment_id
+    );
+  END IF;
+
+  IF v_booking.status = 'confirmed' THEN
+    RETURN jsonb_build_object(
+      'state', 'already_confirmed',
+      'table_booking_id', p_table_booking_id,
+      'customer_id', v_booking.customer_id,
+      'booking_reference', v_booking.booking_reference,
+      'party_size', v_party_size,
+      'payment_id', v_payment_id
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'state', 'blocked',
+    'reason', 'booking_not_pending_payment',
+    'table_booking_id', p_table_booking_id,
+    'payment_id', v_payment_id
+  );
+END;
+$function$;
