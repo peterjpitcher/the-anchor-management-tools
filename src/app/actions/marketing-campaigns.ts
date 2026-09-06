@@ -113,6 +113,10 @@ const audienceSchema = z.object({
 
 const listSchema = z.object({
   status: campaignStatusSchema.optional(),
+  statuses: z.array(campaignStatusSchema).max(6).optional(),
+  search: z.string().trim().max(200).optional(),
+  audienceType: z.enum(['business', 'customer']).optional(),
+  sort: z.enum(['newest', 'oldest', 'scheduled_asc', 'scheduled_desc', 'name_asc', 'name_desc']).optional(),
   page: z.number().int().min(1).optional(),
   pageSize: z.number().int().min(1).max(200).optional(),
 })
