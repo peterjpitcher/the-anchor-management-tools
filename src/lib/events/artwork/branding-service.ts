@@ -202,7 +202,7 @@ export type BrandingResult = BrandingSuccess | BrandingFailure
 /**
  * The `event_images` row, hand written.
  *
- * Migration `20260906140000_event_image_branding.sql` adds the ten branding
+ * Migration `20260906095746_event_image_branding.sql` adds the ten branding
  * columns and has not been applied to any database, so
  * `src/types/database.generated.ts` does not carry them and a generated-typed
  * `select` of `original_storage_path` will not compile. `snake_case` to

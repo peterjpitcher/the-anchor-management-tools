@@ -54,7 +54,7 @@ nav-pills plan with uncommitted changes.
 
 ## Done since
 
-- [x] **A. Migration.** `supabase/migrations/20260906140000_event_image_branding.sql`.
+- [x] **A. Migration.** `supabase/migrations/20260906095746_event_image_branding.sql`.
       Ten nullable columns, eleven CHECKs, proved against a throwaway local
       Postgres cluster. **Drafted only, never applied.**
 - [x] **B. Composite route and revert.** `branding-service.ts` plus
