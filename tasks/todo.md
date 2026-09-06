@@ -1,3 +1,15 @@
+# Event checklist rapid completion, 6 September 2026
+
+- [x] Confirm the active event detail card reloads after each completion.
+- [x] Update only the changed task, with independent pending and rollback state.
+- [x] Verify overlapping saves, failures and reopening in six component tests and browser fixtures.
+- [x] Complete build gate: lint, typecheck, 734 test files (6,331 passed) and production build passed.
+- [ ] Merge, deploy and verify the production release.
+
+Browser evidence: five ticks produced four saved tasks and one isolated rollback; checklist reads stayed at one while other tasks remained usable.
+
+No database migration. Assumption: completing prep tasks refers to the event detail checklist. Other checklist views already update local state without explicitly reloading the checklist.
+
 # Friday manager report, 5 September 2026
 
 Detailed plan: [Friday manager report](./plan-2026-09-05-friday-manager-report.md).
