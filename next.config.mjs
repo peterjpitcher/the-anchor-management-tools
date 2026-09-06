@@ -73,6 +73,13 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/recruitment/applications/[id]/interview-kit': ['./public/booking-confirmation/anchor-logo-black.png'],
     '/api/recruitment/applications/[id]/trial-brief': ['./public/booking-confirmation/anchor-logo-black.png'],
+    // Same reason: the artwork compositor reads the venue logo off disk and
+    // stamps it onto the generated image. Both colours are named because the
+    // choice is made per placement at request time.
+    '/api/events/[id]/artwork/composite': [
+      './public/guest/anchor-logo-white.png',
+      './public/guest/anchor-logo-black.png',
+    ],
   },
   async headers() {
     return [
