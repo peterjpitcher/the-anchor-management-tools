@@ -50,6 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
   quoting: 'Quoting',
   // The stored value is tenancy neutral; the managers know it as Greene King.
   awaiting_landlord: 'With Greene King',
+  with_third_party: 'With a third party',
   scheduled: 'Scheduled',
   in_progress: 'In progress',
   on_hold: 'On hold',

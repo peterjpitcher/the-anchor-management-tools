@@ -81,3 +81,28 @@ describe('countsTowardsMaintenanceBadge', () => {
     expect(countsTowardsMaintenanceBadge(item('cancelled', '2025-01-01'), TODAY)).toBe(false)
   })
 })
+
+// The council statuses were added because two of the highest priority items were
+// sitting under a status that misrepresented them: "With Greene King" is wrong for
+// Surrey Highways, and "Reported" claims nothing has happened. TypeScript enforces
+// the label and tone maps because they are exhaustive Records, but nothing type
+// level enforces that the status counts as OPEN, and getting that wrong would quietly
+// drop those items out of the list totals, the badge and the Friday email.
+describe('with_third_party status', () => {
+  it('is open, so it still reaches the totals, the badge and the Friday email', async () => {
+    const { MAINTENANCE_OPEN_STATUSES, MAINTENANCE_CLOSED_STATUSES,
+            isOpenMaintenanceStatus } = await import('@/types/maintenance')
+
+    expect(MAINTENANCE_OPEN_STATUSES).toContain('with_third_party')
+    expect(MAINTENANCE_CLOSED_STATUSES).not.toContain('with_third_party')
+    expect(isOpenMaintenanceStatus('with_third_party')).toBe(true)
+  })
+
+  it('reads as a third party rather than naming the landlord', async () => {
+    const { MAINTENANCE_STATUS_LABELS } = await import('@/types/maintenance')
+    expect(MAINTENANCE_STATUS_LABELS.with_third_party).toBe('With a third party')
+    // The landlord label must not be reused: that was the original defect.
+    expect(MAINTENANCE_STATUS_LABELS.with_third_party)
+      .not.toBe(MAINTENANCE_STATUS_LABELS.awaiting_landlord)
+  })
+})

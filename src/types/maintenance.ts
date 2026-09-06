@@ -20,6 +20,7 @@ export const MAINTENANCE_STATUSES = [
   'reported',
   'quoting',
   'awaiting_landlord',
+  'with_third_party',
   'scheduled',
   'in_progress',
   'on_hold',
@@ -49,6 +50,7 @@ export const MAINTENANCE_OPEN_STATUSES = [
   'reported',
   'quoting',
   'awaiting_landlord',
+  'with_third_party',
   'scheduled',
   'in_progress',
   'on_hold',
@@ -69,6 +71,9 @@ export const MAINTENANCE_STATUS_LABELS: Record<MaintenanceStatus, string> = {
   quoting: 'Getting quotes',
   // The stored value is tenancy neutral on purpose, only the label names the landlord.
   awaiting_landlord: 'With Greene King',
+  // Anyone who is neither us nor the landlord: the council, Highways, an insurer,
+  // a neighbouring owner. Kept generic so it does not need renaming per case.
+  with_third_party: 'With a third party',
   scheduled: 'Scheduled',
   in_progress: 'In progress',
   on_hold: 'On hold',
