@@ -306,6 +306,10 @@
       "schedule": "0 7,8 * * 5"
     },
     {
+      "path": "/api/cron/maintenance-weekly-snapshot",
+      "schedule": "0 7,8 * * 5"
+    },
+    {
       "path": "/api/cron/checklists-retention",
       "schedule": "0 3 1 * *"
     },

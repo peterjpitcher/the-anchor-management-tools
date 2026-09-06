@@ -15,6 +15,7 @@ const SECTIONS: Record<ManagerReportSection, { title: string; path: string; snap
   recruitment: { title: 'Recruitment', path: '/recruitment' },
   private_bookings: { title: 'Private-booking summary', path: '/private-bookings', snapshot: true },
   rota: { title: 'Rota summary', path: '/rota', snapshot: true },
+  maintenance: { title: 'Maintenance', path: '/maintenance', snapshot: true },
 }
 
 function escapeHtml(value: string): string {

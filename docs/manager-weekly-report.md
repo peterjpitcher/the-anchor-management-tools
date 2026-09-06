@@ -13,14 +13,15 @@ The owner approved consolidating these manager notifications on 5 September 2026
 | Recruitment manager alerts | Payroll earnings threshold alerts |
 | Private booking weekly summary | Open-shift requests |
 | Weekly rota alert | Guest feedback |
+| Outstanding maintenance items | |
 
 Staff shift warnings, applicant messages and customer messages keep their existing timing. Other notification streams are unchanged, including urgent daily unfilled shifts, birthdays, parking, pre-orders, website enquiry failure fallback and Peter's technical alerts.
 
 ## Scheduling and content
 
-`vercel.json` remains the schedule source of truth. Private booking, checklist and rota snapshots run at 08:00 London on Friday. Two UTC slots cover winter and summer, and each route checks the local hour. The delivery route runs hourly on Friday, permits delivery from 09:00 London, and retries the same report after a failure.
+`vercel.json` remains the schedule source of truth. Private booking, checklist, rota and maintenance snapshots run at 08:00 London on Friday. Two UTC slots cover winter and summer, and each route checks the local hour. The delivery route runs hourly on Friday, permits delivery from 09:00 London, and retries the same report after a failure.
 
-The report groups updates into eight sections, gives their recorded dates and links to the relevant management pages. It includes a report even when no updates were collected. Missing snapshots are labelled unavailable. A shortened email includes an escaped HTML attachment containing the complete stored details. Recorded reminders can have been resolved since collection; the report directs the manager to the current app state.
+The report groups updates into nine sections, gives their recorded dates and links to the relevant management pages. It includes a report even when no updates were collected. Missing snapshots are labelled unavailable. A shortened email includes an escaped HTML attachment containing the complete stored details. Recorded reminders can have been resolved since collection; the report directs the manager to the current app state.
 
 `MANAGER_EMAIL` supplies the default recipient. Existing per-feature recipient overrides are retained. Different configured recipients receive separate reports. The old `PRIVATE_BOOKINGS_WEEKLY_DIGEST_HOUR_LONDON` setting no longer controls scheduling.
 

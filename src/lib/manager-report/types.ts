@@ -1,6 +1,6 @@
 export const MANAGER_REPORT_SECTIONS = [
   'table_bookings', 'staff_shift_reminders', 'holiday_reminders', 'checklist_alerts',
-  'checklist_summary', 'recruitment', 'private_bookings', 'rota',
+  'checklist_summary', 'recruitment', 'private_bookings', 'rota', 'maintenance',
 ] as const
 
 export type ManagerReportSection = typeof MANAGER_REPORT_SECTIONS[number]

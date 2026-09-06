@@ -30,7 +30,7 @@ describe('renderManagerReport', () => {
     expect(report.text).not.toContain('Recorded: 29 Oct 2026')
   })
 
-  it('renders all eight categories with truthful counts, detail, snapshot dates and management links', () => {
+  it('renders all nine categories with truthful counts, detail, snapshot dates and management links', () => {
     const entries = MANAGER_REPORT_SECTIONS.map((section, index) => entry({
       id: `synthetic-${index}`, key: `synthetic-${index}`, section,
       ...(section === 'table_bookings' ? {} : {
@@ -39,8 +39,8 @@ describe('renderManagerReport', () => {
       }),
     }))
     const report = renderManagerReport({ ...input, entries })
-    expect(report.text).toContain('8 queued updates')
-    for (const title of ['New table bookings', 'Staff shift reminders', 'Holiday approval reminders', 'Checklist alerts', 'Checklist summary', 'Recruitment', 'Private-booking summary', 'Rota summary']) {
+    expect(report.text).toContain('9 queued updates')
+    for (const title of ['New table bookings', 'Staff shift reminders', 'Holiday approval reminders', 'Checklist alerts', 'Checklist summary', 'Recruitment', 'Private-booking summary', 'Rota summary', 'Maintenance']) {
       expect(report.text).toContain(title)
     }
     expect(report.text).toContain('Saturday 31 October 2026 at 18:30')
@@ -56,7 +56,7 @@ describe('renderManagerReport', () => {
     const report = renderManagerReport(input)
     expect(report.text).toContain('0 queued updates')
     expect(report.text.match(/No queued updates in this period\./g)).toHaveLength(5)
-    expect(report.text.match(/No snapshot available for this report/g)).toHaveLength(3)
+    expect(report.text.match(/No snapshot available for this report/g)).toHaveLength(4)
     expect(report.attachment).toBeUndefined()
     expect(report.text).toContain('check the management app for the current position')
   })
@@ -166,10 +166,10 @@ describe('renderManagerReport', () => {
     })))
     const report = renderManagerReport({ ...input, entries })
     expect(new TextEncoder().encode(report.html).byteLength).toBeLessThan(85_000)
-    expect(report.attachment?.content.match(/<article /g)).toHaveLength(96)
+    expect(report.attachment?.content.match(/<article /g)).toHaveLength(108)
     const visible = report.html.match(/<article /g)?.length ?? 0
     const omitted = [...report.text.matchAll(/(\d+) more updates are included/g)]
       .reduce((total, match) => total + Number(match[1]), 0)
-    expect(visible + omitted).toBe(96)
+    expect(visible + omitted).toBe(108)
   })
 })
