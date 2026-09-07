@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fromZonedTime } from 'date-fns-tz'
 import { createGuestToken, hashGuestToken } from '@/lib/guest/tokens'
+import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { queueManagerReportEmail } from '@/lib/manager-report/queue'
 import { notifyCustomer } from '@/lib/notifications/notify'
 import { sendSMS } from '@/lib/twilio'
@@ -1000,6 +1001,10 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   }).format(depositAmount)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   let manageLink: string | null = null
+  // True when a link went out at full length because shortening failed. Recorded on
+  // the audit row below rather than only logged, so a spell of silent failure is
+  // queryable instead of invisible.
+  let shortLinkFallback = false
 
   if (input.bookingResult.state === 'confirmed' && input.bookingResult.table_booking_id) {
     try {
@@ -1009,10 +1014,35 @@ export async function sendTableBookingCreatedSmsIfAllowed(
         bookingStartIso: input.bookingResult.start_datetime || null,
         appBaseUrl: process.env.NEXT_PUBLIC_APP_URL
       })
-      manageLink = token.url
+      // Shortened here rather than inside createTableManageToken: that URL is also
+      // handed back to API callers, so the caller's copy must stay long. Doing it
+      // once here covers both the email and the SMS below.
+      const shortened = await buildGuestShortLink({
+        longUrl: token.url,
+        linkKind: 'table_manage',
+        customerId: input.customerId,
+        tableBookingId: input.bookingResult.table_booking_id,
+      })
+      manageLink = shortened.url
+      if (!shortened.shortened) shortLinkFallback = true
     } catch {
       manageLink = null
     }
+  }
+
+  // input.nextStepUrl is the same string the API returns as next_step_url and
+  // fallback_payment_url, so only a local copy is shortened; the caller keeps the
+  // long one for its straight-to-payment redirect.
+  let paymentLink = input.nextStepUrl || null
+  if (paymentLink && input.bookingResult.table_booking_id) {
+    const shortenedPayment = await buildGuestShortLink({
+      longUrl: paymentLink,
+      linkKind: 'table_payment',
+      customerId: input.customerId,
+      tableBookingId: input.bookingResult.table_booking_id,
+    })
+    paymentLink = shortenedPayment.url
+    if (!shortenedPayment.shortened) shortLinkFallback = true
   }
 
   // Render the server-GRANTED chair count (never the requested value) and outside-safe wording.
@@ -1028,7 +1058,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
       : isOutside ? 'deposit' : 'table deposit'
     const secureNoun = isOutside ? 'outside booking' : 'table'
     const base = `The Anchor: Hi ${firstName}, please pay your ${depositKindLabel} of ${depositLabel} (${partySize} x GBP ${DEPOSIT_PER_PERSON_GBP}) to secure your ${secureNoun} for ${partySize} ${seatWord} on ${bookingMoment}.`
-    const cta = input.nextStepUrl ? `Pay now: ${input.nextStepUrl}` : 'We will text your payment link shortly.'
+    const cta = paymentLink ? `Pay now: ${paymentLink}` : 'We will text your payment link shortly.'
     smsBody = `${base}${highChairSuffix}${outsideSuffix} ${cta}`
   } else {
     const bookingNoun = isOutside ? 'outside booking' : 'table booking'
@@ -1066,7 +1096,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
     bookingReference: input.bookingResult.booking_reference || null,
     state: input.bookingResult.state,
     manageLink,
-    paymentLink: input.nextStepUrl || null,
+    paymentLink,
     depositLabel,
     christmasCourseSummary,
     highChairCount: grantedHighChairs,
@@ -1183,6 +1213,7 @@ export async function sendTableBookingCreatedSmsIfAllowed(
       selected_channels: notificationResult.selectedChannels,
       email_sent: emailDeliveredOrUnknown,
       sms_sent: smsDeliveredOrUnknown,
+      short_link_fallback: shortLinkFallback,
     },
   })
 
@@ -1680,6 +1711,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
     const bookingNoun = isOutside ? 'outside booking' : 'table booking'
 
     let manageLink: string | null = null
+    let shortLinkFallback = false
     try {
       const token = await createTableManageToken(supabase, {
         customerId: customer.id,
@@ -1687,7 +1719,14 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
         bookingStartIso: booking.start_datetime || null,
         appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
       })
-      manageLink = token.url
+      const shortened = await buildGuestShortLink({
+        longUrl: token.url,
+        linkKind: 'table_manage',
+        customerId: customer.id,
+        tableBookingId: booking.id,
+      })
+      manageLink = shortened.url
+      shortLinkFallback = !shortened.shortened
     } catch {
       manageLink = null
     }
@@ -1787,6 +1826,7 @@ export async function sendTableBookingRescheduledNotificationIfAllowed(
         booking_reference: booking.booking_reference,
         selected_channels: notificationResult.selectedChannels,
         sms_code: smsCode,
+        short_link_fallback: shortLinkFallback,
       },
     })
   } catch (error) {
