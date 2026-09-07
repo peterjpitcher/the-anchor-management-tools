@@ -16,6 +16,18 @@ const { warn } = vi.hoisted(() => ({
   warn: vi.fn(),
 }))
 
+// Without this the guest manage link is shortened for real, createShortLinkInternal
+// throws on the test's Supabase stub, and the fail-open helper hands back the long
+// URL. Every assertion below would still pass while proving nothing about what the
+// guest receives.
+const createShortLinkInternalMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/services/short-links', () => ({
+  ShortLinkService: {
+    createShortLinkInternal: createShortLinkInternalMock,
+  },
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     warn,
@@ -96,6 +108,11 @@ describe('event payment confirmation email', () => {
       success: true,
       messageId: 'email-1',
     })
+    createShortLinkInternalMock.mockResolvedValue({
+      short_code: 'mng123',
+      full_url: 'https://l.the-anchor.pub/mng123',
+      already_exists: false,
+    })
   })
 
   it('sends a customer confirmation email after payment', async () => {
@@ -130,6 +147,14 @@ describe('event payment confirmation email', () => {
     }))
     expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].text).toContain('We have received your £10.00 payment')
     expect((sendEmail as unknown as vi.Mock).mock.calls[0][0].html).toContain('Manage booking')
+
+    // The guest gets the short link, and no trace of the long token URL.
+    const sent = (sendEmail as unknown as vi.Mock).mock.calls[0][0]
+    expect(sent.html).toContain('https://l.the-anchor.pub/mng123')
+    expect(sent.text).toContain('https://l.the-anchor.pub/mng123')
+    expect(sent.html).not.toContain('/g/manage-token/manage-booking')
+    expect(sent.text).not.toContain('/g/manage-token/manage-booking')
+    expect(sent.metadata.short_link_fallback).toBe(false)
   })
 
   it('skips when a successful confirmation email already exists', async () => {

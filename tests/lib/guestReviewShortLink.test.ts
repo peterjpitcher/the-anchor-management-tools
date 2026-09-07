@@ -107,9 +107,11 @@ describe('buildGuestReviewUrl', () => {
     expect(result).toEqual({ url: LONG_URL, shortened: false })
     expect(loggerWarnMock).toHaveBeenCalledTimes(1)
     expect(loggerWarnMock.mock.calls[0][1].metadata).toEqual({
-      customerId: 'customer-1',
-      eventBookingId: null,
-      tableBookingId: 'table-booking-1',
+      reason_code: 'short_link_creation_failed',
+      link_kind: 'guest_review',
+      customer_id: 'customer-1',
+      event_booking_id: null,
+      table_booking_id: 'table-booking-1',
     })
   })
 
