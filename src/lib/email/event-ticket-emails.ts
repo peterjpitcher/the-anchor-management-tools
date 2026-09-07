@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendEmail } from '@/lib/email/emailService'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import {
   buildTicketBreakdownLines,
   eventTicketTypesEnabled,
@@ -81,7 +82,7 @@ async function createManageLink(
     eventStartIso: string | null
   },
   appBaseUrl?: string
-): Promise<string | null> {
+): Promise<{ url: string; shortened: boolean } | null> {
   try {
     const manageToken = await createEventManageToken(supabase, {
       customerId: context.customerId,
@@ -89,7 +90,15 @@ async function createManageLink(
       eventStartIso: context.eventStartIso,
       appBaseUrl,
     })
-    return manageToken.url
+    // Shortened here rather than inside createEventManageToken, whose URL is also
+    // returned to API callers. `shortened: false` means the guest got the full
+    // length URL, which each caller records on the email's metadata row.
+    return buildGuestShortLink({
+      longUrl: manageToken.url,
+      linkKind: 'event_manage',
+      customerId: context.customerId,
+      eventBookingId: context.bookingId,
+    })
   } catch {
     return null
   }
@@ -222,6 +231,18 @@ export async function sendEventPaymentLinkEmail(
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
   if (!context) return { success: false, skipped: true }
 
+  // Shortened here rather than in createEventPaymentToken, whose URL is also
+  // returned to the API caller as next_step_url. The SMS on this path carries the
+  // same long URL and is shortened at send time to the same destination, and
+  // createShortLinkInternal dedupes on destination_url, so both channels end up
+  // on one short code and one click count.
+  const payment = await buildGuestShortLink({
+    longUrl: input.paymentLink,
+    linkKind: 'event_payment',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+  })
+
   const subject = input.reminder
     ? `Reminder: complete payment for ${context.eventName}`
     : `Complete payment for ${context.eventName}`
@@ -231,14 +252,14 @@ export async function sendEventPaymentLinkEmail(
     : 'Your tickets are held for a limited time.'
   const safeName = escapeHtml(context.firstName)
   const safeEventName = escapeHtml(context.eventName)
-  const safePaymentLink = escapeHtml(input.paymentLink)
+  const safePaymentLink = escapeHtml(payment.url)
   const text = [
     `Hi ${context.firstName},`,
     '',
     `${context.seats} ${seatWord} are held for ${context.eventName} on ${context.eventStart}.`,
     expiryText,
     '',
-    `Pay securely here: ${input.paymentLink}`,
+    `Pay securely here: ${payment.url}`,
     '',
     'The Anchor',
   ].join('\n')
@@ -265,7 +286,9 @@ export async function sendEventPaymentLinkEmail(
     eventBookingId: context.bookingId,
     metadata: {
       template_key: input.reminder ? 'event_payment_reminder_email' : 'event_payment_link_email',
-      payment_link: input.paymentLink,
+      // The URL the guest actually received, not the one we were handed.
+      payment_link: payment.url,
+      short_link_fallback: !payment.shortened,
     },
   })
 }
@@ -290,7 +313,8 @@ export async function sendEventPaymentConfirmationEmail(
 
   const seatWord = context.seats === 1 ? 'ticket' : 'tickets'
   const amountText = formatCurrency(input.amount ?? null, input.currency || 'GBP')
-  const manageLink = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
 
   const subject = `Booking confirmed: ${context.eventName}`
   const safeName = escapeHtml(context.firstName)
@@ -364,6 +388,7 @@ export async function sendEventPaymentConfirmationEmail(
       amount: input.amount ?? null,
       currency: input.currency || 'GBP',
       manage_link_included: Boolean(manageLink),
+      short_link_fallback: manageResult?.shortened === false,
     },
   })
 }
@@ -605,10 +630,11 @@ export async function sendEventTicketTransferredEmail(
   })
   if (alreadySent) return { success: true, skipped: true }
 
-  const manageLink = await createManageLink(supabase, {
+  const manageResult = await createManageLink(supabase, {
     ...context,
     eventStartIso: input.eventStartIso || context.eventStartIso,
   }, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
   const eventStart = input.eventStartIso ? formatLondonDateTime(input.eventStartIso) : context.eventStart
   const body = [
     `Hi ${context.firstName},`,
@@ -643,6 +669,7 @@ export async function sendEventTicketTransferredEmail(
       from_event_name: input.fromEventName,
       to_event_name: input.toEventName,
       manage_link_included: Boolean(manageLink),
+      short_link_fallback: manageResult?.shortened === false,
       overpayment: typeof input.overpayment === 'number' && input.overpayment > 0 ? input.overpayment : undefined,
     },
   })
@@ -677,10 +704,11 @@ export async function sendEventRescheduledEmail(
   if (alreadySent) return { success: true, skipped: true }
 
   const newStartIso = `${input.newDate}T${input.newTime || '00:00'}:00`
-  const manageLink = await createManageLink(supabase, {
+  const manageResult = await createManageLink(supabase, {
     ...context,
     eventStartIso: newStartIso,
   }, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
   const newDateText = formatLondonDateTime(newStartIso)
   const body = [
     `Hi ${context.firstName},`,
@@ -711,6 +739,7 @@ export async function sendEventRescheduledEmail(
       template_key: 'event_rescheduled_email',
       ...metadataMatch,
       manage_link_included: Boolean(manageLink),
+      short_link_fallback: manageResult?.shortened === false,
     },
   })
 }
