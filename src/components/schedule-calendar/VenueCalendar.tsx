@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, useTransition, type FormEvent, type ReactNode } from 'react'
 import { CalendarFilterBar } from './CalendarFilterBar'
 import { applyCalendarFilters, EMPTY_CALENDAR_FILTERS, type CalendarFilters } from './filters'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,17 @@ import type {
   ScheduleDailyOps,
 } from './types'
 import { CALENDAR_COLOUR_OPTIONS, kindColor } from './appearance'
+import { entryGaps, type CalendarContentGap } from './filters'
+import {
+  CAL_MONTH_PARAM,
+  CAL_VIEW_PARAM,
+  calendarFiltersToParams,
+  formatCalendarMonth,
+  parseCalendarFilters,
+  parseCalendarMonth,
+  parseCalendarView,
+  withCalendarParams,
+} from './url-state'
 
 function toLocalIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -425,7 +436,45 @@ export function VenueCalendar({
   className,
 }: VenueCalendarProps): ReactNode {
   const router = useRouter()
-  const [view, setView] = useState<ScheduleCalendarView>('month')
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // View, month and filters live in the URL so they survive a tab switch (which
+  // unmounts this component on /events), a refresh, and being pasted into a
+  // message. Namespaced `cal*` so they cannot collide with the events page's own
+  // list/calendar/board `view`.
+  const view = parseCalendarView(searchParams.get(CAL_VIEW_PARAM)) ?? 'month'
+  const anchor = useMemo(
+    () => parseCalendarMonth(searchParams.get(CAL_MONTH_PARAM)) ?? new Date(),
+    [searchParams],
+  )
+  const filters = useMemo(
+    () => parseCalendarFilters(new URLSearchParams(searchParams.toString()), EMPTY_CALENDAR_FILTERS),
+    [searchParams],
+  )
+
+  const applyParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const next = withCalendarParams(new URLSearchParams(searchParams.toString()), updates)
+      const query = next.toString()
+      // replace, not push: paging months should not fill the back button.
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    },
+    [pathname, router, searchParams],
+  )
+
+  const setView = useCallback(
+    (next: ScheduleCalendarView) => applyParams({ [CAL_VIEW_PARAM]: next }),
+    [applyParams],
+  )
+  const setAnchor = useCallback(
+    (next: Date) => applyParams({ [CAL_MONTH_PARAM]: formatCalendarMonth(next) }),
+    [applyParams],
+  )
+  const setFilters = useCallback(
+    (next: CalendarFilters) => applyParams(calendarFiltersToParams(next)),
+    [applyParams],
+  )
 
   // Note editor, shared by every surface that renders the full calendar.
   // `mode` distinguishes creating from editing an existing note; `editing`
@@ -550,7 +599,6 @@ export function VenueCalendar({
 
   // One filter model drives both the month grid and the list, so the two can
   // never disagree about what is being shown.
-  const [filters, setFilters] = useState<CalendarFilters>(EMPTY_CALENDAR_FILTERS)
   const visibleEntries = useMemo(() => applyCalendarFilters(entries, filters), [entries, filters])
 
   const legendKinds = useMemo<CalendarEntryKind[]>(() => {
@@ -571,6 +619,45 @@ export function VenueCalendar({
   // Rows we could not place on a day: either no date at all, or a date we could
   // not parse. Every source column is NOT NULL in production, so the old
   // version of this counter could never fire; malformed data is the real case.
+  /**
+   * Entries the counts describe.
+   *
+   * Scoped to what the user is actually looking at: the anchored month in month
+   * view, the whole loaded range in list view (which has no month control). The
+   * label says which, because "Showing 130 of 130" while four things are on
+   * screen tells nobody anything.
+   */
+  const countScopeLabel = view === 'month' ? format(anchor, 'MMMM yyyy') : 'the loaded range'
+  const countableEntries = useMemo(() => {
+    if (view !== 'month') return entries
+    const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+    const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59, 59, 999)
+    // Intersects, not starts-in: a booking that began last month and runs into
+    // this one is on screen, so it counts.
+    return entries.filter((entry) => entry.start <= monthEnd && entry.end >= monthStart)
+  }, [entries, view, anchor])
+
+  const kindCounts = useMemo(() => {
+    const counts: Partial<Record<CalendarEntryKind, number>> = {}
+    for (const entry of countableEntries) {
+      counts[entry.kind] = (counts[entry.kind] ?? 0) + 1
+    }
+    return counts
+  }, [countableEntries])
+
+  const gapCounts = useMemo(() => {
+    const counts: Record<CalendarContentGap, number> = { image: 0, brief: 0, description: 0 }
+    for (const entry of countableEntries) {
+      for (const gap of entryGaps(entry)) counts[gap] += 1
+    }
+    return counts
+  }, [countableEntries])
+
+  const visibleInScope = useMemo(
+    () => applyCalendarFilters(countableEntries, filters),
+    [countableEntries, filters],
+  )
+
   const hiddenCount = useMemo(() => {
     const missingDate =
       events.filter((e) => !e.date).length +
@@ -593,8 +680,11 @@ export function VenueCalendar({
           filters={filters}
           onChange={setFilters}
           availableKinds={legendKinds}
-          shownCount={visibleEntries.length}
-          totalCount={entries.length}
+          shownCount={visibleInScope.length}
+          totalCount={countableEntries.length}
+          kindCounts={kindCounts}
+          gapCounts={gapCounts}
+          countScopeLabel={countScopeLabel}
         />
       )}
 
@@ -602,6 +692,8 @@ export function VenueCalendar({
         entries={visibleEntries}
         view={view}
         onViewChange={setView}
+        anchor={anchor}
+        onAnchorChange={setAnchor}
         canCreateCalendarNote={canManageCalendarNotes}
         onEmptyDayClick={handleEmptyDayClick}
         onEntryClick={(entry) => {

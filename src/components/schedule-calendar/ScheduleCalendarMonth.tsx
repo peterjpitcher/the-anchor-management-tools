@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import type { CalendarEntry } from './types'
+import type { CalendarEntry, ScheduleDailyOps } from './types'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 import { calendarColourNeedsLightText } from './appearance'
@@ -19,6 +19,12 @@ export interface ScheduleCalendarMonthProps {
     onEntryClick?: (entry: CalendarEntry) => void
     onEmptyDayClick?: (date: Date) => void
     renderTooltip?: (entry: CalendarEntry) => ReactNode
+    /**
+     * Covers booked and who is working. Previously reached the list view only,
+     * so it was invisible on desktop, which is where the week actually gets
+     * planned.
+     */
+    dailyOps?: ScheduleDailyOps
 }
 
 export function ScheduleCalendarMonth({
@@ -28,6 +34,7 @@ export function ScheduleCalendarMonth({
     onEntryClick,
     onEmptyDayClick,
     renderTooltip,
+    dailyOps,
 }: ScheduleCalendarMonthProps) {
     const weeks = useMemo(() => {
         const monthStart = startOfMonth(anchor)
@@ -146,6 +153,10 @@ export function ScheduleCalendarMonth({
                         {week.map((day, di) => {
                             const dayEntries = entriesForDay(day)
                             const inMonth = isSameMonth(day, anchor)
+                            const closure = closureForDay(day, entries)
+                            const iso = format(day, 'yyyy-MM-dd')
+                            const covers = dailyOps?.coversByDate[iso] ?? 0
+                            const staff = dailyOps?.staffByDate[iso] ?? []
                             return (
                                 <div
                                     key={day.toISOString()}
@@ -153,6 +164,10 @@ export function ScheduleCalendarMonth({
                                         'group bg-white p-1 flex flex-col gap-1 min-h-[80px]',
                                         di > 0 && 'border-l border-gray-200',
                                         !inMonth && 'bg-gray-50 text-gray-400',
+                                        // Being shut is a property of the DAY, not one more
+                                        // chip queued behind the events on it.
+                                        closure === 'closed' && 'bg-gray-200',
+                                        closure === 'kitchen' && 'bg-amber-50',
                                         onEmptyDayClick && 'cursor-pointer'
                                     )}
                                     onClick={
@@ -189,7 +204,27 @@ export function ScheduleCalendarMonth({
                                         >
                                             {format(day, 'd')}
                                         </button>
+                                        {/* Text as well as colour: a colour-only
+                                            treatment says nothing to a screen reader
+                                            or in high contrast. */}
+                                        {closure === 'closed' && (
+                                            <span className="rounded bg-gray-900 px-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                                Closed
+                                            </span>
+                                        )}
+                                        {closure === 'kitchen' && (
+                                            <span className="rounded bg-amber-200 px-1 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
+                                                No kitchen
+                                            </span>
+                                        )}
                                     </div>
+                                    {(covers > 0 || staff.length > 0) && (
+                                        <p className="text-[10px] leading-tight text-gray-500">
+                                            {covers > 0 && <span>{covers} cover{covers === 1 ? '' : 's'}</span>}
+                                            {covers > 0 && staff.length > 0 && <span aria-hidden> · </span>}
+                                            {staff.length > 0 && <span>{staff.join(', ')}</span>}
+                                        </p>
+                                    )}
                                     {dayEntries.map((entry) => (
                                         <EntryBlock
                                             key={entry.id}
@@ -224,6 +259,22 @@ export function ScheduleCalendarMonth({
             })}
         </div>
     )
+}
+
+/**
+ * Whether the venue or just the kitchen is shut on a day, from the special-hours
+ * entries already on the calendar. Venue closure wins over kitchen closure.
+ */
+function closureForDay(day: Date, entries: CalendarEntry[]): 'closed' | 'kitchen' | null {
+    let kitchen = false
+    for (const entry of entries) {
+        if (entry.kind !== 'special_hours') continue
+        if (!isSameDay(entry.start, day)) continue
+        if (entry.tooltipData.kind !== 'special_hours') continue
+        if (entry.tooltipData.isClosed) return 'closed'
+        if (entry.tooltipData.isKitchenClosed) kitchen = true
+    }
+    return kitchen ? 'kitchen' : null
 }
 
 interface EntryBlockProps {

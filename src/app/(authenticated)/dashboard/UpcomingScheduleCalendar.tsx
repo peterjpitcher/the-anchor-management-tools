@@ -48,6 +48,10 @@ export default function UpcomingScheduleCalendar({
       parkingBookings={parkingBookings}
       canManageCalendarNotes={canManageCalendarNotes}
       dailyOps={dailyOps}
+      // Owner decision: the dashboard gets the same filter bar as /events. It is
+      // also the only way to reveal cancelled private hire, which is hidden by
+      // default, and the only place the "N of M" line appears at all.
+      showFilters
     />
   )
 }
