@@ -25,6 +25,13 @@ export interface ScheduleCalendarMonthProps {
      * planned.
      */
     dailyOps?: ScheduleDailyOps
+    /**
+     * Unfiltered entries, used only to decide whether the venue or kitchen is
+     * shut. Filters control which ENTRIES are listed; they must not change an
+     * operational fact about the day. Filtering to "no brief" should not make a
+     * closed day look open.
+     */
+    closureEntries?: CalendarEntry[]
 }
 
 export function ScheduleCalendarMonth({
@@ -35,6 +42,7 @@ export function ScheduleCalendarMonth({
     onEmptyDayClick,
     renderTooltip,
     dailyOps,
+    closureEntries,
 }: ScheduleCalendarMonthProps) {
     const weeks = useMemo(() => {
         const monthStart = startOfMonth(anchor)
@@ -123,26 +131,50 @@ export function ScheduleCalendarMonth({
                                 {bands.map(({ entry, startCol, span }) => {
                                     const isCancelled = entry.status === 'cancelled'
                                     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
-                                    return (
-                                        <div
+                                    const bandStyle = {
+                                        borderColor: isCancelled ? '#111827' : entry.color,
+                                        backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
+                                        color: lightText ? '#FFFFFF' : '#111827',
+                                        marginLeft: `${(startCol / 7) * 100}%`,
+                                        width: `${(span / 7) * 100}%`,
+                                    }
+                                    const bandClass = cn(
+                                        'flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-medium whitespace-normal break-words',
+                                        isCancelled && 'line-through',
+                                        onEntryClick && 'text-left hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-1'
+                                    )
+                                    const bandBody = (
+                                        <>
+                                            <CalendarKindBadge kind={entry.kind} lightText={lightText} />
+                                            <span>{entry.title}</span>
+                                        </>
+                                    )
+                                    // A multi-day entry renders ONLY as a band here, so leaving the
+                                    // band inert made a multi-day note unopenable in the month grid
+                                    // even once single-day notes could be clicked.
+                                    return onEntryClick ? (
+                                        <button
                                             key={entry.id}
-                                            className={cn(
-                                                'flex items-center gap-1 rounded-sm border px-2 py-1 text-xs font-medium whitespace-normal break-words',
-                                                isCancelled && 'line-through'
-                                            )}
-                                            style={{
-                                                borderColor: isCancelled ? '#111827' : entry.color,
-                                                backgroundColor: isCancelled ? '#FFFFFF' : entry.color,
-                                                color: lightText ? '#FFFFFF' : '#111827',
-                                                marginLeft: `${(startCol / 7) * 100}%`,
-                                                width: `${(span / 7) * 100}%`,
-                                            }}
+                                            type="button"
+                                            onClick={() => onEntryClick(entry)}
+                                            className={bandClass}
+                                            style={bandStyle}
                                             data-entry-kind={entry.kind}
                                             data-entry-title
                                             title={entryTooltipText(entry)}
                                         >
-                                            <CalendarKindBadge kind={entry.kind} lightText={lightText} />
-                                            <span>{entry.title}</span>
+                                            {bandBody}
+                                        </button>
+                                    ) : (
+                                        <div
+                                            key={entry.id}
+                                            className={bandClass}
+                                            style={bandStyle}
+                                            data-entry-kind={entry.kind}
+                                            data-entry-title
+                                            title={entryTooltipText(entry)}
+                                        >
+                                            {bandBody}
                                         </div>
                                     )
                                 })}
@@ -153,7 +185,7 @@ export function ScheduleCalendarMonth({
                         {week.map((day, di) => {
                             const dayEntries = entriesForDay(day)
                             const inMonth = isSameMonth(day, anchor)
-                            const closure = closureForDay(day, entries)
+                            const closure = closureForDay(day, closureEntries ?? entries)
                             const iso = format(day, 'yyyy-MM-dd')
                             const covers = dailyOps?.coversByDate[iso] ?? 0
                             const staff = dailyOps?.staffByDate[iso] ?? []

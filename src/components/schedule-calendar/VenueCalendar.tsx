@@ -694,6 +694,7 @@ export function VenueCalendar({
         onViewChange={setView}
         anchor={anchor}
         onAnchorChange={setAnchor}
+        closureEntries={entries}
         canCreateCalendarNote={canManageCalendarNotes}
         onEmptyDayClick={handleEmptyDayClick}
         onEntryClick={(entry) => {
