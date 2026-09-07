@@ -80,7 +80,13 @@ interface EventsClientProps {
   initialCalendarBookings?: VenueCalendarBooking[]
   initialCalendarNotes?: VenueCalendarNote[]
   initialCalendarParking?: VenueCalendarParking[]
-  canCreateCalendarNote?: boolean
+  canManageCalendarNotes?: boolean
+  /**
+   * Surfaced rather than swallowed. Both call sites used to drop this, so a user
+   * whose permission denied the note read simply saw a calendar with no notes and
+   * no explanation, which is the same silent-empty failure as a broken query.
+   */
+  calendarNotesError?: string | null
 }
 
 export default function EventsClient({
@@ -91,7 +97,8 @@ export default function EventsClient({
   initialCalendarBookings,
   initialCalendarNotes,
   initialCalendarParking,
-  canCreateCalendarNote,
+  canManageCalendarNotes,
+  calendarNotesError = null,
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
@@ -102,6 +109,7 @@ export default function EventsClient({
   const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>(initialCalendarBookings ?? [])
   const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>(initialCalendarNotes ?? [])
   const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>(initialCalendarParking ?? [])
+  const [notesError, setNotesError] = useState<string | null>(calendarNotesError)
   const [boardEvents, setBoardEvents] = useState<Event[]>([])
 
   const [pagination, setPagination] = useState(
@@ -159,7 +167,13 @@ export default function EventsClient({
         if ('data' in bookingsResult && bookingsResult.data) {
           setCalendarBookings(bookingsResult.data as VenueCalendarBooking[])
         }
-        if (notesResult.data) setCalendarNotes(notesResult.data)
+        if (notesResult.data) {
+          setCalendarNotes(notesResult.data)
+          setNotesError(null)
+        } else if (notesResult.error) {
+          // Keep the rest of the calendar; report only what failed.
+          setNotesError(notesResult.error)
+        }
         if ('data' in parkingResult && parkingResult.data) {
           setCalendarParking(parkingResult.data as VenueCalendarParking[])
         }
@@ -411,9 +425,10 @@ export default function EventsClient({
             privateBookings={calendarBookings}
             calendarNotes={calendarNotes}
             parkingBookings={calendarParking}
-            canCreateCalendarNote={canCreateCalendarNote}
+            canManageCalendarNotes={canManageCalendarNotes}
             showFilters
-            onNoteCreated={fetchCalendarData}
+            onNotesChanged={fetchCalendarData}
+            datasetWarnings={notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []}
           />
         )}
 

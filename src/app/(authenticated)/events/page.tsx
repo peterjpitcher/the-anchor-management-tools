@@ -54,6 +54,10 @@ export default async function EventsPage() {
     checkUserPermission('settings', 'manage'),
   ])
 
+  // Same rule as the dashboard: write on events:manage, settings:manage kept as
+  // a fallback.
+  const canManageCalendarNotesResolved = canManageEvents || canManageCalendarNotes
+
   return (
     <div className="p-6">
       <div className="flex flex-col gap-6 xl:flex-row">
@@ -65,8 +69,9 @@ export default async function EventsPage() {
             initialCalendarEvents={calEventsResult.data ?? []}
             initialCalendarBookings={'data' in bookingsResult && bookingsResult.data ? bookingsResult.data as VenueCalendarBooking[] : []}
             initialCalendarNotes={notesResult.data ?? []}
+            calendarNotesError={notesResult.error ?? null}
             initialCalendarParking={'data' in parkingResult && parkingResult.data ? parkingResult.data as VenueCalendarParking[] : []}
-            canCreateCalendarNote={canManageCalendarNotes}
+            canManageCalendarNotes={canManageCalendarNotesResolved}
           />
         </div>
         <aside className="xl:w-80 xl:shrink-0">

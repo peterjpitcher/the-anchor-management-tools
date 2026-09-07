@@ -125,14 +125,6 @@ export interface ScheduleDailyOps {
     staffByDate: Record<string, string[]>
 }
 
-interface ScheduleCalendarProps {
-    entries: CalendarEntry[]
-    view: ScheduleCalendarView
-    onViewChange: (view: ScheduleCalendarView) => void
-    canCreateCalendarNote?: boolean
-    onEmptyDayClick?: (date: Date) => void
-    renderTooltip?: (entry: CalendarEntry) => ReactNode
-    firstDayOfWeek?: 0 | 1 | 2 | 3 | 4 | 5 | 6
-    legendKinds?: CalendarEntryKind[] // kinds actually present & permitted
-    className?: string
-}
+// The live ScheduleCalendar prop type is exported from ScheduleCalendar.tsx.
+// A private copy used to live here, was never imported, and had drifted out of
+// date (it omitted dailyOps and onEntryClick), so reading it misled.
