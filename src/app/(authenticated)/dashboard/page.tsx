@@ -59,10 +59,15 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
 }
 
 export default async function DashboardPage() {
-  const [snapshot, canManageCalendarNotes] = await Promise.all([
+  const [snapshot, canManageEvents, canManageSettings] = await Promise.all([
     loadDashboardSnapshot(),
+    checkUserPermission('events', 'manage'),
     checkUserPermission('settings', 'manage'),
   ])
+  // Calendar notes are written on events:manage, with settings:manage kept as a
+  // fallback so nobody loses access. Gating on settings:manage alone meant only
+  // super_admin could add a note anywhere.
+  const canManageCalendarNotes = canManageEvents || canManageSettings
 
   const lastUpdatedAt = new Date(snapshot.generatedAt)
   const subtitle = `${londonLongDateFormatter.format(new Date())} · Updated ${londonTimeFormatter.format(lastUpdatedAt)}`
@@ -317,7 +322,7 @@ export default async function DashboardPage() {
             employeeBirthdays={calendarEmployeeBirthdays}
             specialHours={snapshot.events.specialHours}
             parkingBookings={calendarParkingBookings}
-            canCreateCalendarNote={canManageCalendarNotes}
+            canManageCalendarNotes={canManageCalendarNotes}
             dailyOps={snapshot.dailyOps}
           />
         }

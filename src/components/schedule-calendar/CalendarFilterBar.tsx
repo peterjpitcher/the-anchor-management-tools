@@ -20,6 +20,15 @@ interface CalendarFilterBarProps {
     /** Shown next to the reset control so the effect of a filter is obvious. */
     shownCount: number
     totalCount: number
+    /**
+     * How many entries each chip would match, from the UNFILTERED set. This is
+     * what turns the bar from a filter into a report: a manager sees that four
+     * events need a brief without having to click anything.
+     */
+    kindCounts?: Partial<Record<CalendarEntryKind, number>>
+    gapCounts?: Partial<Record<CalendarContentGap, number>>
+    /** What the counts are counting, e.g. "this month" or "the loaded range". */
+    countScopeLabel?: string
     className?: string
 }
 
@@ -43,7 +52,10 @@ function Chip({
             aria-pressed={active}
             className={cn(
                 // 44px min height: this bar is used on the iPad behind the bar.
-                'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-0 sm:py-1.5',
+                // Do NOT reintroduce `sm:min-h-0` here. sm: starts at 640px and an
+                // iPad is 768px, so it cancelled the target on the one device the
+                // comment names.
+                'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                 active
                     ? 'border-primary bg-primary text-primary-fg'
                     : 'border-border bg-surface text-text hover:bg-surface-hover'
@@ -67,6 +79,9 @@ export function CalendarFilterBar({
     availableKinds,
     shownCount,
     totalCount,
+    kindCounts,
+    gapCounts,
+    countScopeLabel,
     className,
 }: CalendarFilterBarProps) {
     const active = isFilterActive(filters)
@@ -97,6 +112,9 @@ export function CalendarFilterBar({
                         swatch={kindColor(kind)}
                     >
                         {kindLabel(kind)}
+                        {kindCounts?.[kind] !== undefined && (
+                            <span className="tabular-nums opacity-70">{kindCounts[kind]}</span>
+                        )}
                     </Chip>
                 ))}
             </div>
@@ -106,6 +124,9 @@ export function CalendarFilterBar({
                 {GAPS.map((gap) => (
                     <Chip key={gap} active={filters.missing.includes(gap)} onClick={() => toggleGap(gap)}>
                         {CONTENT_GAP_LABELS[gap]}
+                        {gapCounts?.[gap] !== undefined && (
+                            <span className="tabular-nums opacity-70">{gapCounts[gap]}</span>
+                        )}
                     </Chip>
                 ))}
                 <Chip
@@ -133,6 +154,7 @@ export function CalendarFilterBar({
                         hidden by default is never dropped without a trace. */}
                     <span className="text-xs text-text-muted">
                         Showing {shownCount} of {totalCount}
+                        {countScopeLabel ? ` in ${countScopeLabel}` : ''}
                     </span>
                     {active && (
                         <Button

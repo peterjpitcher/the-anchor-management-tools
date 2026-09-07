@@ -89,6 +89,26 @@ export function toLocalIsoDate(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+/**
+ * Returns the Europe/London wall-clock time of an instant as HH:mm.
+ *
+ * Pairs with toLocalIsoDate: together they convert a timestamptz into the London
+ * date and time parts, which is what every calendar surface renders.
+ */
+export function formatTimeInLondon(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: LONDON_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+
+  const hour = parts.find(p => p.type === 'hour')!.value
+  const minute = parts.find(p => p.type === 'minute')!.value
+
+  return `${hour}:${minute}`
+}
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
