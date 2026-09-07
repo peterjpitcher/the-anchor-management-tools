@@ -210,3 +210,21 @@ wording distinction; verify it with the owner or an operational source first.
 ## 5 September 2026: dated event capacities
 
 Use the owner-confirmed dated capacities: 60 for the reviewed events, Halloween 150 and Tasting Night 25. Report-level genre examples are not live sellable-capacity instructions. Check the actual booking snapshot before reporting a configured limit.
+
+## 7 September 2026: a click that races an auto-selection effect looks like a slow CI runner
+
+**Mistake:** `MessagesClientResponsive.test.tsx` clicked a conversation row as soon
+as `findByRole('option')` resolved. On a loaded GitHub runner the click landed
+before React had flushed the pending passive effect that auto-selects the first
+unread row, so the synchronous router mock recorded `push(customer-2)` and then
+`replace(customer-1)`. Selection ended back on the customer whose response the test
+holds open, the `role="log"` pane never rendered, and the failure read as
+`Unable to find role="log"`, which looks like a timeout rather than a race.
+
+**Rule:** In these component tests, wait for the component's own auto-selection to
+land (for example `waitFor(() => expect(loader).toHaveBeenCalledWith(id, undefined))`)
+before firing a click that changes that selection. Getting there by raising a
+`waitFor` timeout hides the race and leaves the test asserting nothing. Anchor any
+assertion about an async pane with `findBy*`, never a bare `getBy*` after an await,
+and scope a "this control is absent" assertion inside the container that has to be
+open, or it passes because the container had not rendered yet.
