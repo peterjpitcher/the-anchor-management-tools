@@ -9,6 +9,8 @@ import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 import { calendarColourNeedsLightText } from './appearance'
 import { CalendarKindBadge } from './CalendarKindBadge'
+import { CalendarEntryTooltip } from './CalendarEntryTooltip'
+import { entryTooltipText } from './tooltip-text'
 
 export interface ScheduleCalendarMonthProps {
     entries: CalendarEntry[]
@@ -130,11 +132,7 @@ export function ScheduleCalendarMonth({
                                             }}
                                             data-entry-kind={entry.kind}
                                             data-entry-title
-                                            title={
-                                                renderTooltip
-                                                    ? undefined
-                                                    : entry.title
-                                            }
+                                            title={entryTooltipText(entry)}
                                         >
                                             <CalendarKindBadge kind={entry.kind} lightText={lightText} />
                                             <span>{entry.title}</span>
@@ -208,7 +206,12 @@ export function ScheduleCalendarMonth({
                                                 ev.stopPropagation()
                                                 onEmptyDayClick(day)
                                             }}
-                                            className="mt-auto flex items-center gap-1 self-start rounded-sm px-1 py-0.5 text-[11px] text-text-muted opacity-0 transition-opacity hover:bg-surface-hover group-hover:opacity-100 focus-visible:opacity-100"
+                                            // Was opacity-0 + group-hover. Opacity does not remove an
+                                            // element from hit testing and touch never fires hover, so
+                                            // every day cell carried an invisible but tappable button.
+                                            // Now it is dimmed rather than hidden, and full strength on
+                                            // hover or focus.
+                                            className="mt-auto flex min-h-[24px] items-center gap-1 self-start rounded-sm px-1 py-0.5 text-[11px] text-text-muted opacity-40 transition-opacity hover:bg-surface-hover hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
                                         >
                                             <span aria-hidden="true">+</span> Note
                                         </button>
@@ -297,35 +300,44 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
         color: lightText ? '#FFFFFF' : '#111827',
     } as const
 
-    if (entry.onClickHref) {
-        return (
-            <a
-                href={entry.onClickHref}
-                onClick={(e) => {
-                    if (!onClick) return
-                    e.preventDefault()
-                    onClick(entry)
-                }}
-                className={sharedClass}
-                style={sharedStyle}
-                data-entry-kind={entry.kind}
-                title={renderTooltip ? undefined : entry.title}
-            >
-                {content}
-            </a>
-        )
-    }
+    const tooltipText = entryTooltipText(entry)
 
-    return (
+    const control = entry.onClickHref ? (
+        <a
+            href={entry.onClickHref}
+            onClick={(e) => {
+                if (!onClick) return
+                // Let the browser handle modifier clicks so "open in new tab"
+                // still works on a real link.
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                e.preventDefault()
+                onClick(entry)
+            }}
+            className={sharedClass}
+            style={sharedStyle}
+            data-entry-kind={entry.kind}
+            title={tooltipText}
+        >
+            {content}
+        </a>
+    ) : (
         <button
             type="button"
             onClick={() => onClick?.(entry)}
             className={sharedClass}
             style={sharedStyle}
             data-entry-kind={entry.kind}
-            title={renderTooltip ? undefined : entry.title}
+            title={tooltipText}
         >
             {content}
         </button>
+    )
+
+    if (!renderTooltip) return control
+
+    return (
+        <CalendarEntryTooltip content={renderTooltip(entry)} text={tooltipText}>
+            {control}
+        </CalendarEntryTooltip>
     )
 }
