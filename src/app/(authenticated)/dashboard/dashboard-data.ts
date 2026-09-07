@@ -7,6 +7,7 @@ import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { displayName } from '@/lib/employees/display-name'
 import type { ScheduleDailyOps } from '@/components/schedule-calendar'
+import { readBirthdays, readSpecialHours } from '@/lib/calendar/datasets'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
 import {
   buildPrivateBookingBalanceDueSummaries,
@@ -418,6 +419,10 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       totalUpcoming: 0,
     }
     const canViewCalendarNotes = events.permitted || hasModuleAccess(permissionsMap, 'settings')
+    // Exact action, not module-level access: this one guards money on screen.
+    const canViewPrivateBookingPricing =
+      (permissionsMap.get('private_bookings')?.has('view_pricing') ?? false) ||
+      (permissionsMap.get('private_bookings')?.has('manage') ?? false)
 
     const customers: CustomersSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'customers'),
@@ -938,17 +943,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .order('start_time', { ascending: true, nullsFirst: true })
               .order('title', { ascending: true })
               .range(0, 999),
-            supabase
-              .from('special_hours')
-              .select('id, date, opens, closes, is_closed, is_kitchen_closed, note')
-              .gte('date', eventsLookbackIso)
-              .lte('date', calendarNotesHorizonIso)
-              .order('date', { ascending: true })
-              .range(0, 999),
+            // Shared reader, so the dashboard and /events cannot drift apart on
+            // what an opening-hours change looks like.
+            readSpecialHours(supabase, eventsLookbackIso, calendarNotesHorizonIso),
           ])
 
           if (notesResult.error) throw notesResult.error
-          if (specialHoursResult.error) throw specialHoursResult.error
+          if (specialHoursResult.status === 'failed') throw new Error(specialHoursResult.message)
 
           events.calendarNotes = (notesResult.data ?? []).map((note) => ({
             id: String(note.id),
@@ -962,15 +963,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             color: typeof note.color === 'string' ? note.color : '#0EA5E9',
           }))
 
-          events.specialHours = (specialHoursResult.data ?? []).map((special) => ({
-            id: String(special.id),
-            date: String(special.date),
-            opens: typeof special.opens === 'string' ? special.opens : null,
-            closes: typeof special.closes === 'string' ? special.closes : null,
-            is_closed: Boolean(special.is_closed),
-            is_kitchen_closed: Boolean(special.is_kitchen_closed),
-            note: typeof special.note === 'string' ? special.note : null,
-          }))
+          events.specialHours = specialHoursResult.data
         } catch (error) {
           console.error('Failed to load dashboard calendar notes or special hours:', error)
         }
@@ -1136,7 +1129,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             return eventDate != null && eventDate < todayIso
           })
           privateBookings.past = pastRows.slice(-50).map(toPbSummary)
-          privateBookings.balanceDueDates = buildPrivateBookingBalanceDueSummaries(balanceDueRows, balancePayments)
+          // Balance markers show the AMOUNT as their subtitle, so they need
+          // pricing access, not just private-bookings access. The staff role
+          // holds view without view_pricing, and used to see private-hire totals
+          // on this calendar.
+          privateBookings.balanceDueDates = canViewPrivateBookingPricing
+            ? buildPrivateBookingBalanceDueSummaries(balanceDueRows, balancePayments)
+            : []
         } catch (error) {
           console.error('Failed to load dashboard private bookings:', error)
           privateBookings.error = 'Failed to load private bookings'
@@ -1373,29 +1372,14 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .from('employees')
               .select('employee_id', { count: 'exact', head: true })
               .in('status', ['Active', 'Started Separation']),
-            supabase
-              .from('employees')
-              .select('employee_id, first_name, last_name, preferred_name, job_title, date_of_birth')
-              .in('status', ['Active', 'Started Separation'])
-              .not('date_of_birth', 'is', null)
-              .order('first_name', { ascending: true })
-              .range(0, 999),
+            readBirthdays(supabase, eventsLookbackIso, calendarNotesHorizonIso),
           ])
 
           if (activeCountResult.error) throw activeCountResult.error
-          if (birthdaysResult.error) throw birthdaysResult.error
+          if (birthdaysResult.status === 'failed') throw new Error(birthdaysResult.message)
 
           employees.activeCount = activeCountResult.count ?? 0
-          employees.birthdays = (birthdaysResult.data ?? [])
-            .flatMap((employee) => getBirthdayOccurrencesInRange({
-              employee_id: String(employee.employee_id),
-              first_name: typeof employee.first_name === 'string' ? employee.first_name : null,
-              last_name: typeof employee.last_name === 'string' ? employee.last_name : null,
-              preferred_name: typeof employee.preferred_name === 'string' ? employee.preferred_name : null,
-              job_title: typeof employee.job_title === 'string' ? employee.job_title : null,
-              date_of_birth: typeof employee.date_of_birth === 'string' ? employee.date_of_birth : null,
-            }, eventsLookbackIso, calendarNotesHorizonIso))
-            .sort((a, b) => a.occurrence_date.localeCompare(b.occurrence_date) || a.employee_name.localeCompare(b.employee_name))
+          employees.birthdays = birthdaysResult.data
         } catch (error) {
           console.error('Failed to load dashboard employee metrics:', error)
           employees.error = 'Failed to load employee metrics'
