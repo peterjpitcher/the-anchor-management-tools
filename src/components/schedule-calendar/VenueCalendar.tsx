@@ -145,7 +145,7 @@ function buildEntries(
   specialHours: VenueCalendarSpecialHours[],
   calendarNotes: VenueCalendarNote[],
   parkingBookings: VenueCalendarParking[],
-): CalendarEntry[] {
+): { entries: CalendarEntry[]; skipped: number } {
   const out: CalendarEntry[] = []
 
   for (const event of events) {
@@ -161,9 +161,12 @@ function buildEntries(
         category: null,
         heroImageUrl: null,
         posterImageUrl: null,
-        hasImage: event.hasImage ?? false,
-        hasBrief: event.hasBrief ?? false,
-        hasDescription: event.hasDescription ?? false,
+        // Pass readiness through UNCHANGED. Coercing undefined to false here is
+        // what made every dashboard event claim it needed artwork, a brief and a
+        // description: the dashboard never loads those columns.
+        hasImage: event.hasImage,
+        hasBrief: event.hasBrief,
+        hasDescription: event.hasDescription,
         eventStatus: event.eventStatus ?? null,
         bookingUrl: null,
         checklist: { completed: 0, total: 0, overdueCount: 0, dueTodayCount: 0, nextTask: null, outstanding: [] },
@@ -211,10 +214,17 @@ function buildEntries(
 
   for (const booking of parkingBookings) {
     if (!booking.start_at) continue
-    out.push(parkingToEntry(booking))
+    const entry = parkingToEntry(booking)
+    if (entry) out.push(entry)
   }
 
-  return out
+  // Containment: a single unparseable row must not take the calendar down.
+  // date-fns v4 format() throws on an Invalid Date, so drop those entries here
+  // and report the count rather than rendering or crashing.
+  const usable = out.filter(
+    (entry) => !Number.isNaN(entry.start.getTime()) && !Number.isNaN(entry.end.getTime()),
+  )
+  return { entries: usable, skipped: out.length - usable.length }
 }
 
 function renderTooltip(entry: CalendarEntry): ReactNode {
@@ -445,10 +455,12 @@ export function VenueCalendar({
 
   const handleEmptyDayClick = canCreateCalendarNote ? (onEmptyDayClick ?? openNewNoteModal) : undefined
 
-  const entries = useMemo(
+  const built = useMemo(
     () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings),
     [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings],
   )
+  const entries = built.entries
+  const skippedCount = built.skipped
 
   // One filter model drives both the month grid and the list, so the two can
   // never disagree about what is being shown.
@@ -463,12 +475,18 @@ export function VenueCalendar({
     if (balanceDueDates.length > 0) kinds.push('balance_due')
     if (privateBookings.length > 0) kinds.push('private_booking')
     if (parkingBookings.length > 0) kinds.push('parking')
-    kinds.push('event')
+    // Only offer Events when there are some. This used to be pushed
+    // unconditionally, so a user with no events permission still saw an Events
+    // swatch and an Events filter chip that could never match anything.
+    if (events.length > 0) kinds.push('event')
     return kinds
-  }, [calendarNotes.length, specialHours.length, employeeBirthdays.length, balanceDueDates.length, privateBookings.length, parkingBookings.length])
+  }, [calendarNotes.length, specialHours.length, employeeBirthdays.length, balanceDueDates.length, privateBookings.length, parkingBookings.length, events.length])
 
+  // Rows we could not place on a day: either no date at all, or a date we could
+  // not parse. Every source column is NOT NULL in production, so the old
+  // version of this counter could never fire; malformed data is the real case.
   const hiddenCount = useMemo(() => {
-    return (
+    const missingDate =
       events.filter((e) => !e.date).length +
       calendarNotes.filter((n) => !n.note_date).length +
       privateBookings.filter((b) => !b.event_date).length +
@@ -476,8 +494,8 @@ export function VenueCalendar({
       employeeBirthdays.filter((b) => !b.occurrence_date).length +
       specialHours.filter((h) => !h.date).length +
       parkingBookings.filter((p) => !p.start_at).length
-    )
-  }, [events, calendarNotes, privateBookings, balanceDueDates, employeeBirthdays, specialHours, parkingBookings])
+    return missingDate + skippedCount
+  }, [events, calendarNotes, privateBookings, balanceDueDates, employeeBirthdays, specialHours, parkingBookings, skippedCount])
 
   return (
     <div className={className}>

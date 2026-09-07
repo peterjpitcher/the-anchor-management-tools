@@ -18,6 +18,7 @@ import type {
   VenueCalendarParking,
 } from '@/components/schedule-calendar'
 import type { Event } from '@/types/database'
+import type { ParkingBookingStatus } from '@/types/parking'
 import type { EventCategory } from '@/types/event-categories'
 import { getEvents, deleteEvent } from '@/app/actions/events'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
@@ -26,6 +27,14 @@ import { listParkingBookings } from '@/app/actions/parking'
 import { toast } from '@/ds'
 
 type ViewMode = 'list' | 'calendar' | 'board'
+
+/**
+ * Parking statuses worth showing on a calendar: the ones that still represent a
+ * car arriving. Matches the dashboard. Without this the events calendar rendered
+ * cancelled and expired bookings as live green blocks that no filter could hide,
+ * because the adapter also discarded their status.
+ */
+const CALENDAR_PARKING_STATUSES: ParkingBookingStatus[] = ['pending_payment', 'confirmed', 'completed']
 
 const VIEW_OPTIONS = [
   { id: 'list', label: 'List' },
@@ -142,7 +151,7 @@ export default function EventsClient({
           getEvents({ status: 'all', page: 1, pageSize: 500 }),
           fetchPrivateBookingsForCalendar(),
           listCalendarNotes(),
-          listParkingBookings({ limit: 500 }),
+          listParkingBookings({ limit: 500, statuses: CALENDAR_PARKING_STATUSES }),
         ])
         if (eventsResult.data) {
           setCalendarEvents(eventsResult.data.map(toCalendarEvent))

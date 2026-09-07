@@ -119,7 +119,13 @@ export function ScheduleCalendar({
                 />
             )}
             {effectiveView === 'list' && (
-                <ScheduleCalendarList entries={entries} onEntryClick={onEntryClick} hidePast={isMobile} dailyOps={dailyOps} />
+                <ScheduleCalendarList
+                    entries={entries}
+                    onEntryClick={onEntryClick}
+                    hidePast={isMobile}
+                    dailyOps={dailyOps}
+                    renderTooltip={renderTooltip}
+                />
             )}
         </div>
     )

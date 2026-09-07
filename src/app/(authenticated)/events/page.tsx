@@ -41,7 +41,9 @@ export default async function EventsPage() {
     getEvents({ status: 'all', page: 1, pageSize: 500 }),
     fetchPrivateBookingsForCalendar(),
     listCalendarNotes(),
-    listParkingBookings({ limit: 500 }),
+    // Live bookings only; a cancelled or expired one is not something the
+    // calendar should show as an arriving car.
+    listParkingBookings({ limit: 500, statuses: ['pending_payment', 'confirmed', 'completed'] }),
     getChecklistTodos().catch(
       () =>
         ({ success: false, error: 'Unable to load outstanding todos' }) as Awaited<

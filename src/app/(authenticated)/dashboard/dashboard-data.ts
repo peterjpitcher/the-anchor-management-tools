@@ -22,6 +22,16 @@ type EventSummary = {
   price: number | null
   eventStatus: string | null
   bookedSeatsCount: number
+  /**
+   * Publishable-content readiness, derived server-side from the readiness
+   * columns. The columns themselves are deliberately NOT carried on this type:
+   * `brief` and `long_description` are large, and the calendar only needs the
+   * booleans. Without these the calendar cannot tell "not loaded" from "missing"
+   * and reports every event as needing artwork, a brief and a description.
+   */
+  hasImage: boolean
+  hasBrief: boolean
+  hasDescription: boolean
 }
 
 type CalendarNoteSummary = {
@@ -772,7 +782,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   time,
                   capacity,
                   price,
-                  event_status
+                  event_status,
+                  brief,
+                  short_description,
+                  long_description,
+                  hero_image_url,
+                  poster_image_url,
+                  thumbnail_image_url
                 `,
                 { count: 'exact' }
               )
@@ -790,7 +806,13 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   time,
                   capacity,
                   price,
-                  event_status
+                  event_status,
+                  brief,
+                  short_description,
+                  long_description,
+                  hero_image_url,
+                  poster_image_url,
+                  thumbnail_image_url
                 `
               )
               .gte('date', eventsLookbackIso)
@@ -808,6 +830,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           // still show the correct count after the review cron transitions
           // bookings from `confirmed` to `visited_waiting_for_review`, then
           // `review_clicked` or `completed`.
+          // Statuses that occupy a seat. Kept in step with
+          // BOOKED_BOOKING_STATUSES in src/lib/events/stats.ts, which is what
+          // /events counts with; the two surfaces must not disagree about the
+          // same event. Reminder-only rows are excluded below for the same
+          // reason: stats.ts excludes them and the dashboard used not to.
           const BOOKED_STATUSES = [
             'confirmed',
             'visited_waiting_for_review',
@@ -823,13 +850,17 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           if (summaryEventIds.length > 0) {
             const { data: bookingRows, error: bookingRowsError } = await supabase
               .from('bookings')
-              .select('event_id, seats')
+              .select('event_id, seats, is_reminder_only')
               .in('event_id', summaryEventIds)
               .in('status', BOOKED_STATUSES)
 
             if (bookingRowsError) throw bookingRowsError
 
             for (const row of bookingRows ?? []) {
+              // A reminder-only booking holds no seat. /events has always
+              // excluded these; the dashboard counted them, so the same event
+              // showed two different "N booked" figures.
+              if ((row as { is_reminder_only?: boolean | null }).is_reminder_only === true) continue
               const eventId = row.event_id as string
               const seats = typeof row.seats === 'number' ? row.seats : Number(row.seats ?? 0)
               bookedSeatsByEvent.set(
@@ -839,6 +870,9 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             }
           }
 
+          const hasText = (value: unknown): boolean =>
+            typeof value === 'string' && value.trim().length > 0
+
           const toSummary = (event: {
             id: string
             name: string | null
@@ -847,6 +881,12 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             capacity: number | null
             price: number | null
             event_status?: string | null
+            brief?: string | null
+            short_description?: string | null
+            long_description?: string | null
+            hero_image_url?: string | null
+            poster_image_url?: string | null
+            thumbnail_image_url?: string | null
           }): EventSummary => {
             return {
               id: event.id as string,
@@ -857,6 +897,15 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               price: event.price ?? null,
               eventStatus: (event.event_status as string) ?? null,
               bookedSeatsCount: bookedSeatsByEvent.get(event.id as string) ?? 0,
+              // Derived here, not in the browser: the source columns are large
+              // and the calendar only ever needs the booleans.
+              hasImage:
+                hasText(event.hero_image_url) ||
+                hasText(event.poster_image_url) ||
+                hasText(event.thumbnail_image_url),
+              hasBrief: hasText(event.brief),
+              hasDescription:
+                hasText(event.short_description) || hasText(event.long_description),
             }
           }
 
