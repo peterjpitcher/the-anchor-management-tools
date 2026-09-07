@@ -28,6 +28,8 @@ export interface ScheduleCalendarProps {
      */
     anchor?: Date
     onAnchorChange?: (anchor: Date) => void
+    /** Unfiltered entries, so closed days survive a filter. */
+    closureEntries?: CalendarEntry[]
     className?: string
 }
 
@@ -44,6 +46,7 @@ export function ScheduleCalendar({
     dailyOps,
     anchor: controlledAnchor,
     onAnchorChange,
+    closureEntries,
     className,
 }: ScheduleCalendarProps) {
     const [uncontrolledAnchor, setUncontrolledAnchor] = useState<Date>(() => new Date())
@@ -132,6 +135,7 @@ export function ScheduleCalendar({
                     onEmptyDayClick={canCreateCalendarNote ? onEmptyDayClick : undefined}
                     renderTooltip={renderTooltip}
                     dailyOps={dailyOps}
+                    closureEntries={closureEntries}
                 />
             )}
             {effectiveView === 'list' && (
