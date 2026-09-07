@@ -12,9 +12,10 @@ import type {
   ScheduleDailyOps,
 } from '@/components/schedule-calendar'
 
-// Thin wrapper around the shared VenueCalendar. The "add calendar note" flow
-// (modal + empty-day click) now lives inside VenueCalendar so the dashboard and
-// the events calendar behave identically — this component only forwards props.
+// Thin wrapper around the shared VenueCalendar. The calendar-note flow
+// (create, edit and delete, via the modal and the empty-day click) lives inside
+// VenueCalendar so the dashboard and the events calendar behave identically.
+// This component only forwards props.
 export default function UpcomingScheduleCalendar({
   events,
   calendarNotes,
@@ -23,7 +24,7 @@ export default function UpcomingScheduleCalendar({
   employeeBirthdays,
   specialHours,
   parkingBookings,
-  canCreateCalendarNote,
+  canManageCalendarNotes,
   dailyOps,
 }: {
   events: VenueCalendarEvent[]
@@ -33,7 +34,7 @@ export default function UpcomingScheduleCalendar({
   employeeBirthdays: VenueCalendarEmployeeBirthday[]
   specialHours: VenueCalendarSpecialHours[]
   parkingBookings: VenueCalendarParking[]
-  canCreateCalendarNote?: boolean
+  canManageCalendarNotes?: boolean
   dailyOps?: ScheduleDailyOps
 }) {
   return (
@@ -45,8 +46,12 @@ export default function UpcomingScheduleCalendar({
       employeeBirthdays={employeeBirthdays}
       specialHours={specialHours}
       parkingBookings={parkingBookings}
-      canCreateCalendarNote={canCreateCalendarNote}
+      canManageCalendarNotes={canManageCalendarNotes}
       dailyOps={dailyOps}
+      // Owner decision: the dashboard gets the same filter bar as /events. It is
+      // also the only way to reveal cancelled private hire, which is hidden by
+      // default, and the only place the "N of M" line appears at all.
+      showFilters
     />
   )
 }

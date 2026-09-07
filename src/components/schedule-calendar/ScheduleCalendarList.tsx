@@ -4,10 +4,13 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { format, isPast, isSameDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
+import type { ReactNode } from 'react'
 import { compareEntries } from './sort'
 import { CONTENT_GAP_LABELS, entryGaps } from './filters'
 import { calendarColourNeedsLightText } from './appearance'
 import { CalendarKindBadge } from './CalendarKindBadge'
+import { CalendarEntryTooltip } from './CalendarEntryTooltip'
+import { entryTooltipText } from './tooltip-text'
 
 export interface ScheduleCalendarListProps {
     entries: CalendarEntry[]
@@ -20,6 +23,11 @@ export interface ScheduleCalendarListProps {
     hidePast?: boolean
     /** Per-day covers booked + staff on rota, rendered as a small note per day. */
     dailyOps?: ScheduleDailyOps
+    /**
+     * Rich hover/focus detail. The list used not to accept this at all, so half
+     * the calendar had no tooltips even once the month grid did.
+     */
+    renderTooltip?: (entry: CalendarEntry) => ReactNode
 }
 
 interface DateGroup {
@@ -27,7 +35,7 @@ interface DateGroup {
     entries: CalendarEntry[]
 }
 
-export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, dailyOps }: ScheduleCalendarListProps) {
+export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, dailyOps, renderTooltip }: ScheduleCalendarListProps) {
     const today = useMemo(() => startOfToday(), [])
     const sorted = useMemo(() => [...entries].sort(compareEntries), [entries])
     const groups = useMemo(() => groupByDate(sorted), [sorted])
@@ -178,15 +186,33 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                                     href={entry.onClickHref}
                                                     onClick={(ev) => {
                                                         if (!onEntryClick) return
+                                                        // Preserve modifier clicks so a real
+                                                        // link still opens in a new tab.
+                                                        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) return
                                                         ev.preventDefault()
                                                         onEntryClick(entry)
                                                     }}
                                                     className="block flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                    title={entryTooltipText(entry)}
                                                 >
                                                     {details}
                                                 </a>
+                                            ) : onEntryClick ? (
+                                                // Entries without an href (calendar notes) used to
+                                                // render as an inert div, so they could not be
+                                                // opened at all in this view.
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onEntryClick(entry)}
+                                                    className="block min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-1"
+                                                    title={entryTooltipText(entry)}
+                                                >
+                                                    {details}
+                                                </button>
                                             ) : (
-                                                <div className="min-w-0 flex-1">{details}</div>
+                                                <div className="min-w-0 flex-1" title={entryTooltipText(entry)}>
+                                                    {details}
+                                                </div>
                                             )}
                                             {entry.statusLabel && (
                                                 <span
@@ -216,17 +242,52 @@ function startOfToday(): Date {
     return d
 }
 
+/**
+ * Days an entry should appear on.
+ *
+ * A multi-day entry used to be grouped on its START date only, so a note or a
+ * private hire that began yesterday and runs through today was invisible in the
+ * list from day two onwards, including for anyone on a phone, where the list is
+ * the only view. The month grid already draws these as a band across every day,
+ * so the two views disagreed.
+ *
+ * Capped so one corrupt or very long row cannot generate thousands of groups.
+ */
+const MAX_SPAN_DAYS = 400
+
+function startOfDay(date: Date): Date {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    return d
+}
+
+function daysCovered(entry: CalendarEntry): Date[] {
+    const first = startOfDay(entry.start)
+    if (!entry.spansMultipleDays) return [first]
+
+    const last = startOfDay(entry.end)
+    if (last.getTime() <= first.getTime()) return [first]
+
+    const days: Date[] = []
+    const cursor = new Date(first)
+    while (cursor.getTime() <= last.getTime() && days.length < MAX_SPAN_DAYS) {
+        days.push(new Date(cursor))
+        cursor.setDate(cursor.getDate() + 1)
+    }
+    return days
+}
+
 function groupByDate(entries: CalendarEntry[]): DateGroup[] {
     const map = new Map<string, DateGroup>()
     for (const entry of entries) {
-        const key = format(entry.start, 'yyyy-MM-dd')
-        const bucket = map.get(key)
-        if (bucket) {
-            bucket.entries.push(entry)
-        } else {
-            const d = new Date(entry.start)
-            d.setHours(0, 0, 0, 0)
-            map.set(key, { date: d, entries: [entry] })
+        for (const day of daysCovered(entry)) {
+            const key = format(day, 'yyyy-MM-dd')
+            const bucket = map.get(key)
+            if (bucket) {
+                bucket.entries.push(entry)
+            } else {
+                map.set(key, { date: day, entries: [entry] })
+            }
         }
     }
     return Array.from(map.values()).sort((a, b) => a.date.getTime() - b.date.getTime())

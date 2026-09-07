@@ -16,8 +16,13 @@ import type {
   VenueCalendarBooking,
   VenueCalendarNote,
   VenueCalendarParking,
+  VenueCalendarSpecialHours,
+  VenueCalendarBalanceDue,
+  VenueCalendarEmployeeBirthday,
+  ScheduleDailyOps,
 } from '@/components/schedule-calendar'
 import type { Event } from '@/types/database'
+import type { ParkingBookingStatus } from '@/types/parking'
 import type { EventCategory } from '@/types/event-categories'
 import { getEvents, deleteEvent } from '@/app/actions/events'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
@@ -26,6 +31,14 @@ import { listParkingBookings } from '@/app/actions/parking'
 import { toast } from '@/ds'
 
 type ViewMode = 'list' | 'calendar' | 'board'
+
+/**
+ * Parking statuses worth showing on a calendar: the ones that still represent a
+ * car arriving. Matches the dashboard. Without this the events calendar rendered
+ * cancelled and expired bookings as live green blocks that no filter could hide,
+ * because the adapter also discarded their status.
+ */
+const CALENDAR_PARKING_STATUSES: ParkingBookingStatus[] = ['pending_payment', 'confirmed', 'completed']
 
 const VIEW_OPTIONS = [
   { id: 'list', label: 'List' },
@@ -71,7 +84,24 @@ interface EventsClientProps {
   initialCalendarBookings?: VenueCalendarBooking[]
   initialCalendarNotes?: VenueCalendarNote[]
   initialCalendarParking?: VenueCalendarParking[]
-  canCreateCalendarNote?: boolean
+  canManageCalendarNotes?: boolean
+  /**
+   * Surfaced rather than swallowed. Both call sites used to drop this, so a user
+   * whose permission denied the note read simply saw a calendar with no notes and
+   * no explanation, which is the same silent-empty failure as a broken query.
+   */
+  calendarNotesError?: string | null
+  /**
+   * Datasets the events calendar used to lack entirely, so it looked like a
+   * different product from the dashboard's. Each is permission-gated at source;
+   * an empty array here can mean "denied" as well as "none", which is why the
+   * page also passes any failure messages separately.
+   */
+  initialSpecialHours?: VenueCalendarSpecialHours[]
+  initialBirthdays?: VenueCalendarEmployeeBirthday[]
+  initialBalanceDues?: VenueCalendarBalanceDue[]
+  initialDailyOps?: ScheduleDailyOps | null
+  calendarDatasetWarnings?: string[]
 }
 
 export default function EventsClient({
@@ -82,7 +112,13 @@ export default function EventsClient({
   initialCalendarBookings,
   initialCalendarNotes,
   initialCalendarParking,
-  canCreateCalendarNote,
+  canManageCalendarNotes,
+  calendarNotesError = null,
+  initialSpecialHours = [],
+  initialBirthdays = [],
+  initialBalanceDues = [],
+  initialDailyOps = null,
+  calendarDatasetWarnings = [],
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
@@ -93,6 +129,7 @@ export default function EventsClient({
   const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>(initialCalendarBookings ?? [])
   const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>(initialCalendarNotes ?? [])
   const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>(initialCalendarParking ?? [])
+  const [notesError, setNotesError] = useState<string | null>(calendarNotesError)
   const [boardEvents, setBoardEvents] = useState<Event[]>([])
 
   const [pagination, setPagination] = useState(
@@ -142,7 +179,7 @@ export default function EventsClient({
           getEvents({ status: 'all', page: 1, pageSize: 500 }),
           fetchPrivateBookingsForCalendar(),
           listCalendarNotes(),
-          listParkingBookings({ limit: 500 }),
+          listParkingBookings({ limit: 500, statuses: CALENDAR_PARKING_STATUSES }),
         ])
         if (eventsResult.data) {
           setCalendarEvents(eventsResult.data.map(toCalendarEvent))
@@ -150,7 +187,13 @@ export default function EventsClient({
         if ('data' in bookingsResult && bookingsResult.data) {
           setCalendarBookings(bookingsResult.data as VenueCalendarBooking[])
         }
-        if (notesResult.data) setCalendarNotes(notesResult.data)
+        if (notesResult.data) {
+          setCalendarNotes(notesResult.data)
+          setNotesError(null)
+        } else if (notesResult.error) {
+          // Keep the rest of the calendar; report only what failed.
+          setNotesError(notesResult.error)
+        }
         if ('data' in parkingResult && parkingResult.data) {
           setCalendarParking(parkingResult.data as VenueCalendarParking[])
         }
@@ -402,9 +445,17 @@ export default function EventsClient({
             privateBookings={calendarBookings}
             calendarNotes={calendarNotes}
             parkingBookings={calendarParking}
-            canCreateCalendarNote={canCreateCalendarNote}
+            specialHours={initialSpecialHours}
+            employeeBirthdays={initialBirthdays}
+            balanceDueDates={initialBalanceDues}
+            dailyOps={initialDailyOps ?? undefined}
+            canManageCalendarNotes={canManageCalendarNotes}
             showFilters
-            onNoteCreated={fetchCalendarData}
+            onNotesChanged={fetchCalendarData}
+            datasetWarnings={[
+              ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
+              ...calendarDatasetWarnings,
+            ]}
           />
         )}
 
