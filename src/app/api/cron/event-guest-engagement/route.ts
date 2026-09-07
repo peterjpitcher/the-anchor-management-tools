@@ -8,6 +8,7 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
+import { buildGuestReviewUrl } from '@/lib/guest/review-short-link'
 import { sendEmail } from '@/lib/email/emailService'
 import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit } from '@/lib/sms/cross-promo'
 import type { FollowUpRecipient } from '@/lib/sms/cross-promo'
@@ -1003,7 +1004,7 @@ async function processReviewFollowups(
   bookings: BookingWithRelations[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number; suppressed: number }> {
+): Promise<{ sent: number; skipped: number; suppressed: number; shortLinkFallbacks: number }> {
   const now = new Date()
   const nowMs = now.getTime()
   const maxAgeMs = EVENT_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
@@ -1083,7 +1084,7 @@ async function processReviewFollowups(
     safety.throwSafetyAbort()
   }
 
-  const result = { sent: 0, skipped: 0, suppressed: 0 }
+  const result = { sent: 0, skipped: 0, suppressed: 0, shortLinkFallbacks: 0 }
 
   for (const booking of boundedPastBookings) {
     const customer = booking.customer
@@ -1147,7 +1148,19 @@ async function processReviewFollowups(
       expiresAt: provisionalExpiry
     })
 
-    const redirectUrl = `${appBaseUrl}/r/${rawToken}`
+    // Shortened before it goes anywhere near the message body, so the guest sees
+    // l.the-anchor.pub/abc123 rather than 81 characters of token. Falls back to the
+    // long URL if shortening fails, so the ask still goes out. See
+    // src/lib/guest/review-short-link.ts.
+    const { url: redirectUrl, shortened } = await buildGuestReviewUrl({
+      appBaseUrl,
+      rawToken,
+      customerId: customer.id,
+      eventBookingId: booking.id,
+    })
+    // Counted, not just logged: the count rides out in the cron's JSON response, so a
+    // run where shortening quietly stopped working is visible in the Vercel log.
+    if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
       `The Anchor: ${firstName}! Hope you had a belter at ${event.name} last night. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
@@ -1341,7 +1354,7 @@ async function processTableReviewFollowups(
   tableBookings: TableBookingWithCustomer[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent: number; skipped: number; suppressed: number }> {
+): Promise<{ sent: number; skipped: number; suppressed: number; shortLinkFallbacks: number }> {
   const now = Date.now()
   const maxAgeMs = TABLE_ENGAGEMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -1418,7 +1431,7 @@ async function processTableReviewFollowups(
     safety.throwSafetyAbort()
   }
 
-  const result = { sent: 0, skipped: 0, suppressed: 0 }
+  const result = { sent: 0, skipped: 0, suppressed: 0, shortLinkFallbacks: 0 }
 
   for (const booking of boundedEligibleBookings) {
     const customer = booking.customer
@@ -1492,7 +1505,18 @@ async function processTableReviewFollowups(
       expiresAt: provisionalExpiry
     })
 
-    const redirectUrl = `${appBaseUrl}/r/${rawToken}`
+    // Shortened here rather than at send time because this path is email-first and
+    // only `sendSMS` rewrites URLs. Doing it once, up front, shortens the email too
+    // and gives the email and the SMS fallback the same short code, so a click is
+    // counted once whichever channel the guest used. See
+    // src/lib/guest/review-short-link.ts.
+    const { url: redirectUrl, shortened } = await buildGuestReviewUrl({
+      appBaseUrl,
+      rawToken,
+      customerId: customer.id,
+      tableBookingId: booking.id,
+    })
+    if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
       `The Anchor: ${firstName}! Thanks for popping in. Got 30 seconds? A quick review means the world to us: ${redirectUrl}`,
