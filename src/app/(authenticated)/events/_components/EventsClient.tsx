@@ -16,6 +16,10 @@ import type {
   VenueCalendarBooking,
   VenueCalendarNote,
   VenueCalendarParking,
+  VenueCalendarSpecialHours,
+  VenueCalendarBalanceDue,
+  VenueCalendarEmployeeBirthday,
+  ScheduleDailyOps,
 } from '@/components/schedule-calendar'
 import type { Event } from '@/types/database'
 import type { ParkingBookingStatus } from '@/types/parking'
@@ -87,6 +91,17 @@ interface EventsClientProps {
    * no explanation, which is the same silent-empty failure as a broken query.
    */
   calendarNotesError?: string | null
+  /**
+   * Datasets the events calendar used to lack entirely, so it looked like a
+   * different product from the dashboard's. Each is permission-gated at source;
+   * an empty array here can mean "denied" as well as "none", which is why the
+   * page also passes any failure messages separately.
+   */
+  initialSpecialHours?: VenueCalendarSpecialHours[]
+  initialBirthdays?: VenueCalendarEmployeeBirthday[]
+  initialBalanceDues?: VenueCalendarBalanceDue[]
+  initialDailyOps?: ScheduleDailyOps | null
+  calendarDatasetWarnings?: string[]
 }
 
 export default function EventsClient({
@@ -99,6 +114,11 @@ export default function EventsClient({
   initialCalendarParking,
   canManageCalendarNotes,
   calendarNotesError = null,
+  initialSpecialHours = [],
+  initialBirthdays = [],
+  initialBalanceDues = [],
+  initialDailyOps = null,
+  calendarDatasetWarnings = [],
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
@@ -425,10 +445,17 @@ export default function EventsClient({
             privateBookings={calendarBookings}
             calendarNotes={calendarNotes}
             parkingBookings={calendarParking}
+            specialHours={initialSpecialHours}
+            employeeBirthdays={initialBirthdays}
+            balanceDueDates={initialBalanceDues}
+            dailyOps={initialDailyOps ?? undefined}
             canManageCalendarNotes={canManageCalendarNotes}
             showFilters
             onNotesChanged={fetchCalendarData}
-            datasetWarnings={notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []}
+            datasetWarnings={[
+              ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
+              ...calendarDatasetWarnings,
+            ]}
           />
         )}
 
