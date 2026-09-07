@@ -219,7 +219,12 @@ describe('MessagesClient, read state', () => {
     render(<MessagesClient />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Conversation actions' }))
-    expect(screen.queryByText(/Mark whole conversation unread/i)).not.toBeInTheDocument()
+    // Wait for the open menu first, and scope the absence to it. Asserting on
+    // the whole document before the menu has opened passes for the wrong
+    // reason, and would keep passing if the item came back.
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByText('View full profile')).toBeInTheDocument()
+    expect(within(menu).queryByText(/Mark whole conversation unread/i)).not.toBeInTheDocument()
   })
 
   it('says that mark unread affects the whole conversation', async () => {
@@ -260,20 +265,30 @@ describe('MessagesClient, stale responses', () => {
     })
 
     render(<MessagesClient />)
+
+    // Let the auto-selection land before switching. Customer 1 is the first
+    // unread row, so the component selects it and opens the held-open request.
+    // Clicking sooner races that effect: it replaces the URL back to customer 1
+    // after the click has pushed customer 2, the thread pane never opens, and
+    // there is no stale response to discard either.
+    await waitFor(() =>
+      expect(getConversationMessages).toHaveBeenCalledWith('customer-1', undefined),
+    )
+
     fireEvent.click(await screen.findByRole('option', { name: /Sam Patel/i }))
 
-    await waitFor(() => {
-      expect(screen.getByRole('log').getAttribute('aria-label')).toContain('Sam Patel')
-    })
+    // The pane only exists once the newly selected conversation has loaded, so
+    // wait for it rather than querying for it straight away.
+    const thread = await screen.findByRole('log')
+    expect(thread.getAttribute('aria-label')).toContain('Sam Patel')
 
     // Now let customer 1's stale response land. It must be discarded.
     releaseSlow?.()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    await waitFor(() => {
-      expect(screen.getByRole('log').getAttribute('aria-label')).toContain('Sam Patel')
-    })
-    expect(screen.getByRole('log').getAttribute('aria-label')).not.toContain('Jane')
+    const settled = await screen.findByRole('log')
+    expect(settled.getAttribute('aria-label')).toContain('Sam Patel')
+    expect(settled.getAttribute('aria-label')).not.toContain('Jane')
   })
 })
 
