@@ -33,6 +33,7 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { sendEmail } from '@/lib/email/emailService'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
+import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import {
   decidePreorderChases,
   describePreorderGaps,
@@ -136,6 +137,8 @@ export async function GET(request: NextRequest) {
       managerEscalations: 0,
       skipped: 0,
       failed: 0,
+      // Chases that went out at full link length because shortening failed.
+      shortLinkFallbacks: 0,
     }
 
     // Cutoffs are per period, so the window has to reach the furthest one. Without this a period
@@ -260,8 +263,9 @@ export async function GET(request: NextRequest) {
 
         try {
           if (kind === 'booker_reminder') {
-            await sendBookerReminder(supabase, booking, booker)
+            const reminder = await sendBookerReminder(supabase, booking, booker)
             result.bookerReminders++
+            if (reminder.shortLinkFallback) result.shortLinkFallbacks++
           } else {
             await sendManagerEscalation(booking, booker, describePreorderGaps(completeness))
             result.managerEscalations++
@@ -355,7 +359,7 @@ async function sendBookerReminder(
   supabase: ReturnType<typeof createAdminClient>,
   booking: CandidateBooking,
   booker: Booker | null,
-): Promise<void> {
+): Promise<{ shortLinkFallback: boolean }> {
   if (!booker) throw new Error('Booking has no customer to chase')
   if (!booker.phone && !booker.email) throw new Error('Booker has neither a mobile number nor an email')
 
@@ -366,6 +370,14 @@ async function sendBookerReminder(
     appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
   })
 
+  // Shortened once here so the queued SMS and the email carry the same link.
+  const manage = await buildGuestShortLink({
+    longUrl: token.url,
+    linkKind: 'table_manage',
+    customerId: booker.id,
+    tableBookingId: booking.id,
+  })
+
   const bookingMoment = formatDateWithTimeForSms(booking.booking_date, booking.booking_time)
   const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || null
 
@@ -373,7 +385,7 @@ async function sendBookerReminder(
     // Straight apostrophes and no dashes: one curly character drops the segment limit from 160 to 70.
     const message =
       `The Anchor: ${booker.firstName}, we still need the food choices for your booking on ` +
-      `${bookingMoment}. Every guest needs a main course. Choose here: ${token.url}`
+      `${bookingMoment}. Every guest needs a main course. Choose here: ${manage.url}`
 
     // No `unique` key on the enqueue: the ledger row claimed above is the idempotency, and a second
     // mechanism here would only add a lock round trip and another way for the two to disagree.
@@ -397,7 +409,7 @@ async function sendBookerReminder(
       `<p>We still need the food choices for your booking at The Anchor on ` +
         `${escapeHtml(bookingMoment)} (reference ${escapeHtml(booking.booking_reference)}).</p>`,
       '<p>Every guest needs to choose a main course. A starter and a dessert are optional.</p>',
-      `<p><a href="${escapeHtml(token.url)}">Choose your food here</a></p>`,
+      `<p><a href="${escapeHtml(manage.url)}">Choose your food here</a></p>`,
       contactPhone
         ? `<p>Prefer to do it over the telephone? Ring us on ${escapeHtml(contactPhone)}.</p>`
         : '<p>Prefer to do it over the telephone? Please give us a ring.</p>',
@@ -415,6 +427,8 @@ async function sendBookerReminder(
       throw new Error(emailResult.error || 'Failed to send the pre-order reminder email')
     }
   }
+
+  return { shortLinkFallback: !manage.shortened }
 }
 
 /**
