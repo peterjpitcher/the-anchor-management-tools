@@ -1,7 +1,12 @@
 -- Calendar notes: align the RLS write policies with the application gate.
 --
--- NOT YET APPLIED TO PRODUCTION. This needs the owner's explicit approval and
--- must go through the prod-migrate skill. The application does not depend on it.
+-- APPLIED TO PRODUCTION 2026-09-07, with the owner's approval, after the matching
+-- application code was already live.
+--
+-- The filename carries the version the ledger recorded (apply-time stamp from
+-- the Supabase MCP), not the one it was drafted under, so the repo and
+-- supabase_migrations.schema_migrations agree and db push does not see it as
+-- pending and re-run it.
 --
 -- Why it exists: the note actions write with the service-role client, which
 -- bypasses RLS, so these policies enforce nothing for the app today. They still
