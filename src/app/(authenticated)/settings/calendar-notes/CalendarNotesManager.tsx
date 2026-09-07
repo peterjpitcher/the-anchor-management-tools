@@ -82,9 +82,18 @@ function normalizeColor(input: string): string {
 export default function CalendarNotesManager({
   initialNotes,
   initialError,
+  canManage = true,
+  canGenerate = true,
 }: {
   initialNotes: CalendarNote[]
   initialError: string | null
+  /** Create, edit and delete. Read-only viewers still see the list. */
+  canManage?: boolean
+  /**
+   * AI generation is gated separately and more tightly than editing: one run can
+   * ask OpenAI for up to 120 notes and queue a Google write for each.
+   */
+  canGenerate?: boolean
 }) {
   const todayIso = getLocalIsoDate()
   const [notes, setNotes] = useState<CalendarNote[]>(sortCalendarNotes(initialNotes))
@@ -231,6 +240,7 @@ export default function CalendarNotesManager({
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {canManage && (
         <section className="rounded-lg border border-gray-200 p-4 sm:p-5">
           <h3 className="text-base font-semibold text-gray-900">
             {editingNoteId ? 'Edit calendar note' : 'Add manual calendar note'}
@@ -316,7 +326,9 @@ export default function CalendarNotesManager({
             </div>
           </form>
         </section>
+        )}
 
+        {canGenerate && (
         <section className="rounded-lg border border-gray-200 p-4 sm:p-5">
           <h3 className="text-base font-semibold text-gray-900">Generate with AI</h3>
           <p className="mt-1 text-sm text-gray-600">
@@ -368,6 +380,7 @@ export default function CalendarNotesManager({
             </div>
           </form>
         </section>
+        )}
       </div>
 
       <section className="rounded-lg border border-gray-200">
@@ -414,26 +427,28 @@ export default function CalendarNotesManager({
                       <span className="line-clamp-2">{note.notes || '—'}</span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => beginEdit(note)}
-                          disabled={isMutating}
-                          leftIcon={<PencilSquareIcon className="h-3.5 w-3.5" />}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => handleDelete(note)}
-                          disabled={isMutating}
-                          leftIcon={<TrashIcon className="h-3.5 w-3.5" />}
-                        >
-                          Delete
-                        </Button>
-                      </div>
+                      {canManage && (
+                        <div className="inline-flex items-center gap-1">
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => beginEdit(note)}
+                            disabled={isMutating}
+                            leftIcon={<PencilSquareIcon className="h-3.5 w-3.5" />}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => handleDelete(note)}
+                            disabled={isMutating}
+                            leftIcon={<TrashIcon className="h-3.5 w-3.5" />}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -267,15 +267,15 @@ function revalidateCalendarSurfaces() {
   revalidateTag('dashboard')
 }
 
-async function requireSettingsManagePermission(): Promise<PermissionContext> {
+async function resolvePermission(
+  allowed: boolean,
+  deniedMessage: string,
+): Promise<PermissionContext> {
   const supabase = await createClient()
-  const [hasPermission, { data: { user } }] = await Promise.all([
-    checkUserPermission('settings', 'manage'),
-    supabase.auth.getUser(),
-  ])
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!hasPermission) {
-    return { error: 'You do not have permission to manage calendar notes.' }
+  if (!allowed) {
+    return { error: deniedMessage }
   }
 
   if (!user) {
@@ -290,8 +290,70 @@ async function requireSettingsManagePermission(): Promise<PermissionContext> {
   }
 }
 
+/**
+ * Who may READ calendar notes.
+ *
+ * Deliberately the same expression as the table's own RLS SELECT policy,
+ * `events:view OR settings:manage`. Reading was gated on settings:manage, which
+ * in the live role table only super_admin holds, so a manager saw a silently
+ * note-free calendar on /events while the dashboard (which reads on a lower bar)
+ * showed them all. The settings fallback is kept so no existing user loses
+ * access.
+ */
+export async function canViewCalendarNotes(): Promise<boolean> {
+  const [byEvents, bySettings] = await Promise.all([
+    checkUserPermission('events', 'view'),
+    checkUserPermission('settings', 'manage'),
+  ])
+  return byEvents || bySettings
+}
+
+/**
+ * Who may CREATE, EDIT or DELETE calendar notes.
+ *
+ * `events:manage` rather than a new RBAC module: the manager role already holds
+ * it, so this needs no permission rows and no role grants, which avoids the
+ * deploy-ordering hazard that granting a new module carries. AI generation is
+ * deliberately NOT included, see requireCalendarNoteGeneratePermission.
+ */
+async function canManageCalendarNotes(): Promise<boolean> {
+  const [byEvents, bySettings] = await Promise.all([
+    checkUserPermission('events', 'manage'),
+    checkUserPermission('settings', 'manage'),
+  ])
+  return byEvents || bySettings
+}
+
+async function requireCalendarNoteViewPermission(): Promise<PermissionContext> {
+  return resolvePermission(
+    await canViewCalendarNotes(),
+    'You do not have permission to view calendar notes.',
+  )
+}
+
+async function requireCalendarNoteManagePermission(): Promise<PermissionContext> {
+  return resolvePermission(
+    await canManageCalendarNotes(),
+    'You do not have permission to manage calendar notes.',
+  )
+}
+
+/**
+ * AI generation keeps the higher bar.
+ *
+ * One call accepts a range of up to 730 days, asks OpenAI for up to 120 entries
+ * and inserts them in a batch, each of which queues a Google Calendar write.
+ * That is spend and blast radius, not note editing.
+ */
+async function requireCalendarNoteGeneratePermission(): Promise<PermissionContext> {
+  return resolvePermission(
+    await checkUserPermission('settings', 'manage'),
+    'You do not have permission to generate calendar notes.',
+  )
+}
+
 export async function listCalendarNotes(): Promise<{ data?: CalendarNote[]; error?: string }> {
-  const permission = await requireSettingsManagePermission()
+  const permission = await requireCalendarNoteViewPermission()
   if ('error' in permission) {
     return { error: permission.error }
   }
@@ -321,7 +383,7 @@ export async function listCalendarNotes(): Promise<{ data?: CalendarNote[]; erro
 }
 
 export async function createCalendarNote(input: CalendarNoteCreateInput): Promise<{ data?: CalendarNote; error?: string }> {
-  const permission = await requireSettingsManagePermission()
+  const permission = await requireCalendarNoteManagePermission()
   if ('error' in permission) {
     return { error: permission.error }
   }
@@ -396,7 +458,7 @@ export async function createCalendarNote(input: CalendarNoteCreateInput): Promis
 }
 
 export async function updateCalendarNote(noteId: string, input: CalendarNoteUpdateInput): Promise<{ data?: CalendarNote; error?: string }> {
-  const permission = await requireSettingsManagePermission()
+  const permission = await requireCalendarNoteManagePermission()
   if ('error' in permission) {
     return { error: permission.error }
   }
@@ -501,7 +563,7 @@ export async function updateCalendarNote(noteId: string, input: CalendarNoteUpda
 }
 
 export async function deleteCalendarNote(noteId: string): Promise<{ success?: boolean; error?: string }> {
-  const permission = await requireSettingsManagePermission()
+  const permission = await requireCalendarNoteManagePermission()
   if ('error' in permission) {
     return { error: permission.error }
   }
@@ -514,8 +576,10 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
   try {
     const admin = createAdminClient()
 
+    // Widened preimage: created_by, updated_by and generated_context were not
+    // selected, so even a successful audit write could not reconstruct the row.
     const { data: existing, error: existingError } = await calendarNotesTable(admin)
-      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at')
+      .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, created_at, updated_at, created_by, updated_by, generated_context')
       .eq('id', idParse.data)
       .maybeSingle()
 
@@ -530,6 +594,25 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
 
     if (!await isPubOpsCalendarNoteSyncQueueAvailable(admin)) {
       return { error: 'Calendar sync is not ready. The note was not deleted.' }
+    }
+
+    // Audit BEFORE the delete. This is a hard delete with no deleted_at column,
+    // and AuditService swallows its own failures, so auditing afterwards meant a
+    // successful delete could leave no trace at all. Ordering it first does not
+    // make recovery guaranteed (the write is still best effort), but it removes
+    // the window where the row is gone and the record was never attempted.
+    try {
+      await logAuditEvent({
+        user_id: permission.user.id,
+        ...(permission.user.email && { user_email: permission.user.email }),
+        operation_type: 'delete',
+        resource_type: 'calendar_note',
+        resource_id: noteId,
+        operation_status: 'success',
+        old_values: existing as Record<string, unknown>,
+      })
+    } catch (auditError) {
+      console.error('Failed to write calendar note delete audit log:', auditError)
     }
 
     const { data: deleted, error: deleteError } = await calendarNotesTable(admin)
@@ -547,20 +630,6 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
       return { error: 'Calendar note not found.' }
     }
 
-    try {
-      const existingNote = mapCalendarNoteRow(existing as Record<string, unknown>)
-      await logAuditEvent({
-        user_id: permission.user.id,
-        ...(permission.user.email && { user_email: permission.user.email }),
-        operation_type: 'delete',
-        resource_type: 'calendar_note',
-        resource_id: noteId,
-        operation_status: 'success',
-        old_values: existingNote,
-      })
-    } catch (auditError) {
-      console.error('Failed to write calendar note delete audit log:', auditError)
-    }
 
     await processPubOpsCalendarNoteQueueItem(admin, noteId, {
       operation: 'delete',
@@ -578,7 +647,7 @@ export async function deleteCalendarNote(noteId: string): Promise<{ success?: bo
 export async function generateCalendarNotesWithAI(
   input: CalendarNoteGenerateInput
 ): Promise<{ data?: CalendarNote[]; insertedCount?: number; skippedCount?: number; error?: string }> {
-  const permission = await requireSettingsManagePermission()
+  const permission = await requireCalendarNoteGeneratePermission()
   if ('error' in permission) {
     return { error: permission.error }
   }
