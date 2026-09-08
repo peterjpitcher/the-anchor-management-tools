@@ -25,41 +25,63 @@
       }
     },
     {
-      "type": "whats_on_list",
+      "type": "feature_card",
       "data": {
-        "kicker": "Still to come",
-        "heading": "September nights at The Anchor",
-        "events": [
-          {
-            "date": "16",
-            "month": "Sep",
-            "title": "Autumn Kick-Off Quiz Night",
-            "detail": "7pm start, £3 cash entry, teams of up to six",
-            "url": "https://www.the-anchor.pub/events/autumn-kick-off-quiz-night-2026-09-16"
-          },
-          {
-            "date": "18",
-            "month": "Sep",
-            "title": "Big Sing Friday: Karaoke Night",
-            "detail": "8pm start, free entry, a huge song list",
-            "url": "https://www.the-anchor.pub/events/big-sing-friday-karaoke-night-2026-09-18"
-          },
-          {
-            "date": "25",
-            "month": "Sep",
-            "title": "Lovely Jubbly Charity Quiz Night",
-            "detail": "7pm start, £3 cash entry, every penny to Macmillan",
-            "url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25"
-          },
-          {
-            "date": "30",
-            "month": "Sep",
-            "title": "Autumn Jackpot Cash Bingo",
-            "detail": "7pm start, £10 cash per book, ten games and a jackpot",
-            "url": "https://www.the-anchor.pub/events/cash-bingo-2026-09-30"
-          }
-        ],
-        "all_events_url": "https://www.the-anchor.pub/whats-on"
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9b78f364-7712-4c92-9b09-ffa9132e37e5/landscape/1787567197761_ChatGPT_Image_Aug_24_2026_11_26_20_AM_1-email.jpg",
+          "alt": "Autumn Kick-Off Quiz Night at The Anchor in Stanwell Moor",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Wednesday 16 September: Autumn Kick-Off Quiz Night",
+        "body": "7pm start, £3 cash entry, teams of up to six. General knowledge, music, TV and film, free-drink questions and spot prizes. Doors from 6:30pm.",
+        "link_label": "Reserve your quiz seats",
+        "link_url": "https://www.the-anchor.pub/events/autumn-kick-off-quiz-night-2026-09-16"
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9d03a427-d331-45bd-91af-142b396b82ae/landscape/1787576289709_ChatGPT_Image_Aug_24_2026_01_56_24_PM_1-email.jpg",
+          "alt": "Big Sing Friday Karaoke Night at The Anchor in Stanwell Moor",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Friday 18 September: Big Sing Friday Karaoke",
+        "body": "8pm start and free entry. A huge song list, communal tables and a crowd that will cheer you on whatever you pick.",
+        "link_label": "Let us know you are coming",
+        "link_url": "https://www.the-anchor.pub/events/big-sing-friday-karaoke-night-2026-09-18"
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/e9e84ee8-c59b-4f93-80f6-7e7961a03240/landscape/1787655507179_ChatGPT_Image_Aug_25_2026_11_57_48_AM_1-email.jpg",
+          "alt": "Only Fools and Horses charity quiz night at The Anchor, in aid of Macmillan Cancer Support",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Friday 25 September: Lovely Jubbly Charity Quiz",
+        "body": "7pm start, £3 cash entry, and every penny of it goes to Macmillan Cancer Support. Only Fools and Horses themed, and dress-up is welcome.",
+        "link_label": "Reserve your charity quiz table",
+        "link_url": "https://www.the-anchor.pub/events/pub-quiz-lovely-jubbly-only-fools-and-horses-quiz-night-2026-09-25"
+      }
+    },
+    {
+      "type": "feature_card",
+      "data": {
+        "image": {
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d81512e7-5e99-48fd-a153-3400c2f6f009/landscape/branded/1788696605959-landscape-email.jpg",
+          "alt": "Autumn Jackpot Cash Bingo at The Anchor in Stanwell Moor",
+          "width": 536,
+          "height": 302
+        },
+        "heading": "Wednesday 30 September: Autumn Jackpot Cash Bingo",
+        "body": "7pm start, £10 cash per book. Ten games, a rollover Snowball and a final cash jackpot that grows with every book sold.",
+        "link_label": "Reserve your bingo seats",
+        "link_url": "https://www.the-anchor.pub/events/cash-bingo-2026-09-30"
       }
     },
     {

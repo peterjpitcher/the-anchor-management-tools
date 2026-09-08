@@ -3,7 +3,10 @@
   "title": "Snowball Showdown Cash Bingo on Wednesday 18 November",
   "preheader": "Ten games, £10 cash per book, 7pm start. Reserve online, pay on the night.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "text_block",
       "data": {
@@ -14,7 +17,11 @@
           "Reserve online, pay on the night. Bingo books cost £10 each, payable in cash when you arrive. No online payment is taken."
         ],
         "buttons": [
-          { "label": "Reserve your bingo seats", "url": "https://www.the-anchor.pub/events/cash-bingo-2026-11-18", "variant": "primary" }
+          {
+            "label": "Reserve your bingo seats",
+            "url": "https://www.the-anchor.pub/events/cash-bingo-2026-11-18",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -23,7 +30,7 @@
       "data": {
         "image": {
           "alt": "Snowball Showdown Cash Bingo at The Anchor in Stanwell Moor",
-          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/6e761f65-8b17-4bc9-8a01-d032b77f6a66/square/branded/1788781679338-square.png",
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/6e761f65-8b17-4bc9-8a01-d032b77f6a66/square/branded/1788781679338-square-email.jpg",
           "width": 600,
           "height": 600
         },
@@ -45,9 +52,18 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Arrive by", "value": "6:30pm for the first game at 7pm" },
-          { "label": "Finish", "value": "About 9:30pm" },
-          { "label": "Seating", "value": "Communal tables, book your group together" }
+          {
+            "label": "Arrive by",
+            "value": "6:30pm for the first game at 7pm"
+          },
+          {
+            "label": "Finish",
+            "value": "About 9:30pm"
+          },
+          {
+            "label": "Seating",
+            "value": "Communal tables, book your group together"
+          }
         ]
       }
     },
@@ -72,7 +88,10 @@
         "script_line": "Eyes down",
         "whatsapp_url": "https://wa.me/441753682707",
         "whatsapp_label": "WhatsApp",
-        "reassurance_items": ["Beginners are welcome", "Free parking right outside"]
+        "reassurance_items": [
+          "Beginners are welcome",
+          "Free parking right outside"
+        ]
       }
     },
     {

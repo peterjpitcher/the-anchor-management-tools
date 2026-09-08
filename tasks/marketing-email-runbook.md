@@ -132,6 +132,14 @@ Check each of these against a live source, not against the previous email in the
   last email of that series. A Snowball rolls over, so its figure and its number target
   change every time.
 - **Every booking link must match `events.slug`.** A stale slug looks fine and lands nowhere.
+- **Artwork in an email must be the `-email.jpg` derivative, never the original PNG.** The
+  event posters are 3 to 5MB PNGs. The website never feels that, because next/image re-encodes
+  and resizes them on the fly, but email has no such stage: whatever URL the campaign carries
+  is what lands in the inbox. Supabase's transform endpoint does not rescue a PNG either,
+  because PNG ignores the quality setting. `scripts/one-off/export-email-artwork-as-jpeg.ts`
+  writes a JPEG beside each original at twice its render size, which came out 92% smaller
+  across seventeen images (57.4MB to 4.4MB). Run it for any new artwork, and leave
+  `events.*_image_url` pointing at the originals: the website wants those.
 - **`hours_table` labels must be eight characters or fewer.** The label column is a fixed
   140px with 22px of left padding, set in 22px serif, and the time cell beside it is
   vertically centred. A longer label wraps to two or three lines while the time floats in the
