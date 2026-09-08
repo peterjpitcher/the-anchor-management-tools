@@ -42,7 +42,7 @@ export const hoursTable = defineBlock<HoursTableData>({
   },
   render: (data) =>
     `
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:28px 32px 0">
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:28px 32px 0">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#005131"><tbody>
 <tr><td colspan="2" style="padding:18px 22px 6px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:#c9a020">${escapeEmailText(data.heading)}</td></tr>
 ${data.rows

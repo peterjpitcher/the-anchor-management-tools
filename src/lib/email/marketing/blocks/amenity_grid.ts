@@ -66,7 +66,7 @@ export const amenityGrid = defineBlock<AmenityGridData>({
       .join('\n')
 
     return `
-<tr><td bgcolor="#f2ede3" style="background-color:#f2ede3;border-top:1px solid #e2dccf;padding:26px 32px">
+<tr><td bgcolor="#f2ede3" class="gutter" style="background-color:#f2ede3;border-top:1px solid #e2dccf;padding:26px 32px">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
 ${rows}
 </tbody></table>

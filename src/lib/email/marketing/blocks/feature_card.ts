@@ -54,7 +54,7 @@ export const featureCard = defineBlock<FeatureCardData>({
   },
   render: (data) =>
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border-top:3px solid #a57626;border-right:1px solid #e2dccf;border-bottom:1px solid #e2dccf;border-left:1px solid #e2dccf"><tbody>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border-top:3px solid #a57626;border-right:1px solid #e2dccf;border-bottom:1px solid #e2dccf;border-left:1px solid #e2dccf"><tbody>
 ${imageRow(data.image)}
 <tr><td style="padding:24px 24px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>
 <tr><td style="padding:12px 24px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:25px;color:#1a1a1a">${escapeEmailText(data.body)}</td></tr>

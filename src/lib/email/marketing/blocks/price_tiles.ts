@@ -40,7 +40,7 @@ export const priceTiles = defineBlock<PriceTilesData>({
       'Every adult gets a glass of prosecco, swappable for orange juice. Weekday and weekend prices differ, and pre-orders come to us 7 days before your date. Festive buffets are available for 30 guests or more.',
   },
   render: (data) => `
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:34px 32px 0">
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:34px 32px 0">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody><tr>
 ${data.tiles
   .map(
@@ -50,7 +50,7 @@ ${data.tiles
   .join('\n<td width="13" style="width:13px;font-size:0;line-height:0">&nbsp;</td>\n')}
 </tr></tbody></table>
 </td></tr>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:16px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:23px;mso-line-height-rule:exactly;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:16px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:23px;mso-line-height-rule:exactly;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>
 <tr><td height="26" bgcolor="#faf8f3" style="height:26px;background-color:#faf8f3;font-size:0;line-height:0">&nbsp;</td></tr>
 `,
   text: (data) =>

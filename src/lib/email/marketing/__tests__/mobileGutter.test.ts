@@ -1,42 +1,37 @@
 import { describe, expect, it } from 'vitest'
 
-import { BLOCK_REGISTRY } from '../registry'
 import { renderShellHead } from '../blocks/shell'
+import { BLOCK_REGISTRY } from '../registry'
 
 /**
  * What `class="gutter"` does, and why it needs a guard.
  *
  * The shell's one breakpoint turns a guttered cell's 32px side padding into 20px on a phone.
- * A cell without the class keeps 32px. That is fine when a block is consistent: 32px
- * throughout reads as a slightly narrower column, and nobody notices. It is NOT fine when a
- * block guttters its heading and not the content under it, because then the heading's left
- * edge sits 12px inside the paragraph's, and a ragged edge inside one block is exactly the
- * kind of thing the owner spots and I do not.
+ * A cell without the class keeps 32px. Mixing the two is the defect: a heading at 20px above
+ * a paragraph at 32px leaves a ragged left edge that is invisible at 600px and obvious on a
+ * phone, and it happens between neighbouring blocks as readily as inside one.
  *
- * Centred content is exempt, and deliberately so: a wordmark or a pill button centred in a
- * cell looks identical whether its padding is 20px or 32px, so the mastheads, the closing
- * panel and the footers are not defects for being un-guttered.
+ * The October 2026 handover finished the pass, so this file no longer carries an allow-list.
+ * The rule is now absolute and the test says so: every left-aligned cell with 32px side
+ * padding carries the class, in every block, with no exceptions.
  *
- * KNOWN_MIXED records the five blocks that arrived from the September 2026 mobile handover
- * with the heading guttered and the content under it not. They are listed rather than fixed
- * because the markup is fidelity-tested against the designer's own file and quietly diverging
- * from it is how a handover stops being a source of truth. None of the five is used by the
- * October round-up, which is consistent throughout. Raised with the owner on 2026-09-08.
+ * Centred content is genuinely exempt rather than merely tolerated. A wordmark or a pill
+ * button centred in a cell looks identical at 20px or 32px, so the mastheads, the closing
+ * panel and both footers correctly carry nothing, and adding it there would teach the next
+ * reader that the rule is "put it everywhere".
  */
-
-const KNOWN_MIXED = ['faq_rows', 'menu_list', 'steps', 'text_block', 'whats_on_list']
 
 const CELL = /<td([^<>]*?)style="([^"]*)"([^<>]*)>/g
 
-interface Cell {
+interface GutterCell {
   guttered: boolean
   centred: boolean
   padding: string
 }
 
 /** Every cell in a block whose horizontal padding is the 32px shell gutter. */
-function gutterCells(html: string): Cell[] {
-  const cells: Cell[] = []
+function gutterCells(html: string): GutterCell[] {
+  const cells: GutterCell[] = []
 
   for (const match of html.matchAll(CELL)) {
     const attributes = `${match[1]}${match[3]}`
@@ -58,41 +53,51 @@ function gutterCells(html: string): Cell[] {
   return cells
 }
 
-function blocksWithRaggedEdge(): string[] {
-  return Object.entries(BLOCK_REGISTRY)
-    .filter(([, block]) => {
-      const cells = gutterCells(block.render(block.sample)).filter((cell) => !cell.centred)
-      return cells.some((cell) => cell.guttered) && cells.some((cell) => !cell.guttered)
-    })
-    .map(([key]) => key)
-}
+const blocks = Object.entries(BLOCK_REGISTRY)
 
 describe('the mobile gutter', () => {
   it('is defined in the shell, so the class on a cell actually does something', () => {
     // Without this, every gutter class in the library could be a no-op and every other
-    // assertion here would still pass.
+    // assertion in this file would still pass.
     const head = renderShellHead({ title: 'x', preheader: 'y' })
     expect(head).toContain('max-width:620px')
     expect(head).toContain('.gutter{padding-left:20px !important;padding-right:20px !important;}')
   })
 
-  it('leaves no block with a ragged left edge beyond the five the handover shipped that way', () => {
-    expect(blocksWithRaggedEdge().sort()).toEqual([...KNOWN_MIXED].sort())
+  it('is on every left-aligned 32px cell in the whole library', () => {
+    const offenders = blocks.flatMap(([key, block]) =>
+      gutterCells(block.render(block.sample))
+        .filter((cell) => !cell.centred && !cell.guttered)
+        .map((cell) => `${key}: padding:${cell.padding}`),
+    )
+
+    expect(offenders).toEqual([])
   })
 
-  it('still describes real blocks, so a stale entry cannot hide a new fault', () => {
-    // If a listed block is fixed upstream, this fails and the list has to be trimmed by hand,
-    // which is the only way an allow-list stays honest.
-    for (const type of KNOWN_MIXED) {
-      expect(Object.keys(BLOCK_REGISTRY)).toContain(type)
-    }
-    expect(blocksWithRaggedEdge().sort()).toEqual([...KNOWN_MIXED].sort())
+  it('leaves no block with a ragged left edge', () => {
+    // Implied by the rule above, asserted separately because this is the failure a reader
+    // actually sees, and a future exemption would have to break this one too.
+    const ragged = blocks
+      .filter(([, block]) => {
+        const cells = gutterCells(block.render(block.sample)).filter((cell) => !cell.centred)
+        return cells.some((cell) => cell.guttered) && cells.some((cell) => !cell.guttered)
+      })
+      .map(([key]) => key)
+
+    expect(ragged).toEqual([])
+  })
+
+  it('finds real cells to check, so a broken matcher cannot make this file vacuous', () => {
+    // If the regex stopped matching, every assertion above would pass over an empty list.
+    const total = blocks.reduce(
+      (count, [, block]) => count + gutterCells(block.render(block.sample)).length,
+      0,
+    )
+    expect(total).toBeGreaterThan(40)
   })
 })
 
 describe('the blocks the October round-up is built from', () => {
-  // The email the owner is about to test in production. Checked by name rather than by
-  // reading the campaign JSON, so this keeps meaning something if that file moves.
   const OCTOBER = [
     'masthead_green',
     'text_block',
@@ -104,27 +109,39 @@ describe('the blocks the October round-up is built from', () => {
     'footer',
   ]
 
-  it.each(OCTOBER)('has no ragged left edge in %s', (type) => {
-    const cells = gutterCells(BLOCK_REGISTRY[type].render(BLOCK_REGISTRY[type].sample)).filter(
-      (cell) => !cell.centred,
-    )
-    const guttered = cells.filter((cell) => cell.guttered).length
+  it.each(OCTOBER)('%s exists and is consistent at both widths', (type) => {
+    const block = BLOCK_REGISTRY[type]
+    expect(block, `${type} is not registered`).toBeTruthy()
+    const cells = gutterCells(block.render(block.sample)).filter((cell) => !cell.centred)
+    expect(cells.every((cell) => cell.guttered)).toBe(true)
+  })
+})
 
-    // text_block is on the known-mixed list, but only because of its list-items row. The
-    // round-up's text blocks carry a heading, a paragraph and a button, so this asserts what
-    // that email actually renders rather than what the block can render.
-    if (type === 'text_block') {
-      const asUsed = gutterCells(
-        BLOCK_REGISTRY[type].render({
-          heading: 'Welcome to October',
-          body: ['One paragraph.'],
-          buttons: [{ label: 'See what is on', url: 'https://www.the-anchor.pub/whats-on', variant: 'primary' }],
-        }),
-      ).filter((cell) => !cell.centred)
-      expect(asUsed.every((cell) => cell.guttered)).toBe(true)
-      return
+describe('the two hours tables, which stack rather than staying tabular', () => {
+  it.each(['opening_hours_week', 'opening_hours_dates'])(
+    '%s puts its values in stacking cells, so it is three columns on a desktop and folded on a phone',
+    (type) => {
+      const html = BLOCK_REGISTRY[type].render(BLOCK_REGISTRY[type].sample)
+      // Two stacking cells per row: the first version was mobile-first and left the right
+      // half of the 536px table empty at 600px, which is what the nesting fixed.
+      expect((html.match(/class="stack"/g) ?? []).length).toBeGreaterThanOrEqual(14)
+      expect(html).toContain('<table role="presentation" width="100%"')
+    },
+  )
+
+  it('never lets a time break across two lines', () => {
+    for (const type of ['opening_hours_week', 'opening_hours_dates']) {
+      const html = BLOCK_REGISTRY[type].render(BLOCK_REGISTRY[type].sample)
+      expect(html, type).toContain('white-space:nowrap')
     }
+  })
 
-    expect(guttered === 0 || guttered === cells.length).toBe(true)
+  it('keeps the day and date column out of the stack, so a day can never separate from its hours', () => {
+    for (const type of ['opening_hours_week', 'opening_hours_dates']) {
+      const html = BLOCK_REGISTRY[type].render(BLOCK_REGISTRY[type].sample)
+      const dayCells = html.match(/<td width="112"[^>]*>/g) ?? []
+      expect(dayCells.length, type).toBeGreaterThan(0)
+      expect(dayCells.every((cell) => !cell.includes('stack')), type).toBe(true)
+    }
   })
 })

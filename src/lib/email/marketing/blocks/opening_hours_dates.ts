@@ -11,10 +11,11 @@ import { defineBlock } from './types'
  * any of that, because it repeats a week, and a repeating week through that fortnight is
  * simply wrong.
  *
- * Same two-column geometry as the week table, so the two sit together in one email without
- * looking like two different products, and so both fit a phone without stacking. The date
- * and the hours are both `white-space:nowrap`: "Tue 22 Dec" broken across two lines is
- * worse than a slightly narrower note beside it.
+ * Same geometry as the week table, so the two sit together in one email without looking
+ * like two different products. A 112px date column, then a nested full-width table of an
+ * hours cell and a note cell, both carrying `class="stack"`: three columns at 600px,
+ * hours over note on a phone. The date and the hours are both `white-space:nowrap`, because
+ * "Tue 22 Dec" broken across two lines is worse than a narrower note beside it.
  *
  * A closed day renders as a full dark row: `#0c1d11` across both cells, the date in gold and
  * "Closed" in cream. Nothing else in the library does this, and that is the point. A closure
@@ -69,16 +70,40 @@ export const openingHoursDatesSchema = z.object({
 
 export type OpeningHoursDatesData = z.infer<typeof openingHoursDatesSchema>
 
+/**
+ * The nested hours-and-note table shared by both row treatments.
+ *
+ * Both cells carry `class="stack"`, which is what makes the row three columns on a desktop
+ * and hours-over-note on a phone. The colours differ between an open day and a closed one
+ * and nothing else does, so they are passed in rather than duplicating the geometry twice
+ * and letting the two drift apart.
+ */
+function hoursAndNote(hours: string, note: string, hoursStyle: string, noteColour: string): string {
+  const noteDiv = note
+    ? `<div style="font-family:${SANS};font-size:13px;line-height:20px;color:${noteColour}">${escapeEmailText(note)}</div>`
+    : ''
+
+  return (
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse"><tbody><tr>` +
+    `<td width="150" valign="top" class="stack" style="width:150px;padding:0 8px 0 0"><div style="${hoursStyle}">${escapeEmailText(hours)}</div></td>` +
+    `<td valign="top" class="stack" style="padding:1px 0 0">${noteDiv}</td>` +
+    `</tr></tbody></table>`
+  )
+}
+
 /** The dark treatment, reserved for a day the pub is shut. */
 function closedRowMarkup(row: OpeningHoursDatesRowData): string {
-  const note = row.note
-    ? `<div style="font-family:${SANS};font-size:13px;line-height:20px;color:#f0e6c6;padding-top:2px">${escapeEmailText(row.note)}</div>`
-    : ''
+  const inner = hoursAndNote(
+    'Closed',
+    row.note ?? '',
+    `font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:#f0e6c6;white-space:nowrap`,
+    '#f0e6c6',
+  )
 
   return (
     `<tr>` +
     `<td width="112" valign="top" bgcolor="${DARK}" style="width:112px;background-color:${DARK};padding:13px 0 13px 12px;font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:#c9a020;white-space:nowrap">${escapeEmailText(row.date)}</td>` +
-    `<td valign="top" bgcolor="${DARK}" style="background-color:${DARK};padding:13px 10px 13px 4px"><div style="font-family:${SANS};font-size:15px;font-weight:600;line-height:22px;color:#f0e6c6">Closed</div>${note}</td>` +
+    `<td valign="top" bgcolor="${DARK}" style="background-color:${DARK};padding:13px 10px 13px 4px">${inner}</td>` +
     `</tr>`
   )
 }
@@ -86,14 +111,17 @@ function closedRowMarkup(row: OpeningHoursDatesRowData): string {
 function openRowMarkup(row: OpeningHoursDatesRowData, isLast: boolean): string {
   // The last row sits on the table's own border, so a hairline there would double it.
   const hairline = isLast ? '' : HAIRLINE
-  const note = row.note
-    ? `<div style="font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61;padding-top:2px">${escapeEmailText(row.note)}</div>`
-    : ''
+  const inner = hoursAndNote(
+    row.hours ?? '',
+    row.note ?? '',
+    `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;white-space:nowrap`,
+    '#6f6a61',
+  )
 
   return (
     `<tr>` +
     `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;font-weight:600;white-space:nowrap">${escapeEmailText(row.date)}</td>` +
-    `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}"><div style="font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;white-space:nowrap">${escapeEmailText(row.hours ?? '')}</div>${note}</td>` +
+    `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}">${inner}</td>` +
     `</tr>`
   )
 }

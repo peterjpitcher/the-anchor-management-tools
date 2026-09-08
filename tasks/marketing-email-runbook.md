@@ -124,12 +124,17 @@ against one details cell of labelled lines, so they fit a 375px screen without s
 stacking them would turn one legible week into fourteen fragments. Every time in them is
 `white-space:nowrap`, so a time can never break in half.
 
-`mobileGutter.test.ts` guards all of this. It also carries the five blocks that arrived from
-the September 2026 handover with the heading guttered and the content under it not
-(`faq_rows`, `menu_list`, `steps`, `text_block`'s list rows, `whats_on_list`'s panel). They
-are listed rather than silently fixed, because the markup is fidelity-tested against the
-designer's own file. If you reach for one of those five in an email, ask for it to be
-redrawn first.
+`mobileGutter.test.ts` guards all of this, and the rule is now absolute: every left-aligned
+32px cell in all 35 blocks carries the class, with no allow-list and no exceptions. The
+October 2026 pass finished the job, including the seven blocks that are read from
+`anchor-christmas-and-lunch.html` rather than from the library.
+
+One cell is ours rather than the designer's. `note_bar` has no BLOCK markers of its own: it
+is bundled inside `pull_quote` in the library file and split out by
+`scripts/one-off/extract-email-blocks.ts`, so from the designer's side it is invisible and
+their pass could not reach it. Their handover asked us to apply the one attribute ourselves,
+and the extractor does it in `splitPullQuote`, beside the reassembly proof, with an assertion
+that fails loudly if a future re-export adds the class itself.
 
 ---
 

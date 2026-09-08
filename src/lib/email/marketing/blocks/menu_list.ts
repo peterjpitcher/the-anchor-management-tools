@@ -62,7 +62,7 @@ export const menuList = defineBlock<MenuListData>({
     const rows: string[] = [
       `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
       `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 6px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:0 32px 26px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px 26px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
     ]
 
     data.items.forEach((item, index) => {
