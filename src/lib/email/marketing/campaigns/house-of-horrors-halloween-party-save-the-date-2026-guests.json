@@ -3,7 +3,10 @@
   "title": "Save the date: our Halloween party is on Saturday 31 October",
   "preheader": "Free entry, fancy dress and the bar open until midnight. Four weeks to plan the costume.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "text_block",
       "data": {
@@ -14,7 +17,11 @@
           "Entry is free and there is nothing to pay. Let us know you are coming so we know how busy to expect it."
         ],
         "buttons": [
-          { "label": "Let us know you are coming", "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31", "variant": "primary" }
+          {
+            "label": "Let us know you are coming",
+            "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -23,7 +30,7 @@
       "data": {
         "image": {
           "alt": "The House of Horrors Halloween party at The Anchor in Stanwell Moor",
-          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d52cbd18-d293-4516-beca-e151eaa90180/square/branded/1788785717882-square.png",
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d52cbd18-d293-4516-beca-e151eaa90180/square/branded/1788785717882-square-email.jpg",
           "width": 600,
           "height": 600
         },
@@ -35,10 +42,22 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Date", "value": "Saturday 31 October, 8pm until midnight" },
-          { "label": "Entry", "value": "Free for everyone" },
-          { "label": "Fancy dress", "value": "Encouraged, every level of effort welcome" },
-          { "label": "Food", "value": "Full menu 12pm to 6pm, then pizza from 9pm" }
+          {
+            "label": "Date",
+            "value": "Saturday 31 October, 8pm until midnight"
+          },
+          {
+            "label": "Entry",
+            "value": "Free for everyone"
+          },
+          {
+            "label": "Fancy dress",
+            "value": "Encouraged, every level of effort welcome"
+          },
+          {
+            "label": "Food",
+            "value": "Full menu 12pm to 6pm, then pizza from 9pm"
+          }
         ]
       }
     },
@@ -63,7 +82,10 @@
         "script_line": "31 October, in the diary",
         "whatsapp_url": "https://wa.me/441753682707",
         "whatsapp_label": "WhatsApp",
-        "reassurance_items": ["Free entry for everyone", "Free parking right outside"]
+        "reassurance_items": [
+          "Free entry for everyone",
+          "Free parking right outside"
+        ]
       }
     },
     {
