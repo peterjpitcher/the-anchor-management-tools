@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs'
+import { readdirSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -22,6 +22,7 @@ import {
   logoRectFree,
   resolveLogoRect,
   QR_MIN_WIDTH_FRAC,
+  QR_MAX_WIDTH_FRAC,
   QR_MIN_WIDTH_FRAC_EXACT,
   shadowColourFor,
   logoShadowSpec,
@@ -523,6 +524,36 @@ describe('resolveLogoRect', () => {
   })
 })
 
+const MIGRATIONS_DIR = resolve(__dirname, '../../../../supabase/migrations')
+
+/**
+ * The last migration, in filename order, that mentions the given declaration.
+ *
+ * Migrations are applied in filename order, so the last file to touch a
+ * constraint is the one the database ends up with. Hardcoding a filename means
+ * the assertion silently goes stale the moment a newer migration supersedes it.
+ */
+function latestMigrationDefining(declaration: string): { sql: string; file: string } {
+  const match = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .reverse()
+    .map((file) => ({ file, sql: readFileSync(resolve(MIGRATIONS_DIR, file), 'utf8') }))
+    .find(({ sql }) => sql.includes(declaration) && /qr_width_frac\s*>=/i.test(sql))
+
+  if (!match) throw new Error(`No migration defines: ${declaration}`)
+  return match
+}
+
+/** The numeric bounds of the qr_width_frac CHECK, or null if it cannot be read. */
+function parseQrWidthBounds(sql: string): { min: number; max: number } | null {
+  const m = sql.match(
+    /qr_width_frac\s*>=\s*([0-9]*\.?[0-9]+)\s+and\s+qr_width_frac\s*<=\s*([0-9]*\.?[0-9]+)/i,
+  )
+  if (!m) return null
+  return { min: Number(m[1]), max: Number(m[2]) }
+}
+
 describe('the QR minimum width floor agrees everywhere it is written down', () => {
   it('uses the exact 10% ratio', () => {
     expect(qrMinWidthFrac()).toBe(0.1)
@@ -530,14 +561,31 @@ describe('the QR minimum width floor agrees everywhere it is written down', () =
     expect(QR_MIN_WIDTH_FRAC_EXACT).toBe(0.1)
   })
 
-  it('matches the database CHECK constraint in the branding migration', () => {
-    const sql = readFileSync(
-      resolve(__dirname, '../../../../supabase/migrations/20260906185343_event_image_qr_ten_percent.sql'),
-      'utf8'
-    )
-    // If someone changes one and not the other, the smallest legal code either
-    // fails validation or prints too small. Both are silent until it is printed.
-    expect(sql).toContain(`qr_width_frac >= ${QR_MIN_WIDTH_FRAC}`)
+  it('matches the database CHECK constraint, both bounds, in the migration that last set it', () => {
+    // Three things this test used to get wrong, all of which let a real drift
+    // through:
+    //
+    // 1. It read ONE hardcoded migration. A later migration changing the
+    //    constraint would leave this asserting against a superseded file and
+    //    still pass. Find the last migration that sets the constraint instead.
+    // 2. It matched a SUBSTRING. `qr_width_frac >= 0.1` is a prefix of
+    //    `>= 0.12` and `>= 0.1905`, so both of those would have satisfied it.
+    //    Parse the number and compare it as a number.
+    // 3. It ignored the ceiling entirely, so QR_MAX_WIDTH_FRAC could drift from
+    //    the database unchecked.
+    const { sql, file } = latestMigrationDefining('event_images_qr_width_frac_check')
+    const bounds = parseQrWidthBounds(sql)
+
+    expect(bounds, `could not parse the bounds out of ${file}`).not.toBeNull()
+    expect(bounds!.min).toBe(QR_MIN_WIDTH_FRAC)
+    expect(bounds!.max).toBe(QR_MAX_WIDTH_FRAC)
+  })
+
+  it('rejects a constraint whose floor merely starts with the same digits', () => {
+    // Guards the guard: proves the parse is numeric, not a substring match.
+    const decoy = 'check (qr_width_frac >= 0.1905 and qr_width_frac <= 0.4)'
+    expect(parseQrWidthBounds(decoy)).toEqual({ min: 0.1905, max: 0.4 })
+    expect(parseQrWidthBounds(decoy)!.min).not.toBe(QR_MIN_WIDTH_FRAC)
   })
 
   it('a QR at exactly the floor still clears 21mm on the A4 canvas', () => {
