@@ -16,7 +16,7 @@
  * refuses anything that is not JPEG, PNG or WebP, so sharp is never handed HEIC.
  *
  * Access is super-admin only at every layer, matching the RLS in
- * 20260905210000_maintenance_tracker.sql.
+ * 20260906080646_maintenance_tracker.sql.
  */
 
 import { randomUUID } from 'crypto'

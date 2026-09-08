@@ -1,6 +1,6 @@
 // Maintenance and improvements tracker, data layer.
 //
-// Pinned to supabase/migrations/20260905210000_maintenance_tracker.sql. Rules the
+// Pinned to supabase/migrations/20260906080646_maintenance_tracker.sql. Rules the
 // database owns and this module must never duplicate:
 //
 //   - History is written by a trigger, one row per changed field, in the same

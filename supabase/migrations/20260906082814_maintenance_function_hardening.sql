@@ -1,5 +1,5 @@
 -- Clears the three Supabase security advisor warnings raised by
--- 20260905210000_maintenance_tracker.sql. No behaviour changes.
+-- 20260906080646_maintenance_tracker.sql. No behaviour changes.
 --
 -- 1 and 2: both functions had a role mutable search_path. A caller can set
 --    search_path, so an unqualified name inside the function body could resolve

@@ -532,7 +532,7 @@ describe('the QR minimum width floor agrees everywhere it is written down', () =
 
   it('matches the database CHECK constraint in the branding migration', () => {
     const sql = readFileSync(
-      resolve(__dirname, '../../../../supabase/migrations/20260906155438_event_image_qr_ten_percent.sql'),
+      resolve(__dirname, '../../../../supabase/migrations/20260906185343_event_image_qr_ten_percent.sql'),
       'utf8'
     )
     // If someone changes one and not the other, the smallest legal code either
