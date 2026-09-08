@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "title": "Save the date: our Halloween party is on Saturday 31 October",
+  "preheader": "Free entry, fancy dress and the bar open until midnight. Four weeks to plan the costume.",
+  "blocks": [
+    { "type": "masthead_green", "data": {} },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Four weeks to plan the costume",
+        "body": [
+          "Saturday 31 October · 8pm until midnight",
+          "Our Halloween party is back. Music all night, the bar open until midnight, and a room full of people who have made an effort. This is the one night of the year worth planning an outfit for, so consider this your notice.",
+          "Entry is free and there is nothing to pay. Let us know you are coming so we know how busy to expect it."
+        ],
+        "buttons": [
+          { "label": "Let us know you are coming", "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31", "variant": "primary" }
+        ]
+      }
+    },
+    {
+      "type": "image_full",
+      "data": {
+        "image": {
+          "alt": "The House of Horrors Halloween party at The Anchor in Stanwell Moor",
+          "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d52cbd18-d293-4516-beca-e151eaa90180/square/branded/1788785717882-square.png",
+          "width": 600,
+          "height": 600
+        },
+        "placeholder_label": "Halloween party artwork · square",
+        "placeholder_caption": "Enter If You Dare"
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          { "label": "Date", "value": "Saturday 31 October, 8pm until midnight" },
+          { "label": "Entry", "value": "Free for everyone" },
+          { "label": "Fancy dress", "value": "Encouraged, every level of effort welcome" },
+          { "label": "Food", "value": "Full menu 12pm to 6pm, then pizza from 9pm" }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Why we are telling you now",
+        "body": [
+          "Halloween is our busiest night of the year, and the best costumes are the ones people started thinking about in September. Get your group together while everyone is still free.",
+          "We will send the details again nearer the time, so there is nothing you need to remember."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "body": "Put it in the diary, tell us you are coming, then go and think about the costume.",
+        "cta_url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31",
+        "cta_label": "Let us know you are coming",
+        "phone_url": "tel:+441753682707",
+        "phone_label": "01753 682707",
+        "script_line": "31 October, in the diary",
+        "whatsapp_url": "https://wa.me/441753682707",
+        "whatsapp_label": "WhatsApp",
+        "reassurance_items": ["Free entry for everyone", "Free parking right outside"]
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
+      }
+    }
+  ]
+}

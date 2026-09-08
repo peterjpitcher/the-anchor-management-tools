@@ -64,6 +64,68 @@ time has caught this out before.
 
 ---
 
+## How many emails an event gets, and when
+
+Owner's rule, set 2026-09-08.
+
+| Event type | Emails | When |
+|---|---|---|
+| Quiz, music bingo, cash bingo, karaoke, anything ordinary | one | seven days before, on the same weekday as the event |
+| **Parties** (the Halloween party, New Year, anything of that size) | **two** | **a month before, then again a week before** |
+| Monthly round-up | one a month | first days of the month, "Welcome to <month>" |
+
+Time of day follows the event's own weekday: 09:00 London for a midweek send,
+12:00 for a Friday or Saturday one. Always write the offset (`+01:00` or `+00:00`),
+because British summer time has caught this out before.
+
+The month-before email is a save the date, not the same email sent twice. It sells the
+night and asks people to put it in the diary; the week-before one carries the practical
+detail. Sending the same copy twice reads as a mistake.
+
+**The two-day frequency cap decides the actual date, not the calendar.** A month before
+31 October is 1 October, which sits one day after another guest send and would be refused
+by `scheduleCampaign`. The Halloween pair went out on 3 October and 24 October for exactly
+that reason. Work out the slot you want, then check the neighbours before you promise it.
+
+Clearing the cap is not the same as being safe. The cap is measured against
+`customers.marketing_last_email_at` at claim time, not against `scheduled_for`, and a send
+takes tens of minutes to drain. A slot three hours clear of the cap loses recipients silently
+if the previous send stalls. Aim for a day of margin, not an hour.
+
+### The monthly round-up
+
+One a month, sent in the first days of the month, subject "Welcome to <month> at The Anchor".
+It carries every event still to come that month (`whats_on_list`, up to eight), the current
+opening and kitchen hours (`hours_table`), whatever is genuinely new, and a line about what is
+coming next month. It is the only email that talks about the pub rather than one night.
+
+Facts for it come from live sources every time: `business_hours` for the version in force,
+`special_hours` for any dated override, `events` for the listings, and the website repo's
+`docs/SSOT.md` for anything about food, dogs, parking or policy. **Do not quote menu prices.**
+The SSOT forbids hardcoding them because they are live from the menu API.
+
+---
+
+## Checking the facts before you schedule
+
+An email that is factually wrong reaches real people, and nobody catches it after the send.
+Check each of these against a live source, not against the previous email in the series:
+
+- **Kitchen and opening hours belong to the event's own weekday**, and `special_hours`
+  overrides `business_hours` for a given date and always wins. The Halloween party email
+  said the kitchen was open until 7pm because that is true of an ordinary Saturday; the
+  dated row for 31 October closes it at 6pm and reopens for pizza at 9pm. Query
+  `special_hours` for the event date every time, even when you are sure.
+- **Seating language must match `events.booking_mode`.** Cash bingo and music bingo are
+  communal, quiz nights are table seating, all at capacity 60. The category defaults encode
+  this, so a new event inherits it.
+- **Prices, prize values and Snowball projections come from the event row**, not from the
+  last email of that series. A Snowball rolls over, so its figure and its number target
+  change every time.
+- **Every booking link must match `events.slug`.** A stale slug looks fine and lands nowhere.
+
+---
+
 ## Changing a campaign that is already scheduled
 
 Scheduling freezes content on purpose, so `updateCampaign` refuses anything that is not a
