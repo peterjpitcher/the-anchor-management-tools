@@ -228,3 +228,26 @@ before firing a click that changes that selection. Getting there by raising a
 assertion about an async pane with `findBy*`, never a bare `getBy*` after an await,
 and scope a "this control is absent" assertion inside the container that has to be
 open, or it passes because the container had not rendered yet.
+
+## 8 September 2026: a true sentence that reads as a lie
+
+**Mistake:** The October round-up said "We are open from midday every day except Monday".
+Every fact in it is right. The bar opens at midday Tuesday to Sunday, and Monday is the
+exception. But the exception attaches to "open" rather than to "from midday", so it reads
+as "we are shut on Mondays", and we are not: we open at 4pm. The owner caught it in the
+draft. I had checked the hours against `business_hours` and the times were correct, so no
+amount of fact-checking would have found it.
+
+**Rule:** Fact-checking copy is not the same as reading it. Before any customer-facing
+sentence ships, read it once for what a hurried reader will take from it, not only for
+whether each clause is true. Two shapes to watch for, both now enforced by
+`findVenueClosureClaims` in `src/lib/email/marketing/`:
+
+- Never hang an exception off a day. Say what the day IS: "from midday Tuesday to Sunday
+  and from 4pm on Mondays".
+- Do not paraphrase in prose what a table two blocks below already states. The hours block
+  was in the same email, and it was right.
+
+The guard warns in the campaign UI and refuses at `scheduleCampaign`, deliberately not in
+`validateMarketingContent`: that runs again before every send against deployed code, so a
+rule added today would be able to kill a campaign approved last month.
