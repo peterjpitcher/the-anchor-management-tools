@@ -80,8 +80,12 @@ ${data.events
 <tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;line-height:20px"><a href="${escapeEmailUrl(data.all_events_url)}" style="color:#8b6914;text-decoration:none">See everything on this month &rarr;</a></td></tr>
 </tbody></table>`,
   text: (data) => {
+    // Same reason as `whats_on_media`: the detail is a written sentence and often already
+    // ends in a full stop, so appending one unconditionally doubles it.
+    const sentence = (value: string): string => (/[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`)
+
     const events = data.events
-      .map((event) => `${event.date} ${event.month}: ${event.title}. ${event.detail}. ${event.url}`)
+      .map((event) => `${event.date} ${event.month}: ${sentence(event.title)} ${sentence(event.detail)} ${event.url}`)
       .join('\n')
 
     return `${data.kicker.toUpperCase()}\n${data.heading}\n${events}\nSee everything on this month: ${data.all_events_url}\n`
