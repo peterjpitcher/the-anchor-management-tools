@@ -1,16 +1,20 @@
 /**
- * Puts the kitchen times inline in the September round-up's opening-hours panel.
+ * Moves the September round-up onto the new `opening_times` block.
  *
- * Each row now carries both: the pub first, the kitchen second, with the note saying which is
- * which. The separate food strip underneath is removed, because it only repeated them.
+ * The owner supplied the pub's printed opening-times sheet and asked for that layout: a day
+ * against its bar hours and its kitchen hours, with lunch and dinner labelled separately where
+ * a day has both. `hours_table` cannot express it, so `opening_times` was added rather than
+ * bending the existing block, which is fidelity-tested against the designer's handover.
  *
- * The `time` field caps at 40 characters and the cell is 374px wide (536 table, less the 140px
- * label column and 22px of padding). Measured in the 18px bold fallback the clients actually
- * use, the longest of these strings is 334px, so nothing wraps. That measurement was checked
- * against the panel that did wrap: "Lunch, Tuesday to Friday" comes out at 249px in a 118px
- * label column, which is exactly the three-line wrap that was reported.
+ * Every value comes from the published business_hours version in force, not from the printed
+ * sheet, with one exception noted to the owner: the sheet says lunch runs 1pm to 3pm Tuesday
+ * to Friday, while business_hours says 12pm to 3pm. The database wins here because it is what
+ * the booking system honours and what the website API serves.
  *
- * Dry run by default. RUN_INLINE_KITCHEN_TIMES_MUTATION=true applies it.
+ * The "we may stay open until midnight" line on Friday and Saturday is the pub's own wording,
+ * taken from that printed sheet, and is hedged there as it is here.
+ *
+ * Dry run by default. RUN_OPENING_TIMES_BLOCK_MUTATION=true applies it.
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -40,19 +44,22 @@ async function main(): Promise<void> {
   const issues = validateMarketingContent(content)
   if (issues.length > 0) throw new Error(issues.map((i) => i.message).join('; '))
 
-  for (const block of content.blocks) {
-    if (block.type !== 'hours_table') continue
-    const data = block.data as { rows: Array<{ label: string; time: string }>; note: string }
-    for (const row of data.rows) {
-      if (row.label.length > LABEL_CHAR_LIMIT) throw new Error(`Label "${row.label}" will wrap`)
-      if (row.time.length > TIME_CHAR_LIMIT) throw new Error(`Time "${row.time}" will wrap`)
-      console.warn(`  ${row.label.padEnd(4)} ${row.time}`)
-    }
-    console.warn(`  note: ${data.note}`)
+  const panel = content.blocks.find((block) => block.type === 'opening_times')
+  if (!panel) throw new Error('The round-up is not using the opening_times block')
+  const panelData = panel.data as {
+    rows: Array<{ day: string; bar: string; bar_note?: string; kitchen: unknown }>
+    note: string
+  }
+  if (panelData.rows.length !== 7) throw new Error(`Expected all seven days, found ${panelData.rows.length}`)
+  for (const row of panelData.rows) {
+    const kitchen = Array.isArray(row.kitchen)
+      ? (row.kitchen as Array<{ label: string; time: string }>).map((s) => `${s.label} ${s.time}`).join(', ')
+      : String(row.kitchen)
+    console.warn(`  ${row.day.padEnd(10)} bar ${row.bar.padEnd(13)} kitchen ${kitchen}`)
   }
 
-  if (content.blocks.some((block) => block.type === 'fact_strip')) {
-    throw new Error('The food strip is still present; it should have been folded into the hours panel')
+  if (content.blocks.some((block) => block.type === 'hours_table')) {
+    throw new Error('The old hours_table block is still present')
   }
 
   const supabase = createAdminClient()
@@ -69,8 +76,8 @@ async function main(): Promise<void> {
   console.warn(`\n${row.name} [${row.status}] sends ${row.scheduled_for}`)
 
   assertScriptMutationAllowed({
-    scriptName: 'inline-kitchen-times-september-roundup',
-    envVar: 'RUN_INLINE_KITCHEN_TIMES_MUTATION',
+    scriptName: 'use-opening-times-block-september-roundup',
+    envVar: 'RUN_OPENING_TIMES_BLOCK_MUTATION',
   })
 
   const when = row.status === 'scheduled' ? row.scheduled_for : null
