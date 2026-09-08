@@ -19,6 +19,7 @@ import type {
   VenueCalendarSpecialHours,
   VenueCalendarBalanceDue,
   VenueCalendarEmployeeBirthday,
+  VenueCalendarMarketingSend,
   ScheduleDailyOps,
 } from '@/components/schedule-calendar'
 import type { Event } from '@/types/database'
@@ -101,6 +102,7 @@ interface EventsClientProps {
   initialBirthdays?: VenueCalendarEmployeeBirthday[]
   initialBalanceDues?: VenueCalendarBalanceDue[]
   initialDailyOps?: ScheduleDailyOps | null
+  initialMarketingSends?: VenueCalendarMarketingSend[]
   calendarDatasetWarnings?: string[]
 }
 
@@ -118,6 +120,7 @@ export default function EventsClient({
   initialBirthdays = [],
   initialBalanceDues = [],
   initialDailyOps = null,
+  initialMarketingSends = [],
   calendarDatasetWarnings = [],
 }: EventsClientProps) {
   const router = useRouter()
@@ -448,6 +451,7 @@ export default function EventsClient({
             specialHours={initialSpecialHours}
             employeeBirthdays={initialBirthdays}
             balanceDueDates={initialBalanceDues}
+            marketingSends={initialMarketingSends}
             dailyOps={initialDailyOps ?? undefined}
             canManageCalendarNotes={canManageCalendarNotes}
             showFilters

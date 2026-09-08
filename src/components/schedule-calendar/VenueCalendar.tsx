@@ -7,7 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
-import { CalendarDaysIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
+import { CalendarDaysIcon, EnvelopeIcon, LockClosedIcon, TruckIcon } from '@heroicons/react/20/solid'
 import { Modal, Button, FormGroup, Input, Textarea, toast } from '@/ds'
 import { createCalendarNote, updateCalendarNote, deleteCalendarNote } from '@/app/actions/calendar-notes'
 import { ScheduleCalendar } from './ScheduleCalendar'
@@ -19,6 +19,7 @@ import {
   specialHoursToEntry,
   calendarNoteToEntry,
   parkingToEntry,
+  marketingSendToEntry,
 } from './adapters'
 import type {
   CalendarEntry,
@@ -121,6 +122,22 @@ export interface VenueCalendarSpecialHours {
   note: string | null
 }
 
+/**
+ * A B2B or guest marketing email campaign, placed on the day it goes out.
+ *
+ * `send_at` is resolved server-side (started, else scheduled) so the dashboard
+ * and /events cannot disagree about which day a send belongs to.
+ */
+export interface VenueCalendarMarketingSend {
+  id: string
+  name: string
+  subject: string
+  audience_type: string
+  status: string
+  send_at: string | null
+  recipient_count: number | null
+}
+
 export interface VenueCalendarProps {
   events: VenueCalendarEvent[]
   privateBookings: VenueCalendarBooking[]
@@ -129,6 +146,8 @@ export interface VenueCalendarProps {
   specialHours?: VenueCalendarSpecialHours[]
   calendarNotes: VenueCalendarNote[]
   parkingBookings: VenueCalendarParking[]
+  /** Marketing email sends. Permission-gated at source, so an empty array is normal. */
+  marketingSends?: VenueCalendarMarketingSend[]
   /** Create, edit and delete calendar notes from the calendar itself. */
   canManageCalendarNotes?: boolean
   onEmptyDayClick?: (date: Date) => void
@@ -177,6 +196,7 @@ function buildEntries(
   specialHours: VenueCalendarSpecialHours[],
   calendarNotes: VenueCalendarNote[],
   parkingBookings: VenueCalendarParking[],
+  marketingSends: VenueCalendarMarketingSend[],
 ): { entries: CalendarEntry[]; skipped: number } {
   const out: CalendarEntry[] = []
 
@@ -247,6 +267,12 @@ function buildEntries(
   for (const booking of parkingBookings) {
     if (!booking.start_at) continue
     const entry = parkingToEntry(booking)
+    if (entry) out.push(entry)
+  }
+
+  for (const send of marketingSends) {
+    if (!send.send_at) continue
+    const entry = marketingSendToEntry(send)
     if (entry) out.push(entry)
   }
 
@@ -415,6 +441,34 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     )
   }
 
+  if (entry.tooltipData.kind === 'marketing_email') {
+    const td = entry.tooltipData
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="flex items-center gap-1.5 font-medium">
+          <EnvelopeIcon className="h-3.5 w-3.5" />
+          <span>Marketing email · {td.statusLabel}</span>
+        </div>
+        <div className="whitespace-pre-wrap">{td.name}</div>
+        <div>
+          {format(entry.start, 'EEE d MMM yyyy')} · {td.time}
+        </div>
+        <div className="whitespace-pre-wrap">
+          <span className="font-medium">Subject:</span> {td.subject}
+        </div>
+        <div>
+          <span className="font-medium">Audience:</span> {td.audience}
+        </div>
+        {td.recipientCount !== null && (
+          <div>
+            <span className="font-medium">Recipients:</span>{' '}
+            {td.recipientCount.toLocaleString('en-GB')}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -426,6 +480,7 @@ export function VenueCalendar({
   specialHours = [],
   calendarNotes,
   parkingBookings,
+  marketingSends = [],
   canManageCalendarNotes,
   showFilters = false,
   onEmptyDayClick,
@@ -591,8 +646,8 @@ export function VenueCalendar({
   }, [calendarNotes])
 
   const built = useMemo(
-    () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings),
-    [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings],
+    () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends),
+    [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends],
   )
   const entries = built.entries
   const skippedCount = built.skipped
@@ -609,12 +664,13 @@ export function VenueCalendar({
     if (balanceDueDates.length > 0) kinds.push('balance_due')
     if (privateBookings.length > 0) kinds.push('private_booking')
     if (parkingBookings.length > 0) kinds.push('parking')
+    if (marketingSends.length > 0) kinds.push('marketing_email')
     // Only offer Events when there are some. This used to be pushed
     // unconditionally, so a user with no events permission still saw an Events
     // swatch and an Events filter chip that could never match anything.
     if (events.length > 0) kinds.push('event')
     return kinds
-  }, [calendarNotes.length, specialHours.length, employeeBirthdays.length, balanceDueDates.length, privateBookings.length, parkingBookings.length, events.length])
+  }, [calendarNotes.length, specialHours.length, employeeBirthdays.length, balanceDueDates.length, privateBookings.length, parkingBookings.length, marketingSends.length, events.length])
 
   // Rows we could not place on a day: either no date at all, or a date we could
   // not parse. Every source column is NOT NULL in production, so the old
@@ -666,9 +722,10 @@ export function VenueCalendar({
       balanceDueDates.filter((b) => !b.balance_due_date).length +
       employeeBirthdays.filter((b) => !b.occurrence_date).length +
       specialHours.filter((h) => !h.date).length +
-      parkingBookings.filter((p) => !p.start_at).length
+      parkingBookings.filter((p) => !p.start_at).length +
+      marketingSends.filter((s) => !s.send_at).length
     return missingDate + skippedCount
-  }, [events, calendarNotes, privateBookings, balanceDueDates, employeeBirthdays, specialHours, parkingBookings, skippedCount])
+  }, [events, calendarNotes, privateBookings, balanceDueDates, employeeBirthdays, specialHours, parkingBookings, marketingSends, skippedCount])
 
   return (
     <div className={className}>

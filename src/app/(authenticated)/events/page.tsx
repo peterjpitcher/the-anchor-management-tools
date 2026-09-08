@@ -9,6 +9,7 @@ import {
   fetchCalendarBalanceDues,
   fetchCalendarBirthdays,
   fetchCalendarDailyOps,
+  fetchCalendarMarketingSends,
   fetchCalendarSpecialHours,
 } from '@/app/actions/calendar-datasets'
 import { getChecklistTodos } from '@/app/actions/event-checklist'
@@ -45,6 +46,7 @@ export default async function EventsPage() {
     birthdaysResult,
     balanceDuesResult,
     dailyOpsResult,
+    marketingSendsResult,
   ] = await Promise.all([
     getEvents({ status: 'all', dateFrom: getTodayIsoDate(), page: 1, pageSize: 25 }),
     getActiveEventCategories(),
@@ -69,6 +71,7 @@ export default async function EventsPage() {
     fetchCalendarBirthdays(),
     fetchCalendarBalanceDues(),
     fetchCalendarDailyOps(),
+    fetchCalendarMarketingSends(),
   ])
 
   // Same rule as the dashboard: write on events:manage, settings:manage kept as
@@ -93,11 +96,13 @@ export default async function EventsPage() {
             initialBirthdays={birthdaysResult.data}
             initialBalanceDues={balanceDuesResult.data}
             initialDailyOps={dailyOpsResult.data[0] ?? null}
+            initialMarketingSends={marketingSendsResult.data}
             calendarDatasetWarnings={[
               specialHoursResult.status === 'failed' ? specialHoursResult.message : null,
               birthdaysResult.status === 'failed' ? birthdaysResult.message : null,
               balanceDuesResult.status === 'failed' ? balanceDuesResult.message : null,
               dailyOpsResult.status === 'failed' ? dailyOpsResult.message : null,
+              marketingSendsResult.status === 'failed' ? marketingSendsResult.message : null,
             ].filter((message): message is string => Boolean(message))}
           />
         </div>

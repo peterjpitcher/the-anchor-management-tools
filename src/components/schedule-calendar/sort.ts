@@ -9,14 +9,17 @@ const kindPriority: Record<CalendarEntryKind, number> = {
     private_booking: 4,
     event: 5,
     parking: 6,
+    marketing_email: 7,
 }
 
 const statusPriority: Record<string, number> = {
     confirmed: 0,
     scheduled: 0,
+    sending: 0,
     draft: 1,
     pending_payment: 1,
     pending_card_capture: 1,
+    paused: 1,
     sold_out: 2,
     completed: 2,
     visited_waiting_for_review: 2,
