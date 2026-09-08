@@ -260,6 +260,15 @@ These came from real review rounds. Ignoring them means a rewrite.
   the tone friendly: he rejected a version that "sounds like a legal nightmare".
 - **Facts come from live sources**, the `business_hours` rows and the website's `docs/SSOT.md`,
   never from the designer handover, which is stale on capacity, pricing and hours.
+- **Never hang an exception off a day.** "We are open from midday every day except Monday" is
+  factually correct, and it reads as "we are shut on Mondays". We are not: we open at 4pm.
+  Say what the day IS: "from midday Tuesday to Sunday and from 4pm on Mondays". The rule
+  holds however true the exception is, because the ambiguity is in the grammar rather than in
+  the facts, which is why checking the copy against the hours would not have caught it. This
+  one is now enforced: `findVenueClosureClaims` warns in the campaign UI and
+  `scheduleCampaign` refuses outright.
+- **When the email carries an hours table, let it do the talking.** The sentence above was a
+  paraphrase of a table sitting two blocks below it. Point at the table instead.
 
 ---
 
