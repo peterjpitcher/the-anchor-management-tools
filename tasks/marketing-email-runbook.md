@@ -64,6 +64,45 @@ time has caught this out before.
 
 ---
 
+## Which block to reach for
+
+The September 2026 handover added four blocks and corrected two. Reaching for the wrong one is
+what produced the round-up the owner had to look at, so this is the short version.
+
+| You want | Block | Not |
+|---|---|---|
+| A list of events with posters and a booking link each | `whats_on_media` | `whats_on_list`, which has no pictures |
+| A list of events with no artwork | `whats_on_list` | |
+| The ordinary trading week, bar and kitchen | `opening_hours_week` | `hours_table`, which is kitchen services only |
+| Dated exceptions, Christmas or a bank holiday run | `opening_hours_dates` | `opening_hours_week`, which repeats a week and cannot say "closed on the 25th" |
+| Two or three things, each bookable | `grid_cards_linked` | `two_up_cards`, which carries no link |
+| Two things of equal weight, no call to action | `two_up_cards` | |
+| One picture beside one paragraph | `media_row` | |
+
+Three rules that apply to all of the picture blocks:
+
+- **The caller sets the image `width` and `height`, and `width` is fixed by the design.**
+  180 in `whats_on_media`, 240 in `media_row`, 258 in `two_up_cards` and in a row of two
+  `grid_cards_linked`, 166 in a row of three. The schema rejects anything else, because the
+  markup repeats the width in its own style: an image declared at a width the row cannot hold
+  draws at one size and reserves space at another. That was the bug in the first
+  `media_row` and `two_up_cards`, which hardcoded 240 x 200 and 260 x 180 and squashed every
+  square poster.
+- **`height` comes from the artwork's own ratio.** Ours are 1:1 (1254 x 1254), 16:9
+  (1672 x 941) and 2.33:1 (1916 x 821). At 258 wide those are 258, 145 and 111. Take the real
+  dimensions from the file rather than assuming, and round to a whole pixel.
+- **An empty `src` renders the designer's local placeholder** (`img/slot-1x1.png`), which is a
+  relative path and cannot resolve in an inbox. It exists so the fidelity fixtures hold. Never
+  schedule a campaign with one in it; `blocks.variants.test.ts` guards the block, not your
+  content.
+
+`opening_hours_week` wants exactly seven rows and each row picks exactly one kitchen state:
+`kitchen` for one service, `lunch` and `dinner` together for two, or `closed: true`. Bar hours
+are door times, never the kitchen's. Read them from the published `business_hours` version and
+then check `special_hours` for every date the email covers, because an override always wins.
+
+---
+
 ## How many emails an event gets, and when
 
 Owner's rule, set 2026-09-08.
@@ -140,7 +179,8 @@ Check each of these against a live source, not against the previous email in the
   writes a JPEG beside each original at twice its render size, which came out 92% smaller
   across seventeen images (57.4MB to 4.4MB). Run it for any new artwork, and leave
   `events.*_image_url` pointing at the originals: the website wants those.
-- **`hours_table` cells are narrow, and the block cannot be widened.** The label column is a
+- **`hours_table` is the kitchen-services panel, and its cells are narrow.** For opening hours
+  use `opening_hours_week` instead, which has three proper columns. If you do use it: the label column is a
   fixed 140px with 22px of left padding in 22px serif, leaving 118px, and the time cell has
   374px. Measure before you write: in the fallback fonts the clients actually use, "Saturday"
   is 88px and fits, "Tuesday to Friday" is 176px and wraps to two lines, and "Lunch, Tuesday
