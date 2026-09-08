@@ -88,7 +88,6 @@
       "type": "opening_times",
       "data": {
         "heading": "Opening times",
-        "script_line": "Where everyone's welcome",
         "rows": [
           {
             "day": "Monday",
@@ -150,14 +149,12 @@
                 "label": "Dinner",
                 "time": "4pm to 9pm"
               }
-            ],
-            "bar_note": "We may stay open until midnight on event nights and busy evenings."
+            ]
           },
           {
             "day": "Saturday",
             "bar": "12pm to 10pm",
-            "kitchen": "12pm to 7pm",
-            "bar_note": "We may stay open until midnight on event nights and busy evenings."
+            "kitchen": "12pm to 7pm"
           },
           {
             "day": "Sunday",
@@ -165,7 +162,7 @@
             "kitchen": "1pm to 6pm"
           }
         ],
-        "note": "Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does. Times may vary for private events and functions."
+        "note": "We may stay open until midnight on Fridays, Saturdays and event nights. Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does."
       }
     },
     {
