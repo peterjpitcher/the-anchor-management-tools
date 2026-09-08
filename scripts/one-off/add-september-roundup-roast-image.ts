@@ -1,16 +1,17 @@
 /**
- * Rebuilds the opening-hours panel in the September round-up.
+ * Gives the Sunday roast a photograph in the September round-up.
  *
- * The panel was reading as kitchen times rather than opening times, because two of its six
- * rows were meal services. It now carries the door times for all seven days, taken from the
- * published business_hours version in force, and the food times moved to a fact_strip
- * underneath, where the label column is not a fixed 140px.
+ * feature_card is the block for this: its own documentation says it is for one thing that
+ * deserves a picture, and its sample is the Sunday roast. The image slot is drawn at
+ * 536 x 230, and the site's roast hero is 1916 x 821, the same 2.33 aspect at better than
+ * twice the render size, so it fits the designer's slot exactly with no distortion.
  *
- * There are no special_hours overrides in September, so the standard week is what applies.
- * The seasonal changes start on 31 October and run through Christmas and New Year, which is
- * the October and December round-ups' problem, not this one's.
+ * The events stay in whats_on_list, which is the design system's own monthly round-up block
+ * and is deliberately text-only: a date badge, a line and a booking link per event. Their
+ * artwork is poster PNGs of 3 to 5MB each, and resizing barely helps because PNG ignores the
+ * quality setting, so four of them would turn a 22KB email into several megabytes.
  *
- * Dry run by default. RUN_OPENING_HOURS_PANEL_MUTATION=true applies it.
+ * Dry run by default. RUN_ROAST_IMAGE_MUTATION=true applies it.
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -66,8 +67,8 @@ async function main(): Promise<void> {
   }
 
   assertScriptMutationAllowed({
-    scriptName: 'rebuild-september-opening-hours-panel',
-    envVar: 'RUN_OPENING_HOURS_PANEL_MUTATION',
+    scriptName: 'add-september-roundup-roast-image',
+    envVar: 'RUN_ROAST_IMAGE_MUTATION',
   })
 
   await updateCampaign(row.id, { content: content as never }, OWNER_USER_ID)
