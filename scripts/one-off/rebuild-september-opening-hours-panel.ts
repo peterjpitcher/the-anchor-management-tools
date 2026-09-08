@@ -1,13 +1,16 @@
 /**
- * Reflows the opening-hours panel in the September round-up.
+ * Rebuilds the opening-hours panel in the September round-up.
  *
- * The hours_table label column is a fixed 140px with 22px left padding, set in 22px serif,
- * so a label longer than about eight characters wraps. "Lunch, Tuesday to Friday" wrapped to
- * three lines while its time stayed vertically centred beside it, which read as broken. The
- * block markup is byte-fidelity-tested against the designer's handover, so the fix belongs in
- * the content: short day labels, with the qualifier moved into the time column.
+ * The panel was reading as kitchen times rather than opening times, because two of its six
+ * rows were meal services. It now carries the door times for all seven days, taken from the
+ * published business_hours version in force, and the food times moved to a fact_strip
+ * underneath, where the label column is not a fixed 140px.
  *
- * Dry run by default. RUN_HOURS_LAYOUT_FIX_MUTATION=true applies it.
+ * There are no special_hours overrides in September, so the standard week is what applies.
+ * The seasonal changes start on 31 October and run through Christmas and New Year, which is
+ * the October and December round-ups' problem, not this one's.
+ *
+ * Dry run by default. RUN_OPENING_HOURS_PANEL_MUTATION=true applies it.
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -63,8 +66,8 @@ async function main(): Promise<void> {
   }
 
   assertScriptMutationAllowed({
-    scriptName: 'fix-september-roundup-hours-layout',
-    envVar: 'RUN_HOURS_LAYOUT_FIX_MUTATION',
+    scriptName: 'rebuild-september-opening-hours-panel',
+    envVar: 'RUN_OPENING_HOURS_PANEL_MUTATION',
   })
 
   await updateCampaign(row.id, { content: content as never }, OWNER_USER_ID)

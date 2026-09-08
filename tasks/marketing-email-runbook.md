@@ -95,9 +95,18 @@ if the previous send stalls. Aim for a day of margin, not an hour.
 ### The monthly round-up
 
 One a month, sent in the first days of the month, subject "Welcome to <month> at The Anchor".
-It carries every event still to come that month (`whats_on_list`, up to eight), the current
-opening and kitchen hours (`hours_table`), whatever is genuinely new, and a line about what is
-coming next month. It is the only email that talks about the pub rather than one night.
+It carries every event still to come that month (`whats_on_list`, up to eight), the opening
+hours, whatever is genuinely new, and a line about what is coming next month.
+
+**The hours panel is door times, not kitchen times.** People read it to answer "are you open
+on Wednesday", so give all seven days from the published `business_hours` version in force,
+and say plainly that those are the doors. Food times go in a `fact_strip` underneath, where
+the label column is not a fixed 140px and "Food, Tuesday to Friday" fits. Getting this wrong
+once made the whole panel read as kitchen hours.
+
+**Check `special_hours` for every date the email covers**, and say so in the email when a day
+differs. September 2026 had none; 31 October, 22 December to 1 January and the New Year run
+all do. A month with a closure or a shortened day must not go out quoting the standard week. It is the only email that talks about the pub rather than one night.
 
 Facts for it come from live sources every time: `business_hours` for the version in force,
 `special_hours` for any dated override, `events` for the listings, and the website repo's
