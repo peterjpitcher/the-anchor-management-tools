@@ -6,7 +6,11 @@
     },
     "blocks": {
       "file": "docs/design/email-handover/anchor-email-blocks.html",
-      "sha256": "f1aff528124d538d4a16b5bb5678ffbe5d4f7eebedc8506731be6b9b42af988a"
+      "sha256": "676b18bdecbe77e7d960b12823c118ca94c4a7f68df7992f440dc379b5055bc0"
+    },
+    "additions": {
+      "file": "docs/design/email-handover/anchor-email-blocks-additions.html",
+      "sha256": "06f161cc0c2a76d58d9235b7f9ca3c0fbc88c2869e9268190cb5d578cfbb37c5"
     }
   },
   "campaign": [
@@ -147,115 +151,150 @@
     },
     {
       "name": "two_up_cards",
-      "startOffset": 6720,
-      "endOffset": 9250,
-      "sha256": "1686e44436663a95a857211cae14b148fe96642d799e10fdc9a0bacb50643fbe",
+      "startOffset": 29898,
+      "endOffset": 32238,
+      "sha256": "2a139d31a1bd4f69f52e4aa7539b6c691d521707d44119810ececacf46ca0139",
       "fixture": "lib_two_up_cards.html"
     },
     {
       "name": "event_row",
-      "startOffset": 9320,
-      "endOffset": 11238,
+      "startOffset": 9130,
+      "endOffset": 11048,
       "sha256": "21ea7fe22429075563da02b904a2c1c6a2b111f82779bd6a58a01b5a22095940",
       "fixture": "lib_event_row.html"
     },
     {
       "name": "pull_quote",
-      "startOffset": 11308,
-      "endOffset": 12624,
+      "startOffset": 11118,
+      "endOffset": 12434,
       "sha256": "887e7743f1ae807ae1251205ecb03afc83b5b0497aae5cac792f98d222c65a0f",
       "fixture": "lib_pull_quote.html"
     },
     {
       "name": "note_bar",
-      "startOffset": 11308,
-      "endOffset": 12624,
+      "startOffset": 11118,
+      "endOffset": 12434,
       "sha256": "892e581c45f78efa18b14948721648954f8323da50d73fec5a46e4d346185cc7",
       "fixture": "lib_note_bar.html"
     },
     {
       "name": "text_block",
-      "startOffset": 12694,
-      "endOffset": 16051,
+      "startOffset": 12504,
+      "endOffset": 15861,
       "sha256": "2bd5566d489ca48c3d55ce4c5468aa242adb8164144348d0118a0a5c7d40a15d",
       "fixture": "lib_text_block.html"
     },
     {
       "name": "deadline_bar",
-      "startOffset": 16121,
-      "endOffset": 16788,
+      "startOffset": 15931,
+      "endOffset": 16598,
       "sha256": "742cb5a4c9c0e9f12dcb8340d12af93935a7b111166e799df3d7a6a9d2cad7f9",
       "fixture": "lib_deadline_bar.html"
     },
     {
       "name": "menu_list",
-      "startOffset": 16858,
-      "endOffset": 19874,
+      "startOffset": 16668,
+      "endOffset": 19684,
       "sha256": "32f03235ca1728f30b9836cbb4345a66a359b9a247a3a398e5f86e0db663826a",
       "fixture": "lib_menu_list.html"
     },
     {
       "name": "steps",
-      "startOffset": 19944,
-      "endOffset": 23239,
+      "startOffset": 19754,
+      "endOffset": 23049,
       "sha256": "daef86f40aac7599cb1a3707ff1ac766cee3b9192c1c1e6c401dbd803aa763ea",
       "fixture": "lib_steps.html"
     },
     {
       "name": "media_row",
-      "startOffset": 23309,
-      "endOffset": 25089,
-      "sha256": "eefd349f20e472eff04fc6b2ae76757084f490e7033b9340973f3ffc5e7966e1",
+      "startOffset": 28100,
+      "endOffset": 29830,
+      "sha256": "1c562d8cacb2782d85a8ee135c790abc601286bbea81099c411cc210a0cda762",
       "fixture": "lib_media_row.html"
     },
     {
       "name": "review",
-      "startOffset": 25159,
-      "endOffset": 26475,
+      "startOffset": 24919,
+      "endOffset": 26235,
       "sha256": "de0159aaaf1c95f8368f0dcc3a723f571c71141201e9d984416265666e66d34b",
       "fixture": "lib_review.html"
     },
     {
       "name": "whats_on_list",
-      "startOffset": 26545,
-      "endOffset": 30220,
+      "startOffset": 26305,
+      "endOffset": 29980,
       "sha256": "c6f5112facf84e9c21b7c199696929eff70d0e7f87c4dc258489e5af3a677409",
       "fixture": "lib_whats_on_list.html"
     },
     {
       "name": "offer_panel",
-      "startOffset": 30290,
-      "endOffset": 31789,
+      "startOffset": 30050,
+      "endOffset": 31549,
       "sha256": "1c771c56531ff8841cdd52fd084697faba194acbf306e46395d21929eb8566ce",
       "fixture": "lib_offer_panel.html"
     },
     {
       "name": "faq_rows",
-      "startOffset": 31859,
-      "endOffset": 33549,
+      "startOffset": 31619,
+      "endOffset": 33309,
       "sha256": "1a50edc6fb178922f51cc7c0b517a7ae82b21662da57dcbb70784df5c328a088",
       "fixture": "lib_faq_rows.html"
     },
     {
       "name": "reassurance_row",
-      "startOffset": 33619,
-      "endOffset": 34405,
+      "startOffset": 33379,
+      "endOffset": 34165,
       "sha256": "0cc907d74a11ba88f56f9318da01551ff99197fea62415e817a3f428d4415c02",
       "fixture": "lib_reassurance_row.html"
     },
     {
       "name": "signoff_ps",
-      "startOffset": 34475,
-      "endOffset": 35675,
+      "startOffset": 34235,
+      "endOffset": 35435,
       "sha256": "2c3dc73e2269e02b6c0f660e50c2714d301fdb141ca0b5aaf780675d3e7ad3a5",
       "fixture": "lib_signoff_ps.html"
     },
     {
       "name": "footer_dark",
-      "startOffset": 35745,
-      "endOffset": 37440,
+      "startOffset": 35505,
+      "endOffset": 37200,
       "sha256": "855637305d0402e1c6515e187dddc0c61caa1082dc379e2f650484bc46e11914",
       "fixture": "lib_footer_dark.html"
+    },
+    {
+      "name": "whats_on_media",
+      "startOffset": 2096,
+      "endOffset": 8891,
+      "sha256": "4117b072f157d5ccdb84158d685e5fde5498c8033cb27732e4050cde26e55acd",
+      "fixture": "lib_whats_on_media.html"
+    },
+    {
+      "name": "opening_hours_week",
+      "startOffset": 8959,
+      "endOffset": 18911,
+      "sha256": "8fac69d3da837c039a044b4d41de320898c2e785471a8c36371f8455f3bbebd1",
+      "fixture": "lib_opening_hours_week.html"
+    },
+    {
+      "name": "opening_hours_dates",
+      "startOffset": 18979,
+      "endOffset": 28032,
+      "sha256": "37917ef4c08399e5574691298ced5deee170ffe8ef1ed8747068e865483329d8",
+      "fixture": "lib_opening_hours_dates.html"
+    },
+    {
+      "name": "grid_cards_linked",
+      "startOffset": 32306,
+      "endOffset": 35437,
+      "sha256": "4ca9edbb848c6057dd906d68c807453db5389700c77424b90eb7936ed76ce746",
+      "fixture": "lib_grid_cards_linked.html"
+    },
+    {
+      "name": "grid_cards_linked_three",
+      "startOffset": 35505,
+      "endOffset": 39859,
+      "sha256": "904b9f13ff44e87318e20c6266703a909004a21ad7c23552e142c6201d202ea1",
+      "fixture": "lib_grid_cards_linked_three.html"
     }
   ]
 }

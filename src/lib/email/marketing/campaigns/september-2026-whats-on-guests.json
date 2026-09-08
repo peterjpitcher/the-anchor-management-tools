@@ -85,71 +85,38 @@
       }
     },
     {
-      "type": "opening_times",
+      "type": "opening_hours_week",
       "data": {
         "heading": "Opening times",
         "rows": [
           {
             "day": "Monday",
             "bar": "4pm to 10pm",
-            "kitchen": "Kitchen closed",
-            "kitchen_muted": true
+            "closed": true
           },
           {
             "day": "Tuesday",
             "bar": "12pm to 10pm",
-            "kitchen": [
-              {
-                "label": "Lunch",
-                "time": "12pm to 3pm"
-              },
-              {
-                "label": "Dinner",
-                "time": "4pm to 9pm"
-              }
-            ]
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
           },
           {
             "day": "Wednesday",
             "bar": "12pm to 10pm",
-            "kitchen": [
-              {
-                "label": "Lunch",
-                "time": "12pm to 3pm"
-              },
-              {
-                "label": "Dinner",
-                "time": "4pm to 9pm"
-              }
-            ]
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
           },
           {
             "day": "Thursday",
             "bar": "12pm to 10pm",
-            "kitchen": [
-              {
-                "label": "Lunch",
-                "time": "12pm to 3pm"
-              },
-              {
-                "label": "Dinner",
-                "time": "4pm to 9pm"
-              }
-            ]
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
           },
           {
             "day": "Friday",
             "bar": "12pm to 10pm",
-            "kitchen": [
-              {
-                "label": "Lunch",
-                "time": "12pm to 3pm"
-              },
-              {
-                "label": "Dinner",
-                "time": "4pm to 9pm"
-              }
-            ]
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
           },
           {
             "day": "Saturday",
@@ -162,7 +129,7 @@
             "kitchen": "1pm to 6pm"
           }
         ],
-        "note": "We may stay open until midnight on Fridays, Saturdays and event nights. Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does."
+        "footnote": "We may stay open until midnight on Fridays, Saturdays and event nights. Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does."
       }
     },
     {

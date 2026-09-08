@@ -11,6 +11,7 @@ import { faqRows } from './blocks/faq_rows'
 import { featureCard } from './blocks/feature_card'
 import { footer } from './blocks/footer'
 import { footerDark } from './blocks/footer_dark'
+import { gridCardsLinked } from './blocks/grid_cards_linked'
 import { heroFramed } from './blocks/hero_framed'
 import { heroImage } from './blocks/hero_image'
 import { hoursTable } from './blocks/hours_table'
@@ -20,8 +21,9 @@ import { mastheadGreen } from './blocks/masthead_green'
 import { mediaRow } from './blocks/media_row'
 import { menuList } from './blocks/menu_list'
 import { noteBar } from './blocks/note_bar'
-import { openingTimes } from './blocks/opening_times'
 import { offerPanel } from './blocks/offer_panel'
+import { openingHoursDates } from './blocks/opening_hours_dates'
+import { openingHoursWeek } from './blocks/opening_hours_week'
 import { priceTiles } from './blocks/price_tiles'
 import { pullQuote } from './blocks/pull_quote'
 import { reassuranceRow } from './blocks/reassurance_row'
@@ -33,6 +35,7 @@ import { textBlock } from './blocks/text_block'
 import { twoUpCards } from './blocks/two_up_cards'
 import type { EmailBlockModule } from './blocks/types'
 import { whatsOnList } from './blocks/whats_on_list'
+import { whatsOnMedia } from './blocks/whats_on_media'
 
 /** Every block a campaign may use, keyed by the `type` stored in campaign content JSON. */
 export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
@@ -47,6 +50,7 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   feature_card: featureCard,
   footer: footer,
   footer_dark: footerDark,
+  grid_cards_linked: gridCardsLinked,
   hero_framed: heroFramed,
   hero_image: heroImage,
   hours_table: hoursTable,
@@ -56,8 +60,9 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   media_row: mediaRow,
   menu_list: menuList,
   note_bar: noteBar,
-  opening_times: openingTimes,
   offer_panel: offerPanel,
+  opening_hours_dates: openingHoursDates,
+  opening_hours_week: openingHoursWeek,
   price_tiles: priceTiles,
   pull_quote: pullQuote,
   reassurance_row: reassuranceRow,
@@ -68,6 +73,7 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   text_block: textBlock,
   two_up_cards: twoUpCards,
   whats_on_list: whatsOnList,
+  whats_on_media: whatsOnMedia,
 }
 
 export const BLOCK_TYPES = Object.keys(BLOCK_REGISTRY)
