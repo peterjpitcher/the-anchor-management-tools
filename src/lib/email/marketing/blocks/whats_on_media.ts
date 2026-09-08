@@ -140,8 +140,13 @@ export const whatsOnMedia = defineBlock<WhatsOnMediaData>({
       `</tbody></table>`,
     ].join('\n'),
   text: (data) => {
+    // The detail line is a sentence the author wrote, so it usually ends in a full stop
+    // already. Appending another gives "no horror knowledge needed.. Reserve your table",
+    // which is the sort of thing only the plain-text part ever shows and nobody proofreads.
+    const sentence = (value: string): string => (/[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`)
+
     const events = data.events
-      .map((event) => `${event.date}: ${event.name}. ${event.detail}. ${event.cta_label.replace(/\s*→$/, '')}: ${event.url}`)
+      .map((event) => `${event.date}: ${sentence(event.name)} ${sentence(event.detail)} ${event.cta_label.replace(/\s*→$/, '')}: ${event.url}`)
       .join('\n')
 
     return `${data.kicker.toUpperCase()}\n${data.heading}\n${events}\nSee everything on this month: ${data.all_events_url}\n`

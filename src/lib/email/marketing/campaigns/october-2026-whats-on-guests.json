@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "title": "Welcome to October at The Anchor",
+  "preheader": "Three nights out this month, all with a Halloween lean, and the clocks go back on the 25th.",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Welcome to October",
+        "body": [
+          "Three nights out this month, and all of them lean into Halloween, finishing with the party itself on Saturday the 31st.",
+          "The clocks go back on Sunday 25 October, so it will be dark by teatime. We are open from midday every day except Monday, and the kitchen times for each day are further down this email."
+        ],
+        "buttons": [
+          {
+            "label": "See what is on",
+            "url": "https://www.the-anchor.pub/whats-on",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "whats_on_media",
+      "data": {
+        "kicker": "What’s on",
+        "heading": "Three nights in October",
+        "events": [
+          {
+            "date": "Wed 7 Oct",
+            "name": "A Hint of Halloween Quiz Night",
+            "detail": "7pm start, £3 cash on arrival, teams of up to six. Spooky touches, but no horror knowledge needed.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/76ec328b-48f8-47c0-b041-cc405e085deb/square/branded/1788709820568-square-email.jpg",
+              "alt": "A Hint of Halloween Quiz Night at The Anchor in Stanwell Moor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Reserve your table →",
+            "url": "https://www.the-anchor.pub/events/quiz-night-2026-10-07"
+          },
+          {
+            "date": "Fri 16 Oct",
+            "name": "Screams & Soundtracks Music Bingo",
+            "detail": "7pm start, £5 cash on arrival. Nikki Manfadge hosts two rounds of classic horror soundtracks.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/c3ac7e18-e562-4ef8-bea7-cae29f6e96ac/square/branded/1788768723539-square-email.jpg",
+              "alt": "Screams and Soundtracks classic horror music bingo at The Anchor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Save your seats →",
+            "url": "https://www.the-anchor.pub/events/screams-and-soundtracks-classic-horror-music-bingo-2026-10-16"
+          },
+          {
+            "date": "Sat 31 Oct",
+            "name": "House of Horrors Halloween Party",
+            "detail": "8pm to midnight, free entry, fancy dress encouraged. Come early if you want a good spot.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d52cbd18-d293-4516-beca-e151eaa90180/square/branded/1788785717882-square-email.jpg",
+              "alt": "Enter If You Dare, the House of Horrors Halloween party at The Anchor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Let us know you are coming →",
+            "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31"
+          }
+        ],
+        "all_events_url": "https://www.the-anchor.pub/whats-on"
+      }
+    },
+    {
+      "type": "opening_hours_week",
+      "data": {
+        "heading": "When we are open",
+        "rows": [
+          {
+            "day": "Monday",
+            "bar": "4pm to 10pm",
+            "closed": true
+          },
+          {
+            "day": "Tuesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Wednesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Thursday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Friday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Saturday",
+            "bar": "12pm to 10pm",
+            "kitchen": "12pm to 7pm"
+          },
+          {
+            "day": "Sunday",
+            "bar": "12pm to 10pm",
+            "kitchen": "1pm to 6pm"
+          }
+        ],
+        "footnote": "Last orders are 30 minutes before the kitchen closes and 15 minutes before the bar does. The clocks go back on Sunday 25 October, but our hours do not change."
+      }
+    },
+    {
+      "type": "opening_hours_dates",
+      "data": {
+        "heading": "One date is different",
+        "rows": [
+          {
+            "date": "Sat 31 Oct",
+            "hours": "12pm to midnight",
+            "note": "Full menu 12pm to 6pm, kitchen shut 6pm to 9pm, then pizza only"
+          }
+        ],
+        "footnote": "Halloween is the only date in October that differs from the week above. Pizza from 9pm is available to eat in or to take away."
+      }
+    },
+    {
+      "type": "grid_cards_linked",
+      "data": {
+        "cards": [
+          {
+            "image": {
+              "src": "https://www.the-anchor.pub/images/food/sunday-roast/the-anchor-sunday-roast-stanwell-moor.jpg",
+              "alt": "A Sunday roast at The Anchor in Stanwell Moor",
+              "width": 258,
+              "height": 144
+            },
+            "heading": "Sunday roast",
+            "body": "1pm to 6pm every Sunday, last seating 5.30pm. Nothing to pre-order and no Saturday cutoff.",
+            "cta_label": "Book a table →",
+            "url": "https://www.the-anchor.pub/book-table"
+          },
+          {
+            "image": {
+              "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+              "alt": "A Christmas dinner laid out at The Anchor",
+              "width": 258,
+              "height": 146
+            },
+            "heading": "Christmas is booking",
+            "body": "Sittings run 10 November to 20 December, from four guests up, with a £10 per person deposit.",
+            "cta_label": "Christmas enquiries →",
+            "url": "https://www.the-anchor.pub/christmas-parties"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Coming in November",
+        "body": [
+          "Sparks & Sparklers Quiz Night on Wednesday 4 November, then Sequins & Showstoppers Music Bingo on Friday 13 November and a Snowball Showdown Cash Bingo on Wednesday 18 November. We will write to you about each one nearer the time."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "See you this month",
+        "body": "Quiz team, bingo card or fancy dress, we would rather see you than not. Book a table or just turn up.",
+        "cta_label": "See what is on",
+        "cta_url": "https://www.the-anchor.pub/whats-on",
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
+      }
+    }
+  ]
+}
