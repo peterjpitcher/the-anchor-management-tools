@@ -91,61 +91,34 @@
         "rows": [
           {
             "label": "Mon",
-            "time": "4pm to 10pm"
+            "time": "4pm-10pm, no food"
           },
           {
             "label": "Tue",
-            "time": "12pm to 10pm"
+            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
           },
           {
             "label": "Wed",
-            "time": "12pm to 10pm"
+            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
           },
           {
             "label": "Thu",
-            "time": "12pm to 10pm"
+            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
           },
           {
             "label": "Fri",
-            "time": "12pm to 10pm"
+            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
           },
           {
             "label": "Sat",
-            "time": "12pm to 10pm"
+            "time": "12pm-10pm, food 12pm-7pm"
           },
           {
             "label": "Sun",
-            "time": "12pm to 10pm"
+            "time": "12pm-10pm, roasts 1pm-6pm"
           }
         ],
-        "note": "Those are the doors, not the kitchen. Last orders at the bar are 15 minutes before we close."
-      }
-    },
-    {
-      "type": "fact_strip",
-      "data": {
-        "rows": [
-          {
-            "label": "Food, Tuesday to Friday",
-            "value": "Lunch 12pm to 3pm, dinner 4pm to 9pm"
-          },
-          {
-            "label": "Food, Saturday",
-            "value": "12pm to 7pm"
-          },
-          {
-            "label": "Sunday roasts",
-            "value": "1pm to 6pm, last seating 5:30pm"
-          },
-          {
-            "label": "Food, Monday",
-            "value": "No kitchen, but the bar is open from 4pm"
-          },
-          {
-            "label": "Kitchen last orders",
-            "value": "30 minutes before the kitchen closes"
-          }
-        ]
+        "note": "The first time is the pub, the second is the kitchen. Last orders are 30 minutes before the kitchen closes, and 15 minutes before we do."
       }
     },
     {
