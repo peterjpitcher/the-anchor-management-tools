@@ -140,13 +140,16 @@ Check each of these against a live source, not against the previous email in the
   writes a JPEG beside each original at twice its render size, which came out 92% smaller
   across seventeen images (57.4MB to 4.4MB). Run it for any new artwork, and leave
   `events.*_image_url` pointing at the originals: the website wants those.
-- **`hours_table` labels must be eight characters or fewer.** The label column is a fixed
-  140px with 22px of left padding, set in 22px serif, and the time cell beside it is
-  vertically centred. A longer label wraps to two or three lines while the time floats in the
-  middle of them, which reads as a broken panel. "Saturday" fits, "Tuesday to Friday" does not.
-  Put the qualifier in the time instead: `Lunch | 12pm to 3pm, Tue to Fri`. The block markup is
-  fidelity-tested against the designer's handover, so this is a content constraint, not a bug
-  to fix in the block.
+- **`hours_table` cells are narrow, and the block cannot be widened.** The label column is a
+  fixed 140px with 22px of left padding in 22px serif, leaving 118px, and the time cell has
+  374px. Measure before you write: in the fallback fonts the clients actually use, "Saturday"
+  is 88px and fits, "Tuesday to Friday" is 176px and wraps to two lines, and "Lunch, Tuesday
+  to Friday" is 249px and wraps to three, with the time floating in the middle of them because
+  that cell is vertically centred. Keep labels to three-letter day names and put everything
+  else in the time, which comfortably takes both services:
+  `Tue | 12pm-10pm, food 12pm-3pm, 4pm-9pm` measures 334px. The `time` field also caps at 40
+  characters in the schema. The block markup is fidelity-tested against the designer's
+  handover, so this is a content constraint, not a bug to fix in the block.
 
 ---
 
