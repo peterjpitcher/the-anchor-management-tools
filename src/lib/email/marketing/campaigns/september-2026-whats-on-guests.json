@@ -3,7 +3,10 @@
   "title": "Welcome to September at The Anchor",
   "preheader": "Lunch is now served Tuesday to Friday, and there are four nights out still to come this month.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "text_block",
       "data": {
@@ -13,7 +16,11 @@
           "The biggest change: we are now open from midday Tuesday to Friday, with lunch served from 12pm to 3pm and dinner from 4pm to 9pm. If you had us down as an evening-only pub, we are not any more."
         ],
         "buttons": [
-          { "label": "See what is on", "url": "https://www.the-anchor.pub/whats-on", "variant": "primary" }
+          {
+            "label": "See what is on",
+            "url": "https://www.the-anchor.pub/whats-on",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -60,12 +67,30 @@
       "data": {
         "heading": "When we are open",
         "rows": [
-          { "label": "Monday", "time": "4pm to 10pm, no kitchen" },
-          { "label": "Tuesday to Friday", "time": "12pm to 10pm" },
-          { "label": "Lunch, Tuesday to Friday", "time": "12pm to 3pm" },
-          { "label": "Dinner, Tuesday to Friday", "time": "4pm to 9pm" },
-          { "label": "Saturday", "time": "12pm to 10pm, kitchen to 7pm" },
-          { "label": "Sunday", "time": "12pm to 10pm, roasts 1pm to 6pm" }
+          {
+            "label": "Monday",
+            "time": "4pm to 10pm, no kitchen"
+          },
+          {
+            "label": "Tue-Fri",
+            "time": "12pm to 10pm"
+          },
+          {
+            "label": "Lunch",
+            "time": "12pm to 3pm, Tue to Fri"
+          },
+          {
+            "label": "Dinner",
+            "time": "4pm to 9pm, Tue to Fri"
+          },
+          {
+            "label": "Saturday",
+            "time": "12pm to 10pm, kitchen to 7pm"
+          },
+          {
+            "label": "Sunday",
+            "time": "12pm to 10pm, roasts 1pm to 6pm"
+          }
         ],
         "note": "Last orders at the kitchen are 30 minutes before it closes, and at the bar 15 minutes before we do."
       }
@@ -79,8 +104,16 @@
           "Christmas is open for enquiries too. Parties run from 10 November to 20 December, with a pre-ordered menu and a £10 per person deposit. Tell us your date and rough numbers and we will come back to you."
         ],
         "buttons": [
-          { "label": "Book a table", "url": "https://www.the-anchor.pub/book-table", "variant": "primary" },
-          { "label": "Christmas enquiries", "url": "https://www.the-anchor.pub/christmas-parties", "variant": "outline" }
+          {
+            "label": "Book a table",
+            "url": "https://www.the-anchor.pub/book-table",
+            "variant": "primary"
+          },
+          {
+            "label": "Christmas enquiries",
+            "url": "https://www.the-anchor.pub/christmas-parties",
+            "variant": "outline"
+          }
         ]
       }
     },
@@ -104,7 +137,10 @@
         "script_line": "See you this month",
         "whatsapp_url": "https://wa.me/441753682707",
         "whatsapp_label": "WhatsApp",
-        "reassurance_items": ["Free parking right outside", "Dogs welcome throughout"]
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ]
       }
     },
     {
