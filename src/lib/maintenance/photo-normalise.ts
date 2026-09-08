@@ -30,7 +30,7 @@
  * caught and turned into plain English. A raw codec error is never shown.
  */
 
-/** The private bucket created by 20260905210000_maintenance_tracker.sql. */
+/** The private bucket created by 20260906080646_maintenance_tracker.sql. */
 export const MAINTENANCE_PHOTO_BUCKET = 'maintenance-photos'
 
 /**

@@ -35,7 +35,7 @@ BEGIN
   RETURN jsonb_build_object('state', 'pending_payment', 'table_booking_id', v_id,
     'deposit_amount', p_party_size * 10, 'booking_period_requires_preorder', true);
 END; $$;
-\ir ../../supabase/migrations/20260905100155_christmas_course_snapshot.sql
+\ir ../../supabase/migrations/20260905124506_christmas_course_snapshot.sql
 DO $$ BEGIN ASSERT christmas_course_policy_v01(current_date+30) IS NULL; END $$;
 INSERT INTO public.system_settings VALUES ('christmas_course_policy_enabled', '{"value":true}');
 DO $$

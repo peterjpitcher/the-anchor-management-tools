@@ -27,7 +27,7 @@ BEGIN
 END $$;
 CREATE FUNCTION public.create_event_booking_v07(uuid,uuid,text,text,integer,jsonb) RETURNS jsonb
 LANGUAGE sql AS $$ SELECT public.create_event_booking_v06($1,$2,2,$3,$4,$5) $$;
-\ir ../../supabase/migrations/20260905100521_event_booking_dining_requests.sql
+\ir ../../supabase/migrations/20260905124510_event_booking_dining_requests.sql
 
 DO $$ BEGIN
   IF has_function_privilege('anon','public.create_event_booking_with_requests_v01(uuid,uuid,integer,text,text,integer,jsonb,text,boolean)','EXECUTE') OR

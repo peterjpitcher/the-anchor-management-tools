@@ -2,7 +2,7 @@
 //
 // The *Row types mirror the database columns exactly (snake_case). The domain
 // types are the camelCase shapes the app works with. Both are pinned to
-// supabase/migrations/20260905210000_maintenance_tracker.sql; if a column changes
+// supabase/migrations/20260906080646_maintenance_tracker.sql; if a column changes
 // there, change it here in the same commit.
 //
 // Access is super-admin only at every layer. There is deliberately no RBAC module

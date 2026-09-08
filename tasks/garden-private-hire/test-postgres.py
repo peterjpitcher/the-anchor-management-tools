@@ -7,7 +7,7 @@ import time
 ROOT=Path(__file__).resolve().parents[2]
 DIR=Path(__file__).resolve().parent
 PG=Path('/opt/homebrew/bin')
-MIGRATION=ROOT/'supabase/migrations/20260906140724_outside_private_hire_blocking.sql'
+MIGRATION=ROOT/'supabase/migrations/20260906155336_outside_private_hire_blocking.sql'
 SETUP=r"""
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
 CREATE TYPE table_booking_status AS ENUM ('confirmed','seated','cancelled','no_show','pending_payment','pending_card_capture');

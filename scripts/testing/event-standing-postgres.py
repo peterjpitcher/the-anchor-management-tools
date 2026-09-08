@@ -11,7 +11,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path('/opt/homebrew/bin')
-MIGRATION = ROOT / 'supabase/migrations/20260906134726_event_standing_after_seated_sold_out.sql'
+MIGRATION = ROOT / 'supabase/migrations/20260906143610_event_standing_after_seated_sold_out.sql'
 ROLLBACK = ROOT / 'tasks/standing-ticket-policy/rollback.sql'
 
 SETUP = r"""
