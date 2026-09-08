@@ -85,40 +85,87 @@
       }
     },
     {
-      "type": "hours_table",
+      "type": "opening_times",
       "data": {
-        "heading": "When we are open",
+        "heading": "Opening times",
+        "script_line": "Where everyone's welcome",
         "rows": [
           {
-            "label": "Mon",
-            "time": "4pm-10pm, no food"
+            "day": "Monday",
+            "bar": "4pm to 10pm",
+            "kitchen": "Kitchen closed",
+            "kitchen_muted": true
           },
           {
-            "label": "Tue",
-            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
+            "day": "Tuesday",
+            "bar": "12pm to 10pm",
+            "kitchen": [
+              {
+                "label": "Lunch",
+                "time": "12pm to 3pm"
+              },
+              {
+                "label": "Dinner",
+                "time": "4pm to 9pm"
+              }
+            ]
           },
           {
-            "label": "Wed",
-            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
+            "day": "Wednesday",
+            "bar": "12pm to 10pm",
+            "kitchen": [
+              {
+                "label": "Lunch",
+                "time": "12pm to 3pm"
+              },
+              {
+                "label": "Dinner",
+                "time": "4pm to 9pm"
+              }
+            ]
           },
           {
-            "label": "Thu",
-            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
+            "day": "Thursday",
+            "bar": "12pm to 10pm",
+            "kitchen": [
+              {
+                "label": "Lunch",
+                "time": "12pm to 3pm"
+              },
+              {
+                "label": "Dinner",
+                "time": "4pm to 9pm"
+              }
+            ]
           },
           {
-            "label": "Fri",
-            "time": "12pm-10pm, food 12pm-3pm, 4pm-9pm"
+            "day": "Friday",
+            "bar": "12pm to 10pm",
+            "kitchen": [
+              {
+                "label": "Lunch",
+                "time": "12pm to 3pm"
+              },
+              {
+                "label": "Dinner",
+                "time": "4pm to 9pm"
+              }
+            ],
+            "bar_note": "We may stay open until midnight on event nights and busy evenings."
           },
           {
-            "label": "Sat",
-            "time": "12pm-10pm, food 12pm-7pm"
+            "day": "Saturday",
+            "bar": "12pm to 10pm",
+            "kitchen": "12pm to 7pm",
+            "bar_note": "We may stay open until midnight on event nights and busy evenings."
           },
           {
-            "label": "Sun",
-            "time": "12pm-10pm, roasts 1pm-6pm"
+            "day": "Sunday",
+            "bar": "12pm to 10pm",
+            "kitchen": "1pm to 6pm"
           }
         ],
-        "note": "The first time is the pub, the second is the kitchen. Last orders are 30 minutes before the kitchen closes, and 15 minutes before we do."
+        "note": "Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does. Times may vary for private events and functions."
       }
     },
     {
