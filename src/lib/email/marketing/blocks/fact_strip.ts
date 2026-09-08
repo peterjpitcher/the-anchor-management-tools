@@ -37,7 +37,7 @@ export const factStrip = defineBlock<FactStripData>({
     ],
   },
   render: (data) => `
-<tr><td bgcolor="#ffffff" style="background-color:#ffffff;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;padding:8px 32px 12px">
+<tr><td bgcolor="#ffffff" class="gutter" style="background-color:#ffffff;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;padding:8px 32px 12px">
 <table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
 ${data.rows
   .map((row, index) => {

@@ -2,15 +2,15 @@
   "generatedFrom": {
     "campaign": {
       "file": "docs/design/email-handover/anchor-christmas-and-lunch.html",
-      "sha256": "c8f87ea9a0206cde011ea1bfb6a7b0b4b76e4014d39f7f4a524da6f8abe70706"
+      "sha256": "34aa84d966c88f58fe410410779088077fbbad95bd85d413cf0f5680c4a1aa3d"
     },
     "blocks": {
       "file": "docs/design/email-handover/anchor-email-blocks.html",
-      "sha256": "f2ceeedd9cafe36aeaff070f1cdd2c2fe809aea398cecc3d1f2e0d43319b1f56"
+      "sha256": "16fe751e9e9b9e8ba41943d7c8a84f151a62ab4a3d44772fa1f6e5b22cf824d4"
     },
     "additions": {
       "file": "docs/design/email-handover/anchor-email-blocks-additions.html",
-      "sha256": "ef203047f3c9d0559bcbed6569863e51628aed1e07783b23604a8c0de77fb942"
+      "sha256": "160e390c0b09bf55e01a53e9955889b3490aff19fdcefdcfcba6ee235f99dbff"
     }
   },
   "campaign": [
@@ -31,98 +31,98 @@
     {
       "name": "hero_image",
       "startOffset": 2962,
-      "endOffset": 5712,
-      "sha256": "63f297109914e9574fcf5a84ee96626abf5b3ddbf06d25283342f9a551ad922b",
+      "endOffset": 5772,
+      "sha256": "9931a41034d93b914e4501a9cf77f524d8d73c7e059b2a2932914cc2f5df19c4",
       "fixture": "hero_image.html"
     },
     {
       "name": "fact_strip",
-      "startOffset": 5712,
-      "endOffset": 8065,
-      "sha256": "03b8309307b8bdef9a1875dbffd416763e2342abb0c70f482938b4643d2bf854",
+      "startOffset": 5772,
+      "endOffset": 8140,
+      "sha256": "808a89cf1cd31ba1fcbad26af2106c75901ef8afb46726ea39b3937fd4a55812",
       "fixture": "fact_strip.html"
     },
     {
       "name": "price_tiles",
-      "startOffset": 8065,
-      "endOffset": 11346,
-      "sha256": "a49ea4dcdda442e2c93abfa7af90b261ee2f58a29ed843421b5e01c093b3cafe",
+      "startOffset": 8140,
+      "endOffset": 11451,
+      "sha256": "5978e60f0f0e5c85e95056b6103b2481a7348f918fe26754c897c6842532c121",
       "fixture": "price_tiles.html"
     },
     {
       "name": "deadline_bar_campaign",
-      "startOffset": 11346,
-      "endOffset": 11747,
+      "startOffset": 11451,
+      "endOffset": 11852,
       "sha256": "6cc2e9660d590d8c6788606b5839b1838430f13c159ff0d32478321c9812b5c2",
       "fixture": "deadline_bar_campaign.html"
     },
     {
       "name": "divider_rule",
-      "startOffset": 11747,
-      "endOffset": 12121,
+      "startOffset": 11852,
+      "endOffset": 12226,
       "sha256": "5731bb362133cfccbed882eacc8d7d8b9eb7382c8504b55c14164bd31e1e12cb",
       "fixture": "divider_rule.html"
     },
     {
       "name": "section_intro",
-      "startOffset": 12121,
-      "endOffset": 13112,
-      "sha256": "434a41ac30cab3977405bc1ee6cf836897066039a56a0072b77422d83e337197",
+      "startOffset": 12226,
+      "endOffset": 13262,
+      "sha256": "752619b3477acf4e73962143a74fb8db47cf3fca64bfd8e3fe71e0345e90be7f",
       "fixture": "section_intro.html"
     },
     {
       "name": "image_full",
-      "startOffset": 13112,
-      "endOffset": 13865,
+      "startOffset": 13262,
+      "endOffset": 14015,
       "sha256": "4ba69f56448c7c62baf95cc8fa84311755dc89d78a8ea0cc8e3d7dd82f1f7e2d",
       "fixture": "image_full.html"
     },
     {
       "name": "hours_table",
-      "startOffset": 13865,
-      "endOffset": 15482,
-      "sha256": "2240cb4cc6e89c9679a53dc555f37cc5c3f215eea3f2b0824d57e81869b9ba89",
+      "startOffset": 14015,
+      "endOffset": 15647,
+      "sha256": "73e49af3cd10f2fb1a7290783b8140c96ed2b05d101f6b5603555a0226d981c4",
       "fixture": "hours_table.html"
     },
     {
       "name": "cta_outline",
-      "startOffset": 15482,
-      "endOffset": 16059,
+      "startOffset": 15647,
+      "endOffset": 16224,
       "sha256": "4c784d43b0da4c888661cdad83689dda5c950bbbf00e0d83480fcdd3bcf10027",
       "fixture": "cta_outline.html"
     },
     {
       "name": "amenity_grid",
-      "startOffset": 16059,
-      "endOffset": 17493,
-      "sha256": "c6d2bce4ab190aacc83547a7fd6ce01834624ab0f9012985a2e5e353fbc0775a",
+      "startOffset": 16224,
+      "endOffset": 17673,
+      "sha256": "b380b078a7914470d661b7be9613bb981ea8fbe0d28c9ac14361d225940e40cb",
       "fixture": "amenity_grid.html"
     },
     {
       "name": "closing_panel_dark",
-      "startOffset": 17493,
-      "endOffset": 19235,
+      "startOffset": 17673,
+      "endOffset": 19415,
       "sha256": "92c423866130f5356a0c24d4fe78877722494adbaa2b444020cb856e13cfe2e9",
       "fixture": "closing_panel_dark.html"
     },
     {
       "name": "signoff_ps_campaign",
-      "startOffset": 19235,
-      "endOffset": 20172,
-      "sha256": "3e54155ae90a231a211c7a34183cb89d8ddf3b5c131686c1beec78e40399919f",
+      "startOffset": 19415,
+      "endOffset": 20397,
+      "sha256": "dd1c36d26f58ba77eaec56df0c201565f400f7b1e1364ad661e6ad6991981059",
       "fixture": "signoff_ps_campaign.html"
     },
     {
       "name": "footer",
-      "startOffset": 20172,
-      "endOffset": 21621,
+      "startOffset": 20397,
+      "endOffset": 21846,
       "sha256": "1a22214fef725fb8613826b2c2ce2170c21c1121c5db77afd354cddef4d2e9ce",
       "fixture": "footer.html"
     },
     {
       "name": "shell_foot",
-      "startOffset": 21621,
-      "endOffset": 21681,
+      "startOffset": 21846,
+      "endOffset": 21906,
       "sha256": "6c98a3ef90f9459cf7d94b7ad67f93c0d9f6959d7ea2ac8f45d82298e1ac8f36",
       "fixture": "shell_foot.html"
     }
@@ -145,119 +145,119 @@
     {
       "name": "feature_card",
       "startOffset": 4925,
-      "endOffset": 6650,
-      "sha256": "18746402dd638709695ea25fb8d907cdbe3dc94d5f465cee693e7f397e7c9e10",
+      "endOffset": 6665,
+      "sha256": "3a901f1a602731c9c6ce9114f3ab40e0e11d5190e8fa16ee346dcbafd8d09f8c",
       "fixture": "lib_feature_card.html"
     },
     {
       "name": "two_up_cards",
-      "startOffset": 31448,
-      "endOffset": 33829,
+      "startOffset": 36758,
+      "endOffset": 39139,
       "sha256": "ccd9ff145b20c1ad77b3beac69a4b71f1a2beb746ea2c6597e2e73f87ea6e27d",
       "fixture": "lib_two_up_cards.html"
     },
     {
       "name": "event_row",
-      "startOffset": 9171,
-      "endOffset": 11089,
-      "sha256": "21ea7fe22429075563da02b904a2c1c6a2b111f82779bd6a58a01b5a22095940",
+      "startOffset": 9186,
+      "endOffset": 11119,
+      "sha256": "e4c3a28c7152159ab18ec7ff323208d21b30e86cf68fc174496bd21311393c4c",
       "fixture": "lib_event_row.html"
     },
     {
       "name": "pull_quote",
-      "startOffset": 11159,
-      "endOffset": 12475,
+      "startOffset": 11189,
+      "endOffset": 12505,
       "sha256": "887e7743f1ae807ae1251205ecb03afc83b5b0497aae5cac792f98d222c65a0f",
       "fixture": "lib_pull_quote.html"
     },
     {
       "name": "note_bar",
-      "startOffset": 11159,
-      "endOffset": 12475,
-      "sha256": "892e581c45f78efa18b14948721648954f8323da50d73fec5a46e4d346185cc7",
+      "startOffset": 11189,
+      "endOffset": 12505,
+      "sha256": "3fb4e50fc379c31b3171ab24642d211a2f858de22db8256c998329c8eb5730d5",
       "fixture": "lib_note_bar.html"
     },
     {
       "name": "text_block",
-      "startOffset": 12545,
-      "endOffset": 15932,
-      "sha256": "d97983c1bbfca9fb74a19469cdf3454b61d9e6167670cd1e23e6ac576ea88e1f",
+      "startOffset": 12575,
+      "endOffset": 15977,
+      "sha256": "272ff42d13c4fb222a7d6d05470afa4a3d414d6bd11cccdd38ad7251950cf917",
       "fixture": "lib_text_block.html"
     },
     {
       "name": "deadline_bar",
-      "startOffset": 16002,
-      "endOffset": 16669,
+      "startOffset": 16047,
+      "endOffset": 16714,
       "sha256": "742cb5a4c9c0e9f12dcb8340d12af93935a7b111166e799df3d7a6a9d2cad7f9",
       "fixture": "lib_deadline_bar.html"
     },
     {
       "name": "menu_list",
-      "startOffset": 16739,
-      "endOffset": 19770,
-      "sha256": "ab039d3894caad69ab183b4142c1e7bf056ad54e54ee1c24cc3b34283e1d716c",
+      "startOffset": 16784,
+      "endOffset": 19830,
+      "sha256": "9c1e9a9480428932f11fa01b6413d0bea70f9d4f36947e521d63ca4628832276",
       "fixture": "lib_menu_list.html"
     },
     {
       "name": "steps",
-      "startOffset": 19840,
-      "endOffset": 23150,
-      "sha256": "b93fb3019d9500402091ea192d3c3896cfe8eb01db0fef098eb146625f2af575",
+      "startOffset": 19900,
+      "endOffset": 23225,
+      "sha256": "a22aeb546ebae9726410b353d41d3114421b8e4b54a70542cbfc2b64b7a7c9dc",
       "fixture": "lib_steps.html"
     },
     {
       "name": "media_row",
-      "startOffset": 29636,
-      "endOffset": 31380,
+      "startOffset": 34946,
+      "endOffset": 36690,
       "sha256": "7e2de1f6a80f6255e760e446e9ae979f7e06e8d1b2a67d054b0cc544d536b4d5",
       "fixture": "lib_media_row.html"
     },
     {
       "name": "review",
-      "startOffset": 25034,
-      "endOffset": 26350,
-      "sha256": "de0159aaaf1c95f8368f0dcc3a723f571c71141201e9d984416265666e66d34b",
+      "startOffset": 25109,
+      "endOffset": 26440,
+      "sha256": "8545b9dbe832a41f131e56a8345ebc53e427d7b073b738b8fc488ef06e819cd3",
       "fixture": "lib_review.html"
     },
     {
       "name": "whats_on_list",
-      "startOffset": 26420,
-      "endOffset": 30140,
-      "sha256": "7fd67d2f20014b77a8eccde5c517734c55a188f6d949d00650a1128eaa92d450",
+      "startOffset": 26510,
+      "endOffset": 30245,
+      "sha256": "fe71437fbbb457a234e54a4dcc9ad27a826f78f6e671f502dbb8e433c4c6cb78",
       "fixture": "lib_whats_on_list.html"
     },
     {
       "name": "offer_panel",
-      "startOffset": 30210,
-      "endOffset": 31709,
-      "sha256": "1c771c56531ff8841cdd52fd084697faba194acbf306e46395d21929eb8566ce",
+      "startOffset": 30315,
+      "endOffset": 31829,
+      "sha256": "b68c26c2ed8551052c516687306b72ca3579f683db7495d06fde33815c1d53fc",
       "fixture": "lib_offer_panel.html"
     },
     {
       "name": "faq_rows",
-      "startOffset": 31779,
-      "endOffset": 33484,
-      "sha256": "60757a78bce59ba5667857117989075909cab235244f170ccc08913fbfd118a0",
+      "startOffset": 31899,
+      "endOffset": 33619,
+      "sha256": "ab92d219fa72045653048bd440089390be124ceb3ebab242ac6c995e6080489b",
       "fixture": "lib_faq_rows.html"
     },
     {
       "name": "reassurance_row",
-      "startOffset": 33554,
-      "endOffset": 34355,
+      "startOffset": 33689,
+      "endOffset": 34490,
       "sha256": "dc3cdd3b359e41aeb288eb71a1b7e6d5c5124877399432a7afee313ea122203a",
       "fixture": "lib_reassurance_row.html"
     },
     {
       "name": "signoff_ps",
-      "startOffset": 34425,
-      "endOffset": 35670,
+      "startOffset": 34560,
+      "endOffset": 35805,
       "sha256": "648a33c1bd232deeaa24191e28863b277c0ba0a9a7c6cf79f56385c0ad8d2c20",
       "fixture": "lib_signoff_ps.html"
     },
     {
       "name": "footer_dark",
-      "startOffset": 35740,
-      "endOffset": 37435,
+      "startOffset": 35875,
+      "endOffset": 37570,
       "sha256": "855637305d0402e1c6515e187dddc0c61caa1082dc379e2f650484bc46e11914",
       "fixture": "lib_footer_dark.html"
     },
@@ -271,28 +271,28 @@
     {
       "name": "opening_hours_week",
       "startOffset": 9015,
-      "endOffset": 20641,
-      "sha256": "b9597428e0dbbbcce8803bb4d77e7011fd0b1b57098e4d72a319264b79f20e1a",
+      "endOffset": 22734,
+      "sha256": "66ae1937549f559d2067552152f0cd2821bba29c026edb0f8ccf15c73cd386cc",
       "fixture": "lib_opening_hours_week.html"
     },
     {
       "name": "opening_hours_dates",
-      "startOffset": 20709,
-      "endOffset": 29568,
-      "sha256": "5c08a4ee09ad5890756821ad0f6a4796a5ecb41435e6816dd2bf84f8db8cc5c0",
+      "startOffset": 22802,
+      "endOffset": 34878,
+      "sha256": "84ab65e85c939ce6febce5fe2c395b9243e71d9ef609bf8d5cc803bf4b3729eb",
       "fixture": "lib_opening_hours_dates.html"
     },
     {
       "name": "grid_cards_linked",
-      "startOffset": 33897,
-      "endOffset": 37069,
+      "startOffset": 39207,
+      "endOffset": 42379,
       "sha256": "1900a7e354653ea4aa74394b29d2a211f2b0f50db381b989b615fb01b15e44ad",
       "fixture": "lib_grid_cards_linked.html"
     },
     {
       "name": "grid_cards_linked_three",
-      "startOffset": 37137,
-      "endOffset": 41545,
+      "startOffset": 42447,
+      "endOffset": 46855,
       "sha256": "435cf49296c04bf2567f9978d9256060e9e61c9d689719fd8bf7fada07c588be",
       "fixture": "lib_grid_cards_linked_three.html"
     }

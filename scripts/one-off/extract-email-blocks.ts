@@ -122,6 +122,15 @@ function extractCampaign(source: string): ExtractedSlice[] {
  * notice bar for a rule, a deadline or a closure") into a real send. Splitting here keeps both
  * blocks usable without waiting on a re-export. The split is proven the same way as the
  * campaign slices: the two halves must reassemble into the original byte for byte.
+ *
+ * The note bar's outer cell also gains `class="gutter"` here, which is the ONE place this
+ * script changes the designer's markup rather than only slicing it. The October 2026 gutter
+ * pass covered every other left-aligned 32px cell in the library and missed this one, for the
+ * same reason the split exists: the block has no markers of its own, so from the designer's
+ * side it is invisible inside `pull_quote`. Their handover note asks us to apply the
+ * one-attribute change ourselves rather than wait for a re-export. Doing it here, next to the
+ * reassembly proof, keeps the handover file untouched and the divergence in one readable
+ * place. `pull_quote`'s own cell is centred at 34px 44px and correctly gets nothing.
  */
 function splitPullQuote(slice: ExtractedSlice): ExtractedSlice[] {
   const openTag = slice.html.slice(0, slice.html.indexOf('<tr'))
@@ -146,9 +155,26 @@ function splitPullQuote(slice: ExtractedSlice): ExtractedSlice[] {
 
   const rebuild = (rows: string) => `${openTag}${rows}${closeTag}`
 
+  // See the note above. Exactly one insertion, asserted, so a re-export that adds the class
+  // itself fails loudly here instead of silently producing it twice.
+  const NOTE_BAR_CELL = '<td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:24px 32px'
+  if (!noteRows.includes(NOTE_BAR_CELL)) {
+    throw new Error(
+      'The note bar outer cell is not the shape the gutter insertion expects. If the designer ' +
+        'has re-exported it with class="gutter" already, delete this insertion.',
+    )
+  }
+  const gutteredNoteRows = noteRows.replace(
+    NOTE_BAR_CELL,
+    '<td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:24px 32px',
+  )
+
+  const quote = rebuild(quoteRows)
+  const note = rebuild(gutteredNoteRows)
+
   return [
-    { ...slice, name: 'pull_quote', html: rebuild(quoteRows), sha256: sha256(rebuild(quoteRows)) },
-    { ...slice, name: 'note_bar', html: rebuild(noteRows), sha256: sha256(rebuild(noteRows)) },
+    { ...slice, name: 'pull_quote', html: quote, sha256: sha256(quote) },
+    { ...slice, name: 'note_bar', html: note, sha256: sha256(note) },
   ]
 }
 

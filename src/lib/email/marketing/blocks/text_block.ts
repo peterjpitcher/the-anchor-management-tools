@@ -81,7 +81,7 @@ export const textBlock = defineBlock<TextBlockData>({
 
     if (data.list_items?.length) {
       rows.push(
-        `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:16px 32px 0"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+        `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:16px 32px 0"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
       )
       for (const item of data.list_items) {
         rows.push(

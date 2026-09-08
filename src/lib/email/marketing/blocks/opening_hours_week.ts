@@ -10,16 +10,20 @@ import { defineBlock } from './types'
  * This one answers "when are you open", which is the question a reader actually asks, and
  * it has to carry both, because a bar time on its own sends someone out for a meal at 9pm.
  *
- * Redrawn for mobile in September 2026. The first version was three columns, day against
- * bar against kitchen, which is the shape of the pub's printed sheet. On a 360px phone the
- * three columns squeezed and the times wrapped mid-value. It is now a day column and one
- * details cell that carries a labelled line per value, so the same row reads as
- * "BAR 12pm to 10pm / LUNCH 12pm to 3pm / DINNER 4pm to 9pm" down the cell instead of
- * across it. Every time is `white-space:nowrap`, so a time can never break in half.
+ * Redrawn twice. The first version was three real columns, day against bar against kitchen,
+ * which is the shape of the pub's printed sheet; on a 360px phone they squeezed and the
+ * times wrapped mid-value. The second was mobile-first, a day column and one details cell
+ * of labelled lines, which read well on a phone and left the right half of the 536px table
+ * empty on a desktop.
  *
- * There is no `class="stack"` anywhere and that is deliberate: two columns already fit a
- * phone, and stacking would turn one legible week into fourteen fragments with no way to
- * tell a day from a service.
+ * This is both. The day cell is fixed at 112px. The details cell holds a nested full-width
+ * table of two cells, bar and kitchen, and both carry `class="stack"`, so the row is three
+ * columns at 600px and folds to "BAR 12pm to 10pm / LUNCH 12pm to 3pm / DINNER 4pm to 9pm"
+ * down the cell on a phone. Every time is `white-space:nowrap`, so a time can never break
+ * in half at either width.
+ *
+ * The day column itself never stacks. A week where the day and its hours could separate
+ * would be fourteen fragments with no way to tell one from the other.
  *
  * The kitchen has exactly three states and a row must pick one:
  *
@@ -115,12 +119,19 @@ function kitchenLines(row: OpeningHoursWeekRowData): string {
 function rowMarkup(row: OpeningHoursWeekRowData, isLast: boolean): string {
   // The last row sits on the table's own border, so a hairline there would double it.
   const hairline = isLast ? '' : 'border-bottom:1px solid #efe9dd;'
+
+  // The note sits outside the nested table on purpose, so it reads last at both widths
+  // rather than being pulled up beside the bar time when the two columns stack.
   const exception = row.exception ? `<div style="${NOTE}">${escapeEmailText(row.exception)}</div>` : ''
 
   return (
     `<tr>` +
     `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;font-weight:600">${escapeEmailText(row.day)}</td>` +
-    `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}">${labelledLine('Bar', row.bar)}${kitchenLines(row)}${exception}</td>` +
+    `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse"><tbody><tr>` +
+    `<td width="176" valign="top" class="stack" style="width:176px;padding:0 8px 0 0">${labelledLine('Bar', row.bar)}</td>` +
+    `<td valign="top" class="stack" style="padding:0">${kitchenLines(row)}</td>` +
+    `</tr></tbody></table>${exception}</td>` +
     `</tr>`
   )
 }
