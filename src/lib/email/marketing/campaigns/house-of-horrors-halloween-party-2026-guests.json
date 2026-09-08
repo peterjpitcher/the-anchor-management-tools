@@ -3,7 +3,10 @@
   "title": "The House of Horrors Halloween Party on Saturday 31 October",
   "preheader": "Free entry, fancy dress encouraged and the bar open until midnight.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "text_block",
       "data": {
@@ -14,7 +17,11 @@
           "Entry is free. Let us know you are coming so we know how busy to expect it."
         ],
         "buttons": [
-          { "label": "Let us know you are coming", "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31", "variant": "primary" }
+          {
+            "label": "Let us know you are coming",
+            "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -35,10 +42,22 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Entry", "value": "Free for everyone" },
-          { "label": "Time", "value": "8pm until midnight" },
-          { "label": "Fancy dress", "value": "Encouraged, every level of effort welcome" },
-          { "label": "Food", "value": "Kitchen open 12pm to 7pm on Saturdays" }
+          {
+            "label": "Entry",
+            "value": "Free for everyone"
+          },
+          {
+            "label": "Time",
+            "value": "8pm until midnight"
+          },
+          {
+            "label": "Fancy dress",
+            "value": "Encouraged, every level of effort welcome"
+          },
+          {
+            "label": "Food",
+            "value": "Full menu 12pm to 6pm, then pizza from 9pm"
+          }
         ]
       }
     },
@@ -48,7 +67,7 @@
         "heading": "A few things to know",
         "body": [
           "Arrive early if you want a good spot, because the pub fills up on Halloween.",
-          "Come for dinner first and stay for the party. The kitchen is open from 12pm to 7pm on a Saturday, so eat before the music starts."
+          "Eat before the party: the full menu runs from 12pm to 6pm on the night. The kitchen then closes, and pizza comes back from 9pm until midnight, to eat in or take away."
         ]
       }
     },
@@ -63,7 +82,10 @@
         "script_line": "Enter if you dare",
         "whatsapp_url": "https://wa.me/441753682707",
         "whatsapp_label": "WhatsApp",
-        "reassurance_items": ["Free entry for everyone", "Free parking right outside"]
+        "reassurance_items": [
+          "Free entry for everyone",
+          "Free parking right outside"
+        ]
       }
     },
     {
