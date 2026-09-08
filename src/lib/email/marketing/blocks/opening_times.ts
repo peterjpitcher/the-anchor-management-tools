@@ -4,27 +4,34 @@ import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
 /**
- * The full week of opening times, laid out day by day in three columns.
+ * The full week of opening times: a day against its bar hours and its kitchen hours.
  *
  * This is the one block in the library that is not a transcription of the designer's handover.
- * It reproduces the pub's printed "Opening times" sheet, which sets a day against its bar
- * hours and its kitchen hours side by side, with the two kitchen services labelled where a day
- * has both. `hours_table` cannot do that: it is two columns, its label cell is a fixed 140px
- * that wraps anything longer than "Saturday", and it was drawn for a single service window.
+ * It reproduces the pub's printed opening-times sheet, which `hours_table` cannot do: that
+ * block is two columns, its label cell is a fixed 140px that wraps anything longer than
+ * "Saturday", and it was drawn for a single service window.
  *
- * The fixture is generated from `sample` rather than extracted from a designer file, so the
- * fidelity test locks this markup against accidental change rather than against a handover.
+ * Because there is no handover to copy, it is built to `fact_strip`, its nearest sibling and
+ * the block the handover uses for exactly this job, "the rules and constraints a reader scans
+ * before deciding". Everything structural is taken from there rather than invented: the white
+ * panel ruled off top and bottom in #e2dccf, the outer `8px 32px 12px` that puts the content
+ * on the same 536px measure as every other block, the inner table, the #efe9dd row hairline,
+ * the 11px 0.14em gold caps for a label, and 15px/22px #1a1a1a for a value. The day takes the
+ * 19px serif in #005131 that `whats_on_list` gives its date badge, because the day is the key
+ * a reader scans for.
  *
- * Column widths are 130 / 175 / 187 inside the 536px panel, which measured in the fallback
- * fonts the clients actually use leaves room for the longest real values: "Wednesday" is 103px
- * of the 130, "12pm to 10pm" is 112px of the 163 usable, and a labelled "12pm to 3pm" is 103px
- * of the 132 left beside a "DINNER" label. On a phone the table scales and the longer times
- * wrap to two lines inside their own column, which stays readable because each column keeps
- * its own alignment.
+ * The fixture is generated from `sample`, so the fidelity test locks this markup against
+ * accidental change rather than against a designer file.
+ *
+ * Columns are 150 / 160 / 226 inside the 536px measure. Measured in the fallback fonts the
+ * clients actually use, that leaves room for every real value: "Wednesday" is 97px of the 150,
+ * "12pm to 10pm" is 94px of the 148 usable, and a "DINNER" label plus "12pm to 3pm" is 139px
+ * of the 226. `bar_note` sits in the 148px bar column, so keep it to about 24 characters or it
+ * wraps to three lines; anything longer belongs in `note`, which has the full width.
  */
 
 const kitchenServiceSchema = z.object({
-  /** "Lunch" or "Dinner", set in the small gold caps the printed sheet uses. */
+  /** "Lunch" or "Dinner", set in the same gold caps `fact_strip` gives a label. */
   label: z.string().min(1).max(10),
   time: z.string().min(1).max(24),
 })
@@ -32,8 +39,8 @@ const kitchenServiceSchema = z.object({
 const openingTimesRowSchema = z.object({
   day: z.string().min(1).max(20),
   bar: z.string().min(1).max(24),
-  /** The exception under the bar time, e.g. later closing on event nights. */
-  bar_note: z.string().min(1).max(90).optional(),
+  /** A short exception under the bar time. Keep it to about 24 characters, see above. */
+  bar_note: z.string().min(1).max(40).optional(),
   /**
    * One kitchen time, or the two services set against their own labels. A day with no kitchen
    * carries the words for it, e.g. "Kitchen closed", with `kitchen_muted` to grey it back.
@@ -43,9 +50,8 @@ const openingTimesRowSchema = z.object({
 })
 
 export const openingTimesSchema = z.object({
-  heading: z.string().min(1).max(60),
-  /** Sits under the heading in the script face, as the printed sheet does. */
-  script_line: z.string().min(1).max(60).optional(),
+  /** Optional gold kicker above the table, the way `hours_table` titles its panel. */
+  heading: z.string().min(1).max(60).optional(),
   rows: z.array(openingTimesRowSchema).min(1).max(8),
   note: z.string().min(1).max(220),
 })
@@ -55,27 +61,25 @@ type OpeningTimesRow = z.infer<typeof openingTimesRowSchema>
 
 const SANS = "'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif"
 const SERIF = "'DM Serif Display',Georgia,'Times New Roman',serif"
-const HAIRLINE = '#efe9dd'
-const MICRO = `font-family:${SANS};font-size:10px;font-weight:600;line-height:16px;letter-spacing:0.16em;text-transform:uppercase;color:#8b6914`
-const TIME = `font-family:${SANS};font-size:17px;font-weight:600;line-height:26px`
-
-function columnHeader(label: string, width: number | null, padding: string): string {
-  const sizing = width === null ? '' : ` width="${width}"`
-  const widthStyle = width === null ? '' : `width:${width}px;`
-  return `<td${sizing} valign="bottom" style="${widthStyle}padding:${padding};border-bottom:1px solid #e2dccf;${MICRO}">${escapeEmailText(label)}</td>`
-}
+const HAIRLINE = 'border-bottom:1px solid #efe9dd'
+/** `fact_strip`'s label type, to the character. */
+const LABEL = `font-family:${SANS};font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914`
+/** The same caps in the muted grey, so the column headers sit under the gold kicker. */
+const COLUMN = `font-family:${SANS};font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:#6f6a61`
+/** `fact_strip`'s value type. */
+const VALUE = `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a`
 
 /** The kitchen cell: one time, or the two labelled services stacked in their own table. */
 function kitchenCell(row: OpeningTimesRow): string {
   if (typeof row.kitchen === 'string') {
     const colour = row.kitchen_muted ? '#6f6a61' : '#1a1a1a'
-    return `<div style="${TIME};color:${colour}">${escapeEmailText(row.kitchen)}</div>`
+    return `<div style="font-family:${SANS};font-size:15px;line-height:22px;color:${colour}">${escapeEmailText(row.kitchen)}</div>`
   }
 
   const services = row.kitchen
     .map(
       (service) =>
-        `<tr><td valign="middle" style="padding:0 10px 0 0;${MICRO}">${escapeEmailText(service.label)}</td><td valign="middle" style="${TIME};color:#1a1a1a">${escapeEmailText(service.time)}</td></tr>`,
+        `<tr><td valign="top" style="padding:0 10px 0 0;${LABEL}">${escapeEmailText(service.label)}</td><td valign="top" style="${VALUE}">${escapeEmailText(service.time)}</td></tr>`,
     )
     .join('')
 
@@ -84,16 +88,14 @@ function kitchenCell(row: OpeningTimesRow): string {
 
 function dayRow(row: OpeningTimesRow): string {
   const note = row.bar_note
-    ? `<div style="font-family:${SANS};font-size:11px;line-height:16px;color:#6f6a61;padding-top:2px">${escapeEmailText(row.bar_note)}</div>`
+    ? `<div style="font-family:${SANS};font-size:12px;line-height:18px;color:#6f6a61">${escapeEmailText(row.bar_note)}</div>`
     : ''
 
-  return [
-    `<tr>`,
-    `<td width="130" valign="top" style="width:130px;padding:12px 0 12px 22px;border-bottom:1px solid ${HAIRLINE};font-family:${SERIF};font-size:20px;line-height:26px;color:#1a1a1a">${escapeEmailText(row.day)}</td>`,
-    `<td width="175" valign="top" style="width:175px;padding:12px 12px 12px 0;border-bottom:1px solid ${HAIRLINE};${TIME};color:#1a1a1a">${escapeEmailText(row.bar)}${note}</td>`,
-    `<td valign="top" style="padding:12px 22px 12px 0;border-bottom:1px solid ${HAIRLINE}">${kitchenCell(row)}</td>`,
-    `</tr>`,
-  ].join('')
+  return (
+    `<tr><td width="150" valign="top" style="width:150px;padding:14px 0;${HAIRLINE};font-family:${SERIF};font-size:19px;line-height:25px;color:#005131">${escapeEmailText(row.day)}</td>` +
+    `<td width="160" valign="top" style="width:160px;padding:14px 12px 14px 0;${HAIRLINE};${VALUE}">${escapeEmailText(row.bar)}${note}</td>` +
+    `<td valign="top" style="padding:14px 0;${HAIRLINE}">${kitchenCell(row)}</td></tr>`
+  )
 }
 
 export const openingTimes = defineBlock<OpeningTimesData>({
@@ -102,7 +104,6 @@ export const openingTimes = defineBlock<OpeningTimesData>({
   schema: openingTimesSchema,
   sample: {
     heading: 'Opening times',
-    script_line: "Where everyone's welcome",
     rows: [
       { day: 'Monday', bar: '4pm to 10pm', kitchen: 'Kitchen closed', kitchen_muted: true },
       {
@@ -116,24 +117,23 @@ export const openingTimes = defineBlock<OpeningTimesData>({
       { day: 'Saturday', bar: '12pm to 10pm', kitchen: '12pm to 7pm' },
       { day: 'Sunday', bar: '12pm to 10pm', kitchen: '1pm to 6pm' },
     ],
-    note: 'Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does. Times may vary for private events and functions.',
+    note: 'Last orders are 30 minutes before the kitchen closes, and 15 minutes before the bar does.',
   },
   render: (data) => `
-<tr><td bgcolor="#ffffff" style="background-color:#ffffff;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;padding:0">
-<table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>
-<tr><td colspan="3" style="padding:22px 22px 0;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.01em;color:#005131">${escapeEmailText(data.heading)}</td></tr>${
-    data.script_line
-      ? `\n<tr><td colspan="3" style="padding:2px 22px 0;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:15px;line-height:22px;color:#8b6914">${escapeEmailText(data.script_line)}</td></tr>`
+<tr><td bgcolor="#ffffff" style="background-color:#ffffff;border-top:1px solid #e2dccf;border-bottom:1px solid #e2dccf;padding:8px 32px 12px">
+<table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>${
+    data.heading
+      ? `\n<tr><td colspan="3" style="padding:14px 0 0;${LABEL}">${escapeEmailText(data.heading)}</td></tr>`
       : ''
   }
-<tr>${columnHeader('Day', 130, '18px 0 6px 22px')}${columnHeader('Bar', 175, '18px 12px 6px 0')}${columnHeader('Kitchen', null, '18px 22px 6px 0')}</tr>
+<tr><td width="150" valign="bottom" style="width:150px;padding:12px 0 6px;${HAIRLINE};${COLUMN}">Day</td><td width="160" valign="bottom" style="width:160px;padding:12px 12px 6px 0;${HAIRLINE};${COLUMN}">Bar</td><td valign="bottom" style="padding:12px 0 6px;${HAIRLINE};${COLUMN}">Kitchen</td></tr>
 ${data.rows.map(dayRow).join('\n')}
-<tr><td colspan="3" style="padding:12px 22px 20px;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.note)}</td></tr>
+<tr><td colspan="3" style="padding:14px 0 0;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.note)}</td></tr>
 </tbody></table>
 </td></tr>
 `,
   text: (data) =>
-    `${data.heading.toUpperCase()}\n${data.rows
+    `${(data.heading ?? 'Opening times').toUpperCase()}\n${data.rows
       .map((row) => {
         const kitchen =
           typeof row.kitchen === 'string'
