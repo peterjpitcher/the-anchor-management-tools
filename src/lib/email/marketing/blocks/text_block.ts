@@ -70,12 +70,12 @@ export const textBlock = defineBlock<TextBlockData>({
   render: (data) => {
     const rows: string[] = [
       `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
     ]
 
     for (const paragraph of data.body ?? []) {
       rows.push(
-        `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:12px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;color:#1a1a1a">${escapeEmailText(paragraph)}</td></tr>`,
+        `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:12px 32px 0;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:27px;color:#1a1a1a">${escapeEmailText(paragraph)}</td></tr>`,
       )
     }
 

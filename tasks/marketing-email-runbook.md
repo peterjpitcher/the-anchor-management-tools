@@ -101,6 +101,36 @@ Three rules that apply to all of the picture blocks:
 are door times, never the kitchen's. Read them from the published `business_hours` version and
 then check `special_hours` for every date the email covers, because an override always wins.
 
+### Mobile
+
+One breakpoint at 620px and three classes, all of them already in the shell. There is no new
+CSS and there should not be any: several clients drop the `<style>` block entirely, so the
+email has to read correctly from inline styles alone.
+
+- **`.gutter`** on an outer cell turns its 32px side padding into 20px on a phone. Put it on
+  every cell whose content is left-aligned, or the block gets a ragged left edge: a heading
+  at 20px above a paragraph at 32px is visible and it is the fault the owner spots. Centred
+  content does not need it, which is why the mastheads, the closing panel and the footers do
+  not carry it.
+- **`.stack`** turns a column into a full-width block. It goes on image cells, text cells,
+  card cells, the gutter cell between cards, and on the card's own inner `<table>` so it
+  lifts its `max-width` and fills the stacked column.
+- Pictures in the picture blocks are `width:100%;max-width:100%;height:auto` in CSS. The
+  `width` and `height` attributes stay: they are the Outlook contract and set the desktop
+  size. Never remove them to make an image fluid.
+
+The two hours blocks carry no `.stack` on purpose. They were redrawn as two columns, a day
+against one details cell of labelled lines, so they fit a 375px screen without stacking;
+stacking them would turn one legible week into fourteen fragments. Every time in them is
+`white-space:nowrap`, so a time can never break in half.
+
+`mobileGutter.test.ts` guards all of this. It also carries the five blocks that arrived from
+the September 2026 handover with the heading guttered and the content under it not
+(`faq_rows`, `menu_list`, `steps`, `text_block`'s list rows, `whats_on_list`'s panel). They
+are listed rather than silently fixed, because the markup is fidelity-tested against the
+designer's own file. If you reach for one of those five in an email, ask for it to be
+redrawn first.
+
 ---
 
 ## How many emails an event gets, and when

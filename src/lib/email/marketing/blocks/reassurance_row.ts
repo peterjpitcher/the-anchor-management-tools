@@ -29,7 +29,7 @@ export const reassuranceRow = defineBlock<ReassuranceRowData>({
   },
   render: (data) =>
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" align="center" style="background-color:#faf8f3;padding:18px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:22px;color:#6f6a61">${data.items
+<tr><td bgcolor="#faf8f3" align="center" class="gutter" style="background-color:#faf8f3;padding:18px 32px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:22px;color:#6f6a61">${data.items
       .map((item) => `${TICK}${escapeEmailText(item)}`)
       .join(' &nbsp;&nbsp;')}</td></tr>
 </tbody></table>`,

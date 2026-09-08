@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0;background:#e6e0d4;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;} a{color:#8b6914;} a:hover{color:#005131;}</style>
+</helmet>
+<div style="padding:24px;display:flex;flex-direction:column;gap:20px;min-height:100vh;box-sizing:border-box">
+  <div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">
+    <div style="font-family:'DM Serif Display',Georgia,serif;font-size:26px;letter-spacing:-0.02em;color:#005131">Block library review</div>
+    <div style="font-size:13px;color:#6f6a61">Wide frame: 600px desktop. Narrow frame: 375px phone (breakpoint fires below 620px). Same file, both frames.</div>
+    <a href="send-ready/anchor-email-blocks-additions.html" style="font-size:13px;font-weight:600;text-decoration:none">Additions</a>
+    <a href="send-ready/anchor-email-blocks.html" style="font-size:13px;font-weight:600;text-decoration:none">Full library</a>
+    <a href="send-ready/anchor-december-roundup.html" style="font-size:13px;font-weight:600;text-decoration:none">Composed round-up</a>
+  </div>
+  <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;flex:1">
+    <iframe title="Desktop" src="send-ready/anchor-email-blocks-additions.html" style="width:660px;max-width:100%;height:calc(100vh - 110px);min-height:700px;border:1px solid #c9bfa8;background:#e6e0d4"></iframe>
+    <iframe title="Phone" src="send-ready/anchor-email-blocks-additions.html" style="width:375px;height:calc(100vh - 110px);min-height:700px;border:1px solid #c9bfa8;border-radius:24px;background:#e6e0d4"></iframe>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
