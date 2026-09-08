@@ -3,7 +3,10 @@
   "title": "Sequins & Showstoppers Music Bingo on Friday 13 November",
   "preheader": "£5 cash entry, two themed rounds and a 7pm start. Reserve online, pay on the night.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "text_block",
       "data": {
@@ -14,7 +17,11 @@
           "Reserve online, pay on the night. Entry costs £5 per person, payable in cash when you arrive. No online payment is taken."
         ],
         "buttons": [
-          { "label": "Reserve your bingo seats", "url": "https://www.the-anchor.pub/events/sequins-showstoppers-strictly-season-music-bingo-2026-11-13", "variant": "primary" }
+          {
+            "label": "Reserve your bingo seats",
+            "url": "https://www.the-anchor.pub/events/sequins-showstoppers-strictly-season-music-bingo-2026-11-13",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -35,10 +42,22 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Host", "value": "Nikki Manfadge" },
-          { "label": "Arrive from", "value": "6:30pm for a 7pm start" },
-          { "label": "Dressing up", "value": "Sequins encouraged, a small touch counts" },
-          { "label": "Seating", "value": "Book everyone in your group together" }
+          {
+            "label": "Host",
+            "value": "Nikki Manfadge"
+          },
+          {
+            "label": "Arrive from",
+            "value": "6:30pm for a 7pm start"
+          },
+          {
+            "label": "Dressing up",
+            "value": "Sequins encouraged, a small touch counts"
+          },
+          {
+            "label": "Seating",
+            "value": "Communal tables, book your group together"
+          }
         ]
       }
     },
@@ -63,7 +82,10 @@
         "script_line": "Sequins at the ready",
         "whatsapp_url": "https://wa.me/441753682707",
         "whatsapp_label": "WhatsApp",
-        "reassurance_items": ["No music expertise needed", "Free parking right outside"]
+        "reassurance_items": [
+          "No music expertise needed",
+          "Free parking right outside"
+        ]
       }
     },
     {

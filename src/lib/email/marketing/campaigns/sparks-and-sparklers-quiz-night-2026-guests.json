@@ -3,7 +3,10 @@
   "title": "Sparks & Sparklers Quiz Night on Wednesday 4 November",
   "preheader": "£3 cash entry, teams of up to six and a 7pm start. Reserve online, pay on the night.",
   "blocks": [
-    { "type": "masthead_green", "data": {} },
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
     {
       "type": "text_block",
       "data": {
@@ -14,7 +17,11 @@
           "Reserve online, pay on the night. Entry costs £3 per person, payable in cash when you arrive. No online payment is taken."
         ],
         "buttons": [
-          { "label": "Reserve your quiz seats", "url": "https://www.the-anchor.pub/events/quiz-night-2026-11-04", "variant": "primary" }
+          {
+            "label": "Reserve your quiz seats",
+            "url": "https://www.the-anchor.pub/events/quiz-night-2026-11-04",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -35,10 +42,22 @@
       "type": "fact_strip",
       "data": {
         "rows": [
-          { "label": "Teams", "value": "Up to six players" },
-          { "label": "Arrive from", "value": "6:30pm for a 7pm start" },
-          { "label": "Finish", "value": "About 9:30pm" },
-          { "label": "Seating", "value": "Communal tables, book your team together" }
+          {
+            "label": "Teams",
+            "value": "Up to six players"
+          },
+          {
+            "label": "Arrive from",
+            "value": "6:30pm for a 7pm start"
+          },
+          {
+            "label": "Finish",
+            "value": "About 9:30pm"
+          },
+          {
+            "label": "Seating",
+            "value": "Book your team in together and we will seat you together"
+          }
         ]
       }
     },
@@ -63,7 +82,10 @@
         "script_line": "Team names at the ready",
         "whatsapp_url": "https://wa.me/441753682707",
         "whatsapp_label": "WhatsApp",
-        "reassurance_items": ["First-time teams welcome", "Free parking right outside"]
+        "reassurance_items": [
+          "First-time teams welcome",
+          "Free parking right outside"
+        ]
       }
     },
     {
