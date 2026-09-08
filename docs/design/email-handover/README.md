@@ -49,7 +49,9 @@ size and string in these files is intentional and verified.
 | --- | --- |
 | `anchor-christmas-and-lunch.html` | The finished campaign email. Complete document: doctype, preheader, MSO conditionals, media queries, 600px body. **~19KB.** |
 | `anchor-email-blocks.html` | All 18 blocks in one document, each wrapped in `<!-- BLOCK: name -->` … `<!-- /BLOCK: name -->`. This is the parse source for your block catalogue. |
-| `The Anchor Email Kit.dc.html` | The design-tool source both files were generated from. Reference only — do not ship or parse this one. |
+| `anchor-email-blocks-additions.html` | September 2026 additions: `whats_on_media`, `opening_hours_week`, `opening_hours_dates`, `grid_cards_linked` (2-up and 3-up variants), plus the corrected `media_row` and `two_up_cards`. Same BLOCK delimiters. |
+| `anchor-december-roundup.html` | Composed monthly round-up using the new blocks beside existing ones, for checking vertical rhythm. **Event names, times and every opening hour in it are stand-ins to be checked against the events database and opening-hours records before send.** |
+| `The Anchor Email Kit.dc.html` | The design-tool source. Reference only — do not ship or parse this one. |
 
 Extract blocks by scanning `anchor-email-blocks.html` for the comment delimiters.
 Each block is a single self-contained `<table role="presentation" width="600">`
@@ -127,8 +129,12 @@ match them to your templating engine.
 | `menu_list` | `heading`, `items[{name, price, description, tag}]` | Dish name and price on one baseline, description under. Optional `VEGAN`/`NGCI` tag. |
 | `hours_table` *(in campaign)* | `heading`, `rows[{label, time}]`, `note` | Green `#005131` panel, service times right-aligned, note row under a gold hairline. |
 | `steps` | `steps[{title, body}]` | Numbered 1-2-3 in green circles. Mirrors the website's booking explainer. |
-| `media_row` | `image`, `heading`, `body`, `link_label`, `link_url` | 240px image beside copy. Swap the two `<td>`s for image-right; alternate down a long email. |
-| `two_up_cards` | `cards[{image, heading, body}]` | Two 260px cards side by side. Stacks on mobile. |
+| `media_row` | `image{src,width,height,alt}`, `heading`, `body`, `link_label`, `link_url` | 240px-wide image beside copy, **caller sets the `<img>` width/height** (240 wide, height to the artwork ratio). Swap the two `<td>`s for image-right. |
+| `two_up_cards` | `cards[{image{src,width,height,alt}, heading, body}]` | Two 260px cards side by side. Stacks on mobile. **Caller sets the `<img>` width/height** (258 wide, height to the artwork ratio; 258 × 258 for square posters). |
+| `whats_on_media` *(Sept 2026)* | `kicker`, `heading`, `events[{date, name, detail, image{src,width,height,alt}, cta_label, url}]`, `all_events_url` | The round-up list with artwork. Up to eight rows, hairline between each; 16:9 image at 180 × 101 left, per-row link. Image and text stack on mobile. |
+| `opening_hours_week` *(Sept 2026)* | `heading`, `rows[{day, bar, exception?, kitchen \| lunch+dinner \| closed}]`, `footnote` | Seven-day table, 150 / 160 / 226 columns. Kitchen cell has three states: one time, two labelled services, or muted "Kitchen closed". |
+| `opening_hours_dates` *(Sept 2026)* | `heading`, `rows[{date, hours \| closed, note?}]`, `footnote` | Dated exceptions for festive runs. A closed day renders as a full dark `#0c1d11` row with gold date and cream "Closed". |
+| `grid_cards_linked` *(Sept 2026)* | `cards[{image{src,width,height,alt}, heading, body, cta_label, url}]` (2 or 3) | Bookable grid cards. Two across at 260px (image 258 wide) or three across at 168px (image 166 wide). Stacks on mobile. |
 | `feature_card` | `image`, `heading`, `body`, `link_label`, `link_url` | One offer or dish. Gold top-accent card. |
 | `event_row` | `day`, `date`, `month`, `title`, `detail`, `url` | Single event with a green date badge. |
 | `whats_on_list` | `kicker`, `heading`, `events[]`, `all_events_url` | Multiple stacked event rows plus a "see everything" link. |
@@ -263,8 +269,12 @@ comment containing the exact replacement `<tr>`. Swap the placeholder row for it
 | 1, hero | **1200 × 680** | 600 × 340 | A table laid for Christmas dinner — crackers, glasses, warm low light. Landscape, room at the edges so a crop doesn't lose the subject. |
 | 2, lunch | **1200 × 520** | 600 × 260 | Daytime lunch on the table by a window. Natural light, must read as midday. |
 
-Other slots in the library: `feature_card` 1072 × 460, `two_up_cards` 520 × 360
-each, `media_row` 480 × 400.
+Other slots in the library: `feature_card` 1072 × 460. `media_row`, `two_up_cards`,
+`whats_on_media` and `grid_cards_linked` take the caller's own `width`/`height`
+attributes, sized to one of the three artwork shapes the pub owns: 1:1 (1254 × 1254
+posters), 16:9 (1672 × 941 event artwork), 2.33:1 (1916 × 821 photography). The
+library uses local placeholder images (`img/slot-16x9.png`, `img/slot-1x1.png`,
+`img/slot-band.png`) at those ratios; swap the `src` for a hosted URL only.
 
 Rules: JPEG, sRGB, quality ~75, **under 200KB each**. Real photographs of this pub —
 no stock. Always set `alt`; roughly a third of opens have images off, so the alt

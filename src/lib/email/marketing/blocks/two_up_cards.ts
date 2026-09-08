@@ -6,20 +6,38 @@ import { defineBlock, type EmailImage } from './types'
 /**
  * Two 260px cards side by side, for a pair of things of equal weight.
  *
- * Exactly two cards: 260 plus 16 plus 260 fills the 536px column, and both cells carry
- * `class="stack"` so they sit one above the other on a phone.
+ * Exactly two cards: 260 plus 16 plus 260 fills the 536px column. Both card cells and the
+ * gutter between them carry `class="stack"`, so on a phone the cards sit one above the
+ * other with a 16px gap rather than touching.
  *
- * The designer's handover ships the cards with a tinted image placeholder rather than a
- * photograph, so an empty `src` keeps that placeholder and a real `src` renders the
- * photograph in its place. Always write the alt text either way: about a third of opens
- * have images off.
+ * Redrawn in September 2026. The first version hardcoded `height="180"` on the card image,
+ * so a square poster was declared 260 x 180 and drawn squashed by any client that trusts
+ * the attributes. The caller now sets both: 258 wide, and the height from the artwork's own
+ * ratio, which for the square posters this pub actually has is 258 x 258.
+ *
+ * Nothing here is a link. Use `grid_cards_linked` when the cards should be bookable.
  */
+
+/** The image width the markup is drawn to. The card's max-width repeats it. */
+const IMAGE_WIDTH = 258
+
+/**
+ * The designer's local placeholder, kept for a card with no photograph yet.
+ *
+ * Same contract as `image_full`: an empty `src` reproduces the handover byte for byte, a
+ * real URL renders the photograph instead. The path is relative and cannot resolve in an
+ * inbox, which is the point. It proves the fixture, it does not ship.
+ */
+const PLACEHOLDER_SRC = 'img/slot-1x1.png'
+
+const SANS = "'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif"
+const SERIF = "'DM Serif Display',Georgia,'Times New Roman',serif"
 
 const cardImageSchema: z.ZodType<EmailImage> = z.object({
   /** Empty keeps the designer's placeholder. Otherwise an absolute https URL. */
   src: z.string(),
   alt: z.string().min(1).max(160),
-  width: z.number().int().positive(),
+  width: z.literal(IMAGE_WIDTH),
   height: z.number().int().positive(),
 })
 
@@ -37,23 +55,25 @@ export type TwoUpCardsData = z.infer<typeof twoUpCardsSchema>
 
 type TwoUpCard = z.infer<typeof cardSchema>
 
-function cardImageRow(image: EmailImage): string {
-  if (image.src) {
-    return `<tr><td style="padding:0;font-size:0;line-height:0"><img src="${escapeEmailUrl(image.src)}" width="260" height="180" alt="${escapeEmailText(image.alt)}" style="display:block;width:100%;max-width:260px;height:auto;border:0"></td></tr>`
-  }
-
-  return `<tr><td align="center" valign="middle" height="180" style="height:180px;background-color:#f5e6d3;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:18px;letter-spacing:0.12em;text-transform:uppercase;color:#8b6914">Image &middot; ${image.width} &times; ${image.height}</td></tr>`
-}
-
 function cardCell(card: TwoUpCard): string[] {
+  const src = card.image.src.trim() ? escapeEmailUrl(card.image.src) : PLACEHOLDER_SRC
+
   return [
     `<td width="260" valign="top" class="stack" style="width:260px"><table role="presentation" width="260" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:260px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
-    cardImageRow(card.image),
-    `<tr><td style="padding:18px 18px 0;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:21px;line-height:27px;color:#005131">${escapeEmailText(card.heading)}</td></tr>`,
-    `<tr><td style="padding:8px 18px 20px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#6f6a61">${escapeEmailText(card.body)}</td></tr>`,
+    `<tr><td style="padding:0;font-size:0;line-height:0"><img src="${src}" width="${card.image.width}" height="${card.image.height}" alt="${escapeEmailText(card.image.alt)}" style="display:block;width:100%;max-width:${IMAGE_WIDTH}px;height:auto;border:0"></td></tr>`,
+    `<tr><td style="padding:18px 18px 0;font-family:${SERIF};font-size:21px;line-height:27px;color:#005131">${escapeEmailText(card.heading)}</td></tr>`,
+    `<tr><td style="padding:8px 18px 20px;font-family:${SANS};font-size:14px;line-height:22px;color:#6f6a61">${escapeEmailText(card.body)}</td></tr>`,
     `</tbody></table></td>`,
   ]
 }
+
+/**
+ * The 16px gap between the cards.
+ *
+ * It carries `class="stack"` too, so on a phone it stops being a column and becomes a 16px
+ * vertical gap instead of collapsing and butting the two cards together.
+ */
+const GUTTER_CELL = `<td width="16" class="stack" style="width:16px;font-size:0;line-height:0;height:16px">&nbsp;</td>`
 
 export const twoUpCards = defineBlock<TwoUpCardsData>({
   type: 'two_up_cards',
@@ -62,22 +82,12 @@ export const twoUpCards = defineBlock<TwoUpCardsData>({
   sample: {
     cards: [
       {
-        image: {
-          src: '',
-          alt: 'A full table of quizzers on a Wednesday night',
-          width: 520,
-          height: 360,
-        },
+        image: { src: '', alt: 'Quiz night', width: 258, height: 258 },
         heading: 'Quiz night',
         body: 'Two short lines of supporting copy sit here.',
       },
       {
-        image: {
-          src: '',
-          alt: 'The beer garden on a sunny afternoon',
-          width: 520,
-          height: 360,
-        },
+        image: { src: '', alt: 'Beer garden', width: 258, height: 258 },
         heading: 'Beer garden',
         body: 'Two short lines of supporting copy sit here.',
       },
@@ -86,17 +96,17 @@ export const twoUpCards = defineBlock<TwoUpCardsData>({
   render: (data) => {
     const rows: string[] = [
       `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody><tr>`,
+      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+      `<tr>`,
     ]
 
     data.cards.forEach((card, index) => {
-      if (index > 0) {
-        rows.push(`<td width="16" style="width:16px;font-size:0;line-height:0">&nbsp;</td>`)
-      }
+      if (index > 0) rows.push(GUTTER_CELL)
       rows.push(...cardCell(card))
     })
 
-    rows.push(`</tr></tbody></table></td></tr>`)
+    rows.push(`</tr>`)
+    rows.push(`</tbody></table></td></tr>`)
     rows.push(`</tbody></table>`)
 
     return rows.join('\n')
