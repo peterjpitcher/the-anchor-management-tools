@@ -4,24 +4,31 @@ import { escapeEmailText } from '../escape'
 import { defineBlock } from './types'
 
 /**
- * The ordinary week: bar hours and kitchen hours, seven rows, three columns.
+ * The ordinary week: bar hours and kitchen hours, seven rows, two columns.
  *
  * `hours_table` is the green service-times panel and answers "when does the food stop".
  * This one answers "when are you open", which is the question a reader actually asks, and
- * it has to carry both because a bar time on its own sends someone out for a meal at 9pm.
+ * it has to carry both, because a bar time on its own sends someone out for a meal at 9pm.
  *
- * Columns are 150 / 160 / 226 and there is no `class="stack"` anywhere: three short columns
- * fit a 320px screen, and stacking them would turn one legible week into twenty-one
- * fragments with no way to tell a day from a service.
+ * Redrawn for mobile in September 2026. The first version was three columns, day against
+ * bar against kitchen, which is the shape of the pub's printed sheet. On a 360px phone the
+ * three columns squeezed and the times wrapped mid-value. It is now a day column and one
+ * details cell that carries a labelled line per value, so the same row reads as
+ * "BAR 12pm to 10pm / LUNCH 12pm to 3pm / DINNER 4pm to 9pm" down the cell instead of
+ * across it. Every time is `white-space:nowrap`, so a time can never break in half.
  *
- * The kitchen cell has exactly three states and a row must pick one:
+ * There is no `class="stack"` anywhere and that is deliberate: two columns already fit a
+ * phone, and stacking would turn one legible week into fourteen fragments with no way to
+ * tell a day from a service.
  *
- *   `kitchen`            one service, one line
- *   `lunch` + `dinner`   two services, each behind a 56px label
- *   `closed: true`       "Kitchen closed", muted, so it reads as deliberate
+ * The kitchen has exactly three states and a row must pick one:
  *
- * A row with two of them, or none, is a content bug that would render an empty cell, so the
- * schema rejects it rather than sending a day with no answer on it.
+ *   `kitchen`            one service, one labelled line
+ *   `lunch` + `dinner`   two services, two labelled lines
+ *   `closed: true`       "KITCHEN Closed", muted, so it reads as deliberate
+ *
+ * A row with two of them, or none, is a content bug that would render a day with no answer
+ * on it, so the schema rejects it rather than sending it.
  *
  * Every value here is a fact about trading. Read the day from `business_hours` and then
  * check `special_hours` for the dates the email covers: an override always wins, and an
@@ -31,17 +38,18 @@ import { defineBlock } from './types'
 const SANS = "'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif"
 const SERIF = "'DM Serif Display',Georgia,'Times New Roman',serif"
 
+/** The 68px inline label in front of every value: BAR, LUNCH, DINNER, KITCHEN. */
 const LABEL = `font-family:${SANS};font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.14em;text-transform:uppercase;color:#8b6914`
-const VALUE = `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a`
-const MUTED = `font-family:${SANS};font-size:15px;line-height:22px;color:#6f6a61`
-const NOTE = `font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61`
+const VALUE_LINE = `font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;white-space:nowrap`
+const MUTED_LINE = `font-family:${SANS};font-size:15px;line-height:22px;color:#6f6a61;white-space:nowrap`
+const NOTE = `font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61;padding-top:2px`
 
 const openingHoursWeekRowSchema = z
   .object({
     day: z.string().min(1).max(20),
     /** Door to door, e.g. "12pm to 10pm". Never the kitchen's hours. */
     bar: z.string().min(1).max(40),
-    /** One short line under the bar time, e.g. "Bank holidays from 12pm". */
+    /** One short line at the foot of the cell, e.g. "Bank holidays from 12pm". */
     exception: z.string().min(1).max(60).optional(),
     /** One kitchen service across the day. */
     kitchen: z.string().min(1).max(40).optional(),
@@ -87,16 +95,21 @@ export const openingHoursWeekSchema = z.object({
 
 export type OpeningHoursWeekData = z.infer<typeof openingHoursWeekSchema>
 
-/** A labelled service line, e.g. LUNCH 12pm to 3pm. The label is set by the design. */
-function serviceLine(label: string, time: string): string {
-  return `<div style="${VALUE}"><span style="display:inline-block;width:56px;${LABEL}">${label}</span>${escapeEmailText(time)}</div>`
+/**
+ * One labelled line, e.g. BAR 12pm to 10pm.
+ *
+ * The value carries its own `white-space:nowrap` as well as the line, because a client that
+ * drops the div's style must still not break "12pm to 10pm" across two lines.
+ */
+function labelledLine(label: string, value: string, muted = false): string {
+  return `<div style="${muted ? MUTED_LINE : VALUE_LINE}"><span style="display:inline-block;width:68px;${LABEL}">${label}</span><span style="white-space:nowrap">${escapeEmailText(value)}</span></div>`
 }
 
-function kitchenCellContent(row: OpeningHoursWeekRowData): string {
-  if (row.closed) return `<div style="${MUTED}">Kitchen closed</div>`
-  if (row.kitchen !== undefined) return `<div style="${VALUE}">${escapeEmailText(row.kitchen)}</div>`
+function kitchenLines(row: OpeningHoursWeekRowData): string {
+  if (row.closed) return labelledLine('Kitchen', 'Closed', true)
+  if (row.kitchen !== undefined) return labelledLine('Kitchen', row.kitchen)
 
-  return `${serviceLine('Lunch', row.lunch ?? '')}${serviceLine('Dinner', row.dinner ?? '')}`
+  return `${labelledLine('Lunch', row.lunch ?? '')}${labelledLine('Dinner', row.dinner ?? '')}`
 }
 
 function rowMarkup(row: OpeningHoursWeekRowData, isLast: boolean): string {
@@ -106,20 +119,11 @@ function rowMarkup(row: OpeningHoursWeekRowData, isLast: boolean): string {
 
   return (
     `<tr>` +
-    `<td width="150" valign="top" style="width:150px;padding:13px 0 13px 16px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;font-weight:600">${escapeEmailText(row.day)}</td>` +
-    `<td width="160" valign="top" style="width:160px;padding:13px 0 13px 12px;${hairline}"><div style="${VALUE}">${escapeEmailText(row.bar)}</div>${exception}</td>` +
-    `<td width="226" valign="top" style="width:226px;padding:13px 16px 13px 12px;${hairline}">${kitchenCellContent(row)}</td>` +
+    `<td width="112" valign="top" style="width:112px;padding:13px 0 13px 12px;${hairline}font-family:${SANS};font-size:15px;line-height:22px;color:#1a1a1a;font-weight:600">${escapeEmailText(row.day)}</td>` +
+    `<td valign="top" style="padding:13px 10px 13px 4px;${hairline}">${labelledLine('Bar', row.bar)}${kitchenLines(row)}${exception}</td>` +
     `</tr>`
   )
 }
-
-/** Column headings. Fixed by the design: the table only ever holds these three. */
-const HEADER_ROW =
-  `<tr>` +
-  `<td width="150" style="width:150px;padding:12px 0 12px 16px;border-bottom:1px solid #e2dccf;${LABEL}">Day</td>` +
-  `<td width="160" style="width:160px;padding:12px 0 12px 12px;border-bottom:1px solid #e2dccf;${LABEL}">Bar</td>` +
-  `<td width="226" style="width:226px;padding:12px 16px 12px 12px;border-bottom:1px solid #e2dccf;${LABEL}">Kitchen</td>` +
-  `</tr>`
 
 export const openingHoursWeek = defineBlock<OpeningHoursWeekData>({
   type: 'opening_hours_week',
@@ -137,28 +141,27 @@ export const openingHoursWeek = defineBlock<OpeningHoursWeekData>({
       { day: 'Sunday', bar: '12pm to 9pm', exception: 'Last entry 8.30pm', kitchen: '12pm to 5pm' },
     ],
     footnote:
-      'Kitchen last orders are 15 minutes before each service ends. Weekend kitchen hours to be confirmed before send.',
+      'Kitchen last orders are 30 minutes before each service ends. Weekend kitchen hours to be confirmed before send.',
   },
   render: (data) =>
     [
       `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
-      HEADER_ROW,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 14px;font-family:${SERIF};font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>`,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:0 32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>`,
       ...data.rows.map((row, index) => rowMarkup(row, index === data.rows.length - 1)),
       `</tbody></table></td></tr>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>`,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:${SANS};font-size:13px;line-height:20px;color:#6f6a61">${escapeEmailText(data.footnote)}</td></tr>`,
       `</tbody></table>`,
     ].join('\n'),
   text: (data) => {
     const rows = data.rows.map((row) => {
-      const bar = row.exception ? `${row.bar} (${row.exception})` : row.bar
       const kitchen = row.closed
         ? 'kitchen closed'
         : row.kitchen !== undefined
           ? `kitchen ${row.kitchen}`
           : `lunch ${row.lunch}, dinner ${row.dinner}`
-      return `${row.day}: bar ${bar}; ${kitchen}`
+      const exception = row.exception ? ` (${row.exception})` : ''
+      return `${row.day}: bar ${row.bar}; ${kitchen}${exception}`
     })
 
     return `${data.heading}\n${rows.join('\n')}\n${data.footnote}\n`

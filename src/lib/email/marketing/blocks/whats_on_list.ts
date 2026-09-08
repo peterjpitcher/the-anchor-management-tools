@@ -70,14 +70,14 @@ export const whatsOnList = defineBlock<WhatsOnListData>({
   },
   render: (data) =>
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px 32px 4px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:8px 32px 14px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px 32px 4px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;line-height:16px;letter-spacing:0.18em;text-transform:uppercase;color:#8b6914">${escapeEmailText(data.kicker)}</td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:8px 32px 14px;font-family:'DM Serif Display',Georgia,'Times New Roman',serif;font-size:26px;line-height:32px;letter-spacing:-0.02em;color:#005131">${escapeEmailText(data.heading)}</td></tr>
 <tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:0 32px"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse;background-color:#ffffff;border:1px solid #e2dccf"><tbody>
 ${data.events
   .map((event, index) => eventRowMarkup(event, index === data.events.length - 1))
   .join('\n')}
 </tbody></table></td></tr>
-<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;line-height:20px"><a href="${escapeEmailUrl(data.all_events_url)}" style="color:#8b6914;text-decoration:none">See everything on this month &rarr;</a></td></tr>
+<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:14px 32px 30px;font-family:'Outfit','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;line-height:20px"><a href="${escapeEmailUrl(data.all_events_url)}" style="color:#8b6914;text-decoration:none">See everything on this month &rarr;</a></td></tr>
 </tbody></table>`,
   text: (data) => {
     // Same reason as `whats_on_media`: the detail is a written sentence and often already

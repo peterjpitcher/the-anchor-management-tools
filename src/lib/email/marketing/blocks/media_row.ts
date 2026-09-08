@@ -76,9 +76,9 @@ export const mediaRow = defineBlock<MediaRowData>({
 
     return [
       `<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="wrap" style="width:100%;max-width:600px;border-collapse:collapse;background-color:#faf8f3"><tbody>`,
-      `<tr><td bgcolor="#faf8f3" style="background-color:#faf8f3;padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
+      `<tr><td bgcolor="#faf8f3" class="gutter" style="background-color:#faf8f3;padding:32px;"><table role="presentation" width="536" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:536px;border-collapse:collapse"><tbody>`,
       `<tr>`,
-      `<td width="240" valign="top" class="stack" style="width:240px;padding:0"><a href="${href}" style="text-decoration:none"><img src="${src}" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:240px;max-width:100%;height:auto;border:1px solid #e2dccf"></a></td>`,
+      `<td width="240" valign="top" class="stack" style="width:240px;padding:0"><a href="${href}" style="text-decoration:none"><img src="${src}" width="${data.image.width}" height="${data.image.height}" alt="${escapeEmailText(data.image.alt)}" style="display:block;width:100%;max-width:100%;height:auto;border:1px solid #e2dccf"></a></td>`,
       `<td width="24" class="stack" style="width:24px;font-size:0;line-height:0;height:16px">&nbsp;</td>`,
       `<td valign="middle" class="stack" style="padding:0"><div style="font-family:${SERIF};font-size:22px;line-height:28px;letter-spacing:-0.02em;color:#005131;padding-bottom:8px">${escapeEmailText(data.heading)}</div><div style="font-family:${SANS};font-size:14px;line-height:23px;color:#1a1a1a;padding-bottom:12px">${escapeEmailText(data.body)}</div><div style="font-family:${SANS};font-size:14px;font-weight:600;line-height:20px"><a href="${href}" style="color:#8b6914;text-decoration:none">${escapeEmailText(data.link_label)}</a></div></td>`,
       `</tr>`,
