@@ -322,6 +322,7 @@ export default async function DashboardPage() {
             employeeBirthdays={calendarEmployeeBirthdays}
             specialHours={snapshot.events.specialHours}
             parkingBookings={calendarParkingBookings}
+            marketingSends={snapshot.marketing.calendarSends}
             canManageCalendarNotes={canManageCalendarNotes}
             dailyOps={snapshot.dailyOps}
           />

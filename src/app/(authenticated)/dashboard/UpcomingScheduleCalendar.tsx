@@ -9,6 +9,7 @@ import type {
   VenueCalendarNote,
   VenueCalendarParking,
   VenueCalendarSpecialHours,
+  VenueCalendarMarketingSend,
   ScheduleDailyOps,
 } from '@/components/schedule-calendar'
 
@@ -24,6 +25,7 @@ export default function UpcomingScheduleCalendar({
   employeeBirthdays,
   specialHours,
   parkingBookings,
+  marketingSends,
   canManageCalendarNotes,
   dailyOps,
 }: {
@@ -34,6 +36,7 @@ export default function UpcomingScheduleCalendar({
   employeeBirthdays: VenueCalendarEmployeeBirthday[]
   specialHours: VenueCalendarSpecialHours[]
   parkingBookings: VenueCalendarParking[]
+  marketingSends?: VenueCalendarMarketingSend[]
   canManageCalendarNotes?: boolean
   dailyOps?: ScheduleDailyOps
 }) {
@@ -46,6 +49,7 @@ export default function UpcomingScheduleCalendar({
       employeeBirthdays={employeeBirthdays}
       specialHours={specialHours}
       parkingBookings={parkingBookings}
+      marketingSends={marketingSends}
       canManageCalendarNotes={canManageCalendarNotes}
       dailyOps={dailyOps}
       // Owner decision: the dashboard gets the same filter bar as /events. It is

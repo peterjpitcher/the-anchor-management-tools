@@ -1,12 +1,14 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
   calendarRange,
   readBalanceDues,
   readBirthdays,
   readCoversByDate,
+  readMarketingSends,
   readSpecialHours,
   readStaffByDate,
   denied,
@@ -15,6 +17,7 @@ import {
   type CalendarBirthday,
   type CalendarDailyOps,
   type CalendarDataset,
+  type CalendarMarketingSend,
   type CalendarSpecialHours,
 } from '@/lib/calendar/datasets'
 
@@ -67,6 +70,23 @@ export async function fetchCalendarBalanceDues(): Promise<CalendarDataset<Calend
   const supabase = await createClient()
   const { startIso, endIso } = calendarRange()
   return readBalanceDues(supabase, startIso, endIso)
+}
+
+/**
+ * Marketing email sends.
+ *
+ * The admin client is deliberate, not a shortcut: `marketing_campaigns` is
+ * service-role only, so a session client reads nothing at all. The permission
+ * check above it is therefore the only gate, which is why it is the first thing
+ * that happens here.
+ */
+export async function fetchCalendarMarketingSends(): Promise<
+  CalendarDataset<CalendarMarketingSend>
+> {
+  if (!(await checkUserPermission('marketing', 'view'))) return denied()
+
+  const { startIso, endIso } = calendarRange()
+  return readMarketingSends(createAdminClient(), startIso, endIso)
 }
 
 /**

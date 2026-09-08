@@ -12,5 +12,6 @@ export type {
     VenueCalendarNote,
     VenueCalendarParking,
     VenueCalendarSpecialHours,
+    VenueCalendarMarketingSend,
 } from './VenueCalendar'
 export type { ScheduleDailyOps } from './types'

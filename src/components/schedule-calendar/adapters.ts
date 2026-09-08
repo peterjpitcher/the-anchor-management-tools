@@ -1,5 +1,5 @@
 // src/components/schedule-calendar/adapters.ts
-import { addHours, differenceInCalendarDays, format } from 'date-fns'
+import { addHours, addMinutes, differenceInCalendarDays, format } from 'date-fns'
 import type {
     EventOverview,
     PrivateBookingCalendarOverview,
@@ -47,6 +47,8 @@ function statusFromString(s: string | null | undefined): CalendarEntryStatus {
             'completed',
             'visited_waiting_for_review',
             'review_clicked',
+            'sending',
+            'paused',
         ].includes(s)
     ) {
         return s as CalendarEntryStatus
@@ -78,6 +80,10 @@ function statusLabel(s: CalendarEntryStatus): string | null {
             return 'Visited'
         case 'review_clicked':
             return 'Review clicked'
+        case 'sending':
+            return 'Sending'
+        case 'paused':
+            return 'Paused'
         default:
             return null
     }
@@ -440,5 +446,104 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry | 
             status: booking.status ?? null,
         },
         onClickHref: '/parking',
+    }
+}
+
+// --- Marketing email send ---
+
+export interface MarketingSendInput {
+    id: string
+    name: string
+    subject: string
+    /** 'customer' or 'business'. Anything else is treated as an unknown list. */
+    audience_type: string
+    status: string
+    /**
+     * The instant the send sits at: when it actually started, else when it is
+     * due. Resolved by the reader, not here, so both calendars agree.
+     */
+    send_at: string | null
+    /** Approved audience size frozen at schedule time. Not a delivered count. */
+    recipient_count: number | null
+}
+
+const MARKETING_AUDIENCE_LABELS: Record<string, string> = {
+    customer: 'Guests',
+    business: 'Business contacts',
+}
+
+/**
+ * Campaign status in the calendar's words.
+ *
+ * Deliberately not the shared statusLabel(): a finished campaign is "Sent",
+ * which is what a manager glancing at the month wants to read, whereas the
+ * shared map calls every completed thing "Completed".
+ */
+function marketingStatusLabel(status: string): string {
+    switch (status) {
+        case 'sending':
+            return 'Sending'
+        case 'paused':
+            return 'Paused'
+        case 'completed':
+            return 'Sent'
+        case 'cancelled':
+            return 'Cancelled'
+        case 'draft':
+            return 'Draft'
+        default:
+            return 'Scheduled'
+    }
+}
+
+/**
+ * A marketing email send on the venue calendar.
+ *
+ * Built from an instant, like parking, so it goes through londonWallClock for
+ * the same reason: a 21:00 send must not slide to the previous day for anyone
+ * whose device is not on London time, or under `npm run test:utc`.
+ */
+export function marketingSendToEntry(send: MarketingSendInput): CalendarEntry | null {
+    if (!send.send_at) return null
+    const instant = new Date(send.send_at)
+    if (Number.isNaN(instant.getTime())) return null
+
+    const start = londonWallClock(instant)
+    // A send is a moment, not a booking. Half an hour keeps it a readable block
+    // without implying the mailing occupies the evening.
+    const end = addMinutes(start, 30)
+    const status = statusFromString(send.status)
+    const audience = MARKETING_AUDIENCE_LABELS[send.audience_type] ?? 'Marketing list'
+    const recipientCount =
+        send.recipient_count != null && Number.isFinite(send.recipient_count)
+            ? send.recipient_count
+            : null
+
+    return {
+        id: `mkt:${send.id}`,
+        kind: 'marketing_email',
+        title: send.name,
+        start,
+        end,
+        allDay: false,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: kindColor('marketing_email'),
+        subtitle:
+            recipientCount != null
+                ? `${recipientCount.toLocaleString('en-GB')} recipients`
+                : audience,
+        status,
+        statusLabel: marketingStatusLabel(send.status),
+        tooltipData: {
+            kind: 'marketing_email',
+            name: send.name,
+            subject: send.subject,
+            audience,
+            time: format(start, 'HH:mm'),
+            recipientCount,
+            statusLabel: marketingStatusLabel(send.status),
+        },
+        onClickHref: `/marketing/campaigns/${send.id}`,
     }
 }

@@ -62,6 +62,15 @@ export function entryTooltipText(entry: CalendarEntry): string {
             if (td.vehicleReg) lines.push(td.vehicleReg)
             lines.push(`${format(entry.start, 'EEE d MMM yyyy')}, ${td.timeRange}`)
             break
+        case 'marketing_email':
+            lines.push(`Marketing email: ${td.name}`)
+            lines.push(`${format(entry.start, 'EEE d MMM yyyy')}, ${td.time}`)
+            lines.push(`Subject: ${td.subject}`)
+            lines.push(td.audience)
+            if (td.recipientCount !== null) {
+                lines.push(`${td.recipientCount.toLocaleString('en-GB')} recipients`)
+            }
+            break
     }
 
     if (entry.statusLabel) lines.push(entry.statusLabel)

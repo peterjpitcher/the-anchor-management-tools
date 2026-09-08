@@ -7,7 +7,12 @@ import { PrivateBookingService } from '@/services/private-bookings'
 import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { displayName } from '@/lib/employees/display-name'
 import type { ScheduleDailyOps } from '@/components/schedule-calendar'
-import { readBirthdays, readSpecialHours } from '@/lib/calendar/datasets'
+import {
+  readBirthdays,
+  readMarketingSends,
+  readSpecialHours,
+  type CalendarMarketingSend,
+} from '@/lib/calendar/datasets'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
 import {
   buildPrivateBookingBalanceDueSummaries,
@@ -262,6 +267,13 @@ type RotaTodaySnapshot = {
   error?: string
 }
 
+type MarketingSnapshot = {
+  permitted: boolean
+  /** Campaign sends for the calendar. Empty when not permitted. */
+  calendarSends: CalendarMarketingSend[]
+  error?: string
+}
+
 type ProfileSnapshot = {
   permitted: boolean
   email: string | null
@@ -288,6 +300,7 @@ export type DashboardSnapshot = {
   tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
   rotaToday: RotaTodaySnapshot
+  marketing: MarketingSnapshot
   /** Per-day covers booked + staff on rota, for the schedule operational notes */
   dailyOps: ScheduleDailyOps
   /** B4: Total revenue from private bookings today (confirmed/completed) */
@@ -538,6 +551,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const rotaToday: RotaTodaySnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'rota'),
       staffOnRota: [],
+    }
+
+    const marketing: MarketingSnapshot = {
+      permitted: hasModuleAccess(permissionsMap, 'marketing'),
+      calendarSends: [],
     }
 
     // Per-day covers + staff for the schedule operational notes. Populated in
@@ -966,6 +984,24 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           events.specialHours = specialHoursResult.data
         } catch (error) {
           console.error('Failed to load dashboard calendar notes or special hours:', error)
+        }
+      })() : Promise.resolve(),
+
+      // Marketing sends for the calendar. Same shared reader as /events, and the
+      // same admin client it requires: marketing_campaigns is service-role only,
+      // so the `marketing` module check above is the gate.
+      marketing.permitted ? (async () => {
+        try {
+          const sendsResult = await readMarketingSends(
+            supabase,
+            eventsLookbackIso,
+            calendarNotesHorizonIso,
+          )
+          if (sendsResult.status === 'failed') throw new Error(sendsResult.message)
+          marketing.calendarSends = sendsResult.data
+        } catch (error) {
+          console.error('Failed to load dashboard marketing sends:', error)
+          marketing.error = 'Failed to load marketing sends'
         }
       })() : Promise.resolve(),
 
@@ -1680,6 +1716,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       tableBookings,
       systemHealth,
       rotaToday,
+      marketing,
       dailyOps,
       revenueToday,
       bookingPipelineValue,

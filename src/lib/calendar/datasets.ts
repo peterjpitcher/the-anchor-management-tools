@@ -256,6 +256,102 @@ export async function readBalanceDues(
   return ok(buildPrivateBookingBalanceDueSummaries(data ?? [], payments))
 }
 
+// --- Marketing email sends ------------------------------------------------
+
+export interface CalendarMarketingSend {
+  id: string
+  name: string
+  subject: string
+  audience_type: string
+  status: string
+  /** The instant the send sits at. Resolved here so both calendars agree. */
+  send_at: string | null
+  recipient_count: number | null
+}
+
+/**
+ * Campaign statuses worth a place on the calendar.
+ *
+ * Drafts are excluded on purpose: a draft has no send date, so it cannot be
+ * placed on a day, and a half-written campaign is not a diary entry. Cancelled
+ * ones ARE included, struck through, because "that mailing is not going out" is
+ * exactly what someone looking at next Tuesday needs to know.
+ */
+const CALENDAR_CAMPAIGN_STATUSES = ['scheduled', 'sending', 'paused', 'completed', 'cancelled']
+
+/**
+ * When a campaign belongs on the calendar.
+ *
+ * `started_at` first: once a send has begun, the day it actually went is the
+ * truth, and a rescheduled-then-started campaign would otherwise sit on the day
+ * it was originally due. `scheduled_for` covers everything still to come.
+ */
+function resolveSendAt(row: {
+  started_at?: unknown
+  scheduled_for?: unknown
+  completed_at?: unknown
+}): string | null {
+  for (const value of [row.started_at, row.scheduled_for, row.completed_at]) {
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return null
+}
+
+/**
+ * Marketing sends in the window.
+ *
+ * `marketing_campaigns` is service-role only (RLS plus a REVOKE from
+ * `authenticated`), so unlike the other readers this one must be handed an ADMIN
+ * client. Both call sites resolve the caller's `marketing:view` permission
+ * first; this reader never decides who may see a campaign.
+ */
+export async function readMarketingSends(
+  adminClient: SupabaseClient,
+  startIso: string,
+  endIso: string,
+): Promise<CalendarDataset<CalendarMarketingSend>> {
+  // Widened to whole days at the boundaries, because both columns are instants
+  // and a bare date compares as midnight UTC.
+  const startInstant = `${startIso}T00:00:00Z`
+  const endInstant = `${endIso}T23:59:59Z`
+
+  const { data, error } = await adminClient
+    .from('marketing_campaigns')
+    .select(
+      'id, name, subject, audience_type, status, scheduled_for, started_at, completed_at, approved_recipient_count',
+    )
+    .in('status', CALENDAR_CAMPAIGN_STATUSES)
+    // Either date can be the one that places the row, so filter on both and let
+    // resolveSendAt pick. Filtering on scheduled_for alone would drop a send that
+    // was started manually and never carried a schedule.
+    .or(
+      `and(started_at.gte.${startInstant},started_at.lte.${endInstant}),` +
+        `and(scheduled_for.gte.${startInstant},scheduled_for.lte.${endInstant})`,
+    )
+    .order('scheduled_for', { ascending: true, nullsFirst: false })
+    .range(0, 999)
+
+  if (error) {
+    console.error('Failed to load marketing sends for the calendar:', error)
+    return failed('Marketing email sends could not be loaded.')
+  }
+
+  return ok(
+    (data ?? [])
+      .map((row) => ({
+        id: String(row.id),
+        name: typeof row.name === 'string' ? row.name : 'Marketing email',
+        subject: typeof row.subject === 'string' ? row.subject : '',
+        audience_type: typeof row.audience_type === 'string' ? row.audience_type : '',
+        status: typeof row.status === 'string' ? row.status : '',
+        send_at: resolveSendAt(row),
+        recipient_count:
+          typeof row.approved_recipient_count === 'number' ? row.approved_recipient_count : null,
+      }))
+      .filter((send) => send.send_at !== null),
+  )
+}
+
 // --- Daily operations ----------------------------------------------------
 
 export interface CalendarDailyOps {

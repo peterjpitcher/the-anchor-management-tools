@@ -16,6 +16,7 @@ describe('calendar appearance', () => {
       special_hours: { color: '#111827', label: 'Special hours', shortLabel: 'Hours' },
       calendar_note: { color: '#7DD3FC', label: 'Calendar notes', shortLabel: 'Note' },
       parking: { color: '#16A34A', label: 'Parking', shortLabel: 'Parking' },
+      marketing_email: { color: '#BE185D', label: 'Marketing emails', shortLabel: 'Email' },
     })
   })
 
@@ -28,6 +29,7 @@ describe('calendar appearance', () => {
     expect(calendarColourNeedsLightText('#1E3A8A')).toBe(true)
     expect(calendarColourNeedsLightText('#9333ea')).toBe(true)
     expect(calendarColourNeedsLightText('#111827')).toBe(true)
+    expect(calendarColourNeedsLightText('#BE185D')).toBe(true)
     expect(calendarColourNeedsLightText('#16A34A')).toBe(false)
     expect(calendarColourNeedsLightText('#FACC15')).toBe(false)
   })
