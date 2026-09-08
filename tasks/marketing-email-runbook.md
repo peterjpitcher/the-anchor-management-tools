@@ -123,6 +123,13 @@ Check each of these against a live source, not against the previous email in the
   last email of that series. A Snowball rolls over, so its figure and its number target
   change every time.
 - **Every booking link must match `events.slug`.** A stale slug looks fine and lands nowhere.
+- **`hours_table` labels must be eight characters or fewer.** The label column is a fixed
+  140px with 22px of left padding, set in 22px serif, and the time cell beside it is
+  vertically centred. A longer label wraps to two or three lines while the time floats in the
+  middle of them, which reads as a broken panel. "Saturday" fits, "Tuesday to Friday" does not.
+  Put the qualifier in the time instead: `Lunch | 12pm to 3pm, Tue to Fri`. The block markup is
+  fidelity-tested against the designer's handover, so this is a content constraint, not a bug
+  to fix in the block.
 
 ---
 
