@@ -11,7 +11,10 @@ import {
   summariseClicksByRecipient,
 } from '@/lib/email/marketing/attribution'
 import { provisionCampaignLinks } from '@/lib/email/marketing/links'
-import { collectDestinationUrls } from '@/lib/email/marketing/render'
+import { collectDestinationUrls, renderCampaignText } from '@/lib/email/marketing/render'
+import { findVenueClosureClaims } from '@/lib/email/marketing/venueClosureClaims'
+import { getBusinessHoursForDates } from '@/lib/business-hours/effective'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
 import {
   marketingContentSchema,
@@ -566,6 +569,50 @@ async function assertNoFrequencyCapCollision(
   if (message) throw new Error(message)
 }
 
+/**
+ * Refuses to schedule copy that tells a reader the pub is shut when it is open.
+ *
+ * Sits beside the frequency-cap guard for the same reason: scheduling is the moment a human
+ * is present and the content is about to be frozen, so it is the last place a mistake can be
+ * caught cheaply. Refusing here also means an already-scheduled campaign can never be killed
+ * at send time by a rule added after it was approved.
+ *
+ * The open days come from the published `business_hours` version in force on the send date,
+ * not from today's, because a campaign scheduled for December must be judged against
+ * December's hours.
+ *
+ * A failure to read the hours does NOT block the send. The phrasing half of the check needs
+ * no records and still runs, and refusing to schedule an otherwise good campaign because a
+ * lookup failed would turn this guard into an outage.
+ */
+async function assertNoMisleadingClosureCopy(
+  content: MarketingContent,
+  when: Date,
+): Promise<void> {
+  let openWeekdays: Set<number> | undefined
+
+  try {
+    const isoDate = toLocalIsoDate(when)
+    const rows = await getBusinessHoursForDates([isoDate])
+    const row = rows.get(isoDate)
+    if (row) {
+      // One date resolves one weekday, so anything not that weekday stays unknown and the
+      // factual half simply does not fire for it. Better silent than guessing.
+      openWeekdays = row.is_closed ? new Set() : new Set([row.day_of_week])
+    }
+  } catch {
+    // Deliberately swallowed. See the note above: the phrasing rule still runs.
+  }
+
+  const claims = findVenueClosureClaims(renderCampaignText(content), openWeekdays)
+  if (claims.length === 0) return
+
+  throw new Error(
+    `This copy would tell people we are shut when we are not. ${claims[0].message}` +
+      (claims.length > 1 ? ` (${claims.length - 1} more like it.)` : ''),
+  )
+}
+
 export async function scheduleCampaign(
   id: string,
   scheduledFor: string,
@@ -599,6 +646,7 @@ export async function scheduleCampaign(
   }
 
   await assertNoFrequencyCapCollision(supabase, existing, when)
+  await assertNoMisleadingClosureCopy(content, when)
 
   const now = new Date().toISOString()
   const linkMap = await provisionLinkMap(id, existing.utmCampaign ?? id, content)

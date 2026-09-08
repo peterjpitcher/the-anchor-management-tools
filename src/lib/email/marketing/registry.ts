@@ -34,6 +34,7 @@ import { steps } from './blocks/steps'
 import { textBlock } from './blocks/text_block'
 import { twoUpCards } from './blocks/two_up_cards'
 import type { EmailBlockModule } from './blocks/types'
+import { findVenueClosureClaims } from './venueClosureClaims'
 import { whatsOnList } from './blocks/whats_on_list'
 import { whatsOnMedia } from './blocks/whats_on_media'
 
@@ -190,5 +191,32 @@ export function lintMarketingContent(content: MarketingContent): string[] {
     warnings.push(`The preheader is ${preheaderLength} characters. Aim for roughly 85.`)
   }
 
+  // Copy that reads as "we are shut on Mondays" when we open at 4pm. Surfaced here as well
+  // as refused at schedule time, so the author sees it while writing rather than at the last
+  // step. Only the phrasing half runs: this function is pure and has no hours records, and
+  // deciding whether a closure claim is TRUE needs them. `scheduleCampaign` does both.
+  for (const claim of findVenueClosureClaims(renderBlockText(content))) {
+    warnings.push(claim.message)
+  }
+
   return warnings
+}
+
+/**
+ * The visible copy of a campaign, for checks that read words rather than markup.
+ *
+ * Deliberately not `renderCampaignText`: that lives in `render.ts`, which imports this file,
+ * and reaching back the other way would make the two modules circular. Blocks that fail to
+ * parse are skipped, because `validateMarketingContent` already reports those properly and a
+ * lint pass should never be the thing that throws.
+ */
+function renderBlockText(content: MarketingContent): string {
+  return content.blocks
+    .map((entry) => {
+      const block = BLOCK_REGISTRY[entry.type]
+      if (!block) return ''
+      const parsed = block.schema.safeParse(entry.data)
+      return parsed.success ? block.text(parsed.data) : ''
+    })
+    .join('\n')
 }

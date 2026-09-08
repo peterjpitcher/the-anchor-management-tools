@@ -13,7 +13,10 @@
  * version; the 31 October row from `special_hours`; the roast and Christmas facts from the
  * website's `docs/SSOT.md`.
  *
- * Dry run by default. RUN_OCTOBER_ROUNDUP_DRAFT_MUTATION=true creates it.
+ * Re-runnable: it updates the existing draft in place rather than adding a second one, so
+ * a round of the owner's feedback is one edit to the JSON and one run of this.
+ *
+ * Dry run by default. RUN_OCTOBER_ROUNDUP_DRAFT_MUTATION=true applies it.
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -30,7 +33,7 @@ import {
 import { collectDestinationUrls, renderCampaignHtml, renderCampaignText } from '@/lib/email/marketing/render'
 import { assertScriptMutationAllowed } from '@/lib/script-mutation-safety'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createCampaign } from '@/services/marketing-campaigns'
+import { createCampaign, updateCampaign } from '@/services/marketing-campaigns'
 
 const CAMPAIGN_FILE = path.join(
   process.cwd(),
@@ -61,16 +64,22 @@ async function main(): Promise<void> {
   console.warn(`  links     ${urls.length}\n${urls.map((u) => `    ${u}`).join('\n')}`)
   console.warn(`  warnings  ${warnings.length === 0 ? 'none' : warnings.join(' | ')}`)
 
-  // A second draft of the same email would sit in the list looking like a decision nobody
-  // made, and the owner would have to work out which one to read.
+  // Run again after an edit and this updates the draft in place rather than leaving a second
+  // one in the list looking like a decision nobody made. The owner is reading this campaign
+  // at a URL, so the URL has to keep meaning the same email.
   const supabase = createAdminClient()
   const { data: existing, error } = await supabase
     .from('marketing_campaigns')
     .select('id,status')
     .eq('utm_campaign', UTM_CAMPAIGN)
   if (error) throw new Error(error.message)
-  if (existing && existing.length > 0) {
-    console.warn(`\nAlready exists: ${existing.map((c) => `${c.id} (${c.status})`).join(', ')}. Nothing to do.`)
+
+  const current = existing?.[0]
+  if (current && current.status !== 'draft') {
+    console.warn(
+      `\n${current.id} is ${current.status}, not a draft, so its content is frozen. ` +
+        'Put it back to draft first if it really needs editing.',
+    )
     return
   }
 
@@ -79,19 +88,25 @@ async function main(): Promise<void> {
     envVar: 'RUN_OCTOBER_ROUNDUP_DRAFT_MUTATION',
   })
 
-  const campaign = await createCampaign(
-    {
-      name: CAMPAIGN_NAME,
-      subject: content.title,
-      preheader: content.preheader,
-      content,
-      audienceType: 'customer',
-      utmCampaign: UTM_CAMPAIGN,
-    },
-    OWNER_USER_ID,
-  )
+  const campaign = current
+    ? await updateCampaign(
+        current.id,
+        { subject: content.title, preheader: content.preheader, content },
+        OWNER_USER_ID,
+      )
+    : await createCampaign(
+        {
+          name: CAMPAIGN_NAME,
+          subject: content.title,
+          preheader: content.preheader,
+          content,
+          audienceType: 'customer',
+          utmCampaign: UTM_CAMPAIGN,
+        },
+        OWNER_USER_ID,
+      )
 
-  console.warn(`\nDraft created: ${campaign.id} (${campaign.status})`)
+  console.warn(`\nDraft ${current ? 'updated' : 'created'}: ${campaign.id} (${campaign.status})`)
   console.warn(`Review it at https://management.orangejelly.co.uk/marketing/campaigns/${campaign.id}`)
 }
 
