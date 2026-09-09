@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "title": "Welcome to October at The Anchor",
-  "preheader": "Three nights out this month, all with a Halloween lean, and the clocks go back on the 25th.",
+  "title": "October at The Anchor",
+  "preheader": "Dark evenings, three brilliant nights out, and Halloween done properly.",
   "blocks": [
     {
       "type": "masthead_seasonal",
@@ -13,10 +13,10 @@
     {
       "type": "text_block",
       "data": {
-        "heading": "Welcome to October",
+        "heading": "October is here, and we are leaning right into it",
         "body": [
-          "Three nights out this month, and all of them lean into Halloween, finishing with the party itself on Saturday the 31st.",
-          "The clocks go back on Sunday 25 October, so it will be dark by teatime. We are open seven days a week, from midday Tuesday to Sunday and from 4pm on Mondays. The kitchen times for each day are further down this email."
+          "There is something about the first properly dark evening of the year that makes a pub feel like the best place on earth. The lights go on, the fire gets going, and suddenly a Wednesday feels like an occasion. October is our favourite month for exactly that reason, and we have gone all in on it.",
+          "Three nights out, each with its own bit of mischief, building up to Halloween itself on the Saturday. Whether you fancy testing your general knowledge, singing along to horror soundtracks, or going full fancy dress with the rest of the village, there is a night here with your name on it."
         ],
         "buttons": [
           {
@@ -36,7 +36,7 @@
           {
             "date": "Wed 7 Oct",
             "name": "A Hint of Halloween Quiz Night",
-            "detail": "7pm start, £3 cash on arrival, teams of up to six. Spooky touches, but no horror knowledge needed.",
+            "detail": "Teams of up to six, £3 cash on the night. A few spooky touches, no horror expertise required.",
             "image": {
               "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/76ec328b-48f8-47c0-b041-cc405e085deb/square/branded/1788709820568-square-email.jpg",
               "alt": "A Hint of Halloween Quiz Night at The Anchor in Stanwell Moor",
@@ -49,7 +49,7 @@
           {
             "date": "Fri 16 Oct",
             "name": "Screams & Soundtracks Music Bingo",
-            "detail": "7pm start, £5 cash on arrival. Nikki Manfadge hosts two rounds of classic horror soundtracks.",
+            "detail": "Two rounds of classic horror soundtracks with Nikki in charge. £5 cash, and dressing up is encouraged.",
             "image": {
               "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/c3ac7e18-e562-4ef8-bea7-cae29f6e96ac/square/branded/1788768723539-square-email.jpg",
               "alt": "Screams and Soundtracks classic horror music bingo at The Anchor",
@@ -62,7 +62,7 @@
           {
             "date": "Sat 31 Oct",
             "name": "House of Horrors Halloween Party",
-            "detail": "8pm to midnight, free entry, fancy dress encouraged. Come early if you want a good spot.",
+            "detail": "Free entry, fancy dress and the bar open until midnight. Come early if you want a good spot.",
             "image": {
               "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/d52cbd18-d293-4516-beca-e151eaa90180/square/branded/1788785717882-square-email.jpg",
               "alt": "Enter If You Dare, the House of Horrors Halloween party at The Anchor",
@@ -150,7 +150,7 @@
               "height": 144
             },
             "heading": "Sunday roast",
-            "body": "1pm to 6pm every Sunday, last seating 5.30pm. Nothing to pre-order and no Saturday cutoff.",
+            "body": "Carved fresh every Sunday, 1pm to 6pm. Nothing to order in advance, so you can decide on the day.",
             "cta_label": "Book a table →",
             "url": "https://www.the-anchor.pub/book-table"
           },
@@ -162,7 +162,7 @@
               "height": 146
             },
             "heading": "Christmas is booking",
-            "body": "Sittings run 10 November to 20 December, from four guests up, with a £10 per person deposit.",
+            "body": "The good dates go first, so if you have a work do or a family table in mind, now is the moment.",
             "cta_label": "Christmas enquiries →",
             "url": "https://www.the-anchor.pub/christmas-parties"
           }
@@ -172,9 +172,9 @@
     {
       "type": "text_block",
       "data": {
-        "heading": "Coming in November",
+        "heading": "And when November comes",
         "body": [
-          "Sparks & Sparklers Quiz Night on Wednesday 4 November, then Sequins & Showstoppers Music Bingo on Friday 13 November and a Snowball Showdown Cash Bingo on Wednesday 18 November. We will write to you about each one nearer the time."
+          "Sparks & Sparklers Quiz Night on Wednesday 4 November, Sequins & Showstoppers Music Bingo on Friday 13 November, and the Snowball Showdown on Wednesday 18 November. We will nudge you nearer the time."
         ]
       }
     },
@@ -182,7 +182,7 @@
       "type": "closing_panel_dark",
       "data": {
         "script_line": "See you this month",
-        "body": "Quiz team, bingo card or fancy dress, we would rather see you than not. Book a table or just turn up.",
+        "body": "Quiz team, fancy dress or just a quiet pint by the fire. Whatever brings you in this month, we would love to see you.",
         "cta_label": "See what is on",
         "cta_url": "https://www.the-anchor.pub/whats-on",
         "reassurance_items": [
