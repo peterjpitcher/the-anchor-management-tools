@@ -355,7 +355,13 @@ export async function createCampaign(
       audience_type: input.audienceType ?? 'business',
       audience: audienceToDb(audience),
       utm_campaign: emptyToNull(input.utmCampaign),
-      ignores_frequency_cap: input.ignoresFrequencyCap === true,
+      // Only sent when the caller actually asks for it. The column defaults to false, so
+      // omitting it is identical in effect and lets this code run against a database that
+      // has not had the exemption migration applied yet. Writing it unconditionally coupled
+      // every campaign creation to that migration, and creating a draft failed outright.
+      ...(input.ignoresFrequencyCap === undefined
+        ? {}
+        : { ignores_frequency_cap: input.ignoresFrequencyCap === true }),
       status: 'draft',
       created_by: userId,
     })
