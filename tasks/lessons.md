@@ -251,3 +251,24 @@ whether each clause is true. Two shapes to watch for, both now enforced by
 The guard warns in the campaign UI and refuses at `scheduleCampaign`, deliberately not in
 `validateMarketingContent`: that runs again before every send against deployed code, so a
 rule added today would be able to kill a campaign approved last month.
+
+## 9 September 2026: true, accurate, and entirely about us
+
+**Mistake:** The December round-up opened with "Three nights out before Christmas, the
+last of the Christmas sittings, and then the quiet stretch between the years when the bar
+is open and the kitchen has earned a rest." The owner rejected it. Every fact in it is
+right and I had checked every one. The problem is that it is a stock-take: our nights, our
+sittings, our kitchen's rest. A reader gets nothing to feel and no reason to come in.
+
+His example of what it should be: "December is finally here, which means we can officially
+stop pretending it's too early to get excited about Christmas. The lights are twinkling,
+the festive drinks are flowing and there's something about this time of year that makes
+even an ordinary evening feel a little more special."
+
+**Rule:** Accuracy is the floor, not the goal. Marketing copy has a second job after being
+true, which is to make someone want to be there, and I keep shipping the first without the
+second because the first is the one I can verify. Before any customer-facing paragraph
+ships, check it describes something the reader will feel rather than something we will do,
+and that there is a picture in it. If a sentence is a list of operational facts, it belongs
+in a table; the prose beside the table is where the warmth goes. The facts themselves are
+never warmed: times, prices and hours stay exactly as the records have them.

@@ -310,6 +310,20 @@ These came from real review rounds. Ignoring them means a rewrite.
   the tone friendly: he rejected a version that "sounds like a legal nightmare".
 - **Facts come from live sources**, the `business_hours` rows and the website's `docs/SSOT.md`,
   never from the designer handover, which is stale on capacity, pricing and hours.
+- **Write from the reader's side, not ours.** Owner correction, 9 September 2026. He rejected
+  "Three nights out before Christmas, the last of the Christmas sittings, and then the quiet
+  stretch between the years when the bar is open and the kitchen has earned a rest." Every
+  word of it is true and it is entirely about us: our nights, our sittings, our kitchen. What
+  he wants is what the reader gets out of it. "December is finally here, which means we can
+  officially stop pretending it's too early to get excited about Christmas. The lights are
+  twinkling, the festive drinks are flowing and there's something about this time of year
+  that makes even an ordinary evening feel a little more special."
+  Three tests before a paragraph ships: does it describe something the reader will feel
+  rather than something we will do; would it survive being read out loud in the bar; and is
+  there a picture in it. An operational sentence with no picture in it belongs in a table,
+  not in prose.
+- **Excitement never reaches the facts.** Times, prices, dates and hours stay exactly as the
+  records have them. Warm the sentence around a fact, never the fact.
 - **Never hang an exception off a day.** "We are open from midday every day except Monday" is
   factually correct, and it reads as "we are shut on Mondays". We are not: we open at 4pm.
   Say what the day IS: "from midday Tuesday to Sunday and from 4pm on Mondays". The rule

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "title": "Welcome to December at The Anchor",
-  "preheader": "Three nights out, the last Christmas sittings, and our hours over the festive fortnight.",
+  "title": "December at The Anchor",
+  "preheader": "The lights are up, the festive nights are booked, and everyone is welcome.",
   "blocks": [
     {
       "type": "masthead_seasonal",
@@ -13,13 +13,17 @@
     {
       "type": "text_block",
       "data": {
-        "heading": "Welcome to December",
+        "heading": "December is finally here",
         "body": [
-          "Three nights out before Christmas, the last of the Christmas sittings, and then the quiet stretch between the years when the bar is open and the kitchen has earned a rest.",
-          "Our hours change over the festive fortnight, so they are set out in full further down. If you are booking a Christmas meal, 20 December is the last sitting."
+          "Which means we can officially stop pretending it is too early to get excited about Christmas. The lights are twinkling, the festive drinks are flowing, and there is something about this time of year that makes even an ordinary evening feel a little bit special.",
+          "Whether it is a cosy dinner with the family, a few drinks with friends, or one of those brilliantly festive nights that gets you properly into the Christmas spirit, this is the month for making memories and enjoying every bit of the warmth and glitz of the season. We genuinely cannot believe we are here already, but now that we are, we intend to make the most of every Christmassy moment."
         ],
         "buttons": [
-          { "label": "See what is on", "url": "https://www.the-anchor.pub/whats-on", "variant": "primary" }
+          {
+            "label": "See what is on",
+            "url": "https://www.the-anchor.pub/whats-on",
+            "variant": "primary"
+          }
         ]
       }
     },
@@ -32,24 +36,39 @@
           {
             "date": "Wed 2 Dec",
             "name": "Tinsel & Trivia Quiz Night",
-            "detail": "7pm start, £3 cash on arrival, teams of up to six. A gentle festive nod, not a themed quiz.",
-            "image": { "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/ccbe8b82-15b0-4261-b58e-2ac4d7210e25/square/branded/1788780104403-square-email.jpg", "alt": "Tinsel and Trivia Quiz Night at The Anchor in Stanwell Moor", "width": 180, "height": 180 },
+            "detail": "Teams of up to six, £3 cash on the night, with just enough tinsel in the questions to feel festive.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/ccbe8b82-15b0-4261-b58e-2ac4d7210e25/square/branded/1788780104403-square-email.jpg",
+              "alt": "Tinsel and Trivia Quiz Night at The Anchor in Stanwell Moor",
+              "width": 180,
+              "height": 180
+            },
             "cta_label": "Reserve your table →",
             "url": "https://www.the-anchor.pub/events/quiz-night-2026-12-02"
           },
           {
             "date": "Fri 11 Dec",
             "name": "Sleigh My Name Festive Music Bingo",
-            "detail": "7pm start, £5 cash on arrival. Two themed rounds of festive songs, Nikki hosting.",
-            "image": { "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a/square/branded/1788777221337-square-email.jpg", "alt": "Sleigh My Name festive music bingo at The Anchor", "width": 180, "height": 180 },
+            "detail": "Two rounds of festive songs with Nikki hosting. £5 cash, and singing along is very much the point.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a/square/branded/1788777221337-square-email.jpg",
+              "alt": "Sleigh My Name festive music bingo at The Anchor",
+              "width": 180,
+              "height": 180
+            },
             "cta_label": "Save your seats →",
             "url": "https://www.the-anchor.pub/events/christmas-music-bingo-sleigh-my-name-festive-music-bingo-2026-12-11"
           },
           {
             "date": "Wed 16 Dec",
             "name": "Christmas Jackpot Cash Bingo",
-            "detail": "7pm start, £10 cash a book. Ten games, a rollover Snowball and a cash jackpot at the end.",
-            "image": { "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/b9334958-76b4-4504-a64a-0d47145bd75e/square/branded/1788782755025-square-email.jpg", "alt": "Christmas Jackpot Cash Bingo at The Anchor in Stanwell Moor", "width": 180, "height": 180 },
+            "detail": "£10 a book for ten games, a rollover Snowball, and a cash jackpot to see the year out.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/b9334958-76b4-4504-a64a-0d47145bd75e/square/branded/1788782755025-square-email.jpg",
+              "alt": "Christmas Jackpot Cash Bingo at The Anchor in Stanwell Moor",
+              "width": 180,
+              "height": 180
+            },
             "cta_label": "Save your seats →",
             "url": "https://www.the-anchor.pub/events/cash-bingo-2026-12-16"
           }
@@ -62,13 +81,45 @@
       "data": {
         "heading": "Our usual week",
         "rows": [
-          { "day": "Monday", "bar": "4pm to 10pm", "closed": true },
-          { "day": "Tuesday", "bar": "12pm to 10pm", "lunch": "12pm to 3pm", "dinner": "4pm to 9pm" },
-          { "day": "Wednesday", "bar": "12pm to 10pm", "lunch": "12pm to 3pm", "dinner": "4pm to 9pm" },
-          { "day": "Thursday", "bar": "12pm to 10pm", "lunch": "12pm to 3pm", "dinner": "4pm to 9pm" },
-          { "day": "Friday", "bar": "12pm to 10pm", "lunch": "12pm to 3pm", "dinner": "4pm to 9pm" },
-          { "day": "Saturday", "bar": "12pm to 10pm", "kitchen": "12pm to 7pm" },
-          { "day": "Sunday", "bar": "12pm to 10pm", "kitchen": "1pm to 6pm" }
+          {
+            "day": "Monday",
+            "bar": "4pm to 10pm",
+            "closed": true
+          },
+          {
+            "day": "Tuesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Wednesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Thursday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Friday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Saturday",
+            "bar": "12pm to 10pm",
+            "kitchen": "12pm to 7pm"
+          },
+          {
+            "day": "Sunday",
+            "bar": "12pm to 10pm",
+            "kitchen": "1pm to 6pm"
+          }
         ],
         "footnote": "These are our hours up to and including Monday 21 December. The dates that differ are listed below."
       }
@@ -78,15 +129,51 @@
       "data": {
         "heading": "Christmas and New Year",
         "rows": [
-          { "date": "Tue 22 Dec", "hours": "12pm to 10pm", "note": "Drinks only, no food" },
-          { "date": "Wed 23 Dec", "hours": "12pm to 10pm", "note": "Drinks only, no food" },
-          { "date": "Thu 24 Dec", "hours": "12pm to 10pm", "note": "Christmas Eve, drinks only" },
-          { "date": "Fri 25 Dec", "hours": "12pm to 3pm", "note": "Christmas Day, drinks only. Happy Christmas from all of us" },
-          { "date": "Sat 26 Dec", "closed": true, "note": "Boxing Day" },
-          { "date": "Tue 29 Dec", "hours": "12pm to 10pm", "note": "Drinks only, no food" },
-          { "date": "Wed 30 Dec", "hours": "12pm to 10pm", "note": "Drinks only, no food" },
-          { "date": "Thu 31 Dec", "hours": "12pm to 10pm", "note": "New Year’s Eve, drinks only" },
-          { "date": "Fri 1 Jan", "closed": true, "note": "New Year’s Day" }
+          {
+            "date": "Tue 22 Dec",
+            "hours": "12pm to 10pm",
+            "note": "Drinks only, no food"
+          },
+          {
+            "date": "Wed 23 Dec",
+            "hours": "12pm to 10pm",
+            "note": "Drinks only, no food"
+          },
+          {
+            "date": "Thu 24 Dec",
+            "hours": "12pm to 10pm",
+            "note": "Christmas Eve, drinks only"
+          },
+          {
+            "date": "Fri 25 Dec",
+            "hours": "12pm to 3pm",
+            "note": "Christmas Day, drinks only. Happy Christmas from all of us"
+          },
+          {
+            "date": "Sat 26 Dec",
+            "closed": true,
+            "note": "Boxing Day"
+          },
+          {
+            "date": "Tue 29 Dec",
+            "hours": "12pm to 10pm",
+            "note": "Drinks only, no food"
+          },
+          {
+            "date": "Wed 30 Dec",
+            "hours": "12pm to 10pm",
+            "note": "Drinks only, no food"
+          },
+          {
+            "date": "Thu 31 Dec",
+            "hours": "12pm to 10pm",
+            "note": "New Year’s Eve, drinks only"
+          },
+          {
+            "date": "Fri 1 Jan",
+            "closed": true,
+            "note": "New Year’s Day"
+          }
         ],
         "footnote": "Any date not listed runs our usual hours above. The kitchen is back to normal on Tuesday 12 January."
       }
@@ -96,16 +183,26 @@
       "data": {
         "cards": [
           {
-            "image": { "src": "https://www.the-anchor.pub/images/food/sunday-roast/the-anchor-sunday-roast-stanwell-moor.jpg", "alt": "A Sunday roast at The Anchor in Stanwell Moor", "width": 258, "height": 144 },
+            "image": {
+              "src": "https://www.the-anchor.pub/images/food/sunday-roast/the-anchor-sunday-roast-stanwell-moor.jpg",
+              "alt": "A Sunday roast at The Anchor in Stanwell Moor",
+              "width": 258,
+              "height": 144
+            },
             "heading": "Sunday roast",
-            "body": "1pm to 6pm every Sunday up to 20 December, last seating 5.30pm. Nothing to pre-order.",
+            "body": "Carved fresh every Sunday up to 20 December, 1pm to 6pm. Nothing to order in advance.",
             "cta_label": "Book a table →",
             "url": "https://www.the-anchor.pub/book-table"
           },
           {
-            "image": { "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg", "alt": "A Christmas dinner laid out at The Anchor", "width": 258, "height": 146 },
+            "image": {
+              "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+              "alt": "A Christmas dinner laid out at The Anchor",
+              "width": 258,
+              "height": 146
+            },
             "heading": "Last Christmas sittings",
-            "body": "The final sitting is Sunday 20 December. From four guests up, with a £10 per person deposit.",
+            "body": "Sunday 20 December is the last sitting of the year, from four of you up. Do not leave it too late.",
             "cta_label": "Christmas enquiries →",
             "url": "https://www.the-anchor.pub/christmas-parties"
           }
@@ -113,13 +210,25 @@
       }
     },
     {
+      "type": "text_block",
+      "data": {
+        "heading": "Between Christmas and the new year",
+        "body": [
+          "The bar stays open through the quiet days, and there is a lot to be said for a pint somewhere warm when the house is full of relatives. The dates that differ are all above, and the kitchen is back to its usual self on Tuesday 12 January."
+        ]
+      }
+    },
+    {
       "type": "closing_panel_dark",
       "data": {
         "script_line": "Happy Christmas from all of us",
-        "body": "Thank you for a good year. Whether we see you at the quiz, at a Christmas table or on a quiet afternoon in between, you are welcome.",
+        "body": "Thank you for a brilliant year. Whether we see you at the quiz, round a Christmas table, or on a quiet afternoon in between, you are always welcome here.",
         "cta_label": "See what is on",
         "cta_url": "https://www.the-anchor.pub/whats-on",
-        "reassurance_items": ["Free parking right outside", "Dogs welcome throughout"],
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ],
         "phone_label": "01753 682707",
         "phone_url": "tel:+441753682707",
         "whatsapp_label": "WhatsApp",
