@@ -12,6 +12,7 @@ import {
 } from '@/lib/email/marketing/attribution'
 import { provisionCampaignLinks } from '@/lib/email/marketing/links'
 import { collectDestinationUrls, renderCampaignText } from '@/lib/email/marketing/render'
+import { houseStyleErrors } from '@/lib/copy/house-style'
 import { findVenueClosureClaims } from '@/lib/email/marketing/venueClosureClaims'
 import { getBusinessHoursForDates } from '@/lib/business-hours/effective'
 import { toLocalIsoDate } from '@/lib/dateUtils'
@@ -663,7 +664,19 @@ export async function scheduleCampaign(
   // refuse a collision the send itself will handle. Checking it anyway would make the guard
   // and the enforcement disagree, and the guard is the one people believe.
   if (!existing.ignoresFrequencyCap) {
-    await assertNoFrequencyCapCollision(supabase, existing, when)
+    // A claim the SSOT bans outright, in copy about to be frozen and sent. Voice warnings are
+  // surfaced by the content lint instead: those are worth fixing and never worth refusing a
+  // send over, and a checker that blocks on "premium" gets switched off.
+  const bannedClaims = houseStyleErrors(renderCampaignText(content))
+  if (bannedClaims.length > 0) {
+    throw new Error(
+      `This copy carries a claim the brand rules ban. "${bannedClaims[0].matched}": ` +
+        `${bannedClaims[0].message}` +
+        (bannedClaims.length > 1 ? ` (${bannedClaims.length - 1} more like it.)` : ''),
+    )
+  }
+
+  await assertNoFrequencyCapCollision(supabase, existing, when)
   }
   await assertNoMisleadingClosureCopy(content, when)
 

@@ -13,10 +13,10 @@
     {
       "type": "text_block",
       "data": {
-        "heading": "Dark by five, and we would not have it any other way",
+        "heading": "Dark by five, and we wouldn't have it any other way",
         "body": [
-          "November is the month the year finally slows down enough to enjoy. It is dark by five, cold enough to justify the fire, and there is genuinely no better excuse to be sat in a warm pub with people you like. This is the month we do our best work.",
-          "Three proper nights out to get you through it, and then the bit everyone secretly looks forward to: Christmas. Our first festive sittings open on Tuesday 10 November, and the best dates always go to whoever asks first."
+          "November's the month the year finally slows down enough to enjoy. It's dark by five and cold enough to justify the fire. There's no better excuse to be sat in a warm pub with people you like.",
+          "Three proper nights out to get you through it, and then the bit everyone secretly looks forward to. Our first Christmas sittings open on Tuesday 10 November, and the best dates go to whoever asks first."
         ],
         "buttons": [
           {
@@ -79,7 +79,7 @@
     {
       "type": "opening_hours_week",
       "data": {
-        "heading": "When we are open",
+        "heading": "When we're open",
         "rows": [
           {
             "day": "Monday",
@@ -136,7 +136,7 @@
               "height": 144
             },
             "heading": "Sunday roast",
-            "body": "Carved fresh every Sunday, 1pm to 6pm. Nothing to order in advance, so you can decide on the day.",
+            "body": "Carved fresh every Sunday, 1pm to 6pm. Nothing to order ahead, so you can decide on the day.",
             "cta_label": "Book a table →",
             "url": "https://www.the-anchor.pub/book-table"
           },
@@ -160,7 +160,7 @@
       "data": {
         "heading": "And when December comes",
         "body": [
-          "Tinsel & Trivia on Wednesday 2 December, Sleigh My Name Festive Music Bingo on Friday 11 December, and the Christmas Jackpot on Wednesday 16 December. Our hours shift over Christmas and we will lay them all out for you next month."
+          "Tinsel & Trivia on Wednesday 2 December, Sleigh My Name Festive Music Bingo on Friday the 11th, and the Christmas Jackpot on Wednesday the 16th. Our hours shift over Christmas, and we'll lay them all out next month."
         ]
       }
     },
@@ -168,7 +168,7 @@
       "type": "closing_panel_dark",
       "data": {
         "script_line": "See you this month",
-        "body": "A quiz team, a bingo book, or a Christmas table with your name on it. However you fancy spending November, there is a seat here for you.",
+        "body": "A quiz team, a bingo book, or a Christmas table with your name on it. However you fancy spending November, there's a seat here for you.",
         "cta_label": "See what is on",
         "cta_url": "https://www.the-anchor.pub/whats-on",
         "reassurance_items": [

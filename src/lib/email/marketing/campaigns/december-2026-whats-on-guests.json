@@ -15,8 +15,8 @@
       "data": {
         "heading": "December is finally here",
         "body": [
-          "Which means we can officially stop pretending it is too early to get excited about Christmas. The lights are twinkling, the festive drinks are flowing, and there is something about this time of year that makes even an ordinary evening feel a little bit special.",
-          "Whether it is a cosy dinner with the family, a few drinks with friends, or one of those brilliantly festive nights that gets you properly into the Christmas spirit, this is the month for making memories and enjoying every bit of the warmth and glitz of the season. We genuinely cannot believe we are here already, but now that we are, we intend to make the most of every Christmassy moment."
+          "Which means we can officially stop pretending it's too early to get excited about Christmas. The lights are twinkling and the festive drinks are flowing. There's something about this time of year that makes even an ordinary evening feel a bit special.",
+          "A cosy dinner with the family, a few drinks with friends, or one of those brilliantly festive nights out. This is the month for making memories. We can't quite believe it's here already, and we're making the most of every Christmassy moment."
         ],
         "buttons": [
           {
@@ -195,7 +195,7 @@
               "height": 144
             },
             "heading": "Sunday roast",
-            "body": "Carved fresh every Sunday up to 20 December, 1pm to 6pm. Nothing to order in advance.",
+            "body": "Carved fresh every Sunday up to 20 December, 1pm to 6pm. Nothing to order ahead.",
             "cta_label": "Book a table →",
             "url": "https://www.the-anchor.pub/book-table"
           },
@@ -207,7 +207,7 @@
               "height": 146
             },
             "heading": "Last Christmas sittings",
-            "body": "Sunday 20 December is the last sitting of the year, from four of you up. Do not leave it too late.",
+            "body": "Sunday 20 December is the last sitting of the year, from four of you up. Don't leave it too late.",
             "cta_label": "Christmas enquiries →",
             "url": "https://www.the-anchor.pub/christmas-parties"
           }
@@ -219,7 +219,7 @@
       "data": {
         "heading": "Between Christmas and the new year",
         "body": [
-          "The bar stays open through the quiet days, and there is a lot to be said for a pint somewhere warm when the house is full of relatives. The dates that differ are all above, and the kitchen is back to its usual self on Tuesday 12 January."
+          "The bar stays open through the quiet days. There's a lot to be said for a pint somewhere warm when the house is full of relatives. The dates that differ are all above, and the kitchen's back to normal on Tuesday 12 January."
         ]
       }
     },
@@ -227,7 +227,7 @@
       "type": "closing_panel_dark",
       "data": {
         "script_line": "Happy Christmas from all of us",
-        "body": "Thank you for a brilliant year. Whether we see you at the quiz, round a Christmas table, or on a quiet afternoon in between, you are always welcome here.",
+        "body": "Thank you for a brilliant year. Whether we see you at the quiz, round a Christmas table, or on a quiet afternoon in between, you're always welcome here.",
         "cta_label": "See what is on",
         "cta_url": "https://www.the-anchor.pub/whats-on",
         "reassurance_items": [

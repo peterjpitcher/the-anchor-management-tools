@@ -13,10 +13,10 @@
     {
       "type": "text_block",
       "data": {
-        "heading": "October is here, and we are leaning right into it",
+        "heading": "October's here, and we're leaning right into it",
         "body": [
-          "There is something about the first properly dark evening of the year that makes a pub feel like the best place on earth. The lights go on, the fire gets going, and suddenly a Wednesday feels like an occasion. October is our favourite month for exactly that reason, and we have gone all in on it.",
-          "Three nights out, each with its own bit of mischief, building up to Halloween itself on the Saturday. Whether you fancy testing your general knowledge, singing along to horror soundtracks, or going full fancy dress with the rest of the village, there is a night here with your name on it."
+          "There's something about the first properly dark evening of the year. The lights go on, the fire gets going, and suddenly a Wednesday feels like an occasion. October's our favourite month for exactly that reason, and we've gone all in on it.",
+          "Three nights out, each with its own bit of mischief, building to Halloween itself on the Saturday. Whether that's a quiz, a horror singalong or full fancy dress, there's one here with your name on it."
         ],
         "buttons": [
           {
@@ -69,7 +69,7 @@
               "width": 180,
               "height": 180
             },
-            "cta_label": "Let us know you are coming →",
+            "cta_label": "Let us know you're coming →",
             "url": "https://www.the-anchor.pub/events/halloween-events-near-me-monster-mash-the-anchor-halloween-party-2026-10-31"
           }
         ],
@@ -79,7 +79,7 @@
     {
       "type": "opening_hours_week",
       "data": {
-        "heading": "When we are open",
+        "heading": "When we're open",
         "rows": [
           {
             "day": "Monday",
@@ -121,7 +121,7 @@
             "kitchen": "1pm to 6pm"
           }
         ],
-        "footnote": "Last orders are 30 minutes before the kitchen closes and 15 minutes before the bar does. The clocks go back on Sunday 25 October, but our hours do not change."
+        "footnote": "Last orders are 30 minutes before the kitchen closes and 15 minutes before the bar does. The clocks go back on Sunday 25 October, but our hours don't change."
       }
     },
     {
@@ -150,7 +150,7 @@
               "height": 144
             },
             "heading": "Sunday roast",
-            "body": "Carved fresh every Sunday, 1pm to 6pm. Nothing to order in advance, so you can decide on the day.",
+            "body": "Carved fresh every Sunday, 1pm to 6pm. Nothing to order ahead, so you can decide on the day.",
             "cta_label": "Book a table →",
             "url": "https://www.the-anchor.pub/book-table"
           },
@@ -162,7 +162,7 @@
               "height": 146
             },
             "heading": "Christmas is booking",
-            "body": "The good dates go first, so if you have a work do or a family table in mind, now is the moment.",
+            "body": "The good dates go first. If you've a work do or a family table in mind, now's the moment.",
             "cta_label": "Christmas enquiries →",
             "url": "https://www.the-anchor.pub/christmas-parties"
           }
@@ -174,7 +174,7 @@
       "data": {
         "heading": "And when November comes",
         "body": [
-          "Sparks & Sparklers Quiz Night on Wednesday 4 November, Sequins & Showstoppers Music Bingo on Friday 13 November, and the Snowball Showdown on Wednesday 18 November. We will nudge you nearer the time."
+          "Sparks & Sparklers Quiz Night on Wednesday 4 November. Then Sequins & Showstoppers Music Bingo on Friday the 13th, and the Snowball Showdown on Wednesday the 18th. We'll nudge you nearer the time."
         ]
       }
     },
@@ -182,7 +182,7 @@
       "type": "closing_panel_dark",
       "data": {
         "script_line": "See you this month",
-        "body": "Quiz team, fancy dress or just a quiet pint by the fire. Whatever brings you in this month, we would love to see you.",
+        "body": "Quiz team, fancy dress, or just a quiet pint by the fire. Whatever brings you in this month, we'd love to see you.",
         "cta_label": "See what is on",
         "cta_url": "https://www.the-anchor.pub/whats-on",
         "reassurance_items": [
