@@ -4,8 +4,11 @@
   "preheader": "Three nights out this month, all with a Halloween lean, and the clocks go back on the 25th.",
   "blocks": [
     {
-      "type": "masthead_green",
-      "data": {}
+      "type": "masthead_seasonal",
+      "data": {
+        "image_url": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/marketing/seasonal-masthead/10-october.jpg",
+        "alt": "The Anchor, Stanwell Moor Village, since 1751. Autumn leaves and berries around the wordmark."
+      }
     },
     {
       "type": "text_block",
