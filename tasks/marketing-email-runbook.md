@@ -168,6 +168,21 @@ if the previous send stalls. Aim for a day of margin, not an hour.
 
 ### The monthly round-up
 
+**It goes out on the first of the month**, owner's rule, 9 September 2026. Not "the first few
+days": the first. That is what makes the two-day frequency cap a problem in some months and
+not others, and why the round-up is exempt from it (see
+`marketing_campaigns.ignores_frequency_cap`). Checked against the current schedule, only
+October actually needs the exemption; 1 November and 1 December are already clear.
+
+**It goes to both lists**, owner's rule, 9 September 2026. A campaign carries one
+`audience_type`, so that means one campaign per list per month with the same content. The
+only address on both lists today is the owner's own, so nobody else is double-sent, but
+re-check that before each pair goes out: the frequency cap keys on the contact row, not the
+email address, so it will not catch it for you.
+
+**It wears the month.** `masthead_seasonal` with that month's artwork, from
+`event-images/marketing/seasonal-masthead/NN-month.jpg`.
+
 One a month, sent in the first days of the month, subject "Welcome to <month> at The Anchor".
 It carries every event still to come that month (`whats_on_list`, up to eight), the opening
 hours, whatever is genuinely new, and a line about what is coming next month.
