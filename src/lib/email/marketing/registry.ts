@@ -18,6 +18,7 @@ import { hoursTable } from './blocks/hours_table'
 import { imageFull } from './blocks/image_full'
 import { mastheadCream } from './blocks/masthead_cream'
 import { mastheadGreen } from './blocks/masthead_green'
+import { mastheadSeasonal } from './blocks/masthead_seasonal'
 import { mediaRow } from './blocks/media_row'
 import { menuList } from './blocks/menu_list'
 import { noteBar } from './blocks/note_bar'
@@ -58,6 +59,7 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   image_full: imageFull,
   masthead_cream: mastheadCream,
   masthead_green: mastheadGreen,
+  masthead_seasonal: mastheadSeasonal,
   media_row: mediaRow,
   menu_list: menuList,
   note_bar: noteBar,
@@ -79,7 +81,7 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
 
 export const BLOCK_TYPES = Object.keys(BLOCK_REGISTRY)
 
-export const MASTHEAD_TYPES = ['masthead_green', 'masthead_cream']
+export const MASTHEAD_TYPES = ['masthead_green', 'masthead_cream', 'masthead_seasonal']
 export const FOOTER_TYPES = ['footer', 'footer_dark']
 
 /**

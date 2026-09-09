@@ -4,8 +4,11 @@
   "preheader": "Three nights out this month, and Christmas sittings start on Tuesday 10 November.",
   "blocks": [
     {
-      "type": "masthead_green",
-      "data": {}
+      "type": "masthead_seasonal",
+      "data": {
+        "image_url": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/marketing/seasonal-masthead/11-november.jpg",
+        "alt": "The Anchor, Stanwell Moor Village, since 1751. Poppies and winter greenery around the wordmark."
+      }
     },
     {
       "type": "text_block",
