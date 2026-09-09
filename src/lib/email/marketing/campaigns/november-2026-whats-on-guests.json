@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "title": "Welcome to November at The Anchor",
+  "preheader": "Three nights out this month, and Christmas sittings start on Tuesday 10 November.",
+  "blocks": [
+    {
+      "type": "masthead_green",
+      "data": {}
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Welcome to November",
+        "body": [
+          "Dark by five, which is the whole point of a pub with the fire on. There are three nights out this month, and the first Christmas sittings start on Tuesday 10 November.",
+          "If you are thinking about a Christmas meal with work or with family, now is the time to pick a date. We take bookings from four guests up, right through to 20 December."
+        ],
+        "buttons": [
+          {
+            "label": "See what is on",
+            "url": "https://www.the-anchor.pub/whats-on",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "whats_on_media",
+      "data": {
+        "kicker": "What’s on",
+        "heading": "Three nights in November",
+        "events": [
+          {
+            "date": "Wed 4 Nov",
+            "name": "Sparks & Sparklers Quiz Night",
+            "detail": "7pm start, £3 cash on arrival, teams of up to six. A £25 bar voucher for the winners.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/8acfe965-ade6-4a9f-a666-e90ecdea2b7b/square/branded/1788778917958-square-email.jpg",
+              "alt": "Sparks and Sparklers Quiz Night at The Anchor in Stanwell Moor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Reserve your table →",
+            "url": "https://www.the-anchor.pub/events/quiz-night-2026-11-04"
+          },
+          {
+            "date": "Fri 13 Nov",
+            "name": "Sequins & Showstoppers Music Bingo",
+            "detail": "7pm start, £5 cash on arrival. Ballroom classics and glitterball anthems, Nikki hosting.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/c3e9fbbd-df4a-41f2-a1c6-8194a5979735/square/branded/1788772234596-square-email.jpg",
+              "alt": "Sequins and Showstoppers Strictly-season music bingo at The Anchor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Save your seats →",
+            "url": "https://www.the-anchor.pub/events/sequins-showstoppers-strictly-season-music-bingo-2026-11-13"
+          },
+          {
+            "date": "Wed 18 Nov",
+            "name": "Snowball Showdown Cash Bingo",
+            "detail": "7pm start, £10 cash a book. Ten games, a rollover Snowball and a cash jackpot at the end.",
+            "image": {
+              "src": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/events/6e761f65-8b17-4bc9-8a01-d032b77f6a66/square/branded/1788781679338-square-email.jpg",
+              "alt": "Snowball Showdown Cash Bingo at The Anchor in Stanwell Moor",
+              "width": 180,
+              "height": 180
+            },
+            "cta_label": "Save your seats →",
+            "url": "https://www.the-anchor.pub/events/cash-bingo-2026-11-18"
+          }
+        ],
+        "all_events_url": "https://www.the-anchor.pub/whats-on"
+      }
+    },
+    {
+      "type": "opening_hours_week",
+      "data": {
+        "heading": "When we are open",
+        "rows": [
+          {
+            "day": "Monday",
+            "bar": "4pm to 10pm",
+            "closed": true
+          },
+          {
+            "day": "Tuesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Wednesday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Thursday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Friday",
+            "bar": "12pm to 10pm",
+            "lunch": "12pm to 3pm",
+            "dinner": "4pm to 9pm"
+          },
+          {
+            "day": "Saturday",
+            "bar": "12pm to 10pm",
+            "kitchen": "12pm to 7pm"
+          },
+          {
+            "day": "Sunday",
+            "bar": "12pm to 10pm",
+            "kitchen": "1pm to 6pm"
+          }
+        ],
+        "footnote": "Last orders are 30 minutes before the kitchen closes and 15 minutes before the bar does. Every date in November runs these hours."
+      }
+    },
+    {
+      "type": "grid_cards_linked",
+      "data": {
+        "cards": [
+          {
+            "image": {
+              "src": "https://www.the-anchor.pub/images/food/sunday-roast/the-anchor-sunday-roast-stanwell-moor.jpg",
+              "alt": "A Sunday roast at The Anchor in Stanwell Moor",
+              "width": 258,
+              "height": 144
+            },
+            "heading": "Sunday roast",
+            "body": "1pm to 6pm every Sunday, last seating 5.30pm. Nothing to pre-order and no Saturday cutoff.",
+            "cta_label": "Book a table →",
+            "url": "https://www.the-anchor.pub/book-table"
+          },
+          {
+            "image": {
+              "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+              "alt": "A Christmas dinner laid out at The Anchor",
+              "width": 258,
+              "height": 146
+            },
+            "heading": "Christmas starts 10 Nov",
+            "body": "Sittings run to 20 December, from four guests up, with a £10 per person deposit.",
+            "cta_label": "Christmas enquiries →",
+            "url": "https://www.the-anchor.pub/christmas-parties"
+          }
+        ]
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Coming in December",
+        "body": [
+          "Tinsel & Trivia Quiz Night on Wednesday 2 December, Sleigh My Name Festive Music Bingo on Friday 11 December, and a Christmas Jackpot Cash Bingo on Wednesday 16 December. Our hours change over Christmas and New Year, and we will set all of that out in the December email."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "See you this month",
+        "body": "A quiz team, a bingo book, or a Christmas table booked before the good dates go. Book ahead or just turn up.",
+        "cta_label": "See what is on",
+        "cta_url": "https://www.the-anchor.pub/whats-on",
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
+      }
+    }
+  ]
+}

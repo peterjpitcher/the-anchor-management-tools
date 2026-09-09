@@ -325,6 +325,12 @@ export interface CampaignInput {
   audienceType?: MarketingAudienceType
   audience?: MarketingAudience
   utmCampaign?: string | null
+  /**
+   * Only the monthly round-up sets this. See `MarketingCampaign.ignoresFrequencyCap`: it is
+   * a standing editorial decision about one recurring email, not a way to get a late
+   * campaign out of the door.
+   */
+  ignoresFrequencyCap?: boolean
 }
 
 export async function createCampaign(
@@ -349,6 +355,7 @@ export async function createCampaign(
       audience_type: input.audienceType ?? 'business',
       audience: audienceToDb(audience),
       utm_campaign: emptyToNull(input.utmCampaign),
+      ignores_frequency_cap: input.ignoresFrequencyCap === true,
       status: 'draft',
       created_by: userId,
     })
@@ -384,6 +391,7 @@ export async function updateCampaign(
   if (input.preheader !== undefined) payload.preheader = input.preheader.trim()
   if (input.content !== undefined) payload.content = parseCampaignContent(input.content)
   if (input.utmCampaign !== undefined) payload.utm_campaign = emptyToNull(input.utmCampaign)
+  if (input.ignoresFrequencyCap !== undefined) payload.ignores_frequency_cap = input.ignoresFrequencyCap === true
 
   if (input.audience !== undefined) {
     payload.audience = audienceToDb({
@@ -645,7 +653,12 @@ export async function scheduleCampaign(
     throw new Error('This audience matches nobody, so there is nothing to schedule')
   }
 
-  await assertNoFrequencyCapCollision(supabase, existing, when)
+  // The monthly round-up is exempt in SQL, so the schedule-time courtesy check would only
+  // refuse a collision the send itself will handle. Checking it anyway would make the guard
+  // and the enforcement disagree, and the guard is the one people believe.
+  if (!existing.ignoresFrequencyCap) {
+    await assertNoFrequencyCapCollision(supabase, existing, when)
+  }
   await assertNoMisleadingClosureCopy(content, when)
 
   const now = new Date().toISOString()
