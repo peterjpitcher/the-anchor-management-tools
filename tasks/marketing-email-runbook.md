@@ -310,6 +310,17 @@ These came from real review rounds. Ignoring them means a rewrite.
   the tone friendly: he rejected a version that "sounds like a legal nightmare".
 - **Facts come from live sources**, the `business_hours` rows and the website's `docs/SSOT.md`,
   never from the designer handover, which is stale on capacity, pricing and hours.
+- **The voice lives in the website repo's `docs/SSOT.md` §1, not here.** That is the source.
+  What follows are the email-specific notes and the corrections the owner has actually made;
+  when the two disagree, the SSOT wins and this is the stale copy. Read §1 before writing.
+- **The checkable half is enforced.** `src/lib/copy/house-style.ts` encodes SSOT §1 and §14.
+  Banned claims are errors and `scheduleCampaign` refuses them; voice issues are warnings and
+  show in the campaign UI. `npx tsx scripts/audit-house-style.ts` runs the same rules over the
+  menus, the events and every campaign, which is the part the SSOT could never reach: the
+  errors that actually shipped were rows in the database, not copy.
+- **Use contractions.** "We're", "you'll", "there's", "don't". The single fastest way to sound
+  like a person. All three round-ups were rewritten once for warmth and still had zero
+  contractions, which is how easy it is to miss.
 - **Write from the reader's side, not ours.** Owner correction, 9 September 2026. He rejected
   "Three nights out before Christmas, the last of the Christmas sittings, and then the quiet
   stretch between the years when the bar is open and the kitchen has earned a rest." Every

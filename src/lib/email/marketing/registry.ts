@@ -35,6 +35,7 @@ import { steps } from './blocks/steps'
 import { textBlock } from './blocks/text_block'
 import { twoUpCards } from './blocks/two_up_cards'
 import type { EmailBlockModule } from './blocks/types'
+import { checkHouseStyle } from '../../copy/house-style'
 import { findVenueClosureClaims } from './venueClosureClaims'
 import { whatsOnList } from './blocks/whats_on_list'
 import { whatsOnMedia } from './blocks/whats_on_media'
@@ -197,11 +198,80 @@ export function lintMarketingContent(content: MarketingContent): string[] {
   // as refused at schedule time, so the author sees it while writing rather than at the last
   // step. Only the phrasing half runs: this function is pure and has no hours records, and
   // deciding whether a closure claim is TRUE needs them. `scheduleCampaign` does both.
-  for (const claim of findVenueClosureClaims(renderBlockText(content))) {
+  const copy = renderBlockText(content)
+  for (const claim of findVenueClosureClaims(copy)) {
     warnings.push(claim.message)
   }
 
+  // The house style from the website's docs/SSOT.md. Everything appears here as advice; the
+  // banned claims are refused outright at schedule time instead, for the same reason as the
+  // closure rule. A rule added today must not be able to kill a campaign approved last month.
+  //
+  // Aimed in two passes, because the two halves of the house style need different targets.
+  // The word rules read the whole email: a banned claim is a banned claim wherever it sits.
+  // The prose rules read individual paragraphs only. Run over the assembled plain text they
+  // measure nonsense, because that text is headings, table cells, times and URLs strung
+  // together with no full stops, so a masthead and a footer become one 31-word "sentence".
+  // The shipped Christmas campaign tripped exactly that, which is what its lint-clean test
+  // is for.
+  const seen = new Set<string>()
+  const addFinding = (finding: { matched: string; message: string }): void => {
+    const line = `${finding.matched}: ${finding.message}`
+    if (seen.has(line)) return
+    seen.add(line)
+    warnings.push(line)
+  }
+
+  for (const finding of checkHouseStyle(copy, { proseChecks: false })) addFinding(finding)
+  for (const paragraph of proseIn(content)) {
+    for (const finding of checkHouseStyle(paragraph)) addFinding(finding)
+  }
+
   return warnings
+}
+
+/**
+ * Fields in a different register, exempt from the prose rules.
+ *
+ * The SSOT's register dial is explicit that operational and legal text is "calm and exact:
+ * accuracy beats energy here, always". The footer's permission line is the clearest case: it
+ * has to say precisely why someone is on the list, and cutting it into short punchy sentences
+ * to satisfy a word count would make it worse. The hours footnotes are the same kind of text.
+ *
+ * The word rules still read these, because a banned claim is banned in any register.
+ */
+const NOT_MARKETING_PROSE = new Set(['reason_for_contact', 'footnote'])
+
+/**
+ * Every string in a campaign's block data long enough to be a sentence someone wrote.
+ *
+ * Sixty characters is the line between prose and a label. Below it lives "Book a table",
+ * "12pm to 10pm", "Wed 2 Dec" and every heading; above it lives the paragraphs. Walking the
+ * data generically rather than naming each block's fields means a block added next month is
+ * covered without anyone remembering this function.
+ */
+function proseIn(content: MarketingContent): string[] {
+  const found: string[] = []
+
+  const walk = (value: unknown): void => {
+    if (typeof value === 'string') {
+      if (value.trim().length >= 60) found.push(value)
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach(walk)
+      return
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        if (NOT_MARKETING_PROSE.has(key)) continue
+        walk(nested)
+      }
+    }
+  }
+
+  content.blocks.forEach((entry) => walk(entry.data))
+  return found
 }
 
 /**
