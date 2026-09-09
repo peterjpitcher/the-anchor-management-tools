@@ -121,7 +121,7 @@
             "kitchen": "1pm to 6pm"
           }
         ],
-        "footnote": "These are our hours up to and including Monday 21 December. The dates that differ are listed below."
+        "footnote": "These are our hours up to Monday 21 December, and the kitchen's last day is Sunday the 20th. The dates that differ are listed below."
       }
     },
     {
@@ -153,6 +153,11 @@
             "date": "Sat 26 Dec",
             "closed": true,
             "note": "Boxing Day"
+          },
+          {
+            "date": "Sun 27 Dec",
+            "hours": "12pm to 10pm",
+            "note": "Drinks only, no food"
           },
           {
             "date": "Tue 29 Dec",
