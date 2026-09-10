@@ -1,0 +1,569 @@
+[
+  {
+    "table": "menu_dishes",
+    "id": "75098078-f4a5-47cf-8ea7-ddd96358f9b0",
+    "name": "Kids Christmas Dinner, Beef",
+    "current": "A child sized roast beef dinner with the Christmas trimmings: pigs in blankets, stuffing, brussels sprouts, a Yorkshire pudding, roast potatoes, mashed potato and peas, with gravy. Served with a Fruit Shoot or a small soft drink (Coca-Cola, Diet Coke or lemonade).",
+    "proposed": "A child-sized roast beef dinner with all the Christmas trimmings. Pigs in blankets, stuffing, brussels sprouts, a Yorkshire pudding, roast potatoes, mashed potato, peas and gravy. Comes with a Fruit Shoot or a small soft drink (Coca-Cola, Diet Coke or lemonade)."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d601e0b3-705b-476e-952d-26f1f446042a",
+    "name": "Kids Christmas Dinner, Pork",
+    "current": "A child sized roast pork dinner with the Christmas trimmings: pigs in blankets, stuffing, brussels sprouts, a Yorkshire pudding, roast potatoes, mashed potato and peas, with gravy. Served with a Fruit Shoot or a small soft drink (Coca-Cola, Diet Coke or lemonade).",
+    "proposed": "A child-sized roast pork dinner with all the Christmas trimmings. Pigs in blankets, stuffing, brussels sprouts, a Yorkshire pudding, roast potatoes, mashed potato, peas and gravy. Comes with a Fruit Shoot or a small soft drink (Coca-Cola, Diet Coke or lemonade)."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "908bb3aa-05a4-4c0a-8bf3-1afe0b7e62b4",
+    "name": "Kids Christmas Dinner, Turkey",
+    "current": "A child sized roast turkey dinner with the Christmas trimmings: pigs in blankets, stuffing, brussels sprouts, a Yorkshire pudding, roast potatoes, mashed potato and peas, with gravy. Served with a Fruit Shoot or a small soft drink (Coca-Cola, Diet Coke or lemonade).",
+    "proposed": "A child-sized roast turkey dinner with all the Christmas trimmings. Pigs in blankets, stuffing, brussels sprouts, a Yorkshire pudding, roast potatoes, mashed potato, peas and gravy. Comes with a Fruit Shoot or a small soft drink (Coca-Cola, Diet Coke or lemonade)."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "e78a8e25-5d8d-44ea-bcb4-4f51ded1ed55",
+    "name": "Two Course Festive Menu, Friday to Saturday",
+    "current": "Two course festive set menu on Friday and Saturday. Pre-book and pre-order only. Includes a glass of prosecco, swappable for orange juice. Full dish list released closer to the time.",
+    "proposed": "Two courses from our festive set menu, on a Friday or Saturday, with a glass of prosecco (or orange juice). Book and pre-order at least 7 days ahead. Children can have it too, at the adult price."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "6eb035f2-f8d1-4787-bf54-6160a4c56fe9",
+    "name": "Two Course Festive Menu, Tuesday to Thursday",
+    "current": "Two course festive set menu on Tuesday to Thursday. Pre-book and pre-order only. Includes a glass of prosecco, swappable for orange juice. Full dish list released closer to the time.",
+    "proposed": "Two courses from our festive set menu, Tuesday to Thursday, with a glass of prosecco (or orange juice). Book and pre-order at least 7 days ahead. Children can have it too, at the adult price."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "b8baf02b-efb6-41ce-9355-34eb4472c729",
+    "name": "Three Course Festive Menu, Friday to Saturday",
+    "current": "Three course festive set menu on Friday and Saturday. Pre-book and pre-order only. Includes a glass of prosecco, swappable for orange juice. Full dish list released closer to the time.",
+    "proposed": "Three courses from our festive set menu, on a Friday or Saturday, with a glass of prosecco (or orange juice). Book and pre-order at least 7 days ahead. Children can have it too, at the adult price."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "a749b3a7-7b74-4845-80b6-9321d56653e0",
+    "name": "Three Course Festive Menu, Tuesday to Thursday",
+    "current": "Three course festive set menu on Tuesday to Thursday. Pre-book and pre-order only. Includes a glass of prosecco, swappable for orange juice. Full dish list released closer to the time.",
+    "proposed": "Three courses from our festive set menu, Tuesday to Thursday, with a glass of prosecco (or orange juice). Book and pre-order at least 7 days ahead. Children can have it too, at the adult price."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "a2ce6a2c-3868-41ae-945d-ee67d4a5e3d9",
+    "name": "BBQ Sauce",
+    "current": "Enhance your meal with our smoky barbecue glaze, perfect for drizzling over goujons and burgers. This rich sauce adds a delicious depth of flavour that complements a variety of dishes.",
+    "proposed": "Smoky barbecue sauce. Great with goujons and burgers."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "558f548a-1226-4905-8b17-eea041f0eaa0",
+    "name": "Balsamic Dressing",
+    "current": "Brighten up your salads with our classic balsamic dressing, adding a tangy sweetness that complements a variety of flavours. A simple yet effective way to enhance your meal with a touch of elegance.",
+    "proposed": "Classic balsamic dressing, tangy and a little sweet."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "a5cdf119-f9cb-4187-aebf-00e731531e6d",
+    "name": "Chocolate Sauce",
+    "current": "Our silky chocolate sauce is perfect for drizzling over desserts or for dipping your favourite treats. Indulge in its rich flavour that enhances any sweet dish, making it a delightful addition to your meal.",
+    "proposed": "Silky chocolate sauce for pouring over your pudding."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d538eabc-565d-47f6-aabb-456d9fdf3a1a",
+    "name": "Cranberry Sauce",
+    "current": "A sweet and tangy cranberry sauce, perfect for complementing turkey or cheese dishes. This relish adds a delightful burst of flavour to your meal, making every bite a little more special.",
+    "proposed": "Sweet, tangy cranberry sauce. Just right with turkey or cheese."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "fe3860a1-d317-44de-a763-bc8305073c35",
+    "name": "English Mustard",
+    "current": "Experience the sharpness of our English mustard, which delivers a proper kick to your dishes. This condiment is ideal for enhancing the flavours of meats and sandwiches, adding a zesty touch to your meal.",
+    "proposed": "Sharp English mustard with a proper kick. Good with beef, pork and sausages."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "14b30dbd-25c0-4a01-bfc8-cf45ddd26a0e",
+    "name": "Garlic Mayonnaise",
+    "current": "Our house garlic mayonnaise offers a gentle warmth that complements a variety of dishes. This creamy condiment is perfect for dipping or spreading, enhancing your meal with its rich garlic flavour.",
+    "proposed": "Our house garlic mayonnaise, creamy with a gentle warmth. Good for dipping."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "3c6a82bb-54e0-468c-b04b-abc3f037d88e",
+    "name": "Ketchup",
+    "current": "Our tomato ketchup is a classic chip shop staple that adds a burst of flavour to your meals. Perfect for dipping or drizzling, this condiment enhances the taste of chips and other dishes, making every bite enjoyable.",
+    "proposed": "Tomato ketchup, the chip shop classic."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d0f5045c-1d14-45fe-87e0-5d13e398536a",
+    "name": "Sweet Chilli Dipping Sauce",
+    "current": "Our sweet chilli dipping sauce offers a gentle heat that complements a variety of dishes. This versatile condiment is perfect for enhancing your meal with a touch of sweetness and spice.",
+    "proposed": "Sweet chilli sauce with a gentle heat, for dipping."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "317fd573-fc9c-456e-8678-1c880f8c3203",
+    "name": "Tartar Sauce",
+    "current": "Experience the tangy flavour of our tartar sauce, crafted with capers and herbs. This classic condiment pairs beautifully with seafood and adds a zesty kick to your dining experience.",
+    "proposed": "Tangy, with capers and herbs. Just right with fish and scampi."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "936ce42f-a729-4d2e-b965-d86da15f328d",
+    "name": "Toffee Sauce",
+    "current": "Indulge in our rich toffee sauce, crafted with the perfect balance of brown sugar sweetness. This delightful condiment enhances desserts and adds a touch of luxury to your meals, making every bite a little sweeter.",
+    "proposed": "Rich toffee sauce with a brown sugar sweetness, for pouring over your pudding."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "8098f2ba-634d-4c67-ac21-9a3e7877a736",
+    "name": "Kids Cheeseburger & Chips",
+    "current": "The Kids Cheeseburger features a regular beef burger patty nestled in a soft floured bap, topped with cheddar and served with straight-cut chips. This meal is designed to satisfy young appetites with its delicious flavours.",
+    "proposed": "A beef burger topped with cheddar in a soft floured bap, with straight-cut chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "87965212-a910-426d-9abb-b0ae76cb7e58",
+    "name": "Kids Chicken Burger & Chips",
+    "current": "Our Kids Chicken Burger includes a tender chicken fillet served in a floured bap, accompanied by a half portion of straight-cut chips. This meal is perfect for little ones, offering a tasty and satisfying option.",
+    "proposed": "A tender chicken fillet in a soft floured bap, with a half portion of straight-cut chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "9c68b967-b298-4483-8463-4b7f0b3f31ab",
+    "name": "Kids Chicken Goujon Wrap & Chips",
+    "current": "The Kids Chicken Goujon Wrap features three crispy chicken goujons wrapped in a soft tortilla, served with a half portion of straight-cut chips. This fun and tasty meal is sure to please young diners.",
+    "proposed": "Three crispy chicken goujons wrapped in a soft tortilla, with a half portion of straight-cut chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "62ffabf5-e8a5-47b6-96f1-231eeb8976a8",
+    "name": "Kids Chicken Goujons & Chips",
+    "current": "Enjoy three crispy chicken goujons served alongside golden straight-cut chips and sweet garden peas. This dish is perfect for kids who love a classic meal that is both tasty and satisfying.",
+    "proposed": "Three crispy chicken goujons with golden straight-cut chips and garden peas."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "1763d0e4-fed1-43ca-9d74-da2b8b5cb35a",
+    "name": "Kids Fish Finger Wrap & Chips",
+    "current": "Savour three delicious fish fingers wrapped in a soft white tortilla, accompanied by a half portion of straight-cut chips. This fun and tasty meal is sure to please any young diner.",
+    "proposed": "Three fish fingers wrapped in a soft white tortilla, with a half portion of straight-cut chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "04c25614-6851-44e3-93e9-b4a62ba18d1f",
+    "name": "Kids Fish Fingers & Chips",
+    "current": "Indulge in three crispy fish fingers served with a generous portion of straight-cut chips and sweet garden peas. This classic dish is a favourite among kids and perfect for any meal.",
+    "proposed": "Three crispy fish fingers with a generous portion of straight-cut chips and garden peas."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "874c8af5-2e2d-40e8-a0ca-9275cf4bbb71",
+    "name": "Kids Mac & Cheese",
+    "current": "A child-friendly bowl of macaroni cheese with tender pasta in a creamy cheese sauce, kept simple and comforting for younger appetites. Easy to enjoy on its own and a familiar choice for family meals.",
+    "proposed": "A bowl of macaroni in a creamy cheese sauce, kept nice and simple."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "4da6c9a8-d8d9-457d-8d37-ccb12ba7fbcb",
+    "name": "Kids Sausage, Mash & Gravy",
+    "current": "Savour a hearty pork sausage served with buttery mash, rich NGCI gravy, and sweet garden peas. This classic dish is a delightful choice for kids who enjoy traditional flavours.",
+    "proposed": "A hearty pork sausage with buttery mash, NGCI gravy and garden peas."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "5d950dce-981d-4288-95c8-a46dc34cec77",
+    "name": "Kids Veg Burger & Chips",
+    "current": "A kids' veg burger made with a Bangkok Bad Boy vegetable patty in a soft floured bap, served with straight-cut chips. Familiar, filling and meat-free, with enough crunch and comfort for younger appetites.",
+    "proposed": "A Bangkok Bad Boy vegetable patty in a soft floured bap, with straight-cut chips. Filling and meat-free."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "f1d2eaab-a2d9-4c5a-87bb-3e2c00124ff7",
+    "name": "Roasted Beef",
+    "current": "Indulge in a comforting roast beef dinner that is rich and full of flavour. It is served with golden triple-cooked, herb-and-garlic crusted roast potatoes, a fluffy Yorkshire pudding, seasonal vegetables, and our signature gravy.",
+    "proposed": "28-day topside, carved when you order it. Comes with a fluffy Yorkshire pudding, triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy."
+  },
+  {
+    "table": "sunday_lunch_menu_items",
+    "id": "294c0ce3-f5c4-4eaf-b741-23f998d1e179",
+    "name": "Roasted Beef",
+    "current": "A comforting roast beef dinner, rich and full of flavour, served with golden triple-cooked, herb-and-garlic crusted roast potatoes, a fluffy Yorkshire pudding, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy.",
+    "proposed": "28-day topside, carved when you order it. Comes with a fluffy Yorkshire pudding, triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d9b8c6b9-0a37-45de-8015-99250fb62190",
+    "name": "Roasted Pork",
+    "current": "Savour juicy roasted pork that embodies proper home-cooked Sunday flavour. It is served with golden triple-cooked, herb-and-garlic crusted roast potatoes, a fluffy Yorkshire pudding, seasonal vegetables, and our signature gravy.",
+    "proposed": "Juicy roast pork, cooked the proper Sunday way. Comes with a fluffy Yorkshire pudding, triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy."
+  },
+  {
+    "table": "sunday_lunch_menu_items",
+    "id": "99447956-aa7e-4a89-9494-3c1c51bbda9a",
+    "name": "Roasted Pork",
+    "current": "Juicy roasted pork with proper home-cooked Sunday flavour, served with golden triple-cooked, herb-and-garlic crusted roast potatoes, a fluffy Yorkshire pudding, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy.",
+    "proposed": "Juicy roast pork, cooked the proper Sunday way. Comes with a fluffy Yorkshire pudding, triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d881edc4-d8f8-4d46-97bf-535b40a3ce1f",
+    "name": "Roasted Turkey",
+    "current": "Delight in tender roasted turkey paired with a sage and onion stuffing ball. This dish is served with golden triple-cooked, herb-and-garlic crusted roast potatoes, a fluffy Yorkshire pudding, seasonal vegetables, and our signature gravy.",
+    "proposed": "Tender roast turkey with a sage and onion stuffing ball. Comes with a fluffy Yorkshire pudding, triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy."
+  },
+  {
+    "table": "sunday_lunch_menu_items",
+    "id": "2653a486-10b8-4d67-8c20-e1b1a7e529b1",
+    "name": "Roasted Turkey with Stuffing Ball",
+    "current": "Tender roasted turkey with a sage and onion stuffing ball, served with golden triple-cooked, herb-and-garlic crusted roast potatoes, a fluffy Yorkshire pudding, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy.",
+    "proposed": "Tender roast turkey with a sage and onion stuffing ball. Comes with a fluffy Yorkshire pudding, triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "abe16705-e933-459e-87ee-841e8047bad7",
+    "name": "Beef & Ale Pie Roast",
+    "current": "Savour a hearty beef and ale pie, served as a Sunday roast alongside triple-cooked herb-crusted roast potatoes, oven-roasted carrots and parsnips, buttery cabbage, and our rich signature gravy. No Yorkshire pudding.",
+    "proposed": "A hearty beef and ale pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
+  },
+  {
+    "table": "sunday_lunch_menu_items",
+    "id": "37866cbe-2c49-4deb-83f3-3ac1b546738b",
+    "name": "Beef & Ale Pie Roast",
+    "current": "Beef and ale pie served as a Sunday roast with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy. Served without Yorkshire pudding.",
+    "proposed": "A hearty beef and ale pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "6cee6d91-115e-410d-9b16-1fb2b799b16f",
+    "name": "Chicken & Wild Mushroom Pie Roast",
+    "current": "Chicken and wild mushroom pie served as a Sunday roast with triple-cooked herb-crusted roast potatoes, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy. Served without Yorkshire pudding.",
+    "proposed": "Chicken and wild mushroom pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
+  },
+  {
+    "table": "sunday_lunch_menu_items",
+    "id": "2868c545-de35-415d-b2da-78c4c42d2480",
+    "name": "Chicken & Wild Mushroom Pie Roast",
+    "current": "Chicken and wild mushroom pie served as a Sunday roast with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy. Served without Yorkshire pudding.",
+    "proposed": "Chicken and wild mushroom pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "b3f74a39-ced7-4731-a699-665ab87aeeb8",
+    "name": "Broccoli Cheese",
+    "current": "Broccoli cheese.",
+    "proposed": "Broccoli baked in a creamy cheese sauce until golden and bubbling."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d1b0a26d-a8ee-4e78-b1bb-a044e2e7e1d9",
+    "name": "Gourmet Broccoli Cheese",
+    "current": "Enjoy our gourmet broccoli cheese, a rich bake finished with a hint of truffle and a crisp golden crumb. This indulgent side dish elevates your Sunday lunch experience with its luxurious flavours and textures.",
+    "proposed": "A richer broccoli cheese bake, finished with a hint of truffle and a crisp golden crumb."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "339af8be-7bbc-4315-a3d8-c2f9cd68a9b6",
+    "name": "Add mature cheddar",
+    "current": "A proper slice of mature cheddar laid over your burger, melting beautifully into every bite. The sharp, creamy tang of a good aged cheddar lifts the patty and ties the whole stack together - that little touch of indulgence.",
+    "proposed": "A slice of mature cheddar, melted over your burger."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d2b1f2cf-709f-4fcc-b0f8-2adab7ee317b",
+    "name": "Add onion rings",
+    "current": "A handful of golden, crispy onion rings tucked into your burger - proper pub crunch on the outside, soft and sweet through the middle. They bring that lovely contrast in texture and a little extra indulgence to every bite.",
+    "proposed": "Golden, crispy onion rings tucked into your burger, for extra crunch."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "fa499e03-5e76-4e18-a9b6-5013b56df871",
+    "name": "Upgrade to cheesy chips",
+    "current": "Upgrade your standard chips to gloriously cheesy chips - golden and crisp, draped in melted cheese that enhances any burger beautifully. A small swap that transforms a side into a star, perfect with a pint.",
+    "proposed": "Swap your chips for cheesy chips, golden and crisp under melted cheese."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "a9445b9c-b823-46bb-a0bc-7b302a1ae146",
+    "name": "Upgrade to sweet potato fries",
+    "current": "Swap your standard chips for crisp, golden sweet potato fries - naturally sweet, lightly seasoned, and seriously moreish. Gorgeous crunch on the outside, soft and fluffy through the middle, and a different kind of flavour.",
+    "proposed": "Swap your chips for sweet potato fries, crisp outside and soft in the middle."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "ba2942ad-24fd-4b40-b1a7-cff765803eab",
+    "name": "Beef Stack",
+    "current": "A juicy quarter-pounder beef burger stacked in a soft floured bap with crisp butterhead salad, ripe tomato, and a golden battered onion ring crowning the top. Served with a generous portion of chips.",
+    "proposed": "A juicy quarter-pounder in a soft floured bap, with butterhead salad, tomato and a battered onion ring on top. Served with a generous portion of chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "84e9e5d9-1e03-44a1-a580-7f83a0fe9332",
+    "name": "Chicken Burger",
+    "current": "A juicy American-style chicken fillet nestled in a soft floured bap, topped with crisp butterhead salad and ripe tomato, served with golden chips. Add cheddar, bacon, hash brown, or onion rings for extra flavour.",
+    "proposed": "A juicy American-style chicken fillet in a soft floured bap, with butterhead salad and tomato. Served with golden chips. Add cheddar, bacon, a hash brown or onion rings if you fancy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "f728c4aa-775f-4b1a-beca-fcfa33e71e1e",
+    "name": "Classic Beef Burger",
+    "current": "A juicy quarter-pounder beef burger in a soft floured bap with butterhead salad and ripe tomato, served with golden chips. Customise with cheddar, bacon, hash brown, or onion rings for a classic pub experience.",
+    "proposed": "A juicy quarter-pounder in a soft floured bap with butterhead salad and tomato, served with golden chips. Add cheddar, bacon, a hash brown or onion rings if you fancy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "803f5c24-543f-4e3f-868e-a4c0e67a434e",
+    "name": "Garden Stack",
+    "current": "Try our Garden Stack burger featuring a Bangkok Bad Boy vegetable patty in a soft floured bap, topped with butterhead salad, tomato, and a crispy battered onion ring, served with your choice of chips.",
+    "proposed": "A Bangkok Bad Boy vegetable patty in a soft floured bap, with butterhead salad, tomato and a crispy battered onion ring. Served with your choice of chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "64e2a16c-6bd4-45b9-b11f-48ce10a4021d",
+    "name": "Garden Veg Burger",
+    "current": "Enjoy our Garden Veg Burger, featuring a Bangkok Bad Boy vegetable patty in a soft floured bap with butterhead salad and tomato, served with your choice of chips for a satisfying meal.",
+    "proposed": "A Bangkok Bad Boy vegetable patty in a soft floured bap with butterhead salad and tomato. Served with your choice of chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "de366269-18dd-4c14-9e6b-c08cc2f661ea",
+    "name": "Katsu Chicken Burger",
+    "current": "A crispy American-style chicken fillet drenched in rich, lightly spiced katsu curry sauce, layered with crisp butterhead salad and ripe tomato in a soft floured bap. Served with a generous portion of golden chips.",
+    "proposed": "A crispy American-style chicken fillet smothered in lightly spiced katsu curry sauce, with butterhead salad and tomato in a soft floured bap. Served with a generous portion of golden chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "ea50c8be-23d1-438a-8603-b1a2664c18af",
+    "name": "Spicy Chicken Burger",
+    "current": "Enjoy a crispy hot-and-spicy chicken fillet nestled in a soft floured bap, complemented by fresh butterhead salad and ripe tomato, served with golden chips. Add cheddar, bacon, hash brown, or onion rings for extra flavour.",
+    "proposed": "A crispy hot-and-spicy chicken fillet in a soft floured bap with butterhead salad and tomato. Served with golden chips. Add cheddar, bacon, a hash brown or onion rings if you fancy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "55ec1293-5d62-4dd0-a301-3c28e922ac5d",
+    "name": "Apple Crumble",
+    "current": "Savour a generous bowl of apple crumble topped with a buttery, golden crust and tender fruit underneath. Served with smooth custard or a scoop of vanilla ice cream, it's a comforting dessert that perfectly finishes your meal.",
+    "proposed": "A generous bowl of apple crumble: tender fruit under a buttery, golden crust. With smooth custard or a scoop of vanilla ice cream."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "92f45c29-39aa-4470-82a2-83b8e0e8f2ef",
+    "name": "Chocolate Fudge Brownie",
+    "current": "A rich, fudgy chocolate brownie that's soft and dense in the middle with a chewy edge. Served with smooth custard or a scoop of vanilla ice cream for a delightful hot-and-cold dessert experience. A sweet finish to any meal.",
+    "proposed": "A rich, fudgy chocolate brownie, soft in the middle with a chewy edge. With smooth custard or a scoop of vanilla ice cream."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "9b4e0561-9187-4108-bce5-e5c0ba81f1d1",
+    "name": "Chocolate Fudge Cake",
+    "current": "A generous slice of luxury chocolate fudge cake, deep and rich with layers of dark sponge and glossy fudge filling. Served with custard or vanilla ice cream for a classic hot-and-cold dessert that's simply irresistible.",
+    "proposed": "A generous slice of chocolate fudge cake: layers of dark sponge and glossy fudge filling. Served with custard or vanilla ice cream."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "10ba8809-d902-4855-bd34-c5989c1717bf",
+    "name": "Ice Cream Sundae",
+    "current": "Savour a delightful ice cream sundae featuring soft vanilla ice cream layered with your choice of strawberry, chocolate, or toffee sauce, topped with a crisp fan wafer for a nostalgic treat.",
+    "proposed": "Soft vanilla ice cream with your choice of strawberry, chocolate or toffee sauce, topped with a crisp fan wafer."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "a61c991b-293f-49bd-b88b-5c51703973aa",
+    "name": "Sticky Toffee Pudding",
+    "current": "Our sticky toffee pudding is a proper pub classic - a rich, dark sponge soaked in glossy toffee sauce that sinks lazily into whatever you pair it with. Choose smooth ready-to-serve custard for that cosy, comforting finish.",
+    "proposed": "A proper pub classic: rich, dark sponge soaked in glossy toffee sauce. Served with smooth custard."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "23ae969d-c757-437b-a64a-7a3ae3bf901e",
+    "name": "6 Onion Rings",
+    "current": "Six battered onion rings cooked until golden and crisp, with a sweet onion centre and a light crunch in every bite. A proper pub side for sharing, dipping, or stacking into a burger when you want extra bite.",
+    "proposed": "Six battered onion rings, golden and crisp with a sweet onion centre. Good for sharing, dipping or piling into your burger."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "e58ad4f3-e776-4e4c-8cfe-36eaf6b09927",
+    "name": "Cheesy Chips",
+    "current": "Indulge in our golden straight-cut chips, piled high and topped with a generous blanket of melted cheddar. Crisp on the edges and fluffy in the middle, they make for a perfect side or shareable snack.",
+    "proposed": "Golden straight-cut chips piled high under a blanket of melted cheddar. Crisp at the edges and fluffy in the middle."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "271d0ded-e8d4-4874-9719-d50ccb545e06",
+    "name": "Chicken Goujon Wrap",
+    "current": "Crispy chicken breast goujons wrapped in a soft white tortilla with butterhead salad, ripe tomato, and fresh cucumber, served with golden chips. A lighter option that's still satisfying, perfect for lunch or dinner.",
+    "proposed": "Crispy chicken breast goujons in a soft white tortilla with butterhead salad, tomato and cucumber. Served with golden chips. A lighter choice for lunch or dinner."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "5e101c5b-e048-450c-8c99-da33c5236a9a",
+    "name": "Chips",
+    "current": "A generous portion of golden, straight-cut chips, fried to order and finished with sea salt. Crisp outside and fluffy inside, perfect for sharing or enjoying solo. A simple yet comforting side that complements any meal.",
+    "proposed": "A generous portion of golden straight-cut chips, fried to order and finished with sea salt. Crisp outside, fluffy inside."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "fab96602-957a-465d-8b59-5ef1218a90bc",
+    "name": "Chunky Chips",
+    "current": "Our chunky steak-cut chips are thick, golden, and crispy on the edges with a fluffy centre. Ideal for soaking up gravy or enjoying with dips, they make a satisfying side for any pub meal.",
+    "proposed": "Thick steak-cut chips, golden and crispy at the edges with a fluffy centre. Just right for soaking up gravy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "524af360-2062-47c2-a18e-6e71c2254038",
+    "name": "Fish Finger Wrap",
+    "current": "Savour our fish finger wrap, filled with golden, crunchy fish fingers, crisp butterhead salad, ripe tomato, and fresh cucumber, all wrapped in a soft tortilla and served with a generous portion of chips.",
+    "proposed": "Golden, crunchy fish fingers in a soft tortilla with butterhead salad, tomato and cucumber. Served with a generous portion of chips."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "ecc91190-ba1b-4b0e-aa89-5a968961b711",
+    "name": "Sweet Potato Fries",
+    "current": "Crisp, golden sweet potato fries with that gorgeous balance of natural sweetness and gentle savoury seasoning. Beautiful crunch on the outside, soft and fluffy through the middle, and they pair brilliantly with burgers.",
+    "proposed": "Crisp, golden sweet potato fries, naturally sweet with a gentle seasoning. Great with a burger."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "d4b677f5-8642-476e-811a-bf816b1d0c5d",
+    "name": "Bangers & Mash",
+    "current": "Indulge in plump Cumberland sausages served on a bed of smooth, buttery mash, topped with crispy fried onions and NGCI gravy. Accompanied by garden peas, this hearty British classic is a comforting dish done right.",
+    "proposed": "Plump Cumberland sausages on smooth, buttery mash, topped with crispy fried onions and NGCI gravy, with garden peas. A proper British classic."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "fda83d26-c6d9-4a1e-8351-df4022c2373c",
+    "name": "Beef & Ale Pie",
+    "current": "Enjoy a hearty Tom's Pies steak & ale pie filled with tender beef in rich ale gravy, encased in buttery pastry. Served with buttery mash, garden peas, and NGCI gravy, it's a comforting British dish that warms the soul.",
+    "proposed": "A Tom's Pies steak and ale pie, packed with tender beef in rich ale gravy under buttery pastry. Served with buttery mash, garden peas and NGCI gravy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "c86cc034-8df6-4567-9f94-7435173db12a",
+    "name": "Butternut Squash, Mixed Bean & Mature Cheddar Pie",
+    "current": "A Tom's Pies butternut squash, mixed bean, and mature cheddar pie - a vegetarian pie that more than holds its own. Sweet butternut squash, mixed beans, and sharp cheddar wrapped in buttery golden pastry.",
+    "proposed": "A Tom's Pies vegetarian pie that more than holds its own: sweet butternut squash, mixed beans and sharp cheddar in buttery golden pastry."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "3687c297-5ca4-488c-ada0-077e44120b3c",
+    "name": "Chicken & Wild Mushroom Pie",
+    "current": "A Tom's Pies chicken and wild mushroom pie - tender chicken and earthy wild mushrooms wrapped in buttery golden pastry. Served with smooth buttery mash, garden peas, and NGCI gravy ready for pouring.",
+    "proposed": "Tender chicken and earthy wild mushrooms in buttery golden pastry, from Tom's Pies. Served with smooth buttery mash, garden peas and NGCI gravy."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "79742d4f-5bbc-4fd7-8937-9453bb434e72",
+    "name": "Half Fish & Chips",
+    "current": "Enjoy a lighter version of the classic fish and chips with half a portion of our jumbo battered cod, served golden and crisp alongside chunky steak-cut chips and your choice of peas.",
+    "proposed": "Our fish and chips in a lighter size: half a jumbo battered cod, golden and crisp, with chunky steak-cut chips and your choice of peas."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "545f18ee-8108-431a-8fb9-9166abd9fce1",
+    "name": "Jumbo Sausage & Chips",
+    "current": "A proper jumbo pork sausage served alongside chunky steak-cut chips, mushy peas (or garden peas if you'd rather), and your choice of sauce. The sausage is rich, meaty, and seriously generous - a portion that doesn't need.",
+    "proposed": "A proper jumbo pork sausage with chunky steak-cut chips, mushy peas (or garden peas if you'd rather) and your choice of sauce. Rich, meaty and seriously generous."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "74e4f817-fdfb-485a-97e1-4adbd699eb3d",
+    "name": "Lasagne",
+    "current": "Generous layers of pasta, rich beef ragu, and creamy béchamel, baked until bubbling and golden on top. Served with warm garlic and parsley bread for proper mopping up, plus a fresh side of crisp butterhead salad, ripe.",
+    "proposed": "Layers of pasta, rich beef ragu and creamy béchamel, baked until bubbling and golden. Served with warm garlic and parsley bread for mopping up, and a crisp butterhead side salad."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "83cb885f-b544-416d-8b26-8248b597ba4f",
+    "name": "Mac & Cheese",
+    "current": "Generous macaroni in a rich, creamy cheese sauce, topped with crispy fried onions for that proper finishing crunch. Served with warm garlic and parsley bread to soak up the sauce, plus a fresh side of crisp butterhead.",
+    "proposed": "Macaroni in a rich, creamy cheese sauce, topped with crispy fried onions. Served with warm garlic and parsley bread to soak up the sauce, and a crisp butterhead side salad."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "f3b43b29-44ef-4530-931f-86e8ccd5e33a",
+    "name": "Spinach & Ricotta Cannelloni",
+    "current": "Soft pasta tubes filled with creamy ricotta and spinach, baked in a rich tomato sauce until bubbling at the edges. Served with warm garlic and parsley bread for proper mopping up, plus a fresh side of crisp butterhead.",
+    "proposed": "Pasta tubes filled with creamy ricotta and spinach, baked in rich tomato sauce until bubbling at the edges. Served with warm garlic and parsley bread, and a crisp butterhead side salad."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "225075e3-75a8-4b0c-9ffb-6c582cd00824",
+    "name": "BBQ Chicken",
+    "current": "Our BBQ Chicken stone-baked pizza swaps tomato for smoky, tangy BBQ sauce, then layers it with melted mozzarella, tender chicken pieces, sliced onions, and a scatter of sweetcorn.",
+    "proposed": "Smoky, tangy BBQ sauce instead of tomato, with melted mozzarella, tender chicken, sliced onions and sweetcorn on a stone-baked base."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "3d3d63fb-565b-4399-b94b-bee421441846",
+    "name": "Garlic Bread",
+    "current": "Savour our garlic bread, made from stone-baked dough brushed with herby garlic butter, baked until golden and crispy. Perfect as a starter or to share while enjoying a few drinks with friends.",
+    "proposed": "Stone-baked dough brushed with herby garlic butter and baked until golden and crispy. Good as a starter or for sharing."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "7ede8e72-f776-4e0a-9b29-4f97be5f58ff",
+    "name": "Garlic Bread + Mozzarella",
+    "current": "Experience our Garlic Bread + Mozzarella, a warm stone-baked garlic bread topped with melted mozzarella, golden and bubbling at the edges. Ideal as a starter or side to share with your meal.",
+    "proposed": "Warm stone-baked garlic bread topped with melted mozzarella, golden and bubbling at the edges. Good as a starter or a side to share."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "52b4fc2b-a302-4e7a-a3de-f496143a1f8a",
+    "name": "Margherita",
+    "current": "The classic Margherita - a crisp, stone-baked pizza topped with rich tomato sauce, generously melted mozzarella, and a finishing scatter of fresh herbs. The crust comes out with a proper stone-baked char around the edges.",
+    "proposed": "The classic: rich tomato sauce, plenty of melted mozzarella and a scatter of fresh herbs on a crisp stone-baked base, charred at the edges."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "ce037810-9bb0-44a1-9b72-c5806a0d7fed",
+    "name": "Pepperoni",
+    "current": "Our stone-baked Pepperoni pizza is a crowd-pleaser, topped with savoury, slightly spicy slices over melted mozzarella and rich tomato sauce on a crisp base. Always satisfying.",
+    "proposed": "A crowd-pleaser: slightly spicy pepperoni over melted mozzarella and rich tomato sauce, on a crisp stone-baked base."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "b10e7a04-2dda-485a-95f2-790ec36bd8ce",
+    "name": "Smoky Chilli Chicken",
+    "current": "For those who crave a bit of heat, our Smoky Chilli Chicken pizza features stone-baked dough layered with rich tomato sauce, melted mozzarella, smoky paprika chicken, and sliced chillies for a bold and satisfying choice.",
+    "proposed": "For a bit of heat: smoky paprika chicken and sliced chillies with melted mozzarella and rich tomato sauce, on a stone-baked base."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "8c504fb8-87b3-43e3-8ef1-ebe1a7920615",
+    "name": "Spicy Meatball",
+    "current": "For pizza lovers craving a kick, our Spicy Meatball features stone-baked dough topped with rich tomato sauce, melted mozzarella, spicy beef meatballs, and sliced onions. A hearty pizza with deep flavours and a gentle heat.",
+    "proposed": "Spicy beef meatballs and sliced onions with melted mozzarella and rich tomato sauce, on a stone-baked base. Hearty, with a gentle heat."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "af84b2e9-57cd-46de-a25c-66ef2bdca69a",
+    "name": "Veggie Classic",
+    "current": "Our Veggie Classic stone-baked pizza brings together the proper triple of mixed peppers, sliced onions, and sweetcorn, all piled onto melted mozzarella and rich tomato sauce on a crisp base.",
+    "proposed": "Mixed peppers, sliced onions and sweetcorn piled onto melted mozzarella and rich tomato sauce, on a crisp stone-baked base."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "9bd1caa0-0766-4d6c-a3c3-5da3ef850e1f",
+    "name": "Chicken Goujons & Chips",
+    "current": "Crispy chicken breast goujons paired with golden chips and your choice of dip. The goujons are crunchy outside and tender inside, while the chips are perfectly crisp. Ideal for a lighter lunch or snack with a drink.",
+    "proposed": "Crispy chicken breast goujons with golden chips and your choice of dip. A lighter lunch, or a snack with a drink."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "a0997e22-f101-4299-a3c4-b609390c2ca0",
+    "name": "Fish Fingers & Chips",
+    "current": "Relish our fish fingers and chips, featuring white-fillet fish fingers in a golden breadcrumb coating, served with a generous portion of chips and a wedge of fresh lemon for a nostalgic pub experience.",
+    "proposed": "White-fillet fish fingers in a golden breadcrumb coating, with a generous portion of chips and a wedge of fresh lemon."
+  },
+  {
+    "table": "menu_dishes",
+    "id": "6967d006-5965-48be-9afa-b06b6e09c91a",
+    "name": "Salt & Chilli Squid & Chips",
+    "current": "Crispy salt and chilli squid bites served with a generous portion of golden chips and a zingy dip on the side - a proper pub take on a takeaway favourite. The squid stays tender through the middle with that lovely seasoned.",
+    "proposed": "Crispy salt and chilli squid with a generous portion of golden chips and a zingy dip. A pub take on a takeaway favourite, and the squid stays tender in the middle."
+  }
+]
