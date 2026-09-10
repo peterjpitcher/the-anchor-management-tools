@@ -250,6 +250,8 @@ export async function GET(_request: NextRequest) {
         ticket_price: event.price ?? null,
         online_discount_type: event.online_discount_type ?? null,
         online_discount_value: event.online_discount_value ?? null,
+      online_discount_ends_at: event.online_discount_ends_at ?? null,
+      booking_questions: event.booking_questions ?? [],
         primary_keywords: event.primary_keywords || [],
         secondary_keywords: event.secondary_keywords || [],
         local_seo_keywords: event.local_seo_keywords || [],

@@ -56,7 +56,7 @@ function makeRequest(body: Record<string, unknown>, currentClient = true) {
 function makeBuilder(result: { data: unknown; error: unknown }) {
   const builder: Record<string, ReturnType<typeof vi.fn> | unknown> = {}
   const chain = () => builder
-  for (const method of ['select', 'update', 'insert', 'eq', 'is']) {
+  for (const method of ['select', 'update', 'insert', 'delete', 'eq', 'is']) {
     builder[method] = vi.fn(chain)
   }
   builder.maybeSingle = vi.fn().mockResolvedValue(result)
@@ -64,10 +64,12 @@ function makeBuilder(result: { data: unknown; error: unknown }) {
   return builder
 }
 
-function createSupabaseMock(eventDate: string) {
+type TableResult = { data: unknown; error: unknown }
+
+function createSupabaseMock(eventDate: string, overrides: Record<string, TableResult> = {}) {
   const builders: Record<string, Array<ReturnType<typeof makeBuilder>>> = {}
   const from = vi.fn((table: string) => {
-    const result = table === 'events'
+    const defaultResult = table === 'events'
       ? {
           data: {
             id: EVENT_ID,
@@ -91,7 +93,7 @@ function createSupabaseMock(eventDate: string) {
         : table === 'table_bookings'
           ? { data: { id: TABLE_BOOKING_ID }, error: null }
           : { data: null, error: null }
-    const builder = makeBuilder(result)
+    const builder = makeBuilder(overrides[table] ?? defaultResult)
     builders[table] = [...(builders[table] || []), builder]
     return builder
   })
@@ -208,5 +210,106 @@ describe('POST /api/foh/event-bookings', () => {
     })
     expect(EventBookingService.createBooking).not.toHaveBeenCalled()
     expect(db.builders.table_bookings).toBeUndefined()
+  })
+})
+
+// A walk-in with no name or number. The route makes a customer up for it before booking.
+const ANONYMOUS_EVENT_WALK_IN = {
+  customer_mode: 'anonymous',
+  walk_in: true,
+  walk_in_guest_name: 'Walk in',
+  event_id: EVENT_ID,
+  seats: 2,
+}
+
+// Neither booking table refers to the made-up customer.
+const NOTHING_BOOKED: Record<string, TableResult> = {
+  table_bookings: { data: [], error: null },
+  bookings: { data: [], error: null },
+}
+
+function customerDeletes(db: ReturnType<typeof createSupabaseMock>) {
+  return (db.builders.customers ?? []).filter(
+    (builder) => vi.mocked(builder.delete as ReturnType<typeof vi.fn>).mock.calls.length > 0,
+  )
+}
+
+function mockUnbookedOutcome(outcome: Record<string, unknown>) {
+  vi.mocked(EventBookingService.createBooking).mockResolvedValueOnce({
+    rpcFailed: false,
+    rollbackFailed: false,
+    paymentLinkFailed: false,
+    resolvedState: 'blocked',
+    resolvedReason: 'sold_out',
+    bookingId: null,
+    seatsRemaining: 0,
+    nextStepUrl: null,
+    manageUrl: null,
+    smsMeta: null,
+    tableBookingId: null,
+    tableName: null,
+    eventSeatingType: 'seated',
+    rpcResult: { state: 'blocked', reason: 'sold_out' },
+    ...outcome,
+  } as never)
+}
+
+describe('POST /api/foh/event-bookings: failed walk-ins', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // clearAllMocks keeps queued once-values, and an earlier test queues a booking it never
+    // reaches, which would otherwise answer the first test here.
+    vi.mocked(EventBookingService.createBooking).mockReset()
+  })
+
+  it('removes the made-up walk-in customer when the event booking fails', async () => {
+    const db = createSupabaseMock('2026-08-14', NOTHING_BOOKED)
+    mockAuth(db)
+    mockUnbookedOutcome({ rpcFailed: true })
+
+    const response = await POST(makeRequest(ANONYMOUS_EVENT_WALK_IN))
+
+    expect(response.status).toBe(500)
+    const deletes = customerDeletes(db)
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0].eq).toHaveBeenCalledWith('id', CUSTOMER_ID)
+  })
+
+  it('removes it when the event is full and nothing was booked', async () => {
+    const db = createSupabaseMock('2026-08-14', NOTHING_BOOKED)
+    mockAuth(db)
+    mockUnbookedOutcome({})
+
+    const response = await POST(makeRequest(ANONYMOUS_EVENT_WALK_IN))
+
+    expect(response.status).toBe(200)
+    expect(customerDeletes(db)).toHaveLength(1)
+  })
+
+  it('keeps it when a cancelled event booking still refers to it, because deleting would cascade', async () => {
+    // A failed table reservation cancels the event booking rather than deleting it, and
+    // bookings.customer_id is ON DELETE CASCADE.
+    const db = createSupabaseMock('2026-08-14', {
+      ...NOTHING_BOOKED,
+      bookings: { data: [{ id: BOOKING_ID }], error: null },
+    })
+    mockAuth(db)
+    mockUnbookedOutcome({ rollbackFailed: true, bookingId: BOOKING_ID })
+
+    const response = await POST(makeRequest(ANONYMOUS_EVENT_WALK_IN))
+
+    expect(response.status).toBe(500)
+    expect(customerDeletes(db)).toHaveLength(0)
+  })
+
+  it('keeps it once the event booking exists', async () => {
+    const db = createSupabaseMock('2026-08-14', NOTHING_BOOKED)
+    mockAuth(db)
+    mockConfirmedBooking()
+
+    const response = await POST(makeRequest(ANONYMOUS_EVENT_WALK_IN))
+
+    expect(response.status).toBe(201)
+    expect(customerDeletes(db)).toHaveLength(0)
   })
 })

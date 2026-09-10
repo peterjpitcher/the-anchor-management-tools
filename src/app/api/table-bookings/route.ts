@@ -30,6 +30,7 @@ import {
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/table-bookings/christmas'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -514,6 +515,20 @@ export async function POST(request: NextRequest) {
               ? 'private_booking_blocked'
               : 'no_table'
           }
+        } else if (extractServiceWindowRuleErrorMessage(rpcError)) {
+          // The kitchen is not serving at that time. Availability applies the same rule, so the
+          // website should never have offered it: reaching the guard means the two have drifted,
+          // which has to be visible. The guest gets the usual "not that time" answer, worded by the
+          // website, rather than a 500 or the guard's sentence written for staff.
+          logger.error('Public table booking refused by the service-window guard', {
+            metadata: {
+              customerId: customerResolution.customerId,
+              bookingDate: payload.date,
+              bookingTime,
+              purpose: payload.purpose
+            }
+          })
+          bookingResult = { state: 'blocked', reason: 'outside_service_window' }
         } else {
           // Christmas rule breaches (party size below 6, under 24 hours notice)
           // are raised by the RPC with customer-appropriate wording. Surface

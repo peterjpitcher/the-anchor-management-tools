@@ -72,6 +72,27 @@ describe('atomic event dining requests', () => {
     expect(supabase.rpc.mock.calls.map(([name]) => name)).not.toContain('create_event_booking_v06')
   })
 
+  it('keeps guest details, the quoted total and dining requests in the same create', async () => {
+    const supabase = makeSupabaseMock({ create_event_booking_with_attendees_and_requests_v01: { data: { ...CONFIRMED_RPC_RESULT, requests_recorded: true }, error: null } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const attendees = [{ id: '22222222-2222-4222-8222-222222222222', name: 'Guest', answers: {} }]
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, attendees, expectedTotal: 40, diningRequest: 'before_event', earlyArrivalRequest: true })
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_with_attendees_and_requests_v01', expect.objectContaining({ p_attendees: attendees, p_expected_total: 40, p_dining_request: 'before_event', p_early_arrival_request: true }))
+    expect(result.rpcResult.requests_recorded).toBe(true)
+    expect(supabase.rpc.mock.calls.map(([name]) => name)).not.toContain('create_event_booking_v08')
+  })
+
+  it('does not issue a manage link when the combined booking transaction fails', async () => {
+    const supabase = makeSupabaseMock({ create_event_booking_with_attendees_and_requests_v01: { data: null, error: { message: 'event_booking_request_persistence_failed' } } })
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const attendees = [{ id: '22222222-2222-4222-8222-222222222222', name: 'Guest', answers: {} }]
+    const result = await EventBookingService.createBooking({ ...BASE_PARAMS, attendees, diningRequest: 'before_event' })
+    expect(result.rpcFailed).toBe(true)
+    expect(result.bookingId).toBeNull()
+    expect(createEventManageToken).not.toHaveBeenCalled()
+    expect(recordAnalyticsEvent).not.toHaveBeenCalled()
+  })
+
   it('surfaces failed persistence without tokens, messages or a success result', async () => {
     const supabase = makeSupabaseMock({ create_event_booking_with_requests_v01: { data: null, error: { message: 'event_booking_request_persistence_failed' } } })
     vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)

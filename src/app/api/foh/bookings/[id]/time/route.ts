@@ -5,6 +5,7 @@ import { requireFohPermission, getLondonDateIso } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { logAuditEvent } from '@/app/actions/audit'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -239,6 +240,16 @@ export async function PATCH(
         return NextResponse.json(
           { error: 'Selected time conflicts with another booking or private block.', code: 'conflict' },
           { status: 409 },
+        )
+      }
+
+      // The kitchen is not serving at the new time. 422, like any other time this booking cannot
+      // take, so the screen keeps its dialog open and shows the guard's sentence as it stands.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(moveError)
+      if (serviceWindowMessage) {
+        return NextResponse.json(
+          { error: serviceWindowMessage, code: 'outside_service_window' },
+          { status: 422 },
         )
       }
 
