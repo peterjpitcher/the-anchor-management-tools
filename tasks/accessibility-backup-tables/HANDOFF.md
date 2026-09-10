@@ -41,10 +41,8 @@ file to whatever version the ledger records, per `supabase/migrations/README.md`
 
 - Nothing blocks the work. The owner chose the drop over the lockdown on
   10 September 2026, conditional on the capture being taken first.
-- Worth deciding separately: whether the two database lessons below should go
-  into `tasks/lessons.md`, which is where this repo keeps that kind of thing.
-  They were left here because the brief for this task said not to touch anything
-  outside it.
+- None outstanding. The two database lessons below were promoted into
+  `tasks/lessons.md` on the owner's say-so, so they are read at session start.
 
 **Known issues.** None in this work. CI is green and the diff is SQL and
 markdown only, so no application code is affected.
@@ -54,6 +52,8 @@ sitting in the schema. Same habit of leaving a dated backup table behind. Not
 touched here, but a sweep would probably find more.
 
 ## Two lessons from this work
+
+Both are also in `tasks/lessons.md`, dated 10 September 2026.
 
 **A grant to PUBLIC survives `REVOKE ... FROM anon, authenticated`.** Verified on
 PostgreSQL 16: after `grant select on t to PUBLIC`, revoking from `anon` and
