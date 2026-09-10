@@ -3,6 +3,7 @@ import { PATCH } from './route'
 import { NextRequest } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logAuditEvent } from '@/app/actions/audit'
+import { logger } from '@/lib/logger'
 import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 
 vi.mock('@/lib/foh/api-auth', () => ({
@@ -320,6 +321,23 @@ describe('PATCH /api/foh/bookings/[id]/time', () => {
       const json = await res.json()
       expect(json.code).toBe('conflict')
       expect(json.error).toMatch(/conflicts with another booking/i)
+      expect(sendTableBookingRescheduledNotificationIfAllowed).not.toHaveBeenCalled()
+    })
+
+    it('passes a kitchen-hours refusal through as a 422 in the database\'s own words', async () => {
+      // 422, not 400: the change-time screen keeps its dialog open and shows the message as it
+      // stands for 409 and 422, but appends "Check the timeline before trying again" to anything
+      // else, which is meant for a network failure and would mislead here.
+      const message = 'The kitchen is not serving at 20:45 on 15 Mar 2026. Please choose a time inside a food service.'
+      const db = createSupabaseMock({ rpcError: { code: '22023', message, details: null, hint: null } })
+      mockAuthSuccess(db)
+
+      const res = await PATCH(makeRequest({ time: '20:45' }), makeParams())
+
+      expect(res.status).toBe(422)
+      await expect(res.json()).resolves.toEqual({ error: message, code: 'outside_service_window' })
+      expect(logger.error).not.toHaveBeenCalled()
+      expect(logAuditEvent).not.toHaveBeenCalled()
       expect(sendTableBookingRescheduledNotificationIfAllowed).not.toHaveBeenCalled()
     })
   })

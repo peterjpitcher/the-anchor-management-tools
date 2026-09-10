@@ -12,6 +12,10 @@ vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('@/lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}))
+
 // Preserve every real export from the bookings module, but stub the two customer
 // notification helpers so the edit route's wiring can be asserted without sending.
 vi.mock('@/lib/table-bookings/bookings', async (importActual) => ({
@@ -22,12 +26,29 @@ vi.mock('@/lib/table-bookings/bookings', async (importActual) => ({
 
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { logAuditEvent } from '@/app/actions/audit'
+import { logger } from '@/lib/logger'
 import { PATCH as patchBooking } from '@/app/api/boh/table-bookings/[id]/route'
 import { PATCH as patchPreorder } from '@/app/api/boh/table-bookings/[id]/preorder/route'
 
 const BOOKING_ID = '00000000-0000-4000-8000-000000000001'
 const CUSTOMER_ID = '00000000-0000-4000-8000-000000000011'
 const ITEM_ID = '00000000-0000-4000-8000-000000000021'
+
+// What the booking's table assignment held before the edit. Deliberately not the booking's own
+// window: assignments can carry a turnaround gap, so a restore has to use what was stored.
+const ORIGINAL_ASSIGNMENT = {
+  id: '00000000-0000-4000-8000-000000000031',
+  start_datetime: '2026-07-20T17:00:00.000Z',
+  end_datetime: '2026-07-20T18:45:00.000Z',
+}
+
+// The route reads each assignment's current window before moving it, so that it can put the
+// table back if the booking update is then refused.
+function assignmentWindowRead(rows: Array<Record<string, unknown>> = [ORIGINAL_ASSIGNMENT]) {
+  const eq = vi.fn().mockResolvedValue({ data: rows, error: null })
+  return vi.fn().mockReturnValue({ eq })
+}
 
 function jsonRequest(body: unknown) {
   return new Request(`http://localhost/api/boh/table-bookings/${BOOKING_ID}`, {
@@ -76,7 +97,7 @@ describe('BOH table booking edit routes', () => {
           return { select: bookingSelect, update: bookingUpdate }
         }
         if (table === 'booking_table_assignments') {
-          return { update: assignmentUpdate }
+          return { select: assignmentWindowRead(), update: assignmentUpdate }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -160,7 +181,7 @@ describe('BOH table booking edit routes', () => {
           return { select: bookingSelect, update: bookingUpdate }
         }
         if (table === 'booking_table_assignments') {
-          return { update: assignmentUpdate }
+          return { select: assignmentWindowRead(), update: assignmentUpdate }
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -228,5 +249,124 @@ describe('BOH table booking edit routes', () => {
     expect(response.status).toBe(409)
     expect(payload).toEqual({ error: 'Pre-order cutoff has passed' })
     expect(itemUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('BOH table booking edit: a refused booking update', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const KITCHEN_NOT_SERVING = {
+    code: '22023',
+    message: 'The kitchen is not serving at 20:45 on 25 Jul 2026. Please choose a time inside a food service.',
+    details: null,
+    hint: null,
+  }
+
+  // An 18:00 food booking whose table assignment moves first and whose booking update is then
+  // refused with `bookingUpdateError`.
+  function buildSupabase(bookingUpdateError: Record<string, unknown>) {
+    const bookingLoadMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: BOOKING_ID,
+        status: 'confirmed',
+        booking_date: '2026-07-20',
+        booking_time: '18:00:00',
+        duration_minutes: 105,
+        customer_id: CUSTOMER_ID,
+        special_requirements: null,
+        dietary_requirements: [],
+        allergies: [],
+        celebration_type: null,
+        internal_notes: null,
+        high_chair_count: 0,
+        is_outside_seating: false,
+      },
+      error: null,
+    })
+    const bookingSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ maybeSingle: bookingLoadMaybeSingle }),
+    })
+    const bookingUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: bookingUpdateError }),
+        }),
+      }),
+    })
+
+    const assignmentEq = vi.fn().mockResolvedValue({ error: null })
+    const assignmentUpdate = vi.fn().mockReturnValue({ eq: assignmentEq })
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'table_bookings') {
+          return { select: bookingSelect, update: bookingUpdate }
+        }
+        if (table === 'booking_table_assignments') {
+          return { select: assignmentWindowRead(), update: assignmentUpdate }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    }
+
+    ;(requireBohTableBookingPermission as unknown as vi.Mock).mockResolvedValue({
+      ok: true,
+      supabase,
+      userId: 'user-1',
+    })
+
+    return { assignmentUpdate, assignmentEq }
+  }
+
+  const moveToLateEvening = () =>
+    patchBooking(jsonRequest({
+      booking_date: '2026-07-25',
+      booking_time: '20:45',
+      duration_minutes: 105,
+      customer_id: CUSTOMER_ID,
+    }) as any, {
+      params: Promise.resolve({ id: BOOKING_ID }),
+    })
+
+  it('puts the table back and tells staff the kitchen is not serving', async () => {
+    const { assignmentUpdate, assignmentEq } = buildSupabase(KITCHEN_NOT_SERVING)
+
+    const response = await moveToLateEvening()
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: KITCHEN_NOT_SERVING.message })
+    // Moved to the new window first, then restored to exactly what it held before.
+    expect(assignmentUpdate).toHaveBeenCalledTimes(2)
+    expect(assignmentUpdate).toHaveBeenNthCalledWith(2, {
+      start_datetime: ORIGINAL_ASSIGNMENT.start_datetime,
+      end_datetime: ORIGINAL_ASSIGNMENT.end_datetime,
+    })
+    expect(assignmentEq).toHaveBeenNthCalledWith(2, 'id', ORIGINAL_ASSIGNMENT.id)
+    expect(sendTableBookingRescheduledNotificationIfAllowed).not.toHaveBeenCalled()
+    expect(logAuditEvent).not.toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('puts the table back and logs when the update fails for any other reason', async () => {
+    const { assignmentUpdate } = buildSupabase({
+      code: 'XX000',
+      message: 'connection reset',
+      details: null,
+      hint: null,
+    })
+
+    const response = await moveToLateEvening()
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({ error: 'Failed to update booking' })
+    expect(assignmentUpdate).toHaveBeenCalledTimes(2)
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringMatching(/failed to update booking/i),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ bookingId: BOOKING_ID, code: 'XX000', message: 'connection reset' }),
+      }),
+    )
   })
 })
