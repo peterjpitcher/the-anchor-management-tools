@@ -1,4 +1,4 @@
--- ROLLBACK for 20260910100000_event_image_table_talker. Not a migration file; run only if the owner asks.
+-- ROLLBACK for 20260910105320_event_image_table_talker. Not a migration file; run only if the owner asks.
 --
 -- Safe only while no table_talker rows exist: re-adding the narrower CHECK fails loudly
 -- if any do, which is deliberate. Delete those rows (and their storage objects) first,
