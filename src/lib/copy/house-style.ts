@@ -128,6 +128,32 @@ const BANNED_CLAIMS: Rule[] = [
     message: 'Sunday roast pre-order and the Saturday cutoff were retired at the 2026-05-17 walk-in launch.',
   },
   {
+    rule: 'ulez-figure',
+    severity: 'error',
+    // Any figure in the same sentence as the ULEZ, or the retired £12.50 itself close by even
+    // across a sentence end ("Save £12.50 daily! We're outside London's ULEZ zone").
+    pattern: /ULEZ[^.!?\n]{0,80}£\s?\d|£\s?\d[\d.,]*[^.!?\n]{0,80}ULEZ|£\s?12\.50[^\n]{0,60}ULEZ|ULEZ[^\n]{0,60}£\s?12\.50/gi,
+    message:
+      'Never quote a ULEZ saving figure: whether a driver pays depends on their vehicle and their ' +
+      'route. Say "outside the ULEZ" and stop. Retired 2026-09-10, SSOT §14.',
+  },
+  {
+    rule: 'private-hire-deposit-deducted',
+    severity: 'error',
+    pattern: /£\s?250\b[^.!?\n]{0,80}(?:deducted|off (?:your|the) (?:final )?bill)/gi,
+    message:
+      'The £250 private-hire deposit is a booking and damage deposit, held separately and refunded ' +
+      'after the event. It is never taken off the bill, and it replaces the group deposit. SSOT §11, §16.',
+  },
+  {
+    rule: 'menu-released-later',
+    severity: 'error',
+    pattern: /released closer to the time/gi,
+    message:
+      'The Christmas dishes are published: they come from the booking period in this app. The ' +
+      '"released closer to the time" line is retired, SSOT §7 and §14.',
+  },
+  {
     rule: 'anchor-pub-conversational',
     severity: 'warning',
     pattern: /\bThe Anchor Pub\b/g,
