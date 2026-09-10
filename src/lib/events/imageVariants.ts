@@ -6,6 +6,8 @@
  * match the database CHECK constraint on event_images.image_type.
  */
 
+import { TABLE_TALKER_PANEL_WIDTH_MM } from './artwork/print-sheet'
+
 export const EVENT_IMAGE_BUCKET = 'event-images'
 
 export type EventImageVariant =
@@ -14,6 +16,7 @@ export type EventImageVariant =
   | 'social'
   | 'story'
   | 'print_poster'
+  | 'table_talker'
 
 /** Column on `events` that caches the public URL for a variant. */
 export type EventImageCacheColumn =
@@ -22,6 +25,7 @@ export type EventImageCacheColumn =
   | 'social_image_url'
   | 'story_image_url'
   | 'print_poster_url'
+  | 'table_talker_url'
 
 /**
  * How a print variant reaches paper. Null on every screen variant.
@@ -75,6 +79,11 @@ export interface EventImageVariantConfig {
    * that is, whereas "Instagram story" is unambiguous.
    */
   promptLabel: string
+  /**
+   * Said after the size in the copyable prompt, for a shape an image tool is
+   * likely to get wrong without being told.
+   */
+  promptNote?: string
   /** Shown under the tile so staff know what to export from Canva. */
   helpText: string
   /** width / height. Used for the tolerance check and the preview box. */
@@ -180,6 +189,34 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
       printedSizeLabel: 'the A4 poster',
     },
   },
+  table_talker: {
+    key: 'table_talker',
+    label: 'Table talker (print)',
+    promptLabel: 'Slim table talker for print',
+    promptNote:
+      'Tall and slim: stack the elements vertically rather than shrinking the square layout to fit the width.',
+    helpText: 'DL at 300dpi, 1169x2480. Printed three to an A4 sheet.',
+    aspectRatio: 99 / 210,
+    aspectLabel: 'DL portrait (99 x 210 mm)',
+    targetWidth: 1169,
+    targetHeight: 2480,
+    // No PDF: a PDF cannot be branded, and this panel is only printed after it
+    // has been.
+    acceptedMimeTypes: IMAGE_MIME_TYPES,
+    maxBytes: TEN_MB,
+    webServed: false,
+    cacheColumn: 'table_talker_url',
+    // Printed at its panel width on the A4 sheet, not the DL design width.
+    // 15mm is 0.16245 of 92.33mm, rounded up.
+    print: {
+      printedWidthMm: TABLE_TALKER_PANEL_WIDTH_MM,
+      qrMinMm: 15,
+      qrMinWidthFrac: 0.1625,
+      qrChannel: 'table_talker',
+      surfaceName: 'table talker',
+      printedSizeLabel: 'each printed table talker',
+    },
+  },
 }
 
 /** Display order in the panel, and the order variants are uploaded from a queue. */
@@ -189,6 +226,7 @@ export const EVENT_IMAGE_VARIANT_ORDER: readonly EventImageVariant[] = [
   'social',
   'story',
   'print_poster',
+  'table_talker',
 ]
 
 export function isEventImageVariant(value: unknown): value is EventImageVariant {
@@ -213,7 +251,7 @@ export function qrMinimumFor(
 
 /**
  * The prompt staff copy into an image tool once the square artwork exists, to
- * get the other four variants back at the sizes the tiles actually accept.
+ * get the other variants back at the sizes the tiles actually accept.
  *
  * Generated from the config rather than written out, so the numbers here can
  * never drift from the ones the upload validates against. The square is left
@@ -223,7 +261,8 @@ export function buildVariantPrompt(): string {
   const sizes = EVENT_IMAGE_VARIANT_ORDER.filter((key) => key !== 'square').map((key) => {
     const variant = EVENT_IMAGE_VARIANTS[key]
     const dpi = variant.print ? ' at 300 dpi' : ''
-    return `- ${variant.promptLabel}: ${variant.aspectLabel}, ${variant.targetWidth} x ${variant.targetHeight} px${dpi}`
+    const note = variant.promptNote ? `. ${variant.promptNote}` : ''
+    return `- ${variant.promptLabel}: ${variant.aspectLabel}, ${variant.targetWidth} x ${variant.targetHeight} px${dpi}${note}`
   })
 
   return [

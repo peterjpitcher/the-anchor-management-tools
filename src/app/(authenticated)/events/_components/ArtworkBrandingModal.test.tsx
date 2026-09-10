@@ -403,6 +403,33 @@ describe('ArtworkBrandingModal, QR code', () => {
     expect(screen.getByText(/mm on the A4 poster/)).toBeInTheDocument()
   })
 
+  it('offers the QR on the table talker with its own floor, link and printed size', () => {
+    renderModal({ variant: 'table_talker', imageUrl: 'https://storage.test/table-talker.png' })
+
+    expect(screen.getByRole('checkbox', { name: 'Put a QR code on the table talker' })).toBeChecked()
+    // 15mm on the 92mm printed panel is 16.25%, so the whole-percent floor is 17.
+    expect((screen.getByLabelText('QR size') as HTMLInputElement).min).toBe('17')
+    expect(screen.getByText('Never smaller than the 15mm print minimum.')).toBeInTheDocument()
+    // Its own tt short link, so table scans are not counted as poster scans.
+    expect(screen.getByText('https://l.the-anchor.pub/tt3f2a1b')).toBeInTheDocument()
+    expect(screen.queryByText('https://l.the-anchor.pub/po3f2a1b')).toBeNull()
+    expect(screen.getByText(/mm on each printed table talker/)).toBeInTheDocument()
+  })
+
+  it('pulls a table talker QR typed under its floor back up before saving', async () => {
+    const user = userEvent.setup()
+    renderModal({ variant: 'table_talker', imageUrl: 'https://storage.test/table-talker.png' })
+
+    fireEvent.change(screen.getByLabelText('QR width (%)'), { target: { value: '12' } })
+    expect((screen.getByLabelText('QR size') as HTMLInputElement).value).toBe('17')
+
+    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(body.variant).toBe('table_talker')
+    expect(body.qr.widthFrac).toBe(0.17)
+  })
+
   it('disables Save and gives the reason when the QR overlaps the logo', () => {
     renderModal()
 

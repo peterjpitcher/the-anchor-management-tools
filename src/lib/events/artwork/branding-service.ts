@@ -384,7 +384,7 @@ async function loadState(
   const { data: event, error: eventError } = await supabase
     .from('events')
     .select(
-      'id, hero_image_url, landscape_image_url, social_image_url, story_image_url, print_poster_url'
+      'id, hero_image_url, landscape_image_url, social_image_url, story_image_url, print_poster_url, table_talker_url'
     )
     .eq('id', eventId)
     .maybeSingle()

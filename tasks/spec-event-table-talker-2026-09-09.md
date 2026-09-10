@@ -64,7 +64,7 @@ core.
 | Lowest accepted | 150 dpi, which is 546 px wide |
 
 Derivation: 297 minus two 5 mm margins minus two 5 mm gaps is 277, divided by
-three is 92.33 mm. At the DL ratio (210 / 99) that panel is 195.87 mm tall,
+three is 92.33 mm. At the DL ratio (210 / 99) that panel is 195.86 mm tall,
 inside the 200 mm printable height, so the row is centred with about 7 mm above
 and below.
 
