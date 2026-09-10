@@ -247,6 +247,36 @@ export const QR_MIN_WIDTH_FRAC = 0.1
 export const QR_MIN_WIDTH_FRAC_EXACT = QR_MIN_MM / A4_WIDTH_MM
 
 /**
+ * The smallest printable QR on one print surface.
+ *
+ * Geometry works in fractions of the image width, but a scanning minimum is a
+ * printed size, and the two only agree for the width a surface is actually
+ * printed at. So each surface states both: `widthFrac` is what gets enforced,
+ * `mm` is what a person reading the refusal needs to hear, and `surfaceName`
+ * keeps that sentence honest about what is being printed.
+ *
+ * Each print variant's own minimum lives beside it in
+ * `src/lib/events/imageVariants.ts`. This module keeps no list of variants.
+ */
+export interface QrPrintMinimum {
+  widthFrac: number
+  mm: number
+  surfaceName: string
+}
+
+/**
+ * The A4 poster's minimum, and the default for every QR function here, so the
+ * poster behaves exactly as it did before surfaces had their own. Any other
+ * surface MUST pass its own: the poster's fraction on a narrower print is a
+ * physically smaller code, which is the failure this type exists to prevent.
+ */
+export const POSTER_QR_MINIMUM: QrPrintMinimum = {
+  widthFrac: QR_MIN_WIDTH_FRAC,
+  mm: QR_MIN_MM,
+  surfaceName: 'poster',
+}
+
+/**
  * The widest a QR may be drawn, as a fraction of the image width.
  *
  * A sanity guard rather than a print rule: a code wider than two fifths of the
@@ -262,9 +292,12 @@ export const QR_MAX_WIDTH_FRAC = 0.4
  */
 export const QR_DEFAULT_WIDTH_FRAC = 0.2
 
-/** Round up so the rendered QR never falls below 10% of the poster width. */
-export function qrMinWidthPx(posterWidthPx: number): number {
-  return Math.ceil(posterWidthPx * QR_MIN_WIDTH_FRAC)
+/** Round up so the rendered QR never falls below the surface's minimum fraction. */
+export function qrMinWidthPx(
+  posterWidthPx: number,
+  minimum: QrPrintMinimum = POSTER_QR_MINIMUM
+): number {
+  return Math.ceil(posterWidthPx * minimum.widthFrac)
 }
 
 /**
@@ -318,7 +351,7 @@ export function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
  *
  * Three ways it can fail, checked in the order a person would notice them:
  *   1. any part of the code is off the canvas, or it has no area;
- *   2. it is smaller than the 21mm print minimum for this poster width;
+ *   2. it is smaller than the surface's print minimum (21mm on the poster);
  *   3. it comes within one inset of the logo's keep-clear region.
  *
  * The gap used against the logo is `insetPx` for the canvas, the same margin
@@ -326,14 +359,16 @@ export function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
  * clears it.
  *
  * Pass `logo` as null when the artwork carries no logo. This validator is for
- * the print poster path: the 21mm rule is a print rule and has no meaning on a
- * screen-only variant.
+ * print variants only: the minimum is a print rule and has no meaning on a
+ * screen-only variant. Pass the surface's own `minimum`; the default is the
+ * poster's.
  */
 export function validateQrPlacement(
   posterW: number,
   posterH: number,
   qr: Rect,
-  logo: Rect | null
+  logo: Rect | null,
+  minimum: QrPrintMinimum = POSTER_QR_MINIMUM
 ): QrPlacementResult {
   if (qr.width <= 0 || qr.height <= 0) {
     return { ok: false, reason: 'The QR code has no size.' }
@@ -348,14 +383,14 @@ export function validateQrPlacement(
     block.x + block.width > posterW ||
     block.y + block.height > posterH
   ) {
-    return { ok: false, reason: 'The QR code falls outside the poster.' }
+    return { ok: false, reason: `The QR code falls outside the ${minimum.surfaceName}.` }
   }
 
-  const minWidth = qrMinWidthPx(posterW)
+  const minWidth = qrMinWidthPx(posterW, minimum)
   if (qr.width < minWidth) {
     return {
       ok: false,
-      reason: `The QR code is smaller than the ${QR_MIN_MM}mm print minimum (${minWidth}px on this poster).`,
+      reason: `The QR code is smaller than the ${minimum.mm}mm print minimum (${minWidth}px on this ${minimum.surfaceName}).`,
     }
   }
 

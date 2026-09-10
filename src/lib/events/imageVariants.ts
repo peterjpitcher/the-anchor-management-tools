@@ -6,6 +6,8 @@
  * match the database CHECK constraint on event_images.image_type.
  */
 
+import { TABLE_TALKER_PANEL_WIDTH_MM } from './artwork/print-sheet'
+
 export const EVENT_IMAGE_BUCKET = 'event-images'
 
 export type EventImageVariant =
@@ -14,6 +16,7 @@ export type EventImageVariant =
   | 'social'
   | 'story'
   | 'print_poster'
+  | 'table_talker'
 
 /** Column on `events` that caches the public URL for a variant. */
 export type EventImageCacheColumn =
@@ -22,6 +25,50 @@ export type EventImageCacheColumn =
   | 'social_image_url'
   | 'story_image_url'
   | 'print_poster_url'
+  | 'table_talker_url'
+
+/**
+ * How a print variant reaches paper. Null on every screen variant.
+ *
+ * A QR code's printable minimum is a PHYSICAL size, but the placement geometry
+ * works in fractions of the image width. The two only line up once the width
+ * the artwork is actually printed at is known, and that differs per surface:
+ * the poster prints the full A4 width, a table talker far narrower. Keeping the
+ * pair here, beside the variant, is what stops a new print surface quietly
+ * inheriting the poster's fraction and printing a code a third of the size.
+ */
+/**
+ * The marketing channels a printed QR code may carry, one per print surface.
+ * Closed on purpose: a code minted on the wrong channel reports its scans
+ * against another surface.
+ */
+export type PrintQrChannel = 'poster' | 'table_talker'
+
+export interface EventImagePrintSpec {
+  /** The width the artwork is printed at, in millimetres. */
+  printedWidthMm: number
+  /** The smallest printed QR code a phone reliably scans on this surface. */
+  qrMinMm: number
+  /**
+   * `qrMinMm` as a fraction of the image width, rounded UP at the fourth
+   * decimal place so a code at the floor can never print under the minimum.
+   *
+   * A literal rather than a division, because the poster's value is pinned to
+   * the `event_images_qr_width_frac_check` floor and must not drift with
+   * floating point. A test holds every literal to its millimetres, and holds
+   * every one inside the database floor and ceiling.
+   */
+  qrMinWidthFrac: number
+  /**
+   * The marketing channel whose short link the QR carries. Each printed
+   * surface has its own, so its scans are reported on their own.
+   */
+  qrChannel: PrintQrChannel
+  /** What staff call the printed thing, e.g. "Put a QR code on the poster". */
+  surfaceName: string
+  /** Where the printed size is quoted, e.g. "21 mm on the A4 poster". */
+  printedSizeLabel: string
+}
 
 export interface EventImageVariantConfig {
   key: EventImageVariant
@@ -32,6 +79,11 @@ export interface EventImageVariantConfig {
    * that is, whereas "Instagram story" is unambiguous.
    */
   promptLabel: string
+  /**
+   * Said after the size in the copyable prompt, for a shape an image tool is
+   * likely to get wrong without being told.
+   */
+  promptNote?: string
   /** Shown under the tile so staff know what to export from Canva. */
   helpText: string
   /** width / height. Used for the tolerance check and the preview box. */
@@ -45,6 +97,8 @@ export interface EventImageVariantConfig {
   /** False means the URL is never emitted by the public API. */
   webServed: boolean
   cacheColumn: EventImageCacheColumn
+  /** Null for screen variants. Present means this variant is printed and may carry a QR code. */
+  print: EventImagePrintSpec | null
 }
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'] as const
@@ -65,6 +119,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: true,
     cacheColumn: 'hero_image_url',
+    print: null,
   },
   landscape: {
     key: 'landscape',
@@ -79,6 +134,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: true,
     cacheColumn: 'landscape_image_url',
+    print: null,
   },
   social: {
     key: 'social',
@@ -93,6 +149,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: true,
     cacheColumn: 'social_image_url',
+    print: null,
   },
   story: {
     key: 'story',
@@ -107,6 +164,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: false,
     cacheColumn: 'story_image_url',
+    print: null,
   },
   print_poster: {
     key: 'print_poster',
@@ -121,6 +179,43 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TWENTY_FIVE_MB,
     webServed: false,
     cacheColumn: 'print_poster_url',
+    // 10% of the full A4 width, which is the database floor as well.
+    print: {
+      printedWidthMm: 210,
+      qrMinMm: 21,
+      qrMinWidthFrac: 0.1,
+      qrChannel: 'poster',
+      surfaceName: 'poster',
+      printedSizeLabel: 'the A4 poster',
+    },
+  },
+  table_talker: {
+    key: 'table_talker',
+    label: 'Table talker (print)',
+    promptLabel: 'Slim table talker for print',
+    promptNote:
+      'Tall and slim: stack the elements vertically rather than shrinking the square layout to fit the width.',
+    helpText: 'DL at 300dpi, 1169x2480. Printed three to an A4 sheet.',
+    aspectRatio: 99 / 210,
+    aspectLabel: 'DL portrait (99 x 210 mm)',
+    targetWidth: 1169,
+    targetHeight: 2480,
+    // No PDF: a PDF cannot be branded, and this panel is only printed after it
+    // has been.
+    acceptedMimeTypes: IMAGE_MIME_TYPES,
+    maxBytes: TEN_MB,
+    webServed: false,
+    cacheColumn: 'table_talker_url',
+    // Printed at its panel width on the A4 sheet, not the DL design width.
+    // 15mm is 0.16245 of 92.33mm, rounded up.
+    print: {
+      printedWidthMm: TABLE_TALKER_PANEL_WIDTH_MM,
+      qrMinMm: 15,
+      qrMinWidthFrac: 0.1625,
+      qrChannel: 'table_talker',
+      surfaceName: 'table talker',
+      printedSizeLabel: 'each printed table talker',
+    },
   },
 }
 
@@ -131,6 +226,7 @@ export const EVENT_IMAGE_VARIANT_ORDER: readonly EventImageVariant[] = [
   'social',
   'story',
   'print_poster',
+  'table_talker',
 ]
 
 export function isEventImageVariant(value: unknown): value is EventImageVariant {
@@ -138,8 +234,24 @@ export function isEventImageVariant(value: unknown): value is EventImageVariant 
 }
 
 /**
+ * A print variant's QR minimum, in the shape the placement geometry takes
+ * (`QrPrintMinimum` in `src/lib/events/artwork/geometry.ts`). Null for a screen
+ * variant, which never carries a QR code.
+ *
+ * The one bridge between the two modules, so the editor and the compositor
+ * cannot each assemble the minimum their own way.
+ */
+export function qrMinimumFor(
+  variant: EventImageVariant
+): { widthFrac: number; mm: number; surfaceName: string } | null {
+  const print = EVENT_IMAGE_VARIANTS[variant].print
+  if (!print) return null
+  return { widthFrac: print.qrMinWidthFrac, mm: print.qrMinMm, surfaceName: print.surfaceName }
+}
+
+/**
  * The prompt staff copy into an image tool once the square artwork exists, to
- * get the other four variants back at the sizes the tiles actually accept.
+ * get the other variants back at the sizes the tiles actually accept.
  *
  * Generated from the config rather than written out, so the numbers here can
  * never drift from the ones the upload validates against. The square is left
@@ -148,8 +260,9 @@ export function isEventImageVariant(value: unknown): value is EventImageVariant 
 export function buildVariantPrompt(): string {
   const sizes = EVENT_IMAGE_VARIANT_ORDER.filter((key) => key !== 'square').map((key) => {
     const variant = EVENT_IMAGE_VARIANTS[key]
-    const dpi = key === 'print_poster' ? ' at 300 dpi' : ''
-    return `- ${variant.promptLabel}: ${variant.aspectLabel}, ${variant.targetWidth} x ${variant.targetHeight} px${dpi}`
+    const dpi = variant.print ? ' at 300 dpi' : ''
+    const note = variant.promptNote ? `. ${variant.promptNote}` : ''
+    return `- ${variant.promptLabel}: ${variant.aspectLabel}, ${variant.targetWidth} x ${variant.targetHeight} px${dpi}${note}`
   })
 
   return [
@@ -212,6 +325,21 @@ export function isOwnedByEvent(storagePath: string | null, eventId: string): boo
   return Boolean(storagePath && storagePath.startsWith(`events/${eventId}/`))
 }
 
+/**
+ * The folder every branded composite is written to, under its variant, and
+ * nothing else ever is: staff uploads sit directly in the variant folder and
+ * their sanitised names cannot contain a slash. So the path alone says whether
+ * a file carries branding, without trusting a database column a failed write
+ * may have left behind. The storage layout is set out in
+ * `src/lib/events/artwork/branding-service.ts`.
+ */
+export const BRANDED_COMPOSITE_FOLDER = 'branded'
+
+/** True when a storage object is a branded composite rather than an upload. */
+export function isBrandedCompositePath(storagePath: string | null | undefined): boolean {
+  return Boolean(storagePath && storagePath.includes(`/${BRANDED_COMPOSITE_FOLDER}/`))
+}
+
 const PUBLIC_URL_MARKER = `/storage/v1/object/public/${EVENT_IMAGE_BUCKET}/`
 
 /** Recover the bucket-relative storage path from a public URL, or null if not ours. */
@@ -255,20 +383,35 @@ export function buildEventImageDownloadUrl(imageUrl: string, fileName?: string |
   }
 }
 
+/** A file-name-safe slug of an event name, or `event` when nothing usable is left. */
+function eventFileNameSlug(eventName: string): string {
+  return (
+    eventName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'event'
+  )
+}
+
 /** Give Marketing-tab downloads short, useful names instead of storage keys. */
 export function buildEventImageDownloadFileName(
   eventName: string,
   variant: EventImageVariant,
   imageUrl: string
 ): string {
-  const eventPart = eventName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'event'
+  const eventPart = eventFileNameSlug(eventName)
   const variantPart = variant.replace(/_/g, '-')
   const extension = eventImageFileExtension(imageUrl)
   return `${eventPart}-${variantPart}${extension ? `.${extension}` : ''}`
+}
+
+/**
+ * The name the A4 table talker sheet downloads under. Plain ASCII by
+ * construction, so it is safe in a Content-Disposition header as it stands.
+ */
+export function buildTableTalkerSheetFileName(eventName: string): string {
+  return `${eventFileNameSlug(eventName)}-table-talkers-a4.pdf`
 }
 
 /** Strip anything that would make a storage key awkward, keeping it recognisable. */

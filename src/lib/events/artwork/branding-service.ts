@@ -61,8 +61,10 @@
 
 import { logAuditEvent } from '@/app/actions/audit'
 import {
+  BRANDED_COMPOSITE_FOLDER,
   EVENT_IMAGE_BUCKET,
   EVENT_IMAGE_VARIANTS,
+  isBrandedCompositePath,
   isOwnedByEvent,
   storagePathFromPublicUrl,
   type EventImageVariant,
@@ -75,23 +77,26 @@ import {
 } from './composite'
 import type { LogoPlacement } from './geometry'
 import { validateCompositeOutput } from './output'
-import { resolvePosterLink, type PosterLinkBlockReason } from './poster-link'
+import { resolvePrintLink, type PosterLinkBlockReason } from './poster-link'
 
 /**
- * Which variants carry a QR code.
- *
- * One helper, one place, so adding a future print variant is a one-line change
- * here rather than a hunt through the route, the editor and the tests. The logo
- * deliberately has no equivalent: it applies to all five variants, because the
- * complaint that started this work was adding it by hand to every image before
- * upload.
+ * Which variants carry a QR code: exactly those with a `print` block in the
+ * variant config, which also says how big the code must be on paper and which
+ * short link channel it carries. Reading the config rather than naming variants
+ * here means a new print surface cannot turn on the QR without also stating its
+ * minimum. The logo deliberately has no equivalent: it applies to every
+ * variant, because the complaint that started this work was adding it by hand
+ * to every image before upload.
  */
 export function isPrintVariant(variant: EventImageVariant): boolean {
-  return variant === 'print_poster'
+  return EVENT_IMAGE_VARIANTS[variant].print !== null
 }
 
-/** Marks a stored object as a composite this module produced. */
-const COMPOSITE_FOLDER = 'branded'
+/**
+ * Marks a stored object as a composite this module produced. Defined beside the
+ * variants so the print sheet route and the artwork panel read the same rule.
+ */
+const COMPOSITE_FOLDER = BRANDED_COMPOSITE_FOLDER
 
 export interface BrandingLogoInput {
   placement: LogoPlacement
@@ -302,7 +307,7 @@ function mimeTypeFor(storagePath: string, recorded: string | null): string {
 
 /** True when this object is a composite this module wrote. */
 function isCompositePath(storagePath: string): boolean {
-  return storagePath.includes(`/${COMPOSITE_FOLDER}/`)
+  return isBrandedCompositePath(storagePath)
 }
 
 /**
@@ -384,7 +389,7 @@ async function loadState(
   const { data: event, error: eventError } = await supabase
     .from('events')
     .select(
-      'id, hero_image_url, landscape_image_url, social_image_url, story_image_url, print_poster_url'
+      'id, hero_image_url, landscape_image_url, social_image_url, story_image_url, print_poster_url, table_talker_url'
     )
     .eq('id', eventId)
     .maybeSingle()
@@ -767,7 +772,8 @@ export async function applyEventImageBranding(
     )
   }
 
-  if (qr && !isPrintVariant(variant)) {
+  const print = EVENT_IMAGE_VARIANTS[variant].print
+  if (qr && !print) {
     return fail(
       'qr_not_supported',
       422,
@@ -776,12 +782,14 @@ export async function applyEventImageBranding(
   }
 
   let qrOutcome: BrandingQrOutcome | null = null
-  if (qr) {
-    const link = await resolvePosterLink(eventId)
+  if (qr && print) {
+    // The surface's own channel: `po` on the poster, `tt` on a table talker, so
+    // each reports its own scans.
+    const link = await resolvePrintLink(eventId, print.qrChannel)
     if (!link.ok) {
       // The reason and its wording come straight from `poster-link.ts`, which
-      // knows why a poster must not be printed. Rewording it here would leave two
-      // explanations to keep in step.
+      // knows why printed artwork must not be approved. Rewording it here would
+      // leave two explanations to keep in step.
       return fail('poster_link_blocked', 422, link.detail, link.reason)
     }
 

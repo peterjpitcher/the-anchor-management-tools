@@ -596,7 +596,7 @@ export async function getEventImageVariants(
         supabase
           .from('events')
           .select(
-            'hero_image_url, landscape_image_url, social_image_url, story_image_url, print_poster_url, category:event_categories(name)'
+            'hero_image_url, landscape_image_url, social_image_url, story_image_url, print_poster_url, table_talker_url, category:event_categories(name)'
           )
           .eq('id', eventId)
           .maybeSingle(),

@@ -54,7 +54,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import QRCode from 'qrcode'
 import { QR_OPTIONS } from '@/lib/export/qr-pack'
-import type { EventImageVariant } from '@/lib/events/imageVariants'
+import { qrMinimumFor, type EventImageVariant } from '@/lib/events/imageVariants'
 import { PRINT_POSTER_DENSITY_DPI } from './output'
 import {
   resolveLogoRect,
@@ -507,7 +507,18 @@ export async function compositeArtwork(
     : null
 
   if (qrPlacement) {
-    const placement = validateQrPlacement(imageW, imageH, qrPlacement, logoPlacement)
+    // Each print surface has its own minimum, because the same fraction of a
+    // narrower print is a physically smaller code. A screen variant has none
+    // and never carries a QR; the branding service refuses that before this
+    // point, and this refuses it again rather than borrow the poster's rule.
+    const minimum = qrMinimumFor(spec.variant)
+    if (!minimum) {
+      return {
+        ok: false,
+        failure: { code: 'placement_invalid', detail: 'A QR code only goes on print artwork.' },
+      }
+    }
+    const placement = validateQrPlacement(imageW, imageH, qrPlacement, logoPlacement, minimum)
     if (!placement.ok) {
       return { ok: false, failure: { code: 'placement_invalid', detail: placement.reason } }
     }
