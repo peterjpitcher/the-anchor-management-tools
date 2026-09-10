@@ -32,8 +32,8 @@ Supporting read-only scripts, neither of which writes:
 
 | File | SHA-256 |
 |---|---|
-| [preflight.sql](preflight.sql) | `60ce44edc5d8170f20eacbb75a540759505a0576a3baee9c2c3beb29b32f20b9` |
-| [capture-contents.sql](capture-contents.sql) | `5bf10a77fb6e510097ac11fc0e68af3cfdab2feae282533af43eaeac18190d7a` |
+| [preflight.sql](preflight.sql) | `87b679dd36f669b5375e215fe466fa1522645e9b56a6526d02b66c16909d5ebe` |
+| [capture-contents.sql](capture-contents.sql) | `a346ffb4378e43ca41f67c926d3bb7fa948b6c4e4af5f2b7e7c21407b3936c54` |
 
 Apply only through the verified Supabase MCP `apply_migration` tool, after the
 owner approves this exact target and checksum. Never `npx supabase db push`
@@ -101,7 +101,8 @@ A drop cannot be undone from SQL. Before applying the migration:
 
 1. Run [capture-contents.sql](capture-contents.sql).
 2. Save the output to `tasks/accessibility-backup-tables/captured-2026MMDD/`
-   as `copy.json`, `faq.json`, `schema.sql` and `indexes.sql`, together with the
+   as `copy.json`, `faq.json`, `schema.sql`, `constraints.sql`, `indexes.sql` and
+   `comments.sql`, together with the
    column listing from preflight query 4.
 3. Commit that folder. It is the record of what the tables contained and the
    only route back.
@@ -164,6 +165,12 @@ SET LOCAL lock_timeout = '5s';
 ALTER TABLE public.backup_accessibility_copy_20260906 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.backup_accessibility_faq_20260906  ENABLE ROW LEVEL SECURITY;
 
+-- PUBLIC first, and it is not optional. Revoking from anon and authenticated
+-- does NOT remove a grant made to PUBLIC: every role inherits that one, so the
+-- table stays reachable. Verified on PostgreSQL 16.
+REVOKE ALL ON public.backup_accessibility_copy_20260906 FROM PUBLIC;
+REVOKE ALL ON public.backup_accessibility_faq_20260906  FROM PUBLIC;
+
 REVOKE ALL ON public.backup_accessibility_copy_20260906 FROM anon, authenticated;
 REVOKE ALL ON public.backup_accessibility_faq_20260906  FROM anon, authenticated;
 
@@ -179,6 +186,11 @@ No policies are created, so RLS with zero policies denies every row to `anon`
 and `authenticated`. The service role bypasses RLS, which is why the `REVOKE`
 matters as well: it removes the table-level privilege that makes the tables
 reachable at all.
+
+Confirm with preflight query 2b afterwards, not query 2. Query 2 reports grants
+as issued, so a PUBLIC grant appears once as `grantee = PUBLIC` rather than as a
+row per role, and "no row for anon" does not mean anon has no access. Query 2b
+resolves that through `has_table_privilege` and must read false everywhere.
 
 Be aware this does not leave the advisor completely clean. It clears the
 error-level `rls_disabled_in_public` lint, but Supabase usually then raises the
@@ -199,10 +211,13 @@ scenarios were run.
    four `authenticated` privileges and no `anon` row, query 3 returns no
    policies, query 5 returns exact counts, and queries 6, 7, 9 and 10 return
    only the tables' own internals or nothing.
-2. **Capture.** All four queries execute. They produce the pretty-printed JSON
-   for both tables, a working `create table` statement per table with defaults
-   and NOT NULLs preserved, and the index definitions. The output is a
-   sufficient basis for a restore.
+2. **Capture.** All six queries execute, and the output round-trips. Against a
+   table deliberately built with a primary key, a unique constraint, a check
+   constraint, a foreign key, an identity column, a stored generated column, a
+   plain index and both table and column comments, the captured statements were
+   replayed after dropping the original. Columns, constraints and indexes all
+   came back **identical**, compared row by row from `pg_attribute`,
+   `pg_constraint` and `pg_indexes`.
 3. **The migration.** Applies cleanly: `BEGIN, SET, DROP TABLE, DROP TABLE,
    COMMIT`. Both tables are gone afterwards. Re-running it is harmless: the
    `IF EXISTS` clauses emit skip notices and the transaction still commits.
@@ -217,9 +232,43 @@ scenarios were run.
    simply break at its next call. Preflight query 8 is the only check that
    catches this, which is why it is marked load-bearing above.
 5. **The contingency.** The lockdown block below applies cleanly, leaves
-   `relrowsecurity = t` on both tables, leaves `anon` and `authenticated` with no
-   privileges at all, and a `set role authenticated; select ...` afterwards fails
-   with `permission denied for table`.
+   `relrowsecurity = t` on both tables, and a `set role authenticated;
+   select ...` afterwards fails with `permission denied for table`. Re-run
+   against a fixture carrying a `GRANT SELECT ... TO PUBLIC`, preflight query 2b
+   reports `anon can_select = t` beforehand, and false for every role and
+   privilege afterwards, with no `PUBLIC` row left in query 2c's ACL.
+
+### Two findings from review, both fixed
+
+Codex raised two P2 findings on the first commit. Both were real and both are
+fixed here.
+
+**PUBLIC grants were not covered.** The finding's stated premise was wrong:
+`information_schema.role_table_grants` does not omit PUBLIC, it reports it as
+`grantee = 'PUBLIC'`. The conclusion was right anyway, for a different reason. A
+PUBLIC grant produces no per-role row, so this packet's original instruction to
+expect "no row at all for anon" would have been read as "anon has no access"
+when `has_table_privilege('anon', ...)` returns true. Worse, the contingency's
+`REVOKE ... FROM anon, authenticated` does **not** remove a PUBLIC grant:
+confirmed on PostgreSQL 16, where `anon` still held SELECT afterwards. Preflight
+now carries query 2b (`has_table_privilege`, effective access) and 2c
+(`aclexplode`, the raw ACL), and the contingency revokes from PUBLIC first.
+
+**Constraints and generated columns were not captured.** Confirmed, and worse
+than reported. The original query 3 did not merely omit constraints: it emitted
+a stored generated column as an ordinary DEFAULT
+(`slug text default lower(section)` for what was
+`generated always as (lower(section)) stored`) and reduced an identity column to
+a bare NOT NULL column with no default, so inserts into a restored table would
+have failed. That is wrong SQL, not incomplete SQL. Query 3 now handles identity
+and generated columns explicitly, query 4 captures every constraint via
+`pg_get_constraintdef` as ready-to-run `ALTER TABLE` statements, query 5 excludes
+constraint-backed indexes so replaying both cannot collide on a duplicate name,
+and query 6 captures comments. The round-trip test above is what proves it.
+
+The capture file also now points at `pg_dump --schema-only --table=...` as the
+better tool for anyone with direct psql access. The catalogue queries exist for
+the MCP-only path.
 
 Limitations. This was a local fixture, not production. The column shapes, row
 counts and contents are invented, because the drafting session had no database

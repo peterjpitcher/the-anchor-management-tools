@@ -2,7 +2,7 @@
 --
 -- The session that drafted the migration had no database access, so every
 -- database-side claim in the approval packet is still unconfirmed. Run these
--- ten queries against production (project ref tfcasgxopxegwrabvwat) through
+-- these queries against production (project ref tfcasgxopxegwrabvwat) through
 -- the Supabase MCP execute_sql tool and paste the results into the packet
 -- before asking for approval. Nothing here writes.
 
@@ -21,16 +21,51 @@ where n.nspname = 'public'
                     'backup_accessibility_faq_20260906')
 order by c.relname;
 
--- 2. Who holds what. Expect authenticated with SELECT, INSERT, UPDATE, DELETE
---    and no row at all for anon. The table owner (postgres or supabase_admin)
---    also appears with the full set; that is ordinary ownership, not the
---    finding.
+-- 2. Who holds what, as granted. Expect authenticated with SELECT, INSERT,
+--    UPDATE and DELETE. The table owner (postgres or supabase_admin) also
+--    appears with the full set; that is ordinary ownership, not the finding.
+--
+--    Do NOT read "no row for anon" as "anon has no access". A grant to PUBLIC
+--    shows up here as grantee = 'PUBLIC', not as a row per role, and every role
+--    including anon inherits it. Query 2b is the one that answers the access
+--    question. Verified on PostgreSQL 16.
 select table_name, grantee, privilege_type
 from information_schema.role_table_grants
 where table_schema = 'public'
   and table_name in ('backup_accessibility_copy_20260906',
                      'backup_accessibility_faq_20260906')
 order by table_name, grantee, privilege_type;
+
+-- 2b. Effective privileges, which is what actually matters. This resolves
+--     PUBLIC grants and role inheritance. Every column should read false for
+--     both roles once the tables are locked down or dropped. If anon reads true
+--     anywhere, the exposure is wider than the original finding said: it is
+--     reachable with the publishable key that ships in the browser bundle.
+select t.tbl,
+       r.role,
+       has_table_privilege(r.role, t.tbl, 'SELECT') as can_select,
+       has_table_privilege(r.role, t.tbl, 'INSERT') as can_insert,
+       has_table_privilege(r.role, t.tbl, 'UPDATE') as can_update,
+       has_table_privilege(r.role, t.tbl, 'DELETE') as can_delete
+from (values ('public.backup_accessibility_copy_20260906'),
+             ('public.backup_accessibility_faq_20260906')) as t(tbl)
+cross join (values ('anon'), ('authenticated')) as r(role)
+order by t.tbl, r.role;
+
+-- 2c. The raw ACL, so a PUBLIC grant is impossible to miss. A grantee of
+--     'PUBLIC' here must be revoked from PUBLIC explicitly: revoking from anon
+--     and authenticated does NOT remove it. Verified on PostgreSQL 16.
+select c.relname,
+       coalesce(g.rolname, 'PUBLIC') as grantee,
+       a.privilege_type
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+cross join lateral aclexplode(c.relacl) a
+left join pg_roles g on g.oid = a.grantee
+where n.nspname = 'public'
+  and c.relname in ('backup_accessibility_copy_20260906',
+                    'backup_accessibility_faq_20260906')
+order by c.relname, 2, 3;
 
 -- 3. Policies. Expect none, since RLS is off.
 select tablename, policyname, roles, cmd, qual, with_check
