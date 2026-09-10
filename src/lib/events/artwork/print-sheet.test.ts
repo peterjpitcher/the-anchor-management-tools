@@ -5,6 +5,7 @@ import {
   DL_HEIGHT_MM,
   DL_WIDTH_MM,
   MIN_PRINT_DPI,
+  MIN_PRINT_WIDTH_PX,
   PANEL_GAP_MM,
   PANELS_PER_SHEET,
   SHEET_HEIGHT_MM,
@@ -174,6 +175,7 @@ describe('print resolution', () => {
   })
 
   it('puts the 150dpi floor at 546px across', () => {
+    expect(MIN_PRINT_WIDTH_PX).toBe(546)
     expect(tableTalkerSheetLayout(546, 1158).dpi).toBeGreaterThanOrEqual(MIN_PRINT_DPI)
     expect(tableTalkerSheetLayout(545, 1156).dpi).toBeLessThan(MIN_PRINT_DPI)
   })

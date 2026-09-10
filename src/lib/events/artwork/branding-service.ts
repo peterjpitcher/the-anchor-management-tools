@@ -61,8 +61,10 @@
 
 import { logAuditEvent } from '@/app/actions/audit'
 import {
+  BRANDED_COMPOSITE_FOLDER,
   EVENT_IMAGE_BUCKET,
   EVENT_IMAGE_VARIANTS,
+  isBrandedCompositePath,
   isOwnedByEvent,
   storagePathFromPublicUrl,
   type EventImageVariant,
@@ -90,8 +92,11 @@ export function isPrintVariant(variant: EventImageVariant): boolean {
   return EVENT_IMAGE_VARIANTS[variant].print !== null
 }
 
-/** Marks a stored object as a composite this module produced. */
-const COMPOSITE_FOLDER = 'branded'
+/**
+ * Marks a stored object as a composite this module produced. Defined beside the
+ * variants so the print sheet route and the artwork panel read the same rule.
+ */
+const COMPOSITE_FOLDER = BRANDED_COMPOSITE_FOLDER
 
 export interface BrandingLogoInput {
   placement: LogoPlacement
@@ -302,7 +307,7 @@ function mimeTypeFor(storagePath: string, recorded: string | null): string {
 
 /** True when this object is a composite this module wrote. */
 function isCompositePath(storagePath: string): boolean {
-  return storagePath.includes(`/${COMPOSITE_FOLDER}/`)
+  return isBrandedCompositePath(storagePath)
 }
 
 /**

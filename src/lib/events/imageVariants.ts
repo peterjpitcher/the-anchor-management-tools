@@ -325,6 +325,21 @@ export function isOwnedByEvent(storagePath: string | null, eventId: string): boo
   return Boolean(storagePath && storagePath.startsWith(`events/${eventId}/`))
 }
 
+/**
+ * The folder every branded composite is written to, under its variant, and
+ * nothing else ever is: staff uploads sit directly in the variant folder and
+ * their sanitised names cannot contain a slash. So the path alone says whether
+ * a file carries branding, without trusting a database column a failed write
+ * may have left behind. The storage layout is set out in
+ * `src/lib/events/artwork/branding-service.ts`.
+ */
+export const BRANDED_COMPOSITE_FOLDER = 'branded'
+
+/** True when a storage object is a branded composite rather than an upload. */
+export function isBrandedCompositePath(storagePath: string | null | undefined): boolean {
+  return Boolean(storagePath && storagePath.includes(`/${BRANDED_COMPOSITE_FOLDER}/`))
+}
+
 const PUBLIC_URL_MARKER = `/storage/v1/object/public/${EVENT_IMAGE_BUCKET}/`
 
 /** Recover the bucket-relative storage path from a public URL, or null if not ours. */
@@ -368,20 +383,35 @@ export function buildEventImageDownloadUrl(imageUrl: string, fileName?: string |
   }
 }
 
+/** A file-name-safe slug of an event name, or `event` when nothing usable is left. */
+function eventFileNameSlug(eventName: string): string {
+  return (
+    eventName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'event'
+  )
+}
+
 /** Give Marketing-tab downloads short, useful names instead of storage keys. */
 export function buildEventImageDownloadFileName(
   eventName: string,
   variant: EventImageVariant,
   imageUrl: string
 ): string {
-  const eventPart = eventName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'event'
+  const eventPart = eventFileNameSlug(eventName)
   const variantPart = variant.replace(/_/g, '-')
   const extension = eventImageFileExtension(imageUrl)
   return `${eventPart}-${variantPart}${extension ? `.${extension}` : ''}`
+}
+
+/**
+ * The name the A4 table talker sheet downloads under. Plain ASCII by
+ * construction, so it is safe in a Content-Disposition header as it stands.
+ */
+export function buildTableTalkerSheetFileName(eventName: string): string {
+  return `${eventFileNameSlug(eventName)}-table-talkers-a4.pdf`
 }
 
 /** Strip anything that would make a storage key awkward, keeping it recognisable. */
