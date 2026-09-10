@@ -28,7 +28,7 @@ export function TableTalkerSheetButton({
       icon={<Icon name="download" size={14} />}
       loading={busy}
       disabled={!branded}
-      title={branded ? 'Print at actual size (100%), then cut on the marks.' : 'Brand the table talker first.'}
+      title={branded ? 'Print at actual size (100%), then cut as needed.' : 'Brand the table talker first.'}
       onClick={async () => {
         setBusy(true)
         try {

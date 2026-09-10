@@ -302,7 +302,9 @@ async function renderLogoShadow(
 
   const mask = await sharp(padded).extractChannel('alpha').png().toBuffer()
   const blurred = await sharp(mask).blur(spec.blurPx).png().toBuffer()
-  const faded = await sharp(blurred).linear(spec.opacity, 0).raw().toBuffer()
+  // PNG decoding expands greyscale to RGB by default. Keep one channel,
+  // matching the alpha mask declared below, so rows cannot turn into bands.
+  const faded = await sharp(blurred).linear(spec.opacity, 0).toColourspace('b-w').raw().toBuffer()
 
   const shadow = await sharp({
     create: { width, height, channels: 3, background: spec.colour },
