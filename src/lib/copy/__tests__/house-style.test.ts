@@ -46,6 +46,11 @@ describe('the difference between an error and a warning', () => {
     expect(checkHouseStyle('An utterly iconic pint.').every((f) => f.severity === 'warning')).toBe(true)
   })
 
+  it('catches the two flourish words SSOT §1 added in version 2.0', () => {
+    const rules = checkHouseStyle('An elegant sensation.').map((f) => f.rule)
+    expect(rules.filter((r) => r === 'flourish-word')).toHaveLength(2)
+  })
+
   it('does not fire on "premium" alone, because the Tasting Night really is a premium spirit tasting', () => {
     // A checker that cries wolf on real copy gets switched off, which is worse than no checker.
     expect(checkHouseStyle('Premium spirit tasting with food pairings.')).toEqual([])

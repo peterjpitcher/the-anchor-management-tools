@@ -22,7 +22,8 @@
  * a checker that cries wolf about "premium" on a premium spirit tasting gets switched off.
  *
  * Keep this file in step with `docs/SSOT.md` §1 and §14. When they disagree, the SSOT wins and
- * this is the stale copy.
+ * this is the stale copy. The SSOT's engineering notes (`docs/SSOT-engineering-notes.md`) point
+ * back here, so a change to either should be made to both.
  */
 
 export type HouseStyleSeverity = 'error' | 'warning'
@@ -136,7 +137,7 @@ const BANNED_CLAIMS: Rule[] = [
   },
 ]
 
-/** Voice rules from the SSOT §1 replacement. Warnings, never blockers. */
+/** Voice rules from SSOT §1, Rules 1 and 2 (version 2.0, 10 September 2026). Warnings, never blockers. */
 const VOICE_RULES: Rule[] = [
   {
     rule: 'menu-cliche-opener',
@@ -148,8 +149,11 @@ const VOICE_RULES: Rule[] = [
   {
     rule: 'flourish-word',
     severity: 'warning',
+    // SSOT §1 Rule 2 also bans "premium". It is left out here on purpose: the tasting night
+    // really is a premium spirit tasting, and a checker that objects to an accurate word gets
+    // switched off. A test pins that decision.
     pattern:
-      /\b(quintessentially|sophisticated|effervescent|utterly|iconic|artisan|indulgent|luxurious|elevates|pinnacle)\b/gi,
+      /\b(quintessentially|sophisticated|elegant|effervescent|utterly|iconic|artisan|indulgent|luxurious|elevates|sensation|pinnacle)\b/gi,
     message: 'Flourish word. Energy comes from verbs and specifics, not adjectives.',
   },
   {
