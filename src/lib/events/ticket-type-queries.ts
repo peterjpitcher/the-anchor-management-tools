@@ -62,6 +62,7 @@ export function decideTicketSelectionHandling(input: {
 export interface TicketTypeEventContext {
   payment_mode?: string | null
   online_discount_type?: string | null
+  online_discount_ends_at?: string | null
   online_discount_value?: number | string | null
 }
 

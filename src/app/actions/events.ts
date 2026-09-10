@@ -61,6 +61,7 @@ import {
   decideTicketSelectionHandling,
 } from '@/lib/events/ticket-type-queries'
 import { normalizeAttendeeNames, MAX_ATTENDEE_NAME_LENGTH } from '@/lib/events/attendee-names'
+import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 import { jobQueue } from '@/lib/unified-job-queue'
 
 export type EventBookingRow = {
@@ -75,6 +76,7 @@ export type EventBookingRow = {
   source?: string | null
   hold_expires_at?: string | null
   event_seating_type?: 'seated' | 'standing' | null
+  attendees?: StoredEventAttendee[]
   attendee_names?: string[] | null
   paid_amount?: number | null
   payment_status_summary?: string | null
@@ -365,6 +367,15 @@ async function prepareEventDataFromFormData(formData: FormData, _existingEventId
   data.online_discount_value = pricing.online_discount_value
   data.is_free = pricing.is_free
   data.payment_mode = pricing.payment_mode
+
+  // Ordinary drawer edits must not overwrite settings owned by the Tickets tab.
+  if (_existingEventId && !formData.has('price') && !formData.has('payment_mode')) {
+    delete data.price
+    delete data.is_free
+    delete data.payment_mode
+    delete data.online_discount_type
+    delete data.online_discount_value
+  }
 
   // Derive flat keywords as union of three tiers (primary > secondary > local)
   const primaryKw = (data.primary_keywords as string[]) || [];
@@ -712,7 +723,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
+      .select('id, customer_id, event_id, seats, event_seating_type, is_reminder_only, notes, attendee_names, attendees, created_at, status, source, hold_expires_at, customer:customers(id, first_name, last_name, mobile_number, email)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
 
@@ -1269,7 +1280,7 @@ export async function updateEventManualBookingSeats(input: {
     const supabase = createAdminClient()
 
     const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
-      .select('id, event_id, customer_id, status, seats, is_reminder_only, attendee_names, event:events(id, payment_mode)')
+      .select('id, event_id, customer_id, status, seats, is_reminder_only, attendee_names, attendees, event:events(id, payment_mode)')
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
 
@@ -1290,6 +1301,10 @@ export async function updateEventManualBookingSeats(input: {
         error:
           'This booking has already been paid, so the seat count cannot be changed here. Cancel it with a refund to reduce seats, or take a payment for the extra seats instead.'
       }
+    }
+
+    if (Array.isArray(bookingRow.attendees) && bookingRow.attendees.length > 0 && parsed.data.seats !== bookingRow.seats) {
+      return { error: 'This booking has named guests. Cancel and rebook the affected tickets so guest details and payment stay together.' }
     }
 
     // Multi-type bookings: the overall seat count is derived from the ticket
@@ -1601,7 +1616,7 @@ export async function updateEventBookingAttendeeNames(input: {
 
     const supabase = createAdminClient()
     const { data: bookingRow, error: bookingError } = await supabase.from('bookings')
-      .select('id, event_id, seats, status, is_reminder_only, attendee_names')
+      .select('id, event_id, seats, status, is_reminder_only, attendee_names, attendees')
       .eq('id', parsed.data.bookingId)
       .maybeSingle()
 
@@ -1611,6 +1626,10 @@ export async function updateEventBookingAttendeeNames(input: {
 
     if (bookingRow.is_reminder_only === true) {
       return { error: 'Reminder-only entries have no tickets to name.' }
+    }
+
+    if (Array.isArray(bookingRow.attendees) && bookingRow.attendees.length > 0) {
+      return { error: 'Use Guest details to edit this booking so names and answers stay together.' }
     }
 
     const seats = Math.max(0, Number(bookingRow.seats) || 0)
@@ -2772,6 +2791,7 @@ export async function transferEventBooking(input: {
         status,
         event_seating_type,
         attendee_names,
+        attendees,
         customer:customers(id, first_name, mobile_number, sms_status),
         event:events(id, name, payment_mode, price, price_per_seat, online_discount_type, online_discount_value, is_free)
       `)
@@ -2848,6 +2868,9 @@ export async function transferEventBooking(input: {
     const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
     const fromEvent = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seats = Math.max(1, Number(bookingRow.seats || 1))
+    if (Array.isArray(bookingRow.attendees) && bookingRow.attendees.length > 0) {
+      return { error: 'This booking has guest answers for its current event. Create a new booking with the destination event questions before cancelling this one.' }
+    }
     const originalAttendeeNames = Array.isArray(bookingRow.attendee_names)
       ? (bookingRow.attendee_names as string[]).filter((name) => typeof name === 'string' && name.trim())
       : []

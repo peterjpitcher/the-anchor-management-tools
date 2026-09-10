@@ -1,3 +1,4 @@
+import type { BookingQuestion } from '@/lib/events/booking-questions';
 import type { Database as GeneratedDatabase } from './database.generated';
 import type { RecruitmentDatabaseExtension } from './database.recruitment';
 
@@ -22,6 +23,8 @@ export interface Event {
   price_per_seat?: number | null;
   online_discount_type?: 'fixed' | 'percent' | null;
   online_discount_value?: number | null;
+  online_discount_ends_at?: string | null;
+  booking_questions?: BookingQuestion[];
   is_free?: boolean | null;
   booking_url?: string | null;
   // Phase 1 SEO fields
