@@ -1,8 +1,9 @@
 'use client'
 
 /**
- * Places the venue logo, and on the A4 poster a booking QR code, onto artwork
- * that has already been uploaded for an event.
+ * Places the venue logo, and on print artwork (the A4 poster and the table
+ * talker) a booking QR code, onto artwork that has already been uploaded for an
+ * event.
  *
  * Five decisions here that later edits must not undo:
  *
@@ -58,19 +59,17 @@ import { z } from 'zod'
 import { Button, ConfirmDialog } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
-  A4_WIDTH_MM,
   LOGO_DEFAULT_WIDTH_FRAC,
   LOGO_MAX_WIDTH_FRAC,
   LOGO_MIN_WIDTH_FRAC,
   QR_DEFAULT_WIDTH_FRAC,
-  QR_MIN_MM,
+  QR_MAX_WIDTH_FRAC,
   QR_STRIP_LABEL,
   cssDropShadow,
   logoRectFree,
   logoShadowSpec,
   qrBlockRect,
   qrCodeRectWithinCanvas,
-  qrMinWidthFrac,
   qrStripRect,
   resolveLogoRect,
   snapFrac,
@@ -79,7 +78,11 @@ import {
   type LogoPlacement,
   type Rect,
 } from '@/lib/events/artwork/geometry'
-import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
+import {
+  EVENT_IMAGE_VARIANTS,
+  qrMinimumFor,
+  type EventImageVariant,
+} from '@/lib/events/imageVariants'
 import type { EventImageBrandingState } from '@/app/actions/event-image-variants'
 import { EVENT_MARKETING_CHANNEL_MAP, buildShortCode } from '@/lib/event-marketing-links'
 import { buildShortLinkUrl } from '@/lib/short-links/base-url'
@@ -121,9 +124,13 @@ const NOMINAL_PREVIEW_WIDTH_PX = 600
 /** How much of the strip's displayed width the label glyphs take. */
 const QR_STRIP_FONT_FRAC = 0.6
 
-/** Whole-percent controls share the server's minimum width. */
-const MIN_QR_WIDTH_PERCENT = Math.ceil(qrMinWidthFrac() * 100)
-const MAX_QR_WIDTH_PERCENT = 40
+/**
+ * The QR size controls work in whole percent. The ceiling is the server's; the
+ * floor belongs to each print surface (`qrMinimumFor`), rounded UP to a whole
+ * percent so the smallest value the slider offers is always one the server
+ * accepts. On the poster that is 10%; on the narrower table talker it is 17%.
+ */
+const MAX_QR_WIDTH_PERCENT = Math.floor(QR_MAX_WIDTH_FRAC * 100)
 
 const CORNER_OPTIONS: readonly { value: Corner; label: string }[] = [
   { value: 'top_left', label: 'Top left' },
@@ -186,9 +193,10 @@ function toPercent(fraction: number): number {
 }
 
 /** Hold a requested QR width inside the range the route will actually accept. */
-function clampQrWidthPercent(percent: number): number {
-  if (Number.isNaN(percent)) return MIN_QR_WIDTH_PERCENT
-  return Math.min(Math.max(Math.round(percent), MIN_QR_WIDTH_PERCENT), MAX_QR_WIDTH_PERCENT)
+/** Hold a requested QR width inside the range this surface will actually accept. */
+function clampQrWidthPercent(percent: number, minPercent: number): number {
+  if (Number.isNaN(percent)) return minPercent
+  return Math.min(Math.max(Math.round(percent), minPercent), MAX_QR_WIDTH_PERCENT)
 }
 
 /** The centre of a rect, back in fractions of each edge. */
@@ -220,8 +228,12 @@ export function ArtworkBrandingModal({
   const config = EVENT_IMAGE_VARIANTS[variant]
   const imageW = config.targetWidth
   const imageH = config.targetHeight
-  // The QR is a print device: a 21mm minimum only means anything on the poster.
-  const isPoster = variant === 'print_poster'
+  // The QR is a print device, so only print variants carry one, each with its
+  // own printed minimum and its own short link channel.
+  const print = config.print
+  const isPrint = print !== null
+  const qrMinimum = qrMinimumFor(variant)
+  const minQrWidthPercent = qrMinimum ? Math.ceil(qrMinimum.widthFrac * 100) : MAX_QR_WIDTH_PERCENT
 
   /**
    * Reopening the editor on artwork that is already branded must show what is
@@ -255,7 +267,7 @@ export function ArtworkBrandingModal({
   )
   const [colour, setColour] = useState<LogoColour>(savedLogo?.colour ?? 'white')
 
-  const [qrOn, setQrOn] = useState(isPoster && (branding ? savedQr !== null : true))
+  const [qrOn, setQrOn] = useState(isPrint && (branding ? savedQr !== null : true))
   const initialQrCentre = savedQr
     ? { x: savedQr.centreXFrac, y: savedQr.centreYFrac }
     : DEFAULT_QR_CENTRE
@@ -339,10 +351,10 @@ export function ArtworkBrandingModal({
    */
   const qrCodeBox = useMemo(
     () =>
-      isPoster && qrOn
+      isPrint && qrOn
         ? qrCodeRectWithinCanvas(imageW, imageH, qrCentre.x, qrCentre.y, qrWidthFrac)
         : null,
-    [isPoster, qrOn, imageW, imageH, qrCentre, qrWidthFrac]
+    [isPrint, qrOn, imageW, imageH, qrCentre, qrWidthFrac]
   )
 
   /** The strip, and the code plus strip: what actually lands on the artwork, and
@@ -362,14 +374,16 @@ export function ArtworkBrandingModal({
         ? // The CODE goes in, not the block: the validator grows it into the
           // block itself, and handing it a block would measure a block of a
           // block and reject placements the compositor is happy with.
-          validateQrPlacement(imageW, imageH, qrCodeBox, logoBox)
+          validateQrPlacement(imageW, imageH, qrCodeBox, logoBox, qrMinimum ?? undefined)
         : ({ ok: true } as const),
-    [qrCodeBox, imageW, imageH, logoBox]
+    [qrCodeBox, imageW, imageH, logoBox, qrMinimum]
   )
 
   // Still the code, deliberately: the printed-size readout is about the thing a
   // phone has to scan, and the strip is not part of that measurement.
-  const qrMillimetres = qrCodeBox ? (qrCodeBox.width * A4_WIDTH_MM) / imageW : 0
+  // Measured against the width the artwork is really printed at, which on a
+  // table talker is its panel on the A4 sheet, not the full DL design width.
+  const qrMillimetres = qrCodeBox && print ? (qrCodeBox.width * print.printedWidthMm) / imageW : 0
 
   /**
    * The composited logo carries a shadow in the opposite colour, so the preview
@@ -416,18 +430,19 @@ export function ArtworkBrandingModal({
    * before anything reaches a printer. The server resolves and repairs the same
    * link on save and refuses with a 422 if it cannot.
    */
-  const posterShortUrl = useMemo(() => {
-    const prefix = EVENT_MARKETING_CHANNEL_MAP.get('poster')?.shortCodePrefix ?? 'po'
-    return buildShortLinkUrl(buildShortCode(prefix, eventId))
-  }, [eventId])
+  const printShortUrl = useMemo(() => {
+    if (!print) return null
+    const prefix = EVENT_MARKETING_CHANNEL_MAP.get(print.qrChannel)?.shortCodePrefix
+    return prefix ? buildShortLinkUrl(buildShortCode(prefix, eventId)) : null
+  }, [print, eventId])
 
   useEffect(() => {
-    if (!open || !isPoster || !qrOn) return
+    if (!open || !printShortUrl || !qrOn) return
     let cancelled = false
     void (async () => {
       try {
         const QRCode = await import('qrcode')
-        const dataUrl = await QRCode.toDataURL(posterShortUrl, { margin: 1, width: 320 })
+        const dataUrl = await QRCode.toDataURL(printShortUrl, { margin: 1, width: 320 })
         if (!cancelled) setQrDataUrl(dataUrl)
       } catch {
         // A missing guide image is cosmetic: the placement box still shows where
@@ -438,7 +453,7 @@ export function ArtworkBrandingModal({
     return () => {
       cancelled = true
     }
-  }, [open, isPoster, qrOn, posterShortUrl])
+  }, [open, qrOn, printShortUrl])
 
   /**
    * Where a move lands, and which axes the snap caught.
@@ -626,7 +641,7 @@ export function ArtworkBrandingModal({
         variant,
         logo: placement ? { placement, colour } : null,
         qr:
-          isPoster && qrOn
+          isPrint && qrOn
             ? { centreXFrac: qrCentre.x, centreYFrac: qrCentre.y, widthFrac: qrWidthFrac }
             : null,
       },
@@ -890,7 +905,7 @@ export function ArtworkBrandingModal({
                 )}
               </section>
 
-              {isPoster && (
+              {print && (
                 <section aria-labelledby={`${fieldId}-qr-heading`} className="space-y-3 border-t border-border pt-5">
                   <h2 id={`${fieldId}-qr-heading`} className="text-sm font-semibold text-text">
                     Booking QR code
@@ -903,25 +918,25 @@ export function ArtworkBrandingModal({
                       onChange={(event) => setQrOn(event.target.checked)}
                       className="h-4 w-4 accent-primary"
                     />
-                    Put a QR code on the poster
+                    Put a QR code on the {print.surfaceName}
                   </label>
 
                   {qrOn && (
                     <>
                       <div className="rounded-md border border-border bg-surface-2 p-3">
                         <p className="text-xs font-medium text-text-muted">The code points to</p>
-                        <p className="mt-0.5 break-all text-sm text-text">{posterShortUrl}</p>
+                        <p className="mt-0.5 break-all text-sm text-text">{printShortUrl}</p>
                       </div>
 
                       <SliderField
                         id={`${fieldId}-qr-size`}
                         label="QR size"
-                        min={MIN_QR_WIDTH_PERCENT}
+                        min={minQrWidthPercent}
                         max={MAX_QR_WIDTH_PERCENT}
                         value={toPercent(qrWidthFrac)}
                         valueLabel={`${toPercent(qrWidthFrac)}% of the width`}
-                        hint={`Never smaller than the ${QR_MIN_MM}mm print minimum.`}
-                        onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next) / 100)}
+                        hint={`Never smaller than the ${print.qrMinMm}mm print minimum.`}
+                        onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next, minQrWidthPercent) / 100)}
                       />
 
                       {/* Exact entry, so these are not snapped either. */}
@@ -948,17 +963,17 @@ export function ArtworkBrandingModal({
                           id={`${fieldId}-qr-width`}
                           label="QR width"
                           suffix="%"
-                          min={MIN_QR_WIDTH_PERCENT}
+                          min={minQrWidthPercent}
                           max={MAX_QR_WIDTH_PERCENT}
                           value={toPercent(qrWidthFrac)}
-                          onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next) / 100)}
+                          onChange={(next) => setQrWidthFrac(clampQrWidthPercent(next, minQrWidthPercent) / 100)}
                         />
                       </div>
 
                       {qrCodeBox && (
                         <p className="text-xs text-text-muted">
-                          Printed size: {qrCodeBox.width} px, {qrMillimetres.toFixed(0)} mm on the
-                          A4 poster. The {QR_STRIP_LABEL} strip is printed beside it.
+                          Printed size: {qrCodeBox.width} px, {qrMillimetres.toFixed(0)} mm on{' '}
+                          {print.printedSizeLabel}. The {QR_STRIP_LABEL} strip is printed beside it.
                         </p>
                       )}
 

@@ -52,6 +52,8 @@ const POSTER_LINK = {
 const hoisted = vi.hoisted(() => ({
   client: null as unknown,
   posterLink: null as unknown,
+  /** Every channel the service asked for a print link on, in order. */
+  printLinkChannels: [] as string[],
   compositeOverride: null as
     | null
     | ((source: Buffer, spec: CompositeSpec) => Promise<CompositeResult>),
@@ -71,7 +73,10 @@ vi.mock('@/app/actions/audit', () => ({
 }))
 
 vi.mock('./poster-link', () => ({
-  resolvePosterLink: vi.fn(async () => hoisted.posterLink),
+  resolvePrintLink: vi.fn(async (_eventId: string, channel: string) => {
+    hoisted.printLinkChannels.push(channel)
+    return hoisted.posterLink
+  }),
 }))
 
 // The real compositor by default, so every placement claim below is proved by
@@ -447,6 +452,7 @@ beforeEach(() => {
   db.events.set(OTHER_EVENT_ID, { id: OTHER_EVENT_ID })
   hoisted.client = db
   hoisted.posterLink = POSTER_LINK
+  hoisted.printLinkChannels = []
   hoisted.compositeOverride = null
   hoisted.permission = { ok: true, userId: USER_ID, supabase: db }
   hoisted.audits = []
@@ -735,6 +741,8 @@ describe('placement', () => {
       wasRepaired: false,
     })
     expect(db.findRow(EVENT_ID, 'print_poster')?.qr_short_link_id).toBe(POSTER_LINK.shortLinkId)
+    // The poster's own channel, so its scans are reported as poster scans.
+    expect(hoisted.printLinkChannels).toEqual(['poster'])
   })
 })
 
@@ -756,6 +764,7 @@ describe('refusals', () => {
     expect(result.status).toBe(422)
     expect(db.rpcCalls).toHaveLength(0)
     expect(db.uploads).toHaveLength(0)
+    expect(hoisted.printLinkChannels).toEqual([])
   })
 
   it('passes a blocked poster link straight through with its reason', async () => {

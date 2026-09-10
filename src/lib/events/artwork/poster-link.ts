@@ -18,6 +18,8 @@
  *    `toilet_poster` (`tp`) and NOT `partner_poster` (`pp`). Those are separate
  *    print surfaces with their own links and their own click attribution, and
  *    minting a code against one of them would put the wrong QR on the artwork.
+ *    The table talker is a print surface of its own in exactly this sense: it
+ *    goes through `resolvePrintLink` with `table_talker` (`tt`), never `poster`.
  *
  * Why validation is needed at all: `EventMarketingService.generateSingleLink`
  * is get-or-create, and when it finds an existing row it returns that row
@@ -41,14 +43,25 @@ import {
   EVENT_MARKETING_CHANNEL_MAP,
   buildEventMarketingLinkPayload,
   type EventMarketingChannelConfig,
-  type EventMarketingChannelKey,
   type EventMarketingLinkPayload,
 } from '@/lib/event-marketing-links'
+import type { PrintQrChannel } from '@/lib/events/imageVariants'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EventMarketingService, type EventMarketingLink } from '@/services/event-marketing'
 
 /** The one channel a printed A4 poster QR may ever use. */
-export const POSTER_LINK_CHANNEL: EventMarketingChannelKey = 'poster'
+export const POSTER_LINK_CHANNEL: PrintQrChannel = 'poster'
+
+/**
+ * How each print surface is named in the sentences a manager reads. Typed
+ * against the closed channel set, so a new surface cannot be added without its
+ * wording. The poster's entry keeps every poster message word for word what it
+ * was before table talkers existed.
+ */
+const SURFACE_NAMES: Record<PrintQrChannel, string> = {
+  poster: 'poster',
+  table_talker: 'table talker',
+}
 
 export type PosterLinkBlockReason =
   | 'no_slug'
@@ -89,12 +102,12 @@ interface PosterEventRow {
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled'])
 const UNPUBLISHED_STATUSES = new Set(['draft'])
 
-function posterChannelConfig(): EventMarketingChannelConfig {
-  const config = EVENT_MARKETING_CHANNEL_MAP.get(POSTER_LINK_CHANNEL)
+function printChannelConfig(channelKey: PrintQrChannel): EventMarketingChannelConfig {
+  const config = EVENT_MARKETING_CHANNEL_MAP.get(channelKey)
   if (!config) {
-    // A genuine programming error: the poster channel is a fixed member of the
+    // A genuine programming error: every print channel is a fixed member of the
     // channel table, so a miss means that table has been edited wrongly.
-    throw new Error('Poster marketing channel is missing from EVENT_MARKETING_CHANNELS')
+    throw new Error(`Print marketing channel ${channelKey} is missing from EVENT_MARKETING_CHANNELS`)
   }
   return config
 }
@@ -146,7 +159,8 @@ function buildPosterMetadata(
 async function recordRepair(
   event: PosterEventRow,
   link: EventMarketingLink,
-  expected: EventMarketingLinkPayload
+  expected: EventMarketingLinkPayload,
+  channelKey: PrintQrChannel
 ): Promise<void> {
   try {
     await logAuditEvent({
@@ -157,30 +171,49 @@ async function recordRepair(
       old_values: { destination_url: link.destinationUrl, utm: link.utm },
       new_values: { destination_url: expected.destinationUrl, utm: expected.utm },
       additional_info: {
-        reason: 'poster_artwork_link_repair',
+        // `poster_artwork_link_repair` for the poster, as it always was.
+        reason: `${channelKey}_artwork_link_repair`,
         event_id: event.id,
         event_name: event.name,
-        channel: POSTER_LINK_CHANNEL,
+        channel: channelKey,
         short_code: link.shortCode,
       },
     })
   } catch (error) {
     // The repair itself already succeeded and the link is now correct. Losing
     // the audit row must not block a poster, so log and carry on.
-    console.error('Failed to audit poster short link repair', link.id, error)
+    console.error('Failed to audit print short link repair', channelKey, link.id, error)
   }
 }
 
 /**
- * Resolves the poster short link for an event, validates where it points, and
- * repairs it in place if the destination has gone stale.
- *
- * Returns a blocked result rather than throwing for every expected condition,
- * so the artwork editor can show a manager exactly why a poster cannot be
- * approved yet.
+ * Resolves the poster short link for an event. The poster case of
+ * `resolvePrintLink`, kept under its own name because it is what the poster has
+ * always called.
  */
 export async function resolvePosterLink(eventId: string): Promise<PosterLinkResult | PosterLinkBlocked> {
-  const channel = posterChannelConfig()
+  return resolvePrintLink(eventId, POSTER_LINK_CHANNEL)
+}
+
+/**
+ * Resolves the short link behind a printed QR for one print surface, validates
+ * where it points, and repairs it in place if the destination has gone stale.
+ *
+ * Everything the module header says about the poster holds for every surface:
+ * the code derives from the event id and the surface's own channel prefix
+ * (`po` for the poster, `tt` for the table talker), so a repair keeps every
+ * already-printed code working.
+ *
+ * Returns a blocked result rather than throwing for every expected condition,
+ * so the artwork editor can show a manager exactly why the artwork cannot be
+ * approved yet.
+ */
+export async function resolvePrintLink(
+  eventId: string,
+  channelKey: PrintQrChannel
+): Promise<PosterLinkResult | PosterLinkBlocked> {
+  const channel = printChannelConfig(channelKey)
+  const surface = SURFACE_NAMES[channelKey]
   const supabase = createAdminClient()
 
   const { data, error: eventError } = await supabase
@@ -190,17 +223,17 @@ export async function resolvePosterLink(eventId: string): Promise<PosterLinkResu
     .maybeSingle()
 
   if (eventError) {
-    console.error('Failed to load event for poster link', eventId, eventError)
+    console.error('Failed to load event for print link', channelKey, eventId, eventError)
     return blocked(
       'link_unavailable',
-      'Could not load this event, so the poster QR destination cannot be checked. Try again in a moment.'
+      `Could not load this event, so the ${surface} QR destination cannot be checked. Try again in a moment.`
     )
   }
 
   if (!data) {
     return blocked(
       'link_unavailable',
-      `Event ${eventId} was not found, so there is no poster QR destination to check.`
+      `Event ${eventId} was not found, so there is no ${surface} QR destination to check.`
     )
   }
 
@@ -210,21 +243,21 @@ export async function resolvePosterLink(eventId: string): Promise<PosterLinkResu
   if (CANCELLED_STATUSES.has(status)) {
     return blocked(
       'event_cancelled',
-      `"${event.name}" is cancelled, so a poster must not be printed for it.`
+      `"${event.name}" is cancelled, so a ${surface} must not be printed for it.`
     )
   }
 
   if (UNPUBLISHED_STATUSES.has(status)) {
     return blocked(
       'event_unpublished',
-      `"${event.name}" is still a draft, so its web page does not exist yet. Publish the event, then generate the poster again.`
+      `"${event.name}" is still a draft, so its web page does not exist yet. Publish the event, then generate the ${surface} again.`
     )
   }
 
   if (!event.slug || event.slug.trim().length === 0) {
     return blocked(
       'no_slug',
-      `"${event.name}" has no web address (slug), so the poster QR would have nowhere to point. Add a slug to the event, then generate the poster again.`
+      `"${event.name}" has no web address (slug), so the ${surface} QR would have nowhere to point. Add a slug to the event, then generate the ${surface} again.`
     )
   }
 
@@ -233,23 +266,24 @@ export async function resolvePosterLink(eventId: string): Promise<PosterLinkResu
   // a freshly minted code would disagree.
   let link: EventMarketingLink
   try {
-    link = await EventMarketingService.generateSingleLink(event.id, POSTER_LINK_CHANNEL)
+    link = await EventMarketingService.generateSingleLink(event.id, channelKey)
   } catch (error) {
-    console.error('Failed to get or create the poster short link', event.id, error)
+    console.error('Failed to get or create the print short link', channelKey, event.id, error)
     return blocked(
       'link_unavailable',
-      `Could not get the poster short link for "${event.name}". Try again; if it keeps failing, regenerate this event's marketing links.`
+      `Could not get the ${surface} short link for "${event.name}". Try again; if it keeps failing, regenerate this event's marketing links.`
     )
   }
 
   // Belt and braces on the channel. A poster carrying a `pp` (partner poster)
-  // or `tp` (toilet poster) code would silently attribute its scans to another
-  // surface and point at another campaign, so refuse it rather than print it.
-  if (link.channel !== POSTER_LINK_CHANNEL || !link.shortCode.startsWith(channel.shortCodePrefix)) {
-    console.error('Poster short link resolved to the wrong channel', event.id, link.channel, link.shortCode)
+  // or `tp` (toilet poster) code, or a table talker carrying the poster's `po`,
+  // would silently attribute its scans to another surface and could point at
+  // another campaign, so refuse it rather than print it.
+  if (link.channel !== channelKey || !link.shortCode.startsWith(channel.shortCodePrefix)) {
+    console.error('Print short link resolved to the wrong channel', channelKey, event.id, link.channel, link.shortCode)
     return blocked(
       'link_unavailable',
-      `The short link returned for "${event.name}" is not a poster link, so it must not go on printed artwork.`
+      `The short link returned for "${event.name}" is not a ${surface} link, so it must not go on printed artwork.`
     )
   }
 
@@ -270,7 +304,7 @@ export async function resolvePosterLink(eventId: string): Promise<PosterLinkResu
   }
 
   // Repair in place. `short_code` is deliberately not in the update: the code
-  // is what a printed poster carries, and it must survive the correction.
+  // is what the printed artwork carries, and it must survive the correction.
   const { data: updated, error: updateError } = await supabase
     .from('short_links')
     .update({
@@ -286,10 +320,10 @@ export async function resolvePosterLink(eventId: string): Promise<PosterLinkResu
   if (updateError || !updated) {
     // Returning the stale link as ok is the exact production failure this
     // module exists to prevent, so block instead.
-    console.error('Failed to repair the poster short link destination', link.id, updateError)
+    console.error('Failed to repair the print short link destination', channelKey, link.id, updateError)
     return blocked(
       'repair_failed',
-      `The poster QR for "${event.name}" points at the wrong page and the correction could not be saved, so the poster cannot be approved. Try again.`
+      `The ${surface} QR for "${event.name}" points at the wrong page and the correction could not be saved, so the ${surface} cannot be approved. Try again.`
     )
   }
 
@@ -297,14 +331,14 @@ export async function resolvePosterLink(eventId: string): Promise<PosterLinkResu
     // Impossible unless something else rewrote the row mid-repair. A changed
     // code means every printed poster carrying the old one is now orphaned, so
     // treat it as a failure rather than quietly returning a different QR.
-    console.error('Poster short code changed during repair', link.id, link.shortCode, updated.short_code)
+    console.error('Print short code changed during repair', channelKey, link.id, link.shortCode, updated.short_code)
     return blocked(
       'repair_failed',
-      `The poster short link for "${event.name}" changed while it was being corrected, so the poster cannot be approved. Try again.`
+      `The ${surface} short link for "${event.name}" changed while it was being corrected, so the ${surface} cannot be approved. Try again.`
     )
   }
 
-  await recordRepair(event, link, expected)
+  await recordRepair(event, link, expected, channelKey)
 
   return {
     ok: true,
