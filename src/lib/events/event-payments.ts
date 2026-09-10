@@ -81,32 +81,26 @@ function amountsMatch(left: number, right: number): boolean {
 }
 
 /**
- * Resolve the authoritative charge for a booking.
- *
- * When the feature is on and the booking has a real multi-type / non-default
- * basket, the charge is the sum of its `booking_items` (post-discount snapshots).
- * Otherwise the legacy event-price × seats total is returned unchanged, so
- * single-type bookings are byte-for-byte identical to before this feature.
+ * New bookings use the stored ticket prices throughout their payment hold.
+ * Historical single-ticket bookings retain their legacy pricing because some
+ * old backfilled line items contain zero rather than the agreed price.
+ * A failed read never authorises charging a different amount.
  */
 async function resolveBookingChargeTotal(
   supabase: SupabaseClient<any, 'public', any>,
-  input: { bookingId: string; eventId: string; fallbackTotal: number },
+  input: { bookingId: string; eventId: string; fallbackTotal: number; priceLocked?: boolean },
 ): Promise<number> {
-  // Deliberately NOT gated on eventTicketTypesEnabled(): a multi-type booking's
-  // charge must always come from its booking_items, even if the flag is later
-  // switched off — otherwise pending payment links revert to flat-price × seats
-  // and mis-charge existing multi-type bookings. Data presence is the gate.
-  try {
-    const items = await loadBookingItems(supabase, input.bookingId)
-    if (items.length === 0) return input.fallbackTotal
-    const defaultTypeId = await getDefaultTicketTypeId(supabase, input.eventId)
-    if (!bookingItemsAreMultiType(items, defaultTypeId)) return input.fallbackTotal
+  const items = await loadBookingItems(supabase, input.bookingId)
+  if (input.priceLocked) {
+    if (items.length === 0) throw new Error('The booked ticket price could not be loaded')
     return resolveBookingChargeAmount(items)
-  } catch {
-    // Never fail a payment preview over the ticket-type read — fall back to the
-    // legacy total (which equals the line-item sum for single-type bookings).
-    return input.fallbackTotal
   }
+  // Historical single-ticket rows can contain zero snapshots from the old
+  // backfill. Preserve their legacy pricing until individually reconciled.
+  if (items.length === 0) return input.fallbackTotal
+  const defaultTypeId = await getDefaultTicketTypeId(supabase, input.eventId)
+  if (!bookingItemsAreMultiType(items, defaultTypeId)) return input.fallbackTotal
+  return resolveBookingChargeAmount(items)
 }
 
 function extractOrderAmount(order: any): number | null {
@@ -286,7 +280,7 @@ export async function getEventPaymentPreviewByRawToken(
 
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at')
+    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at, ticket_price_locked')
     .eq('id', token.event_booking_id)
     .maybeSingle()
 
@@ -326,7 +320,7 @@ export async function getEventPaymentPreviewByRawToken(
 
   const { data: eventRow, error: eventError } = await supabase
     .from('events')
-    .select('id, name, payment_mode, price_per_seat, price, online_discount_type, online_discount_value')
+    .select('id, name, payment_mode, price_per_seat, price, online_discount_type, online_discount_value, online_discount_ends_at')
     .eq('id', booking.event_id)
     .maybeSingle()
 
@@ -345,6 +339,7 @@ export async function getEventPaymentPreviewByRawToken(
     bookingId: booking.id,
     eventId: eventRow.id,
     fallbackTotal,
+    priceLocked: booking.ticket_price_locked === true,
   })
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
@@ -358,7 +353,7 @@ export async function getEventPaymentPreviewByRawToken(
     eventId: eventRow.id,
     eventName: eventRow.name || 'Event booking',
     seats,
-    unitPrice,
+    unitPrice: Number((totalAmount / seats).toFixed(2)),
     totalAmount,
     currency: 'GBP',
     holdExpiresAt: holdExpiry.toISOString(),
@@ -372,7 +367,7 @@ async function getEventPaymentPreviewByBookingId(
 ): Promise<EventPaymentPreviewResult> {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at')
+    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at, ticket_price_locked')
     .eq('id', input.bookingId)
     .maybeSingle()
 
@@ -402,7 +397,7 @@ async function getEventPaymentPreviewByBookingId(
 
   const { data: eventRow, error: eventError } = await supabase
     .from('events')
-    .select('id, name, payment_mode, price_per_seat, price, online_discount_type, online_discount_value')
+    .select('id, name, payment_mode, price_per_seat, price, online_discount_type, online_discount_value, online_discount_ends_at')
     .eq('id', booking.event_id)
     .maybeSingle()
 
@@ -416,6 +411,7 @@ async function getEventPaymentPreviewByBookingId(
     bookingId: booking.id,
     eventId: eventRow.id,
     fallbackTotal,
+    priceLocked: booking.ticket_price_locked === true,
   })
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
     return { state: 'blocked', reason: 'invalid_amount' }
@@ -428,7 +424,7 @@ async function getEventPaymentPreviewByBookingId(
     eventId: eventRow.id,
     eventName: eventRow.name || 'Event booking',
     seats,
-    unitPrice,
+    unitPrice: Number((totalAmount / seats).toFixed(2)),
     totalAmount,
     currency: 'GBP',
     holdExpiresAt: holdExpiry.toISOString(),

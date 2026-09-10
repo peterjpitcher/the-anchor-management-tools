@@ -266,6 +266,8 @@ export async function GET(
       price_per_seat: event.price_per_seat ?? null,
       online_discount_type: event.online_discount_type ?? null,
       online_discount_value: event.online_discount_value ?? null,
+      online_discount_ends_at: event.online_discount_ends_at ?? null,
+      booking_questions: event.booking_questions ?? [],
       is_free: event.is_free === true,
       capacity: event.capacity,
       seated_capacity: event.seated_capacity ?? null,

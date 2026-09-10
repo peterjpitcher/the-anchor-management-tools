@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useTransition, useMemo, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Card, CardHeader, CardBody,
   PageHeader,
@@ -37,6 +37,8 @@ import {
   regenerateEventMarketingLinks,
 } from '@/app/actions/event-marketing-links'
 import { EventTicketTypesCard } from './EventTicketTypesCard'
+import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
+import { EventAttendeesEditor } from './EventAttendeesEditor'
 import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
@@ -177,10 +179,14 @@ export default function EventDetailClient({
 }: EventDetailClientProps) {
   const router = useRouter()
   const [event, setEvent] = useState<Event | null>(initialEvent)
-  const [activeTab, setActiveTab] = useState('overview')
+  useEffect(() => setEvent(initialEvent), [initialEvent])
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'tickets' ? 'ticket-types' : 'overview')
+  useEffect(() => { if (searchParams.get('tab') === 'tickets') setActiveTab('ticket-types') }, [searchParams])
   // Ticket types apply to standard (table/general) events only; communal/mixed
   // events stay single-price. Gated by the server-resolved feature flag.
-  const showTicketTypesTab =
+  const showTicketTypesTab = !!event && (ticketTypesEnabled || resolveEventPaymentMode(event) !== 'free')
+  const allowMultipleTicketTypes =
     ticketTypesEnabled &&
     event?.booking_mode !== 'communal' &&
     event?.booking_mode !== 'mixed'
@@ -577,7 +583,7 @@ export default function EventDetailClient({
                 totalPaidAmount={totalPaidAmount}
                 totalLinkClicks={totalLinkClicks}
                 ticketTypes={initialTicketTypes}
-                basketEligible={showTicketTypesTab}
+                basketEligible={allowMultipleTicketTypes}
                 onBookingCreated={refreshBookings}
                 editingBookingId={editingBookingId}
                 editSeatsValue={editSeatsValue}
@@ -614,11 +620,16 @@ export default function EventDetailClient({
           )}
 
           {activeTab === 'ticket-types' && showTicketTypesTab && event && (
-            <EventTicketTypesCard
-              eventId={event.id}
-              initialTicketTypes={initialTicketTypes}
-              canManage={permissions.canManage}
-            />
+            <div className="space-y-6">
+              <EventTicketTypesCard
+                eventId={event.id}
+                initialTicketTypes={initialTicketTypes}
+                canManage={permissions.canManage}
+                allowMultiple={allowMultipleTicketTypes}
+                event={event as TicketSettingsEvent}
+              />
+              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
+            </div>
           )}
 
           {activeTab === 'short-links' && (
@@ -1046,6 +1057,7 @@ function AttendeesTab({
   // Numbered attendee-name list — shared between the desktop table cell and the
   // mobile card so both stay in sync.
   const renderAttendeeNames = (booking: EventBookingRow) => {
+    if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} canEdit={canManage} />
     const attendeeNames = (booking.attendee_names ?? []).filter(
       (name) => typeof name === 'string' && name.trim().length > 0
     )
@@ -1130,7 +1142,7 @@ function AttendeesTab({
     }
 
     const canEditNames =
-      booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1
+      booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1 && !booking.attendees?.length
 
     return (
       <div className="flex flex-wrap items-center gap-1">

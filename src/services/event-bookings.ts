@@ -1,3 +1,4 @@
+import type { EventAttendeeInput } from '@/lib/events/booking-questions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -118,6 +119,9 @@ export type CreateBookingParams = {
    * bookings.attendee_names once the booking row exists. Optional — staff, FOH
    * and SMS bookings don't supply them, and legacy rows stay NULL.
    */
+  requireGuestDetails?: boolean
+  expectedTotal?: number
+  attendees?: EventAttendeeInput[]
   attendeeNames?: string[]
   /**
    * First-party attribution forwarded by the brand site. Stored in analytics
@@ -169,7 +173,7 @@ export type CreateBookingResult = {
    * (per-type sell-out / unknown ticket type) rather than a genuine database
    * error. Callers should map these to a 409 payload, not a 500.
    */
-  rpcErrorCode?: 'ticket_type_sold_out' | 'invalid_ticket_type' | null
+  rpcErrorCode?: 'ticket_type_sold_out' | 'invalid_ticket_type' | 'price_changed' | 'questions_changed' | null
   /**
    * Callers should return HTTP 500 when this is true — the table-reservation rollback
    * could not be completed, leaving the system in a partially inconsistent state.
@@ -191,8 +195,10 @@ function normalizeBookingMode(value: unknown): 'table' | 'general' | 'mixed' | '
  * (per-type sell-out / unknown ticket type) so callers can answer 409 instead of
  * a generic 500 — a type selling out is a normal state, not a database error.
  */
-function classifyBookingRpcError(message: string | null | undefined): 'ticket_type_sold_out' | 'invalid_ticket_type' | null {
+function classifyBookingRpcError(message: string | null | undefined): 'ticket_type_sold_out' | 'invalid_ticket_type' | 'price_changed' | 'questions_changed' | null {
   const text = String(message || '')
+  if (text.includes('price_changed')) return 'price_changed'
+  if (text.includes('attendee') || text.includes('question') || text.includes('answer')) return 'questions_changed'
   if (text.includes('ticket_type_capacity_exceeded')) return 'ticket_type_sold_out'
   if (text.includes('invalid_ticket_type')) return 'invalid_ticket_type'
   return null
@@ -524,6 +530,9 @@ export class EventBookingService {
       supabaseClient,
       logTag = 'event booking',
       firstName,
+      requireGuestDetails,
+      expectedTotal,
+      attendees,
       attendeeNames,
       attribution = null,
       paymentHoldMinutes,
@@ -546,7 +555,34 @@ export class EventBookingService {
     // ── 1. Call the create RPC (v06 legacy single-type, or v07 multi-type) ─────
     const holdMinutes = paymentHoldMinutes ?? (source === 'brand_site' ? 15 : 24 * 60)
     const hasRequests = Boolean(diningRequest || earlyArrivalRequest)
-    const { data: rpcResultRaw, error: rpcError } = hasRequests
+    const needsAttendees = Boolean(requireGuestDetails || attendees?.length)
+    const { data: rpcResultRaw, error: rpcError } = needsAttendees && hasRequests
+      ? await supabase.rpc('create_event_booking_with_attendees_and_requests_v01', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_seats: seats,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes,
+          p_ticket_selections: useTicketSelections ? ticketSelections : null,
+          p_attendees: attendees ?? [],
+          p_expected_total: expectedTotal ?? null,
+          p_dining_request: diningRequest ?? null,
+          p_early_arrival_request: earlyArrivalRequest ?? false,
+        })
+      : needsAttendees
+      ? await supabase.rpc('create_event_booking_v08', {
+          p_event_id: eventId,
+          p_customer_id: customerId,
+          p_seats: seats,
+          p_source: source,
+          p_seating_preference: normalizeSeatingPreference(seatingPreference),
+          p_payment_hold_minutes: holdMinutes,
+          p_ticket_selections: useTicketSelections ? ticketSelections : null,
+          p_attendees: attendees ?? [],
+          p_expected_total: expectedTotal ?? null,
+        })
+      : hasRequests
       ? await supabase.rpc('create_event_booking_with_requests_v01', {
           p_event_id: eventId,
           p_customer_id: customerId,
@@ -578,7 +614,7 @@ export class EventBookingService {
 
     if (rpcError) {
       const rpcErrorCode = classifyBookingRpcError(rpcError.message)
-      logger.error(`${hasRequests ? 'create_event_booking_with_requests_v01' : useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
+      logger.error(`${needsAttendees ? (hasRequests ? 'create_event_booking_with_attendees_and_requests_v01' : 'create_event_booking_v08') : hasRequests ? 'create_event_booking_with_requests_v01' : useTicketSelections ? 'create_event_booking_v07' : 'create_event_booking_v06'} RPC failed`, {
         error: new Error(rpcError.message),
         metadata: { eventId, customerId, source, rpcErrorCode }
       })
@@ -798,7 +834,7 @@ export class EventBookingService {
 
       // v07 writes the aggregate attendee_names inside its transaction, so only the
       // legacy single-type path needs the separate update.
-      if (!useTicketSelections && attendeeNames && attendeeNames.length > 0 && rpcResult.booking_id) {
+      if (!attendees?.length && !useTicketSelections && attendeeNames && attendeeNames.length > 0 && rpcResult.booking_id) {
         tasks.push({
           label: 'store:attendee_names',
           promise: persistAttendeeNames(supabase, rpcResult.booking_id, attendeeNames)

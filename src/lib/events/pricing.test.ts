@@ -96,3 +96,16 @@ describe('event pricing', () => {
     })
   })
 })
+
+describe('online discount deadline', () => {
+  const event = { price: 45, payment_mode: 'prepaid', online_discount_type: 'fixed', online_discount_value: 5, online_discount_ends_at: '2026-10-25T01:30:00Z' }
+  it('uses the discount before the exact deadline, including the clock-change day', () => {
+    expect(resolveEventPriceAmount(event, Date.parse('2026-10-25T01:29:59Z'))).toBe(40)
+  })
+  it('uses the full price at and after the deadline', () => {
+    expect(resolveEventPriceAmount(event, Date.parse(event.online_discount_ends_at))).toBe(45)
+  })
+  it('does not grant a discount for an invalid deadline', () => {
+    expect(resolveEventPriceAmount({ ...event, online_discount_ends_at: 'bad-date' })).toBe(45)
+  })
+})

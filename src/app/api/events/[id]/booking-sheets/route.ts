@@ -43,6 +43,7 @@ type EventRow = {
   price: number | null
   price_per_seat: number | null
   online_discount_type: string | null
+  online_discount_ends_at?: string | null
   online_discount_value: number | null
   booking_mode: string | null
 }
@@ -273,7 +274,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const { data: event, error: eventError } = await admin
       .from('events')
-      .select('id, name, date, time, performer_name, performer_type, payment_mode, is_free, price, price_per_seat, online_discount_type, online_discount_value, booking_mode')
+      .select('id, name, date, time, performer_name, performer_type, payment_mode, is_free, price, price_per_seat, online_discount_type, online_discount_value, online_discount_ends_at, booking_mode')
       .eq('id', eventId)
       .maybeSingle()
 

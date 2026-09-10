@@ -25,6 +25,8 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
+import { eventAttendeesInputSchema, bookingQuestionsSchema, validateEventAttendees } from '@/lib/events/booking-questions'
+import { resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
 import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
@@ -64,6 +66,8 @@ const CreateEventBookingSchema = z.object({
   communication_consent: OptionalCommunicationConsentSchema,
   // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
   // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
+  attendees: eventAttendeesInputSchema.optional(),
+  expected_total: z.number().finite().min(0).optional(),
   attendee_names: z.array(z.string().max(200)).max(20).optional(),
   // Multiple ticket options basket (feature-flagged). Each line has its own
   // attendee_names (length must equal quantity for paid events). Shape guard only;
@@ -191,6 +195,9 @@ export async function POST(request: NextRequest) {
       ...(attendeeNames.length > 0 ? { attendee_names: attendeeNames } : {}),
       ...(parsed.data.dining_request ? { dining_request: parsed.data.dining_request } : {}),
       ...(parsed.data.early_arrival_request === true ? { early_arrival_request: true } : {}),
+      ...(parsed.data.attendees ? { attendees: parsed.data.attendees } : {}),
+      ...(parsed.data.expected_total !== undefined ? { expected_total: parsed.data.expected_total } : {}),
+      ...(parsed.data.ticket_selections ? { ticket_selections: parsed.data.ticket_selections } : {}),
       communication_consent: consentHashPayload(parsed.data.communication_consent),
     })
     const attribution = buildBookingAttribution(parsed.data)
@@ -228,7 +235,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat, booking_questions')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -239,6 +246,23 @@ export async function POST(request: NextRequest) {
       if (!eventRow) {
         return createErrorResponse('Selected event could not be found', 'NOT_FOUND', 404)
       }
+
+      let paidEvent = eventRow.payment_mode !== 'free' && resolveEventTicketPriceAmount(eventRow) > 0
+      if (!paidEvent && (eventRow.payment_mode === 'prepaid' || eventRow.payment_mode === 'cash_only')) {
+        const { data: pricedTypes, error: priceError } = await supabase.from('event_ticket_types').select('base_price').eq('event_id', eventRow.id).eq('is_active', true)
+        if (priceError) return createErrorResponse('Ticket prices could not be loaded', 'DATABASE_ERROR', 500)
+        paidEvent = (pricedTypes ?? []).some(type => Number(type.base_price) > 0)
+      }
+      const questions = bookingQuestionsSchema.safeParse(eventRow.booking_questions ?? [])
+      if (!questions.success) return createErrorResponse('Event guest questions could not be loaded', 'DATABASE_ERROR', 500)
+      const guestError = validateEventAttendees({
+        attendees: parsed.data.attendees,
+        questions: questions.data,
+        seats: parsed.data.seats,
+        required: paidEvent && (eventRow.payment_mode === 'prepaid' || questions.data.length > 0),
+        selections: parsed.data.ticket_selections,
+      })
+      if (guestError) return createErrorResponse(guestError, questions.data.length ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
 
       if (eventRow.bookings_enabled === false) {
         return createErrorResponse(
@@ -376,6 +400,9 @@ export async function POST(request: NextRequest) {
         appBaseUrl,
         shouldSendSms: true,
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
+        attendees: parsed.data.attendees,
+        expectedTotal: parsed.data.expected_total,
+        requireGuestDetails: paidEvent && (eventRow.payment_mode === 'prepaid' || questions.data.length > 0),
         attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
         attribution,
         ticketSelections,
@@ -384,6 +411,12 @@ export async function POST(request: NextRequest) {
       })
 
       if (result.rpcFailed) {
+        if (result.rpcErrorCode === 'questions_changed') {
+          return createErrorResponse('The guest questions have changed. Please check the details for each guest.', 'BOOKING_QUESTIONS_CHANGED', 409)
+        }
+        if (result.rpcErrorCode === 'price_changed') {
+          return createErrorResponse('The ticket price has changed. Please check the updated total before booking.', 'PRICE_CHANGED', 409)
+        }
         // A per-type sell-out (or an unknown type id) is a normal business
         // condition the website should render, not a server failure.
         if (result.rpcErrorCode === 'ticket_type_sold_out') {
