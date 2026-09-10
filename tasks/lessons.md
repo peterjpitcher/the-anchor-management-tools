@@ -272,3 +272,48 @@ ships, check it describes something the reader will feel rather than something w
 and that there is a picture in it. If a sentence is a list of operational facts, it belongs
 in a table; the prose beside the table is where the warmth goes. The facts themselves are
 never warmed: times, prices and hours stay exactly as the records have them.
+
+## 10 September 2026: a grant to PUBLIC survives a revoke from anon and authenticated
+
+**Mistake:** Drafting a lockdown for two tables the advisor had flagged, I wrote
+`revoke all ... from anon, authenticated` and called them locked down. A review
+caught it. Verified on PostgreSQL 16: after `grant select on t to PUBLIC`, that
+revoke leaves `has_table_privilege('anon', 't', 'SELECT')` true. Revoking from a
+role does not touch a grant made to PUBLIC, and every role inherits that one.
+
+The diagnosis half is just as easy to get wrong in the other direction.
+`information_schema.role_table_grants` reports a PUBLIC grant as a single row
+with `grantee = 'PUBLIC'`, not as a row per role. So a table can be readable by
+`anon` while the grants query shows no `anon` row at all, and reading "no anon
+row" as "anon has no access" is wrong.
+
+**Rule:** This repo's security model is that anon fails closed, so neither error
+is cheap. When auditing access to a table, check effective privileges with
+`has_table_privilege(role, table, priv)`, or dump the raw ACL with
+`aclexplode(relacl)` joined to `pg_roles`, rather than reading per-role grant
+rows. When locking a table down, `revoke ... from public` first, then from the
+named roles. Enabling RLS with no policies is the guard that actually stops
+reads; the revoke is defence in depth, and it only works if PUBLIC is included.
+
+## 10 September 2026: a SQL function reading a table does not block dropping it
+
+**Mistake:** I wrote a `drop table` deliberately without `cascade`, on the
+reasoning that anything depending on the table would make the drop fail loudly
+rather than be destroyed silently. That is true for views and constraints. It is
+not true for functions. Tested it: with a view over one table and a SQL function
+selecting from another, the drop refused because of the view, and would have
+gone through happily as far as the function was concerned.
+
+A classic SQL or PL/pgSQL function with a quoted string body creates no
+catalogue dependency at all. `pg_depend` does not record it, the view-rewrite
+checks do not see it, and `drop table` has nothing to refuse on. The table goes
+and the function breaks at its next call, which in this codebase can mean a
+failure swallowed by an `exception when others` handler and surfaced as a
+generic blocked state.
+
+**Rule:** Before dropping or renaming any table, search `pg_proc.prosrc` for its
+name (`where p.prosrc ilike '%<name>%'`) and treat that search as load-bearing,
+not as belt and braces. It is the only check that finds this class of caller. The
+same applies to a column rename inside a function body. `drop ... cascade` is not
+the answer when this search comes back positive: fix the function in the same
+migration, per the prod-migrate workflow.
