@@ -38,6 +38,7 @@ import {
   decidePreorderChases,
   describePreorderGaps,
   getPreorderCompleteness,
+  getPreorderCutoff,
   isPreorderEnabled,
   loadPreorderOrder,
   PREORDER_BOOKER_REMINDER_DAYS,
@@ -233,6 +234,9 @@ export async function GET(request: NextRequest) {
         bookerReminderSentOn: sentOn.get(`${booking.id}:booker_reminder`) ?? null,
         managerEscalationSent: sentOn.has(`${booking.id}:manager_escalation`),
         todayIso: today,
+        // The same rule the manage page uses to lock the form, so a guest is never texted a link to
+        // a form that will refuse them.
+        preorderClosed: getPreorderCutoff({ bookingDate: booking.booking_date, preorderCutoffDays: cutoffDays }).closed,
       })
 
       if (due.length === 0) {

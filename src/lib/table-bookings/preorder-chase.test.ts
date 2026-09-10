@@ -22,6 +22,7 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: null,
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual(['booker_reminder'])
   })
@@ -34,6 +35,7 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: '2026-12-16',
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual(['manager_escalation'])
   })
@@ -46,12 +48,14 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: TODAY,
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual([])
   })
 
-  it('reminds a booking taken inside the cutoff, and escalates it the following day', () => {
-    // Booked two days out with a seven-day cutoff: the guest is asked today.
+  it('never texts a booking taken inside the cutoff, because its form has already locked', () => {
+    // Booked two days out with a seven-day cutoff. The "choose here" link would open a form that
+    // refuses every choice, so the booker is left alone and the manager is told on this sweep.
     expect(
       decidePreorderChases({
         daysUntilBooking: 2,
@@ -59,10 +63,25 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: null,
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: true,
       }),
-    ).toEqual(['booker_reminder'])
+    ).toEqual(['manager_escalation'])
+  })
 
-    // Tomorrow, still no choices, so the manager gets the call list entry.
+  it('never texts the booker on the cutoff day once noon has passed, which is when this cron runs', () => {
+    expect(
+      decidePreorderChases({
+        daysUntilBooking: 7,
+        cutoffDays: 7,
+        bookerReminderSentOn: null,
+        managerEscalationSent: false,
+        todayIso: TODAY,
+        preorderClosed: true,
+      }),
+    ).toEqual(['manager_escalation'])
+  })
+
+  it('still escalates the day after a reminder that went out while the form was open', () => {
     expect(
       decidePreorderChases({
         daysUntilBooking: 1,
@@ -70,11 +89,12 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: TODAY,
         managerEscalationSent: false,
         todayIso: '2026-12-18',
+        preorderClosed: true,
       }),
     ).toEqual(['manager_escalation'])
   })
 
-  it('sends both on the day of the booking, because there is no later sweep to wait for', () => {
+  it('tells only the manager on the day of the booking', () => {
     expect(
       decidePreorderChases({
         daysUntilBooking: 0,
@@ -82,8 +102,9 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: null,
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: true,
       }),
-    ).toEqual(['booker_reminder', 'manager_escalation'])
+    ).toEqual(['manager_escalation'])
   })
 
   it('holds the escalation back when the cutoff is longer than the reminder window', () => {
@@ -95,6 +116,7 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: null,
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual([])
   })
@@ -107,6 +129,7 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: '2026-12-10',
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual([])
   })
@@ -119,6 +142,7 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: '2026-12-10',
         managerEscalationSent: true,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual([])
   })
@@ -131,6 +155,7 @@ describe('decidePreorderChases', () => {
         bookerReminderSentOn: null,
         managerEscalationSent: false,
         todayIso: TODAY,
+        preorderClosed: false,
       }),
     ).toEqual([])
   })
