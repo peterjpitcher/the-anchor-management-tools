@@ -38,6 +38,7 @@ const {
 
 vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
   recordOneCourseInsideCutoff,
+  oneCourseForEveryone: (partySize: number) => Array.from({ length: partySize }, () => 1),
 }))
 
 vi.mock('@/lib/rate-limit', () => ({
@@ -230,6 +231,16 @@ describe('POST /api/table-bookings — structured persistence', () => {
     const body = await response.json()
     expect(body.data.preorder).toMatchObject({ saved: false, saved_covers: 0 })
     expect(body.data.preorder.error).toMatch(/deadline for this date has passed/)
+    // The confirmation is built from the in-memory booking, which must now say one course each.
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        bookingResult: expect.objectContaining({
+          booking_period_requires_preorder: false,
+          christmas_course_counts: [1, 1, 1, 1, 1, 1],
+        }),
+      }),
+    )
   })
 
   it('never second-guesses a booking that arrived with its courses', async () => {

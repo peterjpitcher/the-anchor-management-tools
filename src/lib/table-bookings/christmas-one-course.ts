@@ -22,6 +22,11 @@ import { logger } from '@/lib/logger'
  */
 export type OneCourseOutcome = 'recorded' | 'not_needed' | 'failed'
 
+/** Every guest on one course, as recorded. */
+export function oneCourseForEveryone(partySize: number): number[] {
+  return Array.from({ length: Math.max(0, Math.trunc(partySize)) }, () => 1)
+}
+
 type CoursePolicy = { multiple_courses_available?: boolean } | null
 
 export async function recordOneCourseInsideCutoff(
@@ -49,7 +54,7 @@ export async function recordOneCourseInsideCutoff(
 
   const { data: updated, error: updateError } = await supabase
     .from('table_bookings')
-    .update({ christmas_course_counts: Array.from({ length: partySize }, () => 1) })
+    .update({ christmas_course_counts: oneCourseForEveryone(partySize) })
     .eq('id', booking.id)
     .eq('booking_type', 'christmas')
     .is('christmas_course_counts', null)
