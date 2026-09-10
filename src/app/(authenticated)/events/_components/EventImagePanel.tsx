@@ -587,7 +587,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     disabled={!canPrintSheet || sheetBusy || tile.uploading}
                     title={
                       canPrintSheet
-                        ? 'Three to an A4 sheet. Print at actual size (100%), then cut on the marks.'
+                        ? 'Three to an A4 sheet. Print at actual size (100%), then cut as needed.'
                         : 'Brand the table talker first. Only branded artwork is printed.'
                     }
                     className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -610,7 +610,7 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     <span className="text-gray-500">
                       {talkerDpi !== null ? `Prints at about ${Math.round(talkerDpi)} dpi. ` : ''}
                       {canPrintSheet
-                        ? 'Print the sheet at 100%, then cut on the marks.'
+                        ? 'Print the sheet at 100%, then cut as needed.'
                         : 'Brand it to print the A4 sheet.'}
                     </span>
                   )}

@@ -1,6 +1,6 @@
 /**
- * Draws the A4 table talker sheet as a PDF: the branded panel three times, with
- * crop marks, laid out by `print-sheet.ts`.
+ * Draws the A4 table talker sheet as a PDF: the branded panel three times, without
+ * cut marks, laid out by `print-sheet.ts`.
  *
  * A PDF rather than an image because a PDF states its own physical size. Each
  * panel is placed at an exact millimetre position, so what comes out of the
@@ -27,10 +27,6 @@ import {
 
 /** PDF user space is points: 72 to the inch, 25.4mm to the inch. */
 const PT_PER_MM = 72 / 25.4
-
-/** Hairline crop marks, in a mid grey so they read clearly without shouting. */
-const CROP_MARK_THICKNESS_PT = 0.25
-const CROP_MARK_GREY = 0.45
 
 export type SheetImageFormat = 'png' | 'jpeg'
 
@@ -70,11 +66,11 @@ function yFromBottomPt(yMm: number): number {
 }
 
 export async function buildTableTalkerSheetPdf(input: TableTalkerPdfInput): Promise<TableTalkerPdfResult> {
-  const { PDFDocument, PrintScaling, rgb } = await import('pdf-lib')
+  const { PDFDocument, PrintScaling } = await import('pdf-lib')
 
   const pdf = await PDFDocument.create()
   pdf.setTitle(`Table talkers: ${input.eventName}`)
-  pdf.setSubject('Three table talkers on one A4 sheet. Print at actual size (100%), then cut on the marks.')
+  pdf.setSubject('Three table talkers on one A4 sheet. Print at actual size (100%), then cut as needed.')
   pdf.setCreator('Anchor Management Tools')
   // Asks the viewer to default the print dialog to actual size, not fit to page.
   pdf.catalog.getOrCreateViewerPreferences().setPrintScaling(PrintScaling.None)
@@ -89,16 +85,6 @@ export async function buildTableTalkerSheetPdf(input: TableTalkerPdfInput): Prom
       y: yFromBottomPt(rect.y + rect.height),
       width: rect.width * PT_PER_MM,
       height: rect.height * PT_PER_MM,
-    })
-  }
-
-  const grey = rgb(CROP_MARK_GREY, CROP_MARK_GREY, CROP_MARK_GREY)
-  for (const mark of layout.cropMarks) {
-    page.drawLine({
-      start: { x: mark.x1 * PT_PER_MM, y: yFromBottomPt(mark.y1) },
-      end: { x: mark.x2 * PT_PER_MM, y: yFromBottomPt(mark.y2) },
-      thickness: CROP_MARK_THICKNESS_PT,
-      color: grey,
     })
   }
 
