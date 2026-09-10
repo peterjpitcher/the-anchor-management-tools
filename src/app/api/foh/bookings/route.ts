@@ -33,6 +33,7 @@ import {
   toStoredBookingPurpose,
 } from '@/lib/table-bookings/christmas'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import {
   FOH_BOOKING_CLIENT_HEADER,
   FOH_CLIENT_OUTDATED_CODE,
@@ -43,7 +44,13 @@ import {
   shouldSeatFohWalkIn,
   WALK_IN_TODAY_ONLY_MESSAGE,
 } from '@/lib/foh/walk-in'
-import { splitWalkInGuestName, createWalkInCustomer } from '@/lib/foh/walk-in-customer'
+import {
+  splitWalkInGuestName,
+  createWalkInCustomer,
+  startWalkInCustomerTrail,
+  finishWalkInCustomerTrail,
+  type WalkInCustomerTrail,
+} from '@/lib/foh/walk-in-customer'
 
 /** Booking purposes the FOH create endpoint accepts. */
 type FohBookingPurpose = 'food' | 'drinks' | 'christmas'
@@ -818,7 +825,34 @@ async function recordFohTableBookingAnalyticsSafe(
   }
 }
 
-export async function POST(request: NextRequest) {
+// PostgREST errors arrive as plain objects rather than Errors, so name their fields instead of
+// logging "Unknown error" (tasks/lessons.md, 2026-05-28).
+function describeDatabaseError(error: unknown): {
+  code: string | null
+  message: string | null
+  details: string | null
+  hint: string | null
+} {
+  const record = (error && typeof error === 'object' ? error : {}) as Record<string, unknown>
+  const field = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : null)
+  return { code: field('code'), message: field('message'), details: field('details'), hint: field('hint') }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // An anonymous walk-in gets a customer made up before its booking is attempted. The `finally`
+  // removes it again on any way out, a thrown error included, when no booking row came of it.
+  const walkInTrail = startWalkInCustomerTrail()
+  try {
+    return await createFohTableBooking(request, walkInTrail)
+  } finally {
+    await finishWalkInCustomerTrail(walkInTrail, 'POST /api/foh/bookings')
+  }
+}
+
+async function createFohTableBooking(
+  request: NextRequest,
+  walkInTrail: WalkInCustomerTrail,
+): Promise<NextResponse> {
   const auth = await requireFohPermission('edit')
   if (!auth.ok) {
     return auth.response
@@ -903,9 +937,19 @@ export async function POST(request: NextRequest) {
         }
       })
     } catch (mgmtError) {
+      // An override still meets the kitchen-hours guard, so tell the manager in its words.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(mgmtError)
+      if (serviceWindowMessage) {
+        return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+      }
       logger.error('Management booking override failed', {
         error: mgmtError instanceof Error ? mgmtError : new Error('Unknown error'),
-        metadata: { userId: auth.userId, customerId: mgmtCustomerId, bookingDate: payload.date }
+        metadata: {
+          userId: auth.userId,
+          customerId: mgmtCustomerId,
+          bookingDate: payload.date,
+          ...describeDatabaseError(mgmtError),
+        }
       })
       return NextResponse.json({ error: 'Failed to create management booking' }, { status: 500 })
     }
@@ -1071,6 +1115,9 @@ export async function POST(request: NextRequest) {
       customerId = walkInCustomer.customerId
       normalizedPhone = walkInCustomer.syntheticPhone
       shouldSendBookingSms = false
+      walkInTrail.supabase = auth.supabase
+      walkInTrail.userId = auth.userId
+      walkInTrail.customer = walkInCustomer
     } catch (walkInError) {
       logger.error('Failed to create walk-in customer profile', {
         error: walkInError instanceof Error ? walkInError : new Error('Unknown walk-in customer error'),
@@ -1307,6 +1354,12 @@ export async function POST(request: NextRequest) {
       if (christmasRuleMessage) {
         return NextResponse.json({ error: christmasRuleMessage }, { status: 400 })
       }
+      // The kitchen is not serving at that time. The guard's own sentence says exactly that, so
+      // staff get it rather than a failure they cannot act on.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(rpcError)
+      if (serviceWindowMessage) {
+        return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+      }
       logger.error('create_table_booking_staff_v06 RPC failed for FOH create', {
         error: new Error(rpcError.message),
         metadata: {
@@ -1355,6 +1408,11 @@ export async function POST(request: NextRequest) {
       shouldSendBookingSms = false
       holdExpiresAt = null
     } catch (walkInOverrideError) {
+      // The fallback's raw insert meets the same kitchen-hours guard as the booking function.
+      const serviceWindowMessage = extractServiceWindowRuleErrorMessage(walkInOverrideError)
+      if (serviceWindowMessage) {
+        return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+      }
       const fallbackReason = bookingResult.reason || null
       logger.error('Manual walk-in booking override failed', {
         error:
@@ -1366,7 +1424,8 @@ export async function POST(request: NextRequest) {
           customerId,
           bookingDate: payload.date,
           bookingTime,
-          purpose: payload.purpose
+          purpose: payload.purpose,
+          ...describeDatabaseError(walkInOverrideError),
         }
       })
       return NextResponse.json(
@@ -1377,6 +1436,14 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+  }
+
+  // From here a booking row exists and points at the customer, so a made-up walk-in customer
+  // has to stay whatever happens next: a failed payment link cancels the booking, it does not
+  // delete it. Decided on the state, never on whether an id came back, because a blocked result
+  // can carry another booking's id (tasks/lessons.md, 2026-07-03).
+  if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
+    walkInTrail.bookingPersisted = true
   }
 
   // Stamp is_venue_event on the booking record when set — the RPC does not accept this field,
