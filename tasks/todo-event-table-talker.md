@@ -20,19 +20,21 @@ before the code that reads `table_talker_url` deploys.
 
 ## Commits
 
-- [ ] 1. docs: approved spec and this plan.
-- [ ] 2. feat(db): migration `event_image_table_talker`, drafted and statically
-      checked, NOT applied. Parity test: CHECK list, both RPC allow lists and the
-      unique index predicate equal the variant config.
-- [ ] 3. refactor(events): per print surface QR rules. `print` block on the
+- [x] 1. docs: approved spec and this plan. (`58bb2f32`)
+- [x] 2. feat(db): migration `20260910100000_event_image_table_talker`, NOT
+      applied. Proved on a throwaway local Postgres with the real RPC bodies,
+      under the production ACL and a hostile one; re-runs as a no-op; its
+      assertion rejects a copy with the index left narrow. (`672f6ccf`)
+- [x] 3. refactor(events): per print surface QR rules. (`da3ae0d0`) `print` block on the
       variant config (poster only at this step), geometry takes a minimum,
       compositor passes it, `resolvePrintLink(eventId, channel)`,
       `isPrintVariant` from config, modal reads the print block. The poster
       behaves exactly as before.
-- [ ] 4. feat(events): the `table_talker` variant, its prompt line and note,
-      the cache column in types and selects, panel heading copy.
-- [ ] 5. feat(events): the print sheet. Pure layout module, PDF builder, GET
-      route, Print sheet button and dpi readout on the tile, downloads card.
+- [x] 4. feat(events): the `table_talker` variant, its prompt line and note,
+      the cache column in types and selects, panel heading copy, and the
+      migration parity test (fails 6 of 7 with the migration removed). (`2cd0a677`)
+- [x] 5. feat(events): the print sheet. Pure layout module, PDF builder, GET
+      route, Print sheet button and dpi readout on the tile, downloads card. (`cab52fb7`)
 - [ ] 6. Full gate including `npm run build`; browser check of the drawer if the
       preview can reach this worktree; say plainly if it cannot.
 
@@ -46,4 +48,11 @@ before the code that reads `table_talker_url` deploys.
 
 ## Results
 
-(filled in as commits land)
+- Full suite green in both zones: 779 files, 7070 passed, 2 skipped, London
+  and UTC. Whole-repo lint and `tsc --noEmit` clean.
+- A test sheet built through the real compositor and sheet builder renders as
+  designed: panel 92.32 x 195.86 mm, 321.6 dpi from 1169 px, QR at the floor
+  prints 15.0 mm, PDF 131 KB with the image embedded once.
+- Not verified in a browser: the dev server talks to production, where
+  `table_talker_url` does not exist until the migration is applied, so the
+  artwork panel cannot load there before then. Component tests cover the UI.
