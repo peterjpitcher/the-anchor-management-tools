@@ -33,6 +33,7 @@ import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/tabl
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
+import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -599,12 +600,36 @@ export async function POST(request: NextRequest) {
       // booking path. New public bookings never use the legacy `sunday_lunch`
       // booking type, so legacy pre-order line items are ignored.
 
+      // A Christmas booking that arrived without per-guest courses (an older client: today's form
+      // always sends them) is recorded as one course for every guest once the pre-order deadline
+      // has passed, because inside it the 1 course tier is the only one on offer (SSOT §7, owner
+      // decision 10 September 2026). Done before the dish write, so no dish is saved against a
+      // guest who cannot pre-order. Before the deadline this changes nothing.
+      const lateChristmasOneCourse =
+        bookingResult.table_booking_id &&
+        !payload.christmas_course_counts &&
+        (payload.booking_period_answer === true || payload.purpose === 'christmas') &&
+        (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+          ? await recordOneCourseInsideCutoff(supabase, {
+              id: bookingResult.table_booking_id,
+              bookingDate: payload.date,
+              partySize: payload.party_size,
+            })
+          : 'not_needed'
+
       // Seasonal pre-order. Only ever attempted on a booking that actually
       // exists and that the database attached to a period: without a period
       // there is no menu to choose from, and every dish id is validated against
       // that period before anything is written.
       let preorderResult: PreorderPersistResult | null = null
-      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
+      if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0 && lateChristmasOneCourse === 'recorded') {
+        preorderResult = {
+          requested_covers: payload.preorder?.length ?? 0,
+          saved_covers: 0,
+          saved: false,
+          error: 'The pre-order deadline for this date has passed, so every guest is booked for one course, chosen on the day.'
+        }
+      } else if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
           && !(payload.christmas_course_counts && bookingResult.booking_period_requires_preorder === false)) {
         const entries = payload.preorder ?? []
 
