@@ -4,7 +4,7 @@ Status: local only. Release packaged on `codex/ticket-setup-release` from curren
 
 Release preparation after owner approval: ticket changes are isolated from the shared dirty checkouts in `/Users/peterpitcher/Cursor/OJ-AnchorManagementTools-ticket-release` (branch `codex/ticket-setup-release`) and `/tmp/anchor-website-ticket-release` (branch `codex/ticket-attendees-release`). The website local commit is `32e759fcb0a6bd7b7708d0d27373ffb80274a524`.
 
-Latest management main includes atomic meal/early-arrival requests absent from the original feature checkout. An additional reviewed migration preserves those requests with named guests: `20260910073920_ticket_attendees_dining_requests.sql`, checksum `70d663e10124565c2900d592d2e57f424cecf80b9d772ca7e57ae84db79fbca8`. Its exact SQL/rollback packet is in the management release worktree at `tasks/ticket-setup/companion-migration-approval.md`. The original approved SQL is unchanged. Neither migration has been applied; the additional exact SQL needs owner approval before release.
+Latest management main includes atomic meal/early-arrival requests absent from the original feature checkout. An additional reviewed migration preserves those requests with named guests: `20260910075719_ticket_attendees_dining_requests.sql`, checksum `70d663e10124565c2900d592d2e57f424cecf80b9d772ca7e57ae84db79fbca8`. Its exact SQL/rollback packet is in the management release worktree at `tasks/ticket-setup/companion-migration-approval.md`. The original approved SQL is unchanged. Neither migration has been applied; the additional exact SQL needs owner approval before release.
 
 Release verification on latest main: management 7,036 tests passed with two existing skips in both London and UTC; website 2,401 passed with one existing skip in both zones, with lint, types and cold build passed. The self-contained PostgreSQL harness now passes 60 checks. Independent integration review found no remaining defects. Live read-only anon baseline passes all nine checks. The final management cold build passed, including lint/type checks and all 155 static pages. The emitted server bundle was inspected to confirm the final combined-RPC error logger was compiled. Both release commits remain local.
 
@@ -75,7 +75,7 @@ Do not push this existing shared checkout wholesale. It contains substantial ear
 - [src/types/database.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/src/types/database.ts)
 - [tests/api/eventBookingGuestDetails.test.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/tests/api/eventBookingGuestDetails.test.ts)
 - [tests/lib/eventTicketPriceSnapshot.test.ts](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/tests/lib/eventTicketPriceSnapshot.test.ts)
-- [supabase/migrations/20260910065400_ticket_setup_and_attendees.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/supabase/migrations/20260910065400_ticket_setup_and_attendees.sql)
+- [supabase/migrations/20260910075712_ticket_setup_and_attendees.sql](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/supabase/migrations/20260910075712_ticket_setup_and_attendees.sql)
 - [scripts/testing/ticket-setup-postgres.py](/Users/peterpitcher/Cursor/OJ-AnchorManagementTools/scripts/testing/ticket-setup-postgres.py)
 
 ## Website files changed
@@ -99,7 +99,7 @@ Task records added/updated: this run directory, tasks/ticket-setup migration pac
 
 ## Release packaging additions
 
-- `supabase/migrations/20260910073920_ticket_attendees_dining_requests.sql`: additive combined guest/dining transaction wrapper, not applied.
+- `supabase/migrations/20260910075719_ticket_attendees_dining_requests.sql`: additive combined guest/dining transaction wrapper, not applied.
 - `src/services/__tests__/event-bookings-dining-requests.test.ts`: combined request forwarding and failure coverage.
 - `scripts/testing/fixtures/ticket-setup-base.sql`: owned synthetic base schema, so the ticket harness no longer imports the unrelated standing-policy script.
 - `tasks/ticket-setup/companion-migration-approval.md`: exact SQL, live-state findings, risk, validation and rollback.

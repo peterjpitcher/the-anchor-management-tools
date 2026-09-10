@@ -8,7 +8,7 @@ import tempfile
 import json
 ROOT=Path(__file__).resolve().parents[2]
 PG=Path('/opt/homebrew/bin')
-MIGRATION=ROOT/'supabase/migrations/20260910065400_ticket_setup_and_attendees.sql'
+MIGRATION=ROOT/'supabase/migrations/20260910075712_ticket_setup_and_attendees.sql'
 SETUP=(ROOT/'scripts/testing/fixtures/ticket-setup-base.sql').read_text()+"""
 ALTER TABLE booking_holds ADD consumed_at timestamptz;
 ALTER TABLE events ADD price numeric default 45, ADD price_per_seat numeric default 45, ADD is_free boolean default false, ADD online_discount_type text default 'fixed', ADD online_discount_value numeric default 5;
@@ -110,7 +110,7 @@ def main():
    check("NOT EXISTS (SELECT 1 FROM booking_holds WHERE status='active')",'free ticket consumes payment hold')
    # Combined guest and dining requests must commit or roll back together.
    sql("ALTER TABLE bookings ADD notes text;")
-   sql((ROOT/'supabase/migrations/20260910073920_ticket_attendees_dining_requests.sql').read_text())
+   sql((ROOT/'supabase/migrations/20260910075719_ticket_attendees_dining_requests.sql').read_text())
    reset();sql("UPDATE event_ticket_types SET base_price=45 WHERE id='"+T+"';UPDATE events SET payment_mode='prepaid',booking_questions='[]',online_discount_ends_at=null;")
    def combined(customer="gen_random_uuid()",expected=40,dining="'before_event'"):
     return f"create_event_booking_with_attendees_and_requests_v01('{E}',{customer},1,'brand_site','seated',15,null,{dining},true,{literal([{**attendee(),'answers':{}}])},{expected})"
