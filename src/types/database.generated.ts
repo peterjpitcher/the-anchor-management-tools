@@ -1090,6 +1090,7 @@ export type Database = {
       bookings: {
         Row: {
           attendee_names: string[] | null
+          attendees: Json
           booking_source: string | null
           cancelled_at: string | null
           cancelled_by: string | null
@@ -1111,10 +1112,12 @@ export type Database = {
           seats: number | null
           source: string
           status: string
+          ticket_price_locked: boolean
           updated_at: string | null
         }
         Insert: {
           attendee_names?: string[] | null
+          attendees?: Json
           booking_source?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -1136,10 +1139,12 @@ export type Database = {
           seats?: number | null
           source?: string
           status?: string
+          ticket_price_locked?: boolean
           updated_at?: string | null
         }
         Update: {
           attendee_names?: string[] | null
+          attendees?: Json
           booking_source?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -1161,6 +1166,7 @@ export type Database = {
           seats?: number | null
           source?: string
           status?: string
+          ticket_price_locked?: boolean
           updated_at?: string | null
         }
         Relationships: [
@@ -5386,6 +5392,7 @@ export type Database = {
           booking_cutoff_at: string | null
           booking_mode: string
           booking_open: boolean
+          booking_questions: Json
           booking_url: string | null
           bookings_enabled: boolean
           brief: string | null
@@ -5418,6 +5425,7 @@ export type Database = {
           meta_description: string | null
           meta_title: string | null
           name: string
+          online_discount_ends_at: string | null
           online_discount_type: string | null
           online_discount_value: number | null
           opentable_experience_description: string | null
@@ -5451,6 +5459,7 @@ export type Database = {
           booking_cutoff_at?: string | null
           booking_mode?: string
           booking_open?: boolean
+          booking_questions?: Json
           booking_url?: string | null
           bookings_enabled?: boolean
           brief?: string | null
@@ -5483,6 +5492,7 @@ export type Database = {
           meta_description?: string | null
           meta_title?: string | null
           name: string
+          online_discount_ends_at?: string | null
           online_discount_type?: string | null
           online_discount_value?: number | null
           opentable_experience_description?: string | null
@@ -5516,6 +5526,7 @@ export type Database = {
           booking_cutoff_at?: string | null
           booking_mode?: string
           booking_open?: boolean
+          booking_questions?: Json
           booking_url?: string | null
           bookings_enabled?: boolean
           brief?: string | null
@@ -5548,6 +5559,7 @@ export type Database = {
           meta_description?: string | null
           meta_title?: string | null
           name?: string
+          online_discount_ends_at?: string | null
           online_discount_type?: string | null
           online_discount_value?: number | null
           opentable_experience_description?: string | null
@@ -19405,6 +19417,36 @@ export type Database = {
           p_seating_preference: string
           p_source: string
           p_ticket_selections: Json
+        }
+        Returns: Json
+      }
+      create_event_booking_v08: {
+        Args: {
+          p_attendees: Json
+          p_customer_id: string
+          p_event_id: string
+          p_expected_total?: number
+          p_payment_hold_minutes: number
+          p_seating_preference: string
+          p_seats: number
+          p_source: string
+          p_ticket_selections: Json
+        }
+        Returns: Json
+      }
+      create_event_booking_with_attendees_and_requests_v01: {
+        Args: {
+          p_attendees?: Json
+          p_customer_id: string
+          p_dining_request?: string
+          p_early_arrival_request?: boolean
+          p_event_id: string
+          p_expected_total?: number
+          p_payment_hold_minutes?: number
+          p_seating_preference?: string
+          p_seats: number
+          p_source?: string
+          p_ticket_selections?: Json
         }
         Returns: Json
       }
