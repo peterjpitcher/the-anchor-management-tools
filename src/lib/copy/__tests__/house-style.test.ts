@@ -101,6 +101,28 @@ describe('prose checks', () => {
   })
 })
 
+describe('claims retired on 10 September 2026', () => {
+  // Every string here was live: on website pages, and in the Christmas set-menu rows in this app.
+  it.each([
+    ["Save £12.50 daily! We're outside London's ULEZ zone, perfect for travellers avoiding the charge.", 'ulez-figure'],
+    ['Outside the ULEZ zone (saves London-based drivers £12.50).', 'ulez-figure'],
+    ['The deposit is £250, fully deducted from your final bill.', 'private-hire-deposit-deducted'],
+    ['Pre-book and pre-order only. Full dish list released closer to the time.', 'menu-released-later'],
+  ])('treats "%s" as an error', (text, rule) => {
+    expect(houseStyleErrors(text).map((f) => f.rule)).toContain(rule)
+  })
+
+  it('leaves the approved replacements alone', () => {
+    expect(houseStyleErrors("We're outside the ULEZ zone, with 20 free parking spaces.")).toEqual([])
+    expect(
+      houseStyleErrors(
+        "A £250 booking and damage deposit secures your date. It's held separately from your bill and refunded after the event, less any documented deductions."
+      )
+    ).toEqual([])
+    expect(houseStyleErrors('Groups of 15 or more: a £10 per person deposit, fully deducted from your bill.')).toEqual([])
+  })
+})
+
 describe('the checker itself', () => {
   it('says nothing about empty text', () => {
     expect(checkHouseStyle('')).toEqual([])
