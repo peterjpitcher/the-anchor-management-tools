@@ -48,6 +48,6 @@ export async function downloadTableTalkerSheet(eventId: string): Promise<boolean
   // after the click returns and would find the object already gone.
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
 
-  toast.success('Print sheet saved. Print it at actual size (100%), then cut on the marks.')
+  toast.success('Print sheet saved. Print it at actual size (100%), then cut as needed.')
   return true
 }

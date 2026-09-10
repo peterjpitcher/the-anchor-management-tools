@@ -223,3 +223,16 @@ See `tasks/fix-function/2026-09-05-api-connections/todo.md` for the isolated rem
 Scope: QR branding only. Existing artwork unchanged until saved again. Database constraint update is an independently deployable prerequisite; application changes follow. No new columns, grants, functions or data rewrites. Website and unrelated checkout work unchanged.
 
 QR verification: Node 20 lint, uncached typecheck, all 759 test files (6832 tests passed, two skipped) and clean production build passed. Actual minimum-size rendered image visually inspected with readable vector lettering. Isolated PostgreSQL validates boundaries and rollback. Production migration approval pending; no live changes applied.
+
+## Event artwork adjustments, 10 September 2026
+- [x] Strengthen soft logo shadows and reserve branding space in prompts.
+- [x] Remove printed cut marks and update printing instructions.
+- [x] Run checks and visually verify generated artwork and PDF.
+- [ ] Deploy and verify production.
+
+Verification notes: generated white and black logo composites and rendered the three-panel A4 PDF. Both shadows fade smoothly; the PDF contains three images and no stroked cut marks. Existing saved artwork needs branding reapplied to pick up the shadow. No database migration is needed.
+
+Changed files for this request: src/lib/events/imageVariants.ts; src/lib/events/artwork/geometry.ts; src/lib/events/artwork/composite.ts; src/lib/events/artwork/composite.test.ts; src/lib/events/artwork/branding-service.test.ts; src/lib/events/artwork/table-talker-pdf.ts; src/lib/events/artwork/table-talker-pdf.test.ts; src/app/(authenticated)/events/_components/EventImagePanel.tsx; src/app/(authenticated)/events/_components/ArtworkBrandingModal.test.tsx; src/components/features/events/TableTalkerSheetButton.tsx; src/components/features/events/tableTalkerSheet.ts; tasks/todo.md.
+Deliberately unchanged: print-sheet.ts and print-sheet.test.ts retain the existing panel geometry; ArtworkBrandingModal.tsx already reads the shared shadow settings. Other work in the original checkout is untouched.
+
+Checks passed: zero-warning lint, uncached typecheck, 788 test files (7,144 passing tests, 2 skipped) in both Europe/London and UTC, and a cold production build.
