@@ -21,8 +21,9 @@ before the code that reads `table_talker_url` deploys.
 ## Commits
 
 - [x] 1. docs: approved spec and this plan. (`58bb2f32`)
-- [x] 2. feat(db): migration `20260910100000_event_image_table_talker`, NOT
-      applied. Proved on a throwaway local Postgres with the real RPC bodies,
+- [x] 2. feat(db): migration `20260910105320_event_image_table_talker`
+      (drafted as 20260910100000, renamed to the version production recorded).
+      Proved on a throwaway local Postgres with the real RPC bodies,
       under the production ACL and a hostile one; re-runs as a no-op; its
       assertion rejects a copy with the index left narrow. (`672f6ccf`)
 - [x] 3. refactor(events): per print surface QR rules. (`da3ae0d0`) `print` block on the
@@ -40,9 +41,16 @@ before the code that reads `table_talker_url` deploys.
 
 ## After the owner says yes to the migration
 
-- [ ] Apply via `npx supabase db push` after `--dry-run` lists only this file.
-- [ ] Verify: CHECK, column, index predicate, both RPCs, grants
-      (`has_function_privilege`), then `assert-anon-surface.ts`.
+- [x] Owner signed off the approval packet (checksum 7186a647...) on 2026-09-10.
+      Applied through the Supabase MCP, as the prod-migrate skill requires;
+      production recorded version `20260910105320`, and the file was renamed
+      to match.
+- [x] Verified: CHECK, column and comment, index predicate, both RPCs write
+      and clear the column, one of each, SECURITY DEFINER with search_path,
+      grants service_role only (`has_function_privilege`), anon cannot read
+      the new column. `assert-anon-surface.ts`: all 9 checks pass.
+- [x] Smoke test (`tasks/table-talker/production-smoke.sql`) on a throwaway
+      event: SMOKE_OK, and nothing persisted (0 test rows, counts unchanged).
 - [ ] Merge, confirm the production deployment is Ready and serving the commit.
 - [ ] Owner prints, cuts and scans one sheet. Only then is this done.
 
