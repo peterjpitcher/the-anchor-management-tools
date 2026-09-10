@@ -6,7 +6,7 @@ import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
-import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
+import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
@@ -1476,11 +1476,20 @@ async function createFohTableBooking(
     bookingResult.table_booking_id &&
     (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
   ) {
-    await recordOneCourseInsideCutoff(auth.supabase, {
+    const outcome = await recordOneCourseInsideCutoff(auth.supabase, {
       id: bookingResult.table_booking_id,
       bookingDate: payload.date,
       partySize: payload.party_size,
     })
+    // The confirmation text is built from this result, not from the row, so without this it would
+    // still say "Choose your food" and link to a form that has already locked.
+    if (outcome === 'recorded') {
+      bookingResult = {
+        ...bookingResult,
+        booking_period_requires_preorder: false,
+        christmas_course_counts: oneCourseForEveryone(payload.party_size),
+      }
+    }
   }
 
   if (payload.waive_deposit !== true) {

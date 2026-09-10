@@ -4,6 +4,7 @@ import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
+import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
@@ -50,6 +51,7 @@ vi.mock('@/lib/table-bookings/period-lookup', () => ({
 }))
 vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
   recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
+  oneCourseForEveryone: (partySize: number) => Array.from({ length: partySize }, () => 1),
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),
@@ -528,6 +530,46 @@ describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline
       bookingDate: '2026-12-01',
       partySize: 8,
     })
+  })
+
+  it('confirms a late booking as one course, never with a "choose your food" link', async () => {
+    vi.mocked(recordOneCourseInsideCutoff).mockResolvedValueOnce('recorded')
+    const db = createSupabaseMock({
+      rpcResult: {
+        data: {
+          state: 'confirmed',
+          table_booking_id: 'booking-1',
+          booking_reference: 'TB-TEST',
+          booking_period_id: 'period-1',
+          booking_period_answer: true,
+          booking_period_requires_preorder: true,
+        },
+        error: null,
+      },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        date: '2026-12-01',
+        time: '18:00',
+        party_size: 8,
+        purpose: 'christmas',
+        sunday_deposit_method: 'cash',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        bookingResult: expect.objectContaining({
+          booking_period_requires_preorder: false,
+          christmas_course_counts: [1, 1, 1, 1, 1, 1, 1, 1],
+        }),
+      }),
+    )
   })
 
   it('leaves every other booking alone', async () => {

@@ -33,7 +33,7 @@ import { extractChristmasRuleErrorMessage, isChristmasPurpose } from '@/lib/tabl
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
-import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
+import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { verifyTurnstileToken, getClientIp } from '@/lib/turnstile'
@@ -616,6 +616,14 @@ export async function POST(request: NextRequest) {
               partySize: payload.party_size,
             })
           : 'not_needed'
+      if (lateChristmasOneCourse === 'recorded') {
+        // Keep the in-memory booking in step: the confirmation text is built from it.
+        bookingResult = {
+          ...bookingResult,
+          booking_period_requires_preorder: false,
+          christmas_course_counts: oneCourseForEveryone(payload.party_size),
+        }
+      }
 
       // Seasonal pre-order. Only ever attempted on a booking that actually
       // exists and that the database attached to a period: without a period
