@@ -43,7 +43,7 @@ import {
 
 const CORNERS: readonly Corner[] = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
 
-/** The five real canvases, read from the variant config so a new one is covered too. */
+/** The real canvases, read from the variant config so a new one is covered too. */
 const CANVASES = EVENT_IMAGE_VARIANT_ORDER.map((key) => ({
   key,
   width: EVENT_IMAGE_VARIANTS[key].targetWidth,
@@ -98,8 +98,8 @@ describe('constants', () => {
       .toBeLessThanOrEqual(934)
   })
 
-  it('checks there are five canvases to reason about', () => {
-    expect(CANVASES).toHaveLength(5)
+  it('checks there are six canvases to reason about, the slim table talker included', () => {
+    expect(CANVASES).toHaveLength(6)
   })
 })
 

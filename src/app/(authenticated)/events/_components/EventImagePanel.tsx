@@ -596,8 +596,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
 
 /**
  * Make the square first, then paste this into an image tool to get the other
- * four back at the right sizes. The text is generated from the variant config,
- * so the dimensions here are the same ones the upload validates against.
+ * sizes back, the slim table talker included. The text is generated from the
+ * variant config, so the dimensions here are the same ones the upload
+ * validates against.
  */
 function VariantPromptBox() {
   const [copied, setCopied] = useState(false)
@@ -652,8 +653,8 @@ function PanelHeading() {
       <p className="text-sm font-medium text-gray-700 sm:text-base">Event artwork</p>
       <p className="text-sm text-gray-500">
         Drag a file onto a tile, or click it to browse. The square, landscape and
-        social images appear on the website. The story and A4 poster are kept here
-        for you to download.
+        social images appear on the website. The story, A4 poster and table talker
+        are kept here for you to download.
       </p>
     </div>
   )
