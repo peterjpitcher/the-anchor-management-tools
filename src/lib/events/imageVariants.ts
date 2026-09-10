@@ -23,6 +23,49 @@ export type EventImageCacheColumn =
   | 'story_image_url'
   | 'print_poster_url'
 
+/**
+ * How a print variant reaches paper. Null on every screen variant.
+ *
+ * A QR code's printable minimum is a PHYSICAL size, but the placement geometry
+ * works in fractions of the image width. The two only line up once the width
+ * the artwork is actually printed at is known, and that differs per surface:
+ * the poster prints the full A4 width, a table talker far narrower. Keeping the
+ * pair here, beside the variant, is what stops a new print surface quietly
+ * inheriting the poster's fraction and printing a code a third of the size.
+ */
+/**
+ * The marketing channels a printed QR code may carry, one per print surface.
+ * Closed on purpose: a code minted on the wrong channel reports its scans
+ * against another surface.
+ */
+export type PrintQrChannel = 'poster' | 'table_talker'
+
+export interface EventImagePrintSpec {
+  /** The width the artwork is printed at, in millimetres. */
+  printedWidthMm: number
+  /** The smallest printed QR code a phone reliably scans on this surface. */
+  qrMinMm: number
+  /**
+   * `qrMinMm` as a fraction of the image width, rounded UP at the fourth
+   * decimal place so a code at the floor can never print under the minimum.
+   *
+   * A literal rather than a division, because the poster's value is pinned to
+   * the `event_images_qr_width_frac_check` floor and must not drift with
+   * floating point. A test holds every literal to its millimetres, and holds
+   * every one inside the database floor and ceiling.
+   */
+  qrMinWidthFrac: number
+  /**
+   * The marketing channel whose short link the QR carries. Each printed
+   * surface has its own, so its scans are reported on their own.
+   */
+  qrChannel: PrintQrChannel
+  /** What staff call the printed thing, e.g. "Put a QR code on the poster". */
+  surfaceName: string
+  /** Where the printed size is quoted, e.g. "21 mm on the A4 poster". */
+  printedSizeLabel: string
+}
+
 export interface EventImageVariantConfig {
   key: EventImageVariant
   label: string
@@ -45,6 +88,8 @@ export interface EventImageVariantConfig {
   /** False means the URL is never emitted by the public API. */
   webServed: boolean
   cacheColumn: EventImageCacheColumn
+  /** Null for screen variants. Present means this variant is printed and may carry a QR code. */
+  print: EventImagePrintSpec | null
 }
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'] as const
@@ -65,6 +110,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: true,
     cacheColumn: 'hero_image_url',
+    print: null,
   },
   landscape: {
     key: 'landscape',
@@ -79,6 +125,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: true,
     cacheColumn: 'landscape_image_url',
+    print: null,
   },
   social: {
     key: 'social',
@@ -93,6 +140,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: true,
     cacheColumn: 'social_image_url',
+    print: null,
   },
   story: {
     key: 'story',
@@ -107,6 +155,7 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TEN_MB,
     webServed: false,
     cacheColumn: 'story_image_url',
+    print: null,
   },
   print_poster: {
     key: 'print_poster',
@@ -121,6 +170,15 @@ export const EVENT_IMAGE_VARIANTS: Record<EventImageVariant, EventImageVariantCo
     maxBytes: TWENTY_FIVE_MB,
     webServed: false,
     cacheColumn: 'print_poster_url',
+    // 10% of the full A4 width, which is the database floor as well.
+    print: {
+      printedWidthMm: 210,
+      qrMinMm: 21,
+      qrMinWidthFrac: 0.1,
+      qrChannel: 'poster',
+      surfaceName: 'poster',
+      printedSizeLabel: 'the A4 poster',
+    },
   },
 }
 
@@ -138,6 +196,22 @@ export function isEventImageVariant(value: unknown): value is EventImageVariant 
 }
 
 /**
+ * A print variant's QR minimum, in the shape the placement geometry takes
+ * (`QrPrintMinimum` in `src/lib/events/artwork/geometry.ts`). Null for a screen
+ * variant, which never carries a QR code.
+ *
+ * The one bridge between the two modules, so the editor and the compositor
+ * cannot each assemble the minimum their own way.
+ */
+export function qrMinimumFor(
+  variant: EventImageVariant
+): { widthFrac: number; mm: number; surfaceName: string } | null {
+  const print = EVENT_IMAGE_VARIANTS[variant].print
+  if (!print) return null
+  return { widthFrac: print.qrMinWidthFrac, mm: print.qrMinMm, surfaceName: print.surfaceName }
+}
+
+/**
  * The prompt staff copy into an image tool once the square artwork exists, to
  * get the other four variants back at the sizes the tiles actually accept.
  *
@@ -148,7 +222,7 @@ export function isEventImageVariant(value: unknown): value is EventImageVariant 
 export function buildVariantPrompt(): string {
   const sizes = EVENT_IMAGE_VARIANT_ORDER.filter((key) => key !== 'square').map((key) => {
     const variant = EVENT_IMAGE_VARIANTS[key]
-    const dpi = key === 'print_poster' ? ' at 300 dpi' : ''
+    const dpi = variant.print ? ' at 300 dpi' : ''
     return `- ${variant.promptLabel}: ${variant.aspectLabel}, ${variant.targetWidth} x ${variant.targetHeight} px${dpi}`
   })
 

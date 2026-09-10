@@ -103,7 +103,7 @@ vi.mock('@/app/actions/audit', () => ({
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { POSTER_LINK_CHANNEL, resolvePosterLink } from './poster-link'
+import { POSTER_LINK_CHANNEL, resolvePosterLink, resolvePrintLink } from './poster-link'
 
 /**
  * Builds the link `generateSingleLink` would return for whichever channel it
@@ -407,5 +407,115 @@ describe('resolvePosterLink, a failed repair', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('repair_failed')
+  })
+})
+
+describe('resolvePrintLink, the table talker', () => {
+  /** prefix `tt` plus the first six hex characters of the event id. */
+  const TABLE_TALKER_CODE = 'tt111111'
+
+  it('asks for the table_talker channel and never the poster one', async () => {
+    const result = await resolvePrintLink(EVENT_ID, 'table_talker')
+
+    expect(marketing.generateSingleLink).toHaveBeenCalledTimes(1)
+    expect(marketing.generateSingleLink).toHaveBeenCalledWith(EVENT_ID, 'table_talker')
+    expect(marketing.generateSingleLink).not.toHaveBeenCalledWith(EVENT_ID, 'poster')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.shortCode).toBe(TABLE_TALKER_CODE)
+    expect(result.destinationUrl).toContain('utm_source=table_talker')
+    expect(result.destinationUrl).not.toContain('utm_source=poster')
+  })
+
+  it('refuses a poster code handed back for a table talker', async () => {
+    // Scans from a table must not be counted as poster scans.
+    marketing.generateSingleLink.mockResolvedValue(fakeLinkFor('poster'))
+
+    const result = await resolvePrintLink(EVENT_ID, 'table_talker')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('link_unavailable')
+    expect(result.detail).toBe(
+      'The short link returned for "Quiz Night" is not a table talker link, so it must not go on printed artwork.'
+    )
+    expect(state.updates).toHaveLength(0)
+  })
+
+  it('names the table talker, not the poster, when it blocks', async () => {
+    state.event = { ...defaultEvent(), event_status: 'cancelled' }
+
+    const result = await resolvePrintLink(EVENT_ID, 'table_talker')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.detail).toBe('"Quiz Night" is cancelled, so a table talker must not be printed for it.')
+  })
+
+  it('repairs a stale table talker link in place and audits it under its own channel', async () => {
+    marketing.generateSingleLink.mockResolvedValue(
+      fakeLinkFor('table_talker', { destinationUrl: 'https://www.the-anchor.pub/events/old-quiz-name' })
+    )
+    state.updateResult = {
+      data: {
+        id: 'link-1',
+        short_code: TABLE_TALKER_CODE,
+        destination_url: fakeLinkFor('table_talker').destinationUrl,
+      },
+      error: null,
+    }
+
+    const result = await resolvePrintLink(EVENT_ID, 'table_talker')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.wasRepaired).toBe(true)
+    expect(result.shortCode).toBe(TABLE_TALKER_CODE)
+    expect(state.updates[0]?.payload).not.toHaveProperty('short_code')
+    expect(audit.logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additional_info: expect.objectContaining({
+          reason: 'table_talker_artwork_link_repair',
+          channel: 'table_talker',
+          short_code: TABLE_TALKER_CODE,
+        }),
+      })
+    )
+  })
+})
+
+describe('resolvePosterLink, wording is unchanged by the table talker', () => {
+  // The poster's sentences are read by managers and were settled before print
+  // surfaces were generalised. Pinned word for word so the generalisation
+  // cannot quietly reword them.
+  it('keeps the cancelled sentence', async () => {
+    state.event = { ...defaultEvent(), event_status: 'cancelled' }
+    const result = await resolvePosterLink(EVENT_ID)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.detail).toBe('"Quiz Night" is cancelled, so a poster must not be printed for it.')
+  })
+
+  it('keeps the draft sentence', async () => {
+    state.event = { ...defaultEvent(), event_status: 'draft' }
+    const result = await resolvePosterLink(EVENT_ID)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.detail).toBe(
+      '"Quiz Night" is still a draft, so its web page does not exist yet. Publish the event, then generate the poster again.'
+    )
+  })
+
+  it('keeps the audit reason', async () => {
+    marketing.generateSingleLink.mockResolvedValue(
+      fakeLinkFor('poster', { destinationUrl: STALE_DESTINATION })
+    )
+    await resolvePosterLink(EVENT_ID)
+    expect(audit.logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additional_info: expect.objectContaining({ reason: 'poster_artwork_link_repair' }),
+      })
+    )
   })
 })

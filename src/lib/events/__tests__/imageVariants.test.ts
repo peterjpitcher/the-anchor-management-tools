@@ -10,9 +10,11 @@ import {
   formatBytes,
   isEventImageVariant,
   isOwnedByEvent,
+  qrMinimumFor,
   sanitiseFileName,
   storagePathFromPublicUrl,
 } from '../imageVariants'
+import { QR_MAX_WIDTH_FRAC, QR_MIN_WIDTH_FRAC } from '../artwork/geometry'
 
 /**
  * The migration's CHECK constraint on event_images.image_type. Kept here so the
@@ -193,6 +195,57 @@ describe('buildVariantPrompt', () => {
   it('is plain text that survives a copy and paste', () => {
     expect(prompt).not.toMatch(/<[^>]+>/)
     expect(prompt.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(4)
+  })
+})
+
+describe('print specs', () => {
+  const printVariants = EVENT_IMAGE_VARIANT_ORDER.filter((v) => EVENT_IMAGE_VARIANTS[v].print !== null)
+
+  it('marks exactly the print variants as printed', () => {
+    expect(printVariants).toEqual(['print_poster'])
+    for (const variant of printVariants) {
+      expect(EVENT_IMAGE_VARIANTS[variant].webServed).toBe(false)
+    }
+  })
+
+  it('never lets a QR at the floor print under its millimetre minimum', () => {
+    for (const variant of printVariants) {
+      const print = EVENT_IMAGE_VARIANTS[variant].print!
+      expect(print.qrMinWidthFrac * print.printedWidthMm).toBeGreaterThanOrEqual(print.qrMinMm)
+      // Rounded up by at most one step of the fourth decimal place, so the
+      // floor is not needlessly larger than the millimetres it stands for.
+      expect(print.qrMinWidthFrac - print.qrMinMm / print.printedWidthMm).toBeLessThan(0.0001)
+    }
+  })
+
+  it('keeps every floor inside what the database and the route accept', () => {
+    for (const variant of printVariants) {
+      const { qrMinWidthFrac } = EVENT_IMAGE_VARIANTS[variant].print!
+      expect(qrMinWidthFrac).toBeGreaterThanOrEqual(QR_MIN_WIDTH_FRAC)
+      expect(qrMinWidthFrac).toBeLessThan(QR_MAX_WIDTH_FRAC)
+    }
+  })
+
+  it('keeps the poster exactly where it was', () => {
+    expect(EVENT_IMAGE_VARIANTS.print_poster.print).toMatchObject({
+      printedWidthMm: 210,
+      qrMinMm: 21,
+      qrMinWidthFrac: QR_MIN_WIDTH_FRAC,
+      qrChannel: 'poster',
+      surfaceName: 'poster',
+      printedSizeLabel: 'the A4 poster',
+    })
+  })
+
+  it('gives each print surface its own QR channel', () => {
+    const channels = printVariants.map((v) => EVENT_IMAGE_VARIANTS[v].print!.qrChannel)
+    expect(new Set(channels).size).toBe(channels.length)
+  })
+
+  it('hands the geometry the surface minimum, and nothing for a screen', () => {
+    expect(qrMinimumFor('square')).toBeNull()
+    expect(qrMinimumFor('story')).toBeNull()
+    expect(qrMinimumFor('print_poster')).toEqual({ widthFrac: QR_MIN_WIDTH_FRAC, mm: 21, surfaceName: 'poster' })
   })
 })
 
