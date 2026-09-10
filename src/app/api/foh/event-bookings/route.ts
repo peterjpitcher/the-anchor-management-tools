@@ -22,7 +22,13 @@ import {
   shouldSeatFohWalkIn,
   WALK_IN_TODAY_ONLY_MESSAGE,
 } from '@/lib/foh/walk-in'
-import { splitWalkInGuestName, createWalkInCustomer } from '@/lib/foh/walk-in-customer'
+import {
+  splitWalkInGuestName,
+  createWalkInCustomer,
+  startWalkInCustomerTrail,
+  finishWalkInCustomerTrail,
+  type WalkInCustomerTrail,
+} from '@/lib/foh/walk-in-customer'
 
 const CreateFohEventBookingSchema = z.object({
   customer_mode: z.enum(['selected', 'phone', 'anonymous']),
@@ -149,7 +155,21 @@ async function recordFohAnalyticsSafe(
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // An anonymous walk-in gets a customer made up before its booking is attempted. The `finally`
+  // removes it again on any way out, a thrown error included, when no booking row came of it.
+  const walkInTrail = startWalkInCustomerTrail()
+  try {
+    return await createFohEventBooking(request, walkInTrail)
+  } finally {
+    await finishWalkInCustomerTrail(walkInTrail, 'POST /api/foh/event-bookings')
+  }
+}
+
+async function createFohEventBooking(
+  request: NextRequest,
+  walkInTrail: WalkInCustomerTrail,
+): Promise<NextResponse> {
   const auth = await requireFohPermission('edit')
   if (!auth.ok) {
     return auth.response
@@ -336,6 +356,9 @@ export async function POST(request: NextRequest) {
       customerId = walkInCustomer.customerId
       normalizedPhone = walkInCustomer.syntheticPhone
       shouldSendBookingSms = false
+      walkInTrail.supabase = auth.supabase
+      walkInTrail.userId = auth.userId
+      walkInTrail.customer = walkInCustomer
     } catch (walkInError) {
       logger.error('Failed to create walk-in customer profile for event booking', {
         error: walkInError instanceof Error ? walkInError : new Error('Unknown walk-in customer error'),
@@ -407,6 +430,13 @@ export async function POST(request: NextRequest) {
     eventSeatingType,
     rpcResult
   } = result
+
+  // A booking exists only in these two states. Decided on the state, never on whether an id came
+  // back (tasks/lessons.md, 2026-07-03). The failure returns above leave it unset, and the
+  // tidy-up then keeps any customer a cancelled event booking still refers to.
+  if (resolvedState === 'confirmed' || resolvedState === 'pending_payment') {
+    walkInTrail.bookingPersisted = true
+  }
 
   // ── Walk-in: auto-mark table booking as seated ──────────────────────────────
   if (

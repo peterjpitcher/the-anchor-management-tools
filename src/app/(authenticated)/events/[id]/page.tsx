@@ -136,16 +136,18 @@ export default async function EventDetailPage({ params }: PageProps) {
     errors.push('We could not load this event.')
   }
 
-  const initialError = errors.length > 0 ? errors.join(' ') : null
-
   const ticketTypesEnabled = eventTicketTypesEnabled()
   let ticketTypes: EventTicketTypeRow[] = []
-  if (ticketTypesEnabled && canView && eventData) {
+  if (canView && eventData) {
     const ticketTypesResult = await getEventTicketTypes(eventId)
     if (ticketTypesResult.data) {
       ticketTypes = ticketTypesResult.data
+    } else if (ticketTypesResult.error) {
+      errors.push('Ticket prices could not be loaded. Refresh this page before changing tickets.')
     }
   }
+
+  const initialError = errors.length > 0 ? errors.join(' ') : null
 
   return (
     <EventDetailClient

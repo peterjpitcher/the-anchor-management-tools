@@ -13,7 +13,8 @@ export type TicketTypeActionResult = { success?: boolean; error?: string; data?:
 const ticketTypeSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(80),
   description: z.string().trim().max(500).optional().nullable(),
-  base_price: z.coerce.number().min(0, 'Price cannot be negative'),
+  base_price: z.number().finite().min(0, 'Price cannot be negative'),
+  is_free_ticket: z.boolean().optional(),
   capacity: z.coerce.number().int().min(0).nullable().optional(),
   sort_order: z.coerce.number().int().min(0).optional(),
   is_active: z.boolean().optional(),
@@ -60,13 +61,15 @@ async function validateDedicatedCapacity(
   newCapacity: number | null,
 ): Promise<string | null> {
   if (newCapacity === null || newCapacity === undefined) return null
-  const { data: event } = await db.from('events').select('capacity').eq('id', eventId).single()
+  const { data: event, error: eventError } = await db.from('events').select('capacity').eq('id', eventId).single()
+  if (eventError || !event) return 'Event capacity could not be checked'
   const eventCapacity = event?.capacity ?? null
   if (eventCapacity === null) return null // no hard ceiling configured
-  const { data: rows } = await db
+  const { data: rows, error: rowsError } = await db
     .from('event_ticket_types')
     .select('id, capacity, is_active')
     .eq('event_id', eventId)
+  if (rowsError) return 'Ticket capacities could not be checked'
   let dedicatedSum = newCapacity
   for (const row of rows ?? []) {
     if (row.id === excludeTypeId) continue
@@ -78,12 +81,24 @@ async function validateDedicatedCapacity(
   return null
 }
 
+async function validateTicketPrice(
+  db: ReturnType<typeof createAdminClient>, eventId: string, price: number,
+): Promise<string | null> {
+  const { data: event, error } = await db.from('events')
+    .select('payment_mode, online_discount_type, online_discount_value')
+    .eq('id', eventId).single()
+  if (error || !event) return 'Event pricing could not be checked'
+  if (price > 0 && event.payment_mode === 'prepaid' && event.online_discount_type === 'fixed' && Number(event.online_discount_value ?? 0) >= price) {
+    return 'Reduce the online discount before lowering this ticket price'
+  }
+  return null
+}
+
 export async function createEventTicketType(
   eventId: string,
   input: z.input<typeof ticketTypeSchema>,
 ): Promise<TicketTypeActionResult> {
   try {
-    if (!eventTicketTypesEnabled()) return { error: 'Multiple ticket types are not enabled' }
     const auth = await requireEventsManage()
     if ('error' in auth) return auth
 
@@ -91,6 +106,12 @@ export async function createEventTicketType(
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid ticket type' }
 
     const db = createAdminClient()
+    if (parsed.data.base_price === 0 && parsed.data.is_free_ticket !== true) return { error: 'Choose Free ticket to set a zero price' }
+    const { count: existingCount, error: countError } = await db.from('event_ticket_types').select('id', { count: 'exact', head: true }).eq('event_id', eventId)
+    if (countError) return { error: 'Ticket types could not be checked' }
+    if (!eventTicketTypesEnabled() && (existingCount ?? 0) > 0) return { error: 'Additional ticket types are not enabled' }
+    const priceError = await validateTicketPrice(db, eventId, parsed.data.base_price)
+    if (priceError) return { error: priceError }
     const capacityError = await validateDedicatedCapacity(db, eventId, null, parsed.data.capacity ?? null)
     if (capacityError) return { error: capacityError }
 
@@ -130,7 +151,6 @@ export async function updateEventTicketType(
   input: Partial<z.input<typeof ticketTypeSchema>>,
 ): Promise<TicketTypeActionResult> {
   try {
-    if (!eventTicketTypesEnabled()) return { error: 'Multiple ticket types are not enabled' }
     const auth = await requireEventsManage()
     if ('error' in auth) return auth
 
@@ -140,19 +160,29 @@ export async function updateEventTicketType(
     const db = createAdminClient()
     const { data: existing, error: fetchError } = await db
       .from('event_ticket_types')
-      .select('event_id')
+      .select('event_id, capacity, is_active')
       .eq('id', typeId)
       .single()
     if (fetchError || !existing) return { error: 'Ticket type not found' }
 
-    if (parsed.data.capacity !== undefined) {
-      const capacityError = await validateDedicatedCapacity(db, existing.event_id, typeId, parsed.data.capacity ?? null)
+    if (parsed.data.base_price === 0 && parsed.data.is_free_ticket !== true) return { error: 'Choose Free ticket to set a zero price' }
+    if (parsed.data.base_price !== undefined) {
+      const priceError = await validateTicketPrice(db, existing.event_id, parsed.data.base_price)
+      if (priceError) return { error: priceError }
+    }
+    const { data: activeTypes, error: activeError } = await db.from('event_ticket_types').select('id').eq('event_id', existing.event_id).eq('is_active', true).order('sort_order').order('created_at')
+    if (activeError) return { error: 'Ticket types could not be checked' }
+    if (!eventTicketTypesEnabled() && activeTypes?.[0]?.id !== typeId) return { error: 'Additional ticket types are not enabled' }
+    if (parsed.data.is_active === false && existing.is_active && (activeTypes?.length ?? 0) <= 1) return { error: 'Keep at least one ticket type on sale' }
+    if ((parsed.data.is_active ?? existing.is_active) && (parsed.data.capacity !== undefined || parsed.data.is_active === true)) {
+      const capacityError = await validateDedicatedCapacity(db, existing.event_id, typeId, parsed.data.capacity === undefined ? existing.capacity : parsed.data.capacity)
       if (capacityError) return { error: capacityError }
     }
 
+    const { is_free_ticket: _freeConfirmation, ...update } = parsed.data
     const { data, error } = await db
       .from('event_ticket_types')
-      .update({ ...parsed.data, updated_at: new Date().toISOString() })
+      .update({ ...update, updated_at: new Date().toISOString() })
       .eq('id', typeId)
       .select('*')
       .single()
@@ -180,26 +210,32 @@ export async function updateEventTicketType(
  */
 export async function deleteEventTicketType(typeId: string): Promise<TicketTypeActionResult> {
   try {
-    if (!eventTicketTypesEnabled()) return { error: 'Multiple ticket types are not enabled' }
     const auth = await requireEventsManage()
     if ('error' in auth) return auth
 
     const db = createAdminClient()
     const { data: existing } = await db
       .from('event_ticket_types')
-      .select('event_id')
+      .select('event_id, is_active')
       .eq('id', typeId)
       .single()
     if (!existing) return { error: 'Ticket type not found' }
 
-    const { count } = await db
+    if (!eventTicketTypesEnabled()) return { error: 'Removing ticket types is not enabled' }
+    const { count: activeCount, error: activeError } = await db.from('event_ticket_types').select('id', { count: 'exact', head: true }).eq('event_id', existing.event_id).eq('is_active', true)
+    if (activeError) return { error: 'Ticket types could not be checked' }
+    if (existing.is_active && (activeCount ?? 0) <= 1) return { error: 'Keep at least one ticket type on sale' }
+    const { count, error: countError } = await db
       .from('booking_items')
       .select('id', { count: 'exact', head: true })
       .eq('ticket_type_id', typeId)
 
+    if (countError) return { error: 'Existing bookings could not be checked' }
+    let retained: EventTicketTypeRow | undefined
     if ((count ?? 0) > 0) {
-      const { error } = await db.from('event_ticket_types').update({ is_active: false }).eq('id', typeId)
+      const { data, error } = await db.from('event_ticket_types').update({ is_active: false }).eq('id', typeId).select('*').single()
       if (error) throw error
+      retained = data as EventTicketTypeRow
     } else {
       const { error } = await db.from('event_ticket_types').delete().eq('id', typeId)
       if (error) throw error
@@ -215,7 +251,7 @@ export async function deleteEventTicketType(typeId: string): Promise<TicketTypeA
       additional_info: { eventId: existing.event_id, deactivated: (count ?? 0) > 0 },
     })
     revalidatePath(`/events/${existing.event_id}`)
-    return { success: true }
+    return { success: true, data: retained }
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to remove ticket type' }
   }

@@ -5,8 +5,11 @@ import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { sendTableBookingCancelledSmsIfAllowed, sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
+import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
 import { expireStripeCheckoutSession, isStripeConfigured } from '@/lib/payments/stripe'
 import { logAuditEvent } from '@/app/actions/audit'
+import { logger } from '@/lib/logger'
+import type { createAdminClient } from '@/lib/supabase/admin'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
@@ -45,6 +48,42 @@ function isAssignmentConflict(error: { code?: string; message?: string } | null 
   const code = typeof error?.code === 'string' ? error.code : ''
   const message = typeof error?.message === 'string' ? error.message : ''
   return code === '23P01' || message.includes('table_assignment_overlap') || message.includes('table_assignment_private_blocked')
+}
+
+type AssignmentWindow = { id: string; start_datetime: string; end_datetime: string }
+
+/**
+ * Puts each table assignment back on the window it held before this edit moved it.
+ *
+ * The edit moves the assignments first, so a clash stops it before the booking changes. That
+ * leaves the opposite gap: when the booking update is then refused (by the kitchen-hours guard,
+ * say), the table sits at the new time while the booking keeps the old one. Best effort; a
+ * failure is logged, since there is nothing further the request can do about it.
+ */
+async function restoreAssignmentWindows(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  savedWindows: AssignmentWindow[],
+): Promise<void> {
+  for (const saved of savedWindows) {
+    const { error } = await supabase
+      .from('booking_table_assignments')
+      .update({ start_datetime: saved.start_datetime, end_datetime: saved.end_datetime })
+      .eq('id', saved.id)
+
+    if (error) {
+      logger.error('BOH booking edit: failed to put a table assignment back after the booking update failed', {
+        metadata: {
+          bookingId,
+          assignmentId: saved.id,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        },
+      })
+    }
+  }
 }
 
 export async function PATCH(
@@ -136,7 +175,31 @@ export async function PATCH(
   // fire for an outside booking. The outside table they DO hold is re-windowed for us: the
   // `table_bookings` UPDATE below trips the reconciling trigger from
   // 20260802000008_outside_reservation_sync.sql. Do not add a bespoke copy of that here.
+  // What each assignment holds now, so the table can be put back exactly if the booking update
+  // below is refused. Read rather than rebuilt from the booking, because an assignment can carry
+  // a turnaround gap that the booking's own window does not.
+  let savedAssignmentWindows: AssignmentWindow[] = []
+
   if (!isOutsideSeating) {
+    const { data: currentAssignments, error: currentAssignmentsError } = await auth.supabase
+      .from('booking_table_assignments')
+      .select('id, start_datetime, end_datetime')
+      .eq('table_booking_id', id)
+
+    if (currentAssignmentsError) {
+      logger.error('BOH booking edit: failed to read table assignments before moving them', {
+        metadata: {
+          bookingId: id,
+          code: currentAssignmentsError.code,
+          message: currentAssignmentsError.message,
+          details: currentAssignmentsError.details,
+          hint: currentAssignmentsError.hint,
+        },
+      })
+      return NextResponse.json({ error: 'Failed to update table assignment window' }, { status: 500 })
+    }
+    savedAssignmentWindows = (currentAssignments ?? []) as AssignmentWindow[]
+
     const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
       .update({
         start_datetime: window.startIso,
@@ -161,7 +224,27 @@ export async function PATCH(
     .select('id')
     .maybeSingle()
 
+  if (updateError || !updated) {
+    // The assignments already moved to the new window. Put them back so a refused edit leaves
+    // the table and the booking agreeing on the old time.
+    await restoreAssignmentWindows(auth.supabase, id, savedAssignmentWindows)
+  }
+
   if (updateError) {
+    // The kitchen is not serving at the new time. Staff get the guard's sentence, which says so.
+    const serviceWindowMessage = extractServiceWindowRuleErrorMessage(updateError)
+    if (serviceWindowMessage) {
+      return NextResponse.json({ error: serviceWindowMessage }, { status: 400 })
+    }
+    logger.error('BOH booking edit: failed to update booking', {
+      metadata: {
+        bookingId: id,
+        code: updateError.code,
+        message: updateError.message,
+        details: updateError.details,
+        hint: updateError.hint,
+      },
+    })
     return NextResponse.json({ error: 'Failed to update booking' }, { status: 500 })
   }
   if (!updated) {
