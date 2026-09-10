@@ -32,6 +32,8 @@ import {
   qrCodeRectWithinCanvas,
   snapFrac,
   SNAP_THRESHOLD_FRAC,
+  POSTER_QR_MINIMUM,
+  type QrPrintMinimum,
 } from './geometry'
 import { EVENT_IMAGE_VARIANTS, EVENT_IMAGE_VARIANT_ORDER } from '@/lib/events/imageVariants'
 import {
@@ -41,7 +43,7 @@ import {
 
 const CORNERS: readonly Corner[] = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
 
-/** The five real canvases, read from the variant config so a new one is covered too. */
+/** The real canvases, read from the variant config so a new one is covered too. */
 const CANVASES = EVENT_IMAGE_VARIANT_ORDER.map((key) => ({
   key,
   width: EVENT_IMAGE_VARIANTS[key].targetWidth,
@@ -96,8 +98,8 @@ describe('constants', () => {
       .toBeLessThanOrEqual(934)
   })
 
-  it('checks there are five canvases to reason about', () => {
-    expect(CANVASES).toHaveLength(5)
+  it('checks there are six canvases to reason about, the slim table talker included', () => {
+    expect(CANVASES).toHaveLength(6)
   })
 })
 
@@ -693,5 +695,53 @@ describe('snapFrac', () => {
 
   it('picks the nearest target when two are in range', () => {
     expect(snapFrac(0.51, [0.5, 0.53], 0.05).snappedTo).toBe(0.5)
+  })
+})
+
+describe('QR minimum per print surface', () => {
+  /** A narrower surface whose floor is a larger fraction of its width. */
+  const NARROW: QrPrintMinimum = { widthFrac: 0.1625, mm: 15, surfaceName: 'table talker' }
+
+  it('defaults to the poster, so the poster behaves exactly as before', () => {
+    expect(POSTER_QR_MINIMUM).toEqual({ widthFrac: QR_MIN_WIDTH_FRAC, mm: QR_MIN_MM, surfaceName: 'poster' })
+    expect(qrMinWidthPx(2480)).toBe(qrMinWidthPx(2480, POSTER_QR_MINIMUM))
+    const side = qrMinWidthPx(2480)
+    const qr: Rect = { x: 1000, y: 2000, width: side, height: side }
+    expect(validateQrPlacement(2480, 3508, qr, null)).toEqual(
+      validateQrPlacement(2480, 3508, qr, null, POSTER_QR_MINIMUM)
+    )
+  })
+
+  it('rounds the pixel floor up for the surface it is given', () => {
+    // 1169 * 0.1625 = 189.96, so 190: never a pixel under the floor.
+    expect(qrMinWidthPx(1169, NARROW)).toBe(190)
+  })
+
+  it('refuses a code the poster would accept when the surface is narrower', () => {
+    // At the poster floor, on a table talker's canvas: legal on a poster, and
+    // physically about 9mm on the table talker, well under its 15mm.
+    const side = qrMinWidthPx(1169, POSTER_QR_MINIMUM)
+    const qr: Rect = { x: 400, y: 1800, width: side, height: side }
+
+    expect(validateQrPlacement(1169, 2480, qr, null, POSTER_QR_MINIMUM)).toEqual({ ok: true })
+    const narrow = validateQrPlacement(1169, 2480, qr, null, NARROW)
+    expect(narrow.ok).toBe(false)
+    if (!narrow.ok) {
+      expect(narrow.reason).toBe(
+        `The QR code is smaller than the 15mm print minimum (${qrMinWidthPx(1169, NARROW)}px on this table talker).`
+      )
+    }
+  })
+
+  it('accepts a code at exactly the narrower floor', () => {
+    const side = qrMinWidthPx(1169, NARROW)
+    const qr: Rect = { x: 400, y: 1800, width: side, height: side }
+    expect(validateQrPlacement(1169, 2480, qr, null, NARROW)).toEqual({ ok: true })
+  })
+
+  it('names the surface when a code falls off it', () => {
+    const side = qrMinWidthPx(1169, NARROW)
+    const result = validateQrPlacement(1169, 2480, { x: -5, y: 100, width: side, height: side }, null, NARROW)
+    expect(result).toEqual({ ok: false, reason: 'The QR code falls outside the table talker.' })
   })
 })

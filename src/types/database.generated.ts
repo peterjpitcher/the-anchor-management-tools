@@ -5450,6 +5450,7 @@ export type Database = {
           standing_capacity: number | null
           start_datetime: string | null
           story_image_url: string | null
+          table_talker_url: string | null
           thumbnail_image_url: string | null
           time: string
         }
@@ -5517,6 +5518,7 @@ export type Database = {
           standing_capacity?: number | null
           start_datetime?: string | null
           story_image_url?: string | null
+          table_talker_url?: string | null
           thumbnail_image_url?: string | null
           time: string
         }
@@ -5584,6 +5586,7 @@ export type Database = {
           standing_capacity?: number | null
           start_datetime?: string | null
           story_image_url?: string | null
+          table_talker_url?: string | null
           thumbnail_image_url?: string | null
           time?: string
         }

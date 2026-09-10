@@ -23,8 +23,16 @@ import {
   buildEventImageDownloadUrl,
   buildVariantPrompt,
   formatBytes,
+  isBrandedCompositePath,
+  storagePathFromPublicUrl,
   type EventImageVariant,
 } from '@/lib/events/imageVariants'
+import {
+  MIN_PRINT_DPI,
+  MIN_PRINT_WIDTH_PX,
+  tableTalkerSheetLayout,
+} from '@/lib/events/artwork/print-sheet'
+import { downloadTableTalkerSheet } from '@/components/features/events/tableTalkerSheet'
 import {
   acceptAttribute,
   readImageDimensions,
@@ -88,6 +96,15 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
   >(null)
   const [dragOver, setDragOver] = useState<EventImageVariant | null>(null)
   const [brandingVariant, setBrandingVariant] = useState<EventImageVariant | null>(null)
+  const [sheetBusy, setSheetBusy] = useState(false)
+  /**
+   * The table talker preview's real pixel size, read when it loads, for the
+   * print dpi. Kept with the URL it was read from, so a replacement never shows
+   * the previous file's figure while its own is still loading.
+   */
+  const [talkerPixels, setTalkerPixels] = useState<
+    { url: string; width: number; height: number } | null
+  >(null)
   const inputRefs = useRef<Partial<Record<EventImageVariant, HTMLInputElement | null>>>({})
   const inFlight = useRef(0)
 
@@ -361,6 +378,21 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
           // A queued file has not been composited, so it is never branded
           // whatever is recorded against the file it is about to replace.
           const isBranded = Boolean(state?.branding && !tile.queued)
+          // The table talker is printed from a sheet of three, and only once it
+          // is branded. Same test as the sheet route: the live file is a
+          // composite, which the path alone proves.
+          const isTableTalker = variant === 'table_talker'
+          const canPrintSheet = Boolean(
+            isTableTalker &&
+              eventId &&
+              state?.url &&
+              !tile.queued &&
+              isBrandedCompositePath(storagePathFromPublicUrl(state.url))
+          )
+          const talkerDpi =
+            isTableTalker && previewUrl && !isPdf && talkerPixels?.url === previewUrl
+              ? tableTalkerSheetLayout(talkerPixels.width, talkerPixels.height).dpi
+              : null
 
           return (
             <div
@@ -410,6 +442,16 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                     src={previewUrl}
                     alt={`${config.label} artwork for this event`}
                     className="h-full w-full object-cover"
+                    onLoad={
+                      isTableTalker
+                        ? (event) => {
+                            const { naturalWidth, naturalHeight } = event.currentTarget
+                            if (naturalWidth > 0 && naturalHeight > 0) {
+                              setTalkerPixels({ url: previewUrl, width: naturalWidth, height: naturalHeight })
+                            }
+                          }
+                        : undefined
+                    }
                   />
                 )}
                 {isPdf && (
@@ -530,7 +572,50 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
                   Branding
                   <span className="sr-only"> for {config.label}</span>
                 </button>
+
+                {isTableTalker && eventId && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSheetBusy(true)
+                      try {
+                        await downloadTableTalkerSheet(eventId)
+                      } finally {
+                        setSheetBusy(false)
+                      }
+                    }}
+                    disabled={!canPrintSheet || sheetBusy || tile.uploading}
+                    title={
+                      canPrintSheet
+                        ? 'Three to an A4 sheet. Print at actual size (100%), then cut on the marks.'
+                        : 'Brand the table talker first. Only branded artwork is printed.'
+                    }
+                    className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {sheetBusy ? 'Preparing...' : 'Print sheet'}
+                  </button>
+                )}
               </div>
+
+              {/* Said on the tile, not only in a tooltip, because a touch
+                  screen has no hover to show one. */}
+              {isTableTalker && previewUrl && !isPdf && (
+                <p className="mt-2 text-xs" data-testid="table-talker-print-note">
+                  {talkerDpi !== null && talkerDpi < MIN_PRINT_DPI ? (
+                    <span className="text-red-600">
+                      Prints at {Math.floor(talkerDpi)} dpi, too soft to print. Upload one at least{' '}
+                      {MIN_PRINT_WIDTH_PX} px wide.
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">
+                      {talkerDpi !== null ? `Prints at about ${Math.round(talkerDpi)} dpi. ` : ''}
+                      {canPrintSheet
+                        ? 'Print the sheet at 100%, then cut on the marks.'
+                        : 'Brand it to print the A4 sheet.'}
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
           )
         })}
@@ -596,8 +681,9 @@ export function EventImagePanel({ eventId, ref, onQueueChange, onSquareChange }:
 
 /**
  * Make the square first, then paste this into an image tool to get the other
- * four back at the right sizes. The text is generated from the variant config,
- * so the dimensions here are the same ones the upload validates against.
+ * sizes back, the slim table talker included. The text is generated from the
+ * variant config, so the dimensions here are the same ones the upload
+ * validates against.
  */
 function VariantPromptBox() {
   const [copied, setCopied] = useState(false)
@@ -652,8 +738,8 @@ function PanelHeading() {
       <p className="text-sm font-medium text-gray-700 sm:text-base">Event artwork</p>
       <p className="text-sm text-gray-500">
         Drag a file onto a tile, or click it to browse. The square, landscape and
-        social images appear on the website. The story and A4 poster are kept here
-        for you to download.
+        social images appear on the website. The story, A4 poster and table talker
+        are kept here for you to download.
       </p>
     </div>
   )

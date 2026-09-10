@@ -10,15 +10,18 @@ import {
   formatBytes,
   isEventImageVariant,
   isOwnedByEvent,
+  qrMinimumFor,
   sanitiseFileName,
   storagePathFromPublicUrl,
 } from '../imageVariants'
+import { QR_MAX_WIDTH_FRAC, QR_MIN_WIDTH_FRAC } from '../artwork/geometry'
+import { TABLE_TALKER_PANEL_WIDTH_MM } from '../artwork/print-sheet'
 
 /**
  * The migration's CHECK constraint on event_images.image_type. Kept here so the
  * config and the database cannot drift apart without a test failing.
  */
-const DATABASE_VARIANTS = ['square', 'landscape', 'social', 'story', 'print_poster']
+const DATABASE_VARIANTS = ['square', 'landscape', 'social', 'story', 'print_poster', 'table_talker']
 
 describe('variant configuration', () => {
   it('matches the database CHECK constraint exactly', () => {
@@ -73,6 +76,17 @@ describe('aspectRatioMatches', () => {
 
   it('refuses a landscape dropped into the story tile', () => {
     expect(aspectRatioMatches('story', 1920, 1080)).toBe(false)
+  })
+
+  it('takes a DL panel on the table talker tile, and refuses the near misses', () => {
+    expect(aspectRatioMatches('table_talker', 1169, 2480)).toBe(true)
+    // A real export a pixel or two out is fine.
+    expect(aspectRatioMatches('table_talker', 1080, 2291)).toBe(true)
+    // A story (9:16), an A5 flyer and a 1:2 strip are all the wrong shape, and
+    // printing any of them in a DL slot would leave a band or cut an edge.
+    expect(aspectRatioMatches('table_talker', 1080, 1920)).toBe(false)
+    expect(aspectRatioMatches('table_talker', 1748, 2480)).toBe(false)
+    expect(aspectRatioMatches('table_talker', 1080, 2160)).toBe(false)
   })
 
   it('tolerates a slightly off export', () => {
@@ -180,9 +194,17 @@ describe('buildVariantPrompt', () => {
     expect(prompt).toContain('Facebook event cover / link preview: 1.91:1, 1920 x 1005 px')
   })
 
-  it('flags the print poster as 300 dpi, and nothing else', () => {
+  it('flags the two print sizes as 300 dpi, and no screen size', () => {
     expect(prompt).toContain('2480 x 3508 px at 300 dpi')
-    expect(prompt.match(/300 dpi/g)).toHaveLength(1)
+    expect(prompt).toContain('1169 x 2480 px at 300 dpi')
+    expect(prompt.match(/300 dpi/g)).toHaveLength(2)
+  })
+
+  it('asks for the slim table talker with its size and how to compose it', () => {
+    expect(prompt).toContain(
+      '- Slim table talker for print: DL portrait (99 x 210 mm), 1169 x 2480 px at 300 dpi. ' +
+        'Tall and slim: stack the elements vertically rather than shrinking the square layout to fit the width.'
+    )
   })
 
   it('tells the tool to re-compose rather than stretch', () => {
@@ -192,7 +214,76 @@ describe('buildVariantPrompt', () => {
 
   it('is plain text that survives a copy and paste', () => {
     expect(prompt).not.toMatch(/<[^>]+>/)
-    expect(prompt.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(4)
+    expect(prompt.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(5)
+  })
+})
+
+describe('print specs', () => {
+  const printVariants = EVENT_IMAGE_VARIANT_ORDER.filter((v) => EVENT_IMAGE_VARIANTS[v].print !== null)
+
+  it('marks exactly the print variants as printed', () => {
+    expect(printVariants).toEqual(['print_poster', 'table_talker'])
+    for (const variant of printVariants) {
+      expect(EVENT_IMAGE_VARIANTS[variant].webServed).toBe(false)
+    }
+  })
+
+  it('never lets a QR at the floor print under its millimetre minimum', () => {
+    for (const variant of printVariants) {
+      const print = EVENT_IMAGE_VARIANTS[variant].print!
+      expect(print.qrMinWidthFrac * print.printedWidthMm).toBeGreaterThanOrEqual(print.qrMinMm)
+      // Rounded up by at most one step of the fourth decimal place, so the
+      // floor is not needlessly larger than the millimetres it stands for.
+      expect(print.qrMinWidthFrac - print.qrMinMm / print.printedWidthMm).toBeLessThan(0.0001)
+    }
+  })
+
+  it('keeps every floor inside what the database and the route accept', () => {
+    for (const variant of printVariants) {
+      const { qrMinWidthFrac } = EVENT_IMAGE_VARIANTS[variant].print!
+      expect(qrMinWidthFrac).toBeGreaterThanOrEqual(QR_MIN_WIDTH_FRAC)
+      expect(qrMinWidthFrac).toBeLessThan(QR_MAX_WIDTH_FRAC)
+    }
+  })
+
+  it('keeps the poster exactly where it was', () => {
+    expect(EVENT_IMAGE_VARIANTS.print_poster.print).toMatchObject({
+      printedWidthMm: 210,
+      qrMinMm: 21,
+      qrMinWidthFrac: QR_MIN_WIDTH_FRAC,
+      qrChannel: 'poster',
+      surfaceName: 'poster',
+      printedSizeLabel: 'the A4 poster',
+    })
+  })
+
+  it('measures the table talker QR against its panel on the A4 sheet', () => {
+    expect(EVENT_IMAGE_VARIANTS.table_talker.print).toMatchObject({
+      printedWidthMm: TABLE_TALKER_PANEL_WIDTH_MM,
+      qrMinMm: 15,
+      qrMinWidthFrac: 0.1625,
+      qrChannel: 'table_talker',
+      surfaceName: 'table talker',
+    })
+    // The poster's 10% floor would be a 9mm code on this panel.
+    expect(QR_MIN_WIDTH_FRAC * TABLE_TALKER_PANEL_WIDTH_MM).toBeLessThan(10)
+  })
+
+  it('keeps the table talker off the website and away from PDF', () => {
+    expect(EVENT_IMAGE_VARIANTS.table_talker.webServed).toBe(false)
+    expect(EVENT_IMAGE_VARIANTS.table_talker.acceptedMimeTypes).not.toContain('application/pdf')
+    expect(EVENT_IMAGE_VARIANTS.table_talker.cacheColumn).toBe('table_talker_url')
+  })
+
+  it('gives each print surface its own QR channel', () => {
+    const channels = printVariants.map((v) => EVENT_IMAGE_VARIANTS[v].print!.qrChannel)
+    expect(new Set(channels).size).toBe(channels.length)
+  })
+
+  it('hands the geometry the surface minimum, and nothing for a screen', () => {
+    expect(qrMinimumFor('square')).toBeNull()
+    expect(qrMinimumFor('story')).toBeNull()
+    expect(qrMinimumFor('print_poster')).toEqual({ widthFrac: QR_MIN_WIDTH_FRAC, mm: 21, surfaceName: 'poster' })
   })
 })
 

@@ -14,6 +14,7 @@ import {
   qrStripRect,
 } from '@/lib/events/artwork/geometry'
 import { EVENT_IMAGE_VARIANTS, type EventImageVariant } from '@/lib/events/imageVariants'
+import toast from 'react-hot-toast'
 
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
@@ -401,6 +402,33 @@ describe('ArtworkBrandingModal, QR code', () => {
   it('shows the printed millimetre size can be checked by eye', () => {
     renderModal()
     expect(screen.getByText(/mm on the A4 poster/)).toBeInTheDocument()
+  })
+
+  it('offers the QR on the table talker with its own floor, link and printed size', () => {
+    renderModal({ variant: 'table_talker', imageUrl: 'https://storage.test/table-talker.png' })
+
+    expect(screen.getByRole('checkbox', { name: 'Put a QR code on the table talker' })).toBeChecked()
+    // 15mm on the 92mm printed panel is 16.25%, so the whole-percent floor is 17.
+    expect((screen.getByLabelText('QR size') as HTMLInputElement).min).toBe('17')
+    expect(screen.getByText('Never smaller than the 15mm print minimum.')).toBeInTheDocument()
+    // Its own tt short link, so table scans are not counted as poster scans.
+    expect(screen.getByText('https://l.the-anchor.pub/tt3f2a1b')).toBeInTheDocument()
+    expect(screen.queryByText('https://l.the-anchor.pub/po3f2a1b')).toBeNull()
+    expect(screen.getByText(/mm on each printed table talker/)).toBeInTheDocument()
+  })
+
+  it('pulls a table talker QR typed under its floor back up before saving', async () => {
+    const user = userEvent.setup()
+    renderModal({ variant: 'table_talker', imageUrl: 'https://storage.test/table-talker.png' })
+
+    fireEvent.change(screen.getByLabelText('QR width (%)'), { target: { value: '12' } })
+    expect((screen.getByLabelText('QR size') as HTMLInputElement).value).toBe('17')
+
+    await user.click(screen.getByRole('button', { name: /Save branding/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(body.variant).toBe('table_talker')
+    expect(body.qr.widthFrac).toBe(0.17)
   })
 
   it('disables Save and gives the reason when the QR overlaps the logo', () => {
@@ -829,5 +857,147 @@ describe('EventImagePanel branded indicator', () => {
 
     expect(await screen.findByText('Event artwork')).toBeInTheDocument()
     expect(screen.queryByText('Branded')).toBeNull()
+  })
+})
+
+describe('EventImagePanel table talker print sheet', () => {
+  const PUBLIC = 'https://cdn.test/storage/v1/object/public/event-images/'
+  const UPLOADED = `${PUBLIC}events/${EVENT_ID}/table_talker/1788881600000_talker.png`
+  const BRANDED = `${PUBLIC}events/${EVENT_ID}/table_talker/branded/1788881610832-table_talker.png`
+
+  function talker(url: string): EventImageVariantState {
+    return {
+      variant: 'table_talker',
+      url,
+      owned: true,
+      categoryName: null,
+      fileName: 'talker.png',
+      sizeBytes: 1000,
+      mimeType: 'image/png',
+      updatedAt: null,
+      branding: null,
+    }
+  }
+
+  // jsdom has no object URLs. Left in place for the rest of this file, which
+  // is its own environment, so the delayed revoke never meets a missing method.
+  const createObjectURL = vi.fn(() => 'blob:sheet')
+  const revokeObjectURL = vi.fn()
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+
+  it('offers the sheet only on the table talker, and holds it back until it is branded', async () => {
+    vi.mocked(getEventImageVariants).mockResolvedValue({
+      data: [
+        {
+          variant: 'print_poster',
+          url: `${PUBLIC}events/${EVENT_ID}/print_poster/branded/1-print_poster.png`,
+          owned: true,
+          categoryName: null,
+          fileName: 'poster.png',
+          sizeBytes: 1000,
+          mimeType: 'image/png',
+          updatedAt: null,
+          branding: null,
+        },
+        talker(UPLOADED),
+      ],
+    })
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+
+    const button = await screen.findByRole('button', { name: 'Print sheet' })
+    expect(screen.getAllByRole('button', { name: 'Print sheet' })).toHaveLength(1)
+    expect(button).toBeDisabled()
+    expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent('Brand it to print the A4 sheet.')
+  })
+
+  it('saves the sheet from the route once the table talker is branded', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getEventImageVariants).mockResolvedValue({ data: [talker(BRANDED)] })
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Disposition': 'attachment; filename="quiz-night-table-talkers-a4.pdf"' }),
+      blob: async () => new Blob(['%PDF-1.7']),
+    } as unknown as Response)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+    const button = await screen.findByRole('button', { name: 'Print sheet' })
+    expect(button).toBeEnabled()
+    expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent(
+      'Print the sheet at 100%, then cut on the marks.'
+    )
+
+    await user.click(button)
+
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(`/api/events/${EVENT_ID}/artwork/table-talker-sheet`)
+    const link = click.mock.instances[0] as unknown as HTMLAnchorElement
+    expect(link.download).toBe('quiz-night-table-talkers-a4.pdf')
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith(expect.stringContaining('actual size (100%)'))
+    click.mockRestore()
+  })
+
+  it('shows the route refusal word for word rather than opening an error page', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getEventImageVariants).mockResolvedValue({ data: [talker(BRANDED)] })
+    const refusal =
+      'This table talker would print at 116 dpi, which looks soft. Upload one at least 546 px wide (1169 x 2480 is ideal), brand it, then print.'
+    fetchMock.mockResolvedValue(errorResponse(422, { error: refusal, code: 'resolution_too_low' }))
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+    await user.click(await screen.findByRole('button', { name: 'Print sheet' }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith(refusal))
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
+  })
+
+  it('says so when the server cannot be reached, and saves nothing', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getEventImageVariants).mockResolvedValue({ data: [talker(BRANDED)] })
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+    const button = await screen.findByRole('button', { name: 'Print sheet' })
+    await user.click(button)
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        'Could not reach the server to make the print sheet. Check your connection and try again.'
+      )
+    )
+    expect(click).not.toHaveBeenCalled()
+    // Usable again straight away, not stuck on Preparing.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Print sheet' })).toBeEnabled())
+    click.mockRestore()
+  })
+
+  it('warns on the tile when the panel would print soft', async () => {
+    vi.mocked(getEventImageVariants).mockResolvedValue({ data: [talker(BRANDED)] })
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+    const preview = await screen.findByAltText('Table talker (print) artwork for this event')
+    Object.defineProperty(preview, 'naturalWidth', { configurable: true, value: 500 })
+    Object.defineProperty(preview, 'naturalHeight', { configurable: true, value: 1061 })
+    fireEvent.load(preview)
+
+    expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent(
+      'Prints at 137 dpi, too soft to print. Upload one at least 546 px wide.'
+    )
+  })
+
+  it('quotes the print resolution of a full size panel', async () => {
+    vi.mocked(getEventImageVariants).mockResolvedValue({ data: [talker(BRANDED)] })
+
+    render(<EventImagePanel eventId={EVENT_ID} />)
+    const preview = await screen.findByAltText('Table talker (print) artwork for this event')
+    Object.defineProperty(preview, 'naturalWidth', { configurable: true, value: 1169 })
+    Object.defineProperty(preview, 'naturalHeight', { configurable: true, value: 2480 })
+    fireEvent.load(preview)
+
+    expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent('Prints at about 322 dpi.')
   })
 })
