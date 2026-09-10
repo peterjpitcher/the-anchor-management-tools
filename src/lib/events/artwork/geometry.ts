@@ -421,7 +421,7 @@ export const LOGO_SHADOW_OFFSET_FRAC = 0.025
 export const LOGO_SHADOW_BLUR_FRAC = 0.035
 
 /** Deliberately short of opaque, so the shadow reads as depth and not an outline. */
-export const LOGO_SHADOW_OPACITY = 0.55
+export const LOGO_SHADOW_OPACITY = 0.85
 
 export type LogoColour = 'white' | 'black'
 

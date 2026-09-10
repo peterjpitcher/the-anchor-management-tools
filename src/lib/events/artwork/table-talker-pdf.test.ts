@@ -73,16 +73,16 @@ describe('buildTableTalkerSheetPdf', () => {
     }
   })
 
-  it('draws the 24 crop marks as hairlines', async () => {
+  it('prints the three panels without cut marks', async () => {
     const { bytes } = await buildTableTalkerSheetPdf({
       image: await panel(600, 1273),
       format: 'png',
       eventName: 'Quiz Night',
     })
     const content = pageContent(await PDFDocument.load(bytes))
-    // One stroke per mark.
-    expect(content.match(/\bS\b/g)).toHaveLength(24)
-    expect(content).toContain('0.25 w')
+    expect(content.match(/ Do\b/g)).toHaveLength(3)
+    expect(content).not.toMatch(/\bS\b/)
+    expect(content).not.toContain('0.25 w')
   })
 
   it('names the event in the title and asks for actual size printing', async () => {

@@ -927,7 +927,7 @@ describe('EventImagePanel table talker print sheet', () => {
     const button = await screen.findByRole('button', { name: 'Print sheet' })
     expect(button).toBeEnabled()
     expect(screen.getByTestId('table-talker-print-note')).toHaveTextContent(
-      'Print the sheet at 100%, then cut on the marks.'
+      'Print the sheet at 100%, then cut as needed.'
     )
 
     await user.click(button)

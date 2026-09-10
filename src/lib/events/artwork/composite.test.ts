@@ -718,6 +718,22 @@ describe('compositeArtwork, the logo drop shadow', () => {
     return { towardsShadow, awayFromShadow, strongest }
   }
 
+  it('fades smoothly between neighbouring rows outside the logo', async () => {
+    const image = await shadowed('white')
+    let largestStep = 0
+    let painted = 0
+    for (let y = RECT.y + RECT.height + 1; y < RECT.y + RECT.height + 30; y += 1) {
+      for (let x = RECT.x; x < RECT.x + RECT.width; x += 1) {
+        const value = pixelAt(image, x, y)[0]
+        const previous = pixelAt(image, x, y - 1)[0]
+        largestStep = Math.max(largestStep, Math.abs(value - previous))
+        if (value < BACKGROUND.r) painted += 1
+      }
+    }
+    expect(painted).toBeGreaterThan(0)
+    expect(largestStep).toBeLessThan(10)
+  })
+
   it('paints a BLACK shadow outside a white logo and a WHITE one outside a black logo', async () => {
     // The logo overlay is exactly its own rect, so anything painted outside it
     // is the shadow and nothing else. Over a mid grey background a black shadow
