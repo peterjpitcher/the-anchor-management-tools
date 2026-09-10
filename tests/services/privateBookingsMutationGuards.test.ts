@@ -33,6 +33,10 @@ vi.mock('@/lib/analytics/events', () => ({
   recordAnalyticsEvent: vi.fn(),
 }))
 
+vi.mock('@/lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}))
+
 vi.mock('@/lib/email/private-booking-emails', () => ({
   sendBookingConfirmationEmail: vi.fn(() => Promise.resolve()),
   sendBookingCalendarInvite: vi.fn(() => Promise.resolve()),
@@ -43,6 +47,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { SmsQueueService } from '@/services/sms-queue'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
+import { logger } from '@/lib/logger'
 
 const mockedCreateClient = createClient as unknown as Mock
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
@@ -145,6 +150,54 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Private booking must include a linked customer (customer_id or contact_phone)')
 
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      code: '23514',
+      message: 'new row for relation "private_bookings" violates check constraint "chk_email_format"',
+      expected: 'The booking could not be saved because the system rejected the email format. If the address is correct, keep it unchanged and report this error.',
+      diagnostic: 'Database rejected contact email (chk_email_format)',
+    },
+    {
+      code: '23505',
+      message: 'Duplicate customer test.o\'name@example.com',
+      expected: 'Failed to create private booking',
+      diagnostic: 'Private booking database transaction failed',
+    },
+  ])('createBooking reports $code without leaking customer data', async ({ code, message, expected, diagnostic }) => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code,
+        message,
+        details: 'Failing row contains test.o\'name@example.com and confidential booking notes',
+        hint: 'Customer phone +447700900123',
+      },
+    })
+    const from = vi.fn()
+    mockedCreateClient.mockResolvedValue({ rpc, from })
+
+    await expect(PrivateBookingService.createBooking({
+      customer_id: 'customer-1',
+      customer_first_name: 'Test',
+      contact_email: "test.o'name@example.com",
+      event_date: '2026-09-15',
+      start_time: '18:00',
+      deposit_amount: 0,
+      deposit_waived: true,
+      deposit_waived_reason: 'Test waiver',
+    })).rejects.toThrow(expected)
+
+    expect(rpc).toHaveBeenCalledWith('create_private_booking_transaction', expect.objectContaining({
+      p_booking_data: expect.objectContaining({ contact_email: "test.o'name@example.com" }),
+    }))
+    expect(logger.error).toHaveBeenCalledWith('Create private booking transaction error:', {
+      error: new Error(diagnostic),
+      metadata: { code },
+    })
+    expect(from).not.toHaveBeenCalled()
+    expect(SmsQueueService.queueAndSend).not.toHaveBeenCalled()
   })
 
   it('createBooking accepts non-UK international numbers', async () => {
