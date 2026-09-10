@@ -64,6 +64,9 @@ export const MIN_PRINT_DPI = 150
 
 const MM_PER_INCH = 25.4
 
+/** The narrowest DL panel that still prints at `MIN_PRINT_DPI`: 546px. */
+export const MIN_PRINT_WIDTH_PX = Math.ceil((TABLE_TALKER_PANEL_WIDTH_MM / MM_PER_INCH) * MIN_PRINT_DPI)
+
 /** A rectangle on the sheet in millimetres. x and y are its top-left corner. */
 export interface SheetRect {
   x: number
