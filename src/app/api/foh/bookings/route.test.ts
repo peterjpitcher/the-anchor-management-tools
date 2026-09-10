@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { POST } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
+import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
@@ -46,6 +47,9 @@ vi.mock('@/lib/table-bookings/deposit', () => ({
 vi.mock('@/lib/table-bookings/period-lookup', () => ({
   loadBookingPeriodContext: vi.fn().mockResolvedValue({ period: null, collectPeriodDeposits: true }),
   expectedDepositForCreate: vi.fn(() => null),
+}))
+vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
+  recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   mapTableBookingBlockedReason: vi.fn((reason: string | null) => reason ?? 'blocked'),
@@ -494,5 +498,47 @@ describe('POST /api/foh/bookings: failed walk-ins and kitchen-hours refusals', (
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: KITCHEN_NOT_SERVING.message })
     expect(customerDeletes(db)).toHaveLength(1)
+  })
+})
+
+describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('asks for the booking to be recorded as one course, since this screen takes no courses', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({
+        customer_id: CUSTOMER_ID,
+        date: '2026-12-01',
+        time: '18:00',
+        party_size: 8,
+        purpose: 'christmas',
+        sunday_deposit_method: 'cash',
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    // The helper decides from the database's own deadline whether anything changes.
+    expect(recordOneCourseInsideCutoff).toHaveBeenCalledWith(db, {
+      id: 'booking-1',
+      bookingDate: '2026-12-01',
+      partySize: 8,
+    })
+  })
+
+  it('leaves every other booking alone', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({ customer_id: CUSTOMER_ID, date: '2026-08-01', time: '18:00', party_size: 2, purpose: 'food' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
   })
 })

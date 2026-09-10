@@ -6,6 +6,7 @@ import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { logger } from '@/lib/logger'
+import { recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
@@ -1463,6 +1464,23 @@ async function createFohTableBooking(
         }
       })
     }
+  }
+
+  // This screen does not ask for courses. Inside the Christmas pre-order deadline the 1 course
+  // tier is the only one on offer (SSOT §7, owner decision 10 September 2026), so every guest is
+  // recorded as one course, with nothing to pre-order and nobody to chase. Before the deadline the
+  // booking keeps its existing policy. Non-fatal: the booking already exists, and the reminder cron
+  // no longer texts a guest once their form has locked.
+  if (
+    isChristmasBooking &&
+    bookingResult.table_booking_id &&
+    (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+  ) {
+    await recordOneCourseInsideCutoff(auth.supabase, {
+      id: bookingResult.table_booking_id,
+      bookingDate: payload.date,
+      partySize: payload.party_size,
+    })
   }
 
   if (payload.waive_deposit !== true) {

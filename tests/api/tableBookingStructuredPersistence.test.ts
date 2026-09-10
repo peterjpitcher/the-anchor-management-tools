@@ -19,6 +19,7 @@ const {
   mapTableBookingBlockedReason,
   recordAnalyticsEvent,
   verifyTurnstileToken,
+  recordOneCourseInsideCutoff,
 } = vi.hoisted(() => ({
   saveSundayPreorderByBookingId: vi.fn().mockResolvedValue({ state: 'saved', item_count: 2, booking_id: 'bk1' }),
   ensureCustomerForPhone: vi.fn(),
@@ -32,6 +33,11 @@ const {
   mapTableBookingBlockedReason: vi.fn((reason?: string) => (reason as any) ?? null),
   recordAnalyticsEvent: vi.fn(),
   verifyTurnstileToken: vi.fn().mockResolvedValue({ success: true }),
+  recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
+}))
+
+vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
+  recordOneCourseInsideCutoff,
 }))
 
 vi.mock('@/lib/rate-limit', () => ({
@@ -201,6 +207,40 @@ describe('POST /api/table-bookings — structured persistence', () => {
     expect(response.status).toBe(500)
     expect((await response.json()).error).toBeTruthy()
     expect(supabase.rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a Christmas booking that arrives without courses as one course, and saves no dishes', async () => {
+    // An older client: today's form always sends a course for every guest.
+    recordOneCourseInsideCutoff.mockResolvedValueOnce('recorded')
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    const response = await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      preorder: [{ main_menu_item_id: DISH_ID_2 }],
+    }) as Parameters<typeof POST>[0])
+
+    expect(response.status).toBeLessThan(400)
+    expect(supabase.rpc).toHaveBeenCalledWith('create_table_booking_public_v06', expect.anything())
+    expect(recordOneCourseInsideCutoff).toHaveBeenCalledWith(supabase, {
+      id: BOOKING_ID,
+      bookingDate: '2026-12-05',
+      partySize: 6,
+    })
+    const body = await response.json()
+    expect(body.data.preorder).toMatchObject({ saved: false, saved_covers: 0 })
+    expect(body.data.preorder.error).toMatch(/deadline for this date has passed/)
+  })
+
+  it('never second-guesses a booking that arrived with its courses', async () => {
+    const supabase = buildSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
+    await POST(buildRequest({
+      phone: '+447000000000', first_name: 'Fixture', date: '2026-12-05', time: '18:00',
+      party_size: 6, purpose: 'food', booking_period_id: DISH_ID, booking_period_answer: true,
+      christmas_course_counts: [1, 1, 1, 1, 1, 1],
+    }) as Parameters<typeof POST>[0])
+    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
   })
 
   it('persists dietary_requirements and allergies arrays on the booking row', async () => {
