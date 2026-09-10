@@ -365,6 +365,11 @@ export type PreorderChaseInput = {
   managerEscalationSent: boolean
   /** Today, London, YYYY-MM-DD. */
   todayIso: string
+  /**
+   * Whether the pre-order form has already locked (`getPreorderCutoff(...).closed`). Once it has,
+   * the booker cannot act on a reminder, so they are never sent one.
+   */
+  preorderClosed: boolean
 }
 
 /**
@@ -383,34 +388,39 @@ export type PreorderChaseInput = {
  * arrived by the next sweep, the manager is told six days out. Slipping an internal email by a day
  * costs nothing; asking a guest and dobbing them in simultaneously costs the pub's manners.
  *
- * A BOOKING MADE INSIDE THE CUTOFF still gets both, in one run, but only on its last chance: when the
- * booking is today (`daysUntilBooking <= 0`) there is no later sweep to defer to, so holding the
- * escalation back would mean the manager never hears at all. A booking taken two days out therefore
- * gets its reminder today and, if the choices are still missing, its escalation on tomorrow's sweep.
+ * A BOOKING WHOSE FORM HAS ALREADY LOCKED is never sent the booker reminder. The reminder says
+ * "choose here" and links to the manage page, and once the cutoff has passed that page will not take
+ * a choice, so the text only tells a guest to do something they cannot. That was the case for every
+ * booking made inside the cutoff, and also for every booking whose first sweep inside the reminder
+ * window fell on the cutoff day: this cron runs at noon, which is the moment the form locks. The
+ * manager is told instead, on that same sweep, because nobody else can now fill the gap.
  *
  * `bookerReminderSentOn` is the ledger row, which is claimed before the send and never rolled back.
  * That is on purpose here too: a reminder that failed to send still counts as the booker's turn
  * having passed, so the manager is told the next day rather than the booking going quiet.
  */
 export function decidePreorderChases(input: PreorderChaseInput): PreorderReminderKind[] {
-  const { daysUntilBooking, cutoffDays, bookerReminderSentOn, managerEscalationSent, todayIso } = input
+  const { daysUntilBooking, cutoffDays, bookerReminderSentOn, managerEscalationSent, todayIso, preorderClosed } =
+    input
 
   const due: PreorderReminderKind[] = []
 
   // "At or inside" rather than "exactly on", so one failed cron run does not lose the message for
   // good. The ledger is what stops it being sent twice.
   const bookerDue =
-    bookerReminderSentOn === null && daysUntilBooking <= PREORDER_BOOKER_REMINDER_DAYS
+    !preorderClosed && bookerReminderSentOn === null && daysUntilBooking <= PREORDER_BOOKER_REMINDER_DAYS
   if (bookerDue) due.push('booker_reminder')
 
   const bookerHasHadTheirTurn = bookerReminderSentOn !== null && bookerReminderSentOn < todayIso
   const noLaterSweep = daysUntilBooking <= 0
+  // Locked before the booker was ever asked: waiting for their turn would mean waiting for ever.
+  const bookerCannotAct = preorderClosed && bookerReminderSentOn === null
 
   if (
     !managerEscalationSent &&
     cutoffDays !== null &&
     daysUntilBooking <= cutoffDays &&
-    (bookerHasHadTheirTurn || noLaterSweep)
+    (bookerHasHadTheirTurn || noLaterSweep || bookerCannotAct)
   ) {
     due.push('manager_escalation')
   }
