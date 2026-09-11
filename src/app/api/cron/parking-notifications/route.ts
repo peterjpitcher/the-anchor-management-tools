@@ -613,7 +613,10 @@ async function processPendingPaymentLifecycle(
         booking,
         eventType: 'payment_reminder',
         templateKey: TEMPLATE_PARKING_PAYMENT_REMINDER_DAY,
-        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, expiresOn),
+        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, {
+          day: expiresOn,
+          at: dueAt,
+        }),
         payload: reminderPayload,
         safety,
       })

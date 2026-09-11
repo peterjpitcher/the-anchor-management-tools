@@ -100,15 +100,27 @@ describe('parking notifications', () => {
     }
   )
 
-  it('names the day the offer expires as the customer reads it, tomorrow by default', () => {
-    const tomorrow = buildPaymentReminderSmsForStage(baseBooking, 'day_before_expiry', 'https://example.com/pay')
-    const today = buildPaymentReminderSmsForStage(baseBooking, 'day_before_expiry', 'https://example.com/pay', 'today')
+  it('says when the offer expires: the day as the customer reads it and the London time', () => {
+    const url = 'https://example.com/pay'
+    // 22:00 BST on Wednesday 16 September 2026, and 10:00 GMT on Thursday 17 December 2026.
+    const today = buildPaymentReminderSmsForStage(baseBooking, 'day_before_expiry', url, {
+      day: 'today',
+      at: new Date('2026-09-16T21:00:00Z'),
+    })
+    const tomorrow = buildPaymentReminderSmsForStage(baseBooking, 'day_before_expiry', url, {
+      day: 'tomorrow',
+      at: new Date('2026-12-17T10:00:00Z'),
+    })
 
-    expect(tomorrow).toContain('Your parking offer expires tomorrow, £25.00')
-    expect(today).toContain('Your parking offer expires today, £25.00')
-    // Only the day changes.
-    expect(today).toBe(tomorrow.replace('expires tomorrow', 'expires today'))
+    expect(today).toContain('Your parking offer expires today at 22:00, £25.00')
+    expect(tomorrow).toContain('Your parking offer expires tomorrow at 10:00, £25.00')
     expectNoPlaceholders(today)
+    expectNoPlaceholders(tomorrow)
+  })
+
+  it('says tomorrow and no time when no expiry is given', () => {
+    const message = buildPaymentReminderSmsForStage(baseBooking, 'day_before_expiry', 'https://example.com/pay')
+    expect(message).toContain('Your parking offer expires tomorrow, £25.00')
   })
 
   it('prefers the override price over the calculated price', () => {
