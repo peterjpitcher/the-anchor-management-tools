@@ -688,6 +688,7 @@ export async function createTimeclockSession(
 // ---------------------------------------------------------------------------
 // Update a timeclock session (manager correction)
 // Times are supplied as HH:MM in Europe/London local time for the work_date.
+// Omit `notes` to leave the stored notes as they are; pass null to clear them.
 // ---------------------------------------------------------------------------
 
 export async function updateTimeclockSession(
@@ -765,7 +766,10 @@ export async function updateTimeclockSession(
       clock_out_at: clockOutUtc?.toISOString() ?? null,
       // If a manager has set a clock-out manually, clear the auto-close flag
       ...(clockOutUtc ? { is_auto_close: false, auto_close_reason: null } : {}),
-      notes: notes ?? null,
+      // Notes are only written when the caller sends them. The payroll screen edits times
+      // alone and passes none, so leaving them out keeps what is stored; an explicit null
+      // (the timeclock form with its notes field emptied) still clears them.
+      ...(notes !== undefined ? { notes } : {}),
       ...premiumColumns,
     })
     .eq('id', sessionId)
