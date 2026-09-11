@@ -72,7 +72,14 @@ Operational scripts in `scripts/` are dry-run by default; a mutation only happen
 
 Email transport: `EMAIL_PROVIDER` (`graph` or `resend`) wins; if unset, Resend is used when both `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` are set, otherwise Graph. Marketing never falls back to Graph (it needs idempotency keys and delivery webhooks). `sendEmail(options)` in `src/lib/email/emailService.ts` takes one options object.
 
-SMS safety (`src/lib/sms/`): idempotency claims, global and per-recipient hourly and daily limits, quiet hours 21:00 to 09:00 London, and the kill switches `SUSPEND_ALL_SMS`, `SUSPEND_EVENT_SMS`, `SUSPEND_ALL_COMMS`. Never bypass these to get a message out. Treat every local run as production-capable: those flags are the only guard between a script and a customer's phone.
+SMS safety (`src/lib/sms/`): idempotency claims, global and per-recipient hourly and daily limits, and quiet hours 21:00 to 09:00 London. Kill switches are read at send time and are off unless set to `true`:
+
+- `SUSPEND_ALL_SMS` stops every SMS and WhatsApp message. Email still sends.
+- `SUSPEND_EVENT_SMS` stops SMS carrying an event, event booking or table booking id, or a key starting `event_` (plus `table_review_followup`). Private booking SMS and email still send.
+- `SUSPEND_ALL_EMAIL` (`src/lib/email/suspension.ts`) stops every email through `sendEmail`: guest, staff, invoices, cron alerts and marketing. It returns `code: 'email_suspended'`. `notifyCustomer` then falls back to SMS, where the hourly limits throttle the surge; the marketing cron holds its queue rather than failing recipients; every other sender sees an ordinary failed send.
+- `SUSPEND_ALL_COMMS` stops all three: SMS, WhatsApp and email.
+
+Never bypass these to get a message out. Treat every local run as production-capable: those flags are the only guard between a script and a customer's phone or inbox.
 
 ## Scheduled jobs
 

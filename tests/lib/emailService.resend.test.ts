@@ -71,6 +71,8 @@ describe('sendEmail Resend provider', () => {
     process.env.RESEND_API_KEY = 're_test'
     process.env.EMAIL_FROM_ADDRESS = 'The Anchor <noreply@auth.orangejelly.co.uk>'
     process.env.EMAIL_REPLY_TO = 'manager@the-anchor.pub'
+    delete process.env.SUSPEND_ALL_EMAIL
+    delete process.env.SUSPEND_ALL_COMMS
   })
 
   afterEach(() => {
@@ -196,6 +198,60 @@ describe('sendEmail Resend provider', () => {
       }),
       { idempotencyKey: 'checklist:outbox-1' },
     )
+  })
+
+  it.each([
+    ['SUSPEND_ALL_EMAIL', 'all_email'],
+    ['SUSPEND_ALL_COMMS', 'all_comms'],
+  ])('refuses every send while %s is on, before the suppression lookup or the provider', async (envName, reason) => {
+    process.env[envName] = 'true'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const { sendEmail } = await import('@/lib/email/emailService')
+      const result = await sendEmail({
+        to: 'guest@example.com',
+        subject: 'Booking confirmed',
+        text: 'Hello',
+        commType: 'table_booking_confirmed',
+        customerId: 'customer-1',
+      })
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Email sending is currently suspended',
+        code: 'email_suspended',
+      })
+      expect(resendSend).not.toHaveBeenCalled()
+      // No suppression read and no email_messages write: the switch touches nothing.
+      expect(createAdminClient).not.toHaveBeenCalled()
+
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      const [message, context] = warnSpy.mock.calls[0] ?? []
+      expect(message).toContain(envName)
+      expect(JSON.parse(String(context))).toEqual({
+        customerId: 'customer-1',
+        commType: 'table_booking_confirmed',
+        suspensionReason: reason,
+      })
+      // The warning names the send, never the address.
+      expect(String(context)).not.toContain('guest@example.com')
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('sends normally when the email switches are set to false', async () => {
+    process.env.SUSPEND_ALL_EMAIL = 'false'
+    process.env.SUSPEND_ALL_COMMS = 'false'
+    mockAdminClient()
+    resendSend.mockResolvedValue({ data: { id: 'resend-email-on' }, error: null })
+
+    const { sendEmail } = await import('@/lib/email/emailService')
+    const result = await sendEmail({ to: 'guest@example.com', subject: 'Hello', text: 'Hello' })
+
+    expect(result).toEqual({ success: true, messageId: 'resend-email-on', emailMessageId: 'email-log-1' })
+    expect(resendSend).toHaveBeenCalledTimes(1)
   })
 
   it('short-circuits suppressed recipients before calling Resend', async () => {
