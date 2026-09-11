@@ -26,6 +26,7 @@ import {
   isUnderPromoTextCap,
   loadCustomerIdsWithoutUsableEmail,
   loadPromoTextCounts,
+  londonDateDaysAhead,
   PROMOTIONAL_SMS_TEMPLATE_KEYS,
   resolveEventPromoFlags,
   resolveLastPushDateWindow,
@@ -103,6 +104,48 @@ describe('decideLastPushCapacity: fewer than a quarter booked, strictly', () => 
 
   it('never pushes a sold-out night', () => {
     expect(decideLastPushCapacity(snapshot(60, 60)).allowed).toBe(false)
+  })
+})
+
+describe('londonDateDaysAhead: London calendar days, never hours', () => {
+  it('counts from the London date, not the UTC one', () => {
+    // 23:30 UTC on Friday 11 September is 00:30 on Saturday 12 September in London.
+    const londonAfterMidnight = new Date('2026-09-11T23:30:00Z')
+    expect(londonDateDaysAhead(0, londonAfterMidnight)).toBe('2026-09-12')
+    expect(londonDateDaysAhead(1, londonAfterMidnight)).toBe('2026-09-13')
+    expect(londonDateDaysAhead(7, londonAfterMidnight)).toBe('2026-09-19')
+  })
+
+  it('keeps tomorrow on Monday through the first hour of Sunday 25 October 2026, when the clocks go back', () => {
+    // 00:00, 00:30 and 00:59 BST on Sunday 25 October. Adding 24 hours to any of them lands
+    // on Sunday evening GMT, which is how "tomorrow" used to come out as the same Sunday.
+    for (const instant of ['2026-10-24T23:00:00Z', '2026-10-24T23:30:00Z', '2026-10-24T23:59:00Z']) {
+      const now = new Date(instant)
+      expect(londonDateDaysAhead(0, now)).toBe('2026-10-25')
+      expect(londonDateDaysAhead(1, now)).toBe('2026-10-26')
+      expect(londonDateDaysAhead(7, now)).toBe('2026-11-01')
+    }
+    // 01:30 BST, then 01:30 GMT an hour later: the same London Sunday both times.
+    expect(londonDateDaysAhead(1, new Date('2026-10-25T00:30:00Z'))).toBe('2026-10-26')
+    expect(londonDateDaysAhead(1, new Date('2026-10-25T01:30:00Z'))).toBe('2026-10-26')
+  })
+
+  it('keeps tomorrow on Sunday through the last hour of Saturday 27 March 2027, before the clocks go forward', () => {
+    // 23:00, 23:30 and 23:59 GMT on Saturday 27 March. Adding 24 hours lands after midnight
+    // BST on Monday 29 March, a day too far.
+    for (const instant of ['2027-03-27T23:00:00Z', '2027-03-27T23:30:00Z', '2027-03-27T23:59:00Z']) {
+      const now = new Date(instant)
+      expect(londonDateDaysAhead(0, now)).toBe('2027-03-27')
+      expect(londonDateDaysAhead(1, now)).toBe('2027-03-28')
+      expect(londonDateDaysAhead(7, now)).toBe('2027-04-03')
+    }
+    // 00:30 GMT on Sunday 28 March, half an hour before the change, and 03:00 BST after it.
+    expect(londonDateDaysAhead(1, new Date('2027-03-28T00:30:00Z'))).toBe('2027-03-29')
+    expect(londonDateDaysAhead(1, new Date('2027-03-28T02:00:00Z'))).toBe('2027-03-29')
+  })
+
+  it('refuses a fractional number of days rather than guessing a date', () => {
+    expect(() => londonDateDaysAhead(1.5, new Date('2026-09-15T08:00:00Z'))).toThrow('whole number of days')
   })
 })
 

@@ -16,6 +16,7 @@ import {
   decideLastPushTiming,
   EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH,
   EVENT_PROMO_TEMPLATE_KEYS,
+  londonDateDaysAhead,
   resolveEventPromoFlags,
   resolveLastPushDateWindow,
 } from '@/lib/sms/event-promo-policy'
@@ -232,17 +233,6 @@ function allowEventEngagementSendGuardSchemaGaps(): boolean {
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0')
-}
-
-function getLondonDateString(daysAhead = 0, now: Date = new Date()): string {
-  const target = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
-  const londonDate = toZonedTime(target, LONDON_TIMEZONE)
-
-  return [
-    londonDate.getFullYear(),
-    pad2(londonDate.getMonth() + 1),
-    pad2(londonDate.getDate())
-  ].join('-')
 }
 
 function getLondonRunKey(now: Date = new Date()): string {
@@ -1968,8 +1958,9 @@ async function loadUpcomingEventsForPromo(
   // D-7 morning never got an intro at all: there was no second chance. The RPC
   // already refuses to promote the same event to the same customer twice, so
   // widening the window cannot produce duplicate sends.
-  const introWindowStart = getLondonDateString(EVENT_PROMO_INTRO_MIN_DAYS_AHEAD)
-  const introWindowEnd = getLondonDateString(EVENT_PROMO_INTRO_DAYS_AHEAD)
+  // London calendar days, never "now plus 24 hours" (see londonDateDaysAhead).
+  const introWindowStart = londonDateDaysAhead(EVENT_PROMO_INTRO_MIN_DAYS_AHEAD)
+  const introWindowEnd = londonDateDaysAhead(EVENT_PROMO_INTRO_DAYS_AHEAD)
 
   const { data, error } = await supabase
     .from('events')
@@ -1995,8 +1986,9 @@ async function loadFollowUpEvents(
   daysAheadMin: number,
   daysAheadMax: number
 ): Promise<UpcomingPromoEvent[]> {
-  const windowStartIso = getLondonDateString(daysAheadMin)
-  const windowEndIso = getLondonDateString(daysAheadMax)
+  // London calendar days: "tomorrow" is the next London date, whatever the clocks do tonight.
+  const windowStartIso = londonDateDaysAhead(daysAheadMin)
+  const windowEndIso = londonDateDaysAhead(daysAheadMax)
 
   const { data, error } = await supabase
     .from('events')
