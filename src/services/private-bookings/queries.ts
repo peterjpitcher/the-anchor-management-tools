@@ -15,6 +15,8 @@ import {
 } from './types';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { loadPrivateBookingEmailTimeline } from '@/lib/private-bookings/email-timeline';
+import { isMessagingFlagOn } from '@/lib/messaging/flags';
+import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
 
 function normalizeDepositStatus(booking: {
   deposit_amount?: unknown
@@ -23,6 +25,51 @@ function normalizeDepositStatus(booking: {
 }): 'Paid' | 'Required' | 'Not Required' {
   if (booking.deposit_paid_date) return 'Paid'
   return toNumber(booking.deposit_amount) > 0 ? 'Required' : 'Not Required'
+}
+
+/**
+ * Which of the listed bookings have a deposit still to be confirmed (flag
+ * private_booking_deposit_confirmation), so the list can say so and nobody forgets them. The list
+ * reads a view that has no confirmation column, so it comes from the table in one query. With the
+ * flag off, or if that read fails (logged), no booking is marked.
+ */
+async function loadDepositAwaitingConfirmation(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  bookings: Array<{ id: string; status?: string | null; deposit_amount?: unknown; deposit_paid_date?: string | null }>
+): Promise<Map<string, boolean>> {
+  const result = new Map<string, boolean>();
+  if (bookings.length === 0) return result;
+  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return result;
+
+  const { data, error } = await supabase
+    .from('private_bookings')
+    .select('id, deposit_confirmed_at, deposit_waived')
+    .in('id', bookings.map((booking) => booking.id));
+  if (error) {
+    logger.error('Could not read deposit confirmations for the private bookings list', {
+      metadata: { code: error.code ?? null, message: error.message ?? null },
+    });
+    return result;
+  }
+
+  const rows = new Map(
+    ((data ?? []) as Array<{ id: string; deposit_confirmed_at?: string | null; deposit_waived?: boolean | null }>).map((row) => [row.id, row])
+  );
+  for (const booking of bookings) {
+    const row = rows.get(booking.id);
+    if (!row) continue;
+    result.set(
+      booking.id,
+      isDepositAwaitingConfirmation({
+        status: booking.status,
+        deposit_amount: booking.deposit_amount as number | string | null | undefined,
+        deposit_paid_date: booking.deposit_paid_date,
+        deposit_waived: row.deposit_waived,
+        deposit_confirmed_at: row.deposit_confirmed_at,
+      })
+    );
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +291,8 @@ export async function fetchPrivateBookings(options: {
     }
   }
 
+  const awaitingDepositById = await loadDepositAwaitingConfirmation(supabase, data || []);
+
   const enriched = (data || []).map((booking) => {
     // Customer-payable total is VAT-inclusive (stored prices are net)
     const bookingTotal = toNumber(booking.gross_total ?? booking.calculated_total ?? booking.total_amount);
@@ -255,6 +304,7 @@ export async function fetchPrivateBookings(options: {
       is_date_tbd: isBookingDateTbd(booking),
       balance_remaining: balanceRemaining,
       deposit_status: normalizeDepositStatus(booking),
+      deposit_awaiting_confirmation: awaitingDepositById.get(booking.id) === true,
     };
   });
 

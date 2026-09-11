@@ -19,6 +19,8 @@ import {
   reviewVisitCandidateKey,
 } from '@/lib/sms/review-once'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
 
 /**
  * Reason a scheduled reminder won't actually be sent in its normal window.
@@ -182,7 +184,13 @@ export async function getBookingScheduledSms(
   const depositAmount = Number(booking.deposit_amount ?? 0)
 
   // --- Deposit reminders (draft) ---
-  if (booking.status === 'draft' && booking.hold_expiry && depositAmount > 0) {
+  // Not listed while the deposit is still to be confirmed: the cron sends none then.
+  if (
+    booking.status === 'draft' &&
+    booking.hold_expiry &&
+    depositAmount > 0 &&
+    !(await isDepositReminderPausedForConfirmation(db, bookingId, booking))
+  ) {
     const holdExpiry = new Date(booking.hold_expiry)
     const daysUntilExpiry = diffDaysCeil(holdExpiry, now)
     const holdExpiryReadable = formatReadableDate(booking.hold_expiry)
@@ -456,6 +464,35 @@ export async function getBookingScheduledSms(
   }
 
   return previews
+}
+
+/**
+ * Deposit confirmation (flag private_booking_deposit_confirmation): the monitor sends no deposit
+ * reminder while the deposit is still to be confirmed, so the preview must not advertise one.
+ * The view this preview reads has no confirmation column, so it is read from the table. If it
+ * cannot be read the reminder is not listed, which is also what the monitor does then.
+ */
+async function isDepositReminderPausedForConfirmation(
+  db: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  booking: { status?: string | null; deposit_amount?: number | string | null; deposit_paid_date?: string | null },
+): Promise<boolean> {
+  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return false
+
+  const { data, error } = await db
+    .from('private_bookings')
+    .select('deposit_confirmed_at, deposit_waived')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (error || !data) return true
+
+  return isDepositAwaitingConfirmation({
+    status: booking.status,
+    deposit_amount: booking.deposit_amount,
+    deposit_paid_date: booking.deposit_paid_date,
+    deposit_waived: (data as { deposit_waived?: boolean | null }).deposit_waived,
+    deposit_confirmed_at: (data as { deposit_confirmed_at?: string | null }).deposit_confirmed_at,
+  })
 }
 
 function decideSuppression(params: {

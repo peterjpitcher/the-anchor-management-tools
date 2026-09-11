@@ -1,7 +1,7 @@
 /**
  * A small in-memory stand-in for the Supabase query builder, for tests that need to see rows
  * change rather than assert on mock calls. Supports the calls the messaging code makes: select,
- * insert, update, eq, neq, is, in, gte, lte, gt, lt, order, limit, maybeSingle and single, plus
+ * insert, update, eq, neq, is, in, gte, lte, gt, lt, order, limit, range, maybeSingle and single, plus
  * a `alias:table(columns)` join on `<alias>_id`.
  *
  * `failures` lets a test make one table and operation return an error.
@@ -48,6 +48,7 @@ export function createFakeSupabase(
     let returnRows = false
     let single: 'maybe' | 'one' | null = null
     let limit: number | null = null
+    let range: { from: number; to: number } | null = null
     let order: { column: string; ascending: boolean } | null = null
     const filters: Array<(row: Row) => boolean> = []
 
@@ -106,6 +107,8 @@ export function createFakeSupabase(
           return (a[column] > b[column] ? 1 : -1) * (ascending ? 1 : -1)
         })
       }
+      const total = rows.length
+      if (range) rows = rows.slice(range.from, range.to + 1)
       if (limit !== null) rows = rows.slice(0, limit)
       const shaped = rows.map((row) => applyJoins({ ...row }))
 
@@ -114,7 +117,7 @@ export function createFakeSupabase(
         return { data: shaped[0], error: null }
       }
       if (single === 'maybe') return { data: shaped[0] ?? null, error: null }
-      return { data: shaped, error: null, count: shaped.length }
+      return { data: shaped, error: null, count: range ? total : shaped.length }
     }
 
     const api: any = {
@@ -208,6 +211,10 @@ export function createFakeSupabase(
       },
       limit(count: number) {
         limit = count
+        return api
+      },
+      range(from: number, to: number) {
+        range = { from, to }
         return api
       },
       maybeSingle() {
