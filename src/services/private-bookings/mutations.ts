@@ -40,6 +40,7 @@ import {
   type BookingConflict,
 } from './conflicts';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
+import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
 import {
   privateBookingCreatedMessage,
   bookingConfirmedMessage,
@@ -1608,12 +1609,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     // Cancel pending SMS queue entries when transitioning to cancelled
     if (updatedBooking.status === 'cancelled' && currentBooking.status !== 'cancelled') {
       try {
-        const admin = createAdminClient();
-        await admin
-          .from('private_booking_sms_queue')
-          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-          .eq('booking_id', id)
-          .in('status', ['pending', 'approved']);
+        await cancelPendingQueuedSms(createAdminClient(), id, 'status_change_to_cancelled');
       } catch (smsCleanupError) {
         logger.error('Failed to cancel pending SMS during status change to cancelled:', {
           error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
@@ -1970,12 +1966,7 @@ export async function cancelBooking(
   // 3b. Cancel pending SMS queue entries — must happen before sending
   // the cancellation SMS to avoid racing with a scheduled send.
   try {
-    const admin = createAdminClient();
-    await admin
-      .from('private_booking_sms_queue')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('booking_id', id)
-      .in('status', ['pending', 'approved']);
+    await cancelPendingQueuedSms(createAdminClient(), id, 'booking_cancellation');
   } catch (smsCleanupError) {
     logger.error('Failed to cancel pending SMS during booking cancellation:', {
       error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
@@ -2175,11 +2166,7 @@ export async function expireBooking(
   // 3b. Cancel pending SMS queue entries before sending the expiry notification
   try {
     const adminForCleanup = options?.asSystem ? supabase : createAdminClient();
-    await adminForCleanup
-      .from('private_booking_sms_queue')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('booking_id', id)
-      .in('status', ['pending', 'approved']);
+    await cancelPendingQueuedSms(adminForCleanup, id, 'booking_expiry');
   } catch (smsCleanupError) {
     logger.error('Failed to cancel pending SMS during booking expiry:', {
       error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),

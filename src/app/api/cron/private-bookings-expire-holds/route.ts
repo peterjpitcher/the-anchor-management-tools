@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logAuditEvent } from '@/app/actions/audit';
+import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
@@ -75,13 +76,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // expireBooking expects draft status — but we already set cancelled above.
       // Instead, perform per-row cleanup inline: cancel pending SMS, calendar, notification.
 
-      // 1. Cancel pending SMS for this booking
+      // 1. Cancel pending SMS for this booking. The helper reads the returned error; the old
+      // inline update wrote a column the queue table does not have and nothing noticed.
       try {
-        await supabase
-          .from('private_booking_sms_queue')
-          .update({ status: 'cancelled', updated_at: now })
-          .eq('booking_id', id)
-          .in('status', ['pending', 'approved']);
+        await cancelPendingQueuedSms(supabase, id, 'hold_expired_cron');
       } catch (smsCleanupError) {
         logger.error('private-bookings-expire-holds: SMS cleanup failed', {
           error: smsCleanupError instanceof Error ? smsCleanupError : new Error(String(smsCleanupError)),
