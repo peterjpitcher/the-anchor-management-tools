@@ -57,6 +57,13 @@ type NotifyCustomerInput = {
     options?: SendSMSOptions
   }
   delayedFallbackAllowed?: boolean
+  /**
+   * Written on the notification_deliveries row when it is created, before anything is sent, so a
+   * bounce that arrives seconds later already finds it. Ids and facts only (a booking id, the
+   * template key, dates, amounts): never a name, a number, an address, a message body, a link or
+   * a token.
+   */
+  deliveryMetadata?: Record<string, unknown>
 }
 
 type ChannelAttempt = {
@@ -125,6 +132,7 @@ async function createDeliveryRecord(input: NotifyCustomerInput, customer: Custom
         urgency: input.urgency,
         delayed_fallback_allowed: input.delayedFallbackAllowed === true,
         metadata: {
+          ...(input.deliveryMetadata ?? {}),
           has_email: Boolean(input.email),
           has_whatsapp: Boolean(input.whatsapp),
           has_sms: Boolean(input.sms)

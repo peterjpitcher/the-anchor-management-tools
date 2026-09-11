@@ -8,7 +8,9 @@
  * - A text goes when there is no usable address, or when the email fails in the same attempt.
  *   The text carries `table_booking_id` and the template key, so SMS duplicate protection is per
  *   booking and SUSPEND_EVENT_SMS still applies to it.
- * - `delayedFallbackAllowed` marks the delivery so a later bounce can fall back to a text (P4).
+ * - `delayedFallbackAllowed` marks the delivery so a later bounce can fall back to a text (P4). The
+ *   delivery row is written with the booking id, the message, the facts it states and how its link
+ *   was made (fallback-details.ts), so the fallback can rebuild the same text from the booking.
  * - The email carries a stable idempotency key, so a retried call cannot deliver it twice.
  * - Every outcome writes `table_booking.notification_sent` or `table_booking.notification_failed`
  *   to the audit log, and the caller gets an outcome it can show to staff.
@@ -22,6 +24,10 @@ import { AuditService } from '@/services/audit'
 import { logger } from '@/lib/logger'
 import type { TableBookingEmail } from '@/lib/table-bookings/guest-emails'
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
+import {
+  buildTableBookingDeliveryMetadata,
+  type TableBookingFallbackDetails,
+} from '@/lib/table-bookings/fallback-details'
 
 /** The customer columns the channel rules read. */
 export const GUEST_CHANNEL_COLUMNS =
@@ -60,6 +66,25 @@ export type TableBookingGuestNotifyInput = {
   idempotencyKey: string
   /** Extra facts for the audit row. */
   auditContext?: Record<string, unknown>
+  /**
+   * What the bounce fallback needs to rebuild this text later: which message it is, the facts it
+   * states and how its link was made. Required, because every message sent here allows a later
+   * text and the fallback can only rebuild what was recorded.
+   */
+  fallback: TableBookingFallbackDetails
+}
+
+/**
+ * The number a table booking text goes to: the one the caller named, else the customer's mobile.
+ * Settled exactly as notifyTableBookingGuestEmailFirst hands it over and notifyCustomer then
+ * resolves it, so the bounce fallback texts the number the original text would have gone to.
+ */
+export function resolveTableBookingGuestSmsTo(
+  customer: Pick<GuestChannelCustomer, 'mobile_e164' | 'mobile_number'>,
+  requested: string | null | undefined
+): string | null {
+  const handedOver = requested ?? customer.mobile_number ?? customer.mobile_e164 ?? null
+  return handedOver || customer.mobile_e164 || customer.mobile_number || null
 }
 
 function describeError(error: unknown): string {
@@ -159,6 +184,11 @@ export async function notifyTableBookingGuestEmailFirst(
       urgency: 'standard',
       category: 'transactional',
       delayedFallbackAllowed: true,
+      deliveryMetadata: buildTableBookingDeliveryMetadata({
+        tableBookingId: input.tableBookingId,
+        templateKey: input.templateKey,
+        fallback: input.fallback,
+      }),
       email: {
         to: input.customer.email,
         subject: input.email.subject,
@@ -175,7 +205,7 @@ export async function notifyTableBookingGuestEmailFirst(
         },
       },
       sms: {
-        to: input.sms.to ?? input.customer.mobile_number ?? input.customer.mobile_e164 ?? null,
+        to: resolveTableBookingGuestSmsTo(input.customer, input.sms.to),
         body: input.sms.body,
         options: {
           customerId: input.customer.id,

@@ -340,6 +340,53 @@ describe('notification_delayed_fallback job', () => {
     expect(reportCronFailure).toHaveBeenCalledTimes(1)
   })
 
+  it('skips, rather than reports undelivered, a text it cannot rebuild for a booking cancelled since', async () => {
+    state.db = seed()
+    const fallbackRenderer = renderer(() => ({
+      kind: 'unavailable',
+      reason: 'link_expired',
+      booking: { type: 'private_booking', id: 'booking-1' },
+      current: {
+        booking: {
+          status: 'cancelled',
+          startsAt: '2026-10-03T18:00:00.000Z',
+          facts: { event_date: '2026-10-03', hold_expiry_date: '2026-09-25', deposit_amount: 250 },
+        },
+      },
+    }))
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => NOW })
+
+    expect(outcome).toMatchObject({ outcome: 'skipped', reason: 'booking_cancelled' })
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(state.db.tables.notification_deliveries[0].final_status).toBe('bounced')
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('still reports a text it cannot rebuild as undelivered while the booking needs it, in a plain sentence', async () => {
+    state.db = seed()
+    const fallbackRenderer = renderer(() => ({
+      kind: 'unavailable',
+      reason: 'link_expired',
+      booking: { type: 'private_booking', id: 'booking-1' },
+      current: {
+        booking: {
+          status: 'draft',
+          startsAt: '2026-10-03T18:00:00.000Z',
+          facts: { event_date: '2026-10-03', hold_expiry_date: '2026-09-25', deposit_amount: 250 },
+        },
+      },
+    }))
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => NOW })
+
+    expect(outcome).toEqual({ outcome: 'failed', reason: 'link_expired', deliveryId: 'delivery-1' })
+    expect(state.db.tables.private_booking_audit[0].metadata.description).toBe(
+      'The email bounced and the text fallback failed: the link in the email has expired or has already been used.'
+    )
+    expect(reportCronFailure).toHaveBeenCalledTimes(1)
+  })
+
   it('a template key with no renderer is undelivered and staff are told', async () => {
     state.db = seed({ template_key: 'table_booking_cancelled', metadata: { table_booking_id: 'tb-1' } })
 

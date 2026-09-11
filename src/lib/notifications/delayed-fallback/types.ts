@@ -11,6 +11,8 @@ export type DelayedFallbackDelivery = {
   selected_channel: string | null
   final_status: string
   metadata: Record<string, unknown> | null
+  /** When the delivery row was written, which is before the email was sent. */
+  created_at?: string | null
 }
 
 export type FallbackBookingRef = {
@@ -21,6 +23,20 @@ export type FallbackBookingRef = {
 /** Facts a message states about its booking, compared at fallback time to spot a change. */
 export type FallbackBookingFacts = Record<string, string | number | null>
 
+/** What the skip rules read: the booking as it is now, and what the message expects of it. */
+export type FallbackSkipCheck = {
+  booking: {
+    status: string | null
+    /** When the booking starts, as an ISO instant, or null when the date is still to be confirmed. */
+    startsAt: string | null
+    facts: FallbackBookingFacts
+  }
+  /** A cancellation or expiry message: the booking is meant to be cancelled. */
+  expectCancelled?: boolean
+  /** A message about an event that has already happened (thanks, review request). */
+  expectPast?: boolean
+}
+
 /**
  * What a renderer returns for one delivery.
  *
@@ -29,7 +45,17 @@ export type FallbackBookingFacts = Record<string, string | number | null>
  * (the booking is gone, or its details are missing), which the job treats as undelivered.
  */
 export type DelayedFallbackRender =
-  | { kind: 'unavailable'; reason: string; booking: FallbackBookingRef | null }
+  | {
+      kind: 'unavailable'
+      reason: string
+      booking: FallbackBookingRef | null
+      /**
+       * The booking as it is now, when it could be read. A text that cannot be rebuilt for a
+       * booking that has since been cancelled, has started or has changed is skipped rather than
+       * reported undelivered, so staff are not asked to chase a guest who no longer needs it.
+       */
+      current?: FallbackSkipCheck
+    }
   | {
       kind: 'ready'
       booking: FallbackBookingRef & {

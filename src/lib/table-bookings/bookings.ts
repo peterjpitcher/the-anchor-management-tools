@@ -34,6 +34,19 @@ import {
   buildTableBookingCancelledEmail,
   buildTableBookingDepositConfirmedEmail,
 } from '@/lib/table-bookings/guest-emails'
+import {
+  buildDepositConfirmedText,
+  buildTableBookingCancelledText,
+  describeChristmasCourseCounts,
+  describeTableBookingCancellationRefund,
+  formatLondonDateTime,
+  type TableBookingCancellationRefundResult,
+} from '@/lib/table-bookings/guest-texts'
+import {
+  cancellationFacts,
+  depositConfirmedFacts,
+  type TableBookingFallbackLink,
+} from '@/lib/table-bookings/fallback-details'
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
 import {
   claimIdempotencyKey,
@@ -41,6 +54,10 @@ import {
   persistIdempotencyResponse,
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
+
+// The texts' words now live in guest-texts.ts, shared with the bounce fallback. Re-exported so
+// existing importers keep working.
+export { describeChristmasCourseCounts, describeTableBookingCancellationRefund, type TableBookingCancellationRefundResult }
 
 // Re-exported for backwards-compat in this file. The single source of truth is
 // `LARGE_GROUP_DEPOSIT_PER_PERSON_GBP` in `./deposit.ts`. Spec §7.3, §8.3.
@@ -273,24 +290,6 @@ export function mapTableBookingBlockedReason(reason?: string | null):
   }
 }
 
-function formatLondonDateTime(isoDateTime?: string | null): string {
-  if (!isoDateTime) return 'your booking time'
-
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hourCycle: 'h12'
-    }).format(new Date(isoDateTime))
-  } catch {
-    return 'your booking time'
-  }
-}
-
 function resolveSundayPreorderTemplateKey(startDateTime?: string | null): string {
   if (!startDateTime) {
     return 'sunday_preorder_request'
@@ -348,15 +347,6 @@ function formatBookingTimeLabel(booking: TableBookingNotificationRow): string {
   }
 
   return 'Unknown time'
-}
-
-export function describeChristmasCourseCounts(counts?: number[] | null): string {
-  if (!counts?.length) return ''
-  const summary = [1, 2, 3].map(course => {
-    const guests = counts.filter(count => count === course).length
-    return guests ? `${guests} x ${course} course${course === 1 ? '' : 's'}` : null
-  }).filter(Boolean).join(', ')
-  return `Christmas courses: ${summary}. One course needs no pre-order.`
 }
 
 function buildTableBookingCustomerEmail(input: {
@@ -1268,6 +1258,7 @@ const DEPOSIT_CONFIRMED_CLAIM_TTL_HOURS = 24 * 14
 type DepositConfirmedBooking = {
   id: string
   customer_id: string
+  status: string | null
   booking_reference: string | null
   booking_date: string | null
   booking_time: string | null
@@ -1278,21 +1269,6 @@ type DepositConfirmedBooking = {
   christmas_course_counts: number[] | null
   deposit_amount: number | string | null
   deposit_amount_locked: number | string | null
-}
-
-/** The deposit-confirmed text, word for word as it has always read. */
-function buildDepositConfirmedTextBody(input: {
-  firstName: string
-  bookingNoun: string
-  partySize: number
-  seatWord: string
-  bookingMoment: string
-  highChairSuffix: string
-  outsideSuffix: string
-  manageLink: string | null
-  christmasCourseSummary: string
-}): string {
-  return `The Anchor: ${input.firstName}! Deposit sorted, your ${input.bookingNoun} for ${input.partySize} ${input.seatWord} on ${input.bookingMoment} is locked in. See you then!${input.highChairSuffix}${input.outsideSuffix}${input.manageLink ? ` ${input.manageLink}` : ''}${input.christmasCourseSummary ? ` ${input.christmasCourseSummary}` : ''}`
 }
 
 /**
@@ -1428,14 +1404,14 @@ async function sendTableBookingDepositConfirmedEmailFirst(
     const customer = customerRow as GuestChannelCustomer
     const firstName = getSmartFirstName(customer.first_name)
     const partySize = Math.max(1, Number(booking.party_size ?? 1))
-    const seatWord = partySize === 1 ? 'person' : 'people'
     const isOutside = Boolean(booking.is_outside_seating)
     const grantedHighChairs = Math.max(0, Number(booking.high_chair_count ?? 0))
     const christmasCourseSummary = describeChristmasCourseCounts(booking.christmas_course_counts)
-    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
     // One short link for both channels, so the email and a fallback text resolve to one code.
+    // How it was made is recorded, never the link itself, so a bounce can find it again.
     let manageLink: string | null = null
+    let manageLinkForm: TableBookingFallbackLink = 'none'
     try {
       const token = await createTableManageToken(supabase, {
         customerId: customer.id,
@@ -1450,21 +1426,13 @@ async function sendTableBookingDepositConfirmedEmailFirst(
         tableBookingId,
       })
       manageLink = shortened.url
+      manageLinkForm = shortened.shortened ? 'short_link' : 'full_url'
     } catch {
       manageLink = null
+      manageLinkForm = 'none'
     }
 
-    const smsBody = buildDepositConfirmedTextBody({
-      firstName,
-      bookingNoun: isOutside ? 'outside booking' : 'table',
-      partySize,
-      seatWord,
-      bookingMoment: formatLondonDateTime(booking.start_datetime),
-      highChairSuffix: grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : '',
-      outsideSuffix: isOutside ? ' Outside seating (weather permitting).' : '',
-      manageLink,
-      christmasCourseSummary,
-    })
+    const smsBody = buildDepositConfirmedText({ booking, firstName, manageLink })
 
     const depositPaid = Number(booking.deposit_amount_locked ?? booking.deposit_amount)
     const email = buildTableBookingDepositConfirmedEmail({
@@ -1487,8 +1455,9 @@ async function sendTableBookingDepositConfirmedEmailFirst(
       tableBookingId,
       customer,
       email,
-      sms: { to: customer.mobile_number, body: ensureReplyInstruction(smsBody, supportPhone) },
+      sms: { to: customer.mobile_number, body: smsBody },
       idempotencyKey: `${templateKey}:${tableBookingId}`,
+      fallback: { message: 'deposit_confirmed', facts: depositConfirmedFacts(booking), link: manageLinkForm },
     })
 
     await settleClaim(outcome)
@@ -1556,10 +1525,6 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   }
 
   const firstName = getSmartFirstName(customer.first_name)
-  const partySize = Math.max(1, Number(booking.party_size ?? 1))
-  const seatWord = partySize === 1 ? 'person' : 'people'
-  const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const bookingMoment = formatLondonDateTime(booking.start_datetime)
   let manageLink: string | null = null
 
   try {
@@ -1574,27 +1539,8 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
     manageLink = null
   }
 
-  // Outside bookings hold no indoor table — render booking/outside wording and the granted chair count.
-  const isOutside = Boolean(booking.is_outside_seating)
-  const grantedHighChairs = Math.max(0, Number(booking.high_chair_count ?? 0))
-  const highChairSuffix = grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : ''
-  const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
-  const bookingNoun = isOutside ? 'outside booking' : 'table'
-  const christmasCourseSummary = describeChristmasCourseCounts(booking.christmas_course_counts)
-  const composedMessage = buildDepositConfirmedTextBody({
-    firstName,
-    bookingNoun,
-    partySize,
-    seatWord,
-    bookingMoment,
-    highChairSuffix,
-    outsideSuffix,
-    manageLink,
-    christmasCourseSummary,
-  })
   const templateKey = DEPOSIT_CONFIRMED_TEMPLATE_KEY
-
-  const body = ensureReplyInstruction(composedMessage, supportPhone)
+  const body = buildDepositConfirmedText({ booking: booking as DepositConfirmedBooking, firstName, manageLink })
 
   try {
     const smsResult = await sendSMS(customer.mobile_number, body, {
@@ -1817,80 +1763,12 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
   }
 }
 
-export type TableBookingCancellationRefundResult =
-  | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number }
-  | { refunded: true; amountPence: number; tier: string }
-
 type TableBookingCancellationNoticeParams = {
   customerId: string
   bookingReference: string
   bookingDate: string // YYYY-MM-DD format
   refundResult: TableBookingCancellationRefundResult
   tableBookingId?: string
-}
-
-function formatGbpFromPence(pence: number): string {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
-}
-
-/**
- * What the cancellation message says about the deposit: the sentence after "has been cancelled."
- * The text and the email both use it, so the amount and the refund timing the guest reads are the
- * same on either channel.
- */
-export function describeTableBookingCancellationRefund(refundResult: TableBookingCancellationRefundResult): string {
-  if (refundResult.refunded) {
-    const amountGbp = formatGbpFromPence(refundResult.amountPence)
-
-    // Name the half tier. Saying only "your £75 refund" to someone who paid £150 reads as a
-    // full refund of a £75 deposit, so the one number they can check looks wrong.
-    return refundResult.tier === 'half'
-      ? `As it's within a week, half the deposit is refundable: your ${amountGbp} refund will land within 5-10 days.`
-      : `Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
-  }
-
-  if (refundResult.reason === 'zero_tier') {
-    return "As it's within 3 days, the deposit can't be refunded. Hope to see you another time!"
-  }
-
-  if (refundResult.reason === 'refund_failed' || refundResult.depositOwed) {
-    // Never go quiet about money we still hold. Silence here is what made a failed refund
-    // indistinguishable from a booking that never had a deposit.
-    const owed = refundResult.amountOwedPence
-    return owed
-      ? `We couldn't process your ${formatGbpFromPence(owed)} deposit refund automatically, so we'll sort it by hand and be in touch.`
-      : "We couldn't process your deposit refund automatically, so we'll sort it by hand and be in touch."
-  }
-
-  if (refundResult.reason === 'terms_unreadable') {
-    return "We'll check your deposit and be in touch about it shortly."
-  }
-
-  return 'Hope to see you again soon!'
-}
-
-/** "Sat 14 Mar 2026", as the cancellation text has always shown the date. */
-function formatCancellationTextDate(bookingDate: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    }).format(new Date(`${bookingDate}T12:00:00`))
-  } catch {
-    // fall back to raw date string
-    return bookingDate
-  }
-}
-
-function buildTableBookingCancelledTextBody(
-  firstName: string,
-  bookingDate: string,
-  refundResult: TableBookingCancellationRefundResult
-): string {
-  return `The Anchor: ${firstName}, your booking on ${formatCancellationTextDate(bookingDate)} has been cancelled. ${describeTableBookingCancellationRefund(refundResult)}`
 }
 
 /**
@@ -1962,7 +1840,6 @@ async function sendTableBookingCancelledEmailFirst(
 
     const guest = customer as GuestChannelCustomer
     const firstName = getSmartFirstName(guest.first_name)
-    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const email = buildTableBookingCancelledEmail({
       firstName,
       bookingReference: booking?.booking_reference || params.bookingReference,
@@ -1981,16 +1858,21 @@ async function sendTableBookingCancelledEmailFirst(
       email,
       sms: {
         to: guest.mobile_number,
-        body: ensureReplyInstruction(
-          buildTableBookingCancelledTextBody(firstName, params.bookingDate, params.refundResult),
-          supportPhone
-        ),
+        body: buildTableBookingCancelledText({
+          firstName,
+          bookingDate: params.bookingDate,
+          refundResult: params.refundResult,
+        }),
         metadata: { booking_reference: params.bookingReference },
       },
       idempotencyKey: `${templateKey}:${params.tableBookingId}`,
       auditContext: {
         booking_reference: params.bookingReference,
         refunded: params.refundResult.refunded,
+      },
+      fallback: {
+        message: 'cancellation',
+        facts: cancellationFacts({ bookingDate: params.bookingDate, refundResult: params.refundResult }),
       },
     })
   } catch (error) {
@@ -2028,13 +1910,10 @@ async function sendTableBookingCancelledTextOnly(
     }
 
     const firstName = getSmartFirstName(customer.first_name)
-    const smsBody = buildTableBookingCancelledTextBody(firstName, params.bookingDate, params.refundResult)
-
-    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
     const smsResult = await sendSMS(
       customer.mobile_number,
-      ensureReplyInstruction(smsBody, supportPhone),
+      buildTableBookingCancelledText({ firstName, bookingDate: params.bookingDate, refundResult: params.refundResult }),
       {
         customerId: customer.id,
         metadata: {

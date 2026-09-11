@@ -22,6 +22,11 @@ const REASON_LABELS: Record<string, string> = {
   no_renderer: 'Email bounced; this message cannot be sent as a text',
   booking_missing: 'Email bounced; booking not found',
   render_failed: 'Email bounced; the text could not be built',
+  customer_missing: 'Email bounced; customer record not found',
+  facts_missing: 'Email bounced; the message details were not recorded',
+  link_not_found: 'Email bounced; the link could not be found again',
+  link_expired: 'Email bounced; the link has expired',
+  link_not_rebuildable: 'Email bounced; the link cannot be rebuilt',
   fallback_enqueue_failed: 'Email bounced; the text could not be queued',
   email_and_sms_failed: 'Email and text both failed',
 }
