@@ -5,6 +5,9 @@ import { logger } from '@/lib/logger'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
 import { isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { loadPrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement-loader'
+import type { PrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement'
+import { BALANCE_REMINDER_EMAIL_AUTO_MARKER } from '@/lib/private-bookings/balance-reminders'
 import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue'
 import {
@@ -534,6 +537,13 @@ export async function GET(request: Request) {
     // off the query below is exactly as it was.
     const depositConfirmation = await isMessagingFlagOn('private_booking_deposit_confirmation')
 
+    // Balance reminders by email (flag private_booking_balance_email_auto), read once for the run.
+    // While it is on, pass 3 emails a booking with a usable address straight away, listing the
+    // payments made, and queues the text for approval only when there is no usable address (or the
+    // email fails). Every reminder it queues is marked, so the backlog queued before the switch can
+    // never be sent (see balance-reminders.ts). With it off, pass 3 is exactly as it was.
+    const balanceEmailAuto = await isMessagingFlagOn('private_booking_balance_email_auto')
+
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
     const draftColumns = depositConfirmation
@@ -925,7 +935,7 @@ export async function GET(request: Request) {
       const { data: confirmedBookings } = (await supabase
         .from('private_bookings_with_details')
         .select(
-          withEmailColumns('id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, gross_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes', emailFirst)
+          withEmailColumns('id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, gross_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes', emailFirst || balanceEmailAuto)
         )
         .eq('status', 'confirmed')
         .not('balance_due_date', 'is', null)
@@ -949,7 +959,15 @@ export async function GET(request: Request) {
           // Resolve phone number (fallback to customer record)
           const contactPhone = booking.contact_phone || booking.customer_mobile
 
-          if (!contactPhone) continue;
+          // With balance reminders by email on, a booking with no number is still reminded when it
+          // has a usable email address. With neither, or with the flag off, it is skipped as before.
+          let emailOnly = false
+          if (!contactPhone) {
+            if (!balanceEmailAuto) continue
+            const recipient = await resolvePrivateBookingEmailRecipient(booking, supabase)
+            if (!recipient.usable) continue
+            emailOnly = true
+          }
 
           // Simple balance check: if final payment date is set, assume paid.
           const isPaid = !!booking.final_payment_date;
@@ -1041,6 +1059,26 @@ export async function GET(request: Request) {
             break
           }
 
+          // Balance reminders by email: the email lists the payments made, so it goes straight away
+          // only with a statement whose figures agree with the balance above. If that cannot be
+          // read the text waits for approval as it always has; with no number to queue it for, the
+          // booking is left for the next run rather than reserved and missed.
+          let statement: PrivateBookingPaymentStatement | null = null
+          if (balanceEmailAuto) {
+            const loaded = await loadPrivateBookingPaymentStatement({
+              bookingId: booking.id,
+              eventTotal: totalAmount,
+              balanceDue,
+              client: supabase,
+            })
+            if (loaded.ok) {
+              statement = loaded.statement
+            } else if (emailOnly) {
+              continue
+            }
+          }
+          const emailStraightAway = statement !== null
+
           const reservation = await reserveCronSmsSend(supabase, {
             bookingId: booking.id,
             triggerType,
@@ -1048,7 +1086,9 @@ export async function GET(request: Request) {
           })
           if (!reservation.reserved) continue
 
-          // All four wait for approval, as they always have; Send Now chooses the channel.
+          // With balance reminders by email on and a usable address, the email goes now and the text
+          // is queued for approval only if the email fails. Otherwise all four wait for approval, as
+          // they always have, and Send Now chooses the channel.
           const balanceStage =
             triggerType === 'balance_reminder_21day' ? '21day' : triggerType === 'balance_reminder_16day' ? '16day' : triggerType === 'balance_reminder_15day' ? '15day' : 'due'
           const result = await sendPrivateBookingMessage({
@@ -1061,7 +1101,10 @@ export async function GET(request: Request) {
               customer_name: booking.customer_name,
               customer_id: booking.customer_id ?? undefined,
               priority: 1,
-              metadata: { balance_due_date: balanceWindowKey }
+              metadata: {
+                balance_due_date: balanceWindowKey,
+                ...(balanceEmailAuto ? { [BALANCE_REMINDER_EMAIL_AUTO_MARKER]: true } : {}),
+              }
             },
             booking: { id: booking.id, customer_id: booking.customer_id, contact_email: booking.contact_email },
             email: () => buildBalanceReminderEmail({
@@ -1070,10 +1113,13 @@ export async function GET(request: Request) {
               stage: balanceStage,
               balanceAmount: balanceDue,
               balanceDueDate: dueDateReadable,
+              payments: statement,
             }),
             windowKey: balanceWindowKey,
             facts: buildPrivateBookingMessageFacts(triggerType, booking, { balanceAmount: balanceDue }),
-            emailFirst,
+            // The owner asked for these by email, whatever private_booking_email_first says.
+            emailFirst: emailStraightAway ? true : emailFirst,
+            emailEvenWhenTextNeedsApproval: emailStraightAway,
           });
 
           if (result.error) {

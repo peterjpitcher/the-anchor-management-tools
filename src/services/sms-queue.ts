@@ -13,6 +13,10 @@ import {
 import type { ApprovedMessageEmailOutcome } from '@/lib/private-bookings/approved-message';
 import { isMessagingFlagOn } from '@/lib/messaging/flags';
 import { shouldAutoSendPrivateBookingSms } from '@/lib/private-bookings/sms-approval';
+import {
+  HISTORIC_BALANCE_REMINDER_REFUSAL,
+  isHistoricBalanceReminderRow,
+} from '@/lib/private-bookings/balance-reminders';
 
 export type QueueSmsInput = {
   booking_id: string;
@@ -676,9 +680,35 @@ export class SmsQueueService {
     }
   }
 
+  /**
+   * Balance reminders by email (flag private_booking_balance_email_auto): a balance reminder queued
+   * before the switch is never sent, so it cannot be approved or sent from the queue. Throws the
+   * reason for staff. With the flag off this reads nothing and changes nothing.
+   */
+  private static async refuseHistoricBalanceReminder(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    smsId: string
+  ): Promise<void> {
+    if (!(await isMessagingFlagOn('private_booking_balance_email_auto'))) return;
+
+    const { data: row, error } = await supabase
+      .from('private_booking_sms_queue')
+      .select('trigger_type, metadata')
+      .eq('id', smsId)
+      .maybeSingle();
+    if (error) {
+      throw new Error('Could not check this queued message, so it was not sent. Please try again.');
+    }
+    if (row && isHistoricBalanceReminderRow(row as { trigger_type?: string | null; metadata?: Record<string, unknown> | null })) {
+      throw new Error(HISTORIC_BALANCE_REMINDER_REFUSAL);
+    }
+  }
+
   static async approveSms(smsId: string, userId: string) {
     const supabase = await createClient();
-    
+
+    await SmsQueueService.refuseHistoricBalanceReminder(supabase, smsId);
+
     const { data: approvedRow, error } = await supabase
       .from('private_booking_sms_queue')
       .update({
@@ -770,6 +800,9 @@ export class SmsQueueService {
     const supabase = await createClient();
     const admin = createAdminClient();
     const dispatchClaim = buildDispatchClaim()
+
+    // Checked before the row is claimed, so a refused reminder is left exactly as it was.
+    await SmsQueueService.refuseHistoricBalanceReminder(supabase, smsId);
 
     // Atomically claim this row so only one worker can dispatch.
     const { data: claimedSms, error: claimError } = await supabase

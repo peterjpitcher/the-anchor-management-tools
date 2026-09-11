@@ -37,6 +37,7 @@ import {
   type PrivateBookingEmailContent,
 } from '@/lib/email/private-booking-emails'
 import type { FallbackBookingFacts, FallbackValidUntil } from '@/lib/notifications/delayed-fallback/types'
+import type { PrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement'
 
 /**
  * Rebuilds a private booking message from the booking as it is now.
@@ -100,6 +101,13 @@ export type CatalogueContext = {
   reviewLink?: string | null
   /** The guest's booking page, for the deposit request (buildPrivateBookingPortalUrl). */
   paymentLink?: string | null
+  /**
+   * The payments made, for a balance reminder email while private_booking_balance_email_auto is on
+   * (loaded only when asked for). paymentStatementUnavailable means it was asked for and could not
+   * be read or did not add up: the reminder then has no email version, so the text goes instead.
+   */
+  paymentStatement?: PrivateBookingPaymentStatement | null
+  paymentStatementUnavailable?: boolean
   cancellation?: CancellationAmounts | null
   /** The facts stored when the message first went, for the parts a later rebuild cannot infer. */
   storedFacts?: Record<string, unknown> | null
@@ -509,11 +517,14 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
               ? balanceReminder15DayMessage(input)
               : balanceReminderDueMessage(input)
       const balanceAmount = ctx.balanceAmount
+      const payments = ctx.paymentStatement ?? null
       return {
         ...base,
         templateKey: `private_booking_${triggerType}`,
         smsBody,
-        email: () => buildBalanceReminderEmail({ booking: b, firstName: b.customer_first_name, stage, balanceAmount, balanceDueDate }),
+        email: ctx.paymentStatementUnavailable
+          ? null
+          : () => buildBalanceReminderEmail({ booking: b, firstName: b.customer_first_name, stage, balanceAmount, balanceDueDate, payments }),
         facts: facts({ balanceAmount }),
       }
     }
