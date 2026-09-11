@@ -177,7 +177,7 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
  * that is when it was confirmed. Recording it keeps the booking right if the flag is switched on
  * later: it is not shown as waiting, and its reminders and hold expiry carry on.
  *
- * Never blocks the booking. Until migration 20260911180000 is applied the column does not exist
+ * Never blocks the booking. Until migration 20260911200000 is applied the column does not exist
  * and the write is refused, which is logged and otherwise harmless while the flag is off.
  */
 async function recordDepositConfirmedAtCreation(bookingId: string, confirmedBy: string | null): Promise<void> {

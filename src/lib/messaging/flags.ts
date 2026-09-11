@@ -41,7 +41,7 @@ export const MESSAGING_FLAG_KEYS = [
   // Private booking deposits (owner, 11 September 2026): creating a booking sends no deposit
   // message; staff confirm the amount and one deposit request goes. Until then the booking gets
   // no deposit reminders, no automatic hold expiry and no hold-lapsed message. Needs migration
-  // 20260911180000 applied before it is switched on.
+  // 20260911200000 applied before it is switched on.
   'private_booking_deposit_confirmation',
   // Balance reminders go by email straight away, listing the payments made, when the booking has
   // a usable address; the text still waits for approval when it has none. Reminders queued before

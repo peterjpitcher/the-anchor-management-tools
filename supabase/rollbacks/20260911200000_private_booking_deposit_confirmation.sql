@@ -1,4 +1,4 @@
--- Rollback for 20260911180000_private_booking_deposit_confirmation.sql
+-- Rollback for 20260911200000_private_booking_deposit_confirmation.sql
 --
 -- First switch the messaging flag private_booking_deposit_confirmation OFF: the application reads
 -- these columns only while it is on, and with it off every booking behaves as it did before.
