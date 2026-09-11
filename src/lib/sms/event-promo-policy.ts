@@ -10,6 +10,7 @@
  *  - fewer than a quarter of its capacity is booked, where booked is capacity minus seats
  *    remaining from get_event_capacity_snapshot_v05, so live waitlist holds count as booked;
  *  - the guest has had fewer than two promotional texts in the last 30 days;
+ *  - no other promotional text lands on the same London day for the guest, across every event;
  *  - each guest gets at most one promotional text per event.
  *
  * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address still
@@ -23,8 +24,8 @@
  */
 
 import type { createAdminClient } from '@/lib/supabase/admin'
-import { shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
-import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
+import { parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { evaluateSmsQuietHours, SMS_QUIET_HOUR_START } from '@/lib/sms/quiet-hours'
 import { isEmailUsable } from '@/lib/notifications/channel'
 import { isEmailSuppressed } from '@/lib/email/logging'
 import { readMessagingFlagState, type MessagingFlagsReadFailure } from '@/lib/messaging/flags'
@@ -68,6 +69,13 @@ export const EVENT_LAST_PUSH_MAX_DAYS_AHEAD = 3
 /** Promotional texts a guest may receive in the rolling window below. */
 export const EVENT_PROMO_TEXT_CAP = 2
 export const EVENT_PROMO_TEXT_CAP_WINDOW_DAYS = 30
+
+/**
+ * Promotional texts a guest may receive on one London calendar day, across every event, so two
+ * nights on the same date (or the first run after the flag goes on) cannot land two texts at
+ * 09:00 and spend the whole month's allowance at once.
+ */
+export const EVENT_PROMO_TEXTS_PER_DAY = 1
 
 /**
  * "Anyone who has attended any past event, however long ago." Ten years reaches past the first
@@ -270,7 +278,7 @@ export function decideLastPushCapacity(row: LastPushCapacityRow | null | undefin
 }
 
 // ---------------------------------------------------------------------------
-// The two-a-month cap
+// The two-a-month cap and the one-a-day limit
 // ---------------------------------------------------------------------------
 
 /** Chunked so no single read comes near PostgREST's 1,000-row page. */
@@ -285,8 +293,75 @@ function chunk<T>(values: T[], size: number): T[][] {
 }
 
 /**
- * Promotional texts each guest has had in the last 30 days, or null when either read failed
- * (the caller then sends nothing: fail closed).
+ * The earliest send time whose text lands on the same London day as a text sent now.
+ *
+ * A text lands when it is sent, or at 09:00 when quiet hours (21:00 to 09:00) hold it, so the
+ * texts landing on London day D are the ones sent from 21:00 on the day before D up to 21:00 on
+ * D. A last push sent at 23:30 on Monday is held overnight and lands at 09:00 on Tuesday, next to
+ * anything sent on Tuesday: counting from London midnight would miss it and let a second text
+ * land beside it. Null only if the date arithmetic fails, and the caller then sends nothing.
+ */
+export function resolvePromoTextDayStart(now: Date = new Date()): Date | null {
+  const quietHours = evaluateSmsQuietHours(now)
+  const landsAt = quietHours.inQuietHours ? quietHours.nextAllowedSendAt : now
+  const dayBefore = shiftIsoDate(toLocalIsoDate(landsAt), -1)
+  if (!dayBefore) return null
+
+  const quietHoursStart = `${String(SMS_QUIET_HOUR_START).padStart(2, '0')}:00`
+  return parseLondonDateTimeLocal(`${dayBefore}T${quietHoursStart}`)
+}
+
+export type PromoTextCounts = {
+  /** Promotional texts in the last 30 days, by customer. */
+  last30Days: Map<string, number>
+  /**
+   * Promotional texts landing on the London day a text sent now would land on, by customer:
+   * sent today, or sent last night and held by quiet hours until 09:00.
+   */
+  sameDay: Map<string, number>
+}
+
+type PromoTextTally = {
+  /** Engine promos as the messages log shows them. */
+  engineFromMessages: Map<string, number>
+  /** Other promotional texts (staff bulk and win-back), which only the messages log holds. */
+  otherFromMessages: Map<string, number>
+  /** Engine promos as the reply-window ledger shows them. */
+  engineFromContext: Map<string, number>
+}
+
+function emptyTally(): PromoTextTally {
+  return { engineFromMessages: new Map(), otherFromMessages: new Map(), engineFromContext: new Map() }
+}
+
+function addOne(counts: Map<string, number>, customerId: string): void {
+  counts.set(customerId, (counts.get(customerId) ?? 0) + 1)
+}
+
+/** The larger of the two views of engine promos plus the other texts, so no text counts twice. */
+function totalsOf(tally: PromoTextTally, customerIds: string[]): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const id of customerIds) {
+    const engine = Math.max(tally.engineFromMessages.get(id) ?? 0, tally.engineFromContext.get(id) ?? 0)
+    const total = engine + (tally.otherFromMessages.get(id) ?? 0)
+    if (total > 0) totals.set(id, total)
+  }
+  return totals
+}
+
+/**
+ * Whether a row was written at or after `sinceMs`. A row whose time cannot be read counts as
+ * recent, so the one-a-day limit fails closed.
+ */
+function isWrittenSince(createdAt: string | null | undefined, sinceMs: number): boolean {
+  const writtenMs = createdAt ? Date.parse(createdAt) : Number.NaN
+  return Number.isNaN(writtenMs) || writtenMs >= sinceMs
+}
+
+/**
+ * Promotional texts each guest has had in the last 30 days, and the ones landing on the same
+ * London day as a text sent now would, or null when a read failed (the caller then sends
+ * nothing: fail closed). Both counts come from one read, so they always agree.
  *
  * Two sources, because neither is complete on its own:
  *
@@ -296,27 +371,34 @@ function chunk<T>(values: T[], size: number): T[][] {
  *  - `sms_promo_context` holds one row per engine promo the moment it is sent or deferred, but
  *    knows nothing of bulk texts, and its insert can fail after a send.
  *
- * So the count is the larger of the two views of engine promos, plus the bulk texts. Taking
+ * So each count is the larger of the two views of engine promos, plus the bulk texts. Taking
  * the larger rather than the sum means a text that sits in both is counted once.
  */
 export async function loadPromoTextCounts(
   db: AdminClient,
   customerIds: string[],
   now: Date = new Date()
-): Promise<Map<string, number> | null> {
-  const counts = new Map<string, number>()
+): Promise<PromoTextCounts | null> {
   const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)))
-  if (uniqueIds.length === 0) return counts
+  if (uniqueIds.length === 0) return { last30Days: new Map(), sameDay: new Map() }
+
+  const dayStart = resolvePromoTextDayStart(now)
+  if (!dayStart) {
+    warnPromoHeldBack('Promo text limit: could not work out the London day; sending none', {
+      now: now.toISOString(),
+    })
+    return null
+  }
+  const dayStartMs = dayStart.getTime()
 
   const sinceIso = new Date(now.getTime() - EVENT_PROMO_TEXT_CAP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const engineFromMessages = new Map<string, number>()
-  const otherFromMessages = new Map<string, number>()
-  const engineFromContext = new Map<string, number>()
+  const last30Days = emptyTally()
+  const sameDay = emptyTally()
 
   for (const ids of chunk(uniqueIds, CAP_LOOKUP_CHUNK_SIZE)) {
     const { data: messageRows, error: messagesError } = await db
       .from('messages')
-      .select('customer_id, template_key')
+      .select('customer_id, template_key, created_at')
       .eq('direction', 'outbound')
       .in('customer_id', ids)
       .in('template_key', [...PROMOTIONAL_SMS_TEMPLATE_KEYS])
@@ -331,15 +413,22 @@ export async function loadPromoTextCounts(
       return null
     }
 
-    for (const row of (messageRows ?? []) as Array<{ customer_id: string | null; template_key: string | null }>) {
+    for (const row of (messageRows ?? []) as Array<{
+      customer_id: string | null
+      template_key: string | null
+      created_at: string | null
+    }>) {
       if (!row.customer_id) continue
-      const target = isEventPromoTemplateKey(row.template_key) ? engineFromMessages : otherFromMessages
-      target.set(row.customer_id, (target.get(row.customer_id) ?? 0) + 1)
+      const isEngine = isEventPromoTemplateKey(row.template_key)
+      addOne(isEngine ? last30Days.engineFromMessages : last30Days.otherFromMessages, row.customer_id)
+      if (isWrittenSince(row.created_at, dayStartMs)) {
+        addOne(isEngine ? sameDay.engineFromMessages : sameDay.otherFromMessages, row.customer_id)
+      }
     }
 
     const { data: contextRows, error: contextError } = await db
       .from('sms_promo_context')
-      .select('customer_id')
+      .select('customer_id, created_at')
       .in('customer_id', ids)
       .gte('created_at', sinceIso)
 
@@ -351,23 +440,26 @@ export async function loadPromoTextCounts(
       return null
     }
 
-    for (const row of (contextRows ?? []) as Array<{ customer_id: string | null }>) {
+    for (const row of (contextRows ?? []) as Array<{ customer_id: string | null; created_at: string | null }>) {
       if (!row.customer_id) continue
-      engineFromContext.set(row.customer_id, (engineFromContext.get(row.customer_id) ?? 0) + 1)
+      addOne(last30Days.engineFromContext, row.customer_id)
+      if (isWrittenSince(row.created_at, dayStartMs)) {
+        addOne(sameDay.engineFromContext, row.customer_id)
+      }
     }
   }
 
-  for (const id of uniqueIds) {
-    const engine = Math.max(engineFromMessages.get(id) ?? 0, engineFromContext.get(id) ?? 0)
-    const total = engine + (otherFromMessages.get(id) ?? 0)
-    if (total > 0) counts.set(id, total)
-  }
-
-  return counts
+  return { last30Days: totalsOf(last30Days, uniqueIds), sameDay: totalsOf(sameDay, uniqueIds) }
 }
 
+/** Takes the `last30Days` counts from loadPromoTextCounts. */
 export function isUnderPromoTextCap(counts: Map<string, number>, customerId: string): boolean {
   return (counts.get(customerId) ?? 0) < EVENT_PROMO_TEXT_CAP
+}
+
+/** Takes the `sameDay` counts from loadPromoTextCounts. */
+export function isUnderDailyPromoTextLimit(counts: Map<string, number>, customerId: string): boolean {
+  return (counts.get(customerId) ?? 0) < EVENT_PROMO_TEXTS_PER_DAY
 }
 
 // ---------------------------------------------------------------------------
