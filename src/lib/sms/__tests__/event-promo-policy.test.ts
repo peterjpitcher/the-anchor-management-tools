@@ -10,12 +10,7 @@ vi.mock('@/lib/messaging/flags', () => ({
   readMessagingFlagState: vi.fn(),
 }))
 
-vi.mock('@/lib/email/logging', () => ({
-  isEmailSuppressed: vi.fn(),
-}))
-
 import { readMessagingFlagState, type MessagingFlagState } from '@/lib/messaging/flags'
-import { isEmailSuppressed } from '@/lib/email/logging'
 import { resolveSmsSuspensionReason } from '@/lib/sms/suspension'
 import { resolveNotificationRoute } from '@/lib/notifications/routing-matrix'
 import {
@@ -36,7 +31,6 @@ import {
 import { argsOf, createRecordingSupabase, inValues } from '../../../../tests/mocks/recordingSupabase'
 
 const mockFlag = vi.mocked(readMessagingFlagState)
-const mockSuppressed = vi.mocked(isEmailSuppressed)
 
 let warnSpy: ReturnType<typeof vi.spyOn>
 
@@ -395,43 +389,203 @@ describe('loadPromoTextCounts: promotional texts in the last 30 days, and the on
   })
 })
 
-describe('loadCustomerIdsWithoutUsableEmail', () => {
-  it('treats a missing, malformed, bounced, deactivated or suppressed address as no email', async () => {
-    const db = createRecordingSupabase({
+/**
+ * "No usable email" for event promotion means the guest marketing campaigns would not reach the
+ * guest: the customer branch of promote_due_marketing_campaigns and claim_marketing_recipients.
+ */
+describe('loadCustomerIdsWithoutUsableEmail: who the guest campaigns would not reach', () => {
+  type CustomerRow = {
+    id: string
+    email: string | null
+    email_status?: string | null
+    email_deactivated_at?: string | null
+    marketing_email_opt_in?: boolean
+    marketing_email_opted_out_at?: string | null
+  }
+
+  type Table = 'customers' | 'bookings' | 'table_bookings' | 'marketing_do_not_contact' | 'email_suppressions'
+
+  function build(world: {
+    customers: CustomerRow[]
+    /** Event bookings per customer, returned in this order and cut at the query's limit. */
+    eventBookings?: Array<[string, number]>
+    tableBookers?: string[]
+    doNotContact?: Array<{ email_normalised: string; removed_at: string | null }>
+    suppressed?: string[]
+    failing?: Table
+  }) {
+    const down = { data: null, error: { code: 'XX000', message: 'down' } }
+    return createRecordingSupabase({
       tables: {
-        customers: () => ({
-          data: [
-            { id: 'none', email: null, email_status: null, email_deactivated_at: null },
-            { id: 'malformed', email: 'not-an-address', email_status: null, email_deactivated_at: null },
-            { id: 'bounced', email: 'b@example.com', email_status: 'bounced', email_deactivated_at: null },
-            { id: 'deactivated', email: 'd@example.com', email_status: 'valid', email_deactivated_at: '2026-08-01T00:00:00Z' },
-            { id: 'suppressed', email: 's@example.com', email_status: 'valid', email_deactivated_at: null },
-            { id: 'usable', email: 'u@example.com', email_status: 'valid', email_deactivated_at: null },
-          ],
-          error: null,
-        }),
+        customers: (query) =>
+          world.failing === 'customers'
+            ? down
+            : {
+                data: world.customers
+                  .filter((row) => inValues(query, 'id').includes(row.id))
+                  .map((row) => ({
+                    email_status: 'valid',
+                    email_deactivated_at: null,
+                    marketing_email_opt_in: false,
+                    marketing_email_opted_out_at: null,
+                    ...row,
+                  })),
+                error: null,
+              },
+        bookings: (query) => {
+          if (world.failing === 'bookings') return down
+          const ids = inValues(query, 'customer_id')
+          const limit = argsOf(query, 'limit')[0]?.[0] as number
+          const rows = (world.eventBookings ?? [])
+            .filter(([id]) => ids.includes(id))
+            .flatMap(([id, count]) => Array.from({ length: count }, () => ({ customer_id: id })))
+          return { data: rows.slice(0, limit), error: null }
+        },
+        table_bookings: (query) =>
+          world.failing === 'table_bookings'
+            ? down
+            : {
+                data: (world.tableBookers ?? [])
+                  .filter((id) => inValues(query, 'customer_id').includes(id))
+                  .map((id) => ({ customer_id: id })),
+                error: null,
+              },
+        marketing_do_not_contact: (query) =>
+          world.failing === 'marketing_do_not_contact'
+            ? down
+            : {
+                data: (world.doNotContact ?? []).filter(
+                  (row) => inValues(query, 'email_normalised').includes(row.email_normalised) && row.removed_at === null
+                ),
+                error: null,
+              },
+        email_suppressions: () =>
+          world.failing === 'email_suppressions'
+            ? down
+            : { data: (world.suppressed ?? []).map((email) => ({ email })), error: null },
       },
     })
-    mockSuppressed.mockImplementation(async (email: string) => email === 's@example.com')
+  }
+
+  it('counts everyone the campaigns would skip, and no one they would reach', async () => {
+    const db = build({
+      customers: [
+        // No address an email can reach.
+        { id: 'none', email: null },
+        { id: 'blank', email: '   ' },
+        { id: 'malformed', email: 'not-an-address' },
+        { id: 'bounced', email: 'b@example.com', email_status: 'bounced' },
+        { id: 'complained', email: 'c@example.com', email_status: 'complained' },
+        { id: 'deactivated', email: 'd@example.com', email_deactivated_at: '2026-08-01T00:00:00Z' },
+        // Unsubscribed from marketing email: the review's case, reachable before this change.
+        { id: 'unsubscribed', email: 'u@example.com', marketing_email_opted_out_at: '2026-09-01T10:00:00Z' },
+        // On the do-not-contact list, matched on the trimmed, lowercased address.
+        { id: 'do-not-contact', email: ' DNC@Example.com ' },
+        // On the suppression list, stored in mixed case.
+        { id: 'suppressed', email: 'sup@example.com' },
+        // No explicit opt-in, no event booking, no table booking.
+        { id: 'no-consent', email: 'nc@example.com' },
+        // Reached by the campaigns.
+        { id: 'opted-in', email: 'optin@example.com', marketing_email_opt_in: true },
+        { id: 'event-booker', email: 'eb@example.com' },
+        { id: 'table-booker', email: 'tb@example.com' },
+        { id: 'dnc-removed', email: 'back@example.com' },
+      ],
+      eventBookings: [
+        ['unsubscribed', 1],
+        ['do-not-contact', 1],
+        ['suppressed', 1],
+        ['event-booker', 1],
+        ['dnc-removed', 1],
+      ],
+      tableBookers: ['table-booker'],
+      doNotContact: [
+        { email_normalised: 'dnc@example.com', removed_at: null },
+        // Removed from the list, so the campaigns reach this guest again.
+        { email_normalised: 'back@example.com', removed_at: '2026-09-02T10:00:00Z' },
+      ],
+      suppressed: ['Sup@Example.COM'],
+    })
 
     const result = await loadCustomerIdsWithoutUsableEmail(db.client as never, [
       'none',
+      'blank',
       'malformed',
       'bounced',
+      'complained',
       'deactivated',
+      'unsubscribed',
+      'do-not-contact',
       'suppressed',
-      'usable',
+      'no-consent',
+      'opted-in',
+      'event-booker',
+      'table-booker',
+      'dnc-removed',
       'not-returned',
     ])
 
-    expect(result).toEqual(new Set(['none', 'malformed', 'bounced', 'deactivated', 'suppressed', 'not-returned']))
+    expect(result).toEqual(
+      new Set([
+        'none',
+        'blank',
+        'malformed',
+        'bounced',
+        'complained',
+        'deactivated',
+        'unsubscribed',
+        'do-not-contact',
+        'suppressed',
+        'no-consent',
+        'not-returned',
+      ])
+    )
   })
 
-  it('returns null, so nothing is sent, when the customer read fails', async () => {
-    const db = createRecordingSupabase({
-      tables: { customers: () => ({ data: null, error: { message: 'down' } }) },
+  it('finds a guest whose one booking sits behind another guest with hundreds', async () => {
+    const db = build({
+      customers: [
+        { id: 'regular', email: 'regular@example.com' },
+        { id: 'newcomer', email: 'new@example.com' },
+      ],
+      // 600 bookings fill the first page on their own.
+      eventBookings: [
+        ['regular', 600],
+        ['newcomer', 1],
+      ],
     })
+
+    const result = await loadCustomerIdsWithoutUsableEmail(db.client as never, ['regular', 'newcomer'])
+
+    expect(result).toEqual(new Set())
+    const bookingReads = db.queries.filter((query) => query.table === 'bookings')
+    expect(bookingReads.map((query) => inValues(query, 'customer_id'))).toEqual([['regular', 'newcomer'], ['newcomer']])
+  })
+
+  it('reads no bookings for guests who opted in, and no lists when nobody has an address', async () => {
+    const optedIn = build({ customers: [{ id: 'a', email: 'a@example.com', marketing_email_opt_in: true }] })
+    expect(await loadCustomerIdsWithoutUsableEmail(optedIn.client as never, ['a'])).toEqual(new Set())
+    expect(optedIn.queries.some((query) => query.table === 'bookings' || query.table === 'table_bookings')).toBe(false)
+
+    const noAddress = build({ customers: [{ id: 'b', email: null }] })
+    expect(await loadCustomerIdsWithoutUsableEmail(noAddress.client as never, ['b'])).toEqual(new Set(['b']))
+    expect(noAddress.queries.map((query) => query.table)).toEqual(['customers'])
+  })
+
+  it.each([
+    'customers',
+    'marketing_do_not_contact',
+    'email_suppressions',
+    'bookings',
+    'table_bookings',
+  ] as const)('returns null, so nothing is sent, when the %s read fails', async (failing) => {
+    const db = build({
+      customers: [{ id: 'a', email: 'a@example.com' }],
+      failing,
+    })
+
     expect(await loadCustomerIdsWithoutUsableEmail(db.client as never, ['a'])).toBeNull()
+    expect(warnSpy).toHaveBeenCalled()
   })
 })
 

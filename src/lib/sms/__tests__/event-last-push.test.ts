@@ -34,10 +34,6 @@ vi.mock('@/lib/sms/bulk', () => ({
   getSmartFirstName: vi.fn((name: string | null | undefined) => name || 'there'),
 }))
 
-vi.mock('@/lib/email/logging', () => ({
-  isEmailSuppressed: vi.fn().mockResolvedValue(false),
-}))
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
 import { EventMarketingService } from '@/services/event-marketing'
@@ -104,7 +100,20 @@ type World = {
   promoTexts?: Record<string, PromoText[]>
   /** Rows in sms_promo_context from earlier sends, by customer; written five days ago by default. */
   contexts?: Array<{ customer_id: string; event_id: string; created_at?: string }>
-  customers?: Array<{ id: string; email: string | null; email_status?: string | null }>
+  customers?: Array<{
+    id: string
+    email: string | null
+    email_status?: string | null
+    marketing_email_opt_in?: boolean
+    marketing_email_opted_out_at?: string | null
+  }>
+  /**
+   * Customers with an event booking. Everyone in the audience has one by construction (it is
+   * built from past attendance), so this defaults to the whole audience.
+   */
+  eventBookers?: string[]
+  /** Addresses on the suppression list. */
+  suppressed?: string[]
   countError?: boolean
 }
 
@@ -171,10 +180,24 @@ function buildWorld(world: World) {
         return {
           data: (world.customers ?? [])
             .filter((row) => ids.includes(row.id))
-            .map((row) => ({ email_status: null, email_deactivated_at: null, ...row })),
+            .map((row) => ({
+              email_status: null,
+              email_deactivated_at: null,
+              marketing_email_opt_in: false,
+              marketing_email_opted_out_at: null,
+              ...row,
+            })),
           error: null,
         }
       },
+      bookings: (query: RecordedQuery) => {
+        const ids = inValues(query, 'customer_id') as string[]
+        const bookers = world.eventBookers ?? (world.audience ?? []).map((row) => row.customer_id)
+        return { data: bookers.filter((id) => ids.includes(id)).map((id) => ({ customer_id: id })), error: null }
+      },
+      table_bookings: () => ({ data: [], error: null }),
+      marketing_do_not_contact: () => ({ data: [], error: null }),
+      email_suppressions: () => ({ data: (world.suppressed ?? []).map((email) => ({ email })), error: null }),
       events: () => ({ data: { start_datetime: '2026-09-18T18:00:00Z', date: '2026-09-18', time: '19:00:00' }, error: null }),
       promo_sequence: () => ({ error: null }),
     },
@@ -520,6 +543,30 @@ describe('intro for guests with no usable email address', () => {
     // It is still the intro, so it opens the follow-up sequence exactly as today (the
     // follow-up itself does not run while the last push is on).
     expect(supabase.from).toHaveBeenCalledWith('promo_sequence')
+  })
+
+  it('texts the guests the email campaigns would skip, so nobody falls between the two', async () => {
+    buildWorld({
+      audience: [guest('unsubscribed'), guest('suppressed'), guest('reached'), guest('opted-in')],
+      customers: [
+        // Unsubscribed from marketing email: no campaign email, so the intro text.
+        { id: 'unsubscribed', email: 'u@example.com', email_status: 'valid', marketing_email_opted_out_at: '2026-09-01T10:00:00Z' },
+        // Suppressed under a differently cased address: no campaign email either.
+        { id: 'suppressed', email: 'sup@example.com', email_status: 'valid' },
+        // The campaigns reach these two: one through a past booking, one through an opt-in.
+        { id: 'reached', email: 'r@example.com', email_status: 'valid' },
+        { id: 'opted-in', email: 'o@example.com', email_status: 'valid', marketing_email_opt_in: true },
+      ],
+      suppressed: ['SUP@example.com'],
+    })
+
+    const result = await sendCrossPromoForEvent(FREE_EVENT, { mode: 'intro_no_email' })
+
+    expect(smsCallFor('unsubscribed')?.[2]?.metadata?.template_key).toBe('event_cross_promo_7d')
+    expect(smsCallFor('suppressed')).toBeDefined()
+    expect(smsCallFor('reached')).toBeUndefined()
+    expect(smsCallFor('opted-in')).toBeUndefined()
+    expect(result.sent).toBe(2)
   })
 
   it('keeps today\'s capacity rules rather than the quarter rule', async () => {

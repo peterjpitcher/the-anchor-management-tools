@@ -13,8 +13,9 @@
  *  - no other promotional text lands on the same London day for the guest, across every event;
  *  - each guest gets at most one promotional text per event.
  *
- * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address still
- * get today's 7-day intro text, counted against the same two-a-month cap.
+ * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address (anyone
+ * the guest marketing campaigns would not reach) still get today's 7-day intro text, inside the
+ * same two-a-month cap.
  *
  * When the flags row cannot be read, the cron sends no promotion texts at all in that run.
  *
@@ -27,7 +28,6 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { evaluateSmsQuietHours, SMS_QUIET_HOUR_START } from '@/lib/sms/quiet-hours'
 import { isEmailUsable } from '@/lib/notifications/channel'
-import { isEmailSuppressed } from '@/lib/email/logging'
 import { readMessagingFlagState, type MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { isEventPromoTemplateKey, PROMOTIONAL_SMS_TEMPLATE_KEYS } from '@/lib/sms/promo-template-keys'
 
@@ -463,13 +463,178 @@ export function isUnderDailyPromoTextLimit(counts: Map<string, number>, customer
 }
 
 // ---------------------------------------------------------------------------
-// Guests without a usable email address
+// Guests the guest marketing campaigns cannot reach
 // ---------------------------------------------------------------------------
 
+/** The customer columns the guest campaign audience is decided on. */
+type CampaignEmailRow = {
+  id: string
+  email: string | null
+  email_status: string | null
+  email_deactivated_at: string | null
+  marketing_email_opt_in: boolean | null
+  marketing_email_opted_out_at: string | null
+}
+
+/** The address as the campaign SQL compares it, lower(btrim(email)). */
+function normaliseEmailAddress(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+/** Rows asked for in one existence read, well inside PostgREST's 1,000-row page. */
+const EXISTENCE_PAGE_SIZE = 500
+
 /**
- * The customers among these who cannot be emailed: no address, a malformed one, a customer
- * record that marks it invalid, bounced or complained, a deactivated address, or one on the
- * suppression list. Null when the customer read fails, so the caller sends nothing.
+ * Which of these customers have at least one row in the table, or null when a read fails.
+ *
+ * A guest with hundreds of bookings could fill a page alone and hide another guest's only one,
+ * so whenever a page comes back full the customers not yet seen are asked about again. Every
+ * full page finds at least one of them, so the loop always ends.
+ */
+async function loadCustomerIdsWithAnyRow(
+  db: AdminClient,
+  table: 'bookings' | 'table_bookings',
+  customerIds: string[]
+): Promise<Set<string> | null> {
+  const found = new Set<string>()
+  let pending = Array.from(new Set(customerIds))
+
+  while (pending.length > 0) {
+    const ids = pending.slice(0, CAP_LOOKUP_CHUNK_SIZE)
+    const { data, error } = await db
+      .from(table)
+      .select('customer_id')
+      .in('customer_id', ids)
+      .limit(EXISTENCE_PAGE_SIZE)
+
+    if (error) {
+      warnPromoHeldBack(
+        `Event intro for guests without email: failed to read ${table}; sending none`,
+        describeDbError(error)
+      )
+      return null
+    }
+
+    const rows = (data ?? []) as Array<{ customer_id: string | null }>
+    const foundBefore = found.size
+    for (const row of rows) {
+      if (row.customer_id) found.add(row.customer_id)
+    }
+
+    if (rows.length < EXISTENCE_PAGE_SIZE) {
+      // Every customer in this chunk has been answered.
+      pending = pending.slice(ids.length)
+    } else if (found.size > foundBefore) {
+      // A full page may have cut someone off: ask again about those not yet seen.
+      pending = pending.filter((id) => !found.has(id))
+    } else {
+      warnPromoHeldBack(`Event intro for guests without email: ${table} read made no progress; sending none`, {
+        table,
+      })
+      return null
+    }
+  }
+
+  return found
+}
+
+/**
+ * The addresses among these on the active do-not-contact list, or null when it cannot be read.
+ * email_normalised is stored as lower(btrim(email)) by a check constraint, so `in` is exact.
+ */
+async function loadDoNotContactEmails(db: AdminClient, emails: string[]): Promise<Set<string> | null> {
+  const listed = new Set<string>()
+
+  for (const part of chunk(emails, CAP_LOOKUP_CHUNK_SIZE)) {
+    const { data, error } = await db
+      .from('marketing_do_not_contact')
+      .select('email_normalised')
+      .in('email_normalised', part)
+      .is('removed_at', null)
+
+    if (error) {
+      warnPromoHeldBack(
+        'Event intro for guests without email: failed to read the do-not-contact list; sending none',
+        describeDbError(error)
+      )
+      return null
+    }
+
+    for (const row of (data ?? []) as Array<{ email_normalised: string | null }>) {
+      if (row.email_normalised) listed.add(row.email_normalised)
+    }
+  }
+
+  return listed
+}
+
+const SUPPRESSION_PAGE_SIZE = 1000
+/** Far beyond any real list. A longer one is treated as unreadable rather than cut short. */
+const SUPPRESSION_MAX_PAGES = 20
+
+/**
+ * Every address on the suppression list, trimmed and lowercased, or null when it cannot be read.
+ *
+ * Read whole rather than filtered with `in`: the campaign SQL compares lower(es.email) and nothing
+ * guarantees the column is stored lowercase, so an `in` on lowercased addresses could miss a row
+ * the campaign honours. previewAudience in src/services/marketing-contacts.ts reads it whole for
+ * the same reason.
+ */
+async function loadSuppressedEmails(db: AdminClient): Promise<Set<string> | null> {
+  const suppressed = new Set<string>()
+
+  for (let page = 0; page < SUPPRESSION_MAX_PAGES; page += 1) {
+    const from = page * SUPPRESSION_PAGE_SIZE
+    const { data, error } = await db
+      .from('email_suppressions')
+      .select('email')
+      .order('email', { ascending: true })
+      .range(from, from + SUPPRESSION_PAGE_SIZE - 1)
+
+    if (error) {
+      warnPromoHeldBack(
+        'Event intro for guests without email: failed to read the suppression list; sending none',
+        describeDbError(error)
+      )
+      return null
+    }
+
+    const rows = (data ?? []) as Array<{ email: string | null }>
+    for (const row of rows) {
+      if (row.email) suppressed.add(normaliseEmailAddress(row.email))
+    }
+    if (rows.length < SUPPRESSION_PAGE_SIZE) return suppressed
+  }
+
+  warnPromoHeldBack('Event intro for guests without email: the suppression list is longer than expected; sending none', {
+    maxRows: SUPPRESSION_PAGE_SIZE * SUPPRESSION_MAX_PAGES,
+  })
+  return null
+}
+
+/**
+ * The customers among these whom the guest marketing campaigns would not reach, so the event
+ * intro text is their only way to hear about the night. Null when any read fails, so the caller
+ * sends nothing.
+ *
+ * Reachable means what the customer branch of promote_due_marketing_campaigns and
+ * claim_marketing_recipients checks before a guest campaign goes out
+ * (supabase/migrations/20260815160000_marketing_send_days_by_audience.sql and
+ * 20260909084500_marketing_monthly_roundup_cap_exempt.sql):
+ *
+ *  - an email address;
+ *  - not opted out of marketing email (marketing_email_opted_out_at);
+ *  - not bounced;
+ *  - not on the do-not-contact list or the suppression list, on the trimmed, lowercased address;
+ *  - and marketing_email_opt_in, or any event booking, or any table booking.
+ *
+ * The address must also be one an email can reach (isEmailUsable): well formed, not marked invalid
+ * or complained, not deactivated. The campaign would try those and fail, so the guest would still
+ * hear nothing. The campaign's frequency cap is not part of this: it decides when a guest next
+ * gets an email, not whether they can.
+ *
+ * A guest who fails any of these has no usable email for event promotion and gets the intro
+ * text, inside the two-a-month cap and the one-a-day limit.
  */
 export async function loadCustomerIdsWithoutUsableEmail(
   db: AdminClient,
@@ -479,10 +644,11 @@ export async function loadCustomerIdsWithoutUsableEmail(
   const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)))
   if (uniqueIds.length === 0) return withoutEmail
 
+  const rows = new Map<string, CampaignEmailRow>()
   for (const ids of chunk(uniqueIds, CAP_LOOKUP_CHUNK_SIZE)) {
     const { data, error } = await db
       .from('customers')
-      .select('id, email, email_status, email_deactivated_at')
+      .select('id, email, email_status, email_deactivated_at, marketing_email_opt_in, marketing_email_opted_out_at')
       .in('id', ids)
 
     if (error) {
@@ -493,27 +659,52 @@ export async function loadCustomerIdsWithoutUsableEmail(
       return null
     }
 
-    const rows = (data ?? []) as Array<{
-      id: string
-      email: string | null
-      email_status: string | null
-      email_deactivated_at: string | null
-    }>
-    const byId = new Map(rows.map((row) => [row.id, row]))
-
-    for (const id of ids) {
-      const row = byId.get(id)
-      if (!row || !isEmailUsable(row)) {
-        withoutEmail.add(id)
-        continue
-      }
-
-      // isEmailSuppressed fails open (false) when the list cannot be read. Here that means
-      // "has an email", so the guest is NOT texted: the safe direction for a promotion.
-      if (await isEmailSuppressed(row.email as string)) {
-        withoutEmail.add(id)
-      }
+    for (const row of (data ?? []) as CampaignEmailRow[]) {
+      rows.set(row.id, row)
     }
+  }
+
+  // What the customer row decides alone: an address an email can reach, not opted out.
+  const addressed: Array<{ id: string; email: string; optedIn: boolean }> = []
+  for (const id of uniqueIds) {
+    const row = rows.get(id)
+    if (!row || !isEmailUsable(row) || row.marketing_email_opted_out_at) {
+      withoutEmail.add(id)
+      continue
+    }
+    addressed.push({
+      id,
+      email: normaliseEmailAddress(row.email as string),
+      optedIn: row.marketing_email_opt_in === true,
+    })
+  }
+  if (addressed.length === 0) return withoutEmail
+
+  // The two lists, on the address as the campaign SQL compares it.
+  const doNotContact = await loadDoNotContactEmails(db, Array.from(new Set(addressed.map((guest) => guest.email))))
+  if (!doNotContact) return null
+  const suppressed = await loadSuppressedEmails(db)
+  if (!suppressed) return null
+
+  // Consent: an explicit opt-in, or any event booking, or any table booking.
+  const needBooking: string[] = []
+  for (const guest of addressed) {
+    if (doNotContact.has(guest.email) || suppressed.has(guest.email)) {
+      withoutEmail.add(guest.id)
+    } else if (!guest.optedIn) {
+      needBooking.push(guest.id)
+    }
+  }
+  if (needBooking.length === 0) return withoutEmail
+
+  const withEventBooking = await loadCustomerIdsWithAnyRow(db, 'bookings', needBooking)
+  if (!withEventBooking) return null
+  const needTableBooking = needBooking.filter((id) => !withEventBooking.has(id))
+  const withTableBooking = await loadCustomerIdsWithAnyRow(db, 'table_bookings', needTableBooking)
+  if (!withTableBooking) return null
+
+  for (const id of needTableBooking) {
+    if (!withTableBooking.has(id)) withoutEmail.add(id)
   }
 
   return withoutEmail
