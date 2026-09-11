@@ -4,8 +4,9 @@ import { isEmailSuppressed } from '@/lib/email/logging'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCustomerSmsSendAllowed, isCustomerWhatsAppSendAllowed, sendSMS, sendWhatsApp, type SendSMSOptions, type SendWhatsAppOptions } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import {
-  isValidEmailAddress,
+  isEmailUsable,
   selectChannel,
   type NotificationCategory,
   type NotificationChannel,
@@ -39,6 +40,11 @@ type NotifyCustomerInput = {
   policy: NotificationPolicy
   urgency: NotificationUrgency
   category?: NotificationCategory
+  /**
+   * Everything `sendEmail` takes. `idempotencyKey` goes through to the provider, so a retried
+   * call carrying the same key cannot put a second copy in the customer's inbox; build it from
+   * the booking id and the message kind.
+   */
   email?: Omit<EmailOptions, 'to'> & { to?: string | null }
   whatsapp?: {
     to?: string | null
@@ -63,10 +69,18 @@ type ChannelAttempt = {
       logFailure?: boolean
 }
 
+/** The value written to notification_deliveries.final_status for this call. */
+export type NotifyFinalStatus = 'sent' | 'failed' | 'no_channel'
+
 export type NotifyCustomerResult = {
   selectedChannels: NotificationChannel[]
   attempts: ChannelAttempt[]
   noChannelReason?: string
+  finalStatus: NotifyFinalStatus
+  /** The channel that reached the customer, or null when none did. */
+  sentChannel: NotificationChannel | null
+  /** True when an earlier channel was tried and failed before a later one succeeded. */
+  fallbackUsed: boolean
 }
 
 async function loadCustomer(
@@ -168,16 +182,7 @@ async function recordAttempt(input: {
 
 async function isEmailEligible(customer: CustomerChannelState | null, category: NotificationCategory): Promise<boolean> {
   const email = customer?.email?.trim()
-  if (!isValidEmailAddress(email)) {
-    return false
-  }
-
-  const status = customer?.email_status ?? 'unknown'
-  if (['invalid', 'bounced', 'complained'].includes(status)) {
-    return false
-  }
-
-  if (customer?.email_deactivated_at) {
+  if (!email || !isEmailUsable(customer)) {
     return false
   }
 
@@ -240,6 +245,41 @@ async function isWhatsAppEligible(
   })
 
   return result.allowed
+}
+
+/**
+ * An email that went out without its log row is invisible to everything that reads
+ * email_messages, so staff are told. Never throws: a throw here would reach the caller as a
+ * failed notification when the customer already has the email.
+ */
+async function alertEmailSentButUnlogged(input: {
+  templateKey: string
+  deliveryId: string | null
+  customerId: string | null
+  providerMessageId: string | null
+  error: string | null
+}): Promise<void> {
+  logger.error('Customer email sent but its email_messages row was not written', {
+    metadata: input,
+  })
+
+  try {
+    await reportCronFailure(
+      'notify-customer',
+      new Error(`Customer email sent but not logged: ${input.error ?? 'unknown logging error'}`),
+      {
+        template_key: input.templateKey,
+        delivery_id: input.deliveryId,
+        customer_id: input.customerId,
+        provider_message_id: input.providerMessageId,
+        outcome: 'The provider accepted the email, so no SMS was sent. The local email log has no row for it; check the provider dashboard for this message id.',
+      }
+    )
+  } catch (alertError) {
+    logger.error('Failed to raise the sent-but-unlogged email alert', {
+      error: alertError instanceof Error ? alertError : new Error(String(alertError)),
+    })
+  }
 }
 
 export async function notifyCustomer(input: NotifyCustomerInput): Promise<NotifyCustomerResult> {
@@ -309,6 +349,9 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
       selectedChannels: [],
       attempts: [],
       noChannelReason: selected.reason,
+      finalStatus: 'no_channel',
+      sentChannel: null,
+      fallbackUsed: false,
     }
   }
 
@@ -323,16 +366,33 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
         requireLog: true,
       })
 
-      const attempt = {
+      // The provider accepted the email but its email_messages row could not be written, so
+      // sendEmail reports a failure that still carries the provider's id. The customer has the
+      // email; treating it as failed would text them the same message as well.
+      const sentButUnlogged = !result.success && Boolean(result.messageId)
+
+      const attempt: ChannelAttempt = {
         channel,
-        success: result.success,
+        success: result.success || sentButUnlogged,
         error: result.error ?? null,
+        code: result.code ?? null,
+        logFailure: sentButUnlogged,
         messageId: result.messageId ?? null,
       }
       attempts.push(attempt)
       await recordAttempt({ deliveryId, attemptOrder: attempts.length, attempt })
 
-      if (result.success) {
+      if (sentButUnlogged) {
+        await alertEmailSentButUnlogged({
+          templateKey,
+          deliveryId,
+          customerId: customer?.id ?? input.customerId ?? null,
+          providerMessageId: result.messageId ?? null,
+          error: result.error ?? null,
+        })
+      }
+
+      if (attempt.success) {
         break
       }
 
@@ -395,14 +455,19 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
     }
   }
 
+  // The loop stops at the first success, so a successful attempt that is not the first one
+  // means an earlier channel was tried and failed.
+  const successful = attempts.find(attempt => attempt.success) ?? null
+  const finalStatus: NotifyFinalStatus = successful ? 'sent' : 'failed'
+  const fallbackUsed = successful !== null && attempts[0] !== successful
+
   if (deliveryId) {
     try {
-      const successful = attempts.find(attempt => attempt.success)
       const client = input.supabase ?? createAdminClient()
       await (client.from('notification_deliveries') as any)
         .update({
           selected_channel: successful?.channel ?? null,
-          final_status: successful ? 'sent' : 'failed',
+          final_status: finalStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', deliveryId)
@@ -417,5 +482,8 @@ export async function notifyCustomer(input: NotifyCustomerInput): Promise<Notify
   return {
     selectedChannels: selected.channels,
     attempts,
+    finalStatus,
+    sentChannel: successful?.channel ?? null,
+    fallbackUsed,
   }
 }
