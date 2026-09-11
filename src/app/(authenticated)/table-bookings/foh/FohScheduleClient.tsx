@@ -37,6 +37,20 @@ import { FohBookingDetailModal } from './components/FohBookingDetailModal'
 import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
 import { FohChangeTimeModal } from './components/FohChangeTimeModal'
+import {
+  describeGuestNotificationProblem,
+  readGuestNotificationOutcome,
+} from '@/lib/table-bookings/guest-notification-outcome'
+
+/** The warning for a guest who was not told about a change, or null. */
+function describeGuestNotReached(result: unknown): string | null {
+  const payload = result && typeof result === 'object' ? (result as Record<string, unknown>) : null
+  if (!payload) return null
+  return describeGuestNotificationProblem(
+    readGuestNotificationOutcome(payload.guest_notification),
+    'about the cancellation'
+  )
+}
 
 export function FohScheduleClient({
   initialDate,
@@ -302,6 +316,10 @@ export function FohScheduleClient({
       if (snap) applyBookingPatch(snap)
       await reloadSchedule()
       setStatusMessage(buildActionSuccessMessage(successMessage, result))
+      // The change stands, but staff must know when the guest was not told about it. Only the
+      // email-first paths report this, so without their flags nothing new shows.
+      const guestNotReached = describeGuestNotReached(result)
+      if (guestNotReached) setErrorMessage(guestNotReached)
       return true
     } catch (error) {
       if (error instanceof BookingActionError && error.payload) {

@@ -18,6 +18,23 @@ import {
   getTableBookingVisualState,
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
+import {
+  describeGuestNotificationProblem,
+  readGuestNotificationOutcome,
+} from '@/lib/table-bookings/guest-notification-outcome'
+
+/**
+ * Staff must know when a guest was not told their booking was cancelled. Only the email-first
+ * path (messaging flag table_cancelled_email_first) reports this; without it there is nothing to
+ * show, as before.
+ */
+function warnIfCancellationNotReached(payload: unknown): void {
+  const outcome = readGuestNotificationOutcome(
+    payload && typeof payload === 'object' ? (payload as Record<string, unknown>).guest_notification : null
+  )
+  const problem = describeGuestNotificationProblem(outcome, 'about the cancellation')
+  if (problem) toast.error(problem, { duration: 10000 })
+}
 
 const londonDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'medium',
@@ -552,9 +569,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       `status:${action}`,
       async () => {
-        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/status`, {
+        const payload = await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/status`, {
           body: { action },
         })
+        warnIfCancellationNotReached(payload)
       },
       'Booking updated'
     )
@@ -767,9 +785,10 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     await runAction(
       'delete',
       async () => {
-        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
+        const payload = await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}`, {
           method: 'DELETE',
         })
+        warnIfCancellationNotReached(payload)
         router.push('/table-bookings/boh')
       },
       'Booking deleted'

@@ -4,6 +4,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 
 import { sendTableBookingCancelledSmsIfAllowed } from './bookings'
+import type { GuestNotificationOutcome } from './guest-notification-outcome'
 import { refundTableBookingDeposit, type RefundResult } from './refunds'
 
 /**
@@ -29,7 +30,15 @@ export async function refundAndNotifyOnCancel(
     customerId: string
     source: string
   },
-): Promise<{ refundResult: RefundResult; notified: boolean }> {
+): Promise<{
+  refundResult: RefundResult
+  notified: boolean
+  /**
+   * What reached the guest, when the email-first path (flag `table_cancelled_email_first`) sent
+   * the notice. Null on the text-only path, which reports nothing, as before.
+   */
+  notification: GuestNotificationOutcome | null
+}> {
   const bookingDate = new Date(`${params.bookingDate}T12:00:00`)
 
   let refundResult: RefundResult
@@ -59,14 +68,16 @@ export async function refundAndNotifyOnCancel(
   }
 
   let notified = false
+  let notification: GuestNotificationOutcome | null = null
   try {
-    await sendTableBookingCancelledSmsIfAllowed(supabase, {
-      customerId: params.customerId,
-      bookingReference: params.bookingReference,
-      bookingDate: params.bookingDate,
-      refundResult,
-      tableBookingId: params.bookingId,
-    })
+    notification =
+      (await sendTableBookingCancelledSmsIfAllowed(supabase, {
+        customerId: params.customerId,
+        bookingReference: params.bookingReference,
+        bookingDate: params.bookingDate,
+        refundResult,
+        tableBookingId: params.bookingId,
+      })) ?? null
     notified = true
   } catch (error) {
     logger.error('Cancellation SMS failed after a booking was cancelled', {
@@ -75,5 +86,5 @@ export async function refundAndNotifyOnCancel(
     })
   }
 
-  return { refundResult, notified }
+  return { refundResult, notified, notification }
 }

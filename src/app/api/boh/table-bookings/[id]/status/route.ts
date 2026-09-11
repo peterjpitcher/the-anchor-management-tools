@@ -134,14 +134,17 @@ export async function POST(
   }
 
   // Tiered deposit refund + cancellation SMS when staff cancel a booking (never fail the status change)
+  // guestNotification is set only on the email-first path (flag table_cancelled_email_first).
+  let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   if (action === 'cancelled' && booking.booking_date && booking.customer_id) {
-    await refundAndNotifyOnCancel(auth.supabase, {
+    const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: booking.id,
       bookingReference: booking.booking_reference || booking.id,
       bookingDate: booking.booking_date,
       customerId: booking.customer_id,
       source: 'boh_status_cancel',
     })
+    guestNotification = cancelOutcome?.notification ?? null
   }
 
   // Audit log the status transition (fire-and-forget)
@@ -159,7 +162,11 @@ export async function POST(
   }).catch(() => {})
 
   if (action !== 'no_show') {
-    return NextResponse.json({ success: true, data: updatedRow })
+    return NextResponse.json({
+      success: true,
+      data: updatedRow,
+      ...(guestNotification ? { guest_notification: guestNotification } : {}),
+    })
   }
 
   return NextResponse.json({
