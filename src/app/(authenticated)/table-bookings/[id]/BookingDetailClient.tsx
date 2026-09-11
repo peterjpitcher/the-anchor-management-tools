@@ -4,7 +4,12 @@ import { ChristmasCourseFields } from '@/components/features/table-bookings/Chri
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-import { Badge, Button, ConfirmDialog, Input, Modal, Textarea } from '@/ds'
+import { Badge, Button, ConfirmDialog, Input, Modal, Radio, Textarea } from '@/ds'
+import {
+  STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
+  defaultStaffMessageChannel,
+  type StaffMessageChannel,
+} from '@/lib/messaging/staff-email-defaults'
 import CustomerSearchInput from '@/components/features/customers/CustomerSearchInput'
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
@@ -342,6 +347,11 @@ interface Props {
   canRefund: boolean
   /** The seasonal pre-order block, rendered on the server and slotted in. Null when the booking has none. */
   seasonalPreorder?: ReactNode
+  /**
+   * P7: whether the guest message card may send an email (flag staff_message_email_option), and
+   * whether this guest has a usable address, which makes email the default.
+   */
+  emailOption?: { enabled: boolean; usable: boolean }
 }
 
 type MoveTableOption = {
@@ -375,7 +385,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, seasonalPreorder }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, seasonalPreorder, emailOption }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   const [moveTableId, setMoveTableId] = useState<string>('')
@@ -394,6 +404,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const [preorderEditOpen, setPreorderEditOpen] = useState(false)
   const [preorderEdit, setPreorderEdit] = useState<PreorderEditState>({})
   const [smsBody, setSmsBody] = useState('')
+  const [messageChannel, setMessageChannel] = useState<StaffMessageChannel>(() => defaultStaffMessageChannel(emailOption))
+  const [emailSubject, setEmailSubject] = useState(STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT)
   const [showRefundDialog, setShowRefundDialog] = useState(false)
   const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
 
@@ -793,6 +805,27 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       'SMS sent to guest'
     )
   }
+
+  async function handleSendEmail() {
+    const trimmed = smsBody.trim()
+    const subject = emailSubject.trim()
+    if (!trimmed || !subject) {
+      toast.error('Enter a subject and a message before sending')
+      return
+    }
+    await runAction(
+      'send-sms',
+      async () => {
+        await requestTableBookingAction(`/api/boh/table-bookings/${booking.id}/email`, {
+          body: { subject, message: trimmed },
+        })
+        setSmsBody('')
+      },
+      'Email sent to guest'
+    )
+  }
+
+  const emailChosen = Boolean(emailOption?.enabled) && messageChannel === 'email'
 
   useEffect(() => {
     let cancelled = false
@@ -1207,27 +1240,57 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </div>
           </SectionCard>
 
-          <SectionCard title="Send SMS">
+          <SectionCard title={emailOption?.enabled ? 'Message guest' : 'Send SMS'}>
             {canEdit ? (
               <div className="space-y-3">
+                {emailOption?.enabled && (
+                  <fieldset className="space-y-2">
+                    <legend className="sr-only">Send by</legend>
+                    <Radio
+                      name="guest-message-channel"
+                      value="email"
+                      label="Email"
+                      description={emailOption.usable ? undefined : 'No usable email address on file for this guest.'}
+                      checked={messageChannel === 'email'}
+                      onChange={() => setMessageChannel('email')}
+                      disabled={!emailOption.usable || Boolean(actionLoadingKey)}
+                    />
+                    <Radio
+                      name="guest-message-channel"
+                      value="sms"
+                      label="Text"
+                      checked={messageChannel === 'sms'}
+                      onChange={() => setMessageChannel('sms')}
+                      disabled={Boolean(actionLoadingKey)}
+                    />
+                  </fieldset>
+                )}
+                {emailChosen && (
+                  <Input
+                    label="Subject"
+                    value={emailSubject}
+                    maxLength={200}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                  />
+                )}
                 <textarea
                   value={smsBody}
                   onChange={(e) => setSmsBody(e.target.value)}
                   rows={5}
-                  maxLength={640}
+                  maxLength={emailChosen ? 2000 : 640}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200"
                   placeholder="Type message..."
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">{smsBody.length}/640</p>
+                  <p className="text-xs text-gray-500">{smsBody.length}/{emailChosen ? 2000 : 640}</p>
                   <Button
                     size="sm"
                     variant="secondary"
                     loading={actionLoadingKey === 'send-sms'}
                     disabled={Boolean(actionLoadingKey)}
-                    onClick={() => void handleSendSms()}
+                    onClick={() => void (emailChosen ? handleSendEmail() : handleSendSms())}
                   >
-                    Send SMS
+                    {emailChosen ? 'Send email' : 'Send SMS'}
                   </Button>
                 </div>
               </div>

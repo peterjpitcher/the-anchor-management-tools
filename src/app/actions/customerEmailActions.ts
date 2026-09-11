@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
-import { sendEmail } from '@/lib/email/emailService'
+import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
 import { revalidatePath } from 'next/cache'
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -89,16 +89,16 @@ export async function sendCustomerEmail(
       return { error: 'This customer has no email address on file' }
     }
 
-    const result = await sendEmail({
+    const result = await sendStaffOneOffEmail({
       to: customerEmail,
       subject: trimmedSubject,
-      text: trimmedBody,
+      body: trimmedBody,
       customerId,
       commType: 'customer_direct',
     })
 
     if (!result.success) {
-      const message = result.error ?? 'Failed to send email'
+      const message = result.error
       await logAuditEvent({
         ...auditBase,
         operation_type: 'send',
