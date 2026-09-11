@@ -30,8 +30,17 @@ import {
   notifyTableBookingGuestEmailFirst,
   type GuestChannelCustomer,
 } from '@/lib/table-bookings/guest-notify'
-import { buildTableBookingCancelledEmail } from '@/lib/table-bookings/guest-emails'
+import {
+  buildTableBookingCancelledEmail,
+  buildTableBookingDepositConfirmedEmail,
+} from '@/lib/table-bookings/guest-emails'
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
+import {
+  claimIdempotencyKey,
+  computeIdempotencyRequestHash,
+  persistIdempotencyResponse,
+  releaseIdempotencyClaim,
+} from '@/lib/api/idempotency'
 
 // Re-exported for backwards-compat in this file. The single source of truth is
 // `LARGE_GROUP_DEPOSIT_PER_PERSON_GBP` in `./deposit.ts`. Spec §7.3, §8.3.
@@ -1244,6 +1253,266 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   }
 }
 
+const DEPOSIT_CONFIRMED_TEMPLATE_KEY = 'table_booking_deposit_confirmed'
+
+/** Email log statuses that mean the email went out, as the event emails already read them. */
+const DELIVERABLE_EMAIL_STATUSES = ['queued', 'sent', 'delivered', 'delivery_delayed', 'opened', 'clicked']
+
+/**
+ * How long the one-message claim for a deposit confirmation lasts: the SMS duplicate window. All
+ * five triggers (Stripe webhook, PayPal webhook, capture route, guest payment page and the
+ * reconciliation cron) fire within minutes of the payment.
+ */
+const DEPOSIT_CONFIRMED_CLAIM_TTL_HOURS = 24 * 14
+
+type DepositConfirmedBooking = {
+  id: string
+  customer_id: string
+  booking_reference: string | null
+  booking_date: string | null
+  booking_time: string | null
+  start_datetime: string | null
+  party_size: number | null
+  is_outside_seating: boolean | null
+  high_chair_count: number | null
+  christmas_course_counts: number[] | null
+  deposit_amount: number | string | null
+  deposit_amount_locked: number | string | null
+}
+
+/** The deposit-confirmed text, word for word as it has always read. */
+function buildDepositConfirmedTextBody(input: {
+  firstName: string
+  bookingNoun: string
+  partySize: number
+  seatWord: string
+  bookingMoment: string
+  highChairSuffix: string
+  outsideSuffix: string
+  manageLink: string | null
+  christmasCourseSummary: string
+}): string {
+  return `The Anchor: ${input.firstName}! Deposit sorted, your ${input.bookingNoun} for ${input.partySize} ${input.seatWord} on ${input.bookingMoment} is locked in. See you then!${input.highChairSuffix}${input.outsideSuffix}${input.manageLink ? ` ${input.manageLink}` : ''}${input.christmasCourseSummary ? ` ${input.christmasCourseSummary}` : ''}`
+}
+
+/**
+ * True only when the email log positively shows this message went to this booking. A failed
+ * lookup answers false: better one duplicate than a guest who paid and heard nothing.
+ */
+async function hasDeliverableTableBookingEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  tableBookingId: string,
+  commType: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await (supabase.from('email_messages') as any)
+      .select('id')
+      .eq('table_booking_id', tableBookingId)
+      .eq('comm_type', commType)
+      .in('status', DELIVERABLE_EMAIL_STATUSES)
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      logger.warn('Could not check for an earlier table booking email; sending anyway', {
+        metadata: { tableBookingId, commType, code: error.code, message: error.message },
+      })
+      return false
+    }
+
+    return Boolean(data)
+  } catch (error) {
+    logger.warn('Table booking email duplicate check unavailable; sending anyway', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId, commType },
+    })
+    return false
+  }
+}
+
+/**
+ * The deposit confirmation, email first (flag table_deposit_confirmed_email_first).
+ *
+ * Up to five triggers fire for one payment, often within the same second (the PayPal capture
+ * route and its webhook). Three layers keep that to one message:
+ *
+ *  1. The email log: an email already sent for this booking ends it.
+ *  2. A claim in idempotency_keys: the first trigger takes it and the rest stop. It is released
+ *     if nothing reached the guest, so a later trigger can try again.
+ *  3. The provider idempotency key on the email itself.
+ *
+ * Without the claim, two triggers a second apart would each build a different manage link, the
+ * provider would refuse the second email as a changed payload, and the guest would get a text as
+ * well.
+ */
+async function sendTableBookingDepositConfirmedEmailFirst(
+  supabase: SupabaseClient<any, 'public', any>,
+  booking: DepositConfirmedBooking
+): Promise<GuestNotificationOutcome> {
+  const tableBookingId = booking.id
+  const templateKey = DEPOSIT_CONFIRMED_TEMPLATE_KEY
+
+  if (await hasDeliverableTableBookingEmail(supabase, tableBookingId, templateKey)) {
+    return { status: 'already_sent', channel: 'email', fallbackUsed: false, error: null }
+  }
+
+  const claimKey = `notify:${templateKey}:${tableBookingId}`
+  const claimHash = computeIdempotencyRequestHash({ templateKey, tableBookingId })
+  let claimed = false
+  try {
+    const claim = await claimIdempotencyKey(supabase, claimKey, claimHash, DEPOSIT_CONFIRMED_CLAIM_TTL_HOURS)
+    if (claim.state !== 'claimed') {
+      return { status: 'already_sent', channel: null, fallbackUsed: false, error: null }
+    }
+    claimed = true
+  } catch (error) {
+    // The guest has paid; a confirmation must still go. The email log check above and the
+    // provider idempotency key still stand between them and a duplicate.
+    logger.error('Deposit confirmation claim unavailable; sending without it', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId },
+    })
+  }
+
+  const settleClaim = async (outcome: GuestNotificationOutcome) => {
+    if (!claimed) return
+    try {
+      if (outcome.status === 'sent') {
+        await persistIdempotencyResponse(
+          supabase,
+          claimKey,
+          claimHash,
+          { state: 'sent', channel: outcome.channel },
+          DEPOSIT_CONFIRMED_CLAIM_TTL_HOURS
+        )
+      } else {
+        await releaseIdempotencyClaim(supabase, claimKey, claimHash)
+      }
+    } catch (error) {
+      logger.warn('Could not settle the deposit confirmation claim', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { tableBookingId, outcome: outcome.status },
+      })
+    }
+  }
+
+  try {
+    const { data: customerRow, error: customerError } = await supabase
+      .from('customers')
+      .select(GUEST_CHANNEL_COLUMNS)
+      .eq('id', booking.customer_id)
+      .maybeSingle()
+
+    if (customerError || !customerRow) {
+      const outcome: GuestNotificationOutcome = {
+        status: customerError ? 'failed' : 'no_channel',
+        channel: null,
+        fallbackUsed: false,
+        error: customerError ? `Customer could not be loaded: ${customerError.message}` : 'Customer not found',
+      }
+      logger.error('Deposit confirmation could not load the customer', {
+        metadata: { tableBookingId, customerId: booking.customer_id, error: outcome.error },
+      })
+      await AuditService.logAuditEvent({
+        operation_type: 'table_booking.notification_failed',
+        resource_type: 'table_booking',
+        resource_id: tableBookingId,
+        operation_status: 'failure',
+        error_message: outcome.error ?? undefined,
+        additional_info: { comm_type: templateKey, customer_id: booking.customer_id, outcome: outcome.status },
+      })
+      await settleClaim(outcome)
+      return outcome
+    }
+
+    const customer = customerRow as GuestChannelCustomer
+    const firstName = getSmartFirstName(customer.first_name)
+    const partySize = Math.max(1, Number(booking.party_size ?? 1))
+    const seatWord = partySize === 1 ? 'person' : 'people'
+    const isOutside = Boolean(booking.is_outside_seating)
+    const grantedHighChairs = Math.max(0, Number(booking.high_chair_count ?? 0))
+    const christmasCourseSummary = describeChristmasCourseCounts(booking.christmas_course_counts)
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+
+    // One short link for both channels, so the email and a fallback text resolve to one code.
+    let manageLink: string | null = null
+    try {
+      const token = await createTableManageToken(supabase, {
+        customerId: customer.id,
+        tableBookingId,
+        bookingStartIso: booking.start_datetime || null,
+        appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+      })
+      const shortened = await buildGuestShortLink({
+        longUrl: token.url,
+        linkKind: 'table_manage',
+        customerId: customer.id,
+        tableBookingId,
+      })
+      manageLink = shortened.url
+    } catch {
+      manageLink = null
+    }
+
+    const smsBody = buildDepositConfirmedTextBody({
+      firstName,
+      bookingNoun: isOutside ? 'outside booking' : 'table',
+      partySize,
+      seatWord,
+      bookingMoment: formatLondonDateTime(booking.start_datetime),
+      highChairSuffix: grantedHighChairs > 0 ? ` High chair reserved x${grantedHighChairs}.` : '',
+      outsideSuffix: isOutside ? ' Outside seating (weather permitting).' : '',
+      manageLink,
+      christmasCourseSummary,
+    })
+
+    const depositPaid = Number(booking.deposit_amount_locked ?? booking.deposit_amount)
+    const email = buildTableBookingDepositConfirmedEmail({
+      firstName,
+      bookingReference: booking.booking_reference,
+      bookingDate: booking.booking_date,
+      bookingTime: booking.booking_time,
+      startDateTime: booking.start_datetime,
+      partySize,
+      isOutsideSeating: isOutside,
+      highChairCount: grantedHighChairs,
+      christmasCourseSummary: christmasCourseSummary || null,
+      depositPaid: Number.isFinite(depositPaid) && depositPaid > 0 ? depositPaid : null,
+      manageLink,
+    })
+
+    const outcome = await notifyTableBookingGuestEmailFirst({
+      supabase,
+      templateKey,
+      tableBookingId,
+      customer,
+      email,
+      sms: { to: customer.mobile_number, body: ensureReplyInstruction(smsBody, supportPhone) },
+      idempotencyKey: `${templateKey}:${tableBookingId}`,
+    })
+
+    await settleClaim(outcome)
+    return outcome
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Deposit confirmation threw unexpectedly', {
+      error: error instanceof Error ? error : new Error(message),
+      metadata: { tableBookingId },
+    })
+    const outcome: GuestNotificationOutcome = { status: 'failed', channel: null, fallbackUsed: false, error: message }
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.notification_failed',
+      resource_type: 'table_booking',
+      resource_id: tableBookingId,
+      operation_status: 'failure',
+      error_message: message,
+      additional_info: { comm_type: templateKey, customer_id: booking.customer_id, outcome: 'failed', threw: true },
+    })
+    await settleClaim(outcome)
+    return outcome
+  }
+}
+
 export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   tableBookingId: string
@@ -1260,6 +1529,16 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
 
   if (!booking || booking.status !== 'confirmed' || !booking.customer_id) {
     return null
+  }
+
+  if (await isMessagingFlagOn('table_deposit_confirmed_email_first')) {
+    const outcome = await sendTableBookingDepositConfirmedEmailFirst(supabase, booking as DepositConfirmedBooking)
+    const delivered = outcome.status === 'sent' || outcome.status === 'already_sent'
+    return {
+      success: delivered,
+      code: outcome.status === 'sent' ? null : outcome.status,
+      logFailure: false,
+    }
   }
 
   const { data: customer, error: customerError } = await supabase
@@ -1302,8 +1581,18 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   const outsideSuffix = isOutside ? ' Outside seating (weather permitting).' : ''
   const bookingNoun = isOutside ? 'outside booking' : 'table'
   const christmasCourseSummary = describeChristmasCourseCounts(booking.christmas_course_counts)
-  const composedMessage = `The Anchor: ${firstName}! Deposit sorted, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${highChairSuffix}${outsideSuffix}${manageLink ? ` ${manageLink}` : ''}${christmasCourseSummary ? ` ${christmasCourseSummary}` : ''}`
-  const templateKey = 'table_booking_deposit_confirmed'
+  const composedMessage = buildDepositConfirmedTextBody({
+    firstName,
+    bookingNoun,
+    partySize,
+    seatWord,
+    bookingMoment,
+    highChairSuffix,
+    outsideSuffix,
+    manageLink,
+    christmasCourseSummary,
+  })
+  const templateKey = DEPOSIT_CONFIRMED_TEMPLATE_KEY
 
   const body = ensureReplyInstruction(composedMessage, supportPhone)
 
