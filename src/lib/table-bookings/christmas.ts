@@ -9,7 +9,8 @@
  *
  * Business rules (owner-confirmed):
  *   - Service window 10 November to 20 December 2026 inclusive.
- *   - Minimum 6 guests, maximum 20 guests (above 20 is private hire).
+ *   - Minimum 4 guests on every day of the window (lowered from 6 on 6 September 2026),
+ *     maximum 20 guests (above 20 is private hire).
  *   - A deposit of GBP 10 per person is ALWAYS taken, at any party size.
  *   - At least 24 hours notice, unless staff override the cut-off.
  *
@@ -26,8 +27,12 @@
 
 export const CHRISTMAS_BOOKING_TYPE = 'christmas'
 
-/** Minimum party size for a Christmas booking (enforced in the database). */
-export const CHRISTMAS_MIN_PARTY_SIZE = 6
+/**
+ * Minimum party size for a Christmas booking. The database enforces it in three places: the
+ * gates in create_table_booking_core_v06 and create_table_booking_v05, and the christmas-2026
+ * booking period's min_party_size. christmas-minimum.test.ts holds all three to this value.
+ */
+export const CHRISTMAS_MIN_PARTY_SIZE = 4
 
 /** Maximum party size for a table booking of any type; above this is private hire. */
 export const CHRISTMAS_MAX_PARTY_SIZE = 20

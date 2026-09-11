@@ -136,7 +136,7 @@ export function useFohCreateBooking(input: {
     last_name: '',
     time: '19:00',
     party_size: '2',
-    // `christmas` posts a Christmas table booking: 6 guests or more, 24 hours
+    // `christmas` posts a Christmas table booking: 4 guests or more, 24 hours
     // notice, and a deposit every time. The rules are enforced in the database.
     purpose: 'food' as 'food' | 'drinks' | 'event' | 'christmas',
     seating_preference: 'seated',

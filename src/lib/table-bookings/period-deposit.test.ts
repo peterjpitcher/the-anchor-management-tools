@@ -15,8 +15,9 @@ import {
 
 /**
  * The Christmas period exactly as seeded by
- * supabase/migrations/20260803000100_seasonal_booking_periods.sql, but switched ON, because the
- * seed ships inactive and an inactive period must produce nothing at all.
+ * supabase/migrations/20260803000100_seasonal_booking_periods.sql, with the minimum lowered to 4 by
+ * 20260911133645_christmas_minimum_four.sql, and switched ON, because the seed ships inactive and
+ * an inactive period must produce nothing at all.
  */
 function christmasPeriod(overrides: Partial<BookingPeriod> = {}): BookingPeriod {
   return {
@@ -33,7 +34,7 @@ function christmasPeriod(overrides: Partial<BookingPeriod> = {}): BookingPeriod 
     depositBasis: 'per_head',
     depositAmount: 10,
     refundCutoffDays: 7,
-    minPartySize: 6,
+    minPartySize: 4,
     maxPartySize: 20,
     minNoticeHours: 24,
     legacyBookingType: 'christmas',
@@ -358,8 +359,14 @@ describe('resolveTableBookingDeposit: an untrusted period id is rejected, not si
   })
 
   it('rejects a party below the period minimum', () => {
-    const result = resolve({ partySize: 4, period: christmasPeriod(), periodAccepted: true })
+    const result = resolve({ partySize: 3, period: christmasPeriod(), periodAccepted: true })
     expect(result).toMatchObject({ ok: false, code: 'period_party_too_small' })
+  })
+
+  it('prices a party at the period minimum rather than refusing it', () => {
+    const deposit = expectOk(resolve({ partySize: 4, period: christmasPeriod(), periodAccepted: true }))
+    expect(deposit.amount).toBe(40)
+    expect(deposit.rule).toBe('period')
   })
 
   it('rejects a party above the period maximum', () => {
