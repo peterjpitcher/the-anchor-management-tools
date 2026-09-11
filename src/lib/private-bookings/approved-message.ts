@@ -3,6 +3,8 @@ import { logger } from '@/lib/logger'
 import { renderPrivateBookingMessage } from '@/lib/private-bookings/message-catalogue'
 import { cancellationFromQueueMetadata, loadPrivateBookingMessageContext } from '@/lib/private-bookings/message-context'
 import { attemptPrivateBookingEmail, isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { isBalanceReminderTrigger } from '@/lib/private-bookings/balance-reminders'
 
 export type ApprovedMessageEmailOutcome =
   | { status: 'sent'; deliveryId: string | null }
@@ -44,12 +46,17 @@ export async function tryEmailForApprovedPrivateBookingText(input: {
 
   try {
     const client = createAdminClient()
+    // Balance reminder emails list the payments made while private_booking_balance_email_auto is
+    // on; if those cannot be read the approved text goes instead (the context says so).
+    const withPaymentStatement =
+      isBalanceReminderTrigger(triggerType) && (await isMessagingFlagOn('private_booking_balance_email_auto'))
     const context = await loadPrivateBookingMessageContext({
       client,
       bookingId: input.row.booking_id,
       triggerType,
       now: input.now ?? new Date(),
       cancellation: cancellationFromQueueMetadata(input.row.metadata),
+      withPaymentStatement,
     })
     if (!context) {
       return { status: 'not_attempted', reason: 'booking_unavailable' }

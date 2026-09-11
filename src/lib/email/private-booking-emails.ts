@@ -5,6 +5,11 @@ import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
 import { getSmartFirstName } from '@/lib/sms/name-utils';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
 import { formatPrivateBookingAmount } from '@/lib/private-bookings/messages';
+import {
+  describePaymentMethod,
+  type PrivateBookingPaymentStatement,
+} from '@/lib/private-bookings/payment-statement';
+import type { PaymentHistoryEntry } from '@/types/private-bookings';
 
 const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ';
 const PRIVACY_NOTICE_URL = 'https://www.the-anchor.pub/privacy-policy';
@@ -835,6 +840,8 @@ type MessageEmailSpec = {
   link?: { label: string; url: string };
   /** Smaller print under the table. */
   notes?: string[];
+  /** Further titled tables after the main one, such as the payments already made. */
+  sections?: Array<{ heading: string; rows: Array<[string, string]> }>;
 };
 
 function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent {
@@ -851,6 +858,17 @@ function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent
   const contactHtml = `Questions? Call us on <a href="tel:${VENUE_PHONE_TEL}" style="color: #1a1a1a;">${VENUE_PHONE_DISPLAY}</a> or email <a href="mailto:${VENUE_EMAIL}" style="color: #1a1a1a;">${VENUE_EMAIL}</a>.`;
   const contactText = `Questions? Call us on ${VENUE_PHONE_DISPLAY} or email ${VENUE_EMAIL}.`;
 
+  const sections = spec.sections ?? [];
+  const sectionsHtml = sections
+    .map(
+      (section) => `
+  <h3 style="font-family: ${FONT_FAMILY}; margin: 24px 0 0 0; font-size: 16px; color: #1a1a1a;">${escapeHtml(section.heading)}</h3>
+  <table style="width: 100%; border-collapse: collapse; margin: 8px 0 20px 0;">
+    ${section.rows.map(([label, value]) => row(escapeHtml(label), escapeHtml(value))).join('')}
+  </table>`
+    )
+    .join('');
+
   const linkHtml = spec.link
     ? `
   <p style="font-family: ${FONT_FAMILY};">
@@ -866,7 +884,7 @@ function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent
   ${spec.paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
   <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
     ${rows.map(([label, value]) => row(escapeHtml(label), escapeHtml(value))).join('')}
-  </table>${linkHtml}
+  </table>${sectionsHtml}${linkHtml}
   ${(spec.notes ?? []).map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(note)}</p>`).join('\n  ')}
   <p style="font-family: ${FONT_FAMILY};">${contactHtml}</p>
   <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
@@ -882,6 +900,7 @@ function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent
     ...spec.paragraphs.flatMap((paragraph) => [paragraph, '']),
     ...rows.map(([label, value]) => `${label}: ${value}`),
     '',
+    ...sections.flatMap((section) => [section.heading, ...section.rows.map(([label, value]) => `${label}: ${value}`), '']),
     ...(spec.link ? [`${spec.link.label}: ${spec.link.url}`, ''] : []),
     ...(spec.notes ?? []).flatMap((note) => [note, '']),
     contactText,
@@ -1129,6 +1148,53 @@ export function buildSetupReminderEmail(input: {
 
 export type BalanceReminderStage = '21day' | '16day' | '15day' | 'due';
 
+/** "Payment by cash, £300" or "Deposit by PayPal, £250 (held separately from your bill)". */
+function describeStatementEntry(entry: PaymentHistoryEntry): string {
+  const paid = money(Number(entry.amount));
+  const method = describePaymentMethod(entry.method);
+  if (entry.type === 'balance') return `Payment by ${method}, ${paid}`;
+  const applied = Number(entry.appliedAmount ?? 0);
+  const treatment =
+    applied <= 0
+      ? 'held separately from your bill'
+      : applied >= Number(entry.amount)
+        ? 'put towards your bill'
+        : `${money(applied)} of it put towards your bill`;
+  return `Deposit by ${method}, ${paid} (${treatment})`;
+}
+
+/**
+ * The money part of a balance reminder email (owner decision, 11 September 2026): each payment
+ * made with its date, method and amount, then the event total, what has been paid towards the bill
+ * and the balance due. Null when the statement does not agree with the balance the text states,
+ * so an email never shows two different balances.
+ */
+function balanceStatementParts(statement: PrivateBookingPaymentStatement, balanceAmount: number): {
+  rows: Array<[string, string]>;
+  section: { heading: string; rows: Array<[string, string]> };
+  heldDeposit: boolean;
+} | null {
+  if (Math.abs(statement.balanceDue - balanceAmount) > 0.005) return null;
+  const paidTowardsBill = statement.paidTowardsBill > 0 ? money(statement.paidTowardsBill) : 'Nothing yet';
+  const entries = statement.entries.map(
+    (entry): [string, string] => [
+      formatDateInLondon(entry.date, { day: 'numeric', month: 'long', year: 'numeric' }),
+      describeStatementEntry(entry),
+    ]
+  );
+  return {
+    rows: [
+      ['Event total', money(statement.eventTotal)],
+      ['Paid towards your bill so far', paidTowardsBill],
+    ],
+    section: {
+      heading: 'Payments received',
+      rows: entries.length > 0 ? entries : [['Payments', 'None received yet']],
+    },
+    heldDeposit: statement.entries.some((entry) => entry.type === 'deposit' && Number(entry.appliedAmount ?? 0) <= 0),
+  };
+}
+
 /** Mirrors the four balance and final-details reminders. */
 export function buildBalanceReminderEmail(input: {
   booking: PrivateBookingMessageEmailBooking;
@@ -1137,6 +1203,11 @@ export function buildBalanceReminderEmail(input: {
   balanceAmount: number;
   /** The deadline exactly as the text prints it. */
   balanceDueDate: string;
+  /**
+   * The payments already made and how they add up (flag private_booking_balance_email_auto). The
+   * email lists them above the balance; without it the email is as it has always been.
+   */
+  payments?: PrivateBookingPaymentStatement | null;
 }): PrivateBookingEmailContent {
   const balance = money(input.balanceAmount);
   const date = onEventDate(input.booking);
@@ -1162,6 +1233,8 @@ export function buildBalanceReminderEmail(input: {
     ];
   }
 
+  const statement = input.payments ? balanceStatementParts(input.payments, input.balanceAmount) : null;
+
   return composeMessageEmail({
     booking: input.booking,
     firstName: input.firstName,
@@ -1169,9 +1242,12 @@ export function buildBalanceReminderEmail(input: {
     heading: 'Balance and final details',
     paragraphs,
     rows: [
+      ...(statement ? statement.rows : []),
       ['Balance due', balance],
       ['Due by', input.balanceDueDate],
     ],
+    sections: statement ? [statement.section] : [],
+    notes: statement?.heldDeposit ? [DEPOSIT_TERMS_NOTE] : [],
   });
 }
 

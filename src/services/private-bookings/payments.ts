@@ -1,7 +1,8 @@
 import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger';
+import { buildPaymentHistoryEntries } from '@/lib/private-bookings/payment-statement';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon } from '@/lib/dateUtils';
 import { syncCalendarEvent, isCalendarConfigured } from '@/lib/google-calendar';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { logAuditEvent } from '@/app/actions/audit';
@@ -23,8 +24,6 @@ import type {
   BookingStatus,
   PrivateBookingWithDetails,
   PaymentHistoryEntry,
-  DepositPaymentEntry,
-  BalancePaymentEntry,
 } from '@/types/private-bookings';
 import {
   type PrivateBookingSmsSideEffectSummary,
@@ -852,41 +851,8 @@ export async function getBookingPaymentHistory(bookingId: string): Promise<Payme
 
   const ledger = await readBookingPaymentLedger(bookingId)
 
-  const entries: PaymentHistoryEntry[] = []
-
-  if (booking.deposit_paid_date) {
-    entries.push({
-      id: 'deposit',
-      appliedAmount: ledger.appliedDepositAmount,
-      readonly: Boolean(booking.invoice_id),
-      invoice_id: booking.invoice_id ?? undefined,
-      type: 'deposit',
-      amount: booking.deposit_amount,
-      method: booking.deposit_payment_method as DepositPaymentEntry['method'],
-      date: toLocalIsoDate(new Date(booking.deposit_paid_date)),
-    })
-  }
-
-  for (const payment of ledger.payments) {
-    entries.push({
-      id: payment.id,
-      readonly: payment.readonly,
-      invoice_id: payment.invoice_id,
-      type: 'balance',
-      amount: payment.amount,
-      method: payment.method as BalancePaymentEntry['method'],
-      date: toLocalIsoDate(new Date(payment.created_at)),
-    })
-  }
-
-  entries.sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    if (a.type === 'deposit' && b.type === 'balance') return -1
-    if (a.type === 'balance' && b.type === 'deposit') return 1
-    return 0
-  })
-
-  return entries
+  // The same list a balance reminder email carries (payment-statement.ts).
+  return buildPaymentHistoryEntries(booking, ledger)
 }
 
 export async function updateBalancePayment(

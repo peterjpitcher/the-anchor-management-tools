@@ -208,6 +208,36 @@ describe.each(EVENT_DATES)('private booking email versions for an event on %s', 
     }
   })
 
+  it('balance reminders with the payments made, all four stages', () => {
+    const inputs = { customerFirstName: 'Alex', eventDate: eventSms, balanceAmount: 1234.5, balanceDueDate: dueDate }
+    const payments = {
+      entries: [
+        { id: 'deposit', type: 'deposit' as const, amount: 250, method: 'paypal' as const, date: '2026-08-12', appliedAmount: 0 },
+        { id: 'p1', type: 'balance' as const, amount: 300, method: 'cash' as const, date: '2026-09-01' },
+        { id: 'p2', type: 'balance' as const, amount: 245.7, method: 'bank_transfer' as const, date: '2026-10-25' },
+      ],
+      eventTotal: 1780.2,
+      paidTowardsBill: 545.7,
+      balanceDue: 1234.5,
+    }
+    const cases = [
+      ['21day', balanceReminder21DayMessage(inputs)],
+      ['16day', balanceReminder16DayMessage(inputs)],
+      ['15day', balanceReminder15DayMessage(inputs)],
+      ['due', balanceReminderDueMessage(inputs)],
+    ] as const
+    for (const [stage, sms] of cases) {
+      const email = buildBalanceReminderEmail({ booking: b, firstName: 'Alex', stage, balanceAmount: 1234.5, balanceDueDate: dueDate, payments })
+      expectSound(email, eventDate, sms)
+      expect(email.text).toContain('Event total: £1780.20')
+      expect(email.text).toContain('Paid towards your bill so far: £545.70')
+      expect(email.text).toContain('Balance due: £1234.50')
+      expect(email.text).toContain('Payments received\n12 August 2026: Deposit by PayPal, £250 (held separately from your bill)\n1 September 2026: Payment by cash, £300\n25 October 2026: Payment by bank transfer, £245.70')
+      expect(email.text).toContain("held separately from your bill and refunded after the event")
+      expect(email.html).toContain('Payments received')
+    }
+  })
+
   it('event reminder, thank you and review request', () => {
     expectSound(
       buildEventReminderEmail({ booking: b, firstName: 'Alex' }),

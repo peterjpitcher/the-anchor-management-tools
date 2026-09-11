@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { buildPrivateBookingPortalUrl } from '@/lib/private-bookings/booking-token'
+import { loadPrivateBookingPaymentStatement } from '@/lib/private-bookings/payment-statement-loader'
 import {
   PRIVATE_BOOKING_MESSAGE_COLUMNS,
   type CancellationAmounts,
@@ -16,10 +17,10 @@ function toNumber(value: unknown): number {
 }
 
 /**
- * What is still owed, computed exactly as the monitor cron does before a balance reminder, so a
- * rebuilt reminder states the same amount.
+ * What is still owed, and the event total it is owed against, computed exactly as the monitor
+ * cron does before a balance reminder, so a rebuilt reminder states the same amounts.
  */
-async function loadBalanceAmount(client: AdminClient, bookingId: string): Promise<number | null> {
+async function loadBalanceFigures(client: AdminClient, bookingId: string): Promise<{ balanceDue: number; eventTotal: number } | null> {
   const { data, error } = await (client.from('private_bookings_with_details') as any)
     .select('balance_remaining, gross_total, calculated_total, total_amount')
     .eq('id', bookingId)
@@ -28,7 +29,7 @@ async function loadBalanceAmount(client: AdminClient, bookingId: string): Promis
   const totalAmount = Number(data.gross_total ?? data.calculated_total ?? data.total_amount ?? 0)
   const viewBalanceRemaining = Number(data.balance_remaining)
   const balanceDue = Number.isFinite(viewBalanceRemaining) ? Math.max(viewBalanceRemaining, 0) : Math.max(totalAmount, 0)
-  return Number.isFinite(balanceDue) ? balanceDue : null
+  return Number.isFinite(balanceDue) ? { balanceDue, eventTotal: totalAmount } : null
 }
 
 /**
@@ -42,6 +43,11 @@ export async function loadPrivateBookingMessageContext(input: {
   now: Date
   cancellation?: CancellationAmounts | null
   storedFacts?: Record<string, unknown> | null
+  /**
+   * For a balance reminder email while private_booking_balance_email_auto is on: load the payments
+   * made as well. Only Send Now asks; the bounce fallback only ever rebuilds the text.
+   */
+  withPaymentStatement?: boolean
 }): Promise<CatalogueContext | null> {
   const { data, error } = await (input.client.from('private_bookings') as any)
     .select(PRIVATE_BOOKING_MESSAGE_COLUMNS)
@@ -58,7 +64,23 @@ export async function loadPrivateBookingMessageContext(input: {
   }
 
   if (input.triggerType.startsWith('balance_reminder_')) {
-    context.balanceAmount = await loadBalanceAmount(input.client, input.bookingId)
+    const figures = await loadBalanceFigures(input.client, input.bookingId)
+    context.balanceAmount = figures?.balanceDue ?? null
+    if (input.withPaymentStatement) {
+      const loaded = figures
+        ? await loadPrivateBookingPaymentStatement({
+            bookingId: input.bookingId,
+            eventTotal: figures.eventTotal,
+            balanceDue: figures.balanceDue,
+            client: input.client,
+          })
+        : null
+      if (loaded?.ok) {
+        context.paymentStatement = loaded.statement
+      } else {
+        context.paymentStatementUnavailable = true
+      }
+    }
   }
   if (input.triggerType === 'review_request') {
     context.reviewLink = await getGoogleReviewLink(input.client as any)
