@@ -24,6 +24,7 @@ import {
   clearMessagingFlagCache,
   isMessagingFlagOn,
   MESSAGING_FLAG_KEYS,
+  readMessagingFlagState,
 } from '../flags'
 
 beforeEach(() => {
@@ -133,5 +134,91 @@ describe('isMessagingFlagOn', () => {
     await isMessagingFlagOn('private_booking_email_first')
 
     expect(maybeSingleMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+// The three-way read for paths where off sends more than on (event promotion). On and off must
+// agree with isMessagingFlagOn in every case; only a failed read differs, and it is unknown.
+describe('readMessagingFlagState', () => {
+  it('answers on only for the boolean true, and off for false, a missing key or a malformed entry', async () => {
+    settingRowResult.data = {
+      value: {
+        event_promo_last_push: true,
+        event_promo_intro_sms_no_email: false,
+        table_cancelled_email_first: 'true',
+      },
+    }
+
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'on' })
+    expect(await readMessagingFlagState('event_promo_intro_sms_no_email')).toEqual({ state: 'off' })
+    expect(await readMessagingFlagState('table_cancelled_email_first')).toEqual({ state: 'off' })
+    expect(await readMessagingFlagState('bounce_sms_fallback')).toEqual({ state: 'off' })
+  })
+
+  it('answers off when the row does not exist, as today', async () => {
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'off' })
+  })
+
+  it('answers off when the stored value is not an object', async () => {
+    settingRowResult.data = { value: ['event_promo_last_push'] }
+
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'off' })
+  })
+
+  it('answers unknown, with the error field by field, when the query returns an error', async () => {
+    settingRowResult.error = { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null }
+
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({
+      state: 'unknown',
+      failure: { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null },
+    })
+    // Nothing logged here: the caller decides what unknown means and logs it once.
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('answers unknown when building the client throws or the query rejects', async () => {
+    vi.mocked(createAdminClient).mockImplementationOnce(() => {
+      throw new Error('Missing Supabase environment variables')
+    })
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({
+      state: 'unknown',
+      failure: { code: null, message: 'Missing Supabase environment variables', details: null, hint: null },
+    })
+
+    maybeSingleMock.mockImplementationOnce(() => Promise.reject(new Error('fetch failed')))
+    expect(await readMessagingFlagState('event_promo_last_push')).toMatchObject({
+      state: 'unknown',
+      failure: { message: 'fetch failed' },
+    })
+  })
+
+  it('never caches a failed read: the next call reads the row again and can see the flag on', async () => {
+    settingRowResult.error = { code: '57014', message: 'timeout', details: null, hint: null }
+    expect((await readMessagingFlagState('event_promo_last_push')).state).toBe('unknown')
+
+    settingRowResult.error = null
+    settingRowResult.data = { value: { event_promo_last_push: true } }
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'on' })
+    expect(maybeSingleMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares the 60-second cache with isMessagingFlagOn', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-11T10:00:00Z'))
+    settingRowResult.data = { value: { event_promo_last_push: true } }
+
+    expect(await isMessagingFlagOn('event_promo_last_push')).toBe(true)
+
+    // A read failing inside the minute is never reached: the cached read answers.
+    settingRowResult.error = { code: '57014', message: 'timeout', details: null, hint: null }
+    vi.setSystemTime(new Date('2026-09-11T10:00:30Z'))
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'on' })
+    expect(maybeSingleMock).toHaveBeenCalledTimes(1)
+
+    // Once the minute is up the row is read again, and the failure is unknown, not off.
+    vi.setSystemTime(new Date('2026-09-11T10:01:00Z'))
+    expect((await readMessagingFlagState('event_promo_last_push')).state).toBe('unknown')
+    // isMessagingFlagOn keeps its contract for its other callers: a failed read is off.
+    expect(await isMessagingFlagOn('event_promo_last_push')).toBe(false)
   })
 })

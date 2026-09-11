@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(),
+  readMessagingFlagState: vi.fn(),
 }))
 
 vi.mock('@/lib/email/logging', () => ({
   isEmailSuppressed: vi.fn(),
 }))
 
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { readMessagingFlagState, type MessagingFlagState } from '@/lib/messaging/flags'
 import { isEmailSuppressed } from '@/lib/email/logging'
 import { resolveSmsSuspensionReason } from '@/lib/sms/suspension'
 import { resolveNotificationRoute } from '@/lib/notifications/routing-matrix'
@@ -33,7 +33,7 @@ import {
 } from '../event-promo-policy'
 import { argsOf, createRecordingSupabase, inValues } from '../../../../tests/mocks/recordingSupabase'
 
-const mockFlag = vi.mocked(isMessagingFlagOn)
+const mockFlag = vi.mocked(readMessagingFlagState)
 const mockSuppressed = vi.mocked(isEmailSuppressed)
 
 let warnSpy: ReturnType<typeof vi.spyOn>
@@ -392,24 +392,45 @@ describe('loadCustomerIdsWithoutUsableEmail', () => {
 })
 
 describe('resolveEventPromoFlags', () => {
+  const ON: MessagingFlagState = { state: 'on' }
+  const OFF: MessagingFlagState = { state: 'off' }
+  const FAILURE = { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null }
+  const UNKNOWN: MessagingFlagState = { state: 'unknown', failure: FAILURE }
+
+  function flags(lastPush: MessagingFlagState, intro: MessagingFlagState) {
+    mockFlag.mockImplementation(async (key) => (key === 'event_promo_last_push' ? lastPush : intro))
+  }
+
   it('reads as today when the last push is off, without even reading the second flag', async () => {
-    mockFlag.mockResolvedValue(false)
-    expect(await resolveEventPromoFlags()).toEqual({ lastPush: false, introForGuestsWithoutEmail: false })
+    flags(OFF, ON)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: false, introForGuestsWithoutEmail: false })
     expect(mockFlag).toHaveBeenCalledTimes(1)
     expect(mockFlag).toHaveBeenCalledWith('event_promo_last_push')
   })
 
   it('ignores the no-email intro flag on its own', async () => {
-    mockFlag.mockImplementation(async (key) => key === 'event_promo_intro_sms_no_email')
-    expect(await resolveEventPromoFlags()).toEqual({ lastPush: false, introForGuestsWithoutEmail: false })
+    flags(OFF, ON)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: false, introForGuestsWithoutEmail: false })
   })
 
   it('turns on the no-email intro only with the last push', async () => {
-    mockFlag.mockResolvedValue(true)
-    expect(await resolveEventPromoFlags()).toEqual({ lastPush: true, introForGuestsWithoutEmail: true })
+    flags(ON, ON)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: true, introForGuestsWithoutEmail: true })
 
-    mockFlag.mockImplementation(async (key) => key === 'event_promo_last_push')
-    expect(await resolveEventPromoFlags()).toEqual({ lastPush: true, introForGuestsWithoutEmail: false })
+    flags(ON, OFF)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'known', lastPush: true, introForGuestsWithoutEmail: false })
+  })
+
+  it('is unknown, never off, when the flags row cannot be read', async () => {
+    flags(UNKNOWN, UNKNOWN)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
+    // No second read once the first has failed.
+    expect(mockFlag).toHaveBeenCalledTimes(1)
+  })
+
+  it('is unknown when the last push is on and the second read fails', async () => {
+    flags(ON, UNKNOWN)
+    expect(await resolveEventPromoFlags()).toEqual({ state: 'unknown', failure: FAILURE })
   })
 })
 

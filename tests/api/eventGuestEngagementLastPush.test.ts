@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * 0 to 3 London days away that have not started. With `event_promo_intro_sms_no_email` on as
  * well, the intro runs again for guests without a usable email (the per-event sender applies
  * that filter; see src/lib/sms/__tests__/event-last-push.test.ts).
+ * Flags row unreadable: no promotion text at all in that run; every other stage runs as before.
  */
 
 vi.mock('@/lib/cron-auth', () => ({
@@ -33,7 +34,11 @@ vi.mock('@/lib/email/emailService', () => ({
 }))
 
 vi.mock('@/lib/messaging/flags', () => ({
-  isMessagingFlagOn: vi.fn(),
+  readMessagingFlagState: vi.fn(),
+}))
+
+vi.mock('@/lib/cron/alerting', () => ({
+  reportCronFailure: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/lib/sms/review-once', () => ({
@@ -54,10 +59,14 @@ vi.mock('@/lib/sms/cross-promo', async (importOriginal) => {
 })
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { readMessagingFlagState } from '@/lib/messaging/flags'
+import { reportCronFailure } from '@/lib/cron/alerting'
+import { persistCronRunResult } from '@/lib/cron-run-results'
+import { logger } from '@/lib/logger'
+import { sendSMS } from '@/lib/twilio'
 import { sendCrossPromoForEvent, sendFollowUpForEvent } from '@/lib/sms/cross-promo'
 import { GET } from '@/app/api/cron/event-guest-engagement/route'
-import { argsOf, called, createRecordingSupabase } from '../mocks/recordingSupabase'
+import { argsOf, called, createRecordingSupabase, inValues } from '../mocks/recordingSupabase'
 
 // Tuesday 15 September 2026, 09:00 BST.
 const NOW = new Date('2026-09-15T08:00:00.000Z')
@@ -70,7 +79,42 @@ const EVENTS = [
   { id: 'saturday', name: 'Cash Bingo', date: '2026-09-19', time: '19:00:00', start_datetime: '2026-09-19T18:00:00Z' },
 ].map((event) => ({ ...event, price: 3, payment_mode: 'cash_only', category_id: 'cat-1' }))
 
-function buildDatabase() {
+/**
+ * A confirmed booking for an event starting at 08:00 BST tomorrow, so its one-day reminder is due
+ * at NOW. Used to show the reminder stage runs whatever happens to the promotion flags.
+ */
+const DUE_REMINDER_BOOKING = {
+  id: 'booking-due-reminder',
+  created_at: '2026-09-01T10:00:00Z',
+  customer_id: 'customer-booked',
+  event_id: 'breakfast',
+  seats: 2,
+  is_reminder_only: false,
+  status: 'confirmed',
+  review_sms_sent_at: null,
+  review_window_closes_at: null,
+  review_suppressed_at: null,
+  event: {
+    id: 'breakfast',
+    name: 'Coffee Morning',
+    start_datetime: '2026-09-16T07:00:00Z',
+    date: '2026-09-16',
+    time: '08:00:00',
+    event_status: 'scheduled',
+    promo_sms_enabled: true,
+  },
+  customer: {
+    id: 'customer-booked',
+    first_name: 'Sam',
+    mobile_number: '+447700900123',
+    email: null,
+    sms_status: 'active',
+    email_status: null,
+    email_deactivated_at: null,
+  },
+}
+
+function buildDatabase(options: { bookings?: unknown[] } = {}) {
   return createRecordingSupabase({
     tables: {
       cron_job_runs: (query) => {
@@ -82,20 +126,31 @@ function buildDatabase() {
       // last-push timing check in the route has to do the filtering itself.
       events: () => ({ data: EVENTS, error: null }),
       messages: () => ({ data: [], count: 0, error: null }),
+      // Only the engagement load asks for confirmed bookings; everything else sees none.
+      bookings: (query) =>
+        !called(query, 'update') && inValues(query, 'status').includes('confirmed')
+          ? { data: options.bookings ?? [], error: null }
+          : { data: [], error: null },
     },
     defaultAnswer: () => ({ data: [], count: 0, error: null }),
     rpc: () => ({ data: [], error: null }),
   })
 }
 
-async function runCron(flags: { lastPush: boolean; introForGuestsWithoutEmail: boolean }) {
-  vi.mocked(isMessagingFlagOn).mockImplementation(async (key) => {
-    if (key === 'event_promo_last_push') return flags.lastPush
-    if (key === 'event_promo_intro_sms_no_email') return flags.introForGuestsWithoutEmail
-    return false
+type CronFlags = { lastPush: boolean; introForGuestsWithoutEmail: boolean } | 'unreadable'
+
+const READ_FAILURE = { code: '57014', message: 'canceling statement due to statement timeout', details: null, hint: null }
+
+async function runCron(flags: CronFlags, options: { bookings?: unknown[] } = {}) {
+  vi.mocked(readMessagingFlagState).mockImplementation(async (key) => {
+    if (flags === 'unreadable') return { state: 'unknown', failure: READ_FAILURE }
+    const on =
+      (key === 'event_promo_last_push' && flags.lastPush) ||
+      (key === 'event_promo_intro_sms_no_email' && flags.introForGuestsWithoutEmail)
+    return { state: on ? 'on' : 'off' }
   })
 
-  const db = buildDatabase()
+  const db = buildDatabase(options)
   vi.mocked(createAdminClient).mockReturnValue(db.client as never)
 
   const request = new Request('http://localhost/api/cron/event-guest-engagement') as never as Parameters<typeof GET>[0]
@@ -199,6 +254,59 @@ describe('event promotion stage and the messaging flags', () => {
       calls.findLastIndex((call) => call.mode === 'last_push')
     )
     expect(payload.crossPromo.disabled).toBeUndefined()
+  })
+
+  it('when the flags row cannot be read, sends no promotion text at all, not the old intro and follow-up', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
+
+    const { db, payload } = await runCron('unreadable')
+
+    expect(payload.success).toBe(true)
+    // Nothing from any promotion stage: no follow-up recipients asked for, no event promoted.
+    expect(db.rpc).not.toHaveBeenCalledWith('get_follow_up_recipients', expect.anything())
+    expect(sendFollowUpForEvent).not.toHaveBeenCalled()
+    expect(sendCrossPromoForEvent).not.toHaveBeenCalled()
+    expect(db.queries.some((query) => query.table === 'events')).toBe(false)
+    for (const stage of [payload.followUp24h, payload.crossPromo, payload.lastPush]) {
+      expect(stage).toEqual(expect.objectContaining({ sent: 0, disabled: true, reason: 'messaging_flags_unreadable' }))
+    }
+
+    // Said once in the log and once through the cron failure alert.
+    const heldLines = errorSpy.mock.calls.filter(([message]) => String(message).includes('Event promotion texts held'))
+    expect(heldLines).toHaveLength(1)
+    expect(heldLines[0][1]).toEqual({ metadata: expect.objectContaining({ code: '57014' }) })
+    expect(reportCronFailure).toHaveBeenCalledTimes(1)
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'event-guest-engagement',
+      expect.any(Error),
+      expect.objectContaining({ code: '57014' })
+    )
+
+    // The run still completes, and reply-window rows are kept 45 days in case the cap is in force.
+    expect(persistCronRunResult).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: 'completed' }))
+    expect(cleanupCutoff(db)).toBe('2026-08-01T08:00:00.000Z')
+
+    errorSpy.mockRestore()
+  })
+
+  it('when the flags row cannot be read, still sends the reminders exactly as with the flags off', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
+
+    const flagsOff = await runCron({ lastPush: false, introForGuestsWithoutEmail: false }, { bookings: [DUE_REMINDER_BOOKING] })
+    const offSends = vi.mocked(sendSMS).mock.calls.map(([to, , options]) => ({ to, templateKey: options?.metadata?.template_key }))
+
+    vi.mocked(sendSMS).mockClear()
+    const unreadable = await runCron('unreadable', { bookings: [DUE_REMINDER_BOOKING] })
+    const unreadableSends = vi.mocked(sendSMS).mock.calls.map(([to, , options]) => ({ to, templateKey: options?.metadata?.template_key }))
+
+    expect(offSends).toEqual([{ to: '+447700900123', templateKey: 'event_reminder_1d' }])
+    expect(unreadableSends).toEqual(offSends)
+    for (const stage of ['reminders', 'reviews', 'completion', 'tableReviews', 'tableCompletion'] as const) {
+      expect(unreadable.payload[stage]).toEqual(flagsOff.payload[stage])
+    }
+    expect(unreadable.payload.reminders).toEqual(expect.objectContaining({ sent1d: 1 }))
+
+    errorSpy.mockRestore()
   })
 })
 
