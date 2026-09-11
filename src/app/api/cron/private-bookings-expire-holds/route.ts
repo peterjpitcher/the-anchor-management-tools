@@ -119,14 +119,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       try {
         const { data: booking } = await supabase
           .from('private_bookings')
-          .select('customer_first_name, customer_name, contact_phone, customer_id, event_date, date_tbd, internal_notes')
+          .select('customer_first_name, customer_name, contact_phone, contact_email, customer_id, event_date, date_tbd, internal_notes, event_type, start_time, end_time, end_time_next_day, guest_count')
           .eq('id', id)
           .maybeSingle();
 
-        if (booking && (booking.contact_phone || booking.customer_id)) {
+        // Email first (P6): a booking with only an email address hears about the lapse too.
+        const { isPrivateBookingEmailFirstOn } = await import('@/lib/private-bookings/email-first');
+        const emailFirst = await isPrivateBookingEmailFirstOn();
+
+        if (booking && (emailFirst || booking.contact_phone || booking.customer_id)) {
           const { isBookingDateTbd } = await import('@/lib/private-bookings/tbd-detection');
           const { bookingExpiredMessage } = await import('@/lib/private-bookings/messages');
-          const { SmsQueueService } = await import('@/services/sms-queue');
+          const { sendPrivateBookingMessage } = await import('@/lib/private-bookings/messenger');
+          const { buildHoldLapsedEmail } = await import('@/lib/email/private-booking-emails');
+          const { buildPrivateBookingMessageFacts } = await import('@/lib/private-bookings/message-catalogue');
 
           const isTbd = isBookingDateTbd(booking);
           const eventDate = isTbd
@@ -140,20 +146,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             eventDate: eventDate,
           });
 
-          const smsResult = await SmsQueueService.queueAndSend({
-            booking_id: id,
-            trigger_type: 'booking_expired',
-            template_key: 'private_booking_expired',
-            message_body: smsMessage,
-            customer_phone: booking.contact_phone,
-            customer_name: booking.customer_name,
-            customer_id: booking.customer_id,
-            created_by: undefined,
-            priority: 2,
-            metadata: {
-              template: 'private_booking_expired',
-              event_date: eventDate,
+          const bookingForMessage = { ...booking, id };
+          const smsResult = await sendPrivateBookingMessage({
+            sms: {
+              booking_id: id,
+              trigger_type: 'booking_expired',
+              template_key: 'private_booking_expired',
+              message_body: smsMessage,
+              customer_phone: booking.contact_phone,
+              customer_name: booking.customer_name,
+              customer_id: booking.customer_id,
+              created_by: undefined,
+              priority: 2,
+              metadata: {
+                template: 'private_booking_expired',
+                event_date: eventDate,
+              },
             },
+            booking: bookingForMessage,
+            email: () => buildHoldLapsedEmail({ booking: bookingForMessage, firstName: booking.customer_first_name }),
+            windowKey: 'expired',
+            facts: buildPrivateBookingMessageFacts('booking_expired', bookingForMessage),
           });
 
           smsSent = Boolean(smsResult?.sent);
