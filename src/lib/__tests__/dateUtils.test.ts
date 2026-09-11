@@ -12,6 +12,7 @@ import {
   parseLondonDateTimeLocalToIso,
   startOfLondonDayUtc,
   toLondonDateTimeLocalValue,
+  whenLondonClockReaches,
 } from '../dateUtils'
 
 afterEach(() => {
@@ -359,5 +360,49 @@ describe('startOfLondonDayUtc', () => {
     // Start of London day (15 Jul) = 23:00 UTC on 14 Jul
     const result = startOfLondonDayUtc(new Date('2026-07-15T00:30:00Z'))
     expect(result.toISOString()).toBe('2026-07-14T23:00:00.000Z')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// whenLondonClockReaches
+// ---------------------------------------------------------------------------
+
+describe('whenLondonClockReaches', () => {
+  const at = (isoDate: string, time: string) => whenLondonClockReaches(isoDate, time)?.toISOString() ?? null
+
+  it('reads an ordinary time in winter and in summer', () => {
+    expect(at('2026-12-31', '12:00:00')).toBe('2026-12-31T12:00:00.000Z')
+    expect(at('2027-01-01', '01:00')).toBe('2027-01-01T01:00:00.000Z')
+    expect(at('2026-07-15', '12:00')).toBe('2026-07-15T11:00:00.000Z')
+    expect(at('2026-07-16', '00:00:00')).toBe('2026-07-15T23:00:00.000Z')
+  })
+
+  it('takes the first 1am when the clocks go back, 25 October 2026', () => {
+    // 01:00 to 01:59 happens twice. A 1am close is the first time the clock shows 1am.
+    expect(at('2026-10-25', '00:30')).toBe('2026-10-24T23:30:00.000Z')
+    expect(at('2026-10-25', '01:00')).toBe('2026-10-25T00:00:00.000Z')
+    expect(at('2026-10-25', '01:30')).toBe('2026-10-25T00:30:00.000Z')
+    expect(at('2026-10-25', '02:00')).toBe('2026-10-25T02:00:00.000Z')
+    // parseLondonDateTimeLocal, by contrast, lands on the second 1am.
+    expect(parseLondonDateTimeLocalToIso('2026-10-25T01:00')).toBe('2026-10-25T01:00:00.000Z')
+  })
+
+  it('takes the jump itself when the clocks go forward, 28 March 2027', () => {
+    // 01:00 to 01:59 never shows: the clock passes it at 01:00 GMT, jumping to 02:00 BST.
+    expect(at('2027-03-28', '00:30')).toBe('2027-03-28T00:30:00.000Z')
+    expect(at('2027-03-28', '01:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(at('2027-03-28', '01:30:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(at('2027-03-28', '02:00')).toBe('2027-03-28T01:00:00.000Z')
+    expect(at('2027-03-28', '12:00')).toBe('2027-03-28T11:00:00.000Z')
+    // parseLondonDateTimeLocal, by contrast, lands an hour early.
+    expect(parseLondonDateTimeLocalToIso('2027-03-28T01:00')).toBe('2027-03-28T00:00:00.000Z')
+  })
+
+  it('returns null for an impossible date or time', () => {
+    expect(whenLondonClockReaches('2026-02-30', '12:00')).toBeNull()
+    expect(whenLondonClockReaches('2026-12-31', '24:00')).toBeNull()
+    expect(whenLondonClockReaches('2026-12-31', '12:60')).toBeNull()
+    expect(whenLondonClockReaches('2026-12-31', 'noon')).toBeNull()
+    expect(whenLondonClockReaches('31/12/2026', '12:00')).toBeNull()
   })
 })
