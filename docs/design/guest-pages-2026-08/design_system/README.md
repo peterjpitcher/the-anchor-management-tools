@@ -36,7 +36,7 @@ included as tokens (`--anchor-gold` for fills, `--anchor-gold-dark` for text).
 
 ## Content Fundamentals — how The Anchor writes
 
-The voice is **friendly, cheeky and inclusive**, never corporate.
+The voice is **friendly, warm and inclusive**, never corporate, and it is about the guest, not the pub. The definition is the website repo's `docs/SSOT.md` §1 (confirmed 11 September 2026); "cheeky" was dropped from it.
 
 - **Person:** First-person plural — *we*, *our*, *us*. Speak to the guest as *you*.
 - **Spelling:** British English throughout (*favourite*, *organise*, *centre*).

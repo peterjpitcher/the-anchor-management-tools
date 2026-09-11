@@ -1,5 +1,7 @@
 # Private Bookings SMS Redesign
 
+> **Voice superseded, 11 September 2026.** The tone rules in this spec (a "cheeky/playful" voice, dashes for rhythm, more than one exclamation mark) are replaced by the website repo's `docs/SSOT.md` §1. The texts built from it were brought into line on 11 September 2026. The rest of the spec stands as a design record.
+
 **Date**: 2026-04-18
 **Status**: Approved 2026-04-18 — ready for implementation. Post-adversarial-review revision (see `tasks/codex-qa-review/2026-04-18-private-bookings-sms-redesign-*.md`). All open questions closed.
 **Complexity**: L (4) — touches cron routes (3 of them), service mutations, payments, admin UI, email abstraction, DB schema (4 new columns, 1 extended enum, 1 new trigger), retirement of 2 legacy routes. ~12–16 files.
