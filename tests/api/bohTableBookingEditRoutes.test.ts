@@ -16,6 +16,15 @@ vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }))
 
+// Ordinary days on 12:00 to 22:00, so every clock time sits on its own date. The real
+// serviceInstantFor still places the start; tests/api/bohTableBookingEditAfterMidnight.test.ts
+// covers a night that closes after midnight.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  loadTradingHours: vi.fn(async (_db: unknown, dates: string[]) =>
+    new Map(dates.map((date) => [date, { opens: '12:00:00', closes: '22:00:00', is_closed: false }]))),
+}))
+
 // Preserve every real export from the bookings module, but stub the two customer
 // notification helpers so the edit route's wiring can be asserted without sending.
 vi.mock('@/lib/table-bookings/bookings', async (importActual) => ({
