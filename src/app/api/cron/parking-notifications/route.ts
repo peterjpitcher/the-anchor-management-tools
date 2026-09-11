@@ -14,6 +14,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
+import { resolveTextLandingDay } from '@/lib/sms/landing-day'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -575,6 +576,15 @@ async function processPendingPaymentLifecycle(
     const paymentLink = await lookupPendingPaymentLink(supabase, booking.id)
 
     if (shouldSendDayBefore) {
+      // Word it for the day the customer reads it. Quiet hours hold a send from 21:00 until
+      // 09:00, which for an offer due after about 20:45 is the day it expires, where "expires
+      // tomorrow" was wrong. If it could only arrive once the offer has gone, it is not sent.
+      const expiresOn = resolveTextLandingDay(dueAt, now)
+      if (!expiresOn) {
+        skipped += 1
+        continue
+      }
+
       const reminderPayload = { stage: 'day_before_expiry' }
       const alreadySent = await hasParkingReminderBeenSent(supabase, {
         bookingId: booking.id,
@@ -603,7 +613,7 @@ async function processPendingPaymentLifecycle(
         booking,
         eventType: 'payment_reminder',
         templateKey: TEMPLATE_PARKING_PAYMENT_REMINDER_DAY,
-        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined),
+        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, expiresOn),
         payload: reminderPayload,
         safety,
       })
