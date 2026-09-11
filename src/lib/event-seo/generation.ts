@@ -27,13 +27,14 @@ export const ANCHOR_VENUE_CONTEXT: VenueContext = {
   postcode: 'TW19 6AQ',
   address: 'Horton Road, Stanwell Moor, Surrey, TW19 6AQ',
   phone: '01753 682707',
-  description: 'A popular pub and venue near Heathrow in Stanwell Moor, Surrey',
+  description: 'An independent village pub in Stanwell Moor, Surrey, near Heathrow, here since 1751',
   transport: [
     '7 minutes from Heathrow Terminal 5',
     'Bordering West Drayton and Staines-upon-Thames',
   ],
   parking: 'Free parking (20 spaces)',
-  accessibility: 'Ground-floor venue with step-free access from car park',
+  // SSOT §16 short form, plus the no: the writer must never infer an accessible toilet.
+  accessibility: 'Step free from the car park. One step between the bar and the garden, with a ramp on request. No accessible toilet',
   facilities: [
     'Dog and family friendly',
     'Full menu available while the kitchen is open',
