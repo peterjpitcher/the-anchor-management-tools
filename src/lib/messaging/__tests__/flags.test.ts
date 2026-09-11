@@ -140,12 +140,12 @@ describe('isMessagingFlagOn', () => {
 // The three-way read for paths where off sends more than on (event promotion). On and off must
 // agree with isMessagingFlagOn in every case; only a failed read differs, and it is unknown.
 describe('readMessagingFlagState', () => {
-  it('answers on only for the boolean true, and off for false, a missing key or a malformed entry', async () => {
+  it('answers on only for the boolean true, and off for false, null or a missing key', async () => {
     settingRowResult.data = {
       value: {
         event_promo_last_push: true,
         event_promo_intro_sms_no_email: false,
-        table_cancelled_email_first: 'true',
+        table_cancelled_email_first: null,
       },
     }
 
@@ -155,14 +155,32 @@ describe('readMessagingFlagState', () => {
     expect(await readMessagingFlagState('bounce_sms_fallback')).toEqual({ state: 'off' })
   })
 
+  // The text "true" is a setting someone meant, saved wrongly. For event promotion off restarts
+  // the old intro and follow-up, so a wrongly saved value must not be read as off.
+  it('answers unknown for a key saved as anything other than true or false', async () => {
+    settingRowResult.data = { value: { event_promo_last_push: 'true', event_promo_intro_sms_no_email: 1 } }
+
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({
+      state: 'unknown',
+      failure: { code: 'malformed_messaging_flags', message: 'messaging_flags.event_promo_last_push is not true or false', details: null, hint: null },
+    })
+    expect((await readMessagingFlagState('event_promo_intro_sms_no_email')).state).toBe('unknown')
+    // isMessagingFlagOn keeps its contract: anything but the boolean true is off.
+    expect(await isMessagingFlagOn('event_promo_last_push')).toBe(false)
+  })
+
   it('answers off when the row does not exist, as today', async () => {
     expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'off' })
   })
 
-  it('answers off when the stored value is not an object', async () => {
+  it('answers unknown when the stored value is not an object, while isMessagingFlagOn still reads off', async () => {
     settingRowResult.data = { value: ['event_promo_last_push'] }
 
-    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({ state: 'off' })
+    expect(await readMessagingFlagState('event_promo_last_push')).toEqual({
+      state: 'unknown',
+      failure: { code: 'malformed_messaging_flags', message: 'the messaging_flags value is not a JSON object', details: null, hint: null },
+    })
+    expect(await isMessagingFlagOn('event_promo_last_push')).toBe(false)
   })
 
   it('answers unknown, with the error field by field, when the query returns an error', async () => {
