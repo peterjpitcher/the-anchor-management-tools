@@ -1446,6 +1446,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
 
   // 4. Side Effects
 
+  // Email first (P6): read once for every message this change sends, and passed to each, so a
+  // send and the decisions made on the flag here (the old confirmation email) cannot disagree.
+  const emailFirst = await isPrivateBookingEmailFirstOn()
+
   // The customer must hear about a moved balance/final-details deadline —
   // silent changes are how Paula got contradictory dates (discovery
   // 2026-07-08). Compare against the post-trigger row so DB-side refills
@@ -1511,6 +1515,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         balanceDueDate: balanceDueReadable,
       }),
       windowKey: `moved-${String(updatedBooking.event_date).slice(0, 10)}`,
+      emailFirst,
       facts: buildPrivateBookingMessageFacts('date_changed', updatedBooking, { includeBalanceDueDate: Boolean(balanceDueReadable) }),
     })
     captureSmsSideEffect('date_changed', 'private_booking_date_changed', result)
@@ -1553,6 +1558,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         balanceDueDate: balanceDueReadable,
       }),
       windowKey: `due-${nextBalanceDueIso}`,
+      emailFirst,
       facts: buildPrivateBookingMessageFacts('balance_due_date_changed', updatedBooking),
     })
     captureSmsSideEffect('balance_due_date_changed', 'private_booking_balance_due_date_changed', result)
@@ -1609,6 +1615,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
       booking: updatedBooking,
       email: () => buildSetupReminderEmail({ booking: updatedBooking, firstName }),
       windowKey: `setup-${updatedBooking.setup_date ?? 'none'}-${String(updatedBooking.setup_time ?? '').slice(0, 5)}`,
+      emailFirst,
       facts: buildPrivateBookingMessageFacts('setup_reminder', updatedBooking),
     })
     captureSmsSideEffect('setup_reminder', 'private_booking_setup_reminder', result)
@@ -1629,7 +1636,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     // does not.
     const confirmationTextDue =
       !abortSmsSideEffects && updatedBooking.status === 'confirmed' && !updatedBooking.deposit_paid_date
-    const confirmationByEmailFirst = confirmationTextDue && (await isPrivateBookingEmailFirstOn())
+    const confirmationByEmailFirst = confirmationTextDue && emailFirst
 
     if (updatedBooking.status === 'confirmed' && updatedBooking.customer_id) {
       try {
@@ -1698,6 +1705,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
           totalAmount: confirmationGrossTotal,
         }),
         windowKey: `confirmed-${String(updatedBooking.event_date ?? 'tbd').slice(0, 10)}`,
+        emailFirst,
         facts: buildPrivateBookingMessageFacts('booking_confirmed', updatedBooking),
       })
       captureSmsSideEffect('booking_confirmed', 'private_booking_confirmed', result)
@@ -1758,6 +1766,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         }),
         windowKey: 'cancelled',
         facts: buildPrivateBookingMessageFacts(variant.triggerType, updatedBooking, { cancellation: cancellationAmountsOf(variant) }),
+        emailFirst,
       })
       captureSmsSideEffect(variant.triggerType, variant.templateKey, result)
     }
@@ -1788,6 +1797,7 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         booking: updatedBooking,
         email: () => buildThankYouEmail({ booking: updatedBooking, firstName }),
         windowKey: 'completed',
+        emailFirst,
         facts: buildPrivateBookingMessageFacts('booking_completed', updatedBooking),
       })
       captureSmsSideEffect('booking_completed', 'private_booking_thank_you', result)
@@ -2152,6 +2162,8 @@ export async function cancelBooking(
           cancellation: cancellationAmountsOf(variant, retentionDecision?.reason),
         }),
         emailEvenWhenTextNeedsApproval: true,
+        // The same read that decides, below, whether the old cancellation email goes too.
+        emailFirst: cancellationByEmailFirst,
       });
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
@@ -2351,6 +2363,7 @@ export async function expireBooking(
         email: () => buildHoldLapsedEmail({ booking, firstName: booking.customer_first_name }),
         windowKey: 'expired',
         facts: buildPrivateBookingMessageFacts('booking_expired', booking),
+        emailFirst: expiryByEmailFirst,
       });
     } catch (error) {
       logger.error('Failed to queue expiry SMS notification:', { error: error instanceof Error ? error : new Error(String(error)) })
@@ -2474,6 +2487,7 @@ export async function extendHold(
         }),
         windowKey: `extended-${newExpiryIso.slice(0, 10)}`,
         facts: buildPrivateBookingMessageFacts('hold_extended', extendedBooking),
+        emailFirst: extensionByEmailFirst,
       });
     } catch (error) {
       logger.error('Failed to queue hold extension SMS:', { error: error instanceof Error ? error : new Error(String(error)) });

@@ -167,6 +167,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             email: () => buildHoldLapsedEmail({ booking: bookingForMessage, firstName: booking.customer_first_name }),
             windowKey: 'expired',
             facts: buildPrivateBookingMessageFacts('booking_expired', bookingForMessage),
+            // The same read that let an email-only booking through above.
+            emailFirst,
           });
 
           smsSent = Boolean(smsResult?.sent);

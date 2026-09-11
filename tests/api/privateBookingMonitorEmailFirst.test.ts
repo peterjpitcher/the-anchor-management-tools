@@ -55,6 +55,7 @@ vi.mock('@/services/sms-queue', async () => {
 })
 
 import { sendEmail } from '@/lib/email/emailService'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { SmsQueueService } from '@/services/sms-queue'
 import { GET } from '@/app/api/cron/private-booking-monitor/route'
 
@@ -165,6 +166,31 @@ describe('private booking monitor, email first', () => {
     expect(result.body.stats.remindersSent).toBe(0)
     expect(mockedSendEmail).not.toHaveBeenCalled()
     expect(mockedQueueAndSend).not.toHaveBeenCalled()
+  })
+
+  it('reads the flag once for the run, so a booking it chose for email is sent by email', async () => {
+    seed(draftWithEmailOnly())
+    // The run's read says on; any later read in the same run would have failed and said off, and
+    // this guest has no number, so a second read would have left them with nothing.
+    const flagMock = vi.mocked(isMessagingFlagOn)
+    const original = flagMock.getMockImplementation()!
+    let emailFirstReads = 0
+    flagMock.mockImplementation(async (key) => {
+      if (key !== 'private_booking_email_first') return false
+      emailFirstReads += 1
+      return emailFirstReads === 1
+    })
+
+    try {
+      const result = await runMonitor()
+
+      expect(result.body.stats.remindersSent).toBe(1)
+      expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+      expect(mockedQueueAndSend).not.toHaveBeenCalled()
+      expect(emailFirstReads).toBe(1)
+    } finally {
+      flagMock.mockImplementation(original)
+    }
   })
 
   it('a guest with a number but no usable email still gets the text', async () => {

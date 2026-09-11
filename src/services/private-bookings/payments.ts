@@ -186,6 +186,8 @@ async function sendDepositReceivedSideEffects(input: {
         windowKey: 'deposit',
         // From the row as the payment left it: `booking` was read before the deposit was recorded.
         facts: buildPrivateBookingMessageFacts('deposit_received', { ...booking, ...(updatedBooking ?? {}) }),
+        // The same read that decides, below, whether the old deposit email goes too.
+        emailFirst: depositByEmailFirst,
       });
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
@@ -356,6 +358,8 @@ export async function sendBookingConfirmedSideEffects(input: {
         }),
         windowKey: `confirmed-${String(booking.event_date ?? 'tbd').slice(0, 10)}`,
         facts: buildPrivateBookingMessageFacts('booking_confirmed', booking),
+        // The same read that decided, above, whether the old confirmation email went.
+        emailFirst: confirmationByEmailFirst,
       })
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }
@@ -734,6 +738,8 @@ export async function recordBalancePayment(bookingId: string, amount: number, me
         }),
         windowKey: 'final-payment',
         facts: buildPrivateBookingMessageFacts('final_payment_received', booking),
+        // The same read that decides, below, whether the old balance-paid email goes too.
+        emailFirst: finalPaymentByEmailFirst,
       });
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }

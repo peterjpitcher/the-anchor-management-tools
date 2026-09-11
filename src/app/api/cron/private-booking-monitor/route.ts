@@ -521,7 +521,8 @@ export async function GET(request: Request) {
     }
 
     // Email first (P6, flag private_booking_email_first): reminders go by email when the booking
-    // has a usable address, and the text only if that email fails.
+    // has a usable address, and the text only if that email fails. Read once for the whole run and
+    // passed to every send, so the bookings chosen here and the channel each send uses agree.
     const emailFirst = await isPrivateBookingEmailFirstOn()
 
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
@@ -668,6 +669,7 @@ export async function GET(request: Request) {
               }),
               windowKey: holdExpiryWindowKey,
               facts: buildPrivateBookingMessageFacts(triggerType, booking),
+              emailFirst,
             })
 
             if (result.error) {
@@ -760,6 +762,7 @@ export async function GET(request: Request) {
               }),
               windowKey: holdExpiryWindowKey,
               facts: buildPrivateBookingMessageFacts(triggerType, booking),
+              emailFirst,
             })
 
             if (result.error) {
@@ -850,6 +853,7 @@ export async function GET(request: Request) {
               }),
               windowKey: holdExpiryWindowKey,
               facts: buildPrivateBookingMessageFacts(triggerType, booking),
+              emailFirst,
             })
 
             if (result.error) {
@@ -1040,6 +1044,7 @@ export async function GET(request: Request) {
             }),
             windowKey: balanceWindowKey,
             facts: buildPrivateBookingMessageFacts(triggerType, booking, { balanceAmount: balanceDue }),
+            emailFirst,
           });
 
           if (result.error) {
@@ -1138,6 +1143,7 @@ export async function GET(request: Request) {
             email: () => buildEventReminderEmail({ booking, firstName: rawFirstName }),
             windowKey: eventReminderWindowKey,
             facts: buildPrivateBookingMessageFacts(triggerType, booking),
+            emailFirst,
           })
 
           if (result.error) {
@@ -1397,6 +1403,7 @@ export async function GET(request: Request) {
             email: () => buildReviewRequestEmail({ booking, firstName: booking.customer_first_name, reviewLink }),
             windowKey: eventDateIso,
             facts: buildPrivateBookingMessageFacts('review_request', booking),
+            emailFirst,
           })
 
           if (sendResult.error) {

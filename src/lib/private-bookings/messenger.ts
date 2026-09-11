@@ -38,6 +38,13 @@ export type SendPrivateBookingMessageInput = {
    * if the email does not go.
    */
   emailEvenWhenTextNeedsApproval?: boolean
+  /**
+   * The private_booking_email_first flag as the calling action already read it. An action that
+   * decides anything else on the flag (skipping the old email, choosing which bookings to remind)
+   * must pass it, so this send and that decision cannot disagree: a failed read is not cached, so
+   * a second read in the same action can answer differently. Read here only when absent.
+   */
+  emailFirst?: boolean
 }
 
 /**
@@ -56,7 +63,8 @@ export type SendPrivateBookingMessageInput = {
  * - With no usable address, the text goes exactly as before.
  */
 export async function sendPrivateBookingMessage(input: SendPrivateBookingMessageInput): Promise<PrivateBookingMessageResult> {
-  if (!(await isPrivateBookingEmailFirstOn())) {
+  const emailFirst = input.emailFirst ?? (await isPrivateBookingEmailFirstOn())
+  if (!emailFirst) {
     return SmsQueueService.queueAndSend(input.sms)
   }
 
