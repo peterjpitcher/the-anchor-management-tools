@@ -146,6 +146,18 @@ export function createFakeSupabase(
         }
         return Promise.resolve({ data: null, error: null })
       },
+      not(column: string, operator: string, value: unknown) {
+        if (operator === 'is' && value === null) {
+          filters.push((row) => row[column] !== null && row[column] !== undefined)
+        } else {
+          filters.push((row) => row[column] !== value)
+        }
+        return api
+      },
+      /** PostgREST `or` strings are not parsed: this filters nothing. Keep test data unambiguous. */
+      or() {
+        return api
+      },
       contains(column: string, value: Record<string, unknown>) {
         filters.push((row) => {
           const target = row[column]

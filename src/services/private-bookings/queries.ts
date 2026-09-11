@@ -14,6 +14,7 @@ import {
   sanitizeBookingSearchTerm,
 } from './types';
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
+import { loadPrivateBookingEmailTimeline } from '@/lib/private-bookings/email-timeline';
 
 function normalizeDepositStatus(booking: {
   deposit_amount?: unknown
@@ -371,7 +372,8 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
       ? 'Required'
       : 'Not Required';
 
-  const auditTrail = ((auditsData ?? []) as PrivateBookingAuditWithUser[]).slice().sort(
+  const audits = (auditsData ?? []) as PrivateBookingAuditWithUser[];
+  const auditTrail = [...audits, ...(await loadPrivateBookingEmailTimeline(id, audits))].sort(
     (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime()
   );
 

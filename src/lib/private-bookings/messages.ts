@@ -13,6 +13,12 @@ function money(n: number): string {
   return Number.isInteger(n) ? `£${n}` : `£${n.toFixed(2)}`
 }
 
+/**
+ * The amount exactly as these texts print it (£250, £12.50). The email versions of these messages
+ * use it too, so an email never states a sum differently from the text it replaces.
+ */
+export const formatPrivateBookingAmount = money
+
 function cap(body: string): string {
   return body.length <= MAX_BODY ? body : body.slice(0, MAX_BODY - 1) + '…'
 }
