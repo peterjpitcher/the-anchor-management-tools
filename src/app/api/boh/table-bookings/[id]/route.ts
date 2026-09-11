@@ -510,14 +510,17 @@ export async function DELETE(
   }).catch(() => {})
 
   // Tiered deposit refund + cancellation SMS (never fail the delete)
+  // guestNotification is set only on the email-first path (flag table_cancelled_email_first).
+  let guestNotification: Awaited<ReturnType<typeof refundAndNotifyOnCancel>>['notification'] = null
   if (existing.booking_date && existing.customer_id) {
-    await refundAndNotifyOnCancel(auth.supabase, {
+    const cancelOutcome = await refundAndNotifyOnCancel(auth.supabase, {
       bookingId: existing.id,
       bookingReference: existing.booking_reference || id,
       bookingDate: existing.booking_date,
       customerId: existing.customer_id,
       source: 'boh_soft_delete',
     })
+    guestNotification = cancelOutcome?.notification ?? null
   }
 
   return NextResponse.json({
@@ -530,6 +533,7 @@ export async function DELETE(
       cancelled_at: cancelledBooking.cancelled_at || nowIso,
       cancellation_reason: cancelledBooking.cancellation_reason || cancellationReason,
       soft_deleted: true
-    }
+    },
+    ...(guestNotification ? { guest_notification: guestNotification } : {}),
   })
 }

@@ -24,6 +24,14 @@ import {
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
 } from './deposit'
 import { isChristmasBookingType } from './christmas'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import {
+  GUEST_CHANNEL_COLUMNS,
+  notifyTableBookingGuestEmailFirst,
+  type GuestChannelCustomer,
+} from '@/lib/table-bookings/guest-notify'
+import { buildTableBookingCancelledEmail } from '@/lib/table-bookings/guest-emails'
+import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
 
 // Re-exported for backwards-compat in this file. The single source of truth is
 // `LARGE_GROUP_DEPOSIT_PER_PERSON_GBP` in `./deposit.ts`. Spec §7.3, §8.3.
@@ -1520,17 +1528,204 @@ export async function sendSundayPreorderLinkSmsIfAllowed(
   }
 }
 
+export type TableBookingCancellationRefundResult =
+  | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number }
+  | { refunded: true; amountPence: number; tier: string }
+
+type TableBookingCancellationNoticeParams = {
+  customerId: string
+  bookingReference: string
+  bookingDate: string // YYYY-MM-DD format
+  refundResult: TableBookingCancellationRefundResult
+  tableBookingId?: string
+}
+
+function formatGbpFromPence(pence: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
+}
+
+/**
+ * What the cancellation message says about the deposit: the sentence after "has been cancelled."
+ * The text and the email both use it, so the amount and the refund timing the guest reads are the
+ * same on either channel.
+ */
+export function describeTableBookingCancellationRefund(refundResult: TableBookingCancellationRefundResult): string {
+  if (refundResult.refunded) {
+    const amountGbp = formatGbpFromPence(refundResult.amountPence)
+
+    // Name the half tier. Saying only "your £75 refund" to someone who paid £150 reads as a
+    // full refund of a £75 deposit, so the one number they can check looks wrong.
+    return refundResult.tier === 'half'
+      ? `As it's within a week, half the deposit is refundable: your ${amountGbp} refund will land within 5-10 days.`
+      : `Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
+  }
+
+  if (refundResult.reason === 'zero_tier') {
+    return "As it's within 3 days, the deposit can't be refunded. Hope to see you another time!"
+  }
+
+  if (refundResult.reason === 'refund_failed' || refundResult.depositOwed) {
+    // Never go quiet about money we still hold. Silence here is what made a failed refund
+    // indistinguishable from a booking that never had a deposit.
+    const owed = refundResult.amountOwedPence
+    return owed
+      ? `We couldn't process your ${formatGbpFromPence(owed)} deposit refund automatically, so we'll sort it by hand and be in touch.`
+      : "We couldn't process your deposit refund automatically, so we'll sort it by hand and be in touch."
+  }
+
+  if (refundResult.reason === 'terms_unreadable') {
+    return "We'll check your deposit and be in touch about it shortly."
+  }
+
+  return 'Hope to see you again soon!'
+}
+
+/** "Sat 14 Mar 2026", as the cancellation text has always shown the date. */
+function formatCancellationTextDate(bookingDate: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(new Date(`${bookingDate}T12:00:00`))
+  } catch {
+    // fall back to raw date string
+    return bookingDate
+  }
+}
+
+function buildTableBookingCancelledTextBody(
+  firstName: string,
+  bookingDate: string,
+  refundResult: TableBookingCancellationRefundResult
+): string {
+  return `The Anchor: ${firstName}, your booking on ${formatCancellationTextDate(bookingDate)} has been cancelled. ${describeTableBookingCancellationRefund(refundResult)}`
+}
+
+/**
+ * Tell the guest their table booking has been cancelled.
+ *
+ * With the messaging flag `table_cancelled_email_first` off (today), a text goes to guests with
+ * an active mobile, exactly as before, and this returns null. With it on, the email goes first
+ * and the text is the fallback, guests with only an email address are told too, and the outcome
+ * comes back so staff can see a guest who was not reached.
+ */
 export async function sendTableBookingCancelledSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
-  params: {
-    customerId: string
-    bookingReference: string
-    bookingDate: string // YYYY-MM-DD format
-    refundResult:
-      | { refunded: false; reason: string; depositOwed?: boolean; amountOwedPence?: number }
-      | { refunded: true; amountPence: number; tier: string }
-    tableBookingId?: string
+  params: TableBookingCancellationNoticeParams
+): Promise<GuestNotificationOutcome | null> {
+  // Every caller passes the booking id. Without one the email-first path could not key its
+  // duplicate protection to the booking, so it stays on the text path.
+  if (params.tableBookingId && (await isMessagingFlagOn('table_cancelled_email_first'))) {
+    return sendTableBookingCancelledEmailFirst(supabase, { ...params, tableBookingId: params.tableBookingId })
   }
+
+  await sendTableBookingCancelledTextOnly(supabase, params)
+  return null
+}
+
+async function sendTableBookingCancelledEmailFirst(
+  supabase: SupabaseClient<any, 'public', any>,
+  params: TableBookingCancellationNoticeParams & { tableBookingId: string }
+): Promise<GuestNotificationOutcome> {
+  const templateKey = 'table_booking_cancelled'
+
+  try {
+    const [{ data: customer, error: customerError }, { data: booking, error: bookingError }] = await Promise.all([
+      supabase.from('customers').select(GUEST_CHANNEL_COLUMNS).eq('id', params.customerId).maybeSingle(),
+      supabase
+        .from('table_bookings')
+        .select('id, booking_reference, booking_date, booking_time, start_datetime, party_size')
+        .eq('id', params.tableBookingId)
+        .maybeSingle(),
+    ])
+
+    if (customerError || !customer) {
+      const outcome: GuestNotificationOutcome = {
+        status: customerError ? 'failed' : 'no_channel',
+        channel: null,
+        fallbackUsed: false,
+        error: customerError ? `Customer could not be loaded: ${customerError.message}` : 'Customer not found',
+      }
+      logger.error('Table booking cancellation notice could not load the customer', {
+        metadata: { tableBookingId: params.tableBookingId, customerId: params.customerId, error: outcome.error },
+      })
+      await AuditService.logAuditEvent({
+        operation_type: 'table_booking.notification_failed',
+        resource_type: 'table_booking',
+        resource_id: params.tableBookingId,
+        operation_status: 'failure',
+        error_message: outcome.error ?? undefined,
+        additional_info: { comm_type: templateKey, customer_id: params.customerId, outcome: outcome.status },
+      })
+      return outcome
+    }
+
+    if (bookingError) {
+      // The date, reference and refund still reach the guest; only the time and party size
+      // are left out of the email.
+      logger.warn('Table booking cancellation notice could not load the booking details', {
+        metadata: { tableBookingId: params.tableBookingId, error: bookingError.message },
+      })
+    }
+
+    const guest = customer as GuestChannelCustomer
+    const firstName = getSmartFirstName(guest.first_name)
+    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+    const email = buildTableBookingCancelledEmail({
+      firstName,
+      bookingReference: booking?.booking_reference || params.bookingReference,
+      bookingDate: params.bookingDate,
+      bookingTime: booking?.booking_time ?? null,
+      startDateTime: booking?.start_datetime ?? null,
+      partySize: booking?.party_size ?? null,
+      refundSentence: describeTableBookingCancellationRefund(params.refundResult),
+    })
+
+    return await notifyTableBookingGuestEmailFirst({
+      supabase,
+      templateKey,
+      tableBookingId: params.tableBookingId,
+      customer: guest,
+      email,
+      sms: {
+        to: guest.mobile_number,
+        body: ensureReplyInstruction(
+          buildTableBookingCancelledTextBody(firstName, params.bookingDate, params.refundResult),
+          supportPhone
+        ),
+        metadata: { booking_reference: params.bookingReference },
+      },
+      idempotencyKey: `${templateKey}:${params.tableBookingId}`,
+      auditContext: {
+        booking_reference: params.bookingReference,
+        refunded: params.refundResult.refunded,
+      },
+    })
+  } catch (error) {
+    // Never rethrow: a messaging failure must not affect the cancel or delete that called us.
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Table booking cancellation notice threw unexpectedly', {
+      error: error instanceof Error ? error : new Error(message),
+      metadata: { tableBookingId: params.tableBookingId, customerId: params.customerId },
+    })
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.notification_failed',
+      resource_type: 'table_booking',
+      resource_id: params.tableBookingId,
+      operation_status: 'failure',
+      error_message: message,
+      additional_info: { comm_type: templateKey, customer_id: params.customerId, outcome: 'failed', threw: true },
+    })
+    return { status: 'failed', channel: null, fallbackUsed: false, error: message }
+  }
+}
+
+async function sendTableBookingCancelledTextOnly(
+  supabase: SupabaseClient<any, 'public', any>,
+  params: TableBookingCancellationNoticeParams
 ): Promise<void> {
   try {
     const { data: customer } = await supabase
@@ -1543,48 +1738,8 @@ export async function sendTableBookingCancelledSmsIfAllowed(
       return
     }
 
-    // Format booking date for display (e.g. "Sat 14 Mar 2026")
-    let dateLabel = params.bookingDate
-    try {
-      dateLabel = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }).format(new Date(`${params.bookingDate}T12:00:00`))
-    } catch {
-      // fall back to raw date string
-    }
-
     const firstName = getSmartFirstName(customer.first_name)
-    let smsBody: string
-    const formatGbp = (pence: number) =>
-      new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
-
-    if (params.refundResult.refunded) {
-      const amountGbp = formatGbp(params.refundResult.amountPence)
-
-      // Name the half tier. Saying only "your £75 refund" to someone who paid £150 reads as a
-      // full refund of a £75 deposit, so the one number they can check looks wrong.
-      smsBody =
-        params.refundResult.tier === 'half'
-          ? `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. As it's within a week, half the deposit is refundable: your ${amountGbp} refund will land within 5-10 days.`
-          : `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Your ${amountGbp} refund will land within 5-10 days. Hope to see you again soon!`
-    } else if (params.refundResult.reason === 'zero_tier') {
-      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. As it's within 3 days, the deposit can't be refunded. Hope to see you another time!`
-    } else if (params.refundResult.reason === 'refund_failed' || params.refundResult.depositOwed) {
-      // Never go quiet about money we still hold. Silence here is what made a failed refund
-      // indistinguishable from a booking that never had a deposit.
-      const owed = params.refundResult.amountOwedPence
-      smsBody = owed
-        ? `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. We couldn't process your ${formatGbp(owed)} deposit refund automatically, so we'll sort it by hand and be in touch.`
-        : `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. We couldn't process your deposit refund automatically, so we'll sort it by hand and be in touch.`
-    } else if (params.refundResult.reason === 'terms_unreadable') {
-      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. We'll check your deposit and be in touch about it shortly.`
-    } else {
-      smsBody = `The Anchor: ${firstName}, your booking on ${dateLabel} has been cancelled. Hope to see you again soon!`
-    }
+    const smsBody = buildTableBookingCancelledTextBody(firstName, params.bookingDate, params.refundResult)
 
     const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
 
