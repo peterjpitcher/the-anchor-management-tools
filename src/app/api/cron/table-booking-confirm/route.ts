@@ -35,6 +35,12 @@ import {
   decideConfirmReminder,
   type ConfirmCandidate,
 } from '@/lib/table-bookings/confirm-reminder'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { isEmailUsable } from '@/lib/notifications/channel'
+import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
+import { notifyTableBookingGuestEmailFirst } from '@/lib/table-bookings/guest-notify'
+import { buildTableBookingConfirmReminderEmail } from '@/lib/table-bookings/guest-emails'
+import { getSmartFirstName } from '@/lib/sms/name-utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -58,7 +64,68 @@ type BookingRow = {
     mobile_e164: string | null
     mobile_number: string | null
     sms_status: string | null
+    // Read only on the email-first path.
+    sms_opt_in?: boolean | null
+    email?: string | null
+    email_status?: string | null
+    email_deactivated_at?: string | null
   } | null
+}
+
+/**
+ * The reminder by email first (flag table_confirm_reminder_email_first). The email and a
+ * fallback text share one short link to the existing confirm page, which only asks the question:
+ * the answer is a POST from that page, so a mail scanner that opens the link answers nothing.
+ */
+async function sendConfirmReminderEmailFirst(
+  supabase: ReturnType<typeof createAdminClient>,
+  row: BookingRow,
+  customer: NonNullable<BookingRow['customers']>,
+  confirmUrl: string,
+) {
+  const confirmLink = await buildGuestShortLink({
+    longUrl: confirmUrl,
+    linkKind: 'booking_confirm',
+    customerId: customer.id,
+    tableBookingId: row.id,
+  })
+
+  const templateKey = 'table_booking_confirm_reminder'
+  return notifyTableBookingGuestEmailFirst({
+    supabase,
+    templateKey,
+    tableBookingId: row.id,
+    customer: {
+      id: customer.id,
+      first_name: customer.first_name,
+      mobile_e164: customer.mobile_e164,
+      mobile_number: customer.mobile_number,
+      email: customer.email ?? null,
+      sms_status: customer.sms_status,
+      sms_opt_in: customer.sms_opt_in ?? null,
+      email_status: customer.email_status ?? null,
+      email_deactivated_at: customer.email_deactivated_at ?? null,
+    },
+    email: buildTableBookingConfirmReminderEmail({
+      firstName: getSmartFirstName(customer.first_name),
+      bookingReference: row.booking_reference,
+      bookingDate: row.booking_date,
+      bookingTime: row.booking_time,
+      partySize: row.party_size,
+      confirmUrl: confirmLink.url,
+    }),
+    sms: {
+      to: customer.mobile_e164 || customer.mobile_number || null,
+      body: buildConfirmReminderMessage({
+        firstName: customer.first_name,
+        bookingMoment: formatDateWithTimeForSms(row.booking_date, row.booking_time),
+        partySize: row.party_size,
+        confirmUrl: confirmLink.url,
+      }),
+    },
+    idempotencyKey: `${templateKey}:${row.id}`,
+    auditContext: { booking_reference: row.booking_reference, short_link_fallback: !confirmLink.shortened },
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -77,10 +144,17 @@ export async function GET(request: NextRequest) {
   const skipReasons: Record<string, number> = {}
 
   try {
+    // Owner decision, 11 September 2026: the reminder goes by email first, with a text as the
+    // fallback, and guests with only an email address are asked too. Off (and any failure to
+    // read the flag) is today's text-only sweep.
+    const emailFirst = await isMessagingFlagOn('table_confirm_reminder_email_first')
+
     const { data: bookings, error: bookingsError } = await supabase
       .from('table_bookings')
       .select(
-        'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status)',
+        emailFirst
+          ? 'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status, sms_opt_in, email, email_status, email_deactivated_at)'
+          : 'id, booking_reference, booking_date, booking_time, party_size, status, guest_confirmed_at, customer_id, customers(id, first_name, mobile_e164, mobile_number, sms_status)',
       )
       .in('status', CONFIRMABLE_BOOKING_STATUSES as unknown as string[])
       .is('guest_confirmed_at', null)
@@ -121,11 +195,12 @@ export async function GET(request: NextRequest) {
               firstName: row.customers.first_name,
               phone: row.customers.mobile_e164 || row.customers.mobile_number || null,
               smsActive: row.customers.sms_status === 'active',
+              ...(emailFirst ? { emailUsable: isEmailUsable(row.customers) } : {}),
             }
           : null,
       }
 
-      const decision = decideConfirmReminder(candidate, todayIsoDate)
+      const decision = decideConfirmReminder(candidate, todayIsoDate, { emailFirst })
       if (!decision.send) {
         counts.skipped += 1
         skipReasons[decision.reason] = (skipReasons[decision.reason] ?? 0) + 1
@@ -151,6 +226,21 @@ export async function GET(request: NextRequest) {
           bookingStartIso: `${row.booking_date}T${row.booking_time || '00:00'}:00`,
           appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
         })
+
+        if (emailFirst && row.customers) {
+          const outcome = await sendConfirmReminderEmailFirst(supabase, row, row.customers, token.url)
+          if (outcome.status === 'sent') {
+            counts.sent += 1
+          } else {
+            // The ledger row stays, as for every failure here; the audit row names the booking
+            // and the pub rings anyone this sweep could not reach.
+            counts.failed += 1
+            logger.error('Table booking confirm reminder reached nobody', {
+              metadata: { tableBookingId: row.id, bookingReference: row.booking_reference, outcome: outcome.status, error: outcome.error },
+            })
+          }
+          continue
+        }
 
         const message = buildConfirmReminderMessage({
           firstName: candidate.customer!.firstName,

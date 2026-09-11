@@ -9,7 +9,7 @@ Same branch as P1. Every change sits behind a `messaging_flags` key that reads a
 - [x] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
 - [x] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
 - [x] P3 `table_preorder_email_first`: email first instead of both.
-- [ ] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
+- [x] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
 - [ ] Fixture renders of every new email in London and UTC.
 - [ ] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.
 - [ ] Push, merge and deploy: not asked for; local commits only.
