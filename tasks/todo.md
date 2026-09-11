@@ -1,3 +1,16 @@
+# Christmas minimum from 6 to 4, 11 September 2026 (drafted, not applied)
+
+- [x] Prove the production ref (`tfcasgxopxegwrabvwat`) from `supabase/.temp/project-ref` and `.env.local`; read live state with read-only SELECTs only.
+- [x] Capture both live function definitions and match them to production by md5 before editing.
+- [x] Draft `20260911133645_christmas_minimum_four.sql` (two gates, EXECUTE re-stated, one period row) and its rollback in `supabase/rollbacks/`.
+- [x] `CHRISTMAS_MIN_PARTY_SIZE` to 4; fixtures that modelled the 6-guest period moved to 4.
+- [x] Tests that fail on the old values: `christmas-minimum.test.ts`, `FohCreateBookingModal.test.tsx`.
+- [x] Validate on an isolated local database: production state reproduced, migration, re-run, rollback, unhappy paths.
+- [x] Gates: lint (0 warnings), typecheck, `npm test` and `npm run test:utc` (791 files, 7,174 passed, 2 existing skips each), cold build. The build ran out of memory at the default heap while type checking and passed with `NODE_OPTIONS=--max-old-space-size=8192`, the same flag the typecheck needs.
+- [ ] Owner approval of the production packet, then apply through `prod-migrate`.
+
+Decisions: the period row is matched on its code, not its production id, so a rebuilt database applies it too. Marketing campaign files were left alone: two are records of emails sent in August, the rest are the designer's handover samples that the fidelity tests pin byte for byte.
+
 # Email-first messaging: review fixes for the bounce fallback, 11 September 2026
 
 Integration branch `feat/email-first-integration-2026-09-11`, on top of `dc76b5a9`. Local commits only. With every flag off nothing a guest or staff member sees changes, except the party-size checkbox label and the cancellation email key.

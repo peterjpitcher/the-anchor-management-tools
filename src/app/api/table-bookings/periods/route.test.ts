@@ -91,7 +91,10 @@ vi.mock('@/lib/api/auth', async (importOriginal) => {
 import { GET } from './route'
 import { withApiAuth } from '@/lib/api/auth'
 
-/** The seeded Christmas period, as the database row the route actually reads. */
+/**
+ * The seeded Christmas period, as the database row the route actually reads, with the minimum
+ * lowered to 4 by 20260911133645_christmas_minimum_four.sql.
+ */
 const CHRISTMAS_ROW = {
   id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
   code: 'christmas-2026',
@@ -106,7 +109,7 @@ const CHRISTMAS_ROW = {
   deposit_basis: 'per_head',
   deposit_amount: '10.00',
   refund_cutoff_days: 7,
-  min_party_size: 6,
+  min_party_size: 4,
   max_party_size: 20,
   min_notice_hours: 24,
   legacy_booking_type: 'christmas',
@@ -245,7 +248,7 @@ describe('GET /api/table-bookings/periods', () => {
   })
 
   it('explains a party outside the period limits instead of pricing it', async () => {
-    const res = await GET(makeRequest('?date=2026-12-05&party_size=4'))
+    const res = await GET(makeRequest('?date=2026-12-05&party_size=3'))
     const json = await res.json()
 
     expect(json.data.deposit.if_accepted).toBeNull()

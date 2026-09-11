@@ -23,7 +23,7 @@ describe('extractServiceWindowRuleErrorMessage', () => {
 
   it('ignores every other failure', () => {
     expect(
-      extractServiceWindowRuleErrorMessage({ code: '22023', message: 'Christmas bookings need at least 6 guests.' }),
+      extractServiceWindowRuleErrorMessage({ code: '22023', message: 'Christmas bookings are for 4 guests or more.' }),
     ).toBeNull()
     expect(extractServiceWindowRuleErrorMessage({ code: '23P01', message: 'table_assignment_overlap' })).toBeNull()
     expect(extractServiceWindowRuleErrorMessage({ message: '' })).toBeNull()
