@@ -1,3 +1,21 @@
+# "Open now" past midnight, for the 1am New Year's Eve close, 11 September 2026
+
+Branch `fix/hours-open-now-past-midnight-2026-09-11`. Code only: no database change, no deploy. Unblocks item 12 below (the 31 December special hours row moving from 22:00 to 01:00), which stays a separate, owner-approved data change after this is live.
+
+- [x] `whenLondonClockReaches()` in `src/lib/dateUtils.ts`: the first instant the London clock shows a wall time on a date. `fromZonedTime` lands an hour out for 01:00 to 01:59 on both clock-change nights. Tests in both zones.
+- [x] `src/lib/business-hours/open-now.ts` (pure): trading window per London date (a close at or before the opening time is the next day), the trading day in force now (yesterday's until its after-midnight close, else today's), the kitchen service being served on that day, and `calculateTimeUntil` measured between instants.
+- [x] `/api/business/hours`: currentStatus, services.venue and services.kitchen read the trading day; yesterday's special row and yesterday's effective-dated regular row are loaded; payload otherwise unchanged.
+- [x] `/api/business-hours`: isOpen reads the trading day the same way.
+- [x] Route tests for both, fixtures: ordinary day, 31 December 12:00 to 01:00 (23:30 and 12:00 on 31 December, 00:30 on 1 January, 00:30 on 31 December after a 22:00 close on 30 December), a regular midnight close, a version change at midnight, both clock-change nights. Against the old routes 11 of the 17 fail and the ordinary-day ones pass.
+- [x] Sweep the rest of the app for "open now" read off today's row alone; check the website's consumers on `origin/main` (read only). No other open or closed status in the app. The FOH screen, FOH walk-ins, FOH booking time moves and the missing cash-up list take "today" from the calendar date; left alone here and reported. The website's badges read `currentStatus.isOpen`, so they come right with this change; its smaller follow-ups are reported, not fixed.
+- [x] Gates: lint, typecheck, `npm test`, `npm run test:utc`, build. Commit; no push.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+- [ ] Then the 31 December special hours row from 22:00 to 01:00 (item 12 below): a production write, the owner's go-ahead.
+
+Results (Node 20.19.5, on `origin/main` `339bfcf1`): lint clean; uncached `tsc --noEmit` clean; 838 test files, 7,955 passed and 2 skipped in both London and UTC (the same on Node 26); cold `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`, both hours routes dynamic.
+
+Decisions recorded: a close at or before the opening time is always the next day, with no cap, as the routes already had it; on a clock-change night a close is the first moment the clock shows it; `today` and `todayHours` still describe the calendar day; the special hours read still falls back to regular hours when it fails.
+
 # Private booking deposits confirmed by staff, balance reminders by email, 11 September 2026
 
 Branch `feat/private-booking-deposit-confirm-2026-09-11`, rebased on `origin/main` (`377434a0`). Local commits only. Both new flags are off by default, and off is today's behaviour.
@@ -24,7 +42,7 @@ Owner approval 11 September 2026 (items 1 to 11, 13 to 15, and the owner's answe
 - [x] `20260911172100_private_booking_queue_cancel_stale_texts.sql` (sha256 `91ad9f85...`) applied as `20260911180903 private_booking_queue_cancel_stale_texts`: 21 texts cancelled, none had gone; the one other pending text (a draft booking's deposit reminder) untouched.
 - [x] `20260911172200_backup_accessibility_tables_rls.sql` (sha256 `7a152ee0...`) applied as `20260911180913 backup_accessibility_tables_rls`: row level security on for both backup tables; `assert-anon-surface.ts` all 9 checks passed after.
 - [x] `20260911180000_ssot_record_followups.sql` (sha256 `fb3f3f96...`) applied as `20260911181415 ssot_record_followups`: "Assistance dogs are always welcome." back after the SSOT access block on the 25 rows that had it (SSOT section 8), the tasting night brief's "wheelchair accessible" line, and the four other quiz briefs' 6:45pm and 6:55pm arrival lines. Replayed on a throwaway local Postgres 17 first: it only logs a notice off production.
-- [ ] New Year's Eve closing at 1am (item 12): blocked until the business hours "open now" status reads the previous day's row past midnight (`src/app/api/business/hours/route.ts`, `src/app/api/business-hours/route.ts`). Then one field on the 31 December special hours row.
+- [ ] New Year's Eve closing at 1am (item 12): blocked until the business hours "open now" status reads the previous day's row past midnight (`src/app/api/business/hours/route.ts`, `src/app/api/business-hours/route.ts`). Then one field on the 31 December special hours row. The code fix is on `fix/hours-open-now-past-midnight-2026-09-11` (top of this file), not yet deployed.
 
 After: no upcoming brief says 6:45pm, 6:55pm or wheelchair accessible; no upcoming quiz record says communal; no upcoming event other than the Halloween party ends after 22:00.
 
