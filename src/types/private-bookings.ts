@@ -100,7 +100,7 @@ export interface PrivateBooking {
   deposit_waived_reason?: string
   /**
    * When staff confirmed the deposit amount and the deposit request went (migration
-   * 20260911180000). Null means the deposit is still to be confirmed; absent means the column was
+   * 20260911200000). Null means the deposit is still to be confirmed; absent means the column was
    * not read, which counts as confirmed.
    */
   deposit_confirmed_at?: string | null

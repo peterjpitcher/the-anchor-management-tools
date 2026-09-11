@@ -562,7 +562,7 @@ export async function GET(request: Request) {
       error: { code?: string; message?: string } | null
     }
     if (draftsError && depositConfirmation) {
-      // Most likely migration 20260911180000 has not been applied. Nothing is sent, which is the
+      // Most likely migration 20260911200000 has not been applied. Nothing is sent, which is the
       // safe side, but it must not pass quietly.
       logger.error('Private booking monitor: deposit reminder query failed with deposit confirmation on', {
         metadata: { runKey, code: draftsError.code ?? null, message: draftsError.message ?? null },
