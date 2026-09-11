@@ -3,13 +3,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getActiveVersion, getBusinessHoursForDates, listVersions } from '@/lib/business-hours/effective';
 import {
   describeKitchenWindows,
-  kitchenWindowAt,
   resolveKitchenWindows,
 } from '@/lib/business-hours/kitchen-windows';
+import { calculateTimeUntil, kitchenServiceAt, resolveOpenNow } from '@/lib/business-hours/open-now';
 import { createApiResponse, createErrorResponse } from '@/lib/api/auth';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { getTodayIsoDate, getLocalIsoDateDaysAhead, isValidIsoDate } from '@/lib/dateUtils';
+import { getLocalIsoDateDaysAhead, isValidIsoDate, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -17,6 +17,11 @@ export async function GET(request: NextRequest) {
   try {
     // This endpoint can be public for SEO purposes
     const supabase = createAdminClient();
+
+    // One instant for the whole response, so every "today" below is the same London day.
+    const now = new Date();
+    const todayIso = toLocalIsoDate(now);
+    const yesterdayIso = shiftIsoDate(todayIso, -1) as string;
 
     // `?date=` asks "what are the hours on this date". Without it the answer is
     // "today", which is what every existing caller means. The SHAPE is identical
@@ -28,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (requestedDate !== null && !isValidIsoDate(requestedDate)) {
       return createErrorResponse('date must be a real calendar date in YYYY-MM-DD form', 'VALIDATION_ERROR', 400);
     }
-    const effectiveDate = requestedDate ?? getTodayIsoDate();
+    const effectiveDate = requestedDate ?? todayIso;
 
     const activeVersion = await getActiveVersion(effectiveDate, supabase);
     if (!activeVersion) {
@@ -47,23 +52,26 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Failed to fetch business hours', 'DATABASE_ERROR', 500);
     }
 
-    // Get special hours for the next 90 days
-    const today = new Date();
-
+    // Get special hours for the next 90 days, and yesterday's: from midnight until an
+    // after-midnight close, yesterday's hours are the ones in force. Yesterday's row is
+    // only used for that, never returned in specialHours.
     let specialHours = [];
+    let yesterdaySpecial;
     try {
       const { data, error } = await supabase
         .from('special_hours')
         .select('*')
-        .gte('date', getTodayIsoDate())
+        .gte('date', yesterdayIso)
         .lte('date', getLocalIsoDateDaysAhead(90))
         .order('date', { ascending: true });
-      
+
       if (error) {
         console.error('Special hours query failed:', error);
         // Continue with empty special hours instead of failing
       } else {
-        specialHours = data || [];
+        const rows = data || [];
+        yesterdaySpecial = rows.find(special => special.date === yesterdayIso);
+        specialHours = rows.filter(special => special.date >= todayIso);
       }
     } catch (specialError) {
       console.error('Special hours error:', specialError);
@@ -91,7 +99,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabase
         .from('service_status_overrides')
         .select('service_code, start_date, end_date, is_enabled, message, updated_at, created_by')
-        .gte('end_date', format(today, 'yyyy-MM-dd'))
+        .gte('end_date', format(now, 'yyyy-MM-dd'))
         .order('start_date', { ascending: true });
 
       if (error) {
@@ -104,7 +112,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get today's events for capacity information
-    const todayStr = format(today, 'yyyy-MM-dd');
+    const todayStr = format(now, 'yyyy-MM-dd');
     const { data: todayEvents, error: eventsError } = await supabase
       .from('events')
       .select('id, name, date, time, capacity')
@@ -193,16 +201,43 @@ export async function GET(request: NextRequest) {
 
   // Calculate current status in London timezone
   const timeZone = 'Europe/London';
-  const now = new Date();
   const nowInLondon = toZonedTime(now, timeZone);
   const currentDay = nowInLondon.getDay();
   const currentTime = format(nowInLondon, 'HH:mm:ss');
-  const todayDate = format(nowInLondon, 'yyyy-MM-dd');
   const currentDayName = DAY_NAMES[currentDay];
-  
+
+  // Regular hours for yesterday and the coming week, each date through the version in
+  // force on it. Not `regularHours`, which follows `?date=` rather than today, and
+  // which would give the wrong hours either side of a scheduled change.
+  const upcomingDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const checkDate = new Date(nowInLondon);
+    checkDate.setDate(checkDate.getDate() + i);
+    upcomingDates.push(format(checkDate, 'yyyy-MM-dd'));
+  }
+  const resolvedHours = await getBusinessHoursForDates([yesterdayIso, ...upcomingDates], supabase);
 
   // Check if today has special hours
-  const todaySpecial = specialHours?.find(s => s.date === todayDate);
+  const todaySpecial = specialHours?.find(s => s.date === todayIso);
+  const todayHoursData = todaySpecial || resolvedHours.get(todayIso);
+
+  // Open now comes from the London trading day in force, not from today's row alone.
+  // A close after midnight is stored earlier than the opening time (New Year's Eve is
+  // 12:00 to 01:00), so from midnight until that close yesterday's hours still apply,
+  // and today's own row only opens at its opening time.
+  const openNow = resolveOpenNow(now, {
+    today: todayHoursData,
+    yesterday: yesterdaySpecial || resolvedHours.get(yesterdayIso),
+  });
+
+  // The kitchen service being served now, on that same trading day. Read the day's
+  // sittings, not the kitchen bounds: on a split day the bounds span the gap between
+  // services, which reported the kitchen open while the booking engine was refusing
+  // food bookings at the same minute.
+  const activeKitchenService = openNow.window
+    ? kitchenServiceAt(resolveKitchenWindows(openNow.hours), openNow.tradingDate, now)
+    : null;
+
   let currentStatus: any = {
     isOpen: false,
     kitchenOpen: false,
@@ -210,61 +245,26 @@ export async function GET(request: NextRequest) {
     opensIn: null,
   };
 
-  if (todaySpecial) {
-    if (!todaySpecial.is_closed && todaySpecial.opens && todaySpecial.closes) {
-      // Handle venues that close at or after midnight
-      const isCurrentlyOpen = todaySpecial.closes <= todaySpecial.opens
-        ? (currentTime >= todaySpecial.opens || currentTime < todaySpecial.closes)
-        : (currentTime >= todaySpecial.opens && currentTime < todaySpecial.closes);
-      
-      // Read the day's sittings, not the kitchen bounds. On a split day the
-      // bounds span the gap between services, which reported the kitchen open
-      // while the booking engine was refusing food bookings at the same minute.
-      const specialKitchenWindows = resolveKitchenWindows(todaySpecial);
-      const isKitchenOpen = !!kitchenWindowAt(specialKitchenWindows, currentTime);
-
-      currentStatus = {
-        isOpen: isCurrentlyOpen,
-        kitchenOpen: isKitchenOpen,
-        closesIn: isCurrentlyOpen ? calculateTimeUntil(currentTime, todaySpecial.closes) : null,
-        opensIn: !isCurrentlyOpen && currentTime < todaySpecial.opens ? 
-          calculateTimeUntil(currentTime, todaySpecial.opens) : null,
-        currentTime,
-        timestamp: nowInLondon.toISOString(),
-      };
-    }
-  } else {
-    const todayHours = regularHours?.find(h => h.day_of_week === currentDay);
-    if (todayHours && !todayHours.is_closed && todayHours.opens && todayHours.closes) {
-      // Handle venues that close at or after midnight
-      const isCurrentlyOpen = todayHours.closes <= todayHours.opens
-        ? (currentTime >= todayHours.opens || currentTime < todayHours.closes)
-        : (currentTime >= todayHours.opens && currentTime < todayHours.closes);
-      
-      const regularKitchenWindows = resolveKitchenWindows(todayHours);
-      const isKitchenOpen = !!kitchenWindowAt(regularKitchenWindows, currentTime);
-
-      currentStatus = {
-        isOpen: isCurrentlyOpen,
-        kitchenOpen: isKitchenOpen,
-        closesIn: isCurrentlyOpen ? calculateTimeUntil(currentTime, todayHours.closes) : null,
-        opensIn: !isCurrentlyOpen && currentTime < todayHours.opens ? 
-          calculateTimeUntil(currentTime, todayHours.opens) : null,
-        currentTime,
-        timestamp: nowInLondon.toISOString(),
-      };
-    }
+  if (openNow.window) {
+    currentStatus = {
+      isOpen: openNow.isOpen,
+      kitchenOpen: !!activeKitchenService,
+      closesIn: openNow.isOpen ? calculateTimeUntil(now, openNow.window.closesAt) : null,
+      opensIn: !openNow.isOpen && now < openNow.window.opensAt
+        ? calculateTimeUntil(now, openNow.window.opensAt)
+        : null,
+      currentTime,
+      timestamp: nowInLondon.toISOString(),
+    };
   }
 
-  // Calculate today's information
-  const todayHoursData = todaySpecial || (regularHours?.find(h => h.day_of_week === currentDay));
-  // Today's real kitchen services, shared by the summary and by services.kitchen
-  // below so the two can never disagree about when food stops.
+  // Calculate today's information. It describes the calendar day, so in the small
+  // hours after a late close it already shows today while currentStatus above still
+  // reports the night before.
   const todayKitchenWindows = resolveKitchenWindows(todayHoursData);
-  const activeKitchenWindow = kitchenWindowAt(todayKitchenWindows, currentTime);
   const todaysSundayOverride = sundayOverrides.find(
     (override: any) =>
-      override.startDate <= todayDate && override.endDate >= todayDate
+      override.startDate <= todayIso && override.endDate >= todayIso
   );
   const sundayLunchEnabledToday =
     todaysSundayOverride && typeof todaysSundayOverride.isEnabled === 'boolean'
@@ -274,7 +274,7 @@ export async function GET(request: NextRequest) {
     todaysSundayOverride?.message || sundayLunchStatus?.message || null;
 
   const todayInfo = {
-    date: todayDate,
+    date: todayIso,
     dayName: currentDayName,
     // Every sitting, so a split day reads "Kitchen 12:00 - 15:00, 16:00 - 21:00"
     // rather than claiming one unbroken service across the afternoon closure.
@@ -328,19 +328,7 @@ export async function GET(request: NextRequest) {
     }),
   );
 
-  // Generate upcoming week overview.
-  //
-  // Resolved per date, not off `regularHours`: a week that spans a scheduled
-  // change has different hours on either side of it, and reading them all from
-  // one version would show the wrong ones for half the week.
-  const upcomingDates: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const checkDate = new Date(nowInLondon);
-    checkDate.setDate(checkDate.getDate() + i);
-    upcomingDates.push(format(checkDate, 'yyyy-MM-dd'));
-  }
-  const upcomingResolved = await getBusinessHoursForDates(upcomingDates, supabase);
-
+  // Generate upcoming week overview, from the hours resolved per date above.
   const upcomingWeek = [];
   for (let i = 0; i < 7; i++) {
     const checkDate = new Date(nowInLondon);
@@ -350,7 +338,7 @@ export async function GET(request: NextRequest) {
     const checkDayName = DAY_NAMES[checkDayOfWeek];
 
     const specialDay = specialHours?.find(s => s.date === checkDateStr);
-    const regularDay = upcomingResolved.get(checkDateStr);
+    const regularDay = resolvedHours.get(checkDateStr);
     
     upcomingWeek.push({
       date: checkDateStr,
@@ -385,8 +373,8 @@ export async function GET(request: NextRequest) {
       // Counts down to the end of the sitting being served, not to the end of
       // the day. On a split day the latter promised food for hours after the
       // kitchen had actually stopped.
-      closesIn: currentStatus.kitchenOpen && activeKitchenWindow
-        ? calculateTimeUntil(currentTime, activeKitchenWindow.closes)
+      closesIn: currentStatus.kitchenOpen && activeKitchenService
+        ? calculateTimeUntil(now, activeKitchenService.closesAt)
         : null,
     },
     sundayLunch: sundayLunchConfig ? {
@@ -591,26 +579,6 @@ export async function GET(request: NextRequest) {
       },
       error: 'Some data may be unavailable',
     }, 200);
-  }
-}
-
-function calculateTimeUntil(fromTime: string, toTime: string): string {
-  const [fromHours, fromMinutes] = fromTime.split(':').map(Number);
-  const [toHours, toMinutes] = toTime.split(':').map(Number);
-  
-  const totalFromMinutes = fromHours * 60 + fromMinutes;
-  const totalToMinutes = toHours * 60 + toMinutes;
-  const diffMinutes = totalToMinutes - totalFromMinutes;
-  
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-  
-  if (hours > 0 && minutes > 0) {
-    return `${hours} hour${hours > 1 ? 's' : ''} ${minutes} minute${minutes > 1 ? 's' : ''}`;
-  } else if (hours > 0) {
-    return `${hours} hour${hours > 1 ? 's' : ''}`;
-  } else {
-    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
   }
 }
 
