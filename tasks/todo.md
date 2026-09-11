@@ -10,9 +10,13 @@ Same branch as P1. Every change sits behind a `messaging_flags` key that reads a
 - [x] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
 - [x] P3 `table_preorder_email_first`: email first instead of both.
 - [x] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
-- [ ] Fixture renders of every new email in London and UTC.
-- [ ] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.
+- [x] Fixture renders of every new email in London and UTC (cancellation in all seven refund variants, deposit confirmed, deposit request, pre-order, tap-to-confirm), failing on undefined, Invalid Date, NaN, £0.00, null and banned dashes, with the weekday checked against the calendar.
+- [x] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.
 - [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results: lint clean; tsc clean; 804 test files, 7,356 passed and 2 skipped in both London and UTC; no test reads the real flags row (checked with an instrumented run); uncached `npm run build` passes with CI's `NODE_OPTIONS=--max-old-space-size=6144`. At Node's default heap the build's type check runs out of memory, as it already did at P1: tsc peaks at 4.86 GB here against 4.53 GB at P1, and CI gives the build 6 GB.
+
+Found, not changed: the BOH party-size checkbox still reads "Notify guest by SMS" (with the flag on the toast names the channel used); the tap-to-confirm token expiry string noted in the plan is untouched; the no-email intro and the last push can both reach one guest on the same day for two different nights (inside the two-a-month cap).
 
 # Email-first messaging P1, safety foundations, 11 September 2026
 
