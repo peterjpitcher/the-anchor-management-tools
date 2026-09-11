@@ -217,6 +217,43 @@ export function buildTableBookingDepositConfirmedEmail(
 }
 
 /**
+ * The deposit request after staff grow a party past the deposit threshold. The text says
+ * "your party size has been updated to 16 people. A table deposit of £160.00 (16 x GBP 10) is
+ * now required to secure your booking. Pay now: {link}"; the email repeats that sentence
+ * exactly, adds the booking details, and says until when the payment link works, which is the
+ * moment the hold on the booking lapses.
+ */
+export function buildTableBookingDepositRequestEmail(
+  input: BookingFacts & {
+    /** "table deposit", "Sunday lunch deposit" or "Christmas deposit", as the text says it. */
+    depositKindLabel: string
+    /** "£160.00", formatted exactly as in the text. */
+    depositLabel: string
+    /** " (16 x GBP 10)" or "", exactly as in the text. */
+    breakdownNote: string
+    paymentLink: string
+    /** When the payment link and the hold expire, as an ISO instant. */
+    payByIso?: string | null
+  }
+): TableBookingEmail {
+  const partySize = Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1)
+  const seatWord = partySize === 1 ? 'person' : 'people'
+  const payBy = input.payByIso ? formatBookingMomentForEmail(null, null, input.payByIso) : null
+
+  return renderTableBookingEmail({
+    subject: 'Pay your deposit to secure your booking at The Anchor',
+    opening: [
+      `Hi ${input.firstName}, your party size has been updated to ${partySize} ${seatWord}. ` +
+        `A ${input.depositKindLabel} of ${input.depositLabel}${input.breakdownNote} is now required to secure your booking.`,
+    ],
+    details: [...bookingDetailRows({ ...input, partySize }), { label: 'Deposit', value: input.depositLabel }],
+    cta: { label: 'Pay your deposit', url: input.paymentLink },
+    afterCta: payBy ? [`This payment link works until ${payBy}.`] : [],
+    footerLead: 'If you need to change anything',
+  })
+}
+
+/**
  * The cancellation email. `refundSentence` is the sentence the cancellation text puts after
  * "has been cancelled.", passed in verbatim so the amount and the refund timing cannot drift
  * from what the text says.

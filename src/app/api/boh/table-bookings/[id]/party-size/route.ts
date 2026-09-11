@@ -200,6 +200,11 @@ export async function POST(
       depositUrl: depositTransition?.state === 'deposit_required' ? depositTransition.depositUrl : null,
       depositAmount: depositTransition?.state === 'deposit_required' ? depositTransition.depositAmount : null,
       smsSent: depositTransition?.state === 'deposit_required' ? depositTransition.smsSent : false,
+      // Only on the email-first path (flag table_party_size_deposit_email_first): which channel
+      // reached the guest, or why none did.
+      ...(depositTransition?.state === 'deposit_required' && depositTransition.notification
+        ? { depositNotification: depositTransition.notification }
+        : {}),
     })
   } catch (error) {
     if (error instanceof ChristmasCourseValidationError) return NextResponse.json({ error: error.message }, { status: 409 })
