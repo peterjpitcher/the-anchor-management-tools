@@ -62,7 +62,10 @@ export type TableBookingGuestNotifyInput = {
     /** Extra metadata for the text; table_booking_id and template_key are always added. */
     metadata?: Record<string, unknown>
   }
-  /** Stable for this booking and message, e.g. `table_booking_cancelled:{bookingId}`. */
+  /**
+   * Stable across retries of this one message and new for the next, e.g.
+   * `table_booking_cancelled:{bookingId}:{cancelledAt}` (tableBookingCancelledEmailKey).
+   */
   idempotencyKey: string
   /** Extra facts for the audit row. */
   auditContext?: Record<string, unknown>
