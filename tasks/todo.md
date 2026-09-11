@@ -1,4 +1,4 @@
-# Christmas minimum from 6 to 4, 11 September 2026 (drafted, not applied)
+# Christmas minimum from 6 to 4, 11 September 2026 (applied to production)
 
 - [x] Prove the production ref (`tfcasgxopxegwrabvwat`) from `supabase/.temp/project-ref` and `.env.local`; read live state with read-only SELECTs only.
 - [x] Capture both live function definitions and match them to production by md5 before editing.
@@ -7,7 +7,10 @@
 - [x] Tests that fail on the old values: `christmas-minimum.test.ts`, `FohCreateBookingModal.test.tsx`.
 - [x] Validate on an isolated local database: production state reproduced, migration, re-run, rollback, unhappy paths.
 - [x] Gates: lint (0 warnings), typecheck, `npm test` and `npm run test:utc` (791 files, 7,174 passed, 2 existing skips each), cold build. The build ran out of memory at the default heap while type checking and passed with `NODE_OPTIONS=--max-old-space-size=8192`, the same flag the typecheck needs.
-- [ ] Owner approval of the production packet, then apply through `prod-migrate`.
+- [x] Owner go-ahead (11 September 2026), then applied through `prod-migrate` to `tfcasgxopxegwrabvwat` as production migration `20260911170248 christmas_minimum_four`.
+  - Applied as one DO statement rather than by pasting the 66 KB file: it read each function's live `pg_get_functiondef`, required md5 `f8f7f2b84b4fdf9ff7cb5266416a21c8` (core) and `988a2a5ddefd576aef392edaf70c67dc` (v05), made the two Christmas edits, required the edited text to hash to `abfa1c3f725cd01bb5ddfed2a39b23dc` and `1f8074f0034a99dc9b89274cde5f67ee` (the md5 of this file's two CREATE statements plus a newline, so the text run is byte for byte the file's), then ran it, restated the same EXECUTE grants, moved the period row from 6 to 4 and ran this file's own end-state assertions. Anything unexpected would have rolled the whole statement back.
+  - After: both function md5s as above; `christmas-2026` min_party_size 4; EXECUTE unchanged (core: service_role only; v05: authenticated and service_role); `resolve_table_booking_deposit` on 4 December 2026 refuses 3 and asks £40, £50 and £60 of 4, 5 and 6; `scripts/security/assert-anon-surface.ts` all 9 checks passed.
+  - Rollback unchanged: `supabase/rollbacks/20260911133645_christmas_minimum_four.sql`, or the same guarded pattern in reverse.
 
 Decisions: the period row is matched on its code, not its production id, so a rebuilt database applies it too. Marketing campaign files were left alone: two are records of emails sent in August, the rest are the designer's handover samples that the fidelity tests pin byte for byte.
 
