@@ -6,7 +6,7 @@ Same branch as P1. Every change sits behind a `messaging_flags` key that reads a
 - [x] P2 `event_promo_intro_sms_no_email` (only with the flag above): today's 7-day intro for guests with no usable email, inside the same cap.
 - [x] P2 tests: capacity boundaries, timing window (London midnight, both clock changes), third-night cap, no-email intro, reply-to-book, flag off. Gate: lint and tsc clean; 797 files, 7,274 passed and 2 skipped in London and UTC.
 - [x] P3 `table_cancelled_email_first`: email first, email-only guests covered, `table_booking_id` in the SMS metadata, staff see a failed notice.
-- [ ] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
+- [x] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
 - [ ] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
 - [ ] P3 `table_preorder_email_first`: email first instead of both.
 - [ ] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.

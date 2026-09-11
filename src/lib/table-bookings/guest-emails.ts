@@ -167,6 +167,55 @@ function bookingDetailRows(facts: BookingFacts): DetailRow[] {
   ]
 }
 
+/** "£160.00", as the booking texts print money. Null for anything that is not a positive amount. */
+function formatPounds(amount: number | null | undefined): string | null {
+  const value = Number(amount)
+  if (!Number.isFinite(value) || value <= 0) return null
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value)
+}
+
+/**
+ * The deposit confirmation. The text says "Deposit sorted, your table for 16 people on
+ * {moment} is locked in. See you then!" with any high chairs, outside seating, the manage link
+ * and the Christmas course summary; the email says all of that and adds the reference, the date
+ * with its weekday, the time and the amount the guest paid.
+ */
+export function buildTableBookingDepositConfirmedEmail(
+  input: BookingFacts & {
+    isOutsideSeating?: boolean | null
+    highChairCount?: number | null
+    christmasCourseSummary?: string | null
+    /** Pounds, as locked at capture. Left out when unknown. */
+    depositPaid?: number | null
+    manageLink?: string | null
+  }
+): TableBookingEmail {
+  const isOutside = Boolean(input.isOutsideSeating)
+  const bookingNoun = isOutside ? 'outside booking' : 'table'
+  const party = partySizeLabel(input.partySize)
+  const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+  const highChairs = Math.max(0, Math.floor(Number(input.highChairCount ?? 0)) || 0)
+
+  return renderTableBookingEmail({
+    subject: isOutside
+      ? 'Deposit received: your outside booking at The Anchor is confirmed'
+      : 'Deposit received: your table at The Anchor is confirmed',
+    opening: [
+      `Hi ${input.firstName}, your deposit is sorted and your ${bookingNoun}` +
+        `${party ? ` for ${party}` : ''}${moment ? ` on ${moment}` : ''} is locked in. See you then!`,
+    ],
+    details: [
+      ...bookingDetailRows(input),
+      { label: 'Deposit paid', value: formatPounds(input.depositPaid) },
+      { label: 'High chair reserved', value: highChairs > 0 ? `x${highChairs}` : null },
+      { label: 'Seating', value: isOutside ? 'Outside (weather permitting)' : null },
+    ],
+    closing: input.christmasCourseSummary ? [input.christmasCourseSummary] : [],
+    cta: input.manageLink ? { label: 'Manage your booking', url: input.manageLink } : undefined,
+    footerLead: 'If you need to change anything',
+  })
+}
+
 /**
  * The cancellation email. `refundSentence` is the sentence the cancellation text puts after
  * "has been cancelled.", passed in verbatim so the amount and the refund timing cannot drift

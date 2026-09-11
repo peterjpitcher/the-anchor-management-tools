@@ -29,6 +29,11 @@ vi.mock('@/lib/table-bookings/sunday-preorder', () => ({
   createSundayPreorderToken: vi.fn().mockResolvedValue({ url: 'https://example.com/preorder' }),
 }))
 
+// These cases pin the text-only path; keep the email-first flag off without a database read.
+vi.mock('@/lib/messaging/flags', () => ({
+  isMessagingFlagOn: vi.fn().mockResolvedValue(false),
+}))
+
 import { sendSMS } from '@/lib/twilio'
 import { sendTableBookingConfirmedAfterDepositSmsIfAllowed } from '@/lib/table-bookings/bookings'
 
