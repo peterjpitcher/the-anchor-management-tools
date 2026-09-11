@@ -1,4 +1,4 @@
-import { formatDateInLondon, parseLondonDateTimeLocal, toLocalIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, isValidIsoDate, parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import {
   balanceReminder15DayMessage,
@@ -34,7 +34,7 @@ import {
   type PrivateBookingCancellationVariant,
   type PrivateBookingEmailContent,
 } from '@/lib/email/private-booking-emails'
-import type { FallbackBookingFacts } from '@/lib/notifications/delayed-fallback/types'
+import type { FallbackBookingFacts, FallbackValidUntil } from '@/lib/notifications/delayed-fallback/types'
 
 /**
  * Rebuilds a private booking message from the booking as it is now.
@@ -108,6 +108,11 @@ export type CatalogueMessage = {
   facts: FallbackBookingFacts
   expectCancelled: boolean
   expectPast: boolean
+  /**
+   * When the words stop being true, for wording tied to a day or a deadline; null when they hold
+   * until the event starts. The bounce fallback sends nothing that would land at or after it.
+   */
+  validUntil: FallbackValidUntil
 }
 
 const CANCELLATION_TEMPLATES: Record<string, PrivateBookingCancellationVariant> = {
@@ -163,6 +168,11 @@ export function buildPrivateBookingMessageFacts(
   if (triggerType === 'booking_created' || triggerType.startsWith('deposit_reminder_')) {
     facts.deposit_amount = toNumber(booking.deposit_amount)
   }
+  if (triggerType === 'deposit_received') {
+    // "Deposit received" stays true only while the deposit is recorded. Staff deleting it clears
+    // this date (and puts the booking back to draft), so a later bounce sees a changed booking.
+    facts.deposit_paid_date = isoDate(booking.deposit_paid_date)
+  }
   if (triggerType === 'balance_due_date_changed' || triggerType.startsWith('balance_reminder_')) {
     facts.balance_due_date = isoDate(booking.balance_due_date)
   }
@@ -194,11 +204,102 @@ export function privateBookingStartsAt(booking: Pick<CatalogueBooking, 'event_da
   return parseLondonDateTimeLocal(`${booking.event_date.slice(0, 10)}T${time}`)?.toISOString() ?? null
 }
 
+/** Midnight at the start of a London calendar date, as an ISO instant. */
+function startOfLondonDate(value: string | null | undefined): string | null {
+  const date = isoDate(value)
+  if (!date || !isValidIsoDate(date)) return null
+  return parseLondonDateTimeLocal(`${date}T00:00`)?.toISOString() ?? null
+}
+
+/** Midnight at the end of a London calendar date: the moment "by" that date has passed. */
+function afterLondonDate(value: string | null | undefined): string | null {
+  const date = isoDate(value)
+  return date && isValidIsoDate(date) ? startOfLondonDate(shiftIsoDate(date, 1)) : null
+}
+
+/** A stored timestamp in one ISO form. */
+function instantOf(value: string | null | undefined): string | null {
+  if (!value) return null
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
+}
+
+/**
+ * When the words of a private booking text stop being true, taken from the words themselves (see
+ * messages.ts): hold wording runs to the hold's expiry, "tomorrow" to the start of the day it
+ * names, and "due by" a date to the end of that date. Null when the words hold until the event
+ * starts, which the bounce fallback checks anyway.
+ */
+export function privateBookingMessageValidUntil(triggerType: string, ctx: CatalogueContext): FallbackValidUntil {
+  const b = ctx.booking
+  switch (triggerType) {
+    // "deposit secures it by 25 September", "expires on 25 September", "expires tomorrow
+    // (25 September)... get the deposit in today", "New deadline: 25 September".
+    case 'booking_created':
+    case 'deposit_reminder_7day':
+    case 'deposit_reminder_3day':
+    case 'deposit_reminder_1day':
+    case 'hold_extended':
+      return instantOf(b.hold_expiry)
+    // "Tomorrow's the day": true until the event's London day begins.
+    case 'event_reminder_1d':
+      return startOfLondonDate(b.event_date)
+    // "Due by 19 September": true until the 19th ends.
+    case 'balance_reminder_21day':
+    case 'balance_due_date_changed':
+      return afterLondonDate(b.balance_due_date)
+    // "2 days to go: ... due by 19 September": the count is right only on the 17th.
+    case 'balance_reminder_16day': {
+      const dueDate = isoDate(b.balance_due_date)
+      return dueDate && isValidIsoDate(dueDate) ? startOfLondonDate(shiftIsoDate(dueDate, -1)) : null
+    }
+    // "Due tomorrow (19 September)": true until the 19th begins.
+    case 'balance_reminder_15day':
+      return startOfLondonDate(b.balance_due_date)
+    // "Due today (19 September)": true until the 19th ends. After that the balance is overdue,
+    // which is never chased automatically.
+    case 'balance_reminder_due':
+      return afterLondonDate(b.balance_due_date)
+    // "Balance and final details are now due by 19 September", only when the text names the date.
+    case 'date_changed':
+      return ctx.storedFacts?.balance_due_date ? afterLondonDate(b.balance_due_date) : null
+    default:
+      return null
+  }
+}
+
+/**
+ * Whether what a message asked for has happened since it was sent, so a text now would chase
+ * something already done: a hold reminder or hold extension once the deposit is paid, waived or
+ * the hold is gone; a balance reminder once the balance is paid. The bounce fallback asks this
+ * before rebuilding, and skips the message instead of reporting it undelivered.
+ */
+export function privateBookingMessageNoLongerApplies(triggerType: string, ctx: CatalogueContext): boolean {
+  const b = ctx.booking
+  if (triggerType.startsWith('deposit_reminder_')) {
+    return !b.hold_expiry || Boolean(b.deposit_paid_date) || b.deposit_waived === true || toNumber(b.deposit_amount) <= 0
+  }
+  if (triggerType === 'hold_extended') {
+    return !b.hold_expiry || Boolean(b.deposit_paid_date)
+  }
+  if (triggerType.startsWith('balance_reminder_')) {
+    // A balance that could not be read is not a paid one: that stays a failure staff hear about.
+    return Boolean(b.final_payment_date) || (ctx.balanceAmount != null && !(ctx.balanceAmount > 0))
+  }
+  return false
+}
+
 export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueContext): CatalogueMessage | null {
   const b = ctx.booking
   const facts = (extras: Parameters<typeof buildPrivateBookingMessageFacts>[2] = {}) =>
     buildPrivateBookingMessageFacts(triggerType, b, extras)
-  const base = { triggerType, expectCancelled: false, expectPast: false, email: null }
+  const base = {
+    triggerType,
+    expectCancelled: false,
+    expectPast: false,
+    email: null,
+    validUntil: privateBookingMessageValidUntil(triggerType, ctx),
+  }
 
   switch (triggerType) {
     case 'booking_created': {

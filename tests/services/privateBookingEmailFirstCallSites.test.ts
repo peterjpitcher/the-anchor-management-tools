@@ -82,6 +82,7 @@ import {
   sendBookingConfirmationEmail,
   sendDepositReceivedEmail,
 } from '@/lib/email/private-booking-emails'
+import { toLocalIsoDate } from '@/lib/dateUtils'
 import { getPrivateBookingCancellationOutcome } from '@/services/private-bookings/financial'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { finalizeDepositPayment, updateDepositAmount } from '@/services/private-bookings/payments'
@@ -196,6 +197,14 @@ describe('private booking call sites, email first', () => {
     expect(email.commType).toBe('private_booking_deposit_received')
     expect(email.text).toContain('Deposit paid: £250')
     expect(email.text).toContain('Total event cost: £1440')
+
+    // The delivery states the deposit as recorded, so a bounce after staff delete it is a changed booking.
+    const paidAt = state.db.tables.private_bookings[0].deposit_paid_date
+    expect(paidAt).toBeTruthy()
+    expect(state.db.tables.notification_deliveries[0].metadata.booking_facts).toEqual({
+      event_date: '2026-10-03',
+      deposit_paid_date: toLocalIsoDate(new Date(paidAt)),
+    })
   })
 
   it('a waived deposit: the confirmation says confirmed, not provisional, and the calendar invite still goes', async () => {

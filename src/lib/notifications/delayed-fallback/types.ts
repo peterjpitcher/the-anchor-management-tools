@@ -23,6 +23,14 @@ export type FallbackBookingRef = {
 /** Facts a message states about its booking, compared at fallback time to spot a change. */
 export type FallbackBookingFacts = Record<string, string | number | null>
 
+/**
+ * When a message's words stop being true, as an ISO instant: for wording that is time-relative or
+ * names a deadline ("tomorrow's the day", "expires tomorrow", "due by 3 October", "Pay now" on a
+ * link that runs out). Taken from the words the text actually says. Null or absent when the words
+ * hold until the booking starts, which the skip rules check anyway.
+ */
+export type FallbackValidUntil = string | null
+
 /** What the skip rules read: the booking as it is now, and what the message expects of it. */
 export type FallbackSkipCheck = {
   booking: {
@@ -35,6 +43,8 @@ export type FallbackSkipCheck = {
   expectCancelled?: boolean
   /** A message about an event that has already happened (thanks, review request). */
   expectPast?: boolean
+  /** A text that would reach the guest at or after this is not sent. */
+  validUntil?: FallbackValidUntil
 }
 
 /**
@@ -43,6 +53,8 @@ export type FallbackSkipCheck = {
  * 'ready' carries the text, rebuilt from the live booking, plus the booking's current state so the
  * job can decide whether the text is still true. 'unavailable' means the text cannot be rebuilt
  * (the booking is gone, or its details are missing), which the job treats as undelivered.
+ * 'no_longer_needed' means what the message asked for has happened since (the deposit or balance
+ * is paid, the link has been used, the guest has answered): the job skips it and tells nobody.
  */
 export type DelayedFallbackRender =
   | {
@@ -57,6 +69,10 @@ export type DelayedFallbackRender =
       current?: FallbackSkipCheck
     }
   | {
+      kind: 'no_longer_needed'
+      booking: FallbackBookingRef
+    }
+  | {
       kind: 'ready'
       booking: FallbackBookingRef & {
         status: string | null
@@ -68,6 +84,8 @@ export type DelayedFallbackRender =
       expectCancelled?: boolean
       /** A message about an event that has already happened (thanks, review request). */
       expectPast?: boolean
+      /** A text that would reach the guest at or after this is not sent. */
+      validUntil?: FallbackValidUntil
       sms: {
         /** Null when the guest has no number to text. */
         to: string | null

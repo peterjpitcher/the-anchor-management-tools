@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   db: null as any,
   flags: {} as Record<string, boolean>,
   shortLinks: 0,
-  preorder: { requiresPreorder: true, complete: false, closed: false },
+  preorder: { requiresPreorder: true, complete: false },
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => state.db) }))
@@ -62,22 +62,26 @@ vi.mock('@/services/short-links', () => ({
     }),
   },
 }))
-vi.mock('@/lib/table-bookings/preorder', () => ({
-  PREORDER_BOOKER_REMINDER_DAYS: 7,
-  isPreorderEnabled: vi.fn(async () => true),
-  decidePreorderChases: vi.fn(() => ['booker_reminder']),
-  describePreorderGaps: vi.fn(() => '2 main courses'),
-  loadPreorderOrder: vi.fn(async (_db: unknown, tableBookingId: string) => ({
-    tableBookingId,
-    bookingDate: '2026-10-24',
-    preorderCutoffDays: 3,
-    requiresPreorder: state.preorder.requiresPreorder,
-    partySize: 4,
-    covers: [],
-  })),
-  getPreorderCompleteness: vi.fn(() => ({ complete: state.preorder.complete })),
-  getPreorderCutoff: vi.fn(() => ({ closesAt: null, closed: state.preorder.closed })),
-}))
+vi.mock('@/lib/table-bookings/preorder', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/table-bookings/preorder')>()
+  return {
+    PREORDER_BOOKER_REMINDER_DAYS: 7,
+    isPreorderEnabled: vi.fn(async () => true),
+    decidePreorderChases: vi.fn(() => ['booker_reminder']),
+    describePreorderGaps: vi.fn(() => '2 main courses'),
+    loadPreorderOrder: vi.fn(async (_db: unknown, tableBookingId: string) => ({
+      tableBookingId,
+      bookingDate: '2026-10-24',
+      preorderCutoffDays: 3,
+      requiresPreorder: state.preorder.requiresPreorder,
+      partySize: 4,
+      covers: [],
+    })),
+    getPreorderCompleteness: vi.fn(() => ({ complete: state.preorder.complete })),
+    // The real cut-off: noon London three days before, 21 October 2026 11:00 UTC for these bookings.
+    getPreorderCutoff: actual.getPreorderCutoff,
+  }
+})
 
 import { sendEmail } from '@/lib/email/emailService'
 import { sendSMS } from '@/lib/twilio'
@@ -223,7 +227,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(NOW_ISO))
   state.flags = {}
   state.shortLinks = 0
-  state.preorder = { requiresPreorder: true, complete: false, closed: false }
+  state.preorder = { requiresPreorder: true, complete: false }
   // The email fails in the same attempt, so each sender texts the guest and the test sees the text.
   mockedSendEmail.mockResolvedValue({ success: false, error: 'Resend 500' })
   mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-1' })
@@ -691,10 +695,22 @@ describe('links are found, never made', () => {
     expect(await rebuild()).toMatchObject({ kind: 'unavailable', reason: 'link_expired' })
   })
 
-  it.each(LINKED_MESSAGES)('%s: a token that has been used: link_expired', async (message) => {
+  // Paying through the payment link, or answering through the confirm link, is the whole point of
+  // those messages. A manage link does several things, so a used one only means it no longer works.
+  const DONE_WHEN_USED: TableBookingFallbackMessage[] = ['party_size_deposit_request', 'confirm_reminder']
+
+  it.each(DONE_WHEN_USED)('%s: a token that has been used is the answer the message asked for: no_longer_needed', async (message) => {
     seedScenario(message, { token: { consumed_at: '2026-10-19T12:00:00+00:00' } })
-    expect(await rebuild()).toMatchObject({ kind: 'unavailable', reason: 'link_expired' })
+    expect(await rebuild()).toEqual({ kind: 'no_longer_needed', booking: { type: 'table_booking', id: 'tb-1' } })
   })
+
+  it.each(LINKED_MESSAGES.filter((message) => !DONE_WHEN_USED.includes(message)))(
+    '%s: a manage token that has been used: link_expired',
+    async (message) => {
+      seedScenario(message, { token: { consumed_at: '2026-10-19T12:00:00+00:00' } })
+      expect(await rebuild()).toMatchObject({ kind: 'unavailable', reason: 'link_expired' })
+    }
+  )
 
   it.each(LINKED_MESSAGES)('%s: a token for another guest or another kind of link: link_not_found', async (message) => {
     seedScenario(message, { token: { customer_id: 'someone-else' } })
@@ -786,14 +802,14 @@ describe('unavailable', () => {
     expect(await rebuild()).toMatchObject({ kind: 'unavailable', reason: 'facts_missing' })
   })
 
-  it('a deposit request is never rebuilt for a cleared deposit, which the job then skips as changed', async () => {
+  it('a deposit request is never rebuilt for a cleared deposit, which the job skips as no longer needed', async () => {
     seedScenario('party_size_deposit_request', { booking: { deposit_amount: null, status: 'confirmed', payment_status: null } })
 
-    expect(await rebuild()).toMatchObject({ kind: 'unavailable', reason: 'facts_missing' })
+    expect(await rebuild()).toEqual({ kind: 'no_longer_needed', booking: { type: 'table_booking', id: 'tb-1' } })
 
     state.flags = { bounce_sms_fallback: true }
     const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => new Date() })
-    expect(outcome).toMatchObject({ outcome: 'skipped', reason: 'booking_changed' })
+    expect(outcome).toMatchObject({ outcome: 'skipped', reason: 'no_longer_needed' })
     expect(mockedSendSMS).not.toHaveBeenCalled()
     expect(reportCronFailure).not.toHaveBeenCalled()
   })
@@ -848,10 +864,8 @@ describe('held to the same rules as private bookings', () => {
     ['cancellation', { booking_date: '2026-10-31', booking_time: '19:00:00' }],
     ['deposit_confirmed', { party_size: 18 }],
     ['deposit_confirmed', { booking_time: '20:00:00' }],
-    ['party_size_deposit_request', { status: 'confirmed', payment_status: 'completed' }],
     ['party_size_deposit_request', { deposit_amount: 180 }],
     ['party_size_deposit_request', { hold_expires_at: '2026-10-22T10:00:00+00:00' }],
-    ['confirm_reminder', { guest_confirmed_at: '2026-10-20T09:00:00+00:00' }],
     ['confirm_reminder', { party_size: 6 }],
     ['preorder_reminder', { booking_date: '2026-10-25' }],
   ] as Array<[TableBookingFallbackMessage, Record<string, unknown>]>)(
@@ -866,28 +880,89 @@ describe('held to the same rules as private bookings', () => {
     }
   )
 
-  it('preorder_reminder: the food choices have come in since the email: booking_changed', async () => {
+  it.each([
+    ['party_size_deposit_request', 'paid since the email', { booking: { status: 'confirmed', payment_status: 'completed' } }],
+    [
+      'party_size_deposit_request',
+      'paid through the link, so its token is used',
+      { booking: { status: 'confirmed', payment_status: 'completed' }, token: { consumed_at: '2026-10-20T09:30:00+00:00' } },
+    ],
+    ['confirm_reminder', 'the guest has answered since', { booking: { guest_confirmed_at: '2026-10-20T09:00:00+00:00' } }],
+  ] as Array<[TableBookingFallbackMessage, string, Parameters<typeof seedScenario>[1]]>)(
+    '%s: %s: skipped as no longer needed, never failed',
+    async (message, _label, options) => {
+      seedScenario(message, options)
+
+      expect(await runJob()).toEqual({ outcome: 'skipped', reason: 'no_longer_needed', deliveryId: 'delivery-1' })
+      expect(mockedSendSMS).not.toHaveBeenCalled()
+      expect(reportCronFailure).not.toHaveBeenCalled()
+      expect(state.db.tables.notification_deliveries[0]).toMatchObject({
+        final_status: 'bounced',
+        metadata: expect.objectContaining({ delayed_fallback: expect.objectContaining({ outcome: 'skipped', reason: 'no_longer_needed' }) }),
+      })
+      expect(AuditService.logAuditEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operation_type: 'notification.bounce_fallback_skipped',
+          resource_id: 'tb-1',
+          additional_info: expect.objectContaining({
+            description: 'The email bounced. No text was sent because what it asked for has been done since, so it no longer applies.',
+          }),
+        })
+      )
+    }
+  )
+
+  it('preorder_reminder: the food choices have come in since the email: no_longer_needed', async () => {
     seedScenario('preorder_reminder')
     state.preorder.complete = true
-    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'booking_changed' })
-    expect(mockedSendSMS).not.toHaveBeenCalled()
-  })
-
-  it('preorder_reminder: the form has closed since the email: booking_changed', async () => {
-    seedScenario('preorder_reminder')
-    state.preorder.closed = true
-    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'booking_changed' })
-  })
-
-  it('party_size_deposit_request: paid since the email, so the payment token is used: skipped as changed, not failed', async () => {
-    seedScenario('party_size_deposit_request', {
-      booking: { status: 'confirmed', payment_status: 'completed' },
-      token: { consumed_at: '2026-10-20T09:30:00+00:00' },
-    })
-
-    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'booking_changed' })
+    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'no_longer_needed' })
     expect(mockedSendSMS).not.toHaveBeenCalled()
     expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('preorder_reminder: the booking no longer needs a pre-order: no_longer_needed', async () => {
+    seedScenario('preorder_reminder')
+    state.preorder.requiresPreorder = false
+    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'no_longer_needed' })
+  })
+
+  it('preorder_reminder: the form locks at noon three days before, so a text after that is too late', async () => {
+    seedScenario('preorder_reminder')
+    // Wednesday 21 October 2026, 12:00 BST: the cut-off itself.
+    vi.setSystemTime(new Date('2026-10-21T11:00:00.000Z'))
+
+    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'too_late' })
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('preorder_reminder: a minute before the form locks the text still goes', async () => {
+    seedScenario('preorder_reminder')
+    vi.setSystemTime(new Date('2026-10-21T10:59:00.000Z'))
+    expect(await runJob()).toMatchObject({ outcome: 'sent' })
+  })
+
+  it('party_size_deposit_request: once the payment link has run out, "Pay now" is too late, even with the link gone', async () => {
+    // The hold, and with it the payment link, ran out at 10:00 UTC on 21 October.
+    seedScenario('party_size_deposit_request', { token: { expires_at: '2026-10-21T10:00:00+00:00' } })
+    vi.setSystemTime(new Date('2026-10-21T10:00:00.000Z'))
+
+    expect(await runJob()).toMatchObject({ outcome: 'skipped', reason: 'too_late' })
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('party_size_deposit_request: the rebuilt text carries the payment link expiry', async () => {
+    seedScenario('party_size_deposit_request')
+    expect(ready(await rebuild()).validUntil).toBe('2026-10-21T10:00:00.000Z')
+  })
+
+  it('confirm_reminder: the text names the day and never says "tomorrow", so it holds until the booking starts', async () => {
+    seedScenario('confirm_reminder')
+    const render = ready(await rebuild())
+    // If this wording ever says tomorrow, validUntil must become the start of the booking's London day.
+    expect(render.sms.body).not.toMatch(/tomorrow/i)
+    expect(render.validUntil).toBe('2026-10-24T18:00:00.000Z')
   })
 
   it.each(ALL_MESSAGES.filter((message) => message !== 'cancellation'))(
