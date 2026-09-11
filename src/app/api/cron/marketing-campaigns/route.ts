@@ -27,6 +27,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { sendEmail } from '@/lib/email/emailService'
+import { currentEmailSuspensionReason, EMAIL_SUSPENSION_SWITCHES } from '@/lib/email/suspension'
 import {
   getOrCreateContactUnsubscribeUrl,
   getOrCreateUnsubscribeUrl,
@@ -250,6 +251,16 @@ async function handle(request: NextRequest) {
   if (isMarketingHardDisabled()) {
     console.warn('[marketing-campaigns] MARKETING_SEND_ENABLED=false, sending is hard disabled')
     return NextResponse.json({ skipped: 'not_configured', missing: ['MARKETING_SEND_ENABLED=false'] })
+  }
+
+  // An emergency email kill switch holds the whole queue. Claiming recipients only for
+  // sendEmail to refuse them would spend their attempts, and a recipient whose attempts run
+  // out is marked failed, so a suspension of more than a few runs would drop them for good.
+  const emailSuspension = currentEmailSuspensionReason()
+  if (emailSuspension) {
+    const suspensionSwitch = EMAIL_SUSPENSION_SWITCHES[emailSuspension]
+    console.warn(`[marketing-campaigns] ${suspensionSwitch} is on, the queue is held until it is cleared`)
+    return NextResponse.json({ skipped: 'email_suspended', switch: suspensionSwitch })
   }
 
   const config = getMarketingConfig()
@@ -498,7 +509,7 @@ async function handle(request: NextRequest) {
         }
 
         const message = sendResult.error || 'Unknown send failure'
-        const failureClass = classifySendFailure(message)
+        const failureClass = classifySendFailure(message, sendResult.code)
         await releaseClaim(
           supabase,
           row.id,

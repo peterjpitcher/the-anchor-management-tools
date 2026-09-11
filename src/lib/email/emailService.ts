@@ -4,6 +4,7 @@ import { ClientSecretCredential } from '@azure/identity';
 import { getErrorMessage } from '@/lib/errors';
 import { Resend } from 'resend';
 import { getEmailSuppressionStatus, recordEmailMessage } from '@/lib/email/logging';
+import { currentEmailSuspensionReason, EMAIL_SUSPENSION_SWITCHES } from '@/lib/email/suspension';
 
 export interface EmailOptions {
   to: string;
@@ -64,9 +65,17 @@ export interface EmailAttachment {
 }
 
 type EmailProvider = 'graph' | 'resend';
+
+/**
+ * Machine-readable reason for a refused send, for callers that must treat it differently from
+ * a provider failure. 'email_suspended': an emergency kill switch is on and nothing was sent.
+ */
+export type EmailSendCode = 'email_suspended';
+
 type EmailSendResult = {
   success: boolean;
   error?: string;
+  code?: EmailSendCode;
   /** The provider's own id (Resend/Graph). Not a local row id. */
   messageId?: string;
   /**
@@ -155,6 +164,28 @@ async function recordEmailOutcome(
  * Send a general email using the configured provider.
  */
 export async function sendEmail(options: EmailOptions): Promise<EmailSendResult> {
+  // Emergency kill switch, checked before the suppression lookup so an active switch touches
+  // neither the database nor the provider. Read at call time, like the SMS switches.
+  const suspensionReason = currentEmailSuspensionReason();
+  if (suspensionReason) {
+    // logger.warn is silent outside development; an active kill switch must show in production
+    // logs. The recipient address is left out on purpose: it is personal data, and the
+    // customer id and comm type are enough to trace the send.
+    console.warn(
+      `Outbound email blocked: emergency suspension active (${EMAIL_SUSPENSION_SWITCHES[suspensionReason]})`,
+      JSON.stringify({
+        customerId: options.customerId ?? null,
+        commType: options.commType ?? null,
+        suspensionReason,
+      })
+    );
+    return {
+      success: false,
+      error: 'Email sending is currently suspended',
+      code: 'email_suspended',
+    };
+  }
+
   const suppressionStatus = await getEmailSuppressionStatus(options.to);
 
   // Only marketing opts into failing closed. Everything else keeps the original behaviour of

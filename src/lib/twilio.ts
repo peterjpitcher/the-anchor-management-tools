@@ -5,7 +5,7 @@ import { logger } from './logger';
 import { TWILIO_STATUS_CALLBACK, TWILIO_STATUS_CALLBACK_METHOD, env } from './env';
 import { ensureCustomerForPhone } from '@/lib/sms/customers';
 import { recordOutboundMessage, recordOutboundSmsMessage } from '@/lib/sms/logging';
-import { resolveSmsSuspensionReason } from '@/lib/sms/suspension';
+import { resolveSmsSuspensionReason, SMS_SUSPENSION_SWITCHES } from '@/lib/sms/suspension';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours';
 import { shortenUrlsInSmsBody } from '@/lib/sms/link-shortening';
@@ -307,6 +307,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
   // Emergency kill switch — checked before any side effects (customer creation, DB writes).
   // Flags are read at call time so they also cover deferred sends replayed via the job queue.
   const suspensionReason = resolveSmsSuspensionReason({
+    suspendAllComms: process.env.SUSPEND_ALL_COMMS,
     suspendAllSms: process.env.SUSPEND_ALL_SMS,
     suspendEventSms: process.env.SUSPEND_EVENT_SMS,
     metadata: options.metadata
@@ -315,7 +316,7 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
   if (suspensionReason) {
     // logger.warn is silent outside development; an active kill switch must show in production logs.
     console.warn(
-      `Outbound SMS blocked: emergency suspension active (${suspensionReason === 'all_sms' ? 'SUSPEND_ALL_SMS' : 'SUSPEND_EVENT_SMS'})`,
+      `Outbound SMS blocked: emergency suspension active (${SMS_SUSPENSION_SWITCHES[suspensionReason]})`,
       JSON.stringify({
         to,
         suspensionReason,
