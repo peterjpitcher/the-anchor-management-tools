@@ -550,7 +550,8 @@ export async function sendCrossPromoForEvent(
   }
 
   if (mode === 'intro_no_email') {
-    // Guests who can be emailed hear about the event from the guest campaigns instead.
+    // Guests the guest campaigns reach hear about the event by email instead. Anyone the
+    // campaigns would skip (unsubscribed, bounced, listed, no consent, no address) keeps the text.
     const withoutEmail = await loadCustomerIdsWithoutUsableEmail(
       db,
       audienceRows.map((row) => row.customer_id)
