@@ -20,6 +20,7 @@ import {
   EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS,
   EVENT_PROMO_TEXT_CAP,
   EVENT_PROMO_TEXT_CAP_WINDOW_DAYS,
+  isUnderDailyPromoTextLimit,
   isUnderPromoTextCap,
   loadCustomerIdsWithoutUsableEmail,
   loadPromoTextCounts,
@@ -208,9 +209,10 @@ export type SendCrossPromoResult = {
  * - 'intro': today's 7-day intro, exactly as before. The default, and the only mode used while
  *   the messaging flag `event_promo_last_push` is off.
  * - 'last_push': the one text the owner's 11 September 2026 policy allows, 0 to 3 days out,
- *   only while fewer than a quarter of the seats are booked, inside the two-a-month cap.
+ *   only while fewer than a quarter of the seats are booked, inside the two-a-month cap and the
+ *   one-a-day limit.
  * - 'intro_no_email': today's intro, but only to guests with no usable email address and
- *   inside the same cap (flag `event_promo_intro_sms_no_email`, with the last push on).
+ *   inside the same cap and limit (flag `event_promo_intro_sms_no_email`, with the last push on).
  *
  * See src/lib/sms/event-promo-policy.ts for the rules themselves.
  */
@@ -548,7 +550,8 @@ export async function sendCrossPromoForEvent(
   }
 
   if (mode === 'intro_no_email') {
-    // Guests who can be emailed hear about the event from the guest campaigns instead.
+    // Guests the guest campaigns reach hear about the event by email instead. Anyone the
+    // campaigns would skip (unsubscribed, bounced, listed, no consent, no address) keeps the text.
     const withoutEmail = await loadCustomerIdsWithoutUsableEmail(
       db,
       audienceRows.map((row) => row.customer_id)
@@ -567,7 +570,9 @@ export async function sendCrossPromoForEvent(
   }
 
   if (underTextCap) {
-    // At most two promotional texts per person in any 30 days. A failed count sends nothing.
+    // At most two promotional texts per person in any 30 days, and at most one landing on any
+    // London day across every event. Read again for every event, so a text sent for the event
+    // before this one in the same run counts here. A failed count sends nothing.
     const textCounts = await loadPromoTextCounts(
       db,
       audienceRows.map((row) => row.customer_id)
@@ -582,7 +587,7 @@ export async function sendCrossPromoForEvent(
       return stats
     }
 
-    const withinCap = audienceRows.filter((row) => isUnderPromoTextCap(textCounts, row.customer_id))
+    const withinCap = audienceRows.filter((row) => isUnderPromoTextCap(textCounts.last30Days, row.customer_id))
     const capped = audienceRows.length - withinCap.length
     if (capped > 0) {
       stats.skipped += capped
@@ -591,7 +596,16 @@ export async function sendCrossPromoForEvent(
       })
     }
 
-    audienceRows = withinCap
+    const withinDay = withinCap.filter((row) => isUnderDailyPromoTextLimit(textCounts.sameDay, row.customer_id))
+    const alreadyTextedToday = withinCap.length - withinDay.length
+    if (alreadyTextedToday > 0) {
+      stats.skipped += alreadyTextedToday
+      logger.info('Cross-promo: guests skipped because a promotional text already lands for them that day', {
+        metadata: { eventId: event.id, mode, alreadyTextedToday },
+      })
+    }
+
+    audienceRows = withinDay
     if (audienceRows.length === 0) {
       return stats
     }
