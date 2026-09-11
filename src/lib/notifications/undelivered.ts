@@ -20,6 +20,7 @@ const REASON_LABELS: Record<string, string> = {
   no_sms_channel: 'Email bounced; no mobile number to text',
   sms_failed: 'Email bounced; the text failed too',
   no_renderer: 'Email bounced; this message cannot be sent as a text',
+  needs_approval: 'Email bounced; the text needs staff approval, so it was not sent',
   booking_missing: 'Email bounced; booking not found',
   render_failed: 'Email bounced; the text could not be built',
   customer_missing: 'Email bounced; customer record not found',
