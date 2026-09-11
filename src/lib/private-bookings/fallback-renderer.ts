@@ -5,7 +5,8 @@ import {
   renderPrivateBookingMessage,
 } from '@/lib/private-bookings/message-catalogue'
 import { cancellationFromFacts, loadPrivateBookingMessageContext } from '@/lib/private-bookings/message-context'
-import type { DelayedFallbackRenderer } from '@/lib/notifications/delayed-fallback/types'
+import { shouldAutoSendPrivateBookingSms } from '@/lib/private-bookings/sms-approval'
+import type { DelayedFallbackRenderer, FallbackSkipCheck } from '@/lib/notifications/delayed-fallback/types'
 
 /**
  * Rebuilds a bounced private booking email as the text it replaced (P4 with P6).
@@ -17,7 +18,8 @@ import type { DelayedFallbackRenderer } from '@/lib/notifications/delayed-fallba
  *
  * A message whose purpose has been met since (deposit or balance paid, hold gone) comes back as
  * no longer needed. The rebuilt text carries the moment its words stop being true (validUntil), so
- * the job can refuse one that would land too late.
+ * the job can refuse one that would land too late. A trigger whose text needs staff approval is
+ * never sent from here: it comes back as needs_approval and is listed for staff.
  */
 export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
   matches: (templateKey) => templateKey.startsWith('private_booking_'),
@@ -57,6 +59,22 @@ export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
     }
 
     const booking = context.booking
+    const current: FallbackSkipCheck = {
+      booking: { status: booking.status, startsAt: privateBookingStartsAt(booking), facts: message.facts },
+      expectCancelled: message.expectCancelled,
+      expectPast: message.expectPast,
+      validUntil: message.validUntil,
+    }
+
+    // A text staff must approve (the 3-day hold reminder, the balance reminders, the partial
+    // refund, retention and review-pending cancellations) never goes without that approval, even
+    // when the email carrying it went at once or was sent with Send Now. It is listed for staff
+    // instead, unless the booking has since been cancelled, started or changed, or the words have
+    // run out, which the job checks first.
+    if (!shouldAutoSendPrivateBookingSms(triggerType)) {
+      return { kind: 'unavailable', reason: 'needs_approval', booking: bookingRef, current }
+    }
+
     let phone = booking.contact_phone?.trim() || null
     if (!phone && booking.customer_id) {
       const { data: customer } = await (client.from('customers') as any)
@@ -82,15 +100,10 @@ export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
 
     return {
       kind: 'ready',
-      booking: {
-        ...bookingRef,
-        status: booking.status,
-        startsAt: privateBookingStartsAt(booking),
-        facts: message.facts,
-      },
-      expectCancelled: message.expectCancelled,
-      expectPast: message.expectPast,
-      validUntil: message.validUntil,
+      booking: { ...bookingRef, ...current.booking },
+      expectCancelled: current.expectCancelled,
+      expectPast: current.expectPast,
+      validUntil: current.validUntil,
       sms: {
         to: phone,
         body: message.smsBody,

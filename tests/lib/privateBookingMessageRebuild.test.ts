@@ -527,6 +527,176 @@ describe('bounce fallback: a message that no longer applies is skipped, never fa
   })
 })
 
+describe('bounce fallback: a text that needs staff approval is never sent without it', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.flags = { bounce_sms_fallback: true, private_booking_email_first: true }
+    mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-9' })
+  })
+
+  const GATED: Array<[string, string, Record<string, unknown>, Record<string, unknown>]> = [
+    [
+      'deposit_reminder_3day',
+      'private_booking_deposit_reminder_3day',
+      { hold_expiry: '2026-09-22T22:30:00.000Z' },
+      { event_date: '2026-10-03', hold_expiry_date: '2026-09-22', deposit_amount: 250 },
+    ],
+    [
+      'balance_reminder_21day',
+      'private_booking_balance_reminder_21day',
+      { status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-25' },
+      { event_date: '2026-10-03', balance_due_date: '2026-09-25', balance_amount: 1234.5 },
+    ],
+    [
+      'balance_reminder_16day',
+      'private_booking_balance_reminder_16day',
+      { status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-22' },
+      { event_date: '2026-10-03', balance_due_date: '2026-09-22', balance_amount: 1234.5 },
+    ],
+    [
+      'balance_reminder_15day',
+      'private_booking_balance_reminder_15day',
+      { status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-21' },
+      { event_date: '2026-10-03', balance_due_date: '2026-09-21', balance_amount: 1234.5 },
+    ],
+    [
+      'balance_reminder_due',
+      'private_booking_balance_reminder_due',
+      { status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-20' },
+      { event_date: '2026-10-03', balance_due_date: '2026-09-20', balance_amount: 1234.5 },
+    ],
+    [
+      'booking_cancelled_partial_refund',
+      'private_booking_cancelled_partial_refund',
+      { status: 'cancelled' },
+      { event_date: '2026-10-03', refund_amount: 200, retained_amount: 50, deduction_amount: 50 },
+    ],
+    [
+      'booking_cancelled_retention',
+      'private_booking_cancelled_retention',
+      { status: 'cancelled' },
+      { event_date: '2026-10-03', refund_amount: 100, retained_amount: 150, deduction_amount: 0 },
+    ],
+    [
+      'booking_cancelled_review_pending',
+      'private_booking_cancelled_review_pending',
+      { status: 'cancelled' },
+      { event_date: '2026-10-03', refund_amount: 0, retained_amount: 0, deduction_amount: 0 },
+    ],
+  ]
+
+  it.each(GATED)('%s: no text; listed under Undelivered guest messages and staff are told', async (triggerType, templateKey, change, facts) => {
+    seed(bookingRow(change), { notification_deliveries: [fallbackDelivery(triggerType, templateKey, facts)] })
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
+
+    expect(outcome).toEqual({ outcome: 'failed', reason: 'needs_approval', deliveryId: 'delivery-1' })
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(state.db.tables.notification_deliveries[0]).toMatchObject({
+      final_status: 'failed',
+      metadata: expect.objectContaining({ undelivered_reason: 'needs_approval' }),
+    })
+    expect(state.db.tables.private_booking_audit[0]).toMatchObject({
+      action: 'message_undelivered',
+      metadata: expect.objectContaining({
+        description:
+          'The email bounced and the text fallback failed: this text needs staff approval before it can be sent, so staff should contact the guest.',
+      }),
+    })
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'notification-delayed-fallback',
+      expect.any(Error),
+      expect.objectContaining({ reason: 'needs_approval', booking_id: 'booking-1' })
+    )
+
+    const { loadUndeliveredGuestMessages } = await import('@/lib/notifications/undelivered')
+    const listed = await loadUndeliveredGuestMessages({ sinceIso: '2000-01-01T00:00:00.000Z' })
+    expect(listed.rows).toEqual([
+      expect.objectContaining({
+        id: 'delivery-1',
+        reason: 'Email bounced; the text needs staff approval, so it was not sent',
+        booking: { href: '/private-bookings/booking-1', label: 'Private booking' },
+      }),
+    ])
+  })
+
+  it('a retention cancellation, emailed at once by cancelBooking, is listed for staff when that email bounces', async () => {
+    seed(bookingRow({ status: 'cancelled' }), {
+      notification_deliveries: [
+        {
+          ...fallbackDelivery('booking_cancelled_retention', 'private_booking_cancelled_retention', {
+            event_date: '2026-10-03',
+            refund_amount: 100,
+            retained_amount: 150,
+            deduction_amount: 0,
+          }),
+          metadata: {
+            source: 'private_booking_messenger',
+            private_booking_id: 'booking-1',
+            trigger_type: 'booking_cancelled_retention',
+            window_key: 'cancelled',
+            email_recipient_source: 'contact_email',
+            booking_facts: { event_date: '2026-10-03', refund_amount: 100, retained_amount: 150, deduction_amount: 0 },
+          },
+        },
+      ],
+    })
+
+    const { final } = await runAsTheQueueWould(new Date('2026-09-20T21:40:00.000Z'))
+
+    expect(final).toMatchObject({ outcome: 'failed', reason: 'needs_approval' })
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+  })
+
+  it('a gated message whose booking has since been cancelled is skipped, not listed', async () => {
+    seed(bookingRow({ status: 'cancelled', hold_expiry: '2026-09-22T22:30:00.000Z' }), {
+      notification_deliveries: [
+        fallbackDelivery('deposit_reminder_3day', 'private_booking_deposit_reminder_3day', {
+          event_date: '2026-10-03',
+          hold_expiry_date: '2026-09-22',
+          deposit_amount: 250,
+        }),
+      ],
+    })
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
+
+    expect(outcome).toMatchObject({ outcome: 'skipped', reason: 'booking_cancelled' })
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('a gated reminder that would land too late is skipped, not listed', async () => {
+    seed(bookingRow({ status: 'confirmed', hold_expiry: null, balance_due_date: '2026-09-19' }), {
+      notification_deliveries: [
+        fallbackDelivery('balance_reminder_15day', 'private_booking_balance_reminder_15day', {
+          event_date: '2026-10-03',
+          balance_due_date: '2026-09-19',
+          balance_amount: 1234.5,
+        }),
+      ],
+    })
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })
+
+    expect(outcome).toMatchObject({ outcome: 'skipped', reason: 'too_late' })
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('texts that go straight out still fall back as before', async () => {
+    seed(bookingRow({ hold_expiry: '2026-09-21T06:00:00.000Z' }), {
+      notification_deliveries: [
+        fallbackDelivery('deposit_reminder_1day', 'private_booking_deposit_reminder_1day', {
+          event_date: '2026-10-03',
+          hold_expiry_date: '2026-09-21',
+          deposit_amount: 250,
+        }),
+      ],
+    })
+
+    expect(await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { now: () => NOW })).toMatchObject({ outcome: 'sent' })
+  })
+})
+
 describe('privateBookingMessageValidUntil: taken from the words, right across both clock changes', () => {
   function context(overrides: Partial<CatalogueBooking> = {}, storedFacts: Record<string, unknown> | null = null) {
     return { booking: bookingRow(overrides) as CatalogueBooking, now: NOW, storedFacts }

@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/idempotency';
 import type { ApprovedMessageEmailOutcome } from '@/lib/private-bookings/approved-message';
 import { isMessagingFlagOn } from '@/lib/messaging/flags';
+import { shouldAutoSendPrivateBookingSms } from '@/lib/private-bookings/sms-approval';
 
 export type QueueSmsInput = {
   booking_id: string;
@@ -45,42 +46,9 @@ function extractError(obj: unknown): string | undefined {
 const APPROVED_SMS_DISPATCH_STALE_MS = 10 * 60 * 1000;
 const PRIVATE_BOOKING_SMS_QUEUE_DEDUPE_LOCK_TTL_HOURS = 0.25; // 15 minutes
 
-const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
-  'booking_created',
-  'deposit_received',
-  'final_payment_received',
-  'payment_received',
-  'booking_confirmed',
-  'booking_completed',
-  'date_changed',
-  // A moved balance deadline must reach the customer without waiting on
-  // manual approval — same corrective class as 'date_changed'.
-  'balance_due_date_changed',
-  // Retained for backward compatibility with historical queue rows. New
-  // cancellation writes use the four variant triggers below.
-  'booking_cancelled',
-  'booking_cancelled_hold',
-  'booking_cancelled_refundable',
-  'booking_cancelled_non_refundable',
-  'booking_cancelled_manual_review',
-  'booking_expired',
-  'hold_extended',
-  'deposit_reminder_7day',
-  'deposit_reminder_1day',
-  'balance_reminder_14day',
-  'balance_reminder_7day',
-  'balance_reminder_1day',
-  'event_reminder_1d',
-  'setup_reminder',
-  'post_event_followup',
-  'review_request',
-  'manual',
-]);
-
-/** Exported for tests: a trigger absent from the set queues as `pending` and never dispatches. */
-export function shouldAutoSendPrivateBookingSms(triggerType: string): boolean {
-  return PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS.has(triggerType);
-}
+// The approval rule lives in src/lib/private-bookings/sms-approval.ts, shared with the bounce
+// fallback. Re-exported here for the callers and tests that have always read it from the queue.
+export { shouldAutoSendPrivateBookingSms };
 
 function buildDispatchClaim(): string {
   return `dispatching:${new Date().toISOString()}:${Math.random().toString(36).slice(2, 10)}`;

@@ -58,6 +58,7 @@ const REASON_TEXT: Record<string, string> = {
   no_longer_needed: 'what it asked for has been done since, so it no longer applies',
   booking_changed: 'the booking details have changed since the email was sent',
   no_renderer: 'this kind of message cannot be rebuilt as a text',
+  needs_approval: 'this text needs staff approval before it can be sent, so staff should contact the guest',
   no_sms_channel: 'the guest has no mobile number we can text',
   sms_failed: 'the text could not be sent',
   booking_missing: 'the booking could not be found',
