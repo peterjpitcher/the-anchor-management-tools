@@ -886,7 +886,8 @@ export async function updatePayrollRowTimes(
   // The payroll screen edits times only — it never supplies a premium here.
   //  - UPDATE branch: omitting `premium` makes updateTimeclockSession PRESERVE the
   //    session's existing premium (re-clamped to the new interval), so a time edit
-  //    never silently drops an override.
+  //    never silently drops an override. Notes are passed as undefined for the same
+  //    reason: the update leaves the session's notes as they are.
   //  - CREATE branch: omitting `premium` inserts the session with NO premium
   //    columns (all NULL). That is deliberate — the row carries no spurious premium
   //    and, because its premium columns are null, payroll resolves premium LIVE.
