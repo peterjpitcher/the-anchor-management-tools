@@ -10,7 +10,13 @@ import {
   XCircleIcon,
   DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
-import { getPrivateBooking, sendPrivateBookingSms } from '@/app/actions/privateBookingActions'
+import { getPrivateBooking, sendPrivateBookingEmail, sendPrivateBookingSms } from '@/app/actions/privateBookingActions'
+import {
+  STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT,
+  defaultStaffMessageChannel,
+  type StaffMessageChannel,
+} from '@/lib/messaging/staff-email-defaults'
+import { Input, Radio } from '@/ds'
 import type { PrivateBookingWithDetails, PrivateBookingSmsQueue } from '@/types/private-bookings'
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour } from '@/lib/dateUtils'
 import { PageLayout } from '@/ds'
@@ -117,13 +123,16 @@ interface PrivateBookingMessagesClientProps {
   initialBooking: PrivateBookingWithDetails | null
   initialError?: string | null
   canSendSms: boolean
+  /** P7: an email choice beside the text, while the option is on; email is the default when usable. */
+  emailOption?: { enabled: boolean; usable: boolean }
 }
 
 export default function PrivateBookingMessagesClient({
   bookingId,
   initialBooking,
   initialError,
-  canSendSms
+  canSendSms,
+  emailOption
 }: PrivateBookingMessagesClientProps) {
   const router = useRouter()
   const [booking, setBooking] = useState<PrivateBookingWithDetails | null>(() =>
@@ -134,6 +143,9 @@ export default function PrivateBookingMessagesClient({
   const [customMessage, setCustomMessage] = useState<string>('')
   const [messageToSend, setMessageToSend] = useState<string>('')
   const [sending, setSending] = useState(false)
+  const [channel, setChannel] = useState<StaffMessageChannel>(() => defaultStaffMessageChannel(emailOption))
+  const [emailSubject, setEmailSubject] = useState<string>(STAFF_BOOKING_EMAIL_DEFAULT_SUBJECT)
+  const emailChosen = Boolean(emailOption?.enabled) && channel === 'email'
   const [sentMessages, setSentMessages] = useState<PrivateBookingSmsQueue[]>(() =>
     initialBooking?.sms_queue?.filter((msg) => msg.status === 'sent') ?? []
   )
@@ -229,6 +241,26 @@ export default function PrivateBookingMessagesClient({
       return
     }
 
+    if (emailChosen) {
+      if (!emailSubject.trim()) {
+        toast.error('Please enter a subject for the email.')
+        return
+      }
+      setSending(true)
+      const emailResult = await sendPrivateBookingEmail(bookingId, emailSubject.trim(), message)
+      setSending(false)
+      if ('error' in emailResult && emailResult.error) {
+        toast.error(emailResult.error)
+        return
+      }
+      toast.success('Email sent to the customer.')
+      setMessageToSend('')
+      setSelectedTemplate('')
+      setCustomMessage('')
+      refreshBooking()
+      return
+    }
+
     if (!booking.contact_phone) {
       toast.error('No phone number available for this booking.')
       return
@@ -274,7 +306,7 @@ export default function PrivateBookingMessagesClient({
   }
 
   const isDraft = booking.status === 'draft'
-  const canSend = canSendSms && booking.contact_phone
+  const canSend = emailChosen ? canSendSms && Boolean(emailOption?.usable) : canSendSms && booking.contact_phone
 
   const navItems = [
     { label: 'Overview', href: `/private-bookings/${bookingId}` },
@@ -342,6 +374,40 @@ export default function PrivateBookingMessagesClient({
                   </div>
                 </FormGroup>
 
+                {emailOption?.enabled && (
+                  <FormGroup label="Send by">
+                    <div className="space-y-2">
+                      <Radio
+                        name="private-booking-message-channel"
+                        value="email"
+                        label="Email"
+                        description={emailOption.usable ? undefined : 'No usable email address for this booking.'}
+                        checked={channel === 'email'}
+                        onChange={() => setChannel('email')}
+                        disabled={!emailOption.usable || !canSendSms}
+                      />
+                      <Radio
+                        name="private-booking-message-channel"
+                        value="sms"
+                        label="Text"
+                        checked={channel === 'sms'}
+                        onChange={() => setChannel('sms')}
+                        disabled={!canSendSms}
+                      />
+                    </div>
+                  </FormGroup>
+                )}
+
+                {emailChosen && (
+                  <Input
+                    label="Email subject"
+                    value={emailSubject}
+                    maxLength={200}
+                    onChange={(event) => setEmailSubject(event.target.value)}
+                    disabled={!canSendSms}
+                  />
+                )}
+
                 <FormGroup label="Custom message">
                   <Textarea
                     value={messageToSend || customMessage}
@@ -355,7 +421,9 @@ export default function PrivateBookingMessagesClient({
                     disabled={!canSendSms}
                   />
                   <p className="mt-2 text-xs text-gray-500">
-                    Messages are sent via the venue SMS number. Reply instructions are added automatically.
+                    {emailChosen
+                      ? "Sent by email from The Anchor, with the venue's address, phone number and email added at the end."
+                      : 'Messages are sent via the venue SMS number. Reply instructions are added automatically.'}
                   </p>
                 </FormGroup>
 
