@@ -1681,7 +1681,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               onChange={(event) => setPartySizeEditSendSms(event.target.checked)}
               className="rounded border-gray-300 text-green-600 focus:ring-green-500"
             />
-            Notify guest by SMS
+            {/* The request goes by text, or by email first when table_party_size_deposit_email_first is on. */}
+            Notify guest
           </label>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setPartySizeEditOpen(false)}>
