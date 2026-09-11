@@ -15,6 +15,8 @@
  * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address still
  * get today's 7-day intro text, counted against the same two-a-month cap.
  *
+ * When the flags row cannot be read, the cron sends no promotion texts at all in that run.
+ *
  * Everything here is pure or a single read, so the rules can be tested without a cron, a clock
  * or Twilio. The cron decides which events to look at; `sendCrossPromoForEvent` applies the
  * capacity rule and the cap to each one.
@@ -25,7 +27,7 @@ import { shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
 import { isEmailUsable } from '@/lib/notifications/channel'
 import { isEmailSuppressed } from '@/lib/email/logging'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { readMessagingFlagState, type MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { isEventPromoTemplateKey, PROMOTIONAL_SMS_TEMPLATE_KEYS } from '@/lib/sms/promo-template-keys'
 
 export {
@@ -86,24 +88,42 @@ export const EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH = 45
 // Flags
 // ---------------------------------------------------------------------------
 
-export type EventPromoFlags = {
-  /** `event_promo_last_push`: no intro, no follow-up, one last push under the rules above. */
-  lastPush: boolean
-  /** `event_promo_intro_sms_no_email`, honoured only while the last push is on. */
-  introForGuestsWithoutEmail: boolean
-}
+export type EventPromoFlags =
+  | {
+      state: 'known'
+      /** `event_promo_last_push`: no intro, no follow-up, one last push under the rules above. */
+      lastPush: boolean
+      /** `event_promo_intro_sms_no_email`, honoured only while the last push is on. */
+      introForGuestsWithoutEmail: boolean
+    }
+  | {
+      /** The flags row could not be read, so the cron sends no promotion texts in this run. */
+      state: 'unknown'
+      failure: MessagingFlagsReadFailure
+    }
 
-/** Reads both flags. Any failure reads as off, which is today's behaviour. */
+/**
+ * Reads both flags. A missing row, false or a malformed value is off, which is today's
+ * behaviour. A failed read is unknown and never off: off runs the 7-day intro and the 24-hour
+ * follow-up, the noisier texts the owner switched away from, so a flag that has been on for
+ * weeks must not fall back to them because one read timed out. The second flag is read only
+ * while the first is on, and a failure on either makes the whole answer unknown.
+ */
 export async function resolveEventPromoFlags(): Promise<EventPromoFlags> {
-  const lastPush = await isMessagingFlagOn('event_promo_last_push')
-  if (!lastPush) {
-    return { lastPush: false, introForGuestsWithoutEmail: false }
+  const lastPush = await readMessagingFlagState('event_promo_last_push')
+  if (lastPush.state === 'unknown') {
+    return { state: 'unknown', failure: lastPush.failure }
+  }
+  if (lastPush.state === 'off') {
+    return { state: 'known', lastPush: false, introForGuestsWithoutEmail: false }
   }
 
-  return {
-    lastPush: true,
-    introForGuestsWithoutEmail: await isMessagingFlagOn('event_promo_intro_sms_no_email'),
+  const intro = await readMessagingFlagState('event_promo_intro_sms_no_email')
+  if (intro.state === 'unknown') {
+    return { state: 'unknown', failure: intro.failure }
   }
+
+  return { state: 'known', lastPush: true, introForGuestsWithoutEmail: intro.state === 'on' }
 }
 
 // ---------------------------------------------------------------------------

@@ -20,9 +20,11 @@ import {
   resolveEventPromoFlags,
   resolveLastPushDateWindow,
 } from '@/lib/sms/event-promo-policy'
+import type { MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { shouldSuppressEventReminderForLateBooking } from '@/lib/events/reminder-eligibility'
 import {
@@ -1901,11 +1903,37 @@ type PromoStageResult = {
   errors: number
   eventsProcessed: number
   disabled?: true
-  reason?: 'event_promo_last_push'
+  reason?: 'event_promo_last_push' | 'messaging_flags_unreadable'
 }
 
 function disabledPromoStage(): PromoStageResult {
   return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason: 'event_promo_last_push' }
+}
+
+/** A promotion stage that did not run because the messaging flags could not be read. */
+function heldPromoStage(): PromoStageResult {
+  return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason: 'messaging_flags_unreadable' }
+}
+
+/**
+ * The one log line and the one alert for a run whose promotion texts were held because the
+ * messaging flags could not be read. The run itself still completes: every other stage ran.
+ */
+async function reportPromotionTextsHeld(runKey: string, failure: MessagingFlagsReadFailure): Promise<void> {
+  logger.error('Event promotion texts held for this run: the messaging flags could not be read', {
+    metadata: { runKey, ...failure },
+  })
+
+  await reportCronFailure(
+    JOB_NAME,
+    new Error(`Event promotion texts held: the messaging flags could not be read (${failure.message})`),
+    {
+      run_key: runKey,
+      code: failure.code,
+      outcome:
+        'No event promotion texts were sent in this run. Reminders and review follow-ups ran as normal. The next run reads the flags again.',
+    }
+  )
 }
 
 /**
@@ -2305,14 +2333,23 @@ export async function GET(request: NextRequest) {
 
     // Owner decision, 11 September 2026: promotions go by email first. With the flag on, the
     // intro and the 24-hour follow-up stop and the only text is one last push close to a quiet
-    // night. With it off (and on any failure to read it) this stage is exactly what it was.
+    // night. With it off (a missing row or false) this stage is exactly what it was.
     const promoFlags = await resolveEventPromoFlags()
 
     let followUp24h: PromoStageResult
     let crossPromo: PromoStageResult
     let lastPush: PromoStageResult | null = null
 
-    if (!promoFlags.lastPush) {
+    if (promoFlags.state === 'unknown') {
+      // Unknown is not off. Off would run the 7-day intro and the 24-hour follow-up, the noisier
+      // texts the owner switched away from, to every eligible past guest. So this run sends no
+      // promotion text at all; the stages above have already run as normal, and the next run
+      // reads the flags again.
+      await reportPromotionTextsHeld(runKey, promoFlags.failure)
+      followUp24h = heldPromoStage()
+      crossPromo = heldPromoStage()
+      lastPush = heldPromoStage()
+    } else if (!promoFlags.lastPush) {
       // 24h follow-ups for customers who received the 7d intro and have not booked
       followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
 
@@ -2329,10 +2366,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Cleanup: remove old sms_promo_context rows. Kept 45 days under the last push so the
-    // 30-day text cap never loses a row it still needs; 30 days otherwise, as before.
-    const promoContextRetentionDays = promoFlags.lastPush
-      ? EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH
-      : EVENT_PROMO_CONTEXT_RETENTION_DAYS
+    // 30-day text cap never loses a row it still needs, and when the flags could not be read,
+    // because the cap may be in force; 30 days only when the flag is known to be off, as before.
+    const promoContextRetentionDays = promoFlags.state === 'known' && !promoFlags.lastPush
+      ? EVENT_PROMO_CONTEXT_RETENTION_DAYS
+      : EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH
     await supabase.from('sms_promo_context' as never)
       .delete()
       .lt('created_at', new Date(Date.now() - promoContextRetentionDays * 24 * 60 * 60 * 1000).toISOString())
