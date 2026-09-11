@@ -110,6 +110,25 @@ export async function resolveEventPromoFlags(): Promise<EventPromoFlags> {
 // Timing
 // ---------------------------------------------------------------------------
 
+/**
+ * The London calendar date `daysAhead` days after today's London date, YYYY-MM-DD.
+ *
+ * Calendar arithmetic on the London date, never "now plus 24 hours". On the night the clocks go
+ * back, 00:30 BST on Sunday 25 October 2026 plus 24 hours is 23:30 GMT on that same Sunday, so
+ * "tomorrow" came out as today: the intro window took in that day's events and the follow-up
+ * could say "is tomorrow" about a night that was that evening. On the night they go forward,
+ * 23:30 GMT on Saturday 27 March 2027 plus 24 hours is 00:30 BST on Monday 29 March, a day too
+ * far.
+ */
+export function londonDateDaysAhead(daysAhead: number, now: Date = new Date()): string {
+  const target = shiftIsoDate(toLocalIsoDate(now), daysAhead)
+  if (!target) {
+    // Only a fractional day count gets here, which is a programming error, not a clock problem.
+    throw new Error(`londonDateDaysAhead needs a whole number of days, got ${daysAhead}`)
+  }
+  return target
+}
+
 export type LastPushDateWindow = {
   /** Today's London date, YYYY-MM-DD. */
   from: string
@@ -123,10 +142,9 @@ export type LastPushDateWindow = {
  * 00:30 on the fourth day, which would let a D+4 event in.
  */
 export function resolveLastPushDateWindow(now: Date = new Date()): LastPushDateWindow {
-  const today = toLocalIsoDate(now)
   return {
-    from: today,
-    to: shiftIsoDate(today, EVENT_LAST_PUSH_MAX_DAYS_AHEAD) ?? today,
+    from: londonDateDaysAhead(0, now),
+    to: londonDateDaysAhead(EVENT_LAST_PUSH_MAX_DAYS_AHEAD, now),
   }
 }
 

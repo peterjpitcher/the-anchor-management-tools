@@ -201,3 +201,74 @@ describe('event promotion stage and the messaging flags', () => {
     expect(payload.crossPromo.disabled).toBeUndefined()
   })
 })
+
+/**
+ * The follow-up and the intro ask the database for London calendar dates. They used to add 24
+ * hours to the clock, which on the night the clocks go back turned "tomorrow" into today.
+ */
+describe('promotion windows across the clock changes (flags off, as today)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** The follow-up events query runs first, then the intro's. */
+  function introAndFollowUpWindows(db: ReturnType<typeof buildDatabase>) {
+    const [followUp, intro] = db.queries.filter(
+      (query) => query.table === 'events' && !String(argsOf(query, 'select')[0]?.[0]).includes('start_datetime')
+    )
+    const window = (query: typeof followUp) => ({
+      from: argsOf(query, 'gte').find(([column]) => column === 'date')?.[1],
+      to: argsOf(query, 'lte').find(([column]) => column === 'date')?.[1],
+    })
+    return { followUp: window(followUp), intro: window(intro) }
+  }
+
+  it.each([
+    // 00:00, 00:30 and 00:59 BST on Sunday 25 October 2026, the night the clocks go back.
+    ['2026-10-24T23:00:00Z'],
+    ['2026-10-24T23:30:00Z'],
+    ['2026-10-24T23:59:00Z'],
+  ])('at %s, tomorrow is Monday 26 October, not the same Sunday', async (instant) => {
+    vi.setSystemTime(new Date(instant))
+
+    const { db } = await runCron({ lastPush: false, introForGuestsWithoutEmail: false })
+
+    const windows = introAndFollowUpWindows(db)
+    // The 24-hour follow-up asks about tomorrow only, so it can no longer say "is tomorrow"
+    // about a night that is that Sunday evening.
+    expect(windows.followUp).toEqual({ from: '2026-10-26', to: '2026-10-26' })
+    // The intro window is one to seven days out, so a same-day event is not in it.
+    expect(windows.intro).toEqual({ from: '2026-10-26', to: '2026-11-01' })
+  })
+
+  it.each([
+    // 23:00, 23:30 and 23:59 GMT on Saturday 27 March 2027, the night before the clocks go forward.
+    ['2027-03-27T23:00:00Z'],
+    ['2027-03-27T23:30:00Z'],
+    ['2027-03-27T23:59:00Z'],
+  ])('at %s, tomorrow is Sunday 28 March, not Monday 29', async (instant) => {
+    vi.setSystemTime(new Date(instant))
+
+    const { db } = await runCron({ lastPush: false, introForGuestsWithoutEmail: false })
+
+    const windows = introAndFollowUpWindows(db)
+    expect(windows.followUp).toEqual({ from: '2027-03-28', to: '2027-03-28' })
+    expect(windows.intro).toEqual({ from: '2027-03-28', to: '2027-04-03' })
+  })
+
+  it('is unchanged on an ordinary day', async () => {
+    vi.setSystemTime(NOW)
+
+    const { db } = await runCron({ lastPush: false, introForGuestsWithoutEmail: false })
+
+    expect(introAndFollowUpWindows(db)).toEqual({
+      followUp: { from: '2026-09-16', to: '2026-09-16' },
+      intro: { from: '2026-09-16', to: '2026-09-22' },
+    })
+  })
+})
