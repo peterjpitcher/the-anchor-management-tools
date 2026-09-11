@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { sendSMS } from '@/lib/twilio'
+import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
 import { AuditService } from '@/services/audit'
 import { recordNotificationAttempt, updateNotificationDelivery } from '@/lib/notifications/delivery-ledger'
 import { findDelayedFallbackRenderer } from '@/lib/notifications/delayed-fallback/renderers'
@@ -24,6 +25,29 @@ export type DelayedFallbackOutcome =
   | { outcome: 'skipped'; reason: string; deliveryId: string }
   | { outcome: 'sent'; deliveryId: string; scheduledFor: string | null }
   | { outcome: 'failed'; reason: string; deliveryId: string }
+  /** Quiet hours: nothing claimed or sent; the job queue runs this job again at `runAt`. */
+  | { outcome: 'deferred'; deliveryId: string; runAt: string }
+
+/**
+ * How close to 21:00 a job still sends. sendSMS makes its own quiet-hours check a moment after the
+ * job's, and a text that reaches it after 21:00 is held until morning with today's words, which is
+ * the thing waiting is meant to prevent. The job itself runs for two minutes at most.
+ */
+const QUIET_HOURS_LEAD_MS = 5 * 60 * 1000
+
+/**
+ * When a fallback job must wait instead of sending: inside quiet hours (21:00 to 09:00 London), or
+ * close enough to 21:00 that sendSMS could be. Returns the next 09:00 London as an instant, else
+ * null. It asks the same quiet-hours rule sendSMS applies, so the two cannot disagree, and that rule
+ * takes 09:00 on the London calendar, so the answer is right across both clock changes.
+ */
+export function resolveQuietHoursWait(now: Date): Date | null {
+  for (const at of [now, new Date(now.getTime() + QUIET_HOURS_LEAD_MS)]) {
+    const quietHours = evaluateSmsQuietHours(at)
+    if (quietHours.inQuietHours) return quietHours.nextAllowedSendAt
+  }
+  return null
+}
 
 /** Why a text was not sent, as staff read it on the booking timeline and the undelivered list. */
 const REASON_TEXT: Record<string, string> = {
@@ -270,16 +294,21 @@ async function recordFailed(input: {
 /**
  * The `notification_delayed_fallback` job (P4, flag `bounce_sms_fallback`).
  *
- * 1. Claims the delivery with one conditional update on `delayed_fallback_sent_at`, so a second
+ * 1. Inside quiet hours it waits, claiming nothing: it returns `deferred` and the job queue runs it
+ *    again at 09:00 London. sendSMS would otherwise hold the text until 09:00 with the words
+ *    rebuilt tonight, and a text saying "tomorrow" would land on the day itself. Waiting means the
+ *    booking is read, the text rebuilt and every check below made again when the text can go.
+ * 2. Claims the delivery with one conditional update on `delayed_fallback_sent_at`, so a second
  *    job for the same delivery, or a retry of this one, does nothing.
- * 2. Rebuilds the text from the live booking through the renderer for its template key. No copy
+ * 3. Rebuilds the text from the live booking through the renderer for its template key. No copy
  *    of the text is stored anywhere new.
- * 3. Sends nothing when the booking has been cancelled, has started, or has changed since the email.
- * 4. Sends through `sendSMS`, so duplicate protection, quiet hours and the rate limits all apply.
- * 5. With no number, no renderer or a failed send: marks the delivery failed, writes an audit row
+ * 4. Sends nothing when the booking has been cancelled, has started, or has changed since the email.
+ * 5. Sends through `sendSMS`, so duplicate protection, quiet hours and the rate limits all apply.
+ * 6. With no number, no renderer or a failed send: marks the delivery failed, writes an audit row
  *    on the booking and alerts staff.
  *
  * A turned-off flag stops the job before the claim, so switching the flag off is a clean rollback.
+ * Only the job queue should run this: it is what turns `deferred` into a later run.
  */
 export async function runDelayedFallbackJob(
   payload: { deliveryId?: unknown },
@@ -319,6 +348,14 @@ export async function runDelayedFallbackJob(
 
   if (delivery.delayed_fallback_sent_at) {
     return { outcome: 'skipped', reason: 'already_handled', deliveryId }
+  }
+
+  const waitUntil = resolveQuietHoursWait(now)
+  if (waitUntil) {
+    logger.info('Delayed fallback: waiting for the end of quiet hours before rebuilding the text', {
+      metadata: { deliveryId, runAt: waitUntil.toISOString() },
+    })
+    return { outcome: 'deferred', deliveryId, runAt: waitUntil.toISOString() }
   }
 
   const { data: claimed, error: claimError } = await (client.from('notification_deliveries') as any)
