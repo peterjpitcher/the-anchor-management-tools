@@ -8,7 +8,7 @@ Same branch as P1. Every change sits behind a `messaging_flags` key that reads a
 - [x] P3 `table_cancelled_email_first`: email first, email-only guests covered, `table_booking_id` in the SMS metadata, staff see a failed notice.
 - [x] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
 - [x] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
-- [ ] P3 `table_preorder_email_first`: email first instead of both.
+- [x] P3 `table_preorder_email_first`: email first instead of both.
 - [ ] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
 - [ ] Fixture renders of every new email in London and UTC.
 - [ ] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.

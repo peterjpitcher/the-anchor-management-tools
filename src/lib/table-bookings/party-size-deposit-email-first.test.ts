@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The deposit request staff trigger by growing a party past the threshold, under the messaging
@@ -107,8 +107,16 @@ function grow(db: ReturnType<typeof buildDb>, sendSms = true) {
 const TEXT_WITH_SHORT_LINK =
   'The Anchor: Hi Jo, your party size has been updated to 16 people. A table deposit of £160.00 (16 x GBP 10) is now required to secure your booking. Pay now: https://l.the-anchor.pub/pay1'
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 beforeEach(() => {
   vi.clearAllMocks()
+  // Thursday 3 December 2026: the booking two days ahead, so the 24-hour hold is still open
+  // whatever day the suite runs.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-12-03T18:00:00Z'))
   vi.mocked(isMessagingFlagOn).mockImplementation(async (key) => key === 'table_party_size_deposit_email_first')
   vi.mocked(isEmailSuppressed).mockResolvedValue(false)
   vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: true } as never)

@@ -52,6 +52,13 @@ import {
   toLocalIsoDate,
 } from '@/lib/dateUtils'
 import type { PreorderReminderKind } from '@/types/preorders'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import {
+  GUEST_CHANNEL_COLUMNS,
+  notifyTableBookingGuestEmailFirst,
+  type GuestChannelCustomer,
+} from '@/lib/table-bookings/guest-notify'
+import { buildTableBookingPreorderReminderEmail } from '@/lib/table-bookings/guest-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -130,6 +137,11 @@ export async function GET(request: NextRequest) {
     if (!(await isPreorderEnabled(supabase))) {
       return NextResponse.json({ success: true, skipped: true, reason: 'preorder_disabled' })
     }
+
+    // Owner decision, 11 September 2026: the booker reminder goes by email first, with a text
+    // only when there is no usable address or the email fails. Read once per sweep; off (and
+    // any failure to read it) is today's text-and-email pair.
+    const bookerReminderEmailFirst = await isMessagingFlagOn('table_preorder_email_first')
 
     const result = {
       checked: 0,
@@ -267,7 +279,9 @@ export async function GET(request: NextRequest) {
 
         try {
           if (kind === 'booker_reminder') {
-            const reminder = await sendBookerReminder(supabase, booking, booker)
+            const reminder = bookerReminderEmailFirst
+              ? await sendBookerReminderEmailFirst(supabase, booking, booker)
+              : await sendBookerReminder(supabase, booking, booker)
             result.bookerReminders++
             if (reminder.shortLinkFallback) result.shortLinkFallbacks++
           } else {
@@ -430,6 +444,81 @@ async function sendBookerReminder(
     if (!emailResult.success) {
       throw new Error(emailResult.error || 'Failed to send the pre-order reminder email')
     }
+  }
+
+  return { shortLinkFallback: !manage.shortened }
+}
+
+/**
+ * The booker reminder by email first (messaging flag table_preorder_email_first).
+ *
+ * One message, not two: the email when the booker has a usable address, otherwise (or when the
+ * email fails in the same attempt) the same text as today, sent straight away rather than
+ * through the jobs queue. The email gains the comm type and the address health check the old
+ * direct email lacked. Anything that reaches nobody is thrown, so the sweep counts it as failed,
+ * and the audit row names the booking. The ledger row stays claimed, as for every other failure.
+ */
+async function sendBookerReminderEmailFirst(
+  supabase: ReturnType<typeof createAdminClient>,
+  booking: CandidateBooking,
+  booker: Booker | null,
+): Promise<{ shortLinkFallback: boolean }> {
+  if (!booker) throw new Error('Booking has no customer to chase')
+
+  const { data: customerRow, error: customerError } = await supabase
+    .from('customers')
+    .select(GUEST_CHANNEL_COLUMNS)
+    .eq('id', booker.id)
+    .maybeSingle()
+
+  if (customerError) throw customerError
+  if (!customerRow) throw new Error('Booker could not be loaded')
+  const customer = customerRow as unknown as GuestChannelCustomer
+
+  const token = await createTableManageToken(supabase, {
+    customerId: booker.id,
+    tableBookingId: booking.id,
+    bookingStartIso: null,
+    appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+  })
+
+  // Shortened once so the email and a fallback text carry the same link.
+  const manage = await buildGuestShortLink({
+    longUrl: token.url,
+    linkKind: 'table_manage',
+    customerId: booker.id,
+    tableBookingId: booking.id,
+  })
+
+  const bookingMoment = formatDateWithTimeForSms(booking.booking_date, booking.booking_time)
+  const templateKey = 'table_booking_preorder_reminder'
+
+  const outcome = await notifyTableBookingGuestEmailFirst({
+    supabase,
+    templateKey,
+    tableBookingId: booking.id,
+    customer,
+    email: buildTableBookingPreorderReminderEmail({
+      firstName: booker.firstName,
+      bookingReference: booking.booking_reference,
+      bookingDate: booking.booking_date,
+      bookingTime: booking.booking_time,
+      partySize: booking.party_size,
+      manageLink: manage.url,
+    }),
+    sms: {
+      to: booker.phone,
+      // Today's text, word for word. Straight apostrophes and no dashes keep it to GSM-7.
+      body:
+        `The Anchor: ${booker.firstName}, we still need the food choices for your booking on ` +
+        `${bookingMoment}. Every guest needs a main course. Choose here: ${manage.url}`,
+    },
+    idempotencyKey: `${templateKey}:${booking.id}`,
+    auditContext: { booking_reference: booking.booking_reference, short_link_fallback: !manage.shortened },
+  })
+
+  if (outcome.status !== 'sent') {
+    throw new Error(`Pre-order reminder reached nobody (${outcome.status}): ${outcome.error ?? 'unknown'}`)
   }
 
   return { shortLinkFallback: !manage.shortened }
