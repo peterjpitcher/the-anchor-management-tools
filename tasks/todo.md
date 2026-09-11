@@ -1,3 +1,22 @@
+# Email-first messaging P1, safety foundations, 11 September 2026
+
+Branch `feat/email-first-messaging-2026-09-11`. No guest-visible change: every new path is behind a flag that reads as off, and the new levers are kill switches nobody has set.
+
+- [x] Pre-check: `SUSPEND_ALL_COMMS` and `SUSPEND_ALL_EMAIL` are not defined in production (`vercel env ls production`, names only).
+- [x] `sendEmail` honours `SUSPEND_ALL_EMAIL` and `SUSPEND_ALL_COMMS` before the suppression lookup; `code: 'email_suspended'`.
+- [x] Marketing holds its queue while email is suspended (classifier and cron guard).
+- [x] `sendSMS` and `resolveSmsSuspensionReason` honour `SUSPEND_ALL_COMMS`.
+- [x] `isMessagingFlagOn()` reads `system_settings.messaging_flags`, 60-second cache, off in every failure mode.
+- [x] `notifyCustomer`: idempotency key, accepted-but-unlogged email counts as sent and alerts, `finalStatus` and `fallbackUsed`.
+- [x] One `isEmailUsable()` in `channel.ts`, used by `notify.ts`.
+- [x] `CLAUDE.md` kill-switch paragraph and `.env.example`.
+- [x] Gates: lint, tsc, tests in London and UTC, uncached build.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results: lint clean; `npx tsc --noEmit` clean (it needs `NODE_OPTIONS=--max-old-space-size=8192`, as in CI); 794 test files, 7,208 passed and 2 skipped in both London and UTC; uncached production build passed. The first commit's tree passed the same gates on its own (792 files, 7,177 passed).
+
+Left for later pieces: writing `final_status = 'fallback_sent'` for the daily monitor was not in this brief. `CRON_ALERT_EMAIL` is not in the production environment list, so the new sent-but-unlogged alert reaches the logs only until it is set.
+
 # AI event copy builder layout, 6 September 2026
 
 - [x] Inspect live panel and trace card padding.
