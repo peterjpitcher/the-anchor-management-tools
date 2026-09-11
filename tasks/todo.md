@@ -1,3 +1,21 @@
+# Email-first messaging: review fixes for the bounce fallback, 11 September 2026
+
+Integration branch `feat/email-first-integration-2026-09-11`, on top of `dc76b5a9`. Local commits only. With every flag off nothing a guest or staff member sees changes, except the party-size checkbox label and the cancellation email key.
+
+- [x] 1a. A fallback job inside quiet hours (or within five minutes of 21:00) waits for the next 09:00 London: the queue puts the same job row back to pending, unclaimed, so the render and every check run again when the text can go (`069126eb`).
+- [x] 1b. Renderers return `validUntil` for time-bound wording; the job skips with `too_late` at or after it. Private deposit received states the deposit paid date, so a deleted deposit is `booking_changed` (`8a75b8ce`).
+- [x] 1c. A message that no longer applies (hold paid or gone, balance paid, link used, guest answered, choices in) is skipped as `no_longer_needed`, never failed, in both renderers (`8a75b8ce`).
+- [x] 2. The fallback never texts a private booking trigger that needs approval: `needs_approval`, listed for staff (`b8812056`).
+- [x] 3. Party-size checkbox reads "Notify guest" (`fdead553`).
+- [x] 4. Table cancellation email key includes the booking's `cancelled_at` (`cc2f12ec`).
+- [x] 5. The private booking email-first flag is read once per action and passed to the messenger (`3b7bb44b`).
+- [x] Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results (Node 20.19.5): lint clean; uncached `tsc --noEmit` clean; 822 test files, 7,730 passed and 2 skipped in both London and UTC; uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+Decisions recorded: "due tomorrow" and "2 days to go" balance wording is held to its relative words (start of the due day, start of the day before), like the event reminder; a used manage link still reports `link_expired`; the quiet-hours decision uses `evaluateSmsQuietHours`, the rule sendSMS applies, so the two cannot disagree.
+
 # Email-first messaging: bounce fallback for table bookings, 11 September 2026
 
 Integration branch `feat/email-first-integration-2026-09-11`. Local commit only. Nothing changes for guests while `bounce_sms_fallback` or the table flags are off.
