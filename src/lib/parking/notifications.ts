@@ -112,7 +112,7 @@ function buildSessionEndSms(booking: ParkingNotificationBooking) {
 
 export function buildSessionThreeDayReminderSms(booking: ParkingNotificationBooking, type: 'start' | 'end') {
   if (type === 'start') {
-    return `The Anchor: ${booking.customer_first_name}! Your parking kicks off on ${formatDateTime(booking.start_at)}, just checking you've got ${booking.vehicle_registration} ready to go!`
+    return `The Anchor: Hi ${booking.customer_first_name}, your parking starts on ${formatDateTime(booking.start_at)}. Just checking you've got ${booking.vehicle_registration} ready to go.`
   }
 
   return `The Anchor: ${booking.customer_first_name}! Heads up, your parking wraps up on ${formatDateTime(booking.end_at)}. Need to extend? Give us a shout on ${CONTACT_NUMBER}.`

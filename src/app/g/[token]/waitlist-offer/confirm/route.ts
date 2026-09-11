@@ -152,16 +152,16 @@ async function sendAcceptanceSms(
     }
 
     if (paymentLink) {
-      message = `The Anchor: ${firstName}! ${seats} ${seatWord} held for ${eventName} — nice one! Complete your payment here: ${paymentLink}.${manageLink ? ` ${manageLink}` : ''}`
+      message = `The Anchor: Hi ${firstName}, ${seats} ${seatWord} held for ${eventName}, nice one. Complete your payment here: ${paymentLink}.${manageLink ? ` ${manageLink}` : ''}`
     } else {
-      message = `The Anchor: ${firstName}! ${seats} ${seatWord} held for ${eventName} — nice one! We'll ping you a payment link shortly.${manageLink ? ` ${manageLink}` : ''}`
+      message = `The Anchor: Hi ${firstName}, ${seats} ${seatWord} held for ${eventName}, nice one. We'll ping you a payment link shortly.${manageLink ? ` ${manageLink}` : ''}`
     }
   } else {
     const eventDateFormatted = event.start_datetime
       ? (() => { try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(event.start_datetime)) } catch { return '' } })()
       : ''
     const eventDatePart = eventDateFormatted ? ` on ${eventDateFormatted}` : ''
-    message = `The Anchor: ${firstName}! You're in — ${seats} ${seatWord} confirmed for ${eventName}${eventDatePart}. See you there!${manageLink ? ` ${manageLink}` : ''}`
+    message = `The Anchor: Hi ${firstName}, you're in. ${seats} ${seatWord} confirmed for ${eventName}${eventDatePart}. See you there!${manageLink ? ` ${manageLink}` : ''}`
   }
 
   let smsResult: Awaited<ReturnType<typeof sendSMS>>
