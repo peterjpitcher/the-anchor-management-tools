@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { createFakeSupabase } from '../helpers/fakeSupabase'
 
@@ -61,6 +61,13 @@ import { logger } from '@/lib/logger'
 import { PrivateBookingService } from '@/services/private-bookings'
 
 const mockedSend = sendPrivateBookingMessage as unknown as Mock
+
+// 10:00 in London on Friday 11 September 2026.
+const NOW = new Date('2026-09-11T09:00:00.000Z')
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 function bookingRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -131,7 +138,9 @@ const createInput = {
 describe('creating a private booking', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useRealTimers()
+    // Only Date is faked, so the background sends still flush on real timers.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
     state.depositConfirmation = true
     seed()
   })
@@ -210,7 +219,9 @@ describe('creating a private booking', () => {
 describe('extending the hold on a booking', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useRealTimers()
+    // Only Date is faked, so the background sends still flush on real timers.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
     state.depositConfirmation = true
   })
 
@@ -272,7 +283,9 @@ describe('extending the hold on a booking', () => {
 describe('moving a booking to Confirmed', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useRealTimers()
+    // Only Date is faked, so the background sends still flush on real timers.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
     state.depositConfirmation = true
   })
 

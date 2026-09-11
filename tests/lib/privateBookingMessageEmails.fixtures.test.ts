@@ -9,6 +9,7 @@ import {
   buildDateChangedEmail,
   buildDepositReceivedMessageEmail,
   buildDepositReminderEmail,
+  buildDepositRequestEmail,
   buildEventReminderEmail,
   buildHoldExtendedEmail,
   buildHoldLapsedEmail,
@@ -38,6 +39,7 @@ import {
   bookingExpiredMessage,
   dateChangedMessage,
   depositReceivedMessage,
+  depositRequestMessage,
   depositReminder1DayMessage,
   depositReminder3DayMessage,
   depositReminder7DayMessage,
@@ -134,6 +136,22 @@ describe.each(EVENT_DATES)('private booking email versions for an event on %s', 
   it('booking created', () => {
     const sms = privateBookingCreatedMessage({ customerFirstName: 'Alex', eventDate: eventSms, depositAmount: 250, holdExpiry })
     expectSound(buildPrivateBookingCreatedEmail({ booking: b, firstName: 'Alex', depositAmount: 250, holdExpiry }), eventDate, sms)
+  })
+
+  it('deposit request from Confirm deposit, with its deadline, cash at the bar and the PayPal link', () => {
+    const paymentLink = `https://management.orangejelly.co.uk/booking-portal/${'a'.repeat(88)}`
+    const sms = depositRequestMessage({ customerFirstName: 'Alex', eventDate: eventSms, depositAmount: 300, holdExpiry, paymentLink })
+    const email = buildDepositRequestEmail({ booking: b, firstName: 'Alex', depositAmount: 300, holdExpiry, paymentLink })
+    expectSound(email, eventDate, sms)
+    expect(email.text).toContain('You can pay it in cash at the bar, or by PayPal using the button below.')
+    expect(email.text).toContain(`Pay the deposit by PayPal: ${paymentLink}`)
+    expect(email.html).toContain(`href="${paymentLink}"`)
+    expect(email.text).toContain('Pay by: 25 September 2026')
+    expect(email.subject).toBe('Your deposit for The Anchor: £300 by 25 September 2026')
+    // The text keeps the whole link, however long the words before it get.
+    expect(sms.endsWith(paymentLink)).toBe(true)
+    expect(sms).toContain('cash at the bar or by PayPal')
+    expect(sms).not.toMatch(DASHES)
   })
 
   it('deposit reminders, 7, 3 and 1 day', () => {
@@ -303,5 +321,34 @@ describe('a booking whose date is still to be confirmed', () => {
     expect(email.text).toContain('Date: Date to be confirmed')
     expect(email.text).not.toContain('2027')
     expect(email.text).not.toContain('Time:')
+  })
+
+  it('a deposit request states no deadline and no date', () => {
+    const tbd = booking('2027-01-01', { date_tbd: true })
+    const paymentLink = 'https://management.orangejelly.co.uk/booking-portal/token'
+    const email = buildDepositRequestEmail({ booking: tbd, firstName: 'Alex', depositAmount: 250.5, holdExpiry: null, paymentLink })
+    const sms = depositRequestMessage({ customerFirstName: 'Alex', eventDate: null, depositAmount: 250.5, holdExpiry: null, paymentLink })
+    expect(email.text).toContain('The deposit for your booking (date to be confirmed) is £250.50.')
+    expect(email.text).not.toMatch(/Pay by|2027|released/)
+    expect(sms).toBe(`Hi Alex, the deposit for your booking at The Anchor is £250.50. Pay in cash at the bar or by PayPal: ${paymentLink}`)
+    for (const part of [email.subject, email.html, email.text, sms]) {
+      expect(part).not.toMatch(/undefined|Invalid Date|NaN/)
+      expect(part).not.toMatch(DASHES)
+    }
+  })
+})
+
+describe('the deposit request text never loses its link', () => {
+  it('shortens the words, not the link, when a long name and a long link would run over', () => {
+    const paymentLink = `https://management.orangejelly.co.uk/booking-portal/${'b'.repeat(200)}`
+    const sms = depositRequestMessage({
+      customerFirstName: 'Bartholomew-Maximilian',
+      eventDate: '31 December 2026',
+      depositAmount: 1234.56,
+      holdExpiry: '17 December 2026',
+      paymentLink,
+    })
+    expect(sms.endsWith(` ${paymentLink}`)).toBe(true)
+    expect(sms.length).toBeLessThanOrEqual(306)
   })
 })

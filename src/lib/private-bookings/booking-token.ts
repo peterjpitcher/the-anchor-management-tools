@@ -63,6 +63,20 @@ export function generateBookingToken(bookingId: string): string {
 }
 
 /**
+ * The guest's booking page for a private booking: it shows the booking and the deposit, and its
+ * "Pay deposit via PayPal" button makes (or reuses) a PayPal order when the guest presses it, so
+ * an email scanner opening the link never creates one. The link lasts as long as the token does
+ * (a year), unlike a PayPal approval link, which runs out within hours.
+ *
+ * Null when NEXT_PUBLIC_APP_URL is not an absolute URL, so no message ever carries a relative link.
+ */
+export function buildPrivateBookingPortalUrl(bookingId: string): string | null {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').trim().replace(/\/+$/, '')
+  if (!/^https?:\/\/[^/]+/i.test(base)) return null
+  return `${base}/booking-portal/${generateBookingToken(bookingId)}`
+}
+
+/**
  * Verifies a booking portal token and returns the booking ID if valid, or null
  * if it is tampered with, unknown or expired.
  */

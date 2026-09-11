@@ -47,6 +47,11 @@ import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/emai
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation'
+import {
+  confirmDeposit,
+  DepositConfirmationError,
+  type ConfirmDepositOutcome,
+} from '@/services/private-bookings/deposit-confirmation'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -2530,6 +2535,130 @@ export async function getBookingPortalLink(
   const url = `${baseUrl}/booking-portal/${token}`
 
   return { success: true, url }
+}
+
+const confirmDepositInputSchema = z.object({
+  bookingId: z.string().uuid('Booking not found'),
+  amount: z.coerce
+    .number({ invalid_type_error: 'Enter the deposit amount' })
+    .finite('Enter the deposit amount')
+    .positive('Enter a deposit amount greater than £0. To waive the deposit, set it to £0 with a waiver instead.')
+    .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, 'Enter the deposit in pounds and pence'),
+  reductionReason: z.string().trim().max(500).optional(),
+})
+
+export type ConfirmPrivateBookingDepositResult = {
+  success?: boolean
+  error?: string
+  data?: {
+    status: 'sent' | 'already_confirmed'
+    channel: 'email' | 'sms' | null
+    message: string
+  }
+}
+
+/**
+ * Confirm deposit (flag private_booking_deposit_confirmation): staff confirm the amount and the
+ * guest gets one deposit request, by email (text when there is no usable email address), saying
+ * it can be paid in cash at the bar or by PayPal, with the link. For staff who manage deposits,
+ * the permission that governs private booking payments. A reduction below the £250 standard needs
+ * the General Manager override and a reason, as it does when the booking is created.
+ *
+ * Nothing is ever reported as sent unless it reached the guest: when nothing did, the error says
+ * why and the deposit stays to be confirmed.
+ */
+export async function confirmPrivateBookingDeposit(
+  bookingId: string,
+  input: { amount: number | string; reductionReason?: string }
+): Promise<ConfirmPrivateBookingDepositResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const [canManageDeposits, canManage] = await Promise.all([
+    checkUserPermission('private_bookings', 'manage_deposits'),
+    checkUserPermission('private_bookings', 'manage'),
+  ])
+  if (!canManageDeposits && !canManage) {
+    return { error: 'You do not have permission to confirm deposits' }
+  }
+
+  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) {
+    return { error: 'Deposit confirmation is switched off, so nothing was sent.' }
+  }
+
+  const parsed = confirmDepositInputSchema.safeParse({
+    bookingId,
+    amount: typeof input.amount === 'string' ? input.amount.trim() : input.amount,
+    reductionReason: input.reductionReason,
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? 'Check the deposit amount' }
+  }
+  const { amount, reductionReason } = parsed.data
+
+  // SOP §12: the £250 standard deposit may only be reduced by a General Manager, with a reason.
+  if (amount < 250) {
+    if (!(await checkUserPermission('private_bookings', GM_OVERRIDE_ACTION))) {
+      return { error: 'Deposit reductions need General Manager override permission' }
+    }
+    if (!reductionReason) {
+      return { error: 'Reducing the deposit below £250 requires a reason (General Manager discretion)' }
+    }
+  }
+
+  let outcome: ConfirmDepositOutcome
+  try {
+    outcome = await confirmDeposit({ bookingId, amount, confirmedBy: user.id })
+  } catch (error: unknown) {
+    logPrivateBookingActionError('Error confirming private booking deposit', error, { bookingId })
+    return {
+      error: error instanceof DepositConfirmationError
+        ? error.message
+        : 'The deposit could not be confirmed, so nothing was sent. Please try again.',
+    }
+  }
+
+  try {
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'private_booking',
+      resource_id: bookingId,
+      operation_status: outcome.status === 'not_sent' ? 'failure' : 'success',
+      additional_info: {
+        action: 'confirm_deposit',
+        outcome: outcome.status,
+        amount,
+        ...(amount < 250 ? { deposit_reduced_to: amount, deposit_reduction_reason: reductionReason } : {}),
+        ...(outcome.status === 'sent'
+          ? { channel: outcome.channel, hold_expiry: outcome.holdExpiry, email_error: outcome.emailError }
+          : {}),
+        ...(outcome.status === 'not_sent' ? { reason: outcome.reason, restored: outcome.restored } : {}),
+      },
+    })
+  } catch (auditError) {
+    logger.error('Failed to log audit event for confirmPrivateBookingDeposit', {
+      error: auditError instanceof Error ? auditError : new Error(String(auditError)),
+      metadata: { bookingId },
+    })
+  }
+
+  revalidatePath('/private-bookings')
+  revalidatePath(`/private-bookings/${bookingId}`)
+  revalidateTag('dashboard')
+
+  if (outcome.status === 'not_sent') {
+    return { error: outcome.message }
+  }
+  return {
+    success: true,
+    data: {
+      status: outcome.status,
+      channel: outcome.status === 'sent' ? outcome.channel : null,
+      message: outcome.message,
+    },
+  }
 }
 
 /**

@@ -39,6 +39,29 @@ export function privateBookingCreatedMessage(input: {
   )
 }
 
+/**
+ * The one deposit request staff send with Confirm deposit (owner decision, 11 September 2026): the
+ * confirmed amount, the deadline when there is one, and how to pay. The link is the guest's booking
+ * page, where one button pays by PayPal; it goes last and is never cut short, so only the words
+ * before it give way if the text runs long.
+ */
+export function depositRequestMessage(input: {
+  customerFirstName: string | null | undefined
+  /** The event date as the other texts print it, or null while it is still to be confirmed. */
+  eventDate: string | null
+  depositAmount: number
+  /** The deadline as the other texts print it, or null when there is none. */
+  holdExpiry: string | null
+  paymentLink: string
+}): string {
+  const booking = input.eventDate ? `your booking at The Anchor on ${input.eventDate}` : 'your booking at The Anchor'
+  const due = input.holdExpiry ? `, due by ${input.holdExpiry}` : ''
+  const words = `Hi ${name(input.customerFirstName)}, the deposit for ${booking} is ${money(input.depositAmount)}${due}. Pay in cash at the bar or by PayPal:`
+  const room = MAX_BODY - input.paymentLink.length - 1
+  const fitted = words.length <= room ? words : `${words.slice(0, Math.max(room - 1, 0))}…`
+  return `${fitted} ${input.paymentLink}`
+}
+
 export function depositReminder7DayMessage(input: {
   customerFirstName: string | null | undefined
   eventDate: string
