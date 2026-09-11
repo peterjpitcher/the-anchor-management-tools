@@ -5,6 +5,8 @@
  * and client-side SeoHealthIndicator scoring.
  */
 
+import { checkHouseStyle } from '@/lib/copy/house-style'
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -164,7 +166,11 @@ const GENERIC_FILLER_PHRASES = [
   'something for everyone',
   'nestled',
   'vibrant atmosphere',
+  'great atmosphere',
   'hidden gem',
+  'look no further',
+  'a must-visit',
+  'boasts',
   'a night to remember',
   'don\'t miss out',
 ]
@@ -701,11 +707,12 @@ function runFullValidation(
     exclamationCount += (faq.answer.match(/!/g) || []).length
     exclamationCount += (faq.question.match(/!/g) || []).length
   })
-  if (exclamationCount > 2) {
+  // SSOT section 1: one exclamation mark per page at most, usually none.
+  if (exclamationCount > 1) {
     issues.push({
       code: 'excessive_exclamation',
       severity: 'warning',
-      message: `${exclamationCount} exclamation marks found, max 2 recommended`,
+      message: `${exclamationCount} exclamation marks found; the house style allows one at most`,
     })
   }
 
@@ -721,6 +728,30 @@ function runFullValidation(
       code: 'generic_filler',
       severity: 'warning',
       message: `Contains generic filler phrases: ${foundFiller.join(', ')}`,
+    })
+  }
+
+  // --- The house style: one checker for every surface (SSOT sections 1 and 14) ---
+  // A banned claim is repairable, so the generator's repair pass takes it out rather than the page
+  // publishing it. Voice findings stay warnings, as they are everywhere else.
+  const houseStyle = checkHouseStyle(
+    [metaTitle, metaDescription, shortDescription, longDescription, imageAltText, ...faqs.map(f => `${f.question} ${f.answer}`)].join('\n'),
+    { proseChecks: false },
+  ).filter(finding => finding.rule !== 'anchor-pub-conversational')
+  const bannedClaims = houseStyle.filter(finding => finding.severity === 'error')
+  if (bannedClaims.length > 0) {
+    issues.push({
+      code: 'banned_claim',
+      severity: 'repairable',
+      message: `Carries a claim the brand rules ban: ${bannedClaims.map(f => `"${f.matched}"`).join(', ')}. ${bannedClaims[0].message}`,
+    })
+  }
+  const voiceFindings = houseStyle.filter(finding => finding.severity === 'warning' && finding.rule !== 'filler')
+  if (voiceFindings.length > 0) {
+    issues.push({
+      code: 'house_style_voice',
+      severity: 'warning',
+      message: `Off the house voice: ${voiceFindings.map(f => `${f.rule} "${f.matched.trim()}"`).join(', ')}`,
     })
   }
 

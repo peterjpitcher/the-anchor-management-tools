@@ -418,14 +418,17 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     )
 
     if (facts.isFree) {
-      repaired.cancellationPolicy = 'Free event — no cancellation policy required.'
+      repaired.cancellationPolicy = "It's a free event, so there's no cancellation policy."
     } else if (facts.pricingLabel) {
       repaired.cancellationPolicy = `Contact The Anchor on ${ANCHOR_VENUE_CONTEXT.phone} for cancellation and refund queries.`
     } else {
       repaired.cancellationPolicy = 'Contact The Anchor for details.'
     }
 
-    repaired.accessibilityNotes = `The Anchor offers step-free access throughout the ground floor with an accessible toilet. For specific accessibility requirements, please call ${ANCHOR_VENUE_CONTEXT.phone}.`
+    // SSOT §16 "Getting in and around", word for word, plus §8's assistance dogs line, which is what
+    // every live event row carries since 11 September 2026. This line used to promise an accessible
+    // toilet, which the pub does not have, on every event it generated.
+    repaired.accessibilityNotes = `Getting in from the car park is step free, and so are the bar and the dining area. The beer garden is step free straight from the car park. From inside, there's one step between the bar and the garden, and we'll put our ramp out for it if you ask. We don't have an accessible toilet. If you'd like to check what will work best for you, give us a call on ${ANCHOR_VENUE_CONTEXT.phone} and we'll help. Assistance dogs are always welcome.`
 
     // Merge keywords: facts keywords + model-suggested, deduplicated, capped at 10
     const modelKeywords = Array.isArray(repaired.keywords)
@@ -455,7 +458,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
       return buildSuccessResult(repaired)
     }
 
-    // 10. Model repair for remaining issues — check budget first
+    // 10. Model repair for remaining issues; check the budget first
     const elapsedBeforeRepair = Date.now() - startTime
     if (elapsedBeforeRepair > 60_000) {
       postRepairIssueCodes = validation.issues.map(i => i.code)
@@ -661,7 +664,7 @@ export async function generateEventPromotionContent({
     event.date ? `Event date: ${event.date}` : null,
     event.time ? `Event start time: ${event.time}` : null,
     event.end_time ? `Event end time: ${event.end_time}` : null,
-    event.doors_time ? `Doors time: ${event.doors_time}` : null,
+    event.doors_time ? `Arrive from: ${event.doors_time} (never write "doors" or "doors open")` : null,
     event.last_entry_time ? `Last entry time: ${event.last_entry_time}` : null,
     typeof event.duration_minutes === 'number' ? `Duration (minutes): ${event.duration_minutes}` : null,
     categoryName ? `Category: ${categoryName}` : null,
@@ -695,28 +698,32 @@ export async function generateEventPromotionContent({
             {
               role: 'system',
               content:
-                'You are a top-tier hospitality copywriter who writes irresistible Facebook Event listings for pubs and venues. Your copy makes people stop scrolling and hit "Interested". You write in UK English. You use emojis naturally to add energy and visual appeal — in the event name and throughout the description. You NEVER use markdown — no asterisks, no bold, no italic, no bullet symbols. Plain text only.',
+                'You write Facebook Event listings for The Anchor, the village pub in Stanwell Moor. Your job is to make people want to come along. You write in UK English, in the pub\'s own voice: a friendly local telling someone about their favourite pub. You NEVER use markdown: no asterisks, no bold, no italic, no bullet symbols. Plain text only.',
             },
             {
               role: 'user',
               content: [
                 'Write ONE Facebook Event name and ONE Facebook Event description for the event details below.',
                 '',
-                'Tone & style:',
-                '- Write like you are talking to a mate, not a customer. Warm, fun, confident.',
-                '- Open with a hook that creates excitement or curiosity in the first line.',
-                '- Paint a picture — what will the evening feel, sound, taste like?',
-                '- Keep it tight. Short punchy paragraphs. No waffle.',
-                '- Use emojis to add energy and break up the text visually (in the event name too).',
-                '- Build urgency naturally — make people feel they will miss out.',
-                '- End with a single clear call to action (but do NOT include any URL).',
+                'Voice (The Anchor house style, SSOT section 1):',
+                '- It is about them, not us. Write from the reader\'s side: what they\'ll enjoy and why they\'ll want to come. Talk to them as "you", never "guests".',
+                '- Sound like a friendly local telling a friend about their favourite pub. Warm, a bit excited, never showing off.',
+                '- Short sentences, one idea each, none over 25 words. Use contractions (you\'ll, we\'re, it\'s).',
+                '- Energy comes from verbs and real details, not hype, punctuation or emojis. One exclamation mark at most, usually none.',
+                '- Never open with a command such as "Indulge in", "Savour", "Delight in", "Treat yourself to", "Experience", "Discover" or "Enjoy".',
+                '- Never use: premium, curated, exclusive, sophisticated, elegant, iconic, luxurious, unforgettable, unmissable, hidden gem, great atmosphere, something for everyone, don\'t miss out.',
+                '- No urgency tricks. If places are limited, say so plainly, using the capacity only if it is given.',
+                '- No em dashes. Use commas, full stops or brackets.',
+                '- Open with why they\'ll want to come, in the first line.',
+                '- Say what actually happens on the night, from the details. Keep it tight: short paragraphs, no waffle.',
+                '- End with a single clear call to action that says what happens next (but do NOT include any URL).',
                 '',
                 'Structure (use blank lines between every section for readability when pasted into Facebook):',
-                '- 1-2 lines of hook / atmosphere.',
+                '- 1-2 lines on why they\'ll want to come.',
                 '',
-                '- A short paragraph selling the experience.',
+                '- A short paragraph on what happens on the night.',
                 '',
-                '- A "Need to know" section with an emoji header line, then each detail on its own line prefixed with an emoji (e.g. 📅 Date: ...). Use a blank line before and after this section.',
+                '- A "Need to know" section, then each detail on its own line prefixed with an emoji as its marker (e.g. 📅 Date: ...). Those markers are the only emojis: none in the event name. Use a blank line before and after this section.',
                 '',
                 '- A punchy closing CTA line.',
                 '',
@@ -724,9 +731,9 @@ export async function generateEventPromotionContent({
                 '- STRICTLY plain text. No markdown whatsoever: no **, no *, no _, no #, no - bullets, no []().',
                 '- Do not include raw URLs anywhere.',
                 '- Do not invent details not provided (no ages, dress codes, set times, pricing unless given).',
-                '- Stay faithful to the brief — do not exaggerate or add claims not supported by the details.',
+                '- Stay faithful to the brief: do not exaggerate or add claims not supported by the details.',
                 '- When mentioning a host or performer, use their FIRST NAME only (e.g. "Peter" not "Peter Pitcher").',
-                '- Keep the event name concise and enticing (aim < 70 characters).',
+                '- Keep the event name concise (aim < 70 characters): the event\'s own name, not a slogan.',
                 '',
                 'Event details:',
                 detailLines.join('\n'),
@@ -754,34 +761,40 @@ export async function generateEventPromotionContent({
             {
               role: 'system',
               content:
-                'You are a top-tier hospitality copywriter who writes compelling Google Business Profile Event listings for pubs and venues. Your copy drives clicks and bookings. You write in UK English. You use emojis naturally to add energy and visual appeal. You NEVER use markdown — no asterisks, no bold, no italic, no bullet symbols. Plain text only.',
+                'You write Google Business Profile Event listings for The Anchor, the village pub in Stanwell Moor. Your job is to make people want to come along. You write in UK English, in the pub\'s own voice: a friendly local telling someone about their favourite pub. You NEVER use markdown: no asterisks, no bold, no italic, no bullet symbols. Plain text only.',
             },
             {
               role: 'user',
               content: [
                 'Write ONE Google Business Profile (GBP) Event title and ONE GBP Event description for the event details below.',
                 '',
-                'Tone & style:',
-                '- Warm, confident, inviting. Make people want to be there.',
-                '- First 120 characters must hook — this is often the only preview shown.',
-                '- Sell the experience, not just the facts.',
-                '- Use emojis to add energy and visual appeal.',
-                '- Stay faithful to the brief — do not exaggerate or invent.',
+                'Voice (The Anchor house style, SSOT section 1):',
+                '- It is about them, not us. Write from the reader\'s side: what they\'ll enjoy and why they\'ll want to come. Talk to them as "you", never "guests".',
+                '- Sound like a friendly local telling a friend about their favourite pub. Warm, a bit excited, never showing off.',
+                '- Short sentences, one idea each, none over 25 words. Use contractions (you\'ll, we\'re, it\'s).',
+                '- Energy comes from verbs and real details, not hype, punctuation or emojis. One exclamation mark at most, usually none.',
+                '- Never open with a command such as "Indulge in", "Savour", "Delight in", "Treat yourself to", "Experience", "Discover" or "Enjoy".',
+                '- Never use: premium, curated, exclusive, sophisticated, elegant, iconic, luxurious, unforgettable, unmissable, hidden gem, great atmosphere, something for everyone, don\'t miss out.',
+                '- No urgency tricks. If places are limited, say so plainly, using the capacity only if it is given.',
+                '- No em dashes. Use commas, full stops or brackets.',
+                '- The first 120 characters say why they\'ll want to come: this is often the only preview shown.',
+                '- Lead with why they\'ll want to come, then the facts.',
+                '- Stay faithful to the brief: do not exaggerate or invent.',
                 '- When mentioning a host or performer, use their FIRST NAME only (e.g. "Peter" not "Peter Pitcher").',
                 '- Include "The Anchor" naturally.',
-                '- End with a clear call to action (but do NOT include any URL).',
+                '- End with a clear call to action that says what happens next (but do NOT include any URL).',
                 '',
                 'Structure (use blank lines between sections for readability):',
-                '- 1-2 short paragraphs selling the experience.',
-                '- A compact details block with each detail on its own line prefixed with an emoji (e.g. 📅 Date: ...). Blank line before and after this block.',
-                '- A punchy closing CTA.',
+                '- 1-2 short paragraphs on why they\'ll want to come and what happens on the night.',
+                '- A compact details block with each detail on its own line prefixed with an emoji as its marker (e.g. 📅 Date: ...). Those markers are the only emojis. Blank line before and after this block.',
+                '- A short closing call to action.',
                 '',
                 'Hard constraints:',
                 '- STRICTLY plain text. No markdown whatsoever: no **, no *, no _, no #, no - bullets, no []().',
                 '- Do not include raw URLs anywhere.',
                 '- Do not invent missing details.',
                 '- Keep the description under 1500 characters.',
-                '- Keep the title concise and enticing (aim < 80 characters).',
+                '- Keep the title concise (aim < 80 characters): the event\'s own name, not a slogan.',
                 '',
                 'Event details:',
                 detailLines.join('\n'),
