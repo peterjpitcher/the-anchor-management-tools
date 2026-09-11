@@ -254,6 +254,29 @@ export function buildTableBookingDepositRequestEmail(
 }
 
 /**
+ * The seasonal pre-order chase, seven days out. The text says "we still need the food choices
+ * for your booking on {moment}. Every guest needs a main course. Choose here: {link}"; the email
+ * keeps the wording the pre-order email already used, adds the booking details and the footer.
+ */
+export function buildTableBookingPreorderReminderEmail(input: BookingFacts & { manageLink: string }): TableBookingEmail {
+  const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+  const reference = input.bookingReference ? ` (reference ${input.bookingReference})` : ''
+
+  return renderTableBookingEmail({
+    subject: input.bookingReference ? `Your food choices for ${input.bookingReference}` : 'Your food choices for your booking at The Anchor',
+    opening: [
+      `Hi ${input.firstName}, we still need the food choices for your booking at The Anchor` +
+        `${moment ? ` on ${moment}` : ''}${reference}.`,
+      'Every guest needs to choose a main course. A starter and a dessert are optional.',
+    ],
+    details: bookingDetailRows(input),
+    cta: { label: 'Choose your food here', url: input.manageLink },
+    afterCta: [`Prefer to do it over the telephone? Ring us on ${GUEST_CONTACT.phoneDisplay}.`],
+    footerLead: 'If you need to change anything',
+  })
+}
+
+/**
  * The cancellation email. `refundSentence` is the sentence the cancellation text puts after
  * "has been cancelled.", passed in verbatim so the amount and the refund timing cannot drift
  * from what the text says.
