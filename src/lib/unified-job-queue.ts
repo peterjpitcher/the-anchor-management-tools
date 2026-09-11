@@ -43,6 +43,7 @@ export type JobType =
   | 'checklist_sweep'
   | 'checklist_email_outbox_process'
   | 'checklist_retention_purge'
+  | 'notification_delayed_fallback'
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
@@ -65,6 +66,7 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'checklist_sweep',
   'checklist_email_outbox_process',
   'checklist_retention_purge',
+  'notification_delayed_fallback',
 ]
 
 const STALE_JOB_MINUTES = Number.isFinite(Number(process.env.JOB_QUEUE_STALE_MINUTES))
@@ -1252,6 +1254,13 @@ export class UnifiedJobQueue {
       case 'checklist_retention_purge': {
         const { runRetentionPurge } = await import('@/lib/checklists/jobs/retention')
         return runRetentionPurge()
+      }
+
+      case 'notification_delayed_fallback': {
+        // A text for a transactional email that bounced (P4). The job claims its delivery before
+        // sending, so a retry or a duplicate job sends nothing more.
+        const { runDelayedFallbackJob } = await import('@/lib/notifications/delayed-fallback/run')
+        return runDelayedFallbackJob({ deliveryId: payload.deliveryId })
       }
 
       default:

@@ -2,6 +2,8 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserModuleActions } from '@/app/actions/rbac'
 import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import PrivateBookingMessagesClient from './PrivateBookingMessagesClient'
+import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
+import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,12 +61,24 @@ export default async function PrivateBookingMessagesPage({ params }: PageProps) 
     initialError = 'We could not load this booking.'
   }
 
+  // P7: an email choice beside the text, defaulting to email when the booking has a usable
+  // address (its contact email, then the customer's). Only while the option is switched on.
+  let emailOption: { enabled: boolean; usable: boolean } | undefined
+  if (booking && canSendSms && (await isStaffEmailOptionOn())) {
+    const recipient = await resolvePrivateBookingEmailRecipient({
+      contact_email: booking.contact_email ?? null,
+      customer_id: booking.customer_id ?? null,
+    })
+    emailOption = { enabled: true, usable: recipient.usable }
+  }
+
   return (
     <PrivateBookingMessagesClient
       bookingId={bookingId}
       initialBooking={booking}
       initialError={initialError}
       canSendSms={canSendSms}
+      emailOption={emailOption}
     />
   )
 }

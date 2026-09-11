@@ -1,7 +1,10 @@
 import { sendEmail } from './emailService';
 import { logger } from '@/lib/logger';
 import { generateBookingCalendarInvite } from './calendar-invite';
-import { formatDateInLondon } from '@/lib/dateUtils';
+import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils';
+import { getSmartFirstName } from '@/lib/sms/name-utils';
+import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection';
+import { formatPrivateBookingAmount } from '@/lib/private-bookings/messages';
 
 const VENUE_ADDRESS = 'The Anchor, Horton Road, Stanwell Moor Village, Surrey, TW19 6AQ';
 const PRIVACY_NOTICE_URL = 'https://www.the-anchor.pub/privacy-policy';
@@ -739,4 +742,673 @@ export async function sendContractEmailToCustomer(booking: {
   if (!result.success) {
     throw new Error(result.error || 'Failed to send contract email');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Email versions of the private booking texts (email first, owner decision 11 September 2026).
+//
+// Sent by src/lib/private-bookings/messenger.ts when the flag private_booking_email_first is on
+// and the booking has a usable address. Each builder takes the same inputs as the text it
+// replaces (src/lib/private-bookings/messages.ts) and states every fact that text states, with
+// amounts and deadlines printed exactly as the text prints them, plus the booking reference, the
+// event date with its weekday, the times and the guest numbers. Nothing promotional: these are
+// service messages. The builders are pure, so fixture tests can render them in any time zone.
+// ---------------------------------------------------------------------------
+
+/** Venue contact details, from the website SSOT §2. */
+const VENUE_PHONE_DISPLAY = '01753 682707';
+const VENUE_PHONE_TEL = '+441753682707';
+const VENUE_EMAIL = 'manager@the-anchor.pub';
+
+export type PrivateBookingEmailContent = {
+  subject: string;
+  html: string;
+  text: string;
+};
+
+/** The booking fields the email versions read. */
+export type PrivateBookingMessageEmailBooking = {
+  id: string;
+  event_type?: string | null;
+  event_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  end_time_next_day?: boolean | null;
+  guest_count?: number | null;
+  date_tbd?: boolean | null;
+  internal_notes?: string | null;
+  setup_date?: string | null;
+  setup_time?: string | null;
+};
+
+/** The reference printed on the contract (src/lib/contract-template.ts), so the two always match. */
+export function formatPrivateBookingReference(bookingId: string): string {
+  return `PB-${bookingId.slice(0, 8).toUpperCase()}`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function isDateOnly(booking: PrivateBookingMessageEmailBooking): boolean {
+  return !booking.event_date || isBookingDateTbd(booking);
+}
+
+/** "Saturday, 3 October 2026", with the weekday computed in London, or "Date to be confirmed". */
+export function formatPrivateBookingEventDate(booking: PrivateBookingMessageEmailBooking): string {
+  if (isDateOnly(booking)) return 'Date to be confirmed';
+  return formatDateInLondon(booking.event_date as string, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+/** "on Saturday, 3 October 2026", or "(date to be confirmed)" for a booking with no firm date. */
+function onEventDate(booking: PrivateBookingMessageEmailBooking): string {
+  return isDateOnly(booking) ? '(date to be confirmed)' : `on ${formatPrivateBookingEventDate(booking)}`;
+}
+
+function formatEventTimes(booking: PrivateBookingMessageEmailBooking): string | null {
+  if (isDateOnly(booking) || !booking.start_time) return null;
+  const start = formatTime12Hour(booking.start_time);
+  if (!booking.end_time) return `From ${start}`;
+  const end = formatTime12Hour(booking.end_time);
+  return booking.end_time_next_day ? `${start} to ${end} (the next day)` : `${start} to ${end}`;
+}
+
+type MessageEmailSpec = {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  subject: string;
+  heading: string;
+  /** The message itself, as plain sentences. */
+  paragraphs: string[];
+  /** Facts particular to this message, shown after the booking's own details. */
+  rows?: Array<[string, string]>;
+  link?: { label: string; url: string };
+  /** Smaller print under the table. */
+  notes?: string[];
+};
+
+function composeMessageEmail(spec: MessageEmailSpec): PrivateBookingEmailContent {
+  const name = getSmartFirstName(spec.firstName);
+  const times = formatEventTimes(spec.booking);
+  const rows: Array<[string, string]> = [
+    ['Booking reference', formatPrivateBookingReference(spec.booking.id)],
+    ...(spec.booking.event_type ? ([['Event', spec.booking.event_type]] as Array<[string, string]>) : []),
+    ['Date', formatPrivateBookingEventDate(spec.booking)],
+    ...(times ? ([['Time', times]] as Array<[string, string]>) : []),
+    ...(spec.booking.guest_count ? ([['Guests', String(spec.booking.guest_count)]] as Array<[string, string]>) : []),
+    ...(spec.rows ?? []),
+  ];
+  const contactHtml = `Questions? Call us on <a href="tel:${VENUE_PHONE_TEL}" style="color: #1a1a1a;">${VENUE_PHONE_DISPLAY}</a> or email <a href="mailto:${VENUE_EMAIL}" style="color: #1a1a1a;">${VENUE_EMAIL}</a>.`;
+  const contactText = `Questions? Call us on ${VENUE_PHONE_DISPLAY} or email ${VENUE_EMAIL}.`;
+
+  const linkHtml = spec.link
+    ? `
+  <p style="font-family: ${FONT_FAMILY};">
+    <a href="${escapeHtml(spec.link.url)}" style="font-family: ${FONT_FAMILY}; display: inline-block; padding: 12px 24px; background-color: #1a1a1a; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold;">${escapeHtml(spec.link.label)}</a>
+  </p>
+  <p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">Or copy this link into your browser:<br><a href="${escapeHtml(spec.link.url)}" style="color: #1a1a1a; word-break: break-all;">${escapeHtml(spec.link.url)}</a></p>`
+    : '';
+
+  const html = `
+<div style="font-family: ${FONT_FAMILY}; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
+  <h2 style="font-family: ${FONT_FAMILY}; margin-top: 0; color: #1a1a1a;">${escapeHtml(spec.heading)}</h2>
+  <p style="font-family: ${FONT_FAMILY};">Hi ${escapeHtml(name)},</p>
+  ${spec.paragraphs.map((paragraph) => `<p style="font-family: ${FONT_FAMILY};">${escapeHtml(paragraph)}</p>`).join('\n  ')}
+  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+    ${rows.map(([label, value]) => row(escapeHtml(label), escapeHtml(value))).join('')}
+  </table>${linkHtml}
+  ${(spec.notes ?? []).map((note) => `<p style="font-family: ${FONT_FAMILY}; font-size: 13px; color: #666666;">${escapeHtml(note)}</p>`).join('\n  ')}
+  <p style="font-family: ${FONT_FAMILY};">${contactHtml}</p>
+  <p style="font-family: ${FONT_FAMILY}; margin-bottom: 0;">Kind regards,<br><strong>The Anchor Events Team</strong><br><span style="color: #666666;">Orange Jelly Limited, trading as The Anchor</span></p>
+  <hr style="margin: 24px 0; border: none; border-top: 1px solid #eeeeee;">
+  ${EMAIL_FOOTER_HTML}
+</div>`;
+
+  const text = [
+    spec.heading,
+    '',
+    `Hi ${name},`,
+    '',
+    ...spec.paragraphs.flatMap((paragraph) => [paragraph, '']),
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    '',
+    ...(spec.link ? [`${spec.link.label}: ${spec.link.url}`, ''] : []),
+    ...(spec.notes ?? []).flatMap((note) => [note, '']),
+    contactText,
+    '',
+    'Kind regards,',
+    'The Anchor Events Team',
+    'Orange Jelly Limited, trading as The Anchor',
+    '',
+    VENUE_ADDRESS,
+    `How we use your data: ${PRIVACY_NOTICE_URL}`,
+    `Questions or complaints: ${VENUE_EMAIL} or write to us at the address above.`,
+  ].join('\n');
+
+  return { subject: spec.subject, html, text };
+}
+
+/** The SSOT §16 wording for the private hire deposit, without the default amount. */
+const DEPOSIT_TERMS_NOTE =
+  "The deposit is a booking and damage deposit. It's held separately from your bill and refunded after the event, less any documented deductions.";
+
+const money = (amount: number): string => formatPrivateBookingAmount(amount);
+
+/** Mirrors privateBookingCreatedMessage. */
+export function buildPrivateBookingCreatedEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  depositAmount: number;
+  /** The hold expiry exactly as the text prints it, or null when there is none. */
+  holdExpiry: string | null;
+}): PrivateBookingEmailContent {
+  const secures = input.holdExpiry
+    ? `A ${money(input.depositAmount)} deposit secures it by ${input.holdExpiry}.`
+    : `A ${money(input.depositAmount)} deposit secures it.`;
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `Your date at The Anchor is pencilled in: ${formatPrivateBookingEventDate(input.booking)}`,
+    heading: 'Your date is pencilled in',
+    paragraphs: [
+      `Your date at The Anchor ${onEventDate(input.booking)} is pencilled in.`,
+      secures,
+      "We'll be in touch with next steps.",
+    ],
+    rows: [
+      ['Deposit to secure the date', money(input.depositAmount)],
+      ...(input.holdExpiry ? ([['Deposit due by', input.holdExpiry]] as Array<[string, string]>) : []),
+    ],
+    notes: [DEPOSIT_TERMS_NOTE],
+  });
+}
+
+export type DepositReminderStage = '7day' | '3day' | '1day';
+
+/** Mirrors depositReminder7DayMessage, depositReminder3DayMessage and depositReminder1DayMessage. */
+export function buildDepositReminderEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  stage: DepositReminderStage;
+  depositAmount: number;
+  /** The hold expiry exactly as the text prints it. */
+  holdExpiry: string | null;
+  /** Whole days left on the hold, as the 7-day text states it. */
+  daysRemaining?: number;
+}): PrivateBookingEmailContent {
+  const deposit = money(input.depositAmount);
+  const date = onEventDate(input.booking);
+  let paragraphs: string[];
+  let subject: string;
+
+  if (input.stage === '7day') {
+    const days = input.daysRemaining ?? 7;
+    const dayWord = days === 1 ? 'day' : 'days';
+    const expires = input.holdExpiry
+      ? `expires in ${days} ${dayWord}, on ${input.holdExpiry}`
+      : `expires in ${days} ${dayWord}`;
+    subject = `Your hold at The Anchor expires in ${days} ${dayWord}`;
+    paragraphs = [`A quick nudge. Your hold ${date} ${expires}.`, `Pay the ${deposit} deposit and the date's yours.`];
+  } else if (input.stage === '3day') {
+    const expires = input.holdExpiry ? `expires on ${input.holdExpiry}` : 'is expiring soon';
+    subject = input.holdExpiry ? `Your hold at The Anchor expires on ${input.holdExpiry}` : 'Your hold at The Anchor is expiring soon';
+    paragraphs = [`Your hold ${date} ${expires}.`, `A ${deposit} deposit locks the date in before it's released.`];
+  } else {
+    const dated = input.holdExpiry ? ` (${input.holdExpiry})` : '';
+    subject = 'Your hold at The Anchor expires tomorrow';
+    paragraphs = [`Your hold ${date} expires tomorrow${dated}.`, `Pay the ${deposit} deposit today and you're locked in.`];
+  }
+
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject,
+    heading: 'Deposit reminder',
+    paragraphs,
+    rows: [
+      ['Deposit due', deposit],
+      ...(input.holdExpiry ? ([['Hold expires', input.holdExpiry]] as Array<[string, string]>) : []),
+    ],
+    notes: [DEPOSIT_TERMS_NOTE],
+  });
+}
+
+/** Mirrors holdExtendedMessage. */
+export function buildHoldExtendedEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  newExpiryDate: string;
+}): PrivateBookingEmailContent {
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `We've extended your hold at The Anchor to ${input.newExpiryDate}`,
+    heading: 'Your hold has been extended',
+    paragraphs: [
+      `Good news. We've extended your hold ${onEventDate(input.booking)}.`,
+      `New deadline: ${input.newExpiryDate}.`,
+    ],
+    rows: [['New deadline', input.newExpiryDate]],
+  });
+}
+
+/** Mirrors bookingExpiredMessage. */
+export function buildHoldLapsedEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+}): PrivateBookingEmailContent {
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: 'Your hold at The Anchor has lapsed',
+    heading: 'Your hold has lapsed',
+    paragraphs: [
+      `Your hold ${onEventDate(input.booking)} has lapsed.`,
+      "No worries. Just get in touch if you'd like to rebook.",
+    ],
+  });
+}
+
+/** Mirrors dateChangedMessage. The booking passed in carries the new date. */
+export function buildDateChangedEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  /** Included, exactly as the text prints it, when the deadline moved with the event. */
+  balanceDueDate: string | null;
+}): PrivateBookingEmailContent {
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `Your booking at The Anchor has moved to ${formatPrivateBookingEventDate(input.booking)}`,
+    heading: 'Your booking has moved',
+    paragraphs: [
+      `Your booking has moved to ${formatPrivateBookingEventDate(input.booking)}.`,
+      ...(input.balanceDueDate ? [`Your balance and final details are now due by ${input.balanceDueDate}.`] : []),
+      "It's all sorted our end.",
+    ],
+    rows: input.balanceDueDate ? [['Balance and final details due by', input.balanceDueDate]] : [],
+  });
+}
+
+/** Mirrors balanceDueDateChangedMessage. */
+export function buildBalanceDueDateChangedEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  balanceDueDate: string;
+}): PrivateBookingEmailContent {
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `New deadline for your balance and final details: ${input.balanceDueDate}`,
+    heading: 'Your balance deadline has changed',
+    paragraphs: [
+      `A quick update for your booking ${onEventDate(input.booking)}: your balance and final details are now due by ${input.balanceDueDate}.`,
+      'Everything else stays the same.',
+    ],
+    rows: [['Balance and final details due by', input.balanceDueDate]],
+  });
+}
+
+/** Mirrors setupReminderMessage, and adds the setup date and time the change was about. */
+export function buildSetupReminderEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+}): PrivateBookingEmailContent {
+  const setupRows: Array<[string, string]> = [];
+  if (input.booking.setup_date) {
+    setupRows.push(['Setup date', formatDateInLondon(input.booking.setup_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })]);
+  }
+  if (input.booking.setup_time) {
+    setupRows.push(['Setup from', formatTime12Hour(input.booking.setup_time)]);
+  }
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `Your event at The Anchor is nearly here: ${formatPrivateBookingEventDate(input.booking)}`,
+    heading: 'Your event is nearly here',
+    paragraphs: [
+      `Your event ${onEventDate(input.booking)} is nearly here.`,
+      'Send any final setup details our way so we can make it perfect.',
+    ],
+    rows: setupRows,
+  });
+}
+
+export type BalanceReminderStage = '21day' | '16day' | '15day' | 'due';
+
+/** Mirrors the four balance and final-details reminders. */
+export function buildBalanceReminderEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  stage: BalanceReminderStage;
+  balanceAmount: number;
+  /** The deadline exactly as the text prints it. */
+  balanceDueDate: string;
+}): PrivateBookingEmailContent {
+  const balance = money(input.balanceAmount);
+  const date = onEventDate(input.booking);
+  let subject: string;
+  let paragraphs: string[];
+
+  if (input.stage === '21day') {
+    subject = `Balance and final details due by ${input.balanceDueDate}`;
+    paragraphs = [
+      `Your ${balance} balance and your final details (numbers, menus, suppliers) are due by ${input.balanceDueDate} for your booking ${date}.`,
+    ];
+  } else if (input.stage === '16day') {
+    subject = `2 days to go: balance and final details due by ${input.balanceDueDate}`;
+    paragraphs = [`2 days to go: your ${balance} balance and final details are due by ${input.balanceDueDate} for your booking ${date}.`];
+  } else if (input.stage === '15day') {
+    subject = `Balance and final details due tomorrow (${input.balanceDueDate})`;
+    paragraphs = [`Your ${balance} balance and final details for your booking ${date} are due tomorrow (${input.balanceDueDate}).`];
+  } else {
+    subject = `Balance and final details due today (${input.balanceDueDate})`;
+    paragraphs = [
+      `Your ${balance} balance and your final details for your booking ${date} are due today (${input.balanceDueDate}).`,
+      "Get them to us and you're all set.",
+    ];
+  }
+
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject,
+    heading: 'Balance and final details',
+    paragraphs,
+    rows: [
+      ['Balance due', balance],
+      ['Due by', input.balanceDueDate],
+    ],
+  });
+}
+
+/** Mirrors eventReminder1DayMessage: the guest count comes from the booking, as the text's does. */
+export function buildEventReminderEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+}): PrivateBookingEmailContent {
+  const ready = input.booking.guest_count
+    ? `Everything's ready for your ${input.booking.guest_count} guests.`
+    : "Everything's ready.";
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `See you tomorrow: ${formatPrivateBookingEventDate(input.booking)}`,
+    heading: "Tomorrow's the day",
+    paragraphs: ["Tomorrow's the day.", ready, 'See you then.'],
+  });
+}
+
+/** Mirrors bookingCompletedThanksMessage. */
+export function buildThankYouEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+}): PrivateBookingEmailContent {
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: 'Thank you for choosing The Anchor',
+    heading: 'Thank you',
+    paragraphs: ['Thanks for choosing The Anchor.', 'We hope it was everything you wanted.'],
+  });
+}
+
+/** Mirrors reviewRequestMessage, with the same review link. */
+export function buildReviewRequestEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  reviewLink: string;
+}): PrivateBookingEmailContent {
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: 'Could you leave The Anchor a Google review?',
+    heading: 'A quick favour',
+    paragraphs: [
+      `We're glad your event ${onEventDate(input.booking)} went well.`,
+      "If you've got 30 seconds, a Google review would mean a lot.",
+    ],
+    link: { label: 'Leave a Google review', url: input.reviewLink },
+  });
+}
+
+export type PrivateBookingCancellationVariant =
+  | 'private_booking_cancelled_hold'
+  | 'private_booking_cancelled_refundable'
+  | 'private_booking_cancelled_partial_refund'
+  | 'private_booking_cancelled_retention'
+  | 'private_booking_cancelled_review_pending'
+  | 'private_booking_cancelled_manual_review';
+
+/** Mirrors the six cancellation texts, variant for variant. */
+export function buildCancellationEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  variant: PrivateBookingCancellationVariant;
+  refundAmount: number;
+  retainedAmount: number;
+  /** The administration deduction the partial-refund text states. */
+  deductionAmount: number;
+  /** The manager's recorded reason, shown with a retention when there is one. */
+  retentionReason?: string | null;
+}): PrivateBookingEmailContent {
+  const date = onEventDate(input.booking);
+  const refund = money(input.refundAmount);
+  let paragraphs: string[];
+  let rows: Array<[string, string]> = [];
+
+  switch (input.variant) {
+    case 'private_booking_cancelled_hold':
+      paragraphs = [`Your hold ${date} is cancelled.`, 'No money changed hands.', "Just get in touch if you'd like another date."];
+      break;
+    case 'private_booking_cancelled_refundable':
+      paragraphs = [
+        `Your booking ${date} is cancelled.`,
+        `We'll refund ${refund} within 10 working days and confirm once it's on the way.`,
+      ];
+      rows = [['Refund', refund]];
+      break;
+    case 'private_booking_cancelled_partial_refund':
+      paragraphs = [
+        `Your booking ${date} is cancelled.`,
+        `Your deposit will be refunded less the ${money(input.deductionAmount)} cancellation administration deduction.`,
+        `We'll refund ${refund} within 10 working days.`,
+      ];
+      rows = [
+        ['Cancellation administration deduction', money(input.deductionAmount)],
+        ['Refund', refund],
+      ];
+      break;
+    case 'private_booking_cancelled_retention':
+      paragraphs = [
+        `Your booking ${date} is cancelled.`,
+        `Following review, ${money(input.retainedAmount)} of your deposit has been retained to cover costs from the cancellation.`,
+        ...(input.refundAmount > 0 ? [`${refund} will be refunded within 10 working days.`] : []),
+        "We'll send a breakdown on request.",
+      ];
+      rows = [
+        ['Deposit retained', money(input.retainedAmount)],
+        ...(input.retentionReason ? ([['Reason', input.retentionReason]] as Array<[string, string]>) : []),
+        ...(input.refundAmount > 0 ? ([['Refund', refund]] as Array<[string, string]>) : []),
+      ];
+      break;
+    case 'private_booking_cancelled_review_pending':
+      paragraphs = [
+        `Your booking ${date} is cancelled.`,
+        "We're reviewing payments and your deposit, and will confirm any refund shortly.",
+      ];
+      break;
+    case 'private_booking_cancelled_manual_review':
+    default:
+      paragraphs = [
+        `Your booking ${date} is cancelled.`,
+        'A member of our team will be in touch shortly to confirm next steps on payment.',
+      ];
+      break;
+  }
+
+  const isHold = input.variant === 'private_booking_cancelled_hold';
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: isHold ? 'Your hold at The Anchor is cancelled' : 'Your booking at The Anchor is cancelled',
+    heading: isHold ? 'Your hold is cancelled' : 'Your booking is cancelled',
+    paragraphs,
+    rows,
+  });
+}
+
+/**
+ * Mirrors depositReceivedMessage, and carries the facts of the "Booking Confirmed" email that has
+ * always gone alongside it (sendDepositReceivedEmail), so one email now does both jobs.
+ */
+export function buildDepositReceivedMessageEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  depositAmount: number | null;
+  /** VAT-inclusive total, when known. */
+  totalAmount?: number | null;
+  /** The balance and final-details deadline, as a date. */
+  balanceDueDate?: string | null;
+}): PrivateBookingEmailContent {
+  const dueDate = input.balanceDueDate
+    ? formatDateInLondon(input.balanceDueDate, { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
+  const rows: Array<[string, string]> = [];
+  if (input.depositAmount != null && input.depositAmount > 0) rows.push(['Deposit paid', money(input.depositAmount)]);
+  if (input.totalAmount != null && input.totalAmount > 0) rows.push(['Total event cost', money(input.totalAmount)]);
+  if (dueDate) rows.push(['Balance and final guest numbers due', dueDate]);
+
+  const date = isDateOnly(input.booking) ? 'Your date' : formatPrivateBookingEventDate(input.booking);
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: 'Deposit received: your booking at The Anchor is confirmed',
+    heading: 'Deposit received',
+    paragraphs: [
+      'Thank you. We have received your deposit.',
+      `${date} is yours, and your private event booking at The Anchor is confirmed.`,
+      "We'll be in touch closer to the time.",
+    ],
+    rows,
+    notes: [
+      DEPOSIT_TERMS_NOTE,
+      'Your event balance is payable separately, by the balance due date shown above.',
+      'Our full cancellation, refund and date-change policy is set out in your contract.',
+    ],
+  });
+}
+
+export type ConfirmationDepositState = 'due' | 'paid' | 'none';
+
+/** Which confirmation a booking needs: a provisional hold while a deposit is owed, otherwise confirmed. */
+export function resolveConfirmationDepositState(booking: {
+  deposit_amount?: number | string | null;
+  deposit_paid_date?: string | null;
+  deposit_waived?: boolean | null;
+}): ConfirmationDepositState {
+  if (booking.deposit_paid_date) return 'paid';
+  const amount = Number(booking.deposit_amount ?? 0);
+  if (booking.deposit_waived === true || !Number.isFinite(amount) || amount <= 0) return 'none';
+  return 'due';
+}
+
+/**
+ * Mirrors bookingConfirmedMessage, and replaces the confirmation email that has always gone with it
+ * (sendBookingConfirmationEmail). That email called every confirmation a "Provisional Booking Hold"
+ * that "is not confirmed until we receive your deposit", even when the deposit had been waived or
+ * paid. This one says provisional only while a deposit is still owed.
+ */
+export function buildBookingConfirmedMessageEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  depositState: ConfirmationDepositState;
+  depositAmount: number | null;
+  /** The hold expiry as a timestamp; quoted only while it is still in the future. */
+  holdExpiry?: string | null;
+  totalAmount?: number | null;
+  now?: Date;
+}): PrivateBookingEmailContent {
+  const eventLabel = input.booking.event_type || 'your event';
+  const totalRows: Array<[string, string]> =
+    input.totalAmount != null && input.totalAmount > 0 ? [['Total event cost', money(input.totalAmount)]] : [];
+
+  if (input.depositState === 'due') {
+    const now = input.now ?? new Date();
+    const expiryLive = Boolean(input.holdExpiry) && Date.parse(input.holdExpiry as string) > now.getTime();
+    const expiry = expiryLive
+      ? formatDateInLondon(input.holdExpiry as string, { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+    return composeMessageEmail({
+      booking: input.booking,
+      firstName: input.firstName,
+      subject: `Provisional booking hold: ${eventLabel} ${onEventDate(input.booking)}`,
+      heading: 'Provisional booking hold',
+      paragraphs: [
+        'We have placed a provisional hold for your event at The Anchor.',
+        "Your booking isn't confirmed until we receive your deposit in cleared funds.",
+      ],
+      rows: [
+        ...(input.depositAmount != null && input.depositAmount > 0 ? ([['Deposit due', money(input.depositAmount)]] as Array<[string, string]>) : []),
+        ...(expiry ? ([['Deposit due by', expiry]] as Array<[string, string]>) : []),
+        ...totalRows,
+      ],
+      notes: [
+        `Unless we agree otherwise in writing, the hold may be released if the deposit isn't received in cleared funds by ${expiry ?? "the hold expiry date we've given you"}.`,
+        'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract, including the cancellation and refund policy.',
+        DEPOSIT_TERMS_NOTE,
+      ],
+    });
+  }
+
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: `Booking confirmed: ${eventLabel} ${onEventDate(input.booking)}`,
+    heading: 'Booking confirmed',
+    paragraphs: [
+      `You're all confirmed for ${isDateOnly(input.booking) ? 'your booking at The Anchor (date to be confirmed)' : formatPrivateBookingEventDate(input.booking)}.`,
+      input.depositState === 'paid' ? 'We have received your deposit.' : 'There is no deposit to pay for this booking.',
+      "We can't wait.",
+    ],
+    rows: totalRows,
+    notes: totalRows.length > 0 ? ['Your event balance is payable separately, nearer the time.'] : [],
+  });
+}
+
+/**
+ * Mirrors finalPaymentMessage, and carries the facts of the "Payment Complete" email that has
+ * always gone alongside it (sendBalancePaidEmail).
+ */
+export function buildBalancePaidMessageEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  totalAmount?: number | null;
+  depositAmount?: number | null;
+}): PrivateBookingEmailContent {
+  const rows: Array<[string, string]> = [];
+  if (input.totalAmount != null && input.totalAmount > 0) rows.push(['Event balance paid', money(input.totalAmount)]);
+  if (input.depositAmount != null && input.depositAmount > 0) rows.push(['Deposit held', money(input.depositAmount)]);
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: "Balance paid in full: you're all set",
+    heading: 'Balance paid in full',
+    paragraphs: [
+      'Thank you. Your balance is paid in full.',
+      `You're all set for ${isDateOnly(input.booking) ? 'your booking (date to be confirmed)' : formatPrivateBookingEventDate(input.booking)}. See you then.`,
+    ],
+    rows,
+    notes: input.depositAmount != null && input.depositAmount > 0 ? [DEPOSIT_TERMS_NOTE] : [],
+  });
 }

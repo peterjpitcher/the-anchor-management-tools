@@ -55,8 +55,9 @@ export function SmsQueueActionForm({
 
     if (state.status === 'error') {
       toast.error(state.message ?? 'Failed to process SMS action.')
-    } else if (state.status === 'success' && successMessage) {
-      toast.success(successMessage)
+    } else if (state.status === 'success' && (state.message || successMessage)) {
+      // A message from the action says what actually happened (for example, sent by email).
+      toast.success(state.message ?? successMessage ?? '')
     }
   }, [state, successMessage])
 

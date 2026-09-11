@@ -4,7 +4,9 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatErrorMessage } from '@/lib/sms-status'
 import { Badge, Button, Card, LinkButton, PageLayout, Section, Stat } from '@/ds'
+import { loadUndeliveredGuestMessages } from '@/lib/notifications/undelivered'
 import { dismissSmsFailureFromForm, retrySmsFailureFromForm } from './actions'
+import { UndeliveredGuestMessagesSection } from './UndeliveredGuestMessagesSection'
 
 type SmsFailureRow = {
   id: string
@@ -152,6 +154,7 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
     .limit(200)
 
   const rows = (data ?? []) as SmsFailureRow[]
+  const undelivered = await loadUndeliveredGuestMessages({ sinceIso })
   const codeCounts = rows.reduce<Record<string, number>>((acc, row) => {
     const code = getFailureCode(row) ?? 'unknown'
     acc[code] = (acc[code] ?? 0) + 1
@@ -207,6 +210,8 @@ export default async function SmsFailuresPage({ searchParams }: PageProps) {
             <Stat label="Window" value={windowLabel} />
           </div>
         </Section>
+
+        <UndeliveredGuestMessagesSection rows={undelivered.rows} error={undelivered.error} />
 
         <Section title="Failure Log">
           <Card>

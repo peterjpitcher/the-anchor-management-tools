@@ -13,6 +13,7 @@ import {
 } from '@/lib/communications/unmatched'
 import { isCommunicationBodyMediaCaptureEnabled } from '@/lib/communications/capture'
 import { ConsentService } from '@/services/consent'
+import { enqueueDelayedFallbackForEmailEvent } from '@/lib/notifications/delayed-fallback/enqueue'
 
 export const runtime = 'nodejs'
 
@@ -897,6 +898,10 @@ export async function POST(request: Request) {
     }
 
     await updateCustomerEmailHealth(adminClient, event, recipient, existingMessage?.customer_id ?? null)
+
+    // A transactional booking email that never arrived may be replaced by a text (P4, behind the
+    // bounce_sms_fallback flag). Queues at most one job per delivery and never throws.
+    await enqueueDelayedFallbackForEmailEvent({ eventType: event.type, resendEmailId: emailId })
 
     await finishResendWebhookClaim(adminClient, svixId, 'processed')
     return NextResponse.json({ success: true })

@@ -15,6 +15,7 @@ import SeasonalPreorderSection, {
 } from '@/components/features/table-bookings/preorder/SeasonalPreorderSection'
 import { PREORDER_SELECTION_COURSES } from '@/types/preorders'
 import BookingDetailClient, { type Booking } from './BookingDetailClient'
+import { resolveCustomerStaffEmailOption } from '@/lib/messaging/staff-email-option'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -128,6 +129,9 @@ export default async function BookingDetailPage({ params }: Props) {
   const title = guestName || booking.booking_reference || 'Booking'
 
   const seasonalPreorder = await loadSeasonalPreorder(rawBooking, canEdit)
+  // P7: the guest message card offers email when the option is on (and defaults to it for a
+  // guest with a usable address). Read only for staff who can send, who are the only ones shown it.
+  const emailOption = canEdit ? await resolveCustomerStaffEmailOption(customer?.id ?? null) : undefined
 
   return (
     <PageLayout
@@ -141,6 +145,7 @@ export default async function BookingDetailPage({ params }: Props) {
         canManage={canManage}
         canRefund={canRefund || canManage}
         seasonalPreorder={seasonalPreorder}
+        emailOption={emailOption}
       />
     </PageLayout>
   )
