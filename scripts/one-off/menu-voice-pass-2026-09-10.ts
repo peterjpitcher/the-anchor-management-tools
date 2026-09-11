@@ -1,6 +1,8 @@
 /**
- * The menu voice pass of 10 September 2026: 81 descriptions rewritten to the voice in the website
- * SSOT §1 (say what the dish is and why it's good, short sentences, no "Indulge in").
+ * The menu voice pass of 10 September 2026: descriptions rewritten to the voice in the website
+ * SSOT §1 (say what the dish is and why it's good, short sentences, no "Indulge in"). The owner
+ * approved 81 on 11 September 2026; the four for the Sunday pie roasts were dropped the same day,
+ * because those dishes were retired, which leaves 77.
  *
  * The rewrites are in `menu-voice-pass-2026-09-10.json`, one row per description, each holding the
  * text it replaces. They were reviewed by the owner as one list before this was run. Names, prices,
@@ -78,7 +80,7 @@ async function main(): Promise<void> {
       operation_status: 'success',
       old_values: { description: row.current },
       new_values: { description: row.proposed },
-      additional_info: { reason: 'Menu voice pass, SSOT §1, owner-approved 2026-09-10.', script: 'menu-voice-pass-2026-09-10' },
+      additional_info: { reason: 'Menu voice pass, SSOT §1, owner-approved 2026-09-11.', script: 'menu-voice-pass-2026-09-10' },
     })
   }
 

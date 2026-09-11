@@ -225,34 +225,6 @@
   },
   {
     "table": "menu_dishes",
-    "id": "abe16705-e933-459e-87ee-841e8047bad7",
-    "name": "Beef & Ale Pie Roast",
-    "current": "Savour a hearty beef and ale pie, served as a Sunday roast alongside triple-cooked herb-crusted roast potatoes, oven-roasted carrots and parsnips, buttery cabbage, and our rich signature gravy. No Yorkshire pudding.",
-    "proposed": "A hearty beef and ale pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
-  },
-  {
-    "table": "sunday_lunch_menu_items",
-    "id": "37866cbe-2c49-4deb-83f3-3ac1b546738b",
-    "name": "Beef & Ale Pie Roast",
-    "current": "Beef and ale pie served as a Sunday roast with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy. Served without Yorkshire pudding.",
-    "proposed": "A hearty beef and ale pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
-  },
-  {
-    "table": "menu_dishes",
-    "id": "6cee6d91-115e-410d-9b16-1fb2b799b16f",
-    "name": "Chicken & Wild Mushroom Pie Roast",
-    "current": "Chicken and wild mushroom pie served as a Sunday roast with triple-cooked herb-crusted roast potatoes, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy. Served without Yorkshire pudding.",
-    "proposed": "Chicken and wild mushroom pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
-  },
-  {
-    "table": "sunday_lunch_menu_items",
-    "id": "2868c545-de35-415d-b2da-78c4c42d2480",
-    "name": "Chicken & Wild Mushroom Pie Roast",
-    "current": "Chicken and wild mushroom pie served as a Sunday roast with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttery sauteed cabbage and our signature gravy. Served without Yorkshire pudding.",
-    "proposed": "Chicken and wild mushroom pie, done as a Sunday roast. Comes with triple-cooked, herb-and-garlic crusted roast potatoes, oven-roasted carrots and parsnips, buttered cabbage and our signature gravy. The pies don't come with a Yorkshire pudding."
-  },
-  {
-    "table": "menu_dishes",
     "id": "b3f74a39-ced7-4731-a699-665ab87aeeb8",
     "name": "Broccoli Cheese",
     "current": "Broccoli cheese.",
