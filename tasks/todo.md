@@ -1,3 +1,19 @@
+# Email-first messaging P2, P3 and P5, 11 September 2026
+
+Same branch as P1. Every change sits behind a `messaging_flags` key that reads as off, so deploying changes nothing for guests. Local commits only.
+
+- [x] P2 `event_promo_last_push`: skip the 7-day intro and 24-hour follow-up; one last push 0 to 3 London days out, before the start, under 25% booked; two promo texts per person per rolling 30 days; keys `event_last_push` and `event_last_push_paid`.
+- [x] P2 `event_promo_intro_sms_no_email` (only with the flag above): today's 7-day intro for guests with no usable email, inside the same cap.
+- [x] P2 tests: capacity boundaries, timing window (London midnight, both clock changes), third-night cap, no-email intro, reply-to-book, flag off. Gate: lint and tsc clean; 797 files, 7,274 passed and 2 skipped in London and UTC.
+- [ ] P3 `table_cancelled_email_first`: email first, email-only guests covered, `table_booking_id` in the SMS metadata, staff see a failed notice.
+- [ ] P3 `table_deposit_confirmed_email_first`: email first, one message for five triggers (claim, pre-check, idempotency key).
+- [ ] P3 `table_party_size_deposit_email_first`: email first, real channel and outcome in the staff toast.
+- [ ] P3 `table_preorder_email_first`: email first instead of both.
+- [ ] P5 `table_confirm_reminder_email_first`: email first, shared short link, email-only guests eligible.
+- [ ] Fixture renders of every new email in London and UTC.
+- [ ] Gates after each piece: lint, tsc, `npm test`, `npm run test:utc`; uncached build at the end.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
 # Email-first messaging P1, safety foundations, 11 September 2026
 
 Branch `feat/email-first-messaging-2026-09-11`. No guest-visible change: every new path is behind a flag that reads as off, and the new levers are kill switches nobody has set.

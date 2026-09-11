@@ -73,6 +73,23 @@ describe('backfillSmsPromoContextMessageId', () => {
     expect(builder.select).toHaveBeenCalledWith('id')
   })
 
+  it('links a last-push text sent from the quiet-hours queue to its reply window', async () => {
+    // A last push held overnight is sent by the job queue at 09:00; without this link the
+    // reply window has no message id for the event marketing report.
+    const { builder } = buildUpdateMock()
+
+    for (const templateKey of ['event_last_push', 'event_last_push_paid']) {
+      const result = await backfillSmsPromoContextMessageId({
+        customerId: 'customer-1',
+        to: '+447700900123',
+        messageId: 'message-1',
+        metadata: { event_id: 'event-1', template_key: templateKey, marketing: true },
+      })
+      expect(result).toEqual({ skipped: false, updated: 1 })
+    }
+    expect(builder.eq).toHaveBeenCalledWith('template_key', 'event_last_push_paid')
+  })
+
   it('skips non-marketing or non-event-promo messages', async () => {
     const result = await backfillSmsPromoContextMessageId({
       customerId: 'customer-1',

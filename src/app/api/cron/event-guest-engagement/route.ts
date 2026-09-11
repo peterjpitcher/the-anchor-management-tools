@@ -10,8 +10,15 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import { createGuestToken } from '@/lib/guest/tokens'
 import { buildGuestReviewUrl } from '@/lib/guest/review-short-link'
 import { sendEmail } from '@/lib/email/emailService'
-import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit } from '@/lib/sms/cross-promo'
-import type { FollowUpRecipient } from '@/lib/sms/cross-promo'
+import { sendCrossPromoForEvent, sendFollowUpForEvent, hasReachedDailyPromoLimit, resolveEventStart } from '@/lib/sms/cross-promo'
+import type { CrossPromoMode, FollowUpRecipient } from '@/lib/sms/cross-promo'
+import {
+  decideLastPushTiming,
+  EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH,
+  EVENT_PROMO_TEMPLATE_KEYS,
+  resolveEventPromoFlags,
+  resolveLastPushDateWindow,
+} from '@/lib/sms/event-promo-policy'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
@@ -73,20 +80,9 @@ const EVENT_PROMO_INTRO_MIN_DAYS_AHEAD = parsePositiveIntEnv('EVENT_PROMO_INTRO_
 const MAX_EVENT_PROMOS_PER_RUN = parsePositiveIntEnv('MAX_EVENT_PROMOS_PER_RUN', 250)
 const EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT = parsePositiveIntEnv('EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT', 250)
 const EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT = parsePositiveIntEnv('EVENT_PROMO_HOURLY_SEND_GUARD_LIMIT', 250)
-const EVENT_PROMO_TEMPLATE_KEYS = [
-  'event_cross_promo_7d',
-  'event_cross_promo_7d_paid',
-  'event_general_promo_7d',
-  'event_general_promo_7d_paid',
-  'event_cross_promo_14d',
-  'event_cross_promo_14d_paid',
-  'event_general_promo_14d',
-  'event_general_promo_14d_paid',
-  'event_reminder_promo_24h',
-  'event_reminder_promo_24h_paid',
-  'event_reminder_promo_3d',
-  'event_reminder_promo_3d_paid',
-] as const
+// The promo template keys the hourly guard counts live in src/lib/sms/event-promo-policy.ts,
+// with the last-push keys, so the guard, the cap and the reports read one list.
+const EVENT_PROMO_CONTEXT_RETENTION_DAYS = 30
 
 type BookingWithRelations = {
   id: string
@@ -1903,9 +1899,65 @@ type UpcomingPromoEvent = {
   name: string
   date: string
   time: string | null
+  start_datetime?: string | null
   price: number | string | null
   payment_mode: string | null
   category_id: string | null
+}
+
+type PromoStageResult = {
+  sent: number
+  skipped: number
+  errors: number
+  eventsProcessed: number
+  disabled?: true
+  reason?: 'event_promo_last_push'
+}
+
+function disabledPromoStage(): PromoStageResult {
+  return { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0, disabled: true, reason: 'event_promo_last_push' }
+}
+
+/**
+ * Events the last push may be about: 0 to 3 London calendar days away (the query) and not yet
+ * started by the time a text could land (decideLastPushTiming, which also re-checks the dates
+ * so a query and a clock that disagree cannot let a D+4 event through).
+ */
+async function loadLastPushEvents(
+  supabase: ReturnType<typeof createAdminClient>,
+  now: Date = new Date()
+): Promise<UpcomingPromoEvent[]> {
+  const window = resolveLastPushDateWindow(now)
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, name, date, time, start_datetime, price, payment_mode, category_id')
+    .eq('booking_open', true)
+    .eq('promo_sms_enabled', true)
+    .eq('event_status', 'scheduled')
+    .gte('date', window.from)
+    .lte('date', window.to)
+    .not('category_id', 'is', null)
+    .order('date', { ascending: true })
+    .limit(50)
+
+  if (error) {
+    throw error
+  }
+
+  const eligible: UpcomingPromoEvent[] = []
+  for (const event of (data || []) as UpcomingPromoEvent[]) {
+    const timing = decideLastPushTiming({ eventDate: event.date, eventStart: resolveEventStart(event), now })
+    if (!timing.eligible) {
+      logger.info('Event last push skipped: outside the 0 to 3 day window', {
+        metadata: { eventId: event.id, eventDate: event.date, reason: timing.reason },
+      })
+      continue
+    }
+    eligible.push(event)
+  }
+
+  return eligible
 }
 
 async function loadUpcomingEventsForPromo(
@@ -2063,8 +2115,9 @@ async function processFollowUps(
 async function processCrossPromo(
   supabase: ReturnType<typeof createAdminClient>,
   runStartMs: number,
-  remainingBudget: { value: number }
-): Promise<{ sent: number; skipped: number; errors: number; eventsProcessed: number }> {
+  remainingBudget: { value: number },
+  mode: CrossPromoMode = 'intro'
+): Promise<PromoStageResult> {
   const result = { sent: 0, skipped: 0, errors: 0, eventsProcessed: 0 }
 
   if (remainingBudget.value <= 0) {
@@ -2110,12 +2163,14 @@ async function processCrossPromo(
     return result
   }
 
-  const events = await loadUpcomingEventsForPromo(supabase)
+  const events = mode === 'last_push'
+    ? await loadLastPushEvents(supabase)
+    : await loadUpcomingEventsForPromo(supabase)
 
   for (const event of events) {
     if (remainingBudget.value <= 0 || result.sent >= MAX_EVENT_PROMOS_PER_RUN) {
       logger.info('Cross-promo: per-run cap reached', {
-        metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN, eventsProcessed: result.eventsProcessed }
+        metadata: { maxPerRun: MAX_EVENT_PROMOS_PER_RUN, eventsProcessed: result.eventsProcessed, mode }
       })
       break
     }
@@ -2131,6 +2186,8 @@ async function processCrossPromo(
     }, {
       startTime: runStartMs,
       maxRecipients: Math.min(remainingBudget.value, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT),
+      // Left out for the intro so the call is exactly what it was before the flag existed.
+      ...(mode === 'intro' ? {} : { mode }),
     })
 
     result.sent += eventResult.sent
@@ -2254,16 +2311,39 @@ export async function GET(request: NextRequest) {
     // Stage 3: Promotional SMS (marketing — runs last, after all transactional stages)
     const promoBudget = { value: MAX_EVENT_PROMOS_PER_RUN }
 
-    // 24h follow-ups for customers who received the 7d intro and have not booked
-    const followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
+    // Owner decision, 11 September 2026: promotions go by email first. With the flag on, the
+    // intro and the 24-hour follow-up stop and the only text is one last push close to a quiet
+    // night. With it off (and on any failure to read it) this stage is exactly what it was.
+    const promoFlags = await resolveEventPromoFlags()
 
-    // 7d new intros
-    const crossPromo = await processCrossPromo(supabase, runStartMs, promoBudget)
+    let followUp24h: PromoStageResult
+    let crossPromo: PromoStageResult
+    let lastPush: PromoStageResult | null = null
 
-    // Cleanup: remove sms_promo_context rows older than 30 days
+    if (!promoFlags.lastPush) {
+      // 24h follow-ups for customers who received the 7d intro and have not booked
+      followUp24h = await processFollowUps(supabase, '24h', 1, 1, 1, runStartMs, promoBudget)
+
+      // 7d new intros
+      crossPromo = await processCrossPromo(supabase, runStartMs, promoBudget)
+    } else {
+      followUp24h = disabledPromoStage()
+      lastPush = await processCrossPromo(supabase, runStartMs, promoBudget, 'last_push')
+      // Guests with no usable email cannot get the guest campaigns, so with the second flag on
+      // they keep today's 7-day intro (never the follow-up), inside the same two-a-month cap.
+      crossPromo = promoFlags.introForGuestsWithoutEmail
+        ? await processCrossPromo(supabase, runStartMs, promoBudget, 'intro_no_email')
+        : disabledPromoStage()
+    }
+
+    // Cleanup: remove old sms_promo_context rows. Kept 45 days under the last push so the
+    // 30-day text cap never loses a row it still needs; 30 days otherwise, as before.
+    const promoContextRetentionDays = promoFlags.lastPush
+      ? EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH
+      : EVENT_PROMO_CONTEXT_RETENTION_DAYS
     await supabase.from('sms_promo_context' as never)
       .delete()
-      .lt('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .lt('created_at', new Date(Date.now() - promoContextRetentionDays * 24 * 60 * 60 * 1000).toISOString())
 
     // Cleanup: remove promo_sequence rows older than 14 days
     await supabase.from('promo_sequence' as never)
@@ -2281,6 +2361,7 @@ export async function GET(request: NextRequest) {
       marketing,
       followUp24h,
       crossPromo,
+      ...(lastPush ? { lastPush } : {}),
       runKey,
       guard,
       processedAt: new Date().toISOString()
