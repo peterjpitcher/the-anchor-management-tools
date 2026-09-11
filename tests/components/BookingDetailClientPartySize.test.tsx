@@ -184,6 +184,34 @@ describe('BookingDetailClient party size changes', () => {
     })
   }
 
+  it('offers "Notify guest", true whether the request goes by text or by email first, and unticking it sends nothing', async () => {
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/move-table`, { cache: 'no-store' })
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    const notify = screen.getByRole('checkbox', { name: 'Notify guest' })
+    expect(notify).toBeChecked()
+    expect(screen.queryByText(/Notify guest by SMS/)).not.toBeInTheDocument()
+
+    await user.click(notify)
+    await user.clear(screen.getByLabelText('New party size'))
+    await user.type(screen.getByLabelText('New party size'), '9')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(requestTableBookingActionMock).toHaveBeenCalledWith(
+        `/api/boh/table-bookings/${BOOKING_ID}/party-size`,
+        { body: { party_size: 9, send_sms: false, move_table_ids: [LARGE_TABLE_ID] } }
+      )
+    })
+  })
+
   it('says the deposit link went by SMS on the text-only path, as before', async () => {
     requestTableBookingActionMock.mockResolvedValue({ success: true, depositRequired: true, smsSent: true })
     const user = userEvent.setup()
