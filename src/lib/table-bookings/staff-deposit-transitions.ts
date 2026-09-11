@@ -2,13 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
-import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTablePaymentToken } from '@/lib/table-bookings/bookings'
 import {
   getCanonicalDeposit,
-  LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
   requiresDeposit,
 } from '@/lib/table-bookings/deposit'
+import {
+  buildPartySizeDepositText,
+  describePartySizeDeposit,
+  type PartySizeDepositWording,
+} from '@/lib/table-bookings/guest-texts'
+import { partySizeDepositRequestFacts } from '@/lib/table-bookings/fallback-details'
 import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
 import { logger } from '@/lib/logger'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
@@ -93,41 +97,6 @@ function computeStaffPaymentHoldExpiry(
   return expiry.toISOString()
 }
 
-type PartySizeDepositWording = {
-  newPartySize: number
-  seatWord: string
-  depositKindLabel: string
-  depositLabel: string
-  breakdownNote: string
-}
-
-/** The parts of the deposit request both the text and the email say, worded as the text has always said them. */
-function describePartySizeDeposit(input: {
-  newPartySize: number
-  depositAmount: number
-  isChristmas: boolean
-  bookingType: string | null
-}): PartySizeDepositWording {
-  const expectedSimpleTotal = input.newPartySize * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
-  return {
-    newPartySize: input.newPartySize,
-    seatWord: input.newPartySize === 1 ? 'person' : 'people',
-    depositKindLabel: input.isChristmas
-      ? 'Christmas deposit'
-      : input.bookingType === 'sunday_lunch'
-        ? 'Sunday lunch deposit'
-        : 'table deposit',
-    depositLabel: new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.depositAmount),
-    breakdownNote: input.depositAmount === expectedSimpleTotal
-      ? ` (${input.newPartySize} x GBP ${LARGE_GROUP_DEPOSIT_PER_PERSON_GBP})`
-      : '',
-  }
-}
-
-function buildPartySizeDepositTextBody(firstName: string, wording: PartySizeDepositWording, paymentUrl: string): string {
-  return `The Anchor: Hi ${firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. A ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} is now required to secure your booking. Pay now: ${paymentUrl}`
-}
-
 /**
  * The deposit request by email first (messaging flag table_party_size_deposit_email_first). The
  * text is the fallback, with the same words. One shortened payment link serves both channels.
@@ -140,6 +109,8 @@ async function sendPartySizeDepositRequestEmailFirst(
     booking: PartySizeDepositTransitionBooking
     customerId: string
     newPartySize: number
+    /** The amount just written to the booking, which the wording states. */
+    depositAmount: number
     paymentUrl: string
     holdExpiresAt: string
     wording: PartySizeDepositWording
@@ -187,7 +158,6 @@ async function sendPartySizeDepositRequestEmailFirst(
 
     const customer = customerRow as GuestChannelCustomer
     const firstName = getSmartFirstName(customer.first_name)
-    const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
     const payment = await buildGuestShortLink({
       longUrl: input.paymentUrl,
       linkKind: 'table_payment',
@@ -217,12 +187,23 @@ async function sendPartySizeDepositRequestEmailFirst(
       email,
       sms: {
         to: customer.mobile_e164 || customer.mobile_number,
-        body: ensureReplyInstruction(buildPartySizeDepositTextBody(firstName, input.wording, payment.url), supportPhone),
+        body: buildPartySizeDepositText({ firstName, wording: input.wording, paymentUrl: payment.url }),
         metadata: { trigger: 'party_size_threshold_crossed' },
       },
       // Stable for this request: a later growth past the threshold is a new hold and a new key.
       idempotencyKey: `${templateKey}:party_size:${tableBookingId}:${input.holdExpiresAt}`,
       auditContext: { trigger: 'party_size_threshold_crossed', short_link_fallback: !payment.shortened },
+      fallback: {
+        message: 'party_size_deposit_request',
+        // The booking was set to pending payment with this amount and hold just before this call.
+        facts: partySizeDepositRequestFacts({
+          partySize: input.newPartySize,
+          depositAmount: input.depositAmount,
+          holdExpiresAt: input.holdExpiresAt,
+          awaitingPayment: true,
+        }),
+        link: payment.shortened ? 'short_link' : 'full_url',
+      },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -352,6 +333,7 @@ export async function applyPartySizeDepositTransition(
         booking: input.booking,
         customerId: input.booking.customer_id,
         newPartySize: input.newPartySize,
+        depositAmount,
         paymentUrl: token.url,
         holdExpiresAt: token.expiresAt,
         wording: depositWording,
@@ -372,9 +354,8 @@ export async function applyPartySizeDepositTransition(
         const phone = customer?.mobile_e164 || customer?.mobile_number || null
         if (customer && customer.sms_status === 'active' && phone) {
           const firstName = getSmartFirstName(customer.first_name)
-          const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-          const smsBody = buildPartySizeDepositTextBody(firstName, depositWording, token.url)
-          await sendSMS(phone, ensureReplyInstruction(smsBody, supportPhone), {
+          const smsBody = buildPartySizeDepositText({ firstName, wording: depositWording, paymentUrl: token.url })
+          await sendSMS(phone, smsBody, {
             customerId: input.booking.customer_id,
             metadata: {
               table_booking_id: input.booking.id,

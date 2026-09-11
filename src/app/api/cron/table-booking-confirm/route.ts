@@ -28,9 +28,8 @@ import { logger } from '@/lib/logger'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { createBookingConfirmToken } from '@/lib/table-bookings/manage-booking'
-import { formatDateWithTimeForSms, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
+import { getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import {
-  buildConfirmReminderMessage,
   CONFIRMABLE_BOOKING_STATUSES,
   decideConfirmReminder,
   type ConfirmCandidate,
@@ -40,6 +39,8 @@ import { isEmailUsable } from '@/lib/notifications/channel'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import { notifyTableBookingGuestEmailFirst } from '@/lib/table-bookings/guest-notify'
 import { buildTableBookingConfirmReminderEmail } from '@/lib/table-bookings/guest-emails'
+import { buildConfirmReminderText } from '@/lib/table-bookings/guest-texts'
+import { confirmReminderFacts } from '@/lib/table-bookings/fallback-details'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
 
 export const runtime = 'nodejs'
@@ -116,15 +117,21 @@ async function sendConfirmReminderEmailFirst(
     }),
     sms: {
       to: customer.mobile_e164 || customer.mobile_number || null,
-      body: buildConfirmReminderMessage({
+      body: buildConfirmReminderText({
         firstName: customer.first_name,
-        bookingMoment: formatDateWithTimeForSms(row.booking_date, row.booking_time),
+        bookingDate: row.booking_date,
+        bookingTime: row.booking_time,
         partySize: row.party_size,
         confirmUrl: confirmLink.url,
       }),
     },
     idempotencyKey: `${templateKey}:${row.id}`,
     auditContext: { booking_reference: row.booking_reference, short_link_fallback: !confirmLink.shortened },
+    fallback: {
+      message: 'confirm_reminder',
+      facts: confirmReminderFacts(row),
+      link: confirmLink.shortened ? 'short_link' : 'full_url',
+    },
   })
 }
 
@@ -242,9 +249,10 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        const message = buildConfirmReminderMessage({
+        const message = buildConfirmReminderText({
           firstName: candidate.customer!.firstName,
-          bookingMoment: formatDateWithTimeForSms(row.booking_date, row.booking_time),
+          bookingDate: row.booking_date,
+          bookingTime: row.booking_time,
           partySize: row.party_size,
           confirmUrl: token.url,
         })

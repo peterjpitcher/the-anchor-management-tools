@@ -59,6 +59,8 @@ import {
   type GuestChannelCustomer,
 } from '@/lib/table-bookings/guest-notify'
 import { buildTableBookingPreorderReminderEmail } from '@/lib/table-bookings/guest-emails'
+import { buildPreorderReminderText } from '@/lib/table-bookings/guest-texts'
+import { preorderReminderFacts } from '@/lib/table-bookings/fallback-details'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -400,10 +402,12 @@ async function sendBookerReminder(
   const contactPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || null
 
   if (booker.phone && booker.smsActive) {
-    // Straight apostrophes and no dashes: one curly character drops the segment limit from 160 to 70.
-    const message =
-      `The Anchor: ${booker.firstName}, we still need the food choices for your booking on ` +
-      `${bookingMoment}. Every guest needs a main course. Choose here: ${manage.url}`
+    const message = buildPreorderReminderText({
+      firstName: booker.firstName,
+      bookingDate: booking.booking_date,
+      bookingTime: booking.booking_time,
+      manageLink: manage.url,
+    })
 
     // No `unique` key on the enqueue: the ledger row claimed above is the idempotency, and a second
     // mechanism here would only add a lock round trip and another way for the two to disagree.
@@ -490,7 +494,6 @@ async function sendBookerReminderEmailFirst(
     tableBookingId: booking.id,
   })
 
-  const bookingMoment = formatDateWithTimeForSms(booking.booking_date, booking.booking_time)
   const templateKey = 'table_booking_preorder_reminder'
 
   const outcome = await notifyTableBookingGuestEmailFirst({
@@ -508,13 +511,26 @@ async function sendBookerReminderEmailFirst(
     }),
     sms: {
       to: booker.phone,
-      // Today's text, word for word. Straight apostrophes and no dashes keep it to GSM-7.
-      body:
-        `The Anchor: ${booker.firstName}, we still need the food choices for your booking on ` +
-        `${bookingMoment}. Every guest needs a main course. Choose here: ${manage.url}`,
+      // Today's text, word for word.
+      body: buildPreorderReminderText({
+        firstName: booker.firstName,
+        bookingDate: booking.booking_date,
+        bookingTime: booking.booking_time,
+        manageLink: manage.url,
+      }),
     },
     idempotencyKey: `${templateKey}:${booking.id}`,
     auditContext: { booking_reference: booking.booking_reference, short_link_fallback: !manage.shortened },
+    fallback: {
+      message: 'preorder_reminder',
+      // The sweep only chases an order that is required, incomplete and still open.
+      facts: preorderReminderFacts({
+        bookingDate: booking.booking_date,
+        bookingTime: booking.booking_time,
+        choicesOutstanding: true,
+      }),
+      link: manage.shortened ? 'short_link' : 'full_url',
+    },
   })
 
   if (outcome.status !== 'sent') {

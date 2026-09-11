@@ -12,12 +12,13 @@ import type {
   DelayedFallbackRender,
   DelayedFallbackRenderer,
   FallbackBookingRef,
+  FallbackSkipCheck,
 } from '@/lib/notifications/delayed-fallback/types'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
 const DELIVERY_COLUMNS =
-  'id, customer_id, template_key, category, delayed_fallback_allowed, delayed_fallback_sent_at, selected_channel, final_status, metadata'
+  'id, customer_id, template_key, category, delayed_fallback_allowed, delayed_fallback_sent_at, selected_channel, final_status, metadata, created_at'
 
 export type DelayedFallbackOutcome =
   | { outcome: 'skipped'; reason: string; deliveryId: string }
@@ -34,6 +35,12 @@ const REASON_TEXT: Record<string, string> = {
   no_sms_channel: 'the guest has no mobile number we can text',
   sms_failed: 'the text could not be sent',
   booking_missing: 'the booking could not be found',
+  render_failed: 'the text could not be rebuilt',
+  customer_missing: "the guest's customer record could not be found",
+  facts_missing: 'the details the email stated were not recorded with it',
+  link_not_found: 'the link in the email could not be found again, and a new one is never made for a text',
+  link_expired: 'the link in the email has expired or has already been used',
+  link_not_rebuildable: 'the link in the email was not a short link, so it cannot be rebuilt safely',
 }
 
 function reasonText(reason: string): string {
@@ -62,7 +69,7 @@ function normaliseFact(value: unknown): string {
  * every booking type is held to the same test.
  */
 export function evaluateFallbackSkip(
-  render: Extract<DelayedFallbackRender, { kind: 'ready' }>,
+  render: FallbackSkipCheck,
   storedFacts: unknown,
   now: Date
 ): string | null {
@@ -353,6 +360,12 @@ export async function runDelayedFallbackJob(
   }
 
   if (render.kind === 'unavailable') {
+    // The same skip rules first: a text that cannot be rebuilt for a booking that has since been
+    // cancelled, has started or has changed was not going to be sent anyway.
+    const unavailableSkip = render.current ? evaluateFallbackSkip(render.current, delivery.metadata?.booking_facts, now) : null
+    if (unavailableSkip) {
+      return recordSkipped({ client, delivery, booking: render.booking ?? metadataBooking, reason: unavailableSkip, nowIso })
+    }
     return recordFailed({ client, delivery, booking: render.booking ?? metadataBooking, reason: render.reason, nowIso })
   }
 

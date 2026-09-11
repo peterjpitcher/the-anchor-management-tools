@@ -336,6 +336,52 @@ describe('notifyCustomer email first, with SMS as the fallback', () => {
     expect(result).toEqual(expect.objectContaining({ finalStatus: 'sent', sentChannel: 'sms', fallbackUsed: false }))
   })
 
+  function deliveryInsert() {
+    return auditDb.insert.mock.calls
+      .map(([row]) => row as Record<string, any>)
+      .find(row => 'template_key' in row)
+  }
+
+  it('writes the delivery row with only the channel flags when the caller adds no metadata', async () => {
+    await cancellationNotice()
+
+    expect(deliveryInsert()?.metadata).toEqual({ has_email: true, has_whatsapp: false, has_sms: true })
+  })
+
+  it('writes the caller\'s delivery metadata on the row when it is created, before anything is sent', async () => {
+    let metadataWhenEmailWent: unknown = null
+    vi.mocked(sendEmail).mockImplementation(async () => {
+      metadataWhenEmailWent = deliveryInsert()?.metadata ?? null
+      return { success: true, messageId: 'email-1' }
+    })
+
+    await notifyCustomer({
+      policy: 'email_first',
+      urgency: 'standard',
+      category: 'transactional',
+      customer,
+      delayedFallbackAllowed: true,
+      deliveryMetadata: {
+        table_booking_id: 'booking-1',
+        booking_facts: { booking_date: '2026-10-24', party_size: 4 },
+        // A caller cannot overwrite the channel flags.
+        has_sms: false,
+      },
+      email: { to: customer.email, subject: 'Cancelled', text: 'Cancelled', commType: 'table_booking_cancelled' },
+      sms: { body: 'Cancelled', options: { metadata: { template_key: 'table_booking_cancelled' } } },
+    })
+
+    const expected = {
+      table_booking_id: 'booking-1',
+      booking_facts: { booking_date: '2026-10-24', party_size: 4 },
+      has_email: true,
+      has_whatsapp: false,
+      has_sms: true,
+    }
+    expect(deliveryInsert()).toEqual(expect.objectContaining({ delayed_fallback_allowed: true, metadata: expected }))
+    expect(metadataWhenEmailWent).toEqual(expected)
+  })
+
   it('reports no_channel when neither channel can be used', async () => {
     vi.mocked(isCustomerSmsSendAllowed).mockResolvedValue({ allowed: false, reason: 'sms_opted_out' } as any)
 

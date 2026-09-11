@@ -1,3 +1,16 @@
+# Email-first messaging: bounce fallback for table bookings, 11 September 2026
+
+Integration branch `feat/email-first-integration-2026-09-11`. Local commit only. Nothing changes for guests while `bounce_sms_fallback` or the table flags are off.
+
+- [x] Every email-first table booking message writes its booking id, template key, message, stated facts and link form on the delivery row at insert (`deliveryMetadata` on `notifyCustomer`, `fallback-details.ts`). Ids and facts only.
+- [x] One text builder per message in `guest-texts.ts`, shared by the email-first sender, the flag-off sender and the fallback.
+- [x] Table booking renderer for the five template keys. Links are found through the existing short link and a live token, never made; otherwise `link_not_found`, `link_expired` or `link_not_rebuildable`, in plain words for staff.
+- [x] A text that cannot be rebuilt for a booking cancelled, started or changed since is skipped, not raised with staff.
+- [x] Tests: sender text equals rebuilt text for all five keys (cancellation in seven refund variants), unavailable paths, changed facts, cancelled and reinstated bookings, one end-to-end run, fixture renders either side of 25 October 2026.
+- [ ] Push, merge and deploy: not asked for; local commit only.
+
+Results: lint clean; uncached `tsc --noEmit` clean; 822 test files, 7,637 passed and 2 skipped in both London and UTC; uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
 # Email-first messaging P2, P3 and P5, 11 September 2026
 
 Same branch as P1. Every change sits behind a `messaging_flags` key that reads as off, so deploying changes nothing for guests. Local commits only.
