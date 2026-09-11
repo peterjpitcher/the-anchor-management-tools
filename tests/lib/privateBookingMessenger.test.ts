@@ -33,6 +33,7 @@ vi.mock('@/services/sms-queue', async () => {
 })
 
 import { sendEmail } from '@/lib/email/emailService'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { SmsQueueService } from '@/services/sms-queue'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
@@ -158,6 +159,30 @@ describe('sendPrivateBookingMessage', () => {
     ])
     // The address itself is not copied into the audit row.
     expect(JSON.stringify(state.db.tables.private_booking_audit)).not.toContain('host@example.com')
+  })
+
+  it('uses the flag value the calling action read, and does not read the flag again', async () => {
+    const reads = () => vi.mocked(isMessagingFlagOn).mock.calls.filter(([key]) => key === 'private_booking_email_first').length
+
+    // The flag row now answers on, but the action read it as off: the send follows the action.
+    state.flagOn = true
+    const offResult = await send({ emailFirst: false })
+    expect(offResult).toEqual({ success: true, sent: true, queueId: 'queue-1', sid: 'SM-1' })
+    expect(mockedSendEmail).not.toHaveBeenCalled()
+    expect(mockedQueueAndSend).toHaveBeenCalledTimes(1)
+
+    // And the other way round.
+    state.flagOn = false
+    const onResult = await send({ emailFirst: true })
+    expect(onResult).toMatchObject({ sent: true, channel: 'email' })
+    expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+
+    expect(reads()).toBe(0)
+  })
+
+  it('reads the flag itself when the caller did not', async () => {
+    await send()
+    expect(vi.mocked(isMessagingFlagOn)).toHaveBeenCalledWith('private_booking_email_first')
   })
 
   it("no contact email: the customer's own address is used", async () => {
