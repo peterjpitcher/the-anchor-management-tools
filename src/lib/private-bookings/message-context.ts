@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
+import { buildPrivateBookingPortalUrl } from '@/lib/private-bookings/booking-token'
 import {
   PRIVATE_BOOKING_MESSAGE_COLUMNS,
   type CancellationAmounts,
@@ -61,6 +62,9 @@ export async function loadPrivateBookingMessageContext(input: {
   }
   if (input.triggerType === 'review_request') {
     context.reviewLink = await getGoogleReviewLink(input.client as any)
+  }
+  if (input.triggerType === 'deposit_request') {
+    context.paymentLink = buildPrivateBookingPortalUrl(input.bookingId)
   }
 
   return context

@@ -89,6 +89,7 @@ import type {
   PaymentHistoryEntry,
 } from "@/types/private-bookings";
 import PaymentHistoryTable from './PaymentHistoryTable'
+import { ConfirmDepositPanel } from './ConfirmDepositPanel'
 // Design system components
 import { FormGroup, Form, PageLayout, Section, Card, CardHeader, CardBody } from '@/ds'
 import { Button, LinkButton, Input, Select, Textarea, Badge, Checkbox, Modal, ConfirmDialog, Empty, EmptyState, Alert, toast } from '@/ds'
@@ -166,6 +167,11 @@ interface PrivateBookingDetailClientProps {
     canInvoice: boolean;
   };
   paymentHistory: PaymentHistoryEntry[];
+  /**
+   * Set by the page while private_booking_deposit_confirmation is on: whether the deposit is still
+   * to be confirmed, and the deadline confirming it would set.
+   */
+  depositConfirmation?: { awaiting: boolean; holdExpiryPreview: string | null };
   initialError?: string | null;
 }
 
@@ -1700,6 +1706,7 @@ export default function PrivateBookingDetailClient({
   initialBooking,
   permissions,
   paymentHistory,
+  depositConfirmation,
   initialError,
 }: PrivateBookingDetailClientProps) {
   const router = useRouter();
@@ -2359,6 +2366,9 @@ export default function PrivateBookingDetailClient({
     : null
   const depositAmount = toNumber(booking.deposit_amount, 0);
   const depositRequired = depositAmount > 0;
+  // Only while the flag is on (the page sets it). Paid or waived since the page loaded ends it.
+  const depositAwaitingConfirmation =
+    depositConfirmation?.awaiting === true && depositRequired && !booking.deposit_paid_date;
   const appliedDepositAmount = toNumber(booking.applied_deposit_amount, 0);
   const depositAppliedToInvoice = Boolean(booking.invoice_id && booking.invoice_deposit_treatment === "deducted");
 
@@ -2537,6 +2547,17 @@ export default function PrivateBookingDetailClient({
       )}
 
       <RecordLockBanner booking={booking} />
+
+      {depositAwaitingConfirmation && (
+        <ConfirmDepositPanel
+          bookingId={bookingId}
+          depositAmount={depositAmount}
+          holdExpiryPreview={depositConfirmation?.holdExpiryPreview ?? null}
+          isDateTbd={isDateTbd}
+          canConfirm={canManageDeposits}
+          onConfirmed={() => router.refresh()}
+        />
+      )}
 
       {isDateTbd && (
         <Alert
@@ -3045,6 +3066,8 @@ export default function PrivateBookingDetailClient({
                           ? "No deposit required"
                           : booking.deposit_paid_date
                           ? `Paid ${formatDateFull(booking.deposit_paid_date)}`
+                          : depositAwaitingConfirmation
+                          ? "To be confirmed: the guest has not been told yet"
                           : "Not paid"}
                       </p>
                     </div>
@@ -3175,16 +3198,19 @@ export default function PrivateBookingDetailClient({
                           >
                             Copy payment link
                           </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={handleSendDepositLink}
-                            disabled={sendingDepositLink}
-                            loading={sendingDepositLink}
-                          >
-                            Send payment link
-                          </Button>
+                          {/* While the deposit is to be confirmed, Confirm deposit sends the link. */}
+                          {!depositAwaitingConfirmation && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleSendDepositLink}
+                              disabled={sendingDepositLink}
+                              loading={sendingDepositLink}
+                            >
+                              Send payment link
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>

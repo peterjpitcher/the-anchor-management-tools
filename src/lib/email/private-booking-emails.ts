@@ -933,6 +933,49 @@ export function buildPrivateBookingCreatedEmail(input: {
   });
 }
 
+/**
+ * Mirrors depositRequestMessage: the deposit request Confirm deposit sends. The amount is the one
+ * staff confirmed; the guest can pay in cash at the bar or by PayPal from their booking page.
+ */
+export function buildDepositRequestEmail(input: {
+  booking: PrivateBookingMessageEmailBooking;
+  firstName: string | null | undefined;
+  depositAmount: number;
+  /** The deadline exactly as the text prints it, or null when there is none. */
+  holdExpiry: string | null;
+  /** The guest's booking page, where one button pays the deposit by PayPal. */
+  paymentLink: string;
+}): PrivateBookingEmailContent {
+  const deposit = money(input.depositAmount);
+  return composeMessageEmail({
+    booking: input.booking,
+    firstName: input.firstName,
+    subject: input.holdExpiry
+      ? `Your deposit for The Anchor: ${deposit} by ${input.holdExpiry}`
+      : `Your deposit for The Anchor: ${deposit}`,
+    heading: 'Your deposit',
+    paragraphs: [
+      `The deposit for your booking ${onEventDate(input.booking)} is ${deposit}.`,
+      ...(input.holdExpiry ? [`Please pay it by ${input.holdExpiry}.`] : []),
+      'You can pay it in cash at the bar, or by PayPal using the button below.',
+    ],
+    rows: [
+      ['Deposit', deposit],
+      ...(input.holdExpiry ? ([['Pay by', input.holdExpiry]] as Array<[string, string]>) : []),
+      ['How to pay', 'Cash at the bar, or PayPal'],
+    ],
+    link: { label: 'Pay the deposit by PayPal', url: input.paymentLink },
+    notes: [
+      'The button opens your booking page, where you can pay securely by PayPal.',
+      DEPOSIT_TERMS_NOTE,
+      ...(input.holdExpiry
+        ? [`Unless we agree otherwise in writing, the hold may be released if the deposit isn't received in cleared funds by ${input.holdExpiry}.`]
+        : []),
+      'Paying the deposit confirms that you accept the booking terms and conditions set out in your contract, including the cancellation and refund policy.',
+    ],
+  });
+}
+
 export type DepositReminderStage = '7day' | '3day' | '1day';
 
 /** Mirrors depositReminder7DayMessage, depositReminder3DayMessage and depositReminder1DayMessage. */

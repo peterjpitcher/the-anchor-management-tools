@@ -4,6 +4,8 @@ import { getPrivateBooking } from '@/app/actions/privateBookingActions'
 import { getBookingPaymentHistory } from '@/services/private-bookings'
 import { currentUserCanInvoicePrivateBookings } from '@/app/actions/privateBookingInvoice'
 import { hasPrivateBookingPermission } from '@/lib/private-bookings/permissions'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { isDepositAwaitingConfirmation, resolveConfirmationHoldExpiry } from '@/lib/private-bookings/deposit-confirmation'
 import type { PaymentHistoryEntry } from '@/types/private-bookings'
 import PrivateBookingDetailServer from '../PrivateBookingDetailServer'
 
@@ -99,6 +101,23 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
     errors.push('We could not load this booking.')
   }
 
+  // Deposit confirmation (flag private_booking_deposit_confirmation): a deposit the guest has not
+  // been told about shows on the page with the Confirm deposit action, and the deadline confirming
+  // would set.
+  let depositConfirmation: { awaiting: boolean; holdExpiryPreview: string | null } = {
+    awaiting: false,
+    holdExpiryPreview: null,
+  }
+  if (bookingData && (await isMessagingFlagOn('private_booking_deposit_confirmation')) && isDepositAwaitingConfirmation(bookingData)) {
+    let holdExpiryPreview: string | null = null
+    try {
+      holdExpiryPreview = resolveConfirmationHoldExpiry(bookingData, new Date())
+    } catch (_err) {
+      // An unreadable event date: the dialog simply leaves the deadline out.
+    }
+    depositConfirmation = { awaiting: true, holdExpiryPreview }
+  }
+
   // Invoicing is super_admin only. The server action re-checks this on every
   // call; asking here just avoids showing a manager a button that will refuse.
   let canInvoice = false
@@ -127,6 +146,7 @@ export default async function PrivateBookingDetailPage({ params }: PageProps) {
         canInvoice,
       }}
       paymentHistory={paymentHistory}
+      depositConfirmation={depositConfirmation}
       initialError={initialError}
     />
   )

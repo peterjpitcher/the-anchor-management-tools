@@ -7,6 +7,8 @@
  */
 const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'booking_created',
+  // Sent when a member of staff presses Confirm deposit: the click is the approval.
+  'deposit_request',
   'deposit_received',
   'final_payment_received',
   'payment_received',

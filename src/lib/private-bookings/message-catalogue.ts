@@ -17,6 +17,7 @@ import {
   bookingExpiredMessage,
   dateChangedMessage,
   depositReceivedMessage,
+  depositRequestMessage,
   depositReminder1DayMessage,
   depositReminder3DayMessage,
   depositReminder7DayMessage,
@@ -31,6 +32,7 @@ import {
   buildBalanceReminderEmail,
   buildCancellationEmail,
   buildDepositReminderEmail,
+  buildDepositRequestEmail,
   type PrivateBookingCancellationVariant,
   type PrivateBookingEmailContent,
 } from '@/lib/email/private-booking-emails'
@@ -46,8 +48,10 @@ import type { FallbackBookingFacts, FallbackValidUntil } from '@/lib/notificatio
  *
  * Each entry builds the text with the same builder, the same inputs and the same date format as
  * the code that first sends it (mutations.ts, payments.ts, the monitor cron, the expire-holds
- * cron). Only the approval-gated messages carry an email version here; the automated paths build
- * theirs at the call site from the values they already have.
+ * cron). Only the approval-gated messages and the deposit request carry an email version here; the
+ * other automated paths build theirs at the call site from the values they already have. The
+ * deposit request is built here by its sender too, so the text and email it sends and the text a
+ * bounce rebuilds come from one place.
  */
 
 /** The private_bookings columns the catalogue reads. */
@@ -94,6 +98,8 @@ export type CatalogueContext = {
   /** What is still owed (private_bookings_with_details.balance_remaining), for the balance reminders. */
   balanceAmount?: number | null
   reviewLink?: string | null
+  /** The guest's booking page, for the deposit request (buildPrivateBookingPortalUrl). */
+  paymentLink?: string | null
   cancellation?: CancellationAmounts | null
   /** The facts stored when the message first went, for the parts a later rebuild cannot infer. */
   storedFacts?: Record<string, unknown> | null
@@ -162,10 +168,12 @@ export function buildPrivateBookingMessageFacts(
   extras: { balanceAmount?: number | null; cancellation?: CancellationAmounts | null; includeBalanceDueDate?: boolean } = {}
 ): FallbackBookingFacts {
   const facts: FallbackBookingFacts = { event_date: isoDate(booking.event_date) }
-  if (triggerType === 'booking_created' || triggerType.startsWith('deposit_reminder_') || triggerType === 'hold_extended') {
+  const statesDeposit =
+    triggerType === 'booking_created' || triggerType === 'deposit_request' || triggerType.startsWith('deposit_reminder_')
+  if (statesDeposit || triggerType === 'hold_extended') {
     facts.hold_expiry_date = isoDate(booking.hold_expiry)
   }
-  if (triggerType === 'booking_created' || triggerType.startsWith('deposit_reminder_')) {
+  if (statesDeposit) {
     facts.deposit_amount = toNumber(booking.deposit_amount)
   }
   if (triggerType === 'deposit_received') {
@@ -236,6 +244,7 @@ export function privateBookingMessageValidUntil(triggerType: string, ctx: Catalo
     // "deposit secures it by 25 September", "expires on 25 September", "expires tomorrow
     // (25 September)... get the deposit in today", "New deadline: 25 September".
     case 'booking_created':
+    case 'deposit_request':
     case 'deposit_reminder_7day':
     case 'deposit_reminder_3day':
     case 'deposit_reminder_1day':
@@ -279,6 +288,11 @@ export function privateBookingMessageNoLongerApplies(triggerType: string, ctx: C
   if (triggerType.startsWith('deposit_reminder_')) {
     return !b.hold_expiry || Boolean(b.deposit_paid_date) || b.deposit_waived === true || toNumber(b.deposit_amount) <= 0
   }
+  if (triggerType === 'deposit_request') {
+    // A request for a booking whose date is to be confirmed has no hold, so a missing hold alone
+    // is not "done"; a paid, waived or zero deposit is.
+    return Boolean(b.deposit_paid_date) || b.deposit_waived === true || toNumber(b.deposit_amount) <= 0
+  }
   if (triggerType === 'hold_extended') {
     return !b.hold_expiry || Boolean(b.deposit_paid_date)
   }
@@ -313,6 +327,25 @@ export function renderPrivateBookingMessage(triggerType: string, ctx: CatalogueC
           depositAmount: toNumber(b.deposit_amount),
           holdExpiry,
         }),
+        facts: facts(),
+      }
+    }
+
+    // The deposit request Confirm deposit sends (services/private-bookings/deposit-confirmation.ts
+    // builds it here too, so a bounce rebuilds exactly what went). The link is the guest's booking
+    // page: a signed token that lasts a year and holds no state, so a rebuild may mint a fresh one
+    // for the same page without any risk a one-time link would carry.
+    case 'deposit_request': {
+      if (!ctx.paymentLink) return null
+      const paymentLink = ctx.paymentLink
+      const depositAmount = toNumber(b.deposit_amount)
+      const eventDate = !b.event_date || isBookingDateTbd(b) ? null : formatPrivateBookingSmsDate(b.event_date)
+      const holdExpiry = b.hold_expiry ? formatPrivateBookingSmsDate(new Date(b.hold_expiry)) : null
+      return {
+        ...base,
+        templateKey: 'private_booking_deposit_request',
+        smsBody: depositRequestMessage({ customerFirstName: b.customer_first_name, eventDate, depositAmount, holdExpiry, paymentLink }),
+        email: () => buildDepositRequestEmail({ booking: b, firstName: b.customer_first_name, depositAmount, holdExpiry, paymentLink }),
         facts: facts(),
       }
     }
