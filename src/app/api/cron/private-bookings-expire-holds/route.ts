@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logAuditEvent } from '@/app/actions/audit';
 import { cancelPendingQueuedSms } from '@/lib/private-bookings/queue-cleanup';
+import { isMessagingFlagOn } from '@/lib/messaging/flags';
 
 // Vercel Cron: runs at 06:00 UTC daily (cron: "0 6 * * *")
 // Cancels draft private bookings whose hold_expiry has passed.
@@ -18,10 +19,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
+  // Deposit confirmation (flag private_booking_deposit_confirmation): while it is on, a hold whose
+  // deposit is still to be confirmed never expires by itself, and so never gets the hold-lapsed
+  // message. The guest has not been told a deposit or a deadline. With the flag off the update
+  // below is exactly as it was.
+  const depositConfirmation = await isMessagingFlagOn('private_booking_deposit_confirmation');
+
   // Atomically update expired draft bookings and return the affected rows.
   // hold_expiry IS NOT NULL filters out TBD bookings (which have null hold_expiry).
   // Re-checking status='draft' prevents cancelling bookings confirmed between cron runs.
-  const { data: expiredRows, error: updateError } = await supabase
+  let expireQuery = supabase
     .from('private_bookings')
     .update({
       status: 'cancelled',
@@ -31,8 +38,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     })
     .eq('status', 'draft')
     .not('hold_expiry', 'is', null)
-    .lt('hold_expiry', now)
-    .select('id');
+    .lt('hold_expiry', now);
+  if (depositConfirmation) {
+    expireQuery = expireQuery.not('deposit_confirmed_at', 'is', null);
+  }
+  const { data: expiredRows, error: updateError } = await expireQuery.select('id');
 
   if (updateError) {
     logger.error('private-bookings-expire-holds: atomic update failed', {

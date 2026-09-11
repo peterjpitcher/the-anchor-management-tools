@@ -34,6 +34,7 @@ type SmsTriggerType =
   | 'urgent'
   | 'manual'
   | 'booking_created'
+  | 'deposit_request'
   | 'booking_confirmed'
   | 'booking_cancelled'
   | 'booking_expired'
@@ -97,6 +98,14 @@ export interface PrivateBooking {
   paypal_deposit_capture_id?: string
   deposit_waived?: boolean
   deposit_waived_reason?: string
+  /**
+   * When staff confirmed the deposit amount and the deposit request went (migration
+   * 20260911180000). Null means the deposit is still to be confirmed; absent means the column was
+   * not read, which counts as confirmed.
+   */
+  deposit_confirmed_at?: string | null
+  /** Who confirmed the deposit; null for bookings confirmed before 11 September 2026. */
+  deposit_confirmed_by?: string | null
   /** The invoice raised for this booking, if any. One invoice per booking. */
   invoice_id?: string | null
   /** When the invoice email was successfully sent. Mirrors invoices.sent_at. */
@@ -323,6 +332,8 @@ export interface PrivateBookingWithDetails extends PrivateBooking {
   balance_remaining?: number
   payment_status?: 'Fully Paid' | 'Partially Paid' | 'Unpaid'
   deposit_status?: 'Paid' | 'Required' | 'Not Required'
+  /** Set by the list query while private_booking_deposit_confirmation is on. */
+  deposit_awaiting_confirmation?: boolean
   days_until_event?: number
   sms_queue?: PrivateBookingSmsQueue[]
   documents?: PrivateBookingDocument[]

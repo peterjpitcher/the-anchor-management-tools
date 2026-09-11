@@ -25,6 +25,8 @@ import {
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger';
 import { isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first';
 import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue';
+import { isMessagingFlagOn } from '@/lib/messaging/flags';
+import { isDepositAwaitingConfirmation } from '@/lib/private-bookings/deposit-confirmation';
 import type {
   BookingStatus,
   PrivateBookingWithDetails,
@@ -168,6 +170,95 @@ async function sendCreationSms(booking: any, phone?: string | null): Promise<voi
   } catch (smsError) {
     logger.error('Failed to queue booking created SMS after booking creation:', { error: smsError instanceof Error ? smsError : new Error(String(smsError)) });
   }
+}
+
+/**
+ * With deposit confirmation off, the deposit is stated to the guest when the booking is made, so
+ * that is when it was confirmed. Recording it keeps the booking right if the flag is switched on
+ * later: it is not shown as waiting, and its reminders and hold expiry carry on.
+ *
+ * Never blocks the booking. Until migration 20260911180000 is applied the column does not exist
+ * and the write is refused, which is logged and otherwise harmless while the flag is off.
+ */
+async function recordDepositConfirmedAtCreation(bookingId: string, confirmedBy: string | null): Promise<void> {
+  try {
+    const { error } = await createAdminClient()
+      .from('private_bookings')
+      .update({ deposit_confirmed_at: new Date().toISOString(), deposit_confirmed_by: confirmedBy })
+      .eq('id', bookingId)
+      .is('deposit_confirmed_at', null);
+    if (error) {
+      logger.warn('Deposit not recorded as confirmed at booking time', {
+        metadata: { bookingId, code: error.code ?? null, message: error.message ?? null },
+      });
+    }
+  } catch (recordError) {
+    logger.warn('Deposit not recorded as confirmed at booking time', {
+      metadata: { bookingId, message: recordError instanceof Error ? recordError.message : String(recordError) },
+    });
+  }
+}
+
+/**
+ * Deposit confirmation (flag private_booking_deposit_confirmation): a booking whose deposit the
+ * guest has not been told cannot be moved to Confirmed, because that confirmation states the
+ * deposit ("Deposit due"). Staff confirm the deposit first, which sends the deposit request, or
+ * waive it to £0. Fails closed: if the deposit state cannot be read, the booking is not confirmed.
+ */
+async function assertDepositConfirmedBeforeBookingConfirmation(
+  id: string,
+  currentBooking: { deposit_amount?: unknown; deposit_paid_date?: string | null },
+  input: UpdatePrivateBookingInput
+): Promise<void> {
+  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return
+
+  const { data, error } = await createAdminClient()
+    .from('private_bookings')
+    .select('deposit_confirmed_at, deposit_waived')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) {
+    logger.error('Could not read the deposit confirmation before confirming a booking', {
+      metadata: { bookingId: id, code: error?.code ?? null, message: error?.message ?? null },
+    });
+    throw new Error('Could not check whether the deposit has been confirmed, so the booking was not confirmed. Please try again.');
+  }
+
+  const depositEdited = input.deposit_amount !== undefined
+  const nextDeposit = depositEdited ? toNumber(input.deposit_amount) : toNumber(currentBooking.deposit_amount)
+  const awaiting = isDepositAwaitingConfirmation({
+    status: 'draft',
+    deposit_amount: nextDeposit,
+    deposit_paid_date: currentBooking.deposit_paid_date ?? null,
+    // A £0 deposit saved in the same edit is waived (updateBooking records the waiver).
+    deposit_waived: depositEdited && nextDeposit === 0 ? true : (data as { deposit_waived?: boolean | null }).deposit_waived,
+    deposit_confirmed_at: (data as { deposit_confirmed_at?: string | null }).deposit_confirmed_at,
+  })
+  if (awaiting) {
+    throw new Error('Confirm the deposit before confirming this booking. The guest has not been told the deposit yet: use Confirm deposit on the booking page, or waive the deposit.');
+  }
+}
+
+/**
+ * True while private_booking_deposit_confirmation is on and this booking's deposit is still to be
+ * confirmed, so no message about its hold may go. If the deposit state cannot be read the answer
+ * is true: sending nothing is the safe side, and the failure is logged.
+ */
+async function isDepositStillToBeConfirmed(bookingId: string): Promise<boolean> {
+  if (!(await isMessagingFlagOn('private_booking_deposit_confirmation'))) return false
+
+  const { data, error } = await createAdminClient()
+    .from('private_bookings')
+    .select('status, deposit_amount, deposit_paid_date, deposit_waived, deposit_confirmed_at')
+    .eq('id', bookingId)
+    .maybeSingle();
+  if (error || !data) {
+    logger.error('Could not read the deposit confirmation, so no hold message was sent', {
+      metadata: { bookingId, code: error?.code ?? null, message: error?.message ?? null },
+    });
+    return true
+  }
+  return isDepositAwaitingConfirmation(data)
 }
 
 type CancellationSmsVariant = {
@@ -879,7 +970,14 @@ export async function createBooking(
       // Deliberately silent to the customer. The only message that should reach
       // someone who filled in the enquiry form is a human replying to it. The
       // manager is notified separately by the calling route.
+    } else if (requiresDeposit && (await isMessagingFlagOn('private_booking_deposit_confirmation'))) {
+      // Owner decision, 11 September 2026: nothing about the deposit goes at booking time, by
+      // any channel. The booking holds the date with its deposit "to be confirmed"
+      // (deposit_confirmed_at stays null) until staff confirm the amount on the booking page,
+      // which sends the guest one deposit request. Until then the reminder and expiry crons leave
+      // it alone.
     } else if (requiresDeposit) {
+      await recordDepositConfirmedAtCreation(booking.id, (booking as any).created_by ?? (bookingPayload as any).created_by ?? null)
       void sendCreationSms(bookingForSideEffects, normalizedContactPhone).catch((smsError) => {
         logger.error('Private booking creation SMS background task failed', {
           error: smsError instanceof Error ? smsError : new Error(String(smsError)),
@@ -984,6 +1082,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     } else if (nextDeposit < 250 && !(input.deposit_reduction_reason || '').trim()) {
       throw new Error('Reducing the deposit below £250 requires a reason (General Manager discretion)')
     }
+  }
+
+  if (input.status === 'confirmed' && currentBooking.status !== 'confirmed') {
+    await assertDepositConfirmedBeforeBookingConfirmation(id, currentBooking, input)
   }
 
   // SOP §12: bar tab rules on the edit path — merge partial input with the
@@ -2388,7 +2490,14 @@ export async function extendHold(
   days: 7 | 14 | 30,
   extendedBy?: string,
   reason?: string
-): Promise<{ success: true; newExpiry: string; smsSent: boolean; capped: boolean }> {
+): Promise<{
+  success: true;
+  newExpiry: string;
+  smsSent: boolean;
+  capped: boolean;
+  /** Set when the guest was deliberately not told, so staff are not left wondering why. */
+  guestNotNotifiedReason?: 'deposit_to_be_confirmed';
+}> {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
 
@@ -2438,6 +2547,13 @@ export async function extendHold(
     .eq('id', id);
 
   if (updateError) throw new Error('Failed to extend booking hold');
+
+  // Deposit confirmation (flag private_booking_deposit_confirmation): while the deposit is still to
+  // be confirmed the guest has been told no deadline, so the longer hold is recorded without a
+  // message. The space stays held until the new date.
+  if (await isDepositStillToBeConfirmed(id)) {
+    return { success: true, newExpiry: newExpiryIso, smsSent: false, capped, guestNotNotifiedReason: 'deposit_to_be_confirmed' };
+  }
 
   // 4. Send SMS
   let smsSent = false;

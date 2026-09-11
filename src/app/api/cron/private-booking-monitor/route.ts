@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
 import { isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue'
 import {
@@ -138,6 +139,8 @@ type MonitorBookingRow = {
   internal_notes: string | null
   hold_expiry?: string | null
   deposit_amount?: number | null
+  /** Selected only while private_booking_deposit_confirmation is on. */
+  deposit_confirmed_at?: string | null
   total_amount?: number | null
   calculated_total?: number | null
   gross_total?: number | null
@@ -525,14 +528,36 @@ export async function GET(request: Request) {
     // passed to every send, so the bookings chosen here and the channel each send uses agree.
     const emailFirst = await isPrivateBookingEmailFirstOn()
 
+    // Deposit confirmation (flag private_booking_deposit_confirmation), read once for the run. While
+    // it is on, a draft whose deposit is still to be confirmed gets no deposit reminder: the guest
+    // has not been told a deposit, so a reminder would state an amount nobody confirmed. With it
+    // off the query below is exactly as it was.
+    const depositConfirmation = await isMessagingFlagOn('private_booking_deposit_confirmation')
+
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
-      const { data: drafts } = (await supabase
-        .from('private_bookings')
-        .select(withEmailColumns('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes', emailFirst))
-        .eq('status', 'draft')
-        .gt('hold_expiry', now.toISOString()) // Not expired yet
-        .not('hold_expiry', 'is', null)) as unknown as MonitorRowsResult
+    const draftColumns = depositConfirmation
+      ? 'id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes, deposit_confirmed_at'
+      : 'id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes'
+    let draftsQuery = supabase
+      .from('private_bookings')
+      .select(withEmailColumns(draftColumns, emailFirst))
+      .eq('status', 'draft')
+      .gt('hold_expiry', now.toISOString()) // Not expired yet
+      .not('hold_expiry', 'is', null)
+    if (depositConfirmation) {
+      draftsQuery = draftsQuery.not('deposit_confirmed_at', 'is', null)
+    }
+    const { data: drafts, error: draftsError } = (await draftsQuery) as unknown as MonitorRowsResult & {
+      error: { code?: string; message?: string } | null
+    }
+    if (draftsError && depositConfirmation) {
+      // Most likely migration 20260911180000 has not been applied. Nothing is sent, which is the
+      // safe side, but it must not pass quietly.
+      logger.error('Private booking monitor: deposit reminder query failed with deposit confirmation on', {
+        metadata: { runKey, code: draftsError.code ?? null, message: draftsError.message ?? null },
+      })
+    }
     // Removed .not('contact_phone', 'is', null) to support fallback to customer record
 
     if (drafts) {
@@ -558,6 +583,10 @@ export async function GET(request: Request) {
           break
         }
         if (!booking.hold_expiry) continue
+
+        // The query already leaves these out; this keeps an unconfirmed deposit from ever being
+        // chased if that filter is lost.
+        if (depositConfirmation && booking.deposit_confirmed_at === null) continue
 
         // Suppress reminders for bookings whose date is still TBD — the
         // messages would point at a placeholder date.
