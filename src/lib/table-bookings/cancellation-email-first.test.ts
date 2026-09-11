@@ -35,6 +35,7 @@ import { buildSmsDedupContext } from '@/lib/sms/safety'
 import {
   describeTableBookingCancellationRefund,
   sendTableBookingCancelledSmsIfAllowed,
+  tableBookingCancelledEmailKey,
   type TableBookingCancellationRefundResult,
 } from './bookings'
 import { refundAndNotifyOnCancel } from './cancel-notify'
@@ -77,7 +78,7 @@ const BOOKING = {
   party_size: 4,
 }
 
-function buildDb(customer: Customer | null, booking: typeof BOOKING = BOOKING) {
+function buildDb(customer: Customer | null, booking: typeof BOOKING & { cancelled_at?: string | null } = BOOKING) {
   return createRecordingSupabase({
     tables: {
       customers: () => ({ data: customer, error: null }),
@@ -293,6 +294,59 @@ describe('cancellation notice, email first (flag on)', () => {
     )
     // Distinct duplicate-protection keys: the second text is not swallowed as a repeat of the first.
     expect(new Set(dedupeKeys).size).toBe(2)
+  })
+})
+
+describe('one cancellation email key per cancellation', () => {
+  function sentKey(): string {
+    const calls = vi.mocked(sendEmail).mock.calls
+    return String(calls[calls.length - 1][0].idempotencyKey)
+  }
+
+  it('keys the email on the cancellation, read from the booking row', async () => {
+    const db = buildDb(SARAH, { ...BOOKING, cancelled_at: '2026-09-11T14:03:22.123+00:00' })
+
+    await cancel(db)
+
+    expect(sentKey()).toBe('table_booking_cancelled:booking-1:2026-09-11T14:03:22.123Z')
+    const bookingQuery = db.queries.find((query) => query.table === 'table_bookings')!
+    expect(String(argsOf(bookingQuery, 'select')[0][0])).toContain('cancelled_at')
+  })
+
+  it('a retry of the same cancellation reuses the key, so the provider sends it once', async () => {
+    const cancelled = { ...BOOKING, cancelled_at: '2026-09-11T14:03:22.123+00:00' }
+    await cancel(buildDb(SARAH, cancelled))
+    const first = sentKey()
+    await cancel(buildDb(SARAH, cancelled))
+
+    expect(sentKey()).toBe(first)
+  })
+
+  it('cancelled, re-confirmed and cancelled again within the day: a new key, so the guest gets the second email', async () => {
+    await cancel(buildDb(SARAH, { ...BOOKING, cancelled_at: '2026-09-11T14:03:22.123+00:00' }))
+    const first = sentKey()
+    await cancel(buildDb(SARAH, { ...BOOKING, cancelled_at: '2026-09-11T16:45:00.000+00:00' }))
+
+    expect(sentKey()).not.toBe(first)
+    expect(sentKey()).toBe('table_booking_cancelled:booking-1:2026-09-11T16:45:00.000Z')
+  })
+
+  it('falls back to the booking alone when the cancellation time cannot be read', () => {
+    expect(tableBookingCancelledEmailKey('booking-1', null)).toBe('table_booking_cancelled:booking-1')
+    expect(tableBookingCancelledEmailKey('booking-1', 'not a date')).toBe('table_booking_cancelled:booking-1')
+  })
+
+  it('the bounce fallback still finds the delivery by its template key, whatever the email key', async () => {
+    const db = buildDb(SARAH, { ...BOOKING, cancelled_at: '2026-09-11T14:03:22.123+00:00' })
+
+    await cancel(db)
+
+    const deliveryInsert = db.queries.find((query) => query.table === 'notification_deliveries' && called(query, 'insert'))!
+    expect(argsOf(deliveryInsert, 'insert')[0][0]).toMatchObject({
+      template_key: 'table_booking_cancelled',
+      delayed_fallback_allowed: true,
+      metadata: expect.objectContaining({ table_booking_id: 'booking-1', fallback_message: 'cancellation' }),
+    })
   })
 })
 

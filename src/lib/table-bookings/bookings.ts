@@ -1793,6 +1793,21 @@ export async function sendTableBookingCancelledSmsIfAllowed(
   return null
 }
 
+/**
+ * The provider idempotency key for one cancellation email: stable across retries of the same
+ * cancellation, new for each cancellation. Keyed on the booking alone, a booking cancelled,
+ * re-confirmed and cancelled again inside Resend's 24-hour key window had the second email
+ * replayed as the first (the guest got nothing new while staff saw it sent) or refused when its
+ * words differed. The booking's cancelled_at, written once per cancellation, tells the two apart.
+ * When it cannot be read the key falls back to the booking alone, which still stops a retry
+ * sending twice.
+ */
+export function tableBookingCancelledEmailKey(tableBookingId: string, cancelledAt: string | null | undefined): string {
+  const base = `table_booking_cancelled:${tableBookingId}`
+  const cancelledAtMs = cancelledAt ? Date.parse(cancelledAt) : Number.NaN
+  return Number.isFinite(cancelledAtMs) ? `${base}:${new Date(cancelledAtMs).toISOString()}` : base
+}
+
 async function sendTableBookingCancelledEmailFirst(
   supabase: SupabaseClient<any, 'public', any>,
   params: TableBookingCancellationNoticeParams & { tableBookingId: string }
@@ -1804,7 +1819,7 @@ async function sendTableBookingCancelledEmailFirst(
       supabase.from('customers').select(GUEST_CHANNEL_COLUMNS).eq('id', params.customerId).maybeSingle(),
       supabase
         .from('table_bookings')
-        .select('id, booking_reference, booking_date, booking_time, start_datetime, party_size')
+        .select('id, booking_reference, booking_date, booking_time, start_datetime, party_size, cancelled_at')
         .eq('id', params.tableBookingId)
         .maybeSingle(),
     ])
@@ -1865,7 +1880,7 @@ async function sendTableBookingCancelledEmailFirst(
         }),
         metadata: { booking_reference: params.bookingReference },
       },
-      idempotencyKey: `${templateKey}:${params.tableBookingId}`,
+      idempotencyKey: tableBookingCancelledEmailKey(params.tableBookingId, booking?.cancelled_at),
       auditContext: {
         booking_reference: params.bookingReference,
         refunded: params.refundResult.refunded,
