@@ -13,16 +13,17 @@ import { logger } from '@/lib/logger'
  *
  * The row does not exist until the owner switches a path on (no migration, no seed), and
  * switching one off again is a rollback that needs no deploy. A flag is on only when its stored
- * value is the boolean true. A missing row, a value that is not a plain object and a non-boolean
- * entry all mean off.
+ * value is the boolean true. To isMessagingFlagOn, a missing row, a value that is not a plain
+ * object and a non-boolean entry all mean off.
  *
- * The two readers differ only when the row cannot be read:
+ * The two readers differ only when the row cannot be read or is malformed:
  *
  *  - `isMessagingFlagOn` answers off. That is safe for every path whose off state is today's
  *    behaviour and sends no more than its on state.
  *  - `readMessagingFlagState` answers unknown. Event promotion needs it: there, off runs the
  *    7-day intro and the 24-hour follow-up, the noisier texts the owner switched away from, so a
- *    flag that has been on for weeks must not fall back to them because one read timed out.
+ *    flag that has been on for weeks must not fall back to them because one read timed out, or
+ *    because someone saved the text "true" instead of the boolean.
  */
 export const MESSAGING_FLAG_KEYS = [
   'event_promo_last_push',
@@ -48,18 +49,22 @@ const MESSAGING_FLAGS_CACHE_TTL_MS = 60_000
 
 type StoredFlags = Record<string, unknown>
 
-let cache: { flags: StoredFlags; readAt: number } | null = null
+let cache: { flags: StoredFlags; malformed: boolean; readAt: number } | null = null
 
 /** For tests, and for anything that has just written the row and must see it at once. */
 export function clearMessagingFlagCache(): void {
   cache = null
 }
 
-function normaliseFlags(value: unknown): StoredFlags {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
+/** A row that exists but does not hold a plain object is malformed; a missing row is not. */
+function normaliseFlags(value: unknown): { flags: StoredFlags; malformed: boolean } {
+  if (value === null || value === undefined) {
+    return { flags: {}, malformed: false }
   }
-  return value as StoredFlags
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { flags: {}, malformed: true }
+  }
+  return { flags: value as StoredFlags, malformed: false }
 }
 
 /** Why the row could not be read, field by field rather than as the raw error object. */
@@ -70,7 +75,9 @@ export type MessagingFlagsReadFailure = {
   hint: string | null
 }
 
-type FlagsRead = { ok: true; flags: StoredFlags } | { ok: false; failure: MessagingFlagsReadFailure }
+type FlagsRead =
+  | { ok: true; flags: StoredFlags; malformed: boolean }
+  | { ok: false; failure: MessagingFlagsReadFailure }
 
 /**
  * The stored flags, from the cache while it is fresh. Only a successful read is cached. A failed
@@ -79,7 +86,7 @@ type FlagsRead = { ok: true; flags: StoredFlags } | { ok: false; failure: Messag
  */
 async function readFlags(): Promise<FlagsRead> {
   if (cache && Date.now() - cache.readAt < MESSAGING_FLAGS_CACHE_TTL_MS) {
-    return { ok: true, flags: cache.flags }
+    return { ok: true, flags: cache.flags, malformed: cache.malformed }
   }
 
   try {
@@ -102,9 +109,9 @@ async function readFlags(): Promise<FlagsRead> {
       }
     }
 
-    const flags = normaliseFlags(data?.value)
-    cache = { flags, readAt: Date.now() }
-    return { ok: true, flags }
+    const { flags, malformed } = normaliseFlags(data?.value)
+    cache = { flags, malformed, readAt: Date.now() }
+    return { ok: true, flags, malformed }
   } catch (error) {
     return {
       ok: false,
@@ -136,10 +143,12 @@ export type MessagingFlagState =
 /**
  * One flag as on, off or unknown.
  *
- * On and off are exactly what isMessagingFlagOn answers (a missing row, false and a malformed
- * value are all off) and come from the same 60-second cache. Unknown means the row could not be
- * read; it is never cached, so the next call reads the row again. Logs nothing: what unknown
- * means is the caller's decision, and the caller says so once.
+ * On is the boolean true and off is a missing row, a missing key, false or null, all from the
+ * same 60-second cache as isMessagingFlagOn. Unknown means the row could not be read (never
+ * cached, so the next call reads it again), or that it holds something other than a boolean for
+ * this key, or something other than an object at all: a value someone meant as a setting but
+ * saved wrongly is not taken as off. Logs nothing: what unknown means is the caller's decision,
+ * and the caller says so once.
  */
 export async function readMessagingFlagState(key: MessagingFlagKey): Promise<MessagingFlagState> {
   const read = await readFlags()
@@ -147,5 +156,16 @@ export async function readMessagingFlagState(key: MessagingFlagKey): Promise<Mes
     return { state: 'unknown', failure: read.failure }
   }
 
-  return read.flags[key] === true ? { state: 'on' } : { state: 'off' }
+  if (read.malformed) {
+    return { state: 'unknown', failure: malformedFailure('the messaging_flags value is not a JSON object') }
+  }
+
+  const value = read.flags[key]
+  if (value === true) return { state: 'on' }
+  if (value === undefined || value === null || value === false) return { state: 'off' }
+  return { state: 'unknown', failure: malformedFailure(`messaging_flags.${key} is not true or false`) }
+}
+
+function malformedFailure(message: string): MessagingFlagsReadFailure {
+  return { code: 'malformed_messaging_flags', message, details: null, hint: null }
 }
