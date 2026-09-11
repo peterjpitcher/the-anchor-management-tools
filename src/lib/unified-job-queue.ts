@@ -204,6 +204,20 @@ export interface JobOptions {
   unique?: string // unique key to prevent duplicates
 }
 
+/**
+ * Returned by a job handler that has to run again later rather than finish now: today only the
+ * delayed fallback, which waits out SMS quiet hours. The queue puts the same row back to pending
+ * at `runAt`. Keeping the row keeps its unique key, so a repeat enqueue finds the waiting job
+ * instead of adding a second one, and the wait is not counted against the job's attempts.
+ */
+export class JobReschedule {
+  constructor(
+    readonly runAt: Date,
+    /** Stored as the row's result while it waits, for anyone reading the queue. */
+    readonly result: unknown
+  ) {}
+}
+
 export class UnifiedJobQueue {
   private static instance: UnifiedJobQueue
 
@@ -758,6 +772,52 @@ export class UnifiedJobQueue {
   }
 
   /**
+   * Puts a job that asked to run later back to pending at that time. Throws when the row cannot
+   * be written, so processJob treats it as an ordinary failed attempt and retries with backoff:
+   * the handler has done nothing irreversible before asking to wait.
+   */
+  private async persistJobReschedule(
+    supabase: ReturnType<typeof createAdminClient>,
+    job: Job,
+    token: string | null,
+    request: JobReschedule
+  ): Promise<void> {
+    if (Number.isNaN(request.runAt.getTime())) {
+      throw new Error('Job asked to run later without a valid time')
+    }
+
+    const nowIso = new Date().toISOString()
+    let update: any = supabase
+      .from('jobs')
+      .update({
+        status: 'pending',
+        scheduled_for: request.runAt.toISOString(),
+        // Waiting is not a failed attempt: hand back the attempt the claim counted.
+        attempts: Math.max(0, Number(job.attempts ?? 1) - 1),
+        started_at: null,
+        processing_token: null,
+        lease_expires_at: null,
+        last_heartbeat_at: null,
+        error_message: null,
+        result: request.result ?? null,
+        updated_at: nowIso,
+      })
+      .eq('id', job.id)
+
+    if (token) {
+      update = update.eq('processing_token', token)
+    }
+
+    const { data: updatedRow, error } = await update.select('id').maybeSingle()
+    if (error) {
+      throw new Error(`Failed to reschedule job: ${error.message}`)
+    }
+    if (!updatedRow) {
+      throw new Error('Failed to reschedule job: no row updated')
+    }
+  }
+
+  /**
    * Process a single job
    */
   private async processJob(job: Job): Promise<ProcessJobOutcome> {
@@ -833,6 +893,14 @@ export class UnifiedJobQueue {
         `Job execution timeout (${timeoutMs}ms)`
       )
       const result = leaseLost ? await Promise.race([execution, leaseLost]) : await execution
+
+      if (result instanceof JobReschedule) {
+        await this.persistJobReschedule(supabase, job, token, result)
+        logger.info(`Job rescheduled: ${job.type}`, {
+          metadata: { jobId: job.id, runAt: result.runAt.toISOString() }
+        })
+        return { ok: true, fatalSmsSafetyFailure: false }
+      }
 
       // Mark as completed
       const completeUpdate = supabase
@@ -1260,7 +1328,13 @@ export class UnifiedJobQueue {
         // A text for a transactional email that bounced (P4). The job claims its delivery before
         // sending, so a retry or a duplicate job sends nothing more.
         const { runDelayedFallbackJob } = await import('@/lib/notifications/delayed-fallback/run')
-        return runDelayedFallbackJob({ deliveryId: payload.deliveryId })
+        const outcome = await runDelayedFallbackJob({ deliveryId: payload.deliveryId })
+        // Inside quiet hours the job waits for the morning instead of handing sendSMS a text to
+        // hold, so the text is rebuilt and checked again when it can actually go.
+        if (outcome.outcome === 'deferred') {
+          return new JobReschedule(new Date(outcome.runAt), outcome)
+        }
+        return outcome
       }
 
       default:

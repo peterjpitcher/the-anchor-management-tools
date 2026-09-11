@@ -37,7 +37,7 @@ import { sendSMS } from '@/lib/twilio'
 import { AuditService } from '@/services/audit'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { enqueueDelayedFallbackForEmailEvent, delayedFallbackJobKey } from '@/lib/notifications/delayed-fallback/enqueue'
-import { evaluateFallbackSkip, runDelayedFallbackJob } from '@/lib/notifications/delayed-fallback/run'
+import { evaluateFallbackSkip, resolveQuietHoursWait, runDelayedFallbackJob } from '@/lib/notifications/delayed-fallback/run'
 import type { DelayedFallbackRender, DelayedFallbackRenderer } from '@/lib/notifications/delayed-fallback/types'
 
 const mockedSendSMS = sendSMS as unknown as Mock
@@ -425,6 +425,93 @@ describe('notification_delayed_fallback job', () => {
     const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [renderer(() => readyRender())], now: () => NOW })
 
     expect(outcome).toEqual({ outcome: 'sent', deliveryId: 'delivery-1', scheduledFor: '2026-09-21T08:00:00.000Z' })
+  })
+})
+
+describe('quiet hours: the job waits for the morning instead of handing sendSMS a text to hold', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.flagOn = true
+    mockedSendSMS.mockResolvedValue({ success: true, sid: 'SM-fallback-1' })
+  })
+
+  /** 22:30 on Sunday 20 September 2026, London (BST). */
+  const LATE_EVENING = new Date('2026-09-20T21:30:00.000Z')
+
+  it('inside quiet hours: deferred to 09:00 London, with nothing claimed, rebuilt, sent or recorded', async () => {
+    state.db = seed()
+    const fallbackRenderer = renderer(() => readyRender())
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => LATE_EVENING })
+
+    expect(outcome).toEqual({ outcome: 'deferred', deliveryId: 'delivery-1', runAt: '2026-09-21T08:00:00.000Z' })
+    expect(fallbackRenderer.render).not.toHaveBeenCalled()
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(state.db.tables.notification_deliveries[0]).toMatchObject({ delayed_fallback_sent_at: null, final_status: 'sent' })
+    expect(state.db.tables.private_booking_audit).toEqual([])
+    expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('at 09:00 the same job reads the booking again, so a hold cancelled overnight gets no text', async () => {
+    state.db = seed()
+    let status = 'draft'
+    const fallbackRenderer = renderer(() => readyRender({ booking: { ...(readyRender() as any).booking, status } }))
+
+    const first = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => LATE_EVENING })
+    expect(first.outcome).toBe('deferred')
+
+    // The expire-holds cron cancels the hold at 06:00 UTC.
+    status = 'cancelled'
+    const morning = new Date((first as Extract<typeof first, { outcome: 'deferred' }>).runAt)
+    const second = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => morning })
+
+    expect(second).toMatchObject({ outcome: 'skipped', reason: 'booking_cancelled' })
+    expect(fallbackRenderer.render).toHaveBeenCalledTimes(1)
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+  })
+
+  it('at 09:00 a booking that still needs the text gets it, once', async () => {
+    state.db = seed()
+    const fallbackRenderer = renderer(() => readyRender())
+
+    const first = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => LATE_EVENING })
+    const morning = new Date((first as Extract<typeof first, { outcome: 'deferred' }>).runAt)
+    const second = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => morning })
+
+    expect(second).toEqual({ outcome: 'sent', deliveryId: 'delivery-1', scheduledFor: null })
+    expect(mockedSendSMS).toHaveBeenCalledTimes(1)
+    expect(state.db.tables.notification_deliveries[0].delayed_fallback_sent_at).toBe('2026-09-21T08:00:00.000Z')
+  })
+
+  it('a job for a delivery already handled stays handled, whatever the hour', async () => {
+    state.db = seed({ delayed_fallback_sent_at: '2026-09-20T20:00:00.000Z' })
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [renderer(() => readyRender())], now: () => LATE_EVENING })
+    expect(outcome).toMatchObject({ outcome: 'skipped', reason: 'already_handled' })
+  })
+})
+
+describe('resolveQuietHoursWait', () => {
+  it.each([
+    ['22:30 on Saturday 24 October 2026, the last night of BST', '2026-10-24T21:30:00.000Z', '2026-10-25T09:00:00.000Z'],
+    ['00:30 BST on 25 October, before the clocks go back', '2026-10-24T23:30:00.000Z', '2026-10-25T09:00:00.000Z'],
+    ['01:30 GMT on 25 October, the hour that happens twice', '2026-10-25T01:30:00.000Z', '2026-10-25T09:00:00.000Z'],
+    ['22:30 on Saturday 27 March 2027, the night the clocks go forward', '2027-03-27T22:30:00.000Z', '2027-03-28T08:00:00.000Z'],
+    ['00:30 GMT on 28 March 2027, before the jump', '2027-03-28T00:30:00.000Z', '2027-03-28T08:00:00.000Z'],
+    ['03:30 BST on 28 March 2027, after the jump', '2027-03-28T02:30:00.000Z', '2027-03-28T08:00:00.000Z'],
+    ['20:56 London, close enough to 21:00 that sendSMS could hold it', '2026-09-20T19:56:00.000Z', '2026-09-21T08:00:00.000Z'],
+    ['08:59 London', '2026-09-21T07:59:00.000Z', '2026-09-21T08:00:00.000Z'],
+    ['23:00 on a winter weekday', '2026-12-01T23:00:00.000Z', '2026-12-02T09:00:00.000Z'],
+  ])('%s: waits until 09:00 London', (_label, nowIso, expected) => {
+    expect(resolveQuietHoursWait(new Date(nowIso))?.toISOString()).toBe(expected)
+  })
+
+  it.each([
+    ['09:00 London exactly', '2026-09-21T08:00:00.000Z'],
+    ['20:54 London', '2026-09-20T19:54:00.000Z'],
+    ['midday on the autumn clock-change Sunday', '2026-10-25T12:00:00.000Z'],
+    ['midday on the spring clock-change Sunday', '2027-03-28T11:00:00.000Z'],
+  ])('%s: sends now', (_label, nowIso) => {
+    expect(resolveQuietHoursWait(new Date(nowIso))).toBeNull()
   })
 })
 
