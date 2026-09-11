@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohViewMode } from '../types'
-import { formatNextEventUrgency, getLondonDateIso, shiftIsoDate } from '../utils'
+import { formatNextEventUrgency, shiftIsoDate } from '../utils'
 
 type FohHeaderProps = {
   date: string
@@ -13,6 +13,8 @@ type FohHeaderProps = {
   canEdit: boolean
   styleVariant: FohStyleVariant
   clockNow: Date
+  /** The service date in force: the night before, from midnight until an after-midnight close. */
+  serviceDateNow: string
   totals: { bookings: number; covers: number }
   viewMode: FohViewMode
   outsideCount: number
@@ -40,6 +42,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     canEdit,
     styleVariant,
     clockNow,
+    serviceDateNow,
     totals,
     viewMode,
     outsideCount,
@@ -55,10 +58,9 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
   } = props
 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
-  const londonTodayIso = getLondonDateIso(clockNow)
-  const viewingToday = date === londonTodayIso
+  const viewingToday = date === serviceDateNow
   const openNowCreateModal = (mode: FohCreateMode) => {
-    setDate(londonTodayIso)
+    setDate(serviceDateNow)
     lastInteractionAtMsRef.current = Date.now()
     onOpenCreateModal({ mode })
   }
@@ -211,7 +213,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             <button
               type="button"
               onClick={() => {
-                setDate(getLondonDateIso())
+                setDate(serviceDateNow)
                 lastInteractionAtMsRef.current = Date.now()
               }}
               className={daySwitchButtonClass}
@@ -327,7 +329,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
       {!viewingToday && (
         <div className={cn('rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
           Viewing <span className="font-semibold">{date}</span>. This screen returns to{' '}
-          <span className="font-semibold">{londonTodayIso}</span> after 5 minutes of inactivity.
+          <span className="font-semibold">{serviceDateNow}</span> after 5 minutes of inactivity.
         </div>
       )}
 

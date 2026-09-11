@@ -14,6 +14,15 @@ vi.mock('@/lib/foh/api-auth', () => ({
   getLondonDateIso: vi.fn(() => '2026-02-16'),
 }))
 
+// An ordinary day on 12:00 to 22:00, so the service in force is the pinned date and every
+// clock time sits on it. The real serviceInstantFor still places the walk-in's start.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  resolveTradingDayNow: vi.fn(async () => ({ date: '2026-02-16', until: new Date('2026-02-17T00:00:00Z') })),
+  loadTradingHours: vi.fn(async (_db: unknown, dates: string[]) =>
+    new Map(dates.map((date) => [date, { opens: '12:00:00', closes: '22:00:00', is_closed: false }]))),
+}))
+
 vi.mock('@/lib/sms/customers', () => ({
   ensureCustomerForPhone: vi.fn(),
 }))
