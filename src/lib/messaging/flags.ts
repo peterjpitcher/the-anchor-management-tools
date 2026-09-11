@@ -18,6 +18,9 @@ import { logger } from '@/lib/logger'
  */
 export const MESSAGING_FLAG_KEYS = [
   'event_promo_last_push',
+  // Only read while event_promo_last_push is on: guests with no usable email address keep
+  // the 7-day intro text, inside the same two-a-month cap.
+  'event_promo_intro_sms_no_email',
   'table_cancelled_email_first',
   'table_deposit_confirmed_email_first',
   'table_party_size_deposit_email_first',

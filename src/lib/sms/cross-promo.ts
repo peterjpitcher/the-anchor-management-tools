@@ -13,6 +13,18 @@ import { EventMarketingService } from '@/services/event-marketing'
 import { logger } from '@/lib/logger'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { countSmsSegments, normaliseToGsm7 } from '@/lib/sms/gsm7'
+import {
+  decideLastPushCapacity,
+  EVENT_LAST_PUSH_PAID_TEMPLATE_KEY,
+  EVENT_LAST_PUSH_TEMPLATE_KEY,
+  EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS,
+  EVENT_PROMO_TEXT_CAP,
+  EVENT_PROMO_TEXT_CAP_WINDOW_DAYS,
+  isUnderPromoTextCap,
+  loadCustomerIdsWithoutUsableEmail,
+  loadPromoTextCounts,
+  warnPromoHeldBack,
+} from '@/lib/sms/event-promo-policy'
 
 // Reply-to-book windows stay open until the event starts (see computeReplyWindowExpiry),
 // bounded above by this safety cap for when the start time is unknown or far off.
@@ -189,6 +201,20 @@ export type SendCrossPromoResult = {
   errors: number
   aborted?: boolean
 }
+
+/**
+ * Which promotion is being sent.
+ *
+ * - 'intro': today's 7-day intro, exactly as before. The default, and the only mode used while
+ *   the messaging flag `event_promo_last_push` is off.
+ * - 'last_push': the one text the owner's 11 September 2026 policy allows, 0 to 3 days out,
+ *   only while fewer than a quarter of the seats are booked, inside the two-a-month cap.
+ * - 'intro_no_email': today's intro, but only to guests with no usable email address and
+ *   inside the same cap (flag `event_promo_intro_sms_no_email`, with the last push on).
+ *
+ * See src/lib/sms/event-promo-policy.ts for the rules themselves.
+ */
+export type CrossPromoMode = 'intro' | 'last_push' | 'intro_no_email'
 
 function isPaidEvent(paymentMode: string): boolean {
   return paymentMode === 'prepaid'
@@ -407,14 +433,17 @@ export async function sendCrossPromoForEvent(
     payment_mode: string
     category_id: string | null
   },
-  options?: { startTime?: number; maxRecipients?: number }
+  options?: { startTime?: number; maxRecipients?: number; mode?: CrossPromoMode }
 ): Promise<SendCrossPromoResult> {
   const db = createAdminClient()
   const stats: SendCrossPromoResult = { sent: 0, skipped: 0, errors: 0 }
+  const mode: CrossPromoMode = options?.mode ?? 'intro'
+  // The owner's 11 September 2026 policy: any past attendance, and the two-a-month cap.
+  const underTextCap = mode !== 'intro'
 
   if (!event.category_id) {
     logger.info('Cross-promo skipped: event has no category_id', {
-      metadata: { eventId: event.id, eventName: event.name },
+      metadata: { eventId: event.id, eventName: event.name, mode },
     })
     stats.skipped += 1
     return stats
@@ -428,8 +457,16 @@ export async function sendCrossPromoForEvent(
 
   if (capacityError) {
     logger.warn('Cross-promo: failed to load capacity snapshot; skipping event', {
-      metadata: { eventId: event.id, error: capacityError.message },
+      metadata: { eventId: event.id, error: capacityError.message, mode },
     })
+    if (mode === 'last_push') {
+      warnPromoHeldBack('Event last push skipped: capacity snapshot failed', {
+        eventId: event.id,
+        reason: 'snapshot_error',
+        code: capacityError.code ?? null,
+        message: capacityError.message ?? null,
+      })
+    }
     stats.skipped += 1
     return stats
   }
@@ -438,7 +475,27 @@ export async function sendCrossPromoForEvent(
     (r) => r.event_id === event.id
   )
 
-  if (capacityRow) {
+  if (mode === 'last_push') {
+    // Fewer than a quarter booked, strictly, or no push. No capacity, a missing row or a row
+    // without seats remaining also means no push: the rule cannot be checked, so it fails closed.
+    const capacityDecision = decideLastPushCapacity(capacityRow)
+    if (!capacityDecision.allowed) {
+      const detail = {
+        eventId: event.id,
+        reason: capacityDecision.reason,
+        capacity: capacityDecision.capacity,
+        booked: capacityDecision.booked,
+      }
+      if (capacityDecision.reason === 'quarter_or_more_booked') {
+        // The rule working as intended: a busy night gets no text.
+        logger.info('Event last push skipped: a quarter or more of the seats are booked', { metadata: detail })
+      } else {
+        warnPromoHeldBack('Event last push skipped: capacity could not be checked', detail)
+      }
+      stats.skipped += 1
+      return stats
+    }
+  } else if (capacityRow) {
     const seatsRemaining = capacityRow.seats_remaining // null = unlimited capacity
     if (seatsRemaining !== null && seatsRemaining !== undefined && seatsRemaining <= 0) {
       logger.info('Cross-promo skipped: event is sold out', {
@@ -461,10 +518,13 @@ export async function sendCrossPromoForEvent(
   const { data: audience, error: audienceError } = await db.rpc('get_cross_promo_audience', {
     p_event_id: event.id,
     p_category_id: event.category_id,
-    p_recency_days: EVENT_PROMO_CATEGORY_RECENCY_DAYS,
-    p_general_recency_days: EVENT_PROMO_GENERAL_RECENCY_DAYS,
-    p_frequency_window_days: EVENT_PROMO_FREQUENCY_WINDOW_DAYS,
-    p_max_events_per_window: EVENT_PROMO_MAX_EVENTS_PER_WINDOW,
+    // Under the cap the audience is anyone who has attended any past event, however long ago,
+    // and the function's own frequency filter is set to the cap (two events in 30 days). The
+    // text count below is the exact cap; this only keeps capped guests out of the row limit.
+    p_recency_days: underTextCap ? EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS : EVENT_PROMO_CATEGORY_RECENCY_DAYS,
+    p_general_recency_days: underTextCap ? EVENT_PROMO_ANY_ATTENDANCE_RECENCY_DAYS : EVENT_PROMO_GENERAL_RECENCY_DAYS,
+    p_frequency_window_days: underTextCap ? EVENT_PROMO_TEXT_CAP_WINDOW_DAYS : EVENT_PROMO_FREQUENCY_WINDOW_DAYS,
+    p_max_events_per_window: underTextCap ? EVENT_PROMO_TEXT_CAP : EVENT_PROMO_MAX_EVENTS_PER_WINDOW,
     p_max_recipients: Math.max(
       1,
       Math.min(options?.maxRecipients ?? EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT)
@@ -473,18 +533,68 @@ export async function sendCrossPromoForEvent(
 
   if (audienceError) {
     logger.warn('Cross-promo: failed to load audience; skipping event', {
-      metadata: { eventId: event.id, error: audienceError.message },
+      metadata: { eventId: event.id, error: audienceError.message, mode },
     })
     stats.skipped += 1
     return stats
   }
 
-  const audienceRows = (audience as CrossPromoAudienceRow[] | null) ?? []
+  let audienceRows = (audience as CrossPromoAudienceRow[] | null) ?? []
   if (audienceRows.length === 0) {
     logger.info('Cross-promo: no eligible audience for event', {
-      metadata: { eventId: event.id },
+      metadata: { eventId: event.id, mode },
     })
     return stats
+  }
+
+  if (mode === 'intro_no_email') {
+    // Guests who can be emailed hear about the event from the guest campaigns instead.
+    const withoutEmail = await loadCustomerIdsWithoutUsableEmail(
+      db,
+      audienceRows.map((row) => row.customer_id)
+    )
+    if (!withoutEmail) {
+      stats.skipped += audienceRows.length
+      return stats
+    }
+    audienceRows = audienceRows.filter((row) => withoutEmail.has(row.customer_id))
+    if (audienceRows.length === 0) {
+      logger.info('Event intro for guests without email: everyone in the audience can be emailed', {
+        metadata: { eventId: event.id },
+      })
+      return stats
+    }
+  }
+
+  if (underTextCap) {
+    // At most two promotional texts per person in any 30 days. A failed count sends nothing.
+    const textCounts = await loadPromoTextCounts(
+      db,
+      audienceRows.map((row) => row.customer_id)
+    )
+    if (!textCounts) {
+      warnPromoHeldBack('Cross-promo: promo text cap could not be checked; skipping event', {
+        eventId: event.id,
+        mode,
+        reason: 'cap_unavailable',
+      })
+      stats.skipped += audienceRows.length
+      return stats
+    }
+
+    const withinCap = audienceRows.filter((row) => isUnderPromoTextCap(textCounts, row.customer_id))
+    const capped = audienceRows.length - withinCap.length
+    if (capped > 0) {
+      stats.skipped += capped
+      logger.info('Cross-promo: guests skipped by the two-a-month promo text cap', {
+        metadata: { eventId: event.id, mode, capped },
+      })
+    }
+
+    audienceRows = withinCap
+    if (audienceRows.length === 0) {
+      return stats
+    }
   }
 
   // 3. For paid events, generate one short link shared by all recipients
@@ -549,7 +659,15 @@ export async function sendCrossPromoForEvent(
     let messageBody: string
     let templateKey: string
 
-    if (isGeneral) {
+    if (mode === 'last_push') {
+      // The existing date-based copy ("{event} is on Fri 18 Sept, 7pm"), which reads correctly
+      // at any distance up to the day itself. The 24-hour builders say "tomorrow" and would not.
+      // Copy review is a separate piece of work.
+      templateKey = isPaid ? EVENT_LAST_PUSH_PAID_TEMPLATE_KEY : EVENT_LAST_PUSH_TEMPLATE_KEY
+      messageBody = isPaid
+        ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
+        : buildGeneralFreeMessage(firstName, event.name, eventDate, eventTime, priceText)
+    } else if (isGeneral) {
       templateKey = isPaid ? TEMPLATE_GENERAL_PROMO_PAID : TEMPLATE_GENERAL_PROMO_FREE
       messageBody = isPaid
         ? buildGeneralPaidMessage(firstName, event.name, eventDate, eventLink!, eventTime)
@@ -597,6 +715,14 @@ export async function sendCrossPromoForEvent(
           error: insertError.message,
         },
       })
+    }
+
+    // The last push is the only text for the event, so it opens no follow-up sequence. Writing
+    // one would let the 24-hour follow-up text these guests again if the flag were switched
+    // off before the event: get_follow_up_recipients reads promo_sequence.
+    if (mode === 'last_push') {
+      stats.sent += 1
+      continue
     }
 
     // Insert promo sequence row for follow-up tracking
