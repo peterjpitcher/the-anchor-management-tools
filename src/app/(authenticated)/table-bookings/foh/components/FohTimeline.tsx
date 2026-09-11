@@ -158,8 +158,14 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
       <div className={swimlaneHeaderRowClass}>
         <h3 className="text-sm font-semibold text-gray-900">Table availability swimlanes</h3>
         <p className={cn('text-gray-500', isManagerKioskStyle ? 'text-[10px]' : 'text-xs')}>
-          Service window {schedule?.service_window?.start_time || '09:00'} - {schedule?.service_window?.end_time || '23:00'}
-          {schedule?.service_window?.end_next_day ? ' (+1 day)' : ''}
+          {schedule?.service_window?.source === 'closed' ? (
+            'Closed all day'
+          ) : (
+            <>
+              Service window {schedule?.service_window?.start_time || '09:00'} - {schedule?.service_window?.end_time || '23:00'}
+              {schedule?.service_window?.end_next_day ? ' (+1 day)' : ''}
+            </>
+          )}
         </p>
       </div>
 
