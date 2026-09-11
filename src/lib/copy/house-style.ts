@@ -146,6 +146,30 @@ const BANNED_CLAIMS: Rule[] = [
       'after the event. It is never taken off the bill, and it replaces the group deposit. SSOT §11, §16.',
   },
   {
+    rule: 'retired-pie-roast',
+    severity: 'error',
+    pattern: /\bpie roasts?\b/gi,
+    message:
+      'The pie roasts are off the Sunday menu (owner, 11 September 2026). The weekday pies are ' +
+      'still served; the Sunday roast is beef, pork, turkey and the Wellington. SSOT §4.',
+  },
+  {
+    rule: 'access-steps',
+    severity: 'error',
+    pattern: /garden has steps|steps (?:from|down from|up from) the bar|steps (?:down|up) (?:to|into) the (?:beer )?garden/gi,
+    message:
+      "There is one step, between the bar and the garden, and the garden is step free from the " +
+      'car park. Use the SSOT §16 "Getting in and around" wording.',
+  },
+  {
+    rule: 'accessible-toilet-claim',
+    severity: 'error',
+    // Only a claim. "We don't have an accessible toilet" is the right sentence and must pass.
+    pattern: /(?<!\b(?:no|not|don't|do not|doesn't|does not|without)\b[^.!?]{0,30})\baccessible (?:toilets?|loos?|wc)\b/gi,
+    message:
+      "We don't have an accessible toilet. Say so, with the number to call, as in SSOT §16.",
+  },
+  {
     rule: 'menu-released-later',
     severity: 'error',
     pattern: /released closer to the time/gi,
