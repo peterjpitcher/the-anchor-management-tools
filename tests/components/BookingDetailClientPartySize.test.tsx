@@ -168,6 +168,105 @@ describe('BookingDetailClient party size changes', () => {
     )
   })
 
+  async function saveNewPartySize(user: ReturnType<typeof userEvent.setup>, size: string) {
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/move-table`, { cache: 'no-store' })
+    })
+    await user.click(screen.getByRole('button', { name: 'Edit party size' }))
+    await user.clear(screen.getByLabelText('New party size'))
+    await user.type(screen.getByLabelText('New party size'), size)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalled()
+    })
+  }
+
+  it('says the deposit link went by SMS on the text-only path, as before', async () => {
+    requestTableBookingActionMock.mockResolvedValue({ success: true, depositRequired: true, smsSent: true })
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+
+    await saveNewPartySize(user, '9')
+
+    expect(toast.success).toHaveBeenCalledWith('Party size updated. Deposit link sent by SMS.')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('names the channel that reached the guest on the email-first path', async () => {
+    requestTableBookingActionMock.mockResolvedValue({
+      success: true,
+      depositRequired: true,
+      smsSent: false,
+      depositNotification: { status: 'sent', channel: 'email', fallbackUsed: false, error: null },
+    })
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+
+    await saveNewPartySize(user, '9')
+
+    expect(toast.success).toHaveBeenCalledWith('Party size updated. Deposit link sent by email.')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('warns staff to send the link themselves when it reached nobody', async () => {
+    requestTableBookingActionMock.mockResolvedValue({
+      success: true,
+      depositRequired: true,
+      smsSent: false,
+      depositNotification: { status: 'failed', channel: null, fallbackUsed: false, error: 'Twilio 21610' },
+    })
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+
+    await saveNewPartySize(user, '9')
+
+    expect(toast.success).toHaveBeenCalledWith('Party size updated. Deposit link created.')
+    expect(toast.error).toHaveBeenCalledWith(
+      'We could not reach the guest about the deposit by email or text. Please contact them. Copy the deposit link from this booking to send it.',
+      { duration: 10000 }
+    )
+  })
+
+  it('warns staff when a cancelled booking\'s guest could not be told', async () => {
+    requestTableBookingActionMock.mockResolvedValue({
+      success: true,
+      data: { id: BOOKING_ID, status: 'cancelled' },
+      guest_notification: { status: 'no_channel', channel: null, fallbackUsed: false, error: 'no_channel_available' },
+    })
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+
+    await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel Booking' }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'The guest has no email address or mobile number we can use, so they have not been told about the cancellation. Please contact them.',
+        { duration: 10000 }
+      )
+    })
+    expect(requestTableBookingActionMock).toHaveBeenCalledWith(`/api/boh/table-bookings/${BOOKING_ID}/status`, {
+      body: { action: 'cancelled' },
+    })
+  })
+
+  it('shows nothing new when a cancellation comes back from the text-only path', async () => {
+    requestTableBookingActionMock.mockResolvedValue({ success: true, data: { id: BOOKING_ID, status: 'cancelled' } })
+    const user = userEvent.setup()
+    render(<BookingDetailClient booking={makeBooking()} canEdit canManage canRefund={false} />)
+
+    await user.click(screen.getByRole('button', { name: 'Cancel booking' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel Booking' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Booking updated')
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it('still saves (letting the server auto-move) when no larger table setup is offered', async () => {
     // Availability returns no options — Save must remain usable so the server can try the
     // auto-move and surface a clear reason, rather than dead-ending on a disabled button.

@@ -38,6 +38,7 @@ import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
 import { FohChangeTimeModal } from './components/FohChangeTimeModal'
 import {
+  describeGuestNotificationChannel,
   describeGuestNotificationProblem,
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
@@ -46,10 +47,18 @@ import {
 function describeGuestNotReached(result: unknown): string | null {
   const payload = result && typeof result === 'object' ? (result as Record<string, unknown>) : null
   if (!payload) return null
-  return describeGuestNotificationProblem(
+
+  const cancellation = describeGuestNotificationProblem(
     readGuestNotificationOutcome(payload.guest_notification),
     'about the cancellation'
   )
+  if (cancellation) return cancellation
+
+  const transition = payload.depositTransition && typeof payload.depositTransition === 'object'
+    ? (payload.depositTransition as Record<string, unknown>)
+    : null
+  const deposit = describeGuestNotificationProblem(readGuestNotificationOutcome(transition?.notification), 'about the deposit')
+  return deposit ? `${deposit} Copy the deposit link from the booking to send it.` : null
 }
 
 export function FohScheduleClient({
@@ -293,8 +302,15 @@ export function FohScheduleClient({
 
     if (transition?.state === 'deposit_required') {
       const depositUrl = typeof transition.depositUrl === 'string' ? transition.depositUrl : null
-      const smsSent = transition.smsSent === true
-      return `${successMessage}. Deposit is now required${smsSent ? ' and the payment link was sent by SMS' : ''}${depositUrl ? `: ${depositUrl}` : '.'}`
+      // The email-first path (flag table_party_size_deposit_email_first) says which channel
+      // reached the guest; without it, the old SMS wording.
+      const notification = readGuestNotificationOutcome(transition.notification)
+      const sentBy = notification
+        ? describeGuestNotificationChannel(notification)
+        : transition.smsSent === true
+          ? 'by SMS'
+          : null
+      return `${successMessage}. Deposit is now required${sentBy ? ` and the payment link was sent ${sentBy}` : ''}${depositUrl ? `: ${depositUrl}` : '.'}`
     }
 
     if (transition?.state === 'deposit_cleared') {

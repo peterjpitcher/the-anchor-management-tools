@@ -19,6 +19,7 @@ import {
 } from '@/lib/table-bookings/ui'
 import { requestTableBookingAction } from '@/lib/table-bookings/client-actions'
 import {
+  describeGuestNotificationChannel,
   describeGuestNotificationProblem,
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
@@ -731,6 +732,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           depositUrl?: string | null
           smsSent?: boolean
           warning?: string | null
+          depositNotification?: unknown
           data?: { auto_moved_table_name?: string | null }
         }>(`/api/boh/table-bookings/${booking.id}/party-size`, {
           body: {
@@ -748,6 +750,15 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
         })
         setPartySizeEditOpen(false)
         setPartySizeMoveTableId('')
+        // Email-first path only (flag table_party_size_deposit_email_first): if the link reached
+        // nobody, staff must send it themselves.
+        const depositProblem = describeGuestNotificationProblem(
+          readGuestNotificationOutcome(payload.depositNotification),
+          'about the deposit'
+        )
+        if (depositProblem) {
+          toast.error(`${depositProblem} Copy the deposit link from this booking to send it.`, { duration: 10000 })
+        }
         return payload
       },
       (payload) => {
@@ -757,6 +768,13 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           return `${prefix}${payload.warning}`
         }
         if (payload.depositRequired) {
+          const notification = readGuestNotificationOutcome(payload.depositNotification)
+          if (notification) {
+            const channel = describeGuestNotificationChannel(notification)
+            return channel
+              ? `${prefix}Party size updated. Deposit link sent ${channel}.`
+              : `${prefix}Party size updated. Deposit link created.`
+          }
           return payload.smsSent
             ? `${prefix}Party size updated. Deposit link sent by SMS.`
             : `${prefix}Party size updated. Deposit link created.`
