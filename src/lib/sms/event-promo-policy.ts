@@ -15,13 +15,13 @@
  *
  * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address (anyone
  * the guest marketing campaigns would not reach) still get today's 7-day intro text, inside the
- * same two-a-month cap.
+ * same two-a-month cap and one-a-day limit.
  *
  * When the flags row cannot be read, the cron sends no promotion texts at all in that run.
  *
  * Everything here is pure or a single read, so the rules can be tested without a cron, a clock
  * or Twilio. The cron decides which events to look at; `sendCrossPromoForEvent` applies the
- * capacity rule and the cap to each one.
+ * capacity rule, the cap and the daily limit to each one.
  */
 
 import type { createAdminClient } from '@/lib/supabase/admin'
