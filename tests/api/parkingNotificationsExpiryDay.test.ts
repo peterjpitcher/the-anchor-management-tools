@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * The cron runs every 15 minutes and sends the day-before payment reminder once fewer than 24
  * hours remain before the payment deadline. sendSMS holds anything sent from 21:00 to 09:00
  * London until 09:00, so for an offer due after about 20:45 the text arrived on the day it
- * expired, still saying "expires tomorrow". It now names the day the customer reads it on, and
- * is not sent if it could only arrive once the offer has gone.
+ * expired, still saying "expires tomorrow". It now names the day the customer reads it on and
+ * the time it expires, and is not sent if it could only arrive once the offer has gone.
  */
 
 vi.mock('@/lib/cron-auth', () => ({
@@ -102,8 +102,9 @@ function expiryTexts(): string[] {
     .map(([, body]) => body)
 }
 
-const text = (day: 'today' | 'tomorrow') =>
-  `The Anchor: Sam! Your parking offer expires ${day}, £25.00 for 3 Apr 2027, 09:00 to 10 Apr 2027, 17:00. Last chance: Sort it here: ${PAY_LINK}`
+/** The day as the customer reads it, and the deadline's London time. */
+const text = (day: 'today' | 'tomorrow', time: string) =>
+  `The Anchor: Sam! Your parking offer expires ${day} at ${time}, £25.00 for 3 Apr 2027, 09:00 to 10 Apr 2027, 17:00. Last chance: Sort it here: ${PAY_LINK}`
 
 describe('parking day-before payment reminder: the day it names', () => {
   beforeEach(() => {
@@ -120,45 +121,53 @@ describe('parking day-before payment reminder: the day it names', () => {
     // inside 24 hours, outside quiet hours.
     await runCronAt('2026-09-15T09:00:00Z', offerDueAt('2026-09-16T09:00:00Z'))
 
-    expect(expiryTexts()).toEqual([text('tomorrow')])
+    expect(expiryTexts()).toEqual([text('tomorrow', '10:00')])
   })
 
   it('says today for an offer due at 22:00, held from 22:00 the night before until 09:00', async () => {
     await runCronAt('2026-09-15T21:00:00Z', offerDueAt('2026-09-16T21:00:00Z'))
 
-    expect(expiryTexts()).toEqual([text('today')])
+    expect(expiryTexts()).toEqual([text('today', '22:00')])
   })
 
   it('an offer due at 20:45 is still sent at 20:45 the day before and says tomorrow', async () => {
     await runCronAt('2026-09-15T19:45:00Z', offerDueAt('2026-09-16T19:45:00Z'))
 
-    expect(expiryTexts()).toEqual([text('tomorrow')])
+    expect(expiryTexts()).toEqual([text('tomorrow', '20:45')])
   })
 
   it('an offer due at 20:50 is first due at the 21:00 run, held until 09:00, and says today', async () => {
     await runCronAt('2026-09-15T20:00:00Z', offerDueAt('2026-09-16T19:50:00Z'))
 
-    expect(expiryTexts()).toEqual([text('today')])
+    expect(expiryTexts()).toEqual([text('today', '20:50')])
+  })
+
+  it('gives the time for a deadline in the small hours, so "tomorrow" cannot read as all day', async () => {
+    // Due 02:00 BST on Wednesday 16 September: the 02:00 run on the Tuesday is held until 09:00
+    // Tuesday, the day before.
+    await runCronAt('2026-09-15T01:00:00Z', offerDueAt('2026-09-16T01:00:00Z'))
+
+    expect(expiryTexts()).toEqual([text('tomorrow', '02:00')])
   })
 
   it('on Sunday 25 October 2026 an offer due at 20:00 GMT is first due at 21:00 BST on the Saturday and says today', async () => {
     // The clocks go back overnight, so 24 hours before 20:00 GMT is 21:00 BST, in quiet hours.
     await runCronAt('2026-10-24T20:00:00Z', offerDueAt('2026-10-25T20:00:00Z'))
 
-    expect(expiryTexts()).toEqual([text('today')])
+    expect(expiryTexts()).toEqual([text('today', '20:00')])
   })
 
   it('on Sunday 28 March 2027 an offer due at 21:30 BST is first due at 20:30 GMT on the Saturday and says tomorrow', async () => {
     // The clocks go forward overnight, so 24 hours before 21:30 BST is 20:30 GMT, before quiet hours.
     await runCronAt('2027-03-27T20:30:00Z', offerDueAt('2027-03-28T20:30:00Z'))
 
-    expect(expiryTexts()).toEqual([text('tomorrow')])
+    expect(expiryTexts()).toEqual([text('tomorrow', '21:30')])
   })
 
   it('on Sunday 28 March 2027 an offer due at 22:00 BST is held from 21:00 GMT and says today', async () => {
     await runCronAt('2027-03-27T21:00:00Z', offerDueAt('2027-03-28T21:00:00Z'))
 
-    expect(expiryTexts()).toEqual([text('today')])
+    expect(expiryTexts()).toEqual([text('today', '22:00')])
   })
 
   it('sends nothing when the text could only arrive after the offer has expired', async () => {
