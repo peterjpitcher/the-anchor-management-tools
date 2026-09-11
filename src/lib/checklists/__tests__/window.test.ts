@@ -45,6 +45,22 @@ describe('expandInstants (spec 5.3)', () => {
     if (!('opensAt' in r)) throw new Error('expected a window')
     expect(r.opensAt.toISOString()).toBe('2026-07-17T15:00:00.000Z')
   })
+  it('closes a 1am night at the first 1am when the clocks go back, not the second', () => {
+    // Saturday 24 October 2026: 01:00 BST is 00:00 UTC; the repeated 01:00 GMT is an hour later.
+    const r = expandInstants('2026-10-24', '12:00', '01:00')
+    if (!('opensAt' in r)) throw new Error('expected a window')
+    expect(r.opensAt.toISOString()).toBe('2026-10-24T11:00:00.000Z')
+    expect(r.closesAt.toISOString()).toBe('2026-10-25T00:00:00.000Z')
+  })
+  it('closes a 1am night when the clock jumps on the night the clocks go forward, not at midnight', () => {
+    // Saturday 27 March 2027: 1am never shows; the clock jumps from 00:59 GMT to 02:00 BST at 01:00 UTC.
+    const r = expandInstants('2027-03-27', '12:00', '01:00')
+    if (!('opensAt' in r)) throw new Error('expected a window')
+    expect(r.closesAt.toISOString()).toBe('2027-03-28T01:00:00.000Z')
+  })
+  it('refuses a time it cannot read', () => {
+    expect(expandInstants('2026-07-17', '16:00', '25:00')).toEqual({ error: 'invalid_hours' })
+  })
 })
 
 describe('businessDayBounds', () => {
