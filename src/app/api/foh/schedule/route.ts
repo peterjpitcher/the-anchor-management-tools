@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
+import { whenLondonClockReaches } from '@/lib/dateUtils'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -74,13 +75,12 @@ function shiftIsoDate(dateIso: string, dayDelta: number): string {
   return parsed.toISOString().slice(0, 10)
 }
 
+// The first moment the London clock shows the time, which is how a start or finish on the wall
+// reads. fromZonedTime lands an hour out for 01:00 to 01:59 on both clock-change nights.
 function toLondonIso(dateIso: string | null, clock: string | null, fallbackClock: string): string | null {
   if (!dateIso || !isIsoDate(dateIso)) return null
   const normalizedClock = normalizeClock(clock) || fallbackClock
-  const zoned = fromZonedTime(`${dateIso}T${normalizedClock}:00`, 'Europe/London')
-  const parsedMs = zoned.getTime()
-  if (!Number.isFinite(parsedMs)) return null
-  return zoned.toISOString()
+  return whenLondonClockReaches(dateIso, normalizedClock)?.toISOString() ?? null
 }
 
 function addMinutesToClock(clock: string, minutesToAdd: number): string {
@@ -121,8 +121,12 @@ function computePrivateBookingWindow(privateBooking: any): { startIso: string; e
     return null
   }
 
+  // An end at or before the start is the same clock time on the next day. Read off the clock
+  // on that date rather than adding 24 hours, which is an hour out across a clock change.
   if (endMs <= startMs) {
-    endMs += 24 * 60 * 60 * 1000
+    const nextDayEndIso = toLondonIso(shiftIsoDate(eventDate as string, 1), endTime || fallbackEnd, fallbackEnd)
+    if (!nextDayEndIso) return null
+    endMs = Date.parse(nextDayEndIso)
   }
 
   const bufferedStartMs = startMs - 30 * 60 * 1000
