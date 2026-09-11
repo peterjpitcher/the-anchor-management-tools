@@ -54,8 +54,8 @@ WHERE bc.eligibility_status = 'eligible' AND bc.marketing_status = 'subscribed';
      userId,
    )
    ```
-4. **Let the owner read it in the UI** at `/marketing/campaigns/<id>`. He reviews in situ, not
-   as pasted text, and he does review properly, so expect changes.
+4. **Let the owner read it in the UI** at `/marketing/campaigns/<id>`. The owner reviews in situ, not
+   as pasted text, and reviews properly, so expect changes.
 5. **Schedule it.** `scheduleCampaign(id, isoWithOffset, userId)` freezes the content hash,
    provisions the short links and records the approved count.
 
@@ -307,15 +307,18 @@ These came from real review rounds. Ignoring them means a rewrite.
   email is a harder promise to keep.
 - **The footer reason must be true for that audience.** Guests are on the list via consent *or*
   a booking, so do not tell them all they booked. Business contacts never booked at all. Keep
-  the tone friendly: he rejected a version that "sounds like a legal nightmare".
+  the tone friendly: the owner rejected a version that "sounds like a legal nightmare".
 - **Facts come from live sources**, the `business_hours` rows and the website's `docs/SSOT.md`,
   never from the designer handover, which is stale on capacity, pricing and hours.
 - **The voice lives in the website repo's `docs/SSOT.md` §1, not here.** That is the source.
   What follows are the email-specific notes and the corrections the owner has actually made;
   when the two disagree, the SSOT wins and this is the stale copy. Read §1 before writing.
+  The owner confirmed it on 11 September 2026 and added one rule in their own words: it's about
+  them, not us. Every line is written from the reader's side. "Cheeky" is not part of it.
 - **The checkable half is enforced.** `src/lib/copy/house-style.ts` encodes SSOT §1 and §14.
-  Banned claims are errors and `scheduleCampaign` refuses them; voice issues are warnings and
-  show in the campaign UI. `npx tsx scripts/audit-house-style.ts` runs the same rules over the
+  Banned claims are errors and `scheduleCampaign` refuses them for every campaign, the
+  cap-exempt monthly round-ups included (they skipped the check until 11 September 2026);
+  voice issues are warnings and show in the campaign UI. `npx tsx scripts/audit-house-style.ts` runs the same rules over the
   menus, the events and every campaign, which is the part the SSOT could never reach: the
   errors that actually shipped were rows in the database, not copy.
 - **Use contractions.** "We're", "you'll", "there's", "don't". The single fastest way to sound
@@ -325,7 +328,7 @@ These came from real review rounds. Ignoring them means a rewrite.
   "Three nights out before Christmas, the last of the Christmas sittings, and then the quiet
   stretch between the years when the bar is open and the kitchen has earned a rest." Every
   word of it is true and it is entirely about us: our nights, our sittings, our kitchen. What
-  he wants is what the reader gets out of it. "December is finally here, which means we can
+  the owner wants is what the reader gets out of it. "December is finally here, which means we can
   officially stop pretending it's too early to get excited about Christmas. The lights are
   twinkling, the festive drinks are flowing and there's something about this time of year
   that makes even an ordinary evening feel a little more special."
