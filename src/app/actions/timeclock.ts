@@ -12,6 +12,12 @@ import {
   verifyTimeclockPin,
 } from '@/lib/timeclock/pin';
 import { hasPremium } from '@/lib/rota/pay-calculator';
+import { isValidIsoDate } from '@/lib/dateUtils';
+import {
+  keepStoredTimeWhenUnchanged,
+  londonWallClockToInstant,
+  resolveClockOutInstant,
+} from '@/lib/timeclock/session-times';
 // Timeclock names are shown on the kiosk and the manager review screen, never on
 // payroll or contract paperwork, so they use the preferred (display) name.
 import { displayName } from '@/lib/employees/display-name';
@@ -593,17 +599,17 @@ export async function createTimeclockSession(
   if (clockOutTime !== null && !/^\d{2}:\d{2}$/.test(clockOutTime)) {
     return { success: false, error: 'Invalid clock-out time' };
   }
-
-  const clockInUtc = fromZonedTime(new Date(`${workDate}T${clockInTime}:00`), TIMEZONE);
-  let clockOutUtc = clockOutTime
-    ? fromZonedTime(new Date(`${workDate}T${clockOutTime}:00`), TIMEZONE)
-    : null;
-
-  // Automatically handle overnight shifts — if clock-out appears to be before
-  // clock-in, assume it crossed midnight and advance by one day.
-  if (clockOutUtc && clockOutUtc <= clockInUtc) {
-    clockOutUtc = new Date(clockOutUtc.getTime() + 24 * 60 * 60 * 1000);
+  if (!isValidIsoDate(workDate)) {
+    return { success: false, error: 'Invalid work date' };
   }
+
+  // London wall-clock times on the work date. A clock-out not after the clock-in is an
+  // overnight shift and lands on the next London calendar date (see session-times.ts for why
+  // that is never "plus 24 hours", and how the clock-change hours are read).
+  const clockInUtc = londonWallClockToInstant(workDate, clockInTime);
+  if (!clockInUtc) return { success: false, error: 'Invalid clock-in time' };
+  const clockOutUtc = clockOutTime ? resolveClockOutInstant(workDate, clockOutTime, clockInUtc) : null;
+  if (clockOutTime && !clockOutUtc) return { success: false, error: 'Invalid clock-out time' };
 
   const premiumValidation = validateSessionPremium(options?.premium);
   if (!premiumValidation.ok) return { success: false, error: premiumValidation.error };
@@ -701,16 +707,15 @@ export async function updateTimeclockSession(
   if (clockOutTime !== null && !/^\d{2}:\d{2}$/.test(clockOutTime)) {
     return { success: false, error: 'Invalid clock-out time' };
   }
+  if (!isValidIsoDate(workDate)) {
+    return { success: false, error: 'Invalid work date' };
+  }
 
-  const clockInUtc = fromZonedTime(new Date(`${workDate}T${clockInTime}:00`), TIMEZONE);
-  let clockOutUtc = clockOutTime
-    ? fromZonedTime(new Date(`${workDate}T${clockOutTime}:00`), TIMEZONE)
-    : null;
-
-  // Automatically handle overnight shifts — if clock-out appears to be before
-  // clock-in, assume it crossed midnight and advance by one day.
-  if (clockOutUtc && clockOutUtc <= clockInUtc) {
-    clockOutUtc = new Date(clockOutUtc.getTime() + 24 * 60 * 60 * 1000);
+  // Checked before any database work; the clock-out is placed against the final clock-in below.
+  const typedClockIn = londonWallClockToInstant(workDate, clockInTime);
+  if (!typedClockIn) return { success: false, error: 'Invalid clock-in time' };
+  if (clockOutTime !== null && !londonWallClockToInstant(workDate, clockOutTime)) {
+    return { success: false, error: 'Invalid clock-out time' };
   }
 
   const premiumValidation = validateSessionPremium(options?.premium);
@@ -718,13 +723,24 @@ export async function updateTimeclockSession(
 
   const supabase = createAdminClient();
 
-  // Read the current premium so we can PRESERVE it across a pure time/notes edit
-  // and re-clamp its stored window to the (possibly moved) worked interval.
+  // Read the current row: its times, so a time the manager did not change keeps exactly what
+  // was stored, and its premium, so we can PRESERVE it across a pure time/notes edit and
+  // re-clamp its stored window to the (possibly moved) worked interval.
   const { data: existing } = await supabase
     .from('timeclock_sessions')
-    .select('rate_multiplier, rate_override, premium_reason, premium_start_at, premium_end_at')
+    .select('clock_in_at, clock_out_at, rate_multiplier, rate_override, premium_reason, premium_start_at, premium_end_at')
     .eq('id', sessionId)
     .single();
+
+  // The edit forms send both times back as HH:mm on every save, and HH:mm cannot say which
+  // 01:30 it means on the night the clocks go back, so an unchanged time keeps its instant.
+  // A clock-out not after the clock-in is an overnight shift on the next London date.
+  const clockInUtc = keepStoredTimeWhenUnchanged(typedClockIn, existing?.clock_in_at);
+  const typedClockOut = clockOutTime ? resolveClockOutInstant(workDate, clockOutTime, clockInUtc) : null;
+  if (clockOutTime && !typedClockOut) return { success: false, error: 'Invalid clock-out time' };
+  const keptClockOut = typedClockOut ? keepStoredTimeWhenUnchanged(typedClockOut, existing?.clock_out_at) : null;
+  // A stored clock-out is only kept while it is still after the (possibly new) clock-in.
+  const clockOutUtc = keptClockOut && keptClockOut > clockInUtc ? keptClockOut : typedClockOut;
 
   const oldPremium = {
     rate_multiplier: existing?.rate_multiplier ?? null,
