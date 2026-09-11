@@ -1,9 +1,10 @@
 /**
  * The chase rule, and the one cutoff.
  *
- * The collision these pin down is the shipped default: `preorder_cutoff_days` defaults to 7 and the
- * booker reminder goes out 7 days ahead, so on the raw thresholds a guest was asked for their food
- * choices and a manager was told to ring them about not having given any, in the same sweep.
+ * The collision these pin down: `preorder_cutoff_days` defaults to 7, and until 11 September 2026 the
+ * booker reminder also went out 7 days ahead, so on the raw thresholds a guest was asked for their
+ * food choices and a manager was told to ring them about not having given any, in the same sweep.
+ * The reminder now goes out 10 days ahead (owner decision), and the rules still hold if they meet.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -14,10 +15,10 @@ import { resolvePreorderCutoff } from '@/app/g/[token]/table-manage/preorder-dat
 const TODAY = '2026-12-17'
 
 describe('decidePreorderChases', () => {
-  it('asks the booker without also telling the manager, at the shipped default cutoff of 7', () => {
+  it('asks the booker ten days out, three days before a 7-day cutoff locks the form', () => {
     expect(
       decidePreorderChases({
-        daysUntilBooking: 7,
+        daysUntilBooking: 10,
         cutoffDays: 7,
         bookerReminderSentOn: null,
         managerEscalationSent: false,
@@ -107,6 +108,19 @@ describe('decidePreorderChases', () => {
     ).toEqual(['manager_escalation'])
   })
 
+  it('asks the booker when the reminder and the cutoff fall on the same sweep, and holds the manager back', () => {
+    expect(
+      decidePreorderChases({
+        daysUntilBooking: 7,
+        cutoffDays: 7,
+        bookerReminderSentOn: null,
+        managerEscalationSent: false,
+        todayIso: TODAY,
+        preorderClosed: false,
+      }),
+    ).toEqual(['booker_reminder'])
+  })
+
   it('holds the escalation back when the cutoff is longer than the reminder window', () => {
     // A fourteen-day cutoff would otherwise reach the manager before the guest had been asked at all.
     expect(
@@ -150,7 +164,7 @@ describe('decidePreorderChases', () => {
   it('stays quiet until the booking is inside the reminder window', () => {
     expect(
       decidePreorderChases({
-        daysUntilBooking: 8,
+        daysUntilBooking: 11,
         cutoffDays: 7,
         bookerReminderSentOn: null,
         managerEscalationSent: false,

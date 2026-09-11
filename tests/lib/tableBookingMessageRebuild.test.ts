@@ -65,7 +65,7 @@ vi.mock('@/services/short-links', () => ({
 vi.mock('@/lib/table-bookings/preorder', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/table-bookings/preorder')>()
   return {
-    PREORDER_BOOKER_REMINDER_DAYS: 7,
+    PREORDER_BOOKER_REMINDER_DAYS: 10,
     isPreorderEnabled: vi.fn(async () => true),
     decidePreorderChases: vi.fn(() => ['booker_reminder']),
     describePreorderGaps: vi.fn(() => '2 main courses'),
