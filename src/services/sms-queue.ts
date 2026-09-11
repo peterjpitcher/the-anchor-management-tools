@@ -10,6 +10,8 @@ import {
   computeIdempotencyRequestHash,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency';
+import type { ApprovedMessageEmailOutcome } from '@/lib/private-bookings/approved-message';
+import { isMessagingFlagOn } from '@/lib/messaging/flags';
 
 export type QueueSmsInput = {
   booking_id: string;
@@ -993,6 +995,69 @@ export class SmsQueueService {
         ? sms.trigger_type
         : undefined;
 
+    // Email first (P6, flag private_booking_email_first): the approval step stays, and the channel
+    // is chosen now. The email goes only when the booking has a usable address and the email
+    // states exactly what staff approved; otherwise the approved text goes as it always has.
+    let emailFirst: ApprovedMessageEmailOutcome = { status: 'not_attempted', reason: 'flag_off' };
+    if (await isMessagingFlagOn('private_booking_email_first')) {
+      try {
+        const { tryEmailForApprovedPrivateBookingText } = await import('@/lib/private-bookings/approved-message');
+        emailFirst = await tryEmailForApprovedPrivateBookingText({
+          row: {
+            id: sms.id,
+            booking_id: sms.booking_id,
+            trigger_type: sms.trigger_type ?? null,
+            template_key: sms.template_key ?? null,
+            message_body: sms.message_body,
+            metadata: (sms.metadata as Record<string, unknown> | null) ?? null,
+          },
+          performedBy: sms.approved_by ?? null,
+        });
+      } catch (emailFirstError) {
+        console.error('Email-first check for an approved private booking message failed; sending the text:', emailFirstError);
+      }
+    }
+
+    if (emailFirst.status === 'sent') {
+      const { data: emailedRow, error: emailedUpdateError } = await supabase
+        .from('private_booking_sms_queue')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          metadata: {
+            ...((sms.metadata as Record<string, unknown> | null) ?? {}),
+            delivered_by: 'email',
+            delivery_id: emailFirst.deliveryId,
+          },
+          error_message: null
+        })
+        .eq('id', smsId)
+        .eq('status', 'approved')
+        .eq('error_message', dispatchClaim)
+        .select('id')
+        .maybeSingle();
+      if (emailedUpdateError || !emailedRow) {
+        console.error('Approved private booking message was emailed but its queue row was not updated:', emailedUpdateError ?? new Error('Queue row not found'));
+        return { success: true, channel: 'email' as const, code: 'logging_failed', logFailure: true };
+      }
+      return { success: true, channel: 'email' as const };
+    }
+
+    const finishEmailFirst = async (outcome: { sent: boolean; error?: string | null; sid?: string | null }) => {
+      if (emailFirst.status !== 'failed') return;
+      try {
+        const { finishPrivateBookingEmailFirstDelivery } = await import('@/lib/private-bookings/email-first');
+        await finishPrivateBookingEmailFirstDelivery({
+          deliveryId: emailFirst.deliveryId,
+          bookingId: sms.booking_id,
+          templateKey: sms.template_key,
+          sms: { ...outcome, queueId: smsId },
+        });
+      } catch (finishError) {
+        console.error('Failed to record the text fallback for an approved private booking message:', finishError);
+      }
+    };
+
     // Send the SMS
     let result: Awaited<ReturnType<typeof sendSms>>
     try {
@@ -1067,6 +1132,8 @@ export class SmsQueueService {
         console.error('Error writing failed SMS audit log:', failedAuditError);
       }
 
+      await finishEmailFirst({ sent: false, error: result.error });
+
       const { code: sendFailureCode, logFailure: sendFailureLogFailure } = extractSafetyInfo(result);
       const sendFailureError: Error & { code?: string; logFailure?: boolean } = Object.assign(
         new Error(result.error),
@@ -1076,7 +1143,10 @@ export class SmsQueueService {
 
       throw sendFailureError;
     }
-    
+
+    // The text went, whatever happens to the queue row below.
+    await finishEmailFirst({ sent: true, sid: result.sid ?? null });
+
     // Update status to sent
     const updatedMetadata = {
       ...(sms.metadata ?? {}),

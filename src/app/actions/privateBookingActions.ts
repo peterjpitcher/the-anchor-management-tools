@@ -41,6 +41,9 @@ import {
   deleteDeposit,
 } from '@/services/private-bookings'
 import { SmsQueueService } from '@/services/sms-queue' // Still needed for SMS actions
+import { sendStaffOneOffEmail } from '@/lib/email/staff-one-off-email'
+import { isStaffEmailOptionOn } from '@/lib/messaging/staff-email-option'
+import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
 import { sendBookingCalendarInvite, sendDepositPaymentLinkEmail } from '@/lib/email/private-booking-emails'
 
 // Helper function to extract string values from FormData
@@ -2872,6 +2875,114 @@ export async function sendPrivateBookingSms(
     return { success: true }
   } catch (error) {
     logPrivateBookingActionError('Error sending private booking SMS:', error, { bookingId })
+    return { error: getErrorMessage(error) }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Send a manual email for a private booking (P7, flag staff_message_email_option)
+// ---------------------------------------------------------------------------
+
+/**
+ * The email sibling of sendPrivateBookingSms: same permission (private_bookings send or manage).
+ * Goes to the booking's contact email, else the customer's, when usable; recorded on the booking
+ * timeline and in the email log against the booking.
+ */
+export async function sendPrivateBookingEmail(
+  bookingId: string,
+  subject: string,
+  message: string
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+  const [{ data: { user } }, canSend, canManage] = await Promise.all([
+    supabase.auth.getUser(),
+    checkUserPermission('private_bookings', 'send'),
+    checkUserPermission('private_bookings', 'manage'),
+  ])
+
+  if (!canSend && !canManage) {
+    return { error: 'You do not have permission to send messages for private bookings' }
+  }
+
+  if (!user) {
+    return { error: 'You must be signed in to send messages' }
+  }
+
+  if (!(await isStaffEmailOptionOn())) {
+    return { error: 'Emailing guests from here is switched off' }
+  }
+
+  const trimmedSubject = subject?.trim()
+  const trimmedMessage = message?.trim()
+  if (!trimmedSubject) {
+    return { error: 'Subject is required' }
+  }
+  if (!trimmedMessage) {
+    return { error: 'Message body is required' }
+  }
+
+  try {
+    const admin = createAdminClient()
+    const { data: booking, error: fetchError } = await admin
+      .from('private_bookings')
+      .select('id, customer_id, contact_email')
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    if (fetchError || !booking) {
+      return { error: 'Booking not found' }
+    }
+
+    const recipient = await resolvePrivateBookingEmailRecipient(booking, admin)
+    if (!recipient.usable) {
+      return { error: 'This booking has no usable email address' }
+    }
+
+    const result = await sendStaffOneOffEmail({
+      to: recipient.email,
+      subject: trimmedSubject,
+      body: trimmedMessage,
+      customerId: booking.customer_id ?? null,
+      commType: 'private_booking_manual_email',
+      privateBookingId: bookingId,
+      withBookingSignature: true,
+      metadata: { source: 'private_booking_messages_tab', sent_by: user.id },
+    })
+
+    if (!result.success) {
+      logger.error('Manual private booking email failed', {
+        error: new Error(result.error),
+        metadata: { bookingId, userId: user.id },
+      })
+      return { error: result.error }
+    }
+
+    const { error: auditError } = await admin.from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: 'email_sent',
+      field_name: 'email',
+      new_value: 'private_booking_manual_email',
+      metadata: {
+        description: `Sent a manual email: "${trimmedSubject}"`,
+        subject: trimmedSubject,
+        recipient_source: recipient.source,
+        email_message_id: result.emailMessageId,
+      },
+      performed_by: user.id,
+    })
+    if (auditError) {
+      logger.error('Manual private booking email audit row not written', {
+        error: new Error(auditError.message),
+        metadata: { bookingId },
+      })
+    }
+
+    revalidatePath(`/private-bookings/${bookingId}`)
+    revalidatePath(`/private-bookings/${bookingId}/messages`)
+    revalidatePath(`/private-bookings/${bookingId}/communications`)
+    return { success: true }
+  } catch (error) {
+    logPrivateBookingActionError('Error sending private booking email:', error, { bookingId })
     return { error: getErrorMessage(error) }
   }
 }

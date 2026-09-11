@@ -7,7 +7,7 @@ import { Badge } from '@/ds'
 import { EmptyState } from '@/ds'
 import { Alert } from '@/ds'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
-import { ChatBubbleLeftRightIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { ChatBubbleLeftRightIcon, ClockIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 
 export type CommunicationsHistoryRow = {
   id: string
@@ -18,6 +18,27 @@ export type CommunicationsHistoryRow = {
   message_body: string | null
   twilio_sid: string | null
   scheduled_for: string | null
+  /** 'email' when Send Now delivered this approved text as an email instead. */
+  delivered_by?: 'email' | null
+}
+
+export type CommunicationsEmailRow = {
+  id: string
+  created_at: string
+  comm_type: string | null
+  subject: string | null
+  status: string
+  to_address: string | null
+  error: string | null
+}
+
+const UNDELIVERED_EMAIL_STATUSES = new Set(['bounced', 'complained', 'failed', 'suppressed'])
+
+function emailStatusVariant(status: string): StatusVariant {
+  if (UNDELIVERED_EMAIL_STATUSES.has(status)) return 'error'
+  if (status === 'delivered' || status === 'opened' || status === 'clicked') return 'success'
+  if (status === 'sent' || status === 'queued') return 'info'
+  return 'default'
 }
 
 type StatusVariant = 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' | 'secondary' | 'neutral'
@@ -64,10 +85,14 @@ export function CommunicationsTab({
   history,
   scheduled,
   isDateTbd,
+  emails = [],
+  emailsError = null,
 }: {
   history: CommunicationsHistoryRow[]
   scheduled: ScheduledSmsPreview[]
   isDateTbd: boolean
+  emails?: CommunicationsEmailRow[]
+  emailsError?: string | null
 }) {
   return (
     <div className="space-y-8">
@@ -93,7 +118,7 @@ export function CommunicationsTab({
                         {row.trigger_type ?? row.template_key ?? 'Manual'}
                       </span>
                       <Badge variant={statusVariant(row.status)} size="sm">
-                        {statusLabel(row.status)}
+                        {row.delivered_by === 'email' && row.status === 'sent' ? 'Sent by email' : statusLabel(row.status)}
                       </Badge>
                     </div>
                     <time
@@ -112,6 +137,49 @@ export function CommunicationsTab({
                     <p className="mt-1 text-xs text-gray-500">
                       Twilio SID: <code className="font-mono">{row.twilio_sid}</code>
                     </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </Section>
+
+      <Section
+        id="email-history"
+        title="Emails"
+        description="Emails sent about this booking (most recent first), with their delivery status."
+      >
+        <Card>
+          {emailsError ? (
+            <Alert variant="error" description={`Emails could not be loaded: ${emailsError}`} />
+          ) : emails.length === 0 ? (
+            <EmptyState
+              icon={<EnvelopeIcon className="h-10 w-10" aria-hidden="true" />}
+              title="No emails sent yet"
+              description="Emails about this booking will appear here."
+            />
+          ) : (
+            <ul className="divide-y divide-gray-200" aria-label="Email history">
+              {emails.map((email) => (
+                <li key={email.id} className="py-4 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{email.subject || '(no subject)'}</span>
+                      <Badge variant={emailStatusVariant(email.status)} size="sm">
+                        {statusLabel(email.status)}
+                      </Badge>
+                    </div>
+                    <time className="text-xs text-gray-500" dateTime={email.created_at}>
+                      {formatDateTime12Hour(email.created_at)}
+                    </time>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {email.comm_type ?? 'email'}
+                    {email.to_address ? ` to ${email.to_address}` : ''}
+                  </p>
+                  {email.error && UNDELIVERED_EMAIL_STATUSES.has(email.status) && (
+                    <p className="mt-1 text-xs text-red-700">{email.error}</p>
                   )}
                 </li>
               ))}

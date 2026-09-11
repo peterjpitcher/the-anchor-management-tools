@@ -37,6 +37,18 @@ Results: lint clean; `npx tsc --noEmit` clean (it needs `NODE_OPTIONS=--max-old-
 
 Left for later pieces: writing `final_status = 'fallback_sent'` for the daily monitor was not in this brief. `CRON_ALERT_EMAIL` is not in the production environment list, so the new sent-but-unlogged alert reaches the logs only until it is set.
 
+# Email-first messaging P4, P6 and P7, 11 September 2026
+
+Branch `feat/email-first-bookings-2026-09-11` (worktree `OJ-AnchorManagementTools-wt-email-b`), on top of P1. Local commits only. Every guest-visible change sits behind a `messaging_flags` key that reads as off; the only unflagged change is the step 0 bug fix.
+
+- [x] P6 step 0: the queue bulk-cancel stops writing the missing `updated_at` column and checks its error (three paths in `mutations.ts`, one in the expire-holds cron); regression tests. No clean-up of existing stale rows. Gates: lint and tsc clean; 796 files, 7,217 passed and 2 skipped in London and UTC.
+- [x] P4 (`bounce_sms_fallback`): the Resend webhook enqueues one `notification_delayed_fallback` job per bounced, failed or suppressed transactional email; the job claims the delivery once, re-renders the text from the live booking, skips cancelled, past or changed bookings, sends through `sendSMS`, and marks failures with an audit row and a staff alert; "Undelivered guest messages" on `/settings/sms-failures`. Gates: lint and tsc clean; 800 files, 7,253 passed and 2 skipped in London and UTC. No renderer is registered yet: P6 adds the private booking one, and table booking keys from P3 and P5 need theirs before they set `delayedFallbackAllowed`.
+- [x] P6 (`private_booking_email_first`): `sendPrivateBookingMessage` chooses email when the booking has a usable address (contact email first, then the customer's), falls back to the queued text on failure, and records the delivery for P4; every automated caller switched; Send Now chooses the channel at send time; email builders for the text-only messages and the six cancellation variants; waived-deposit wording; emails on the Communications tab and timeline. Gates: lint and tsc clean; 807 files, 7,358 passed and 2 skipped in London and UTC.
+- [x] P7 (`staff_message_email_option`): email choice on the BOH "Message guests" modal, the single-guest card and the private booking Messages tab, defaulting to email for a guest with a usable address; permissions unchanged; toasts show the real outcome. Gates: lint and tsc clean; 811 files, 7,386 passed and 2 skipped in London and UTC.
+- [x] Fixture renders of every new email in London and UTC (no `undefined`, `Invalid Date`, `NaN` or `£0.00`; weekday matches the date): `tests/lib/privateBookingMessageEmails.fixtures.test.ts`, four event dates including both 2026 clock changes.
+- [x] Gates after each piece: lint, `tsc --noEmit`, `npm test`, `npm run test:utc`; uncached build at the end (`rm -rf .next && npm run build` with CI's `NODE_OPTIONS=--max-old-space-size=6144`; the default 4 GB heap runs out during the type check).
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
 # AI event copy builder layout, 6 September 2026
 
 - [x] Inspect live panel and trace card padding.

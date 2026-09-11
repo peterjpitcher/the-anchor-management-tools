@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { escapeHtml, redactPii } from '@/lib/cron/alerting'
 import { sendEmail } from '@/lib/email/emailService'
 import { logger } from '@/lib/logger'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 
 type CommunicationHealthIssue = {
   key: string
@@ -124,6 +125,12 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     ),
   ])
 
+  // Guest messages that reached nobody, including bounced emails whose text fallback failed.
+  // Listed under Settings, SMS failures, "Undelivered guest messages".
+  const undeliveredGuestMessages24h = await countRows('notification_deliveries', (query) =>
+    query.eq('final_status', 'failed').gte('updated_at', last24h)
+  )
+
   const inboundEmail48h = await countRows('email_messages', (query) =>
     query.eq('direction', 'inbound').gte('received_at', last48h)
   )
@@ -143,6 +150,7 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     fallbackSent24h,
     deliveries24h,
     fallbackRate,
+    undeliveredGuestMessages24h,
   }
 
   const issues: CommunicationHealthIssue[] = []
@@ -197,6 +205,17 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
       label: 'Fallback rate',
       rate: fallbackRate,
       threshold: fallbackThreshold,
+    })
+  }
+
+  // One undelivered guest message is worth a person's attention. Raised only once the bounce
+  // fallback is switched on, so deploying this changes no alert.
+  if (undeliveredGuestMessages24h >= 1 && (await isMessagingFlagOn('bounce_sms_fallback'))) {
+    issues.push({
+      key: 'undelivered_guest_messages',
+      label: 'Undelivered guest messages (see Settings, SMS failures)',
+      count: undeliveredGuestMessages24h,
+      threshold: 1,
     })
   }
 

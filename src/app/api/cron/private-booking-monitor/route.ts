@@ -2,7 +2,16 @@ import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { SmsQueueService } from '@/services/sms-queue'
+import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
+import { isPrivateBookingEmailFirstOn } from '@/lib/private-bookings/email-first'
+import { resolvePrivateBookingEmailRecipient } from '@/lib/private-bookings/email-recipient'
+import { buildPrivateBookingMessageFacts } from '@/lib/private-bookings/message-catalogue'
+import {
+  buildBalanceReminderEmail,
+  buildDepositReminderEmail,
+  buildEventReminderEmail,
+  buildReviewRequestEmail,
+} from '@/lib/email/private-booking-emails'
 import { PRIVATE_BOOKING_FEEDBACK_TEMPLATE_KEY } from '@/lib/private-bookings/feedback'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { getSmartFirstName } from '@/lib/sms/bulk'
@@ -98,6 +107,57 @@ function getLondonRunKey(now: Date = new Date()): string {
     month: '2-digit',
     day: '2-digit'
   }).format(now)
+}
+
+/**
+ * With email first on, each pass also reads the columns the email versions need (the address and
+ * the booking details they print). With it off, the queries are exactly as they were.
+ */
+const EMAIL_FIRST_EXTRA_COLUMNS = ['contact_email', 'date_tbd', 'event_type', 'start_time', 'end_time', 'end_time_next_day', 'guest_count']
+
+/**
+ * The rows the passes read. Typed by hand because the column list is built at run time (see
+ * withEmailColumns); every field a pass does not select is simply absent.
+ */
+type MonitorBookingRow = {
+  id: string
+  customer_id: string | null
+  customer_first_name: string | null
+  /** NOT NULL on private_bookings. */
+  customer_name: string
+  contact_phone: string | null
+  contact_email?: string | null
+  customer_mobile?: string | null
+  event_date: string
+  event_type?: string | null
+  start_time?: string | null
+  end_time?: string | null
+  end_time_next_day?: boolean | null
+  guest_count?: number | null
+  date_tbd?: boolean | null
+  internal_notes: string | null
+  hold_expiry?: string | null
+  deposit_amount?: number | null
+  total_amount?: number | null
+  calculated_total?: number | null
+  gross_total?: number | null
+  balance_remaining?: number | null
+  total_balance_paid?: number | null
+  balance_due_date?: string | null
+  final_payment_date?: string | null
+  post_event_outcome?: string | null
+  review_sms_sent_at?: string | null
+  review_processed_at?: string | null
+  status?: string | null
+}
+
+type MonitorRowsResult = { data: MonitorBookingRow[] | null }
+
+function withEmailColumns(columns: string, emailFirst: boolean): string {
+  if (!emailFirst) return columns
+  const present = new Set(columns.split(',').map((column) => column.trim()))
+  const extra = EMAIL_FIRST_EXTRA_COLUMNS.filter((column) => !present.has(column))
+  return extra.length > 0 ? `${columns}, ${extra.join(', ')}` : columns
 }
 
 // Customer-facing dates must always carry the year and go through the shared
@@ -460,14 +520,18 @@ export async function GET(request: Request) {
       })
     }
 
+    // Email first (P6, flag private_booking_email_first): reminders go by email when the booking
+    // has a usable address, and the text only if that email fails.
+    const emailFirst = await isPrivateBookingEmailFirstOn()
+
     // --- PASS 1: REMINDERS (Drafts - Catch-up Logic) ---
     // Find draft bookings where hold_expiry is approaching (<= 7 days)
-      const { data: drafts } = await supabase
+      const { data: drafts } = (await supabase
         .from('private_bookings')
-        .select('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes')
+        .select(withEmailColumns('id, customer_first_name, customer_name, contact_phone, hold_expiry, event_date, customer_id, deposit_amount, internal_notes', emailFirst))
         .eq('status', 'draft')
         .gt('hold_expiry', now.toISOString()) // Not expired yet
-        .not('hold_expiry', 'is', null)
+        .not('hold_expiry', 'is', null)) as unknown as MonitorRowsResult
     // Removed .not('contact_phone', 'is', null) to support fallback to customer record
 
     if (drafts) {
@@ -504,7 +568,15 @@ export async function GET(request: Request) {
         // Resolve phone number (fallback to pre-fetched customer mobile map)
         const contactPhone = booking.contact_phone || (booking.customer_id ? customerMobileById.get(booking.customer_id) ?? null : null)
 
-        if (!contactPhone) continue
+        // With email first on, a booking with no number can still be reminded by email, but only
+        // by the reminders that send straight away: one waiting for approval needs a number to queue.
+        let emailOnly = false
+        if (!contactPhone) {
+          if (!emailFirst) continue
+          const recipient = await resolvePrivateBookingEmailRecipient(booking, supabase)
+          if (!recipient.usable) continue
+          emailOnly = true
+        }
 
         const expiry = new Date(booking.hold_expiry)
         const diffMs = expiry.getTime() - now.getTime()
@@ -574,15 +646,28 @@ export async function GET(request: Request) {
               holdExpiry: holdExpiryReadable,
             })
 
-            const result = await SmsQueueService.queueAndSend({
-              booking_id: booking.id,
-              trigger_type: triggerType,
-              template_key: `private_booking_${triggerType}`,
-              message_body: messageBody,
-              customer_phone: contactPhone,
-              customer_name: booking.customer_name,
-              priority: 2,
-              metadata: { hold_expiry_date: holdExpiryWindowKey }
+            const result = await sendPrivateBookingMessage({
+              sms: {
+                booking_id: booking.id,
+                trigger_type: triggerType,
+                template_key: `private_booking_${triggerType}`,
+                message_body: messageBody,
+                customer_phone: contactPhone,
+                customer_name: booking.customer_name,
+                priority: 2,
+                metadata: { hold_expiry_date: holdExpiryWindowKey }
+              },
+              booking,
+              email: () => buildDepositReminderEmail({
+                booking,
+                firstName: booking.customer_first_name,
+                stage: '7day',
+                depositAmount,
+                holdExpiry: holdExpiryReadable,
+                daysRemaining: diffDays,
+              }),
+              windowKey: holdExpiryWindowKey,
+              facts: buildPrivateBookingMessageFacts(triggerType, booking),
             })
 
             if (result.error) {
@@ -606,7 +691,7 @@ export async function GET(request: Request) {
 
         // 2. Check 3-Day Reminder (Window: 2-3 days) — SOP §10 hold reminders
         // run at 7, 3 and 1 days before expiry.
-        if (depositTrigger === 'deposit_reminder_3day') {
+        if (depositTrigger === 'deposit_reminder_3day' && !emailOnly) {
           if (!canSendMoreSms()) {
             stats.smsCapReached = true
             break
@@ -653,15 +738,28 @@ export async function GET(request: Request) {
               holdExpiry: holdExpiryReadable,
             })
 
-            const result = await SmsQueueService.queueAndSend({
-              booking_id: booking.id,
-              trigger_type: triggerType,
-              template_key: `private_booking_${triggerType}`,
-              message_body: messageBody,
-              customer_phone: contactPhone,
-              customer_name: booking.customer_name,
-              priority: 2,
-              metadata: { hold_expiry_date: holdExpiryWindowKey }
+            // Waits for approval, as it always has; Send Now chooses the channel.
+            const result = await sendPrivateBookingMessage({
+              sms: {
+                booking_id: booking.id,
+                trigger_type: triggerType,
+                template_key: `private_booking_${triggerType}`,
+                message_body: messageBody,
+                customer_phone: contactPhone,
+                customer_name: booking.customer_name,
+                priority: 2,
+                metadata: { hold_expiry_date: holdExpiryWindowKey }
+              },
+              booking,
+              email: () => buildDepositReminderEmail({
+                booking,
+                firstName: booking.customer_first_name,
+                stage: '3day',
+                depositAmount,
+                holdExpiry: holdExpiryReadable,
+              }),
+              windowKey: holdExpiryWindowKey,
+              facts: buildPrivateBookingMessageFacts(triggerType, booking),
             })
 
             if (result.error) {
@@ -731,15 +829,27 @@ export async function GET(request: Request) {
               holdExpiry: holdExpiryReadable,
             })
 
-            const result = await SmsQueueService.queueAndSend({
-              booking_id: booking.id,
-              trigger_type: triggerType,
-              template_key: `private_booking_${triggerType}`,
-              message_body: messageBody,
-              customer_phone: contactPhone,
-              customer_name: booking.customer_name,
-              priority: 2,
-              metadata: { hold_expiry_date: holdExpiryWindowKey }
+            const result = await sendPrivateBookingMessage({
+              sms: {
+                booking_id: booking.id,
+                trigger_type: triggerType,
+                template_key: `private_booking_${triggerType}`,
+                message_body: messageBody,
+                customer_phone: contactPhone,
+                customer_name: booking.customer_name,
+                priority: 2,
+                metadata: { hold_expiry_date: holdExpiryWindowKey }
+              },
+              booking,
+              email: () => buildDepositReminderEmail({
+                booking,
+                firstName: booking.customer_first_name,
+                stage: '1day',
+                depositAmount,
+                holdExpiry: holdExpiryReadable,
+              }),
+              windowKey: holdExpiryWindowKey,
+              facts: buildPrivateBookingMessageFacts(triggerType, booking),
             })
 
             if (result.error) {
@@ -779,15 +889,15 @@ export async function GET(request: Request) {
       dueWindowEnd.setDate(now.getDate() + 7);
       const dueWindowEndIso = getLondonRunKey(dueWindowEnd)
 
-      const { data: confirmedBookings } = await supabase
+      const { data: confirmedBookings } = (await supabase
         .from('private_bookings_with_details')
         .select(
-          'id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, gross_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes'
+          withEmailColumns('id, customer_first_name, customer_name, contact_phone, customer_mobile, event_date, total_amount, calculated_total, gross_total, balance_remaining, total_balance_paid, deposit_amount, balance_due_date, final_payment_date, customer_id, internal_notes', emailFirst)
         )
         .eq('status', 'confirmed')
         .not('balance_due_date', 'is', null)
         .gte('balance_due_date', todayLondonIso) // due today or later — never chase past-due
-        .lte('balance_due_date', dueWindowEndIso) // within 7 days of the deadline
+        .lte('balance_due_date', dueWindowEndIso)) as unknown as MonitorRowsResult // within 7 days of the deadline
       // Removed .not('contact_phone', 'is', null) to allow fallback
 
       if (confirmedBookings) {
@@ -905,16 +1015,31 @@ export async function GET(request: Request) {
           })
           if (!reservation.reserved) continue
 
-          const result = await SmsQueueService.queueAndSend({
-            booking_id: booking.id,
-            trigger_type: triggerType,
-            template_key: `private_booking_${triggerType}`,
-            message_body: messageBody,
-            customer_phone: contactPhone,
-            customer_name: booking.customer_name,
-            customer_id: booking.customer_id ?? undefined,
-            priority: 1,
-            metadata: { balance_due_date: balanceWindowKey }
+          // All four wait for approval, as they always have; Send Now chooses the channel.
+          const balanceStage =
+            triggerType === 'balance_reminder_21day' ? '21day' : triggerType === 'balance_reminder_16day' ? '16day' : triggerType === 'balance_reminder_15day' ? '15day' : 'due'
+          const result = await sendPrivateBookingMessage({
+            sms: {
+              booking_id: booking.id,
+              trigger_type: triggerType,
+              template_key: `private_booking_${triggerType}`,
+              message_body: messageBody,
+              customer_phone: contactPhone,
+              customer_name: booking.customer_name,
+              customer_id: booking.customer_id ?? undefined,
+              priority: 1,
+              metadata: { balance_due_date: balanceWindowKey }
+            },
+            booking: { id: booking.id, customer_id: booking.customer_id, contact_email: booking.contact_email },
+            email: () => buildBalanceReminderEmail({
+              booking: { ...booking, id: booking.id },
+              firstName: booking.customer_first_name,
+              stage: balanceStage,
+              balanceAmount: balanceDue,
+              balanceDueDate: dueDateReadable,
+            }),
+            windowKey: balanceWindowKey,
+            facts: buildPrivateBookingMessageFacts(triggerType, booking, { balanceAmount: balanceDue }),
           });
 
           if (result.error) {
@@ -943,11 +1068,11 @@ export async function GET(request: Request) {
       tomorrow.setDate(now.getDate() + 1)
       const tomorrowLondon = getLondonRunKey(tomorrow)
 
-      const { data: tomorrowBookings } = await supabase
+      const { data: tomorrowBookings } = (await supabase
         .from('private_bookings')
-        .select('id, customer_first_name, customer_name, contact_phone, start_time, guest_count, event_date, customer_id, internal_notes')
+        .select(withEmailColumns('id, customer_first_name, customer_name, contact_phone, start_time, guest_count, event_date, customer_id, internal_notes', emailFirst))
         .eq('status', 'confirmed')
-        .eq('event_date', tomorrowLondon)
+        .eq('event_date', tomorrowLondon)) as unknown as MonitorRowsResult
 
       if (tomorrowBookings) {
         for (const booking of tomorrowBookings) {
@@ -998,15 +1123,21 @@ export async function GET(request: Request) {
             guestPart,
           })
 
-          const result = await SmsQueueService.queueAndSend({
-            booking_id: booking.id,
-            trigger_type: triggerType,
-            template_key: `private_booking_${triggerType}`,
-            message_body: messageBody,
-            customer_phone: booking.contact_phone,
-            customer_name: booking.customer_name,
-            customer_id: booking.customer_id ?? undefined,
-            priority: 3
+          const result = await sendPrivateBookingMessage({
+            sms: {
+              booking_id: booking.id,
+              trigger_type: triggerType,
+              template_key: `private_booking_${triggerType}`,
+              message_body: messageBody,
+              customer_phone: booking.contact_phone,
+              customer_name: booking.customer_name,
+              customer_id: booking.customer_id ?? undefined,
+              priority: 3
+            },
+            booking,
+            email: () => buildEventReminderEmail({ booking, firstName: rawFirstName }),
+            windowKey: eventReminderWindowKey,
+            facts: buildPrivateBookingMessageFacts(triggerType, booking),
           })
 
           if (result.error) {
@@ -1120,16 +1251,16 @@ export async function GET(request: Request) {
       const today = getLondonRunKey(new Date())
       const fourteenDaysAgo = getLondonRunKey(new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000))
 
-      const { data: eligibleForReview } = await supabase
+      const { data: eligibleForReview } = (await supabase
         .from('private_bookings')
         .select(
-          'id, customer_id, customer_first_name, customer_name, contact_phone, event_date, start_time, post_event_outcome, review_sms_sent_at, review_processed_at, status, internal_notes'
+          withEmailColumns('id, customer_id, customer_first_name, customer_name, contact_phone, event_date, start_time, post_event_outcome, review_sms_sent_at, review_processed_at, status, internal_notes', emailFirst)
         )
         .eq('post_event_outcome', 'went_well')
         .is('review_sms_sent_at', null)
         .neq('status', 'cancelled')
         .gte('event_date', fourteenDaysAgo)
-        .lte('event_date', today)
+        .lte('event_date', today)) as unknown as MonitorRowsResult
 
       const unprocessedReviewBookings = (eligibleForReview ?? []).filter(
         (booking) => !booking.review_processed_at
@@ -1246,20 +1377,26 @@ export async function GET(request: Request) {
             reviewLink
           })
 
-          const sendResult = await SmsQueueService.queueAndSend({
-            booking_id: booking.id,
-            trigger_type: 'review_request',
-            template_key: 'private_booking_review_request',
-            message_body: messageBody,
-            customer_phone: booking.contact_phone,
-            customer_name: booking.customer_name || 'Guest',
-            customer_id: booking.customer_id ?? undefined,
-            priority: 3,
-            metadata: {
-              template: 'private_booking_review_request',
-              event_date: eventDateIso,
-              review_link_target: reviewLink
-            }
+          const sendResult = await sendPrivateBookingMessage({
+            sms: {
+              booking_id: booking.id,
+              trigger_type: 'review_request',
+              template_key: 'private_booking_review_request',
+              message_body: messageBody,
+              customer_phone: booking.contact_phone,
+              customer_name: booking.customer_name || 'Guest',
+              customer_id: booking.customer_id ?? undefined,
+              priority: 3,
+              metadata: {
+                template: 'private_booking_review_request',
+                event_date: eventDateIso,
+                review_link_target: reviewLink
+              }
+            },
+            booking,
+            email: () => buildReviewRequestEmail({ booking, firstName: booking.customer_first_name, reviewLink }),
+            windowKey: eventDateIso,
+            facts: buildPrivateBookingMessageFacts('review_request', booking),
           })
 
           if (sendResult.error) {
