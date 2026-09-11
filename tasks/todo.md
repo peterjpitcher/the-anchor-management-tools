@@ -1,3 +1,21 @@
+# Private booking deposits confirmed by staff, balance reminders by email, 11 September 2026
+
+Branch `feat/private-booking-deposit-confirm-2026-09-11`, rebased on `origin/main` (`377434a0`). Local commits only. Both new flags are off by default, and off is today's behaviour.
+
+- [x] 1. Flag `private_booking_deposit_confirmation`: creating a booking sends no deposit message (staff create and `/api/external/create-booking`); website enquiries stay silent (`b8d9ed70`).
+- [x] 2. Deposit to be confirmed: nullable `deposit_confirmed_at` / `deposit_confirmed_by`, migration `20260911200000_private_booking_deposit_confirmation.sql` and its rollback written and replayed on a throwaway local Postgres fixture, NOT applied. While unconfirmed: no deposit reminders, no automatic hold expiry, no hold-lapsed or hold-extended message, no "Send payment link", no move to Confirmed; list badge and detail banner (`b8d9ed70`, `290a1ab9`, renumbered in `f3e220d6`).
+- [x] 3. Confirm deposit action (manage_deposits or manage): amount adjustable (GM override and reason below £250), records who and when, keeps a future hold or sets one with `computeHoldExpiry`, sends one deposit request by email (text if no usable email or the email fails), idempotent by a conditional claim, undone and shown to staff when nothing reaches the guest, timeline and audit rows; the bounce fallback rebuilds it (`290a1ab9`).
+- [x] 4. Deposit reminders run only for confirmed deposits (`b8d9ed70`).
+- [x] 5. Flag `private_booking_balance_email_auto`: balance reminders by email straight away when there is a usable address, text for approval otherwise; balance reminders queued before the switch refused at Approve and Send Now; no backfill of passed deadlines (`dabfaf4d`).
+- [x] 6. Balance reminder emails list the payments made, the event total, paid towards the bill and the balance due, from the payment ledger; if the figures do not add up no email goes and the text waits for approval instead; fixture renders in both zones (`dabfaf4d`).
+- [x] Gates: lint, uncached tsc, `npm test`, `npm run test:utc`, uncached build.
+- [ ] Apply the migration, deploy, switch the two flags on: the owner's decision; not asked for.
+- [ ] Push, merge and deploy: not asked for; local commits only.
+
+Results (Node 20.19.5, rebased on `377434a0`): lint clean; uncached `tsc --noEmit` clean; 836 test files, 7,915 passed and 2 skipped in both London and UTC (baseline before this work: 829 files after the rebase's new tests, 823 on `506c3c69`); uncached `npm run build` passes with `NODE_OPTIONS=--max-old-space-size=6144`.
+
+Decisions recorded: the deposit request's PayPal link is the guest's booking page (a one-button PayPal payment that lasts a year), not a PayPal approval link that runs out within hours; unconfirmed bookings keep today's hold expiry because only a live hold blocks the space; bookings that exist when the migration runs count as confirmed; `PRIVATE_BOOKING_UPCOMING_EVENT_SMS_ENABLED` must stay true in production for any balance reminder to go.
+
 # SSOT data corrections, 11 September 2026 (applied to production)
 
 Owner approval 11 September 2026 (items 1 to 11, 13 to 15, and the owner's answers on finish times, quiz seating and access wording). Applied through `prod-migrate` to `tfcasgxopxegwrabvwat`, each as one guarded DO statement (production marker, ids plus the captured old value or its md5, exact counts, reviewed md5 of every changed long text).
