@@ -52,7 +52,21 @@ export type ConfirmCandidate = {
     firstName: string | null
     phone: string | null
     smsActive: boolean
+    /**
+     * A well-formed address the customer record does not mark invalid, bounced, complained or
+     * deactivated (isEmailUsable). Only read on the email-first path.
+     */
+    emailUsable?: boolean
   } | null
+}
+
+export type ConfirmReminderOptions = {
+  /**
+   * Messaging flag table_confirm_reminder_email_first (owner decision, 11 September 2026): the
+   * reminder goes by email first, so a guest with a usable email address is eligible even with
+   * no mobile or with texts switched off.
+   */
+  emailFirst?: boolean
 }
 
 export type ConfirmDecision =
@@ -76,7 +90,8 @@ export type ConfirmSkipReason =
  */
 export function decideConfirmReminder(
   candidate: ConfirmCandidate,
-  todayIsoDate: string
+  todayIsoDate: string,
+  options: ConfirmReminderOptions = {}
 ): ConfirmDecision {
   if (!CONFIRMABLE_BOOKING_STATUSES.includes(candidate.status as 'confirmed')) {
     return { send: false, reason: 'status_not_confirmable' }
@@ -96,13 +111,17 @@ export function decideConfirmReminder(
     return { send: false, reason: 'no_customer' }
   }
 
-  if (!candidate.customer.phone) {
+  // Email first: a usable address is enough on its own. The two text-only reasons below then
+  // apply only to a guest who cannot be emailed either.
+  const reachableByEmail = options.emailFirst === true && candidate.customer.emailUsable === true
+
+  if (!reachableByEmail && !candidate.customer.phone) {
     return { send: false, reason: 'no_mobile' }
   }
 
   // Opting out of texts is an answer in itself. The pub rings these guests instead, which
   // is the fallback for every skip reason here.
-  if (!candidate.customer.smsActive) {
+  if (!reachableByEmail && !candidate.customer.smsActive) {
     return { send: false, reason: 'sms_not_active' }
   }
 

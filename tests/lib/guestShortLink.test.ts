@@ -44,6 +44,7 @@ describe('buildGuestShortLink: the kinds it accepts', () => {
     ['table_payment', `${BASE}/g/tok/table-payment`],
     ['event_manage', `${BASE}/g/tok/manage-booking`],
     ['event_payment', `${BASE}/g/tok/event-payment`],
+    ['booking_confirm', `${BASE}/g/tok/confirm-booking`],
   ] as const
 
   it.each(CASES)('shortens a %s link', async (linkKind, longUrl) => {
@@ -120,6 +121,24 @@ describe('buildGuestShortLink: what it refuses', () => {
       linkKind: 'table_manage',
       customerId: 'c1',
     }, 'path_does_not_match_link_kind')
+  })
+
+  // The tap-to-confirm short link may only ever open the page that asks. The answer is a POST to
+  // /confirm-booking/action; a short link there would let a mail scanner's GET reach it.
+  it('refuses to shorten the confirm answer endpoint, only the page that asks', async () => {
+    await expectRefused({
+      longUrl: `${BASE}/g/tok/confirm-booking/action`,
+      linkKind: 'booking_confirm',
+      customerId: 'c1',
+    }, 'path_does_not_match_link_kind')
+  })
+
+  it('tags a tap-to-confirm link with its own action type', async () => {
+    await buildGuestShortLink({ longUrl: `${BASE}/g/tok/confirm-booking`, linkKind: 'booking_confirm', customerId: 'c1' })
+
+    const [payload] = createShortLinkInternalMock.mock.calls[0]
+    expect(payload.destination_url).toBe(`${BASE}/g/tok/confirm-booking`)
+    expect(payload.metadata.guest_action_type).toBe('booking_confirm')
   })
 
   it('refuses a mailto link', async () => {

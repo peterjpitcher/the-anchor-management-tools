@@ -277,6 +277,29 @@ export function buildTableBookingPreorderReminderEmail(input: BookingFacts & { m
 }
 
 /**
+ * "Are you still coming?", the day before. The text says "your table for 4 is {moment}. Still
+ * coming? Tap to confirm or cancel: {link}". The email carries the same question and the same
+ * link, which opens a page that only asks: confirming or cancelling takes a tap on that page,
+ * so a mail scanner that follows the link cannot answer for the guest.
+ */
+export function buildTableBookingConfirmReminderEmail(input: BookingFacts & { confirmUrl: string }): TableBookingEmail {
+  const date = formatBookingDateForEmail(input.bookingDate, input.startDateTime)
+  const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+  const party = partySizeLabel(input.partySize)
+
+  return renderTableBookingEmail({
+    subject: date ? `Are you still coming? Your table at The Anchor on ${date}` : 'Are you still coming? Your table at The Anchor',
+    opening: [
+      `Hi ${input.firstName}, your table${party ? ` for ${party}` : ''}${moment ? ` is booked for ${moment}` : ' is booked'}.`,
+      'Still coming? Tap the link to confirm or cancel.',
+    ],
+    details: bookingDetailRows(input),
+    cta: { label: 'Confirm or cancel your booking', url: input.confirmUrl },
+    footerLead: 'If you need to change anything',
+  })
+}
+
+/**
  * The cancellation email. `refundSentence` is the sentence the cancellation text puts after
  * "has been cancelled.", passed in verbatim so the amount and the refund timing cannot drift
  * from what the text says.

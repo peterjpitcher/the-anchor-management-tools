@@ -50,13 +50,19 @@ export type GuestShortLinkKind =
   | 'table_payment'
   | 'event_manage'
   | 'event_payment'
+  | 'booking_confirm'
 
 /**
  * The only path shapes that may be shortened, one per kind. Verified against the
  * minters: table-manage `src/lib/table-bookings/manage-booking.ts:286`,
  * table-payment `src/lib/table-bookings/bookings.ts:663`, event-manage
  * `src/lib/events/manage-booking.ts:652`, event-payment
- * `src/lib/events/event-payments.ts:241`, review `src/app/r/[token]/route.ts`.
+ * `src/lib/events/event-payments.ts:241`, review `src/app/r/[token]/route.ts`,
+ * booking-confirm `createBookingConfirmToken` in `src/lib/table-bookings/manage-booking.ts`.
+ *
+ * booking_confirm points at the "are you still coming?" page, a GET that only asks. The
+ * answer is a POST from that page, so a mail scanner or link preview that follows the short
+ * link sees the question and cannot answer it for the guest.
  */
 const LINK_KIND_PATH: Record<GuestShortLinkKind, RegExp> = {
   guest_review: /^\/r\/([^/]+)\/?$/,
@@ -64,6 +70,7 @@ const LINK_KIND_PATH: Record<GuestShortLinkKind, RegExp> = {
   table_payment: /^\/g\/([^/]+)\/table-payment\/?$/,
   event_manage: /^\/g\/([^/]+)\/manage-booking\/?$/,
   event_payment: /^\/g\/([^/]+)\/event-payment\/?$/,
+  booking_confirm: /^\/g\/([^/]+)\/confirm-booking\/?$/,
 }
 
 const LINK_KIND_ACTION_TYPE: Record<GuestShortLinkKind, string> = {
@@ -72,6 +79,7 @@ const LINK_KIND_ACTION_TYPE: Record<GuestShortLinkKind, string> = {
   table_payment: 'payment',
   event_manage: 'manage',
   event_payment: 'payment',
+  booking_confirm: 'booking_confirm',
 }
 
 /**
@@ -85,6 +93,7 @@ const LINK_KIND_SOURCE: Record<GuestShortLinkKind, string> = {
   table_payment: 'guest_link_builder',
   event_manage: 'guest_link_builder',
   event_payment: 'guest_link_builder',
+  booking_confirm: 'guest_link_builder',
 }
 
 export interface GuestShortLinkInput {
