@@ -660,13 +660,11 @@ export async function scheduleCampaign(
     throw new Error('This audience matches nobody, so there is nothing to schedule')
   }
 
-  // The monthly round-up is exempt in SQL, so the schedule-time courtesy check would only
-  // refuse a collision the send itself will handle. Checking it anyway would make the guard
-  // and the enforcement disagree, and the guard is the one people believe.
-  if (!existing.ignoresFrequencyCap) {
-    // A claim the SSOT bans outright, in copy about to be frozen and sent. Voice warnings are
+  // A claim the SSOT bans outright, in copy about to be frozen and sent. Voice warnings are
   // surfaced by the content lint instead: those are worth fixing and never worth refusing a
-  // send over, and a checker that blocks on "premium" gets switched off.
+  // send over, and a checker that blocks on "premium" gets switched off. Every campaign, the
+  // cap-exempt monthly round-ups included: until 11 September 2026 this sat inside the
+  // exemption below by mistake, so a round-up could be scheduled carrying a banned claim.
   const bannedClaims = houseStyleErrors(renderCampaignText(content))
   if (bannedClaims.length > 0) {
     throw new Error(
@@ -676,7 +674,11 @@ export async function scheduleCampaign(
     )
   }
 
-  await assertNoFrequencyCapCollision(supabase, existing, when)
+  // The monthly round-up is exempt in SQL, so the schedule-time courtesy check would only
+  // refuse a collision the send itself will handle. Checking it anyway would make the guard
+  // and the enforcement disagree, and the guard is the one people believe.
+  if (!existing.ignoresFrequencyCap) {
+    await assertNoFrequencyCapCollision(supabase, existing, when)
   }
   await assertNoMisleadingClosureCopy(content, when)
 
