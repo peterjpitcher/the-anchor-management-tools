@@ -16,6 +16,14 @@ vi.mock('@/lib/foh/api-auth', () => ({
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }))
+// Ordinary days on 12:00 to 22:00, so every clock time stays on the booking's date and the
+// database mock's rpc stays the move alone. tests/api/fohTableBookingTimeAfterMidnight.test.ts
+// covers a night that closes after midnight, with the real hours read.
+vi.mock('@/lib/business-hours/trading-day', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/business-hours/trading-day')>()),
+  loadTradingHours: vi.fn(async (_db: unknown, dates: string[]) =>
+    new Map(dates.map((date) => [date, { opens: '12:00:00', closes: '22:00:00', is_closed: false }]))),
+}))
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }))
