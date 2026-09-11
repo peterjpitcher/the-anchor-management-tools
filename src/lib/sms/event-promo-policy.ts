@@ -10,22 +10,25 @@
  *  - fewer than a quarter of its capacity is booked, where booked is capacity minus seats
  *    remaining from get_event_capacity_snapshot_v05, so live waitlist holds count as booked;
  *  - the guest has had fewer than two promotional texts in the last 30 days;
+ *  - no other promotional text lands on the same London day for the guest, across every event;
  *  - each guest gets at most one promotional text per event.
  *
- * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address still
- * get today's 7-day intro text, counted against the same two-a-month cap.
+ * With `event_promo_intro_sms_no_email` on as well, guests with no usable email address (anyone
+ * the guest marketing campaigns would not reach) still get today's 7-day intro text, inside the
+ * same two-a-month cap and one-a-day limit.
+ *
+ * When the flags row cannot be read, the cron sends no promotion texts at all in that run.
  *
  * Everything here is pure or a single read, so the rules can be tested without a cron, a clock
  * or Twilio. The cron decides which events to look at; `sendCrossPromoForEvent` applies the
- * capacity rule and the cap to each one.
+ * capacity rule, the cap and the daily limit to each one.
  */
 
 import type { createAdminClient } from '@/lib/supabase/admin'
-import { shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
-import { evaluateSmsQuietHours } from '@/lib/sms/quiet-hours'
+import { parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { evaluateSmsQuietHours, SMS_QUIET_HOUR_START } from '@/lib/sms/quiet-hours'
 import { isEmailUsable } from '@/lib/notifications/channel'
-import { isEmailSuppressed } from '@/lib/email/logging'
-import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { readMessagingFlagState, type MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { isEventPromoTemplateKey, PROMOTIONAL_SMS_TEMPLATE_KEYS } from '@/lib/sms/promo-template-keys'
 
 export {
@@ -68,6 +71,13 @@ export const EVENT_PROMO_TEXT_CAP = 2
 export const EVENT_PROMO_TEXT_CAP_WINDOW_DAYS = 30
 
 /**
+ * Promotional texts a guest may receive on one London calendar day, across every event, so two
+ * nights on the same date (or the first run after the flag goes on) cannot land two texts at
+ * 09:00 and spend the whole month's allowance at once.
+ */
+export const EVENT_PROMO_TEXTS_PER_DAY = 1
+
+/**
  * "Anyone who has attended any past event, however long ago." Ten years reaches past the first
  * attendance on record (April 2025). The audience function still requires a real, seated,
  * non-cancelled, non-reminder-only booking at a past event, so the 2025 reminder-only list
@@ -86,29 +96,66 @@ export const EVENT_PROMO_CONTEXT_RETENTION_DAYS_LAST_PUSH = 45
 // Flags
 // ---------------------------------------------------------------------------
 
-export type EventPromoFlags = {
-  /** `event_promo_last_push`: no intro, no follow-up, one last push under the rules above. */
-  lastPush: boolean
-  /** `event_promo_intro_sms_no_email`, honoured only while the last push is on. */
-  introForGuestsWithoutEmail: boolean
-}
+export type EventPromoFlags =
+  | {
+      state: 'known'
+      /** `event_promo_last_push`: no intro, no follow-up, one last push under the rules above. */
+      lastPush: boolean
+      /** `event_promo_intro_sms_no_email`, honoured only while the last push is on. */
+      introForGuestsWithoutEmail: boolean
+    }
+  | {
+      /** The flags row could not be read, so the cron sends no promotion texts in this run. */
+      state: 'unknown'
+      failure: MessagingFlagsReadFailure
+    }
 
-/** Reads both flags. Any failure reads as off, which is today's behaviour. */
+/**
+ * Reads both flags. A missing row, false or a malformed value is off, which is today's
+ * behaviour. A failed read is unknown and never off: off runs the 7-day intro and the 24-hour
+ * follow-up, the noisier texts the owner switched away from, so a flag that has been on for
+ * weeks must not fall back to them because one read timed out. The second flag is read only
+ * while the first is on, and a failure on either makes the whole answer unknown.
+ */
 export async function resolveEventPromoFlags(): Promise<EventPromoFlags> {
-  const lastPush = await isMessagingFlagOn('event_promo_last_push')
-  if (!lastPush) {
-    return { lastPush: false, introForGuestsWithoutEmail: false }
+  const lastPush = await readMessagingFlagState('event_promo_last_push')
+  if (lastPush.state === 'unknown') {
+    return { state: 'unknown', failure: lastPush.failure }
+  }
+  if (lastPush.state === 'off') {
+    return { state: 'known', lastPush: false, introForGuestsWithoutEmail: false }
   }
 
-  return {
-    lastPush: true,
-    introForGuestsWithoutEmail: await isMessagingFlagOn('event_promo_intro_sms_no_email'),
+  const intro = await readMessagingFlagState('event_promo_intro_sms_no_email')
+  if (intro.state === 'unknown') {
+    return { state: 'unknown', failure: intro.failure }
   }
+
+  return { state: 'known', lastPush: true, introForGuestsWithoutEmail: intro.state === 'on' }
 }
 
 // ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
+
+/**
+ * The London calendar date `daysAhead` days after today's London date, YYYY-MM-DD.
+ *
+ * Calendar arithmetic on the London date, never "now plus 24 hours". On the night the clocks go
+ * back, 00:30 BST on Sunday 25 October 2026 plus 24 hours is 23:30 GMT on that same Sunday, so
+ * "tomorrow" came out as today: the intro window took in that day's events and the follow-up
+ * could say "is tomorrow" about a night that was that evening. On the night they go forward,
+ * 23:30 GMT on Saturday 27 March 2027 plus 24 hours is 00:30 BST on Monday 29 March, a day too
+ * far.
+ */
+export function londonDateDaysAhead(daysAhead: number, now: Date = new Date()): string {
+  const target = shiftIsoDate(toLocalIsoDate(now), daysAhead)
+  if (!target) {
+    // Only a fractional day count gets here, which is a programming error, not a clock problem.
+    throw new Error(`londonDateDaysAhead needs a whole number of days, got ${daysAhead}`)
+  }
+  return target
+}
 
 export type LastPushDateWindow = {
   /** Today's London date, YYYY-MM-DD. */
@@ -123,10 +170,9 @@ export type LastPushDateWindow = {
  * 00:30 on the fourth day, which would let a D+4 event in.
  */
 export function resolveLastPushDateWindow(now: Date = new Date()): LastPushDateWindow {
-  const today = toLocalIsoDate(now)
   return {
-    from: today,
-    to: shiftIsoDate(today, EVENT_LAST_PUSH_MAX_DAYS_AHEAD) ?? today,
+    from: londonDateDaysAhead(0, now),
+    to: londonDateDaysAhead(EVENT_LAST_PUSH_MAX_DAYS_AHEAD, now),
   }
 }
 
@@ -232,7 +278,7 @@ export function decideLastPushCapacity(row: LastPushCapacityRow | null | undefin
 }
 
 // ---------------------------------------------------------------------------
-// The two-a-month cap
+// The two-a-month cap and the one-a-day limit
 // ---------------------------------------------------------------------------
 
 /** Chunked so no single read comes near PostgREST's 1,000-row page. */
@@ -247,8 +293,75 @@ function chunk<T>(values: T[], size: number): T[][] {
 }
 
 /**
- * Promotional texts each guest has had in the last 30 days, or null when either read failed
- * (the caller then sends nothing: fail closed).
+ * The earliest send time whose text lands on the same London day as a text sent now.
+ *
+ * A text lands when it is sent, or at 09:00 when quiet hours (21:00 to 09:00) hold it, so the
+ * texts landing on London day D are the ones sent from 21:00 on the day before D up to 21:00 on
+ * D. A last push sent at 23:30 on Monday is held overnight and lands at 09:00 on Tuesday, next to
+ * anything sent on Tuesday: counting from London midnight would miss it and let a second text
+ * land beside it. Null only if the date arithmetic fails, and the caller then sends nothing.
+ */
+export function resolvePromoTextDayStart(now: Date = new Date()): Date | null {
+  const quietHours = evaluateSmsQuietHours(now)
+  const landsAt = quietHours.inQuietHours ? quietHours.nextAllowedSendAt : now
+  const dayBefore = shiftIsoDate(toLocalIsoDate(landsAt), -1)
+  if (!dayBefore) return null
+
+  const quietHoursStart = `${String(SMS_QUIET_HOUR_START).padStart(2, '0')}:00`
+  return parseLondonDateTimeLocal(`${dayBefore}T${quietHoursStart}`)
+}
+
+export type PromoTextCounts = {
+  /** Promotional texts in the last 30 days, by customer. */
+  last30Days: Map<string, number>
+  /**
+   * Promotional texts landing on the London day a text sent now would land on, by customer:
+   * sent today, or sent last night and held by quiet hours until 09:00.
+   */
+  sameDay: Map<string, number>
+}
+
+type PromoTextTally = {
+  /** Engine promos as the messages log shows them. */
+  engineFromMessages: Map<string, number>
+  /** Other promotional texts (staff bulk and win-back), which only the messages log holds. */
+  otherFromMessages: Map<string, number>
+  /** Engine promos as the reply-window ledger shows them. */
+  engineFromContext: Map<string, number>
+}
+
+function emptyTally(): PromoTextTally {
+  return { engineFromMessages: new Map(), otherFromMessages: new Map(), engineFromContext: new Map() }
+}
+
+function addOne(counts: Map<string, number>, customerId: string): void {
+  counts.set(customerId, (counts.get(customerId) ?? 0) + 1)
+}
+
+/** The larger of the two views of engine promos plus the other texts, so no text counts twice. */
+function totalsOf(tally: PromoTextTally, customerIds: string[]): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const id of customerIds) {
+    const engine = Math.max(tally.engineFromMessages.get(id) ?? 0, tally.engineFromContext.get(id) ?? 0)
+    const total = engine + (tally.otherFromMessages.get(id) ?? 0)
+    if (total > 0) totals.set(id, total)
+  }
+  return totals
+}
+
+/**
+ * Whether a row was written at or after `sinceMs`. A row whose time cannot be read counts as
+ * recent, so the one-a-day limit fails closed.
+ */
+function isWrittenSince(createdAt: string | null | undefined, sinceMs: number): boolean {
+  const writtenMs = createdAt ? Date.parse(createdAt) : Number.NaN
+  return Number.isNaN(writtenMs) || writtenMs >= sinceMs
+}
+
+/**
+ * Promotional texts each guest has had in the last 30 days, and the ones landing on the same
+ * London day as a text sent now would, or null when a read failed (the caller then sends
+ * nothing: fail closed). Both counts come from one read, so they always agree.
  *
  * Two sources, because neither is complete on its own:
  *
@@ -258,27 +371,34 @@ function chunk<T>(values: T[], size: number): T[][] {
  *  - `sms_promo_context` holds one row per engine promo the moment it is sent or deferred, but
  *    knows nothing of bulk texts, and its insert can fail after a send.
  *
- * So the count is the larger of the two views of engine promos, plus the bulk texts. Taking
+ * So each count is the larger of the two views of engine promos, plus the bulk texts. Taking
  * the larger rather than the sum means a text that sits in both is counted once.
  */
 export async function loadPromoTextCounts(
   db: AdminClient,
   customerIds: string[],
   now: Date = new Date()
-): Promise<Map<string, number> | null> {
-  const counts = new Map<string, number>()
+): Promise<PromoTextCounts | null> {
   const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)))
-  if (uniqueIds.length === 0) return counts
+  if (uniqueIds.length === 0) return { last30Days: new Map(), sameDay: new Map() }
+
+  const dayStart = resolvePromoTextDayStart(now)
+  if (!dayStart) {
+    warnPromoHeldBack('Promo text limit: could not work out the London day; sending none', {
+      now: now.toISOString(),
+    })
+    return null
+  }
+  const dayStartMs = dayStart.getTime()
 
   const sinceIso = new Date(now.getTime() - EVENT_PROMO_TEXT_CAP_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const engineFromMessages = new Map<string, number>()
-  const otherFromMessages = new Map<string, number>()
-  const engineFromContext = new Map<string, number>()
+  const last30Days = emptyTally()
+  const sameDay = emptyTally()
 
   for (const ids of chunk(uniqueIds, CAP_LOOKUP_CHUNK_SIZE)) {
     const { data: messageRows, error: messagesError } = await db
       .from('messages')
-      .select('customer_id, template_key')
+      .select('customer_id, template_key, created_at')
       .eq('direction', 'outbound')
       .in('customer_id', ids)
       .in('template_key', [...PROMOTIONAL_SMS_TEMPLATE_KEYS])
@@ -293,15 +413,22 @@ export async function loadPromoTextCounts(
       return null
     }
 
-    for (const row of (messageRows ?? []) as Array<{ customer_id: string | null; template_key: string | null }>) {
+    for (const row of (messageRows ?? []) as Array<{
+      customer_id: string | null
+      template_key: string | null
+      created_at: string | null
+    }>) {
       if (!row.customer_id) continue
-      const target = isEventPromoTemplateKey(row.template_key) ? engineFromMessages : otherFromMessages
-      target.set(row.customer_id, (target.get(row.customer_id) ?? 0) + 1)
+      const isEngine = isEventPromoTemplateKey(row.template_key)
+      addOne(isEngine ? last30Days.engineFromMessages : last30Days.otherFromMessages, row.customer_id)
+      if (isWrittenSince(row.created_at, dayStartMs)) {
+        addOne(isEngine ? sameDay.engineFromMessages : sameDay.otherFromMessages, row.customer_id)
+      }
     }
 
     const { data: contextRows, error: contextError } = await db
       .from('sms_promo_context')
-      .select('customer_id')
+      .select('customer_id, created_at')
       .in('customer_id', ids)
       .gte('created_at', sinceIso)
 
@@ -313,33 +440,201 @@ export async function loadPromoTextCounts(
       return null
     }
 
-    for (const row of (contextRows ?? []) as Array<{ customer_id: string | null }>) {
+    for (const row of (contextRows ?? []) as Array<{ customer_id: string | null; created_at: string | null }>) {
       if (!row.customer_id) continue
-      engineFromContext.set(row.customer_id, (engineFromContext.get(row.customer_id) ?? 0) + 1)
+      addOne(last30Days.engineFromContext, row.customer_id)
+      if (isWrittenSince(row.created_at, dayStartMs)) {
+        addOne(sameDay.engineFromContext, row.customer_id)
+      }
     }
   }
 
-  for (const id of uniqueIds) {
-    const engine = Math.max(engineFromMessages.get(id) ?? 0, engineFromContext.get(id) ?? 0)
-    const total = engine + (otherFromMessages.get(id) ?? 0)
-    if (total > 0) counts.set(id, total)
-  }
-
-  return counts
+  return { last30Days: totalsOf(last30Days, uniqueIds), sameDay: totalsOf(sameDay, uniqueIds) }
 }
 
+/** Takes the `last30Days` counts from loadPromoTextCounts. */
 export function isUnderPromoTextCap(counts: Map<string, number>, customerId: string): boolean {
   return (counts.get(customerId) ?? 0) < EVENT_PROMO_TEXT_CAP
 }
 
+/** Takes the `sameDay` counts from loadPromoTextCounts. */
+export function isUnderDailyPromoTextLimit(counts: Map<string, number>, customerId: string): boolean {
+  return (counts.get(customerId) ?? 0) < EVENT_PROMO_TEXTS_PER_DAY
+}
+
 // ---------------------------------------------------------------------------
-// Guests without a usable email address
+// Guests the guest marketing campaigns cannot reach
 // ---------------------------------------------------------------------------
 
+/** The customer columns the guest campaign audience is decided on. */
+type CampaignEmailRow = {
+  id: string
+  email: string | null
+  email_status: string | null
+  email_deactivated_at: string | null
+  marketing_email_opt_in: boolean | null
+  marketing_email_opted_out_at: string | null
+}
+
+/** The address as the campaign SQL compares it, lower(btrim(email)). */
+function normaliseEmailAddress(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+/** Rows asked for in one existence read, well inside PostgREST's 1,000-row page. */
+const EXISTENCE_PAGE_SIZE = 500
+
 /**
- * The customers among these who cannot be emailed: no address, a malformed one, a customer
- * record that marks it invalid, bounced or complained, a deactivated address, or one on the
- * suppression list. Null when the customer read fails, so the caller sends nothing.
+ * Which of these customers have at least one row in the table, or null when a read fails.
+ *
+ * A guest with hundreds of bookings could fill a page alone and hide another guest's only one,
+ * so whenever a page comes back full the customers not yet seen are asked about again. Every
+ * full page finds at least one of them, so the loop always ends.
+ */
+async function loadCustomerIdsWithAnyRow(
+  db: AdminClient,
+  table: 'bookings' | 'table_bookings',
+  customerIds: string[]
+): Promise<Set<string> | null> {
+  const found = new Set<string>()
+  let pending = Array.from(new Set(customerIds))
+
+  while (pending.length > 0) {
+    const ids = pending.slice(0, CAP_LOOKUP_CHUNK_SIZE)
+    const { data, error } = await db
+      .from(table)
+      .select('customer_id')
+      .in('customer_id', ids)
+      .limit(EXISTENCE_PAGE_SIZE)
+
+    if (error) {
+      warnPromoHeldBack(
+        `Event intro for guests without email: failed to read ${table}; sending none`,
+        describeDbError(error)
+      )
+      return null
+    }
+
+    const rows = (data ?? []) as Array<{ customer_id: string | null }>
+    const foundBefore = found.size
+    for (const row of rows) {
+      if (row.customer_id) found.add(row.customer_id)
+    }
+
+    if (rows.length < EXISTENCE_PAGE_SIZE) {
+      // Every customer in this chunk has been answered.
+      pending = pending.slice(ids.length)
+    } else if (found.size > foundBefore) {
+      // A full page may have cut someone off: ask again about those not yet seen.
+      pending = pending.filter((id) => !found.has(id))
+    } else {
+      warnPromoHeldBack(`Event intro for guests without email: ${table} read made no progress; sending none`, {
+        table,
+      })
+      return null
+    }
+  }
+
+  return found
+}
+
+/**
+ * The addresses among these on the active do-not-contact list, or null when it cannot be read.
+ * email_normalised is stored as lower(btrim(email)) by a check constraint, so `in` is exact.
+ */
+async function loadDoNotContactEmails(db: AdminClient, emails: string[]): Promise<Set<string> | null> {
+  const listed = new Set<string>()
+
+  for (const part of chunk(emails, CAP_LOOKUP_CHUNK_SIZE)) {
+    const { data, error } = await db
+      .from('marketing_do_not_contact')
+      .select('email_normalised')
+      .in('email_normalised', part)
+      .is('removed_at', null)
+
+    if (error) {
+      warnPromoHeldBack(
+        'Event intro for guests without email: failed to read the do-not-contact list; sending none',
+        describeDbError(error)
+      )
+      return null
+    }
+
+    for (const row of (data ?? []) as Array<{ email_normalised: string | null }>) {
+      if (row.email_normalised) listed.add(row.email_normalised)
+    }
+  }
+
+  return listed
+}
+
+const SUPPRESSION_PAGE_SIZE = 1000
+/** Far beyond any real list. A longer one is treated as unreadable rather than cut short. */
+const SUPPRESSION_MAX_PAGES = 20
+
+/**
+ * Every address on the suppression list, trimmed and lowercased, or null when it cannot be read.
+ *
+ * Read whole rather than filtered with `in`: the campaign SQL compares lower(es.email) and nothing
+ * guarantees the column is stored lowercase, so an `in` on lowercased addresses could miss a row
+ * the campaign honours. previewAudience in src/services/marketing-contacts.ts reads it whole for
+ * the same reason.
+ */
+async function loadSuppressedEmails(db: AdminClient): Promise<Set<string> | null> {
+  const suppressed = new Set<string>()
+
+  for (let page = 0; page < SUPPRESSION_MAX_PAGES; page += 1) {
+    const from = page * SUPPRESSION_PAGE_SIZE
+    const { data, error } = await db
+      .from('email_suppressions')
+      .select('email')
+      .order('email', { ascending: true })
+      .range(from, from + SUPPRESSION_PAGE_SIZE - 1)
+
+    if (error) {
+      warnPromoHeldBack(
+        'Event intro for guests without email: failed to read the suppression list; sending none',
+        describeDbError(error)
+      )
+      return null
+    }
+
+    const rows = (data ?? []) as Array<{ email: string | null }>
+    for (const row of rows) {
+      if (row.email) suppressed.add(normaliseEmailAddress(row.email))
+    }
+    if (rows.length < SUPPRESSION_PAGE_SIZE) return suppressed
+  }
+
+  warnPromoHeldBack('Event intro for guests without email: the suppression list is longer than expected; sending none', {
+    maxRows: SUPPRESSION_PAGE_SIZE * SUPPRESSION_MAX_PAGES,
+  })
+  return null
+}
+
+/**
+ * The customers among these whom the guest marketing campaigns would not reach, so the event
+ * intro text is their only way to hear about the night. Null when any read fails, so the caller
+ * sends nothing.
+ *
+ * Reachable means what the customer branch of promote_due_marketing_campaigns and
+ * claim_marketing_recipients checks before a guest campaign goes out
+ * (supabase/migrations/20260815160000_marketing_send_days_by_audience.sql and
+ * 20260909084500_marketing_monthly_roundup_cap_exempt.sql):
+ *
+ *  - an email address;
+ *  - not opted out of marketing email (marketing_email_opted_out_at);
+ *  - not bounced;
+ *  - not on the do-not-contact list or the suppression list, on the trimmed, lowercased address;
+ *  - and marketing_email_opt_in, or any event booking, or any table booking.
+ *
+ * The address must also be one an email can reach (isEmailUsable): well formed, not marked invalid
+ * or complained, not deactivated. The campaign would try those and fail, so the guest would still
+ * hear nothing. The campaign's frequency cap is not part of this: it decides when a guest next
+ * gets an email, not whether they can.
+ *
+ * A guest who fails any of these has no usable email for event promotion and gets the intro
+ * text, inside the two-a-month cap and the one-a-day limit.
  */
 export async function loadCustomerIdsWithoutUsableEmail(
   db: AdminClient,
@@ -349,10 +644,11 @@ export async function loadCustomerIdsWithoutUsableEmail(
   const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)))
   if (uniqueIds.length === 0) return withoutEmail
 
+  const rows = new Map<string, CampaignEmailRow>()
   for (const ids of chunk(uniqueIds, CAP_LOOKUP_CHUNK_SIZE)) {
     const { data, error } = await db
       .from('customers')
-      .select('id, email, email_status, email_deactivated_at')
+      .select('id, email, email_status, email_deactivated_at, marketing_email_opt_in, marketing_email_opted_out_at')
       .in('id', ids)
 
     if (error) {
@@ -363,27 +659,52 @@ export async function loadCustomerIdsWithoutUsableEmail(
       return null
     }
 
-    const rows = (data ?? []) as Array<{
-      id: string
-      email: string | null
-      email_status: string | null
-      email_deactivated_at: string | null
-    }>
-    const byId = new Map(rows.map((row) => [row.id, row]))
-
-    for (const id of ids) {
-      const row = byId.get(id)
-      if (!row || !isEmailUsable(row)) {
-        withoutEmail.add(id)
-        continue
-      }
-
-      // isEmailSuppressed fails open (false) when the list cannot be read. Here that means
-      // "has an email", so the guest is NOT texted: the safe direction for a promotion.
-      if (await isEmailSuppressed(row.email as string)) {
-        withoutEmail.add(id)
-      }
+    for (const row of (data ?? []) as CampaignEmailRow[]) {
+      rows.set(row.id, row)
     }
+  }
+
+  // What the customer row decides alone: an address an email can reach, not opted out.
+  const addressed: Array<{ id: string; email: string; optedIn: boolean }> = []
+  for (const id of uniqueIds) {
+    const row = rows.get(id)
+    if (!row || !isEmailUsable(row) || row.marketing_email_opted_out_at) {
+      withoutEmail.add(id)
+      continue
+    }
+    addressed.push({
+      id,
+      email: normaliseEmailAddress(row.email as string),
+      optedIn: row.marketing_email_opt_in === true,
+    })
+  }
+  if (addressed.length === 0) return withoutEmail
+
+  // The two lists, on the address as the campaign SQL compares it.
+  const doNotContact = await loadDoNotContactEmails(db, Array.from(new Set(addressed.map((guest) => guest.email))))
+  if (!doNotContact) return null
+  const suppressed = await loadSuppressedEmails(db)
+  if (!suppressed) return null
+
+  // Consent: an explicit opt-in, or any event booking, or any table booking.
+  const needBooking: string[] = []
+  for (const guest of addressed) {
+    if (doNotContact.has(guest.email) || suppressed.has(guest.email)) {
+      withoutEmail.add(guest.id)
+    } else if (!guest.optedIn) {
+      needBooking.push(guest.id)
+    }
+  }
+  if (needBooking.length === 0) return withoutEmail
+
+  const withEventBooking = await loadCustomerIdsWithAnyRow(db, 'bookings', needBooking)
+  if (!withEventBooking) return null
+  const needTableBooking = needBooking.filter((id) => !withEventBooking.has(id))
+  const withTableBooking = await loadCustomerIdsWithAnyRow(db, 'table_bookings', needTableBooking)
+  if (!withTableBooking) return null
+
+  for (const id of needTableBooking) {
+    if (!withTableBooking.has(id)) withoutEmail.add(id)
   }
 
   return withoutEmail
