@@ -123,6 +123,31 @@ describe('claims retired on 10 September 2026', () => {
   })
 })
 
+describe('access wording and the Sunday menu, 11 September 2026', () => {
+  it.each([
+    // All three were live in event records.
+    ['The beer garden has steps, with a ramp available on request.', 'access-steps'],
+    ['The Anchor offers step-free access throughout the ground floor with an accessible toilet.', 'accessible-toilet-claim'],
+    ['Try our Beef & Ale Pie Roast this Sunday.', 'retired-pie-roast'],
+  ])('treats "%s" as an error', (text, rule) => {
+    expect(houseStyleErrors(text).map((f) => f.rule)).toContain(rule)
+  })
+
+  it('passes the approved access wording, which says plainly that there is no accessible toilet', () => {
+    const approved =
+      "Getting in from the car park is step free, and so are the bar and the dining area. The beer garden is step free " +
+      "straight from the car park. From inside, there's one step between the bar and the garden, and we'll put our ramp " +
+      "out for it if you ask. We don't have an accessible toilet."
+    expect(houseStyleErrors(approved)).toEqual([])
+    expect(houseStyleErrors('We do not currently have an accessible toilet.')).toEqual([])
+    expect(houseStyleErrors('There is no accessible toilet.')).toEqual([])
+  })
+
+  it('leaves the weekday pies alone', () => {
+    expect(houseStyleErrors('Beef & Ale Pie with buttery mash, garden peas and NGCI gravy.')).toEqual([])
+  })
+})
+
 describe('the checker itself', () => {
   it('says nothing about empty text', () => {
     expect(checkHouseStyle('')).toEqual([])

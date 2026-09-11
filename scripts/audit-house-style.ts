@@ -78,13 +78,14 @@ async function main(): Promise<void> {
 
   const today = new Date().toISOString().slice(0, 10)
   const { data: events } = await supabase
-    .from('events').select('name,date,short_description,long_description')
+    .from('events').select('name,date,short_description,long_description,accessibility_notes')
     .gte('date', includeRetired ? '2000-01-01' : today).order('date')
   for (const e of events ?? []) {
     rows.push({
       source: 'events',
       label: `${e.date} ${e.name}`,
-      text: `${e.name}. ${e.short_description ?? ''} ${e.long_description ?? ''}`,
+      // Access notes publish to the event page too, and they are where "the garden has steps" hid.
+      text: `${e.name}. ${e.short_description ?? ''} ${e.long_description ?? ''} ${e.accessibility_notes ?? ''}`,
       live: String(e.date) >= today,
     })
   }
