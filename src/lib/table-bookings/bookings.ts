@@ -1225,7 +1225,14 @@ export async function sendTableBookingCreatedSmsIfAllowed(
   })
 
   return {
-    notificationChannel: notificationResult.selectedChannels[0] ?? null,
+    // The channel that reached the guest, which the website names on its confirmation screen.
+    // With email first, the first channel selected is email even when the email failed and the
+    // text went instead, so it is only the answer when nothing is known to have gone.
+    notificationChannel: emailDeliveredOrUnknown
+      ? 'email'
+      : smsDeliveredOrUnknown
+        ? 'sms'
+        : notificationResult.sentChannel ?? notificationResult.selectedChannels[0] ?? null,
     scheduledFor: smsDeliveredOrUnknown ? smsAttempt?.scheduledFor : undefined,
     sms: smsAttempt
       ? {
