@@ -94,23 +94,30 @@ function guest(id: string, audienceType: AudienceRow['audience_type'] = 'categor
   }
 }
 
+/** A promotional text in the messages log: its key, sent five days ago unless `at` says when. */
+type PromoText = string | { key: string; at: string }
+
 type World = {
   capacity?: { capacity: number | null; seats_remaining: number | null } | 'missing' | 'error'
   audience?: AudienceRow[]
   /** Promotional texts in the last 30 days, by customer, as the messages log shows them. */
-  promoTexts?: Record<string, string[]>
-  /** Rows in sms_promo_context from earlier sends, by customer. */
-  contexts?: Array<{ customer_id: string; event_id: string }>
+  promoTexts?: Record<string, PromoText[]>
+  /** Rows in sms_promo_context from earlier sends, by customer; written five days ago by default. */
+  contexts?: Array<{ customer_id: string; event_id: string; created_at?: string }>
   customers?: Array<{ id: string; email: string | null; email_status?: string | null }>
   countError?: boolean
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
  * A database that behaves like the real one for the queries this path makes, including the
  * audience function's refusal to promote the same event to the same guest twice.
  */
 function buildWorld(world: World) {
-  const contexts = [...(world.contexts ?? [])]
+  // Earlier sends default to five days ago: inside the 30-day cap, never on today's date.
+  const fiveDaysAgo = () => new Date(Date.now() - 5 * DAY_MS).toISOString()
+  const contexts = (world.contexts ?? []).map((row) => ({ ...row, created_at: row.created_at ?? fiveDaysAgo() }))
   const inserts: Array<Record<string, unknown>> = []
 
   const supabase = createRecordingSupabase({
@@ -133,8 +140,14 @@ function buildWorld(world: World) {
       messages: (query: RecordedQuery) => {
         if (world.countError) return { data: null, error: { message: 'count failed' } }
         const ids = inValues(query, 'customer_id') as string[]
-        const rows = Object.entries(world.promoTexts ?? {}).flatMap(([customerId, keys]) =>
-          ids.includes(customerId) ? keys.map((key) => ({ customer_id: customerId, template_key: key })) : []
+        const rows = Object.entries(world.promoTexts ?? {}).flatMap(([customerId, texts]) =>
+          ids.includes(customerId)
+            ? texts.map((text) =>
+                typeof text === 'string'
+                  ? { customer_id: customerId, template_key: text, created_at: fiveDaysAgo() }
+                  : { customer_id: customerId, template_key: text.key, created_at: text.at }
+              )
+            : []
         )
         return { data: rows, error: null }
       },
@@ -142,7 +155,12 @@ function buildWorld(world: World) {
         const insert = argsOf(query, 'insert')[0]?.[0] as Record<string, unknown> | undefined
         if (insert) {
           inserts.push(insert)
-          contexts.push({ customer_id: insert.customer_id as string, event_id: insert.event_id as string })
+          // The database stamps created_at with the moment of the send.
+          contexts.push({
+            customer_id: insert.customer_id as string,
+            event_id: insert.event_id as string,
+            created_at: new Date().toISOString(),
+          })
           return { error: null }
         }
         const ids = inValues(query, 'customer_id') as string[]
@@ -366,6 +384,115 @@ describe('last push: at most two promotional texts per person in 30 days', () =>
     expect(mockSendSMS).not.toHaveBeenCalled()
     expect(result.skipped).toBe(1)
     expect(warnSpy.mock.calls.map((call) => call.join(' ')).join('\n')).toContain('cap_unavailable')
+  })
+})
+
+describe('at most one promotional text per guest per London day, across every event', () => {
+  // Tuesday 15 September 2026, 10:00 BST: outside quiet hours, so a text lands at once.
+  const TUESDAY_10AM = new Date('2026-09-15T09:00:00Z')
+
+  // Another night on the same date, and a night next week for the intro.
+  const SAME_NIGHT_EVENT = { ...FREE_EVENT, id: 'event-karaoke', name: 'Karaoke' }
+  const NEXT_WEEK_EVENT = { ...FREE_EVENT, id: 'event-bingo', name: 'Music Bingo', date: '2026-09-21' }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(TUESDAY_10AM)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('texts each guest once when two events share a date, and reads the count again for the second', async () => {
+    const { supabase } = buildWorld({ audience: [guest('A'), guest('B')] })
+
+    const first = await sendCrossPromoForEvent(FREE_EVENT, { mode: 'last_push' })
+    const second = await sendCrossPromoForEvent(SAME_NIGHT_EVENT, { mode: 'last_push' })
+
+    expect(first).toEqual({ sent: 2, skipped: 0, errors: 0 })
+    expect(second).toEqual({ sent: 0, skipped: 2, errors: 0 })
+    expect(mockSendSMS).toHaveBeenCalledTimes(2)
+    // One read of the reply-window ledger for each event.
+    const ledgerReads = supabase.queries.filter(
+      (query) => query.table === 'sms_promo_context' && argsOf(query, 'insert').length === 0
+    )
+    expect(ledgerReads).toHaveLength(2)
+  })
+
+  it('lets one text through, not two, on the first run after the flag goes on in quiet hours', async () => {
+    // 00:15 BST on Tuesday: both texts would be held to 09:00 and land together.
+    vi.setSystemTime(new Date('2026-09-14T23:15:00Z'))
+    buildWorld({ audience: [guest('A')] })
+
+    await sendCrossPromoForEvent(FREE_EVENT, { mode: 'last_push' })
+    await sendCrossPromoForEvent(SAME_NIGHT_EVENT, { mode: 'last_push' })
+
+    expect(mockSendSMS).toHaveBeenCalledTimes(1)
+    expect(smsCallFor('A')?.[2]?.metadata?.event_id).toBe(FREE_EVENT.id)
+  })
+
+  it('counts a text sent last night and held by quiet hours as landing today', async () => {
+    buildWorld({
+      audience: [guest('A'), guest('B')],
+      contexts: [
+        // 21:30 BST on Monday: held overnight, landed at 09:00 today.
+        { customer_id: 'A', event_id: 'night-0', created_at: '2026-09-14T20:30:00Z' },
+        // 20:30 BST on Monday: landed on Monday.
+        { customer_id: 'B', event_id: 'night-0', created_at: '2026-09-14T19:30:00Z' },
+      ],
+    })
+
+    const result = await sendCrossPromoForEvent(FREE_EVENT, { mode: 'last_push' })
+
+    expect(smsCallFor('A')).toBeUndefined()
+    expect(smsCallFor('B')).toBeDefined()
+    expect(result).toEqual({ sent: 1, skipped: 1, errors: 0 })
+  })
+
+  it('lets a guest texted this morning be texted again from 21:00, because that text lands tomorrow', async () => {
+    // 21:30 BST: a text now is held to 09:00 on Wednesday.
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'))
+    buildWorld({
+      audience: [guest('A')],
+      contexts: [{ customer_id: 'A', event_id: 'night-0', created_at: '2026-09-15T09:00:00Z' }],
+    })
+
+    const result = await sendCrossPromoForEvent(FREE_EVENT, { mode: 'last_push' })
+
+    expect(result.sent).toBe(1)
+  })
+
+  it('counts a staff bulk text sent today', async () => {
+    buildWorld({
+      audience: [guest('A')],
+      promoTexts: { A: [{ key: 'bulk_sms_campaign', at: '2026-09-15T08:30:00Z' }] },
+    })
+
+    await sendCrossPromoForEvent(FREE_EVENT, { mode: 'last_push' })
+
+    expect(mockSendSMS).not.toHaveBeenCalled()
+  })
+
+  it('keeps the no-email intro off a guest who had a last push today', async () => {
+    buildWorld({
+      audience: [guest('A'), guest('C')],
+      customers: [
+        { id: 'A', email: null },
+        { id: 'C', email: null },
+      ],
+      // C heard about tonight's event last week, so tonight's last push reaches only A.
+      contexts: [{ customer_id: 'C', event_id: FREE_EVENT.id }],
+    })
+
+    await sendCrossPromoForEvent(FREE_EVENT, { mode: 'last_push' })
+    const intro = await sendCrossPromoForEvent(NEXT_WEEK_EVENT, { mode: 'intro_no_email' })
+
+    expect(mockSendSMS.mock.calls.map(([, , options]) => [options?.customerId, options?.metadata?.template_key])).toEqual([
+      ['A', 'event_last_push'],
+      ['C', 'event_cross_promo_7d'],
+    ])
+    expect(intro).toEqual({ sent: 1, skipped: 1, errors: 0 })
   })
 })
 

@@ -23,6 +23,7 @@ import {
   decideLastPushTiming,
   EVENT_PROMO_TEMPLATE_KEYS,
   isEventPromoTemplateKey,
+  isUnderDailyPromoTextLimit,
   isUnderPromoTextCap,
   loadCustomerIdsWithoutUsableEmail,
   loadPromoTextCounts,
@@ -30,6 +31,7 @@ import {
   PROMOTIONAL_SMS_TEMPLATE_KEYS,
   resolveEventPromoFlags,
   resolveLastPushDateWindow,
+  resolvePromoTextDayStart,
 } from '../event-promo-policy'
 import { argsOf, createRecordingSupabase, inValues } from '../../../../tests/mocks/recordingSupabase'
 
@@ -260,7 +262,33 @@ describe('decideLastPushTiming: 0 to 3 days away and not started', () => {
   })
 })
 
-describe('loadPromoTextCounts: promotional texts in the last 30 days', () => {
+describe('resolvePromoTextDayStart: the texts that land on the same London day', () => {
+  it.each([
+    // Outside quiet hours a text lands at once, so today's texts are the ones sent since 21:00
+    // last night (held overnight, landed at 09:00) and during today.
+    ['10:00 BST on Tuesday 15 September', '2026-09-15T09:00:00Z', '2026-09-14T20:00:00.000Z'],
+    ['20:59 BST on Tuesday', '2026-09-15T19:59:00Z', '2026-09-14T20:00:00.000Z'],
+    // From 21:00 a text lands at 09:00 tomorrow, so the day it joins starts at 21:00 tonight.
+    ['21:00 BST on Tuesday', '2026-09-15T20:00:00Z', '2026-09-15T20:00:00.000Z'],
+    ['02:00 BST on Wednesday', '2026-09-16T01:00:00Z', '2026-09-15T20:00:00.000Z'],
+    // The night the clocks go back: 00:30 BST and 10:00 GMT on Sunday 25 October share a day
+    // that started at 21:00 BST on the Saturday; 22:00 GMT that Sunday joins the Monday.
+    ['00:30 BST on Sunday 25 October 2026', '2026-10-24T23:30:00Z', '2026-10-24T20:00:00.000Z'],
+    ['10:00 GMT on Sunday 25 October 2026', '2026-10-25T10:00:00Z', '2026-10-24T20:00:00.000Z'],
+    ['22:00 GMT on Sunday 25 October 2026', '2026-10-25T22:00:00Z', '2026-10-25T21:00:00.000Z'],
+    // The night the clocks go forward: 23:30 GMT on Saturday 27 March 2027 lands at 09:00 BST on
+    // the Sunday, a day that started at 21:00 GMT on the Saturday.
+    ['23:30 GMT on Saturday 27 March 2027', '2027-03-27T23:30:00Z', '2027-03-27T21:00:00.000Z'],
+    ['10:00 BST on Sunday 28 March 2027', '2027-03-28T09:00:00Z', '2027-03-27T21:00:00.000Z'],
+    ['21:30 BST on Sunday 28 March 2027', '2027-03-28T20:30:00Z', '2027-03-28T20:00:00.000Z'],
+  ])('at %s the day started at %s', (_label, now, expected) => {
+    expect(resolvePromoTextDayStart(new Date(now))?.toISOString()).toBe(expected)
+  })
+})
+
+describe('loadPromoTextCounts: promotional texts in the last 30 days, and the ones landing today', () => {
+  // Tuesday 15 September 2026, 09:00 BST: today's texts are the ones sent from 21:00 BST on
+  // Monday (2026-09-14T20:00Z).
   const NOW = new Date('2026-09-15T08:00:00Z')
 
   function build(overrides: { messagesError?: unknown; contextError?: unknown } = {}) {
@@ -270,12 +298,17 @@ describe('loadPromoTextCounts: promotional texts in the last 30 days', () => {
           if (overrides.messagesError) return { data: null, error: overrides.messagesError }
           const ids = inValues(query, 'customer_id')
           const rows = [
-            // A: two promos, both logged in messages and in the context ledger.
-            { customer_id: 'A', template_key: 'event_last_push' },
-            { customer_id: 'A', template_key: 'event_cross_promo_7d' },
-            // B: one staff bulk text and one promo.
-            { customer_id: 'B', template_key: 'bulk_sms_campaign' },
-            { customer_id: 'B', template_key: 'event_last_push_paid' },
+            // A: two promos, both logged in messages and in the context ledger. The first was
+            // sent at 21:30 BST last night and held by quiet hours, so it landed at 09:00 today.
+            { customer_id: 'A', template_key: 'event_last_push', created_at: '2026-09-14T20:30:00Z' },
+            { customer_id: 'A', template_key: 'event_cross_promo_7d', created_at: '2026-09-02T10:00:00Z' },
+            // B: one staff bulk text, sent at 20:00 BST yesterday so it landed yesterday, and one promo.
+            { customer_id: 'B', template_key: 'bulk_sms_campaign', created_at: '2026-09-14T19:00:00Z' },
+            { customer_id: 'B', template_key: 'event_last_push_paid', created_at: '2026-09-10T10:00:00Z' },
+            // F: a row whose time cannot be read counts as today, so the limit fails closed.
+            { customer_id: 'F', template_key: 'event_last_push', created_at: null },
+            // G: a bulk text sent at 21:00 BST exactly, the first minute of today's texts.
+            { customer_id: 'G', template_key: 'bulk_sms_campaign', created_at: '2026-09-14T20:00:00Z' },
           ]
           return { data: rows.filter((row) => ids.includes(row.customer_id)), error: null }
         },
@@ -283,14 +316,15 @@ describe('loadPromoTextCounts: promotional texts in the last 30 days', () => {
           if (overrides.contextError) return { data: null, error: overrides.contextError }
           const ids = inValues(query, 'customer_id')
           const rows = [
-            { customer_id: 'A' },
-            { customer_id: 'A' },
-            { customer_id: 'B' },
+            { customer_id: 'A', created_at: '2026-09-14T20:30:00Z' },
+            { customer_id: 'A', created_at: '2026-09-02T10:00:00Z' },
+            { customer_id: 'B', created_at: '2026-09-10T10:00:00Z' },
             // C: two promos deferred by quiet hours, so the job queue has not logged them yet.
-            { customer_id: 'C' },
-            { customer_id: 'C' },
-            // D: one.
-            { customer_id: 'D' },
+            // The first was sent at midnight BST and lands at 09:00 today.
+            { customer_id: 'C', created_at: '2026-09-14T23:00:00Z' },
+            { customer_id: 'C', created_at: '2026-09-05T10:00:00Z' },
+            // D: one, sent at 20:59 BST yesterday, so it landed yesterday.
+            { customer_id: 'D', created_at: '2026-09-14T19:59:00Z' },
           ]
           return { data: rows.filter((row) => ids.includes(row.customer_id)), error: null }
         },
@@ -300,16 +334,26 @@ describe('loadPromoTextCounts: promotional texts in the last 30 days', () => {
 
   it('counts each text once, whether it shows in messages, the context ledger or both', async () => {
     const db = build()
-    const counts = await loadPromoTextCounts(db.client as never, ['A', 'B', 'C', 'D', 'E'], NOW)
+    const counts = await loadPromoTextCounts(db.client as never, ['A', 'B', 'C', 'D', 'E', 'F', 'G'], NOW)
 
     expect(counts).not.toBeNull()
-    expect(counts?.get('A')).toBe(2)
+    expect(counts?.last30Days.get('A')).toBe(2)
     // The bulk text counts on top of the engine's own promo.
-    expect(counts?.get('B')).toBe(2)
+    expect(counts?.last30Days.get('B')).toBe(2)
     // Deferred promos count before they reach messages.
-    expect(counts?.get('C')).toBe(2)
-    expect(counts?.get('D')).toBe(1)
-    expect(counts?.has('E')).toBe(false)
+    expect(counts?.last30Days.get('C')).toBe(2)
+    expect(counts?.last30Days.get('D')).toBe(1)
+    expect(counts?.last30Days.has('E')).toBe(false)
+  })
+
+  it('counts the texts landing today, including those sent last night and held until 09:00', async () => {
+    const db = build()
+    const counts = await loadPromoTextCounts(db.client as never, ['A', 'B', 'C', 'D', 'E', 'F', 'G'], NOW)
+
+    expect(Object.fromEntries(counts?.sameDay ?? [])).toEqual({ A: 1, C: 1, F: 1, G: 1 })
+    for (const [id, underLimit] of [['A', false], ['B', true], ['C', false], ['D', true], ['E', true], ['F', false], ['G', false]] as const) {
+      expect(isUnderDailyPromoTextLimit(counts!.sameDay, id)).toBe(underLimit)
+    }
   })
 
   it('reads only outbound, delivered-or-pending promotional texts from the last 30 days', async () => {
