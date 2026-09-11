@@ -1,3 +1,15 @@
+# SSOT data corrections, 11 September 2026 (applied to production)
+
+Owner approval 11 September 2026 (items 1 to 11, 13 to 15, and the owner's answers on finish times, quiz seating and access wording). Applied through `prod-migrate` to `tfcasgxopxegwrabvwat`, each as one guarded DO statement (production marker, ids plus the captured old value or its md5, exact counts, reviewed md5 of every changed long text).
+
+- [x] `20260911172000_ssot_record_and_content_corrections.sql` (sha256 `2585ba63...`) applied as `20260911180655 ssot_record_and_content_corrections`: 60 statements. Every literal value re-checked against the file by md5 afterwards: 70 fields, none different.
+- [x] `20260911172100_private_booking_queue_cancel_stale_texts.sql` (sha256 `91ad9f85...`) applied as `20260911180903 private_booking_queue_cancel_stale_texts`: 21 texts cancelled, none had gone; the one other pending text (a draft booking's deposit reminder) untouched.
+- [x] `20260911172200_backup_accessibility_tables_rls.sql` (sha256 `7a152ee0...`) applied as `20260911180913 backup_accessibility_tables_rls`: row level security on for both backup tables; `assert-anon-surface.ts` all 9 checks passed after.
+- [x] `20260911180000_ssot_record_followups.sql` (sha256 `fb3f3f96...`) applied as `20260911181415 ssot_record_followups`: "Assistance dogs are always welcome." back after the SSOT access block on the 25 rows that had it (SSOT section 8), the tasting night brief's "wheelchair accessible" line, and the four other quiz briefs' 6:45pm and 6:55pm arrival lines. Replayed on a throwaway local Postgres 17 first: it only logs a notice off production.
+- [ ] New Year's Eve closing at 1am (item 12): blocked until the business hours "open now" status reads the previous day's row past midnight (`src/app/api/business/hours/route.ts`, `src/app/api/business-hours/route.ts`). Then one field on the 31 December special hours row.
+
+After: no upcoming brief says 6:45pm, 6:55pm or wheelchair accessible; no upcoming quiz record says communal; no upcoming event other than the Halloween party ends after 22:00.
+
 # Christmas minimum from 6 to 4, 11 September 2026 (applied to production)
 
 - [x] Prove the production ref (`tfcasgxopxegwrabvwat`) from `supabase/.temp/project-ref` and `.env.local`; read live state with read-only SELECTs only.
