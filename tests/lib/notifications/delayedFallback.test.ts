@@ -533,4 +533,58 @@ describe('evaluateFallbackSkip', () => {
     expect(evaluateFallbackSkip(base, { event_date: '2026-10-03', deposit_amount: '250.00', unrelated: 'x' }, NOW)).toBeNull()
     expect(evaluateFallbackSkip(base, { deposit_amount: 200 }, NOW)).toBe('booking_changed')
   })
+
+  it('refuses a text that would reach the guest at or after the moment its words stop being true', () => {
+    const minuteBefore = new Date(NOW.getTime() - 60_000).toISOString()
+    const minuteAfter = new Date(NOW.getTime() + 60_000).toISOString()
+    expect(evaluateFallbackSkip({ ...base, validUntil: minuteAfter }, null, NOW)).toBeNull()
+    expect(evaluateFallbackSkip({ ...base, validUntil: NOW.toISOString() }, null, NOW)).toBe('too_late')
+    expect(evaluateFallbackSkip({ ...base, validUntil: minuteBefore }, null, NOW)).toBe('too_late')
+    expect(evaluateFallbackSkip({ ...base, validUntil: null }, null, NOW)).toBeNull()
+  })
+
+  it('treats a deadline it cannot read as passed, so nothing goes unchecked', () => {
+    expect(evaluateFallbackSkip({ ...base, validUntil: 'not a date' }, null, NOW)).toBe('too_late')
+  })
+
+  it('names the plainest reason first: cancelled, then started, then too late, then changed', () => {
+    const passed = new Date(NOW.getTime() - 60_000).toISOString()
+    const cancelled = { ...base, validUntil: passed, booking: { ...base.booking, status: 'cancelled' } }
+    const started = { ...base, validUntil: passed, booking: { ...base.booking, startsAt: '2026-09-20T09:00:00.000Z' } }
+    expect(evaluateFallbackSkip(cancelled, { deposit_amount: 200 }, NOW)).toBe('booking_cancelled')
+    expect(evaluateFallbackSkip(started, { deposit_amount: 200 }, NOW)).toBe('booking_past')
+    expect(evaluateFallbackSkip({ ...base, validUntil: passed }, { deposit_amount: 200 }, NOW)).toBe('too_late')
+  })
+})
+
+describe('messages that no longer apply', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.flagOn = true
+  })
+
+  it('are recorded as skipped with a plain reason, never failed, never listed, and staff are not alerted', async () => {
+    state.db = seed()
+    const fallbackRenderer = renderer(() => ({ kind: 'no_longer_needed', booking: { type: 'private_booking', id: 'booking-1' } }))
+
+    const outcome = await runDelayedFallbackJob({ deliveryId: 'delivery-1' }, { renderers: [fallbackRenderer], now: () => NOW })
+
+    expect(outcome).toEqual({ outcome: 'skipped', reason: 'no_longer_needed', deliveryId: 'delivery-1' })
+    expect(mockedSendSMS).not.toHaveBeenCalled()
+    expect(reportCronFailure).not.toHaveBeenCalled()
+    expect(state.db.tables.notification_deliveries[0]).toMatchObject({
+      final_status: 'bounced',
+      metadata: expect.objectContaining({ delayed_fallback: { outcome: 'skipped', reason: 'no_longer_needed', at: NOW.toISOString() } }),
+    })
+    expect(state.db.tables.private_booking_audit[0]).toMatchObject({
+      action: 'email_bounced',
+      metadata: expect.objectContaining({
+        description: 'The email bounced. No text was sent because what it asked for has been done since, so it no longer applies.',
+      }),
+    })
+
+    const { loadUndeliveredGuestMessages } = await import('@/lib/notifications/undelivered')
+    const listed = await loadUndeliveredGuestMessages({ sinceIso: '2000-01-01T00:00:00.000Z' })
+    expect(listed.rows).toEqual([])
+  })
 })

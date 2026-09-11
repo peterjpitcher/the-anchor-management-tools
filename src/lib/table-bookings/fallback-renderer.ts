@@ -18,6 +18,7 @@ import {
   confirmReminderFacts,
   depositConfirmedFacts,
   isAwaitingTableDeposit,
+  isoInstant,
   partySizeDepositRequestFacts,
   preorderReminderFacts,
   readTableBookingDeliveryMetadata,
@@ -31,6 +32,7 @@ import type {
   DelayedFallbackRenderer,
   FallbackBookingFacts,
   FallbackSkipCheck,
+  FallbackValidUntil,
 } from '@/lib/notifications/delayed-fallback/types'
 
 /**
@@ -40,7 +42,9 @@ import type {
  * booking, the message, the facts it stated and how its link was made. The text is rebuilt from
  * the booking as it is now, with the builder the sender uses (guest-texts.ts), and goes to the
  * number the sender would have texted. Whether it is still true (cancelled or not, started,
- * changed) is decided by the job, with the same rules as every other booking type.
+ * changed, or landing after the deadline its words name) is decided by the job, with the same
+ * rules as every other booking type. A message whose purpose has been met since (the deposit paid,
+ * the guest answered, the food choices in) comes back as no longer needed.
  *
  * LINKS ARE FOUND, NEVER MADE. A text that carries a link reuses the short link the email carried:
  * the newest short link of that kind for this booking and guest created no later than the
@@ -103,13 +107,27 @@ type MessageContext = {
   now: Date
 }
 
+/** What a message's rules make of the booking as it is now. */
+type Assessment = {
+  /** The facts the message states, compared with the ones stored with the email. */
+  facts: FallbackBookingFacts
+  /** When the text's words stop being true; null when they hold until the booking starts. */
+  validUntil: FallbackValidUntil
+  /** What the message asked for has happened since (paid, answered, chosen): nothing to send. */
+  noLongerNeeded: boolean
+}
+
 type MessageSpec = {
-  /** The link the message carries, and the token that must still be live behind it. */
-  link: { kind: GuestShortLinkKind; tokenAction: string; optional: boolean } | null
+  /**
+   * The link the message carries, and the token that must still be live behind it. `doneWhenUsed`:
+   * using the link is itself the answer the message asks for (paying, confirming), so a used link
+   * means the message is no longer needed rather than that the text cannot be rebuilt.
+   */
+  link: { kind: GuestShortLinkKind; tokenAction: string; optional: boolean; doneWhenUsed: boolean } | null
   /** Which of the customer's two mobile fields the sender names first. Both hold the same phone. */
   mobileFirst: 'mobile_number' | 'mobile_e164'
   expectCancelled: boolean
-  facts: (ctx: Omit<MessageContext, 'customer'>) => FallbackBookingFacts | Promise<FallbackBookingFacts>
+  assess: (ctx: Omit<MessageContext, 'customer'>) => Assessment | Promise<Assessment>
   /** The text, or null when something it states cannot be read. */
   text: (ctx: MessageContext, link: string | null) => string | null
   /** Extra metadata the sender puts on the text; table_booking_id is always added. */
@@ -117,14 +135,21 @@ type MessageSpec = {
 }
 
 /**
- * Whether the booker still owes food choices on a form that is still open: the three conditions
- * the pre-order sweep checks before it chases.
+ * Where the booker's food choices stand, by the conditions the pre-order sweep checks before it
+ * chases. `outstanding`: owed on a form that is still open. `settled`: nothing is owed any more
+ * (every choice is in, or the booking no longer needs a pre-order). `closesAt`: when the form locks.
  */
-async function areFoodChoicesOutstanding(client: AdminClient, booking: FallbackTableBooking, now: Date): Promise<boolean> {
+async function readFoodChoices(
+  client: AdminClient,
+  booking: FallbackTableBooking,
+  now: Date
+): Promise<{ outstanding: boolean; settled: boolean; closesAt: string | null }> {
   const order = await loadPreorderOrder(client, booking.id)
-  if (!order || !order.requiresPreorder) return false
-  if (getPreorderCompleteness(order).complete) return false
-  return !getPreorderCutoff({ bookingDate: order.bookingDate, preorderCutoffDays: order.preorderCutoffDays, now }).closed
+  if (!order || !order.requiresPreorder) return { outstanding: false, settled: true, closesAt: null }
+  const cutoff = getPreorderCutoff({ bookingDate: order.bookingDate, preorderCutoffDays: order.preorderCutoffDays, now })
+  const closesAt = cutoff.closesAt ? cutoff.closesAt.toISOString() : null
+  if (getPreorderCompleteness(order).complete) return { outstanding: false, settled: true, closesAt }
+  return { outstanding: !cutoff.closed, settled: false, closesAt }
 }
 
 const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
@@ -133,11 +158,15 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
     link: null,
     mobileFirst: 'mobile_number',
     expectCancelled: true,
-    facts: ({ booking, storedFacts }) => {
+    assess: ({ booking, storedFacts }) => {
       const refundResult = refundResultFromFacts(storedFacts)
-      return refundResult
-        ? cancellationFacts({ bookingDate: booking.booking_date, refundResult })
-        : { booking_date: booking.booking_date ?? null }
+      return {
+        facts: refundResult
+          ? cancellationFacts({ bookingDate: booking.booking_date, refundResult })
+          : { booking_date: booking.booking_date ?? null },
+        validUntil: null,
+        noLongerNeeded: false,
+      }
     },
     text: ({ booking, customer, storedFacts }) => {
       // The refund outcome is not on the booking; the facts stored with the email are the record.
@@ -154,10 +183,10 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
 
   // sendTableBookingDepositConfirmedEmailFirst in bookings.ts
   deposit_confirmed: {
-    link: { kind: 'table_manage', tokenAction: 'manage', optional: true },
+    link: { kind: 'table_manage', tokenAction: 'manage', optional: true, doneWhenUsed: false },
     mobileFirst: 'mobile_number',
     expectCancelled: false,
-    facts: ({ booking }) => depositConfirmedFacts(booking),
+    assess: ({ booking }) => ({ facts: depositConfirmedFacts(booking), validUntil: null, noLongerNeeded: false }),
     text: ({ booking, customer }, link) =>
       buildDepositConfirmedText({ booking, firstName: getSmartFirstName(customer.first_name), manageLink: link }),
     smsMetadata: () => ({}),
@@ -165,20 +194,25 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
 
   // sendPartySizeDepositRequestEmailFirst in staff-deposit-transitions.ts
   party_size_deposit_request: {
-    link: { kind: 'table_payment', tokenAction: 'payment', optional: false },
+    link: { kind: 'table_payment', tokenAction: 'payment', optional: false, doneWhenUsed: true },
     mobileFirst: 'mobile_e164',
     expectCancelled: false,
-    facts: ({ booking }) =>
-      partySizeDepositRequestFacts({
+    assess: ({ booking }) => ({
+      facts: partySizeDepositRequestFacts({
         partySize: booking.party_size,
         depositAmount: booking.deposit_amount,
         holdExpiresAt: booking.hold_expires_at,
         awaitingPayment: isAwaitingTableDeposit(booking),
       }),
+      // "Pay now" holds only while the payment link does, and the link runs out with the hold.
+      validUntil: isoInstant(booking.hold_expires_at),
+      // Paid, or the deposit cleared since: there is nothing left to ask for.
+      noLongerNeeded: !isAwaitingTableDeposit(booking),
+    }),
     text: ({ booking, customer }, link) => {
       const partySize = Number(booking.party_size)
       const depositAmount = Number(booking.deposit_amount)
-      // Never a request for nothing: a cleared deposit is a changed booking, not a GBP 0 text.
+      // Never a request for nothing: a GBP 0 text is refused even if the booking still reads as owing.
       if (!link || !Number.isFinite(partySize) || partySize <= 0 || !Number.isFinite(depositAmount) || depositAmount <= 0) {
         return null
       }
@@ -195,10 +229,18 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
 
   // sendConfirmReminderEmailFirst in app/api/cron/table-booking-confirm/route.ts
   confirm_reminder: {
-    link: { kind: 'booking_confirm', tokenAction: 'booking_confirm', optional: false },
+    link: { kind: 'booking_confirm', tokenAction: 'booking_confirm', optional: false, doneWhenUsed: true },
     mobileFirst: 'mobile_e164',
     expectCancelled: false,
-    facts: ({ booking }) => confirmReminderFacts(booking),
+    assess: ({ booking }) => ({
+      facts: confirmReminderFacts(booking),
+      // The text names the day and time ("your table for 4 is Saturday 24 October at 7pm"), never
+      // "tomorrow", so it holds until the booking starts. If it ever says tomorrow, this must become
+      // the start of the booking's London day (a test pins the wording).
+      validUntil: tableBookingStartsAt(booking),
+      // The guest has answered since: the question is settled.
+      noLongerNeeded: Boolean(booking.guest_confirmed_at),
+    }),
     text: ({ booking, customer }, link) =>
       link && booking.booking_date
         ? buildConfirmReminderText({
@@ -214,15 +256,22 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
 
   // sendBookerReminderEmailFirst in app/api/cron/preorder-reminders/route.ts
   preorder_reminder: {
-    link: { kind: 'table_manage', tokenAction: 'manage', optional: false },
+    link: { kind: 'table_manage', tokenAction: 'manage', optional: false, doneWhenUsed: false },
     mobileFirst: 'mobile_e164',
     expectCancelled: false,
-    facts: async ({ client, booking, now }) =>
-      preorderReminderFacts({
-        bookingDate: booking.booking_date,
-        bookingTime: booking.booking_time,
-        choicesOutstanding: await areFoodChoicesOutstanding(client, booking, now),
-      }),
+    assess: async ({ client, booking, now }) => {
+      const choices = await readFoodChoices(client, booking, now)
+      return {
+        facts: preorderReminderFacts({
+          bookingDate: booking.booking_date,
+          bookingTime: booking.booking_time,
+          choicesOutstanding: choices.outstanding,
+        }),
+        // "Choose here" holds only while the form is open: it locks at the pre-order cut-off.
+        validUntil: choices.closesAt,
+        noLongerNeeded: choices.settled,
+      }
+    },
     text: ({ booking, customer }, link) =>
       link && booking.booking_date
         ? buildPreorderReminderText({
@@ -240,7 +289,7 @@ const TEMPLATE_KEYS = new Set(Object.values(TABLE_BOOKING_FALLBACK_TEMPLATE_KEYS
 
 type LinkLookup =
   | { ok: true; url: string | null }
-  | { ok: false; reason: 'link_not_found' | 'link_expired' | 'link_not_rebuildable' }
+  | { ok: false; reason: 'link_not_found' | 'link_expired' | 'link_used' | 'link_not_rebuildable' }
 
 /**
  * The short link the email carried, found without creating anything: the newest short link of
@@ -306,8 +355,11 @@ async function findEmailLink(input: {
   ) {
     return { ok: false, reason: 'link_not_found' }
   }
+  if (token.consumed_at) {
+    return { ok: false, reason: 'link_used' }
+  }
   const tokenExpiresAtMs = Date.parse(token.expires_at || '')
-  if (token.consumed_at || !Number.isFinite(tokenExpiresAtMs) || tokenExpiresAtMs <= input.now.getTime()) {
+  if (!Number.isFinite(tokenExpiresAtMs) || tokenExpiresAtMs <= input.now.getTime()) {
     return { ok: false, reason: 'link_expired' }
   }
 
@@ -343,13 +395,19 @@ export const tableBookingFallbackRenderer: DelayedFallbackRenderer = {
     }
     const booking = bookingRow as FallbackTableBooking
 
+    const assessment = await spec.assess({ client, booking, storedFacts: recorded.facts, now })
     const current: FallbackSkipCheck = {
       booking: {
         status: booking.status ?? null,
         startsAt: tableBookingStartsAt(booking),
-        facts: await spec.facts({ client, booking, storedFacts: recorded.facts, now }),
+        facts: assessment.facts,
       },
       expectCancelled: spec.expectCancelled,
+      validUntil: assessment.validUntil,
+    }
+
+    if (assessment.noLongerNeeded) {
+      return { kind: 'no_longer_needed', booking: bookingRef }
     }
 
     if (!recorded.facts) {
@@ -384,7 +442,12 @@ export const tableBookingFallbackRenderer: DelayedFallbackRenderer = {
         now,
       })
       if (!found.ok) {
-        return { kind: 'unavailable', reason: found.reason, booking: bookingRef, current }
+        // Paying through the link, or answering through it, is what the message asked for.
+        if (found.reason === 'link_used' && spec.link.doneWhenUsed) {
+          return { kind: 'no_longer_needed', booking: bookingRef }
+        }
+        const reason = found.reason === 'link_used' ? 'link_expired' : found.reason
+        return { kind: 'unavailable', reason, booking: bookingRef, current }
       }
       link = found.url
     }
@@ -401,6 +464,7 @@ export const tableBookingFallbackRenderer: DelayedFallbackRenderer = {
       kind: 'ready',
       booking: { ...bookingRef, ...current.booking },
       expectCancelled: spec.expectCancelled,
+      validUntil: current.validUntil,
       sms: {
         to: resolveTableBookingGuestSmsTo(customer, requested),
         body,

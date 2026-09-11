@@ -184,7 +184,8 @@ async function sendDepositReceivedSideEffects(input: {
           balanceDueDate: booking.balance_due_date ?? null,
         }),
         windowKey: 'deposit',
-        facts: buildPrivateBookingMessageFacts('deposit_received', booking),
+        // From the row as the payment left it: `booking` was read before the deposit was recorded.
+        facts: buildPrivateBookingMessageFacts('deposit_received', { ...booking, ...(updatedBooking ?? {}) }),
       });
     } catch (smsError) {
       smsResult = { error: smsError instanceof Error ? smsError.message : String(smsError) }

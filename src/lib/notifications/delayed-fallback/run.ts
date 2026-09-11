@@ -54,6 +54,8 @@ const REASON_TEXT: Record<string, string> = {
   booking_cancelled: 'the booking has been cancelled since',
   booking_no_longer_cancelled: 'the booking is no longer cancelled',
   booking_past: 'the booking has already started',
+  too_late: 'it would arrive too late for what it says to still be true',
+  no_longer_needed: 'what it asked for has been done since, so it no longer applies',
   booking_changed: 'the booking details have changed since the email was sent',
   no_renderer: 'this kind of message cannot be rebuilt as a text',
   no_sms_channel: 'the guest has no mobile number we can text',
@@ -91,11 +93,14 @@ function normaliseFact(value: unknown): string {
 /**
  * The rules that decide whether a rebuilt text is still true. Kept here, not in each renderer, so
  * every booking type is held to the same test.
+ *
+ * `deliveryAt` is when the text would reach the guest. That is the moment the job runs, because
+ * the job never hands sendSMS a text to hold through quiet hours: it waits and runs again.
  */
 export function evaluateFallbackSkip(
   render: FallbackSkipCheck,
   storedFacts: unknown,
-  now: Date
+  deliveryAt: Date
 ): string | null {
   const cancelled = render.booking.status === 'cancelled'
   if (render.expectCancelled) {
@@ -106,8 +111,18 @@ export function evaluateFallbackSkip(
 
   if (!render.expectPast && render.booking.startsAt) {
     const startsAtMs = Date.parse(render.booking.startsAt)
-    if (Number.isFinite(startsAtMs) && startsAtMs <= now.getTime()) {
+    if (Number.isFinite(startsAtMs) && startsAtMs <= deliveryAt.getTime()) {
       return 'booking_past'
+    }
+  }
+
+  // Words tied to a day or a deadline ("tomorrow's the day", "due today", "Pay now" on a link that
+  // runs out) are false once that moment has passed, however unchanged the booking is. A value that
+  // cannot be read is treated as passed: the text is not sent rather than sent unchecked.
+  if (render.validUntil) {
+    const validUntilMs = Date.parse(render.validUntil)
+    if (!Number.isFinite(validUntilMs) || deliveryAt.getTime() >= validUntilMs) {
+      return 'too_late'
     }
   }
 
@@ -302,7 +317,8 @@ async function recordFailed(input: {
  *    job for the same delivery, or a retry of this one, does nothing.
  * 3. Rebuilds the text from the live booking through the renderer for its template key. No copy
  *    of the text is stored anywhere new.
- * 4. Sends nothing when the booking has been cancelled, has started, or has changed since the email.
+ * 4. Sends nothing when the booking has been cancelled, has started, or has changed since the email,
+ *    or when the text would reach the guest after the day or deadline its words depend on.
  * 5. Sends through `sendSMS`, so duplicate protection, quiet hours and the rate limits all apply.
  * 6. With no number, no renderer or a failed send: marks the delivery failed, writes an audit row
  *    on the booking and alerts staff.
@@ -394,6 +410,12 @@ export async function runDelayedFallbackJob(
       error: error instanceof Error ? error.message : String(error),
       nowIso,
     })
+  }
+
+  if (render.kind === 'no_longer_needed') {
+    // Paid, answered or otherwise done since the email: nothing reached the guest, and nothing
+    // needs to. Recorded as skipped, not failed, so staff are not asked to chase it.
+    return recordSkipped({ client, delivery, booking: render.booking, reason: 'no_longer_needed', nowIso })
   }
 
   if (render.kind === 'unavailable') {

@@ -1,5 +1,9 @@
 import { resolveCustomerIdForSms } from '@/lib/sms/customers'
-import { privateBookingStartsAt, renderPrivateBookingMessage } from '@/lib/private-bookings/message-catalogue'
+import {
+  privateBookingMessageNoLongerApplies,
+  privateBookingStartsAt,
+  renderPrivateBookingMessage,
+} from '@/lib/private-bookings/message-catalogue'
 import { cancellationFromFacts, loadPrivateBookingMessageContext } from '@/lib/private-bookings/message-context'
 import type { DelayedFallbackRenderer } from '@/lib/notifications/delayed-fallback/types'
 
@@ -10,6 +14,10 @@ import type { DelayedFallbackRenderer } from '@/lib/notifications/delayed-fallba
  * and the facts the email stated. The text is rebuilt from the booking as it is now, with the same
  * builder the original sender uses, and goes to the number the text queue would have used: the
  * booking's contact phone, else the customer's mobile, checked against the booking the same way.
+ *
+ * A message whose purpose has been met since (deposit or balance paid, hold gone) comes back as
+ * no longer needed. The rebuilt text carries the moment its words stop being true (validUntil), so
+ * the job can refuse one that would land too late.
  */
 export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
   matches: (templateKey) => templateKey.startsWith('private_booking_'),
@@ -36,6 +44,11 @@ export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
     const bookingRef = { type: 'private_booking' as const, id: bookingId }
     if (!context) {
       return { kind: 'unavailable', reason: 'booking_missing', booking: bookingRef }
+    }
+
+    // The deposit or balance has been paid, or the hold has gone, since the email: nothing to chase.
+    if (privateBookingMessageNoLongerApplies(triggerType, context)) {
+      return { kind: 'no_longer_needed', booking: bookingRef }
     }
 
     const message = renderPrivateBookingMessage(triggerType, context)
@@ -77,6 +90,7 @@ export const privateBookingFallbackRenderer: DelayedFallbackRenderer = {
       },
       expectCancelled: message.expectCancelled,
       expectPast: message.expectPast,
+      validUntil: message.validUntil,
       sms: {
         to: phone,
         body: message.smsBody,

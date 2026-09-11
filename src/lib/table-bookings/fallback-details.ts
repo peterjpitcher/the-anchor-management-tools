@@ -100,7 +100,7 @@ function clockTime(value: string | null | undefined): string | null {
 }
 
 /** A timestamp as one ISO form, so 18:00:00+00:00 and 18:00:00.000Z compare equal. */
-function isoInstant(value: string | null | undefined): string | null {
+export function isoInstant(value: string | null | undefined): string | null {
   if (!value) return null
   const parsed = parseLondonDateTimeLocal(value)
   return parsed ? parsed.toISOString() : null
