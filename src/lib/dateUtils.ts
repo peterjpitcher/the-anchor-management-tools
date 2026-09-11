@@ -192,6 +192,70 @@ export function shiftIsoDate(isoDate: string, days: number): string | null {
   return utcMsToIsoDate(ms + days * MS_PER_DAY)
 }
 
+const LONDON_WALL_CLOCK = new Intl.DateTimeFormat('en-GB', {
+  timeZone: LONDON_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** What the London clock shows at an instant, written as milliseconds as if it were UTC. */
+function londonWallClockMs(ms: number): number {
+  const parts = LONDON_WALL_CLOCK.formatToParts(new Date(ms))
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find(p => p.type === type)!.value)
+  return Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second'))
+}
+
+const CLOCK_TIME_PATTERN = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/
+const MS_PER_HOUR = 60 * 60 * 1000
+
+/**
+ * The first instant at which the London clock shows `time` ('HH:MM' or 'HH:MM:SS') on
+ * `isoDate`, or null when either is not valid.
+ *
+ * Use this for opening and closing times, which are read off the clock on the wall. It
+ * differs from parseLondonDateTimeLocal only on the two clock-change nights, and those are
+ * exactly the nights a late close has to be right:
+ *   - When the clocks go back in October, 01:00 to 01:59 happens twice. A 1am close is the
+ *     first time the clock shows 1am. fromZonedTime picks the second, an hour too late.
+ *   - When the clocks go forward in March, 01:00 to 01:59 never happens. The clock reaches
+ *     1am at the instant it jumps to 2am. fromZonedTime lands an hour early, at midnight.
+ * Every other date and time gives the same instant as fromZonedTime.
+ */
+export function whenLondonClockReaches(isoDate: string, time: string): Date | null {
+  const dayMs = isoDateToUtcMs(isoDate)
+  const match = CLOCK_TIME_PATTERN.exec(time.trim())
+  if (dayMs === null || !match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3] ?? '0')
+  if (hours > 23 || minutes > 59 || seconds > 59) return null
+
+  // The wall time written as if London kept UTC. London is on UTC or an hour ahead of it,
+  // so the answer lies in the hour up to this. Summer time is tried first, which makes an
+  // hour that happens twice resolve to its first occurrence.
+  const wallMs = dayMs + ((hours * 60 + minutes) * 60 + seconds) * 1000
+  for (const offsetMs of [MS_PER_HOUR, 0]) {
+    if (londonWallClockMs(wallMs - offsetMs) === wallMs) return new Date(wallMs - offsetMs)
+  }
+
+  // The hour the clocks skip: this time never shows, and the clock passes it at the
+  // instant it jumps forward. Bisect for that instant, to the second.
+  let before = wallMs - MS_PER_HOUR // the clock still shows an earlier time
+  let after = wallMs // the clock already shows a later time
+  while (after - before > 1000) {
+    const middle = before + Math.floor((after - before) / 2000) * 1000
+    if (londonWallClockMs(middle) >= wallMs) after = middle
+    else before = middle
+  }
+  return new Date(after)
+}
+
 export function getLocalIsoDateDaysAgo(days: number): string {
   const date = new Date()
   date.setDate(date.getDate() - days)
