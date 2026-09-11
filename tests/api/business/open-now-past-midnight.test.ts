@@ -319,3 +319,56 @@ describe('the night the clocks go forward, 28 March 2027', () => {
     expect((await legacyAt('2027-03-28T01:30:00Z')).currentStatus.isOpen).toBe(false)
   })
 })
+
+// The website's header printed today's closing time, and at 00:30 on 1 January today is a closed
+// day with none, so it said just "Open". The status now carries the day in force and its close.
+describe('the closing time in force', () => {
+  it('is 1am on New Year\'s Eve, before and after midnight', async () => {
+    const inForce = { tradingDate: '2026-12-31', closes: '01:00:00', closesAt: '2027-01-01T01:00:00.000Z' }
+    expect((await hoursAt('2026-12-31T23:30:00Z')).currentStatus).toMatchObject({ isOpen: true, ...inForce })
+    expect((await hoursAt('2027-01-01T00:30:00Z')).currentStatus).toMatchObject({ isOpen: true, ...inForce })
+  })
+
+  it('is nothing once the night has closed, on the closed day', async () => {
+    expect((await hoursAt('2027-01-01T01:00:00Z')).currentStatus).toMatchObject({
+      isOpen: false,
+      tradingDate: '2027-01-01',
+      closes: null,
+      closesAt: null,
+    })
+  })
+
+  it('is today\'s close on an ordinary day, and nothing before opening', async () => {
+    expect((await hoursAt('2026-09-11T17:00:00Z')).currentStatus).toMatchObject({
+      isOpen: true,
+      tradingDate: '2026-09-11',
+      closes: '22:00:00',
+      closesAt: '2026-09-11T21:00:00.000Z',
+    })
+    expect((await hoursAt('2026-09-11T09:00:00Z')).currentStatus).toMatchObject({
+      isOpen: false,
+      tradingDate: '2026-09-11',
+      closes: null,
+      closesAt: null,
+    })
+  })
+
+  it('is the first 1am when the clocks go back, and the jump when they go forward', async () => {
+    seed({
+      specials: [
+        special('2026-10-24', { opens: '12:00:00', closes: '01:00:00' }),
+        special('2027-03-27', { opens: '12:00:00', closes: '01:00:00' }),
+      ],
+    })
+    expect((await hoursAt('2026-10-24T23:30:00Z')).currentStatus).toMatchObject({
+      tradingDate: '2026-10-24',
+      closes: '01:00:00',
+      closesAt: '2026-10-25T00:00:00.000Z',
+    })
+    expect((await hoursAt('2027-03-28T00:30:00Z')).currentStatus).toMatchObject({
+      tradingDate: '2027-03-27',
+      closes: '01:00:00',
+      closesAt: '2027-03-28T01:00:00.000Z',
+    })
+  })
+})
